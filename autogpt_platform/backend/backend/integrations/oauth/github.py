@@ -1,5 +1,5 @@
 import time
-from typing import ClassVar
+from typing import ClassVar, Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
@@ -23,7 +23,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     - When token expiration gets enabled, any existing tokens will remain non-expiring.
     - When token expiration gets disabled, token refreshes will return a non-expiring
       access token *with no refresh token*.
-    """
+    """  # noqa
 
     PROVIDER_NAME = ProviderName.GITHUB
     # GitHub App refresh tokens are single-use; OAuth App tokens never refresh.
@@ -38,7 +38,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         self.revoke_url = "https://api.github.com/applications/{client_id}/token"
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: str | None
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
     ) -> str:
         params = {
             "client_id": self.client_id,
@@ -49,7 +49,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         return f"{self.auth_base_url}?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: str | None
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         return await self._request_tokens(
             {"code": code, "redirect_uri": self.redirect_uri}
@@ -89,7 +89,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
     async def _request_tokens(
         self,
         params: dict[str, str],
-        current_credentials: OAuth2Credentials | None = None,
+        current_credentials: Optional[OAuth2Credentials] = None,
     ) -> OAuth2Credentials:
         request_body = {
             "client_id": self.client_id,

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import List
 
 from autogpt_libs.auth import requires_admin_user
 from autogpt_libs.auth.models import User as AuthUser
@@ -52,14 +53,14 @@ router = APIRouter(
 class RunningExecutionsListResponse(BaseModel):
     """Response model for list of running executions"""
 
-    executions: list[RunningExecutionDetail]
+    executions: List[RunningExecutionDetail]
     total: int
 
 
 class FailedExecutionsListResponse(BaseModel):
     """Response model for list of failed executions"""
 
-    executions: list[FailedExecutionDetail]
+    executions: List[FailedExecutionDetail]
     total: int
 
 
@@ -72,7 +73,7 @@ class StopExecutionRequest(BaseModel):
 class StopExecutionsRequest(BaseModel):
     """Request model for stopping multiple executions"""
 
-    execution_ids: list[str]
+    execution_ids: List[str]
 
 
 class StopExecutionResponse(BaseModel):
@@ -660,21 +661,21 @@ async def cleanup_orphaned_executions(
 class SchedulesListResponse(BaseModel):
     """Response model for list of schedules"""
 
-    schedules: list[ScheduleDetail]
+    schedules: List[ScheduleDetail]
     total: int
 
 
 class OrphanedSchedulesListResponse(BaseModel):
     """Response model for list of orphaned schedules"""
 
-    schedules: list[OrphanedScheduleDetail]
+    schedules: List[OrphanedScheduleDetail]
     total: int
 
 
 class ScheduleCleanupRequest(BaseModel):
     """Request model for cleaning up schedules"""
 
-    schedule_ids: list[str]
+    schedule_ids: List[str]
 
 
 class ScheduleCleanupResponse(BaseModel):

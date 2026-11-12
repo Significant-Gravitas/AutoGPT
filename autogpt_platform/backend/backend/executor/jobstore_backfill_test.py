@@ -37,7 +37,7 @@ class _Dropped(Enum):
 UNREADABLE = pickle.dumps({"kwargs": {"x": _Dropped.GONE}}, pickle.HIGHEST_PROTOCOL)
 
 
-class _Dropped(Enum):
+class _Dropped(Enum):  # noqa: F811 - deliberate rebind, drops GONE
     KEPT = "kept"
 
 

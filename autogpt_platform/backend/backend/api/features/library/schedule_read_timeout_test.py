@@ -9,7 +9,7 @@ these reads for the 300s RPC timeout (BUILDER-8RR/8SK, 504s on
 import asyncio
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import pytest
@@ -84,7 +84,7 @@ async def test_library_and_home_reads_do_not_wait_on_the_scheduler(
     agent = await library_db.get_library_agent_by_graph_id(user.id, graph.id)
     assert agent is not None
 
-    next_run = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+    next_run = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     schedule = GraphExecutionJobInfo(
         id=f"schedule-{uuid.uuid4().hex[:8]}",
         name="Hourly",

@@ -11,17 +11,14 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api import model as api_model
 from backend.api.conn_manager import ConnectionManager
 from backend.api.test_helpers import override_config
+from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.api.ws_api import app as websocket_app
 from backend.api.ws_api import (
-    AppEnvironment,
-    WebsocketServer,
-    WSMessage,
-    WSMethod,
     handle_subscribe,
     handle_unsubscribe,
     settings,
     websocket_router,
 )
-from backend.api.ws_api import app as websocket_app
 from backend.data.user import DEFAULT_USER_ID
 
 
@@ -793,7 +790,7 @@ async def test_an_unreadable_ban_keeps_an_open_socket(
 def test_get_connection_manager_singleton() -> None:
     """Repeated calls must return the same ConnectionManager — the WS router
     depends on a single process-wide subscription table."""
-    from backend.api import ws_api
+    import backend.api.ws_api as ws_api
 
     ws_api._connection_manager = None
     a = ws_api.get_connection_manager()
@@ -811,7 +808,7 @@ def test_health_endpoint_returns_ok() -> None:
 
     from fastapi.testclient import TestClient
 
-    from backend.api import ws_api
+    import backend.api.ws_api as ws_api
 
     @asynccontextmanager
     async def _noop_lifespan(app):

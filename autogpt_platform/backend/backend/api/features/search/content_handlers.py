@@ -58,6 +58,7 @@ class ContentHandler(ABC):
     @abstractmethod
     def content_type(self) -> ContentType:
         """The ContentType this handler manages."""
+        pass
 
     @abstractmethod
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
@@ -70,6 +71,7 @@ class ContentHandler(ABC):
         Returns:
             List of ContentItem objects ready for embedding
         """
+        pass
 
     @abstractmethod
     async def get_stats(self) -> dict[str, int]:
@@ -79,6 +81,7 @@ class ContentHandler(ABC):
         Returns:
             Dict with keys: total, with_embeddings, without_embeddings
         """
+        pass
 
     @abstractmethod
     async def get_valid_content_ids(self) -> set[str]:
@@ -92,6 +95,7 @@ class ContentHandler(ABC):
         :meth:`get_missing_items` filter so the embedder isn't fighting
         the orphan-cleaner.
         """
+        pass
 
 
 class StoreAgentHandler(ContentHandler):

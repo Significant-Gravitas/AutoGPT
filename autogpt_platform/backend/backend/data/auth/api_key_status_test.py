@@ -1,7 +1,7 @@
 """Regression tests for #15296: a REVOKED API key is terminal, so suspend and
 permission edits must not touch it."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -18,7 +18,7 @@ from backend.util.exceptions import NotFoundError
 
 
 def _row(status: APIKeyStatus):
-    now = datetime(2026, 1, 1, tzinfo=UTC)
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     return SimpleNamespace(
         id="key-1",
         name="k",

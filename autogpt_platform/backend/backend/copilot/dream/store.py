@@ -38,7 +38,7 @@ which read and delete across users (``reaper.py``, ``retention.py``).
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -222,7 +222,7 @@ async def record_batch_failed(
     await _write(
         pass_id,
         "the failure",
-        lambda: failed(error, usage, datetime.now(UTC), marked=True),
+        lambda: failed(error, usage, datetime.now(timezone.utc), marked=True),
     )
 
 

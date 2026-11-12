@@ -5,7 +5,7 @@ applies, and neither does one that cannot prove it still holds its lock, so at
 most one pass of a scope applies. Only apply and the models are stubbed."""
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -348,7 +348,7 @@ def _route(scope, job, *, config=None) -> RouteDecision:
 
 
 def _input() -> DreamInput:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     episode = EpisodeRow(
         uuid="e1",
         name=None,
@@ -384,7 +384,7 @@ async def _run_with_lock_taken_during_sanitize(mocker, fake_dream_redis) -> None
 async def _seed_batch_pass(fake_dream_db, fake_dream_redis) -> None:
     """Batch pass p1 at its last phase: its lock held under the token its
     bundle carries, consolidate and recombine landed, its job and row open."""
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     await persist_input_bundle(
         "p1",
         DreamInput(
@@ -418,7 +418,7 @@ async def _seed_batch_pass(fake_dream_db, fake_dream_redis) -> None:
 
 
 async def _deliver_sanitize() -> None:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     entry = PendingEntry(
         provider="anthropic",
         provider_batch_id="msgbatch_sanitize",

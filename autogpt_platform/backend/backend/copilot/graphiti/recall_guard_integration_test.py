@@ -25,7 +25,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 
 import asyncio
 import time
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import product
 from types import SimpleNamespace
 from typing import Any
@@ -62,19 +62,19 @@ _UTC_MINUS_5 = timezone(timedelta(hours=-5))
 # order the wrong way round (09:00+10:00 is 23:00Z the day before
 # 20:00-05:00, which is 01:00Z): ``stamp_time`` writes them in UTC.
 _MOMENTS = [
-    datetime(2026, 9, 28, 9, 59, 59, 999999, tzinfo=UTC),
-    datetime(2026, 9, 28, 10, 0, tzinfo=UTC),
-    datetime(2026, 9, 30, 23, 59, 59, 999999, tzinfo=UTC),
-    datetime(2026, 10, 1, tzinfo=UTC),
-    datetime(2026, 12, 31, 23, 59, 59, 999999, tzinfo=UTC),
-    datetime(2027, 1, 1, tzinfo=UTC),
+    datetime(2026, 9, 28, 9, 59, 59, 999999, tzinfo=timezone.utc),
+    datetime(2026, 9, 28, 10, 0, tzinfo=timezone.utc),
+    datetime(2026, 9, 30, 23, 59, 59, 999999, tzinfo=timezone.utc),
+    datetime(2026, 10, 1, tzinfo=timezone.utc),
+    datetime(2026, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc),
+    datetime(2027, 1, 1, tzinfo=timezone.utc),
     datetime(2026, 9, 28, 9, 0, tzinfo=_UTC_PLUS_10),
     datetime(2026, 9, 27, 20, 0, tzinfo=_UTC_MINUS_5),
 ]
 
 
 def _ago(**kwargs: float) -> str:
-    return stamp_time(datetime.now(UTC) - timedelta(**kwargs))
+    return stamp_time(datetime.now(timezone.utc) - timedelta(**kwargs))
 
 
 def _window(**kwargs: Any) -> RecallProtection:
@@ -506,7 +506,7 @@ def live_pass(mocker, scope_graph) -> SimpleNamespace:
         state.boundary = _Boundary(driver, **boundary)
         mocker.patch.object(demotions, "open_driver", return_value=state.boundary)
         facts = await _fetch_active_facts(driver, scope.group_id, 100)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         bundle = DreamInput(
             user_id=scope.owner_user_id,
             group_id=scope.group_id,
@@ -673,7 +673,7 @@ async def _hub(
         SET r.last_recalled_at = $now, r.recall_count = 1
         """,
         recalled=recalled,
-        now=stamp_time(datetime.now(UTC)),
+        now=stamp_time(datetime.now(timezone.utc)),
     )
 
 

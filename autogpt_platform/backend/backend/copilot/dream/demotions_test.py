@@ -5,7 +5,7 @@ included), and that ``protected`` is what the final read finds still live. What 
 with the writers and on FalkorDB (``graphiti/recall_guard_integration_test.py``);
 that usage never raises the count is ``demotions_stateful_test.py``."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -104,11 +104,11 @@ async def test_each_write_carries_the_protection_for_its_reason(stage) -> None:
             EntityInvalidation(entity_uuid="hub", reason="user_signal")
         ],
     )
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
 
     await apply_demotions(_SCOPE, "p-1", ops, {"a", "b", "c", "d", "k"})
 
-    after = datetime.now(UTC)
+    after = datetime.now(timezone.utc)
     direct = _protections(stage.supersede)
     assert {r: (p.override, p.cited) for r, p in direct.items()} == {
         "stale_fact": (False, None),

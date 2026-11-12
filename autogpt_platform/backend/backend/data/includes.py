@@ -1,5 +1,4 @@
-from collections.abc import Sequence
-from typing import cast
+from typing import Sequence, cast
 
 import prisma.enums
 import prisma.types

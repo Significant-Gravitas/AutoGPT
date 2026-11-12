@@ -1,6 +1,6 @@
 """Route tests for chat-share endpoints (no DB)."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -29,8 +29,8 @@ def _make_workspace_file(**overrides) -> WorkspaceFile:
     defaults = {
         "id": VALID_FILE_ID,
         "workspace_id": "ws-001",
-        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
-        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "name": "image.png",
         "path": "/image.png",
         "storage_path": "local://uploads/image.png",
@@ -244,9 +244,9 @@ class TestPublicChatRead:
         sess = SharedChatSession(
             id=SESSION_ID,
             title="hello",
-            created_at=datetime(2026, 5, 11, tzinfo=UTC),
-            updated_at=datetime(2026, 5, 11, tzinfo=UTC),
-            shared_at=datetime(2026, 5, 12, tzinfo=UTC),
+            created_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
+            shared_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
             linked_executions=[],
         )
         with patch(
@@ -274,7 +274,7 @@ class TestPublicChatRead:
                     tool_calls=None,
                     function_call=None,
                     sequence=1,
-                    created_at=datetime(2026, 5, 11, tzinfo=UTC),
+                    created_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
                 )
             ],
             has_more=False,

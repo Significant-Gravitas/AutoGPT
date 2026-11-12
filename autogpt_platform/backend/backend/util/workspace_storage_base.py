@@ -24,6 +24,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             Storage path string (cloud path or local path)
         """
+        pass
 
     @abstractmethod
     async def retrieve(self, storage_path: str) -> bytes:
@@ -36,6 +37,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             File content as bytes
         """
+        pass
 
     @abstractmethod
     async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
@@ -51,6 +53,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             At most ``max_bytes`` of file content as bytes
         """
+        pass
 
     @abstractmethod
     async def delete(self, storage_path: str) -> None:
@@ -60,6 +63,7 @@ class WorkspaceStorageBackend(ABC):
         Args:
             storage_path: The storage path to delete
         """
+        pass
 
     @abstractmethod
     async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
@@ -73,3 +77,4 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             Download URL (signed URL for GCS, direct API path for local)
         """
+        pass

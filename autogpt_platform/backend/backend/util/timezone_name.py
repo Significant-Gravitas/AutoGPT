@@ -33,8 +33,7 @@ Modifications:
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import pytz
 from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler

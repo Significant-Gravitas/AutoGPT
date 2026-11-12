@@ -13,10 +13,9 @@ required permissions are satisfied by the caller's API key / OAuth token.
 """
 
 import logging
-from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, AsyncIterator, Optional, Sequence
 
 import pydantic
 from autogpt_libs.auth.closed_accounts import AccountState, get_account_state
@@ -317,7 +316,7 @@ mcp_mount = MCPMount()
 
 # What the v2 middleware verified this request's credential as, so the MCP
 # token verifier doesn't verify (and for an API key, hash) the same token again.
-_request_credential: ContextVar[VerifiedCredential | None] = ContextVar(
+_request_credential: ContextVar[Optional[VerifiedCredential]] = ContextVar(
     "mcp_request_credential", default=None
 )
 

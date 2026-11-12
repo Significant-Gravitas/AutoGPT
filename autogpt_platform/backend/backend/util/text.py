@@ -517,7 +517,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
         return update_wrapper(wrapper, value)
 
     def call(
-        __self,
+        __self,  # noqa: N805 – Jinja2 convention
         __context,
         __obj,
         *args,

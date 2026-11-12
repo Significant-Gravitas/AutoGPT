@@ -236,7 +236,7 @@ class CodexTransport:
                     manager.get(user_id, credential_id),
                     timeout=lock_timeout_seconds,
                 )
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 raise CodexCredentialBusyError("codex_credential_busy") from None
 
         credentials = await load()
@@ -253,7 +253,7 @@ class CodexTransport:
                     manager.acquire_lease(user_id, credential_id),
                     timeout=lock_timeout_seconds,
                 )
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 raise CodexCredentialBusyError("codex_credential_busy") from None
             try:
                 current = _validated_codex_credentials(legacy_lease.credentials)
@@ -266,7 +266,7 @@ class CodexTransport:
                             legacy_lease.checkpoint(migrated),
                             timeout=lock_timeout_seconds,
                         )
-                    except TimeoutError:
+                    except asyncio.TimeoutError:
                         raise CodexCredentialBusyError(
                             "codex_credential_busy"
                         ) from None
@@ -301,7 +301,7 @@ class CodexTransport:
         credentials = codex_credentials(lease)
         return self._last_rate_limits.get(credentials.id, CodexRateLimitsSnapshot())
 
-    def _record_rate_limits(self, session: CodexAgentSession) -> None:
+    def _record_rate_limits(self, session: "CodexAgentSession") -> None:
         seen = session.rate_limits
         if seen is not None:
             self._last_rate_limits[session.credential_id] = seen

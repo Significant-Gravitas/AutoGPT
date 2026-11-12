@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,7 +26,7 @@ from .context_refresh import (
 )
 from .scope import MemoryScope
 
-_NOW = datetime(2025, 6, 1, tzinfo=UTC)
+_NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
 
 
 def _edge(uuid: str = "edge-a", fact: str = "user likes python") -> EntityEdge:
@@ -38,7 +38,7 @@ def _edge(uuid: str = "edge-a", fact: str = "user likes python") -> EntityEdge:
         created_at=_NOW,
         name="preference",
         fact=fact,
-        valid_at=datetime(2025, 1, 1, tzinfo=UTC),
+        valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         attributes={"status": "active"},
     )
 
@@ -488,6 +488,7 @@ class TestRefreshReadsThroughTheRecallPolicy:
 
         async def _fetch(scope, message, **_kwargs):
             scopes.append(scope)
+            return None
 
         with patch.object(context, "_fetch", side_effect=_fetch):
             await fetch_warm_context("user-abc", "deploy staging", "expert-1")

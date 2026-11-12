@@ -9,7 +9,7 @@ Verification is JWKS-only: the platform auth service issues asymmetric
 import base64
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
@@ -89,7 +89,7 @@ def test_parse_jwt_token_expired():
     """Test parsing an expired JWT token."""
     expired_payload = {
         **TEST_USER_PAYLOAD,
-        "exp": datetime.now(UTC) - timedelta(hours=1),
+        "exp": datetime.now(timezone.utc) - timedelta(hours=1),
     }
     token = create_token(expired_payload)
 
@@ -309,7 +309,7 @@ def test_jwt_with_future_iat():
         "sub": "user-id",
         "role": "user",
         "aud": "authenticated",
-        "iat": datetime.now(UTC) + timedelta(hours=1),
+        "iat": datetime.now(timezone.utc) + timedelta(hours=1),
     }
     token = create_token(future_payload)
 

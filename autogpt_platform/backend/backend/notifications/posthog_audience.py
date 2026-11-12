@@ -133,7 +133,7 @@ def mark_internal_on_sign_in(user_id: str, email: str, role: str | None) -> None
 
 
 def set_checkout_properties(
-    user_id: str, fields: Fields, opened_at: datetime | float | None
+    user_id: str, fields: Fields, opened_at: datetime | int | float | None
 ) -> None:
     """A checkout opener's properties (`checkout_update`). Never raises:
     analytics must not cost the opener their MailerLite change."""
@@ -159,7 +159,7 @@ def account_update(
 
 def checkout_update(
     fields: Fields,
-    opened_at: datetime | float | None,
+    opened_at: datetime | int | float | None,
     *,
     first_open: bool = False,
 ) -> PersonUpdate:

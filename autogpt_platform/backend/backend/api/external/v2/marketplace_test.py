@@ -1,6 +1,7 @@
 """The v2 marketplace routes: searches, library adds and media uploads."""
 
 import io
+from typing import Optional
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -113,7 +114,7 @@ def test_a_listing_already_in_another_organizations_library_is_a_conflict(
     "declared_size", [_ELEVEN_MB, None], ids=["size-known", "size-unknown"]
 )
 async def test_oversized_media_is_refused_without_being_read_whole(
-    mocker: pytest_mock.MockFixture, declared_size: int | None
+    mocker: pytest_mock.MockFixture, declared_size: Optional[int]
 ) -> None:
     """The whole body in memory is what the cap exists to prevent."""
     mocker.patch(
@@ -151,7 +152,7 @@ async def test_oversized_media_is_refused_without_being_read_whole(
 class _CountingBody(io.BytesIO):
     bytes_read = 0
 
-    def read(self, size: int | None = -1) -> bytes:
+    def read(self, size: Optional[int] = -1) -> bytes:
         chunk = super().read(size)
         self.bytes_read += len(chunk)
         return chunk

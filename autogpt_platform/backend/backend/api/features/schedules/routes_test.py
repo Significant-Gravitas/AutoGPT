@@ -1,6 +1,6 @@
 """Tests for the schedule routes."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -314,7 +314,7 @@ def test_paused_scheduled_chats_are_listed_for_the_caller(
         reason="chat_link",
         provider="discord",
         summary="Paused: can't post to Discord",
-        paused_at=datetime(2026, 10, 11, tzinfo=UTC),
+        paused_at=datetime(2026, 10, 11, tzinfo=timezone.utc),
     )
     listing = mocker.patch(
         "backend.api.features.schedules.routes.scheduled_chats"

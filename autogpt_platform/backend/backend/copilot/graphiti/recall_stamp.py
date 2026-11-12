@@ -36,7 +36,7 @@ stamps compare by time as plain strings in Cypher, in the dedupe below and in
 
 import logging
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from graphiti_core.driver.driver import GraphDriver
 from pydantic import BaseModel, ConfigDict
@@ -93,7 +93,7 @@ class _StampedRow(BaseModel):
 
 def stamp_time(moment: datetime) -> str:
     """A stamp time as it is written: UTC ISO 8601 with microseconds."""
-    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+    return moment.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
 def parse_stamp(raw: str | None) -> datetime | None:
@@ -106,7 +106,7 @@ def parse_stamp(raw: str | None) -> datetime | None:
         parsed = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def recall_stamp_columns(alias: str = "e") -> str:
@@ -145,7 +145,7 @@ async def stamp_recalls(
     uuids = list(dict.fromkeys(edge_uuids))
     if not uuids:
         return 0
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     try:
         result = await driver.execute_query(
             _STAMP_QUERY,

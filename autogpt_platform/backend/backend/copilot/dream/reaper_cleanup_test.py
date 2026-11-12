@@ -12,7 +12,7 @@ transitions are the real ones."""
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -108,7 +108,7 @@ class TestACleanupCutShort:
         await _dead_batch_pass(fake_dream_db)
         fake_dream_db.rows["p1"].update(
             status=DreamPassStatus.EXPIRED,
-            cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         fake_dream_redis.store[_LOCK_KEY] = "dead-token"
         finished = getattr(cleanup_mod, step)
@@ -181,7 +181,7 @@ class TestAnUnattributedPass:
         fake_dream_db.rows["p1"].update(
             status=status,
             cost_context=None,
-            cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         fake_dream_redis.store[_LOCK_KEY] = "dead-token"
 
@@ -213,7 +213,7 @@ class TestTheListing:
             "closed",
             route=DreamPassRoute.SYNC,
             status=DreamPassStatus.EXPIRED,
-            cleanup_pending_at=datetime.now(UTC) - timedelta(minutes=10),
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(minutes=10),
         )
 
         run = await reap_expired_passes()
@@ -239,7 +239,7 @@ class TestTheListing:
                 route=DreamPassRoute.ANTHROPIC_BATCH,
                 status=DreamPassStatus.EXPIRED,
                 provider_batch_id=f"b-{pass_id}",
-                cleanup_pending_at=datetime.now(UTC) - timedelta(minutes=10),
+                cleanup_pending_at=datetime.now(timezone.utc) - timedelta(minutes=10),
             )
         _seed(fake_dream_db, "lapsed", route=DreamPassRoute.SYNC)
 
@@ -262,7 +262,7 @@ class TestTheListing:
         left marked and put behind the other pending cleanup, which the next
         run reaches instead of trying the same row again."""
         mocker.patch.object(reaper_mod, "REAPER_ROW_LIMIT", 1)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         for pass_id, written_minutes_ago in (("stuck", 30), ("waiting", 20)):
             _seed(
                 fake_dream_db,
@@ -297,7 +297,7 @@ class TestTheListing:
         budget cuts its attempt off every time; it was moved behind the other
         before it was tried, so a later run reaches the other."""
         _scale_the_budget(mocker, budget=0.15, release=0.01)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         for pass_id, written_minutes_ago in (("stuck", 60), ("waiting", 30)):
             _seed(
                 fake_dream_db,
@@ -329,7 +329,7 @@ class TestTheListing:
             "waiting",
             route=DreamPassRoute.SYNC,
             status=DreamPassStatus.EXPIRED,
-            cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         tried = _hang_the_state_read_of(mocker, "lapsed0", "lapsed1", "lapsed2")
 
@@ -377,7 +377,7 @@ class TestTheListing:
             "waiting",
             route=DreamPassRoute.SYNC,
             status=DreamPassStatus.EXPIRED,
-            cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
 
         for index in range(3):
@@ -650,6 +650,6 @@ async def _tokenless_marked_row(fake_dream_db) -> None:
     await _dead_batch_pass(fake_dream_db)
     fake_dream_db.rows["p1"].update(
         status=DreamPassStatus.EXPIRED,
-        cleanup_pending_at=datetime.now(UTC) - timedelta(hours=1),
+        cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
         lease_token=None,
     )

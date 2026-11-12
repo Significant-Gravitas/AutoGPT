@@ -11,7 +11,7 @@ code flow is only an *acquisition method*, not a different credential shape.
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -27,7 +27,7 @@ class DeviceAuthInitiation(BaseModel):
     device_code: str
     user_code: str
     verification_url: str
-    verification_url_complete: str | None = None
+    verification_url_complete: Optional[str] = None
     expires_in: int
     interval: int  # recommended seconds between polls
 
@@ -36,8 +36,8 @@ class DeviceAuthPollResult(BaseModel):
     """Returned from each poll attempt during the device code flow."""
 
     status: Literal["pending", "slow_down", "approved", "denied", "expired"]
-    credentials: OAuth2Credentials | None = None
-    next_poll_interval: int | None = None
+    credentials: Optional[OAuth2Credentials] = None
+    next_poll_interval: Optional[int] = None
 
 
 class BaseDeviceAuthHandler(ABC):

@@ -1,3 +1,4 @@
+# flake8: noqa: E501
 import logging
 from enum import Enum
 from typing import Any, Literal
@@ -288,6 +289,6 @@ class PerplexityBlock(Block):
             yield "annotations", result["annotations"]
 
         except Exception as e:
-            error_msg = f"Error calling Perplexity: {e!s}"
+            error_msg = f"Error calling Perplexity: {str(e)}"
             logger.error(error_msg)
             yield "error", error_msg

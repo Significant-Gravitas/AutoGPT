@@ -4,7 +4,7 @@ The unit tests in ``user_test.py`` patch the queries out, so a flipped
 comparison or a dropped filter in the SQL would leave them green.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -38,7 +38,7 @@ async def _identity(
 async def test_finds_only_identities_that_can_sign_in_without_a_user_row(
     server: SpinTestServer,
 ):
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     old = now - timedelta(hours=1)
     cutoff = now - timedelta(minutes=5)
     owner_id = str(uuid4())

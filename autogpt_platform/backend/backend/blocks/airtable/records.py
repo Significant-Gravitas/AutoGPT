@@ -2,7 +2,7 @@
 Airtable record operation blocks.
 """
 
-from typing import cast
+from typing import Optional, cast
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -69,10 +69,10 @@ class AirtableListRecordsBlock(Block):
 
     class Output(BlockSchemaOutput):
         records: list[dict] = SchemaField(description="Array of record objects")
-        offset: str | None = SchemaField(
+        offset: Optional[str] = SchemaField(
             description="Offset for next page (null if no more records)", default=None
         )
-        field_metadata: dict | None = SchemaField(
+        field_metadata: Optional[dict] = SchemaField(
             description="Field type and configuration metadata (only when include_field_metadata=true)",
             default=None,
         )
@@ -160,7 +160,7 @@ class AirtableGetRecordBlock(Block):
         id: str = SchemaField(description="The record ID")
         fields: dict = SchemaField(description="The record fields")
         created_time: str = SchemaField(description="The record created time")
-        field_metadata: dict | None = SchemaField(
+        field_metadata: Optional[dict] = SchemaField(
             description="Field type and configuration metadata (only when include_field_metadata=true)",
             default=None,
         )

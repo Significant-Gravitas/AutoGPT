@@ -9,7 +9,7 @@ follow-up in the scheduler, in place, so it keeps its id.
 Runs in the REST API, which has both the database and the scheduler.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma.models import ScheduledChatStreak
 from pydantic import BaseModel
@@ -73,7 +73,7 @@ async def set_cadence(
 ) -> ScheduledChatCadence:
     """Switch the chat to *cron*, one of the cadences it was offered."""
     schedule = await _schedule(user_id, schedule_key)
-    offered = less_often(schedule.crons, schedule.timezone, datetime.now(UTC))
+    offered = less_often(schedule.crons, schedule.timezone, datetime.now(timezone.utc))
     if cron not in {rung.cron for rung in offered}:
         raise CadenceNotOffered(cron)
     if schedule.routine is not None:
@@ -95,7 +95,7 @@ async def set_cadence(
 
 
 def _cadence(schedule: _Schedule) -> ScheduledChatCadence:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return ScheduledChatCadence(
         schedule_key=schedule.key,
         title=schedule.title,

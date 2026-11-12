@@ -5,7 +5,7 @@ real.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -78,7 +78,7 @@ async def _hourly_routine(user_id: str, *, enabled: bool = True) -> ExpertRoutin
             "crons": ["17 * * * *"],
             "asks": [],
             "scheduleIds": ["job-old"],
-            "enabledAt": datetime.now(UTC) if enabled else None,
+            "enabledAt": datetime.now(timezone.utc) if enabled else None,
         }
     )
 
@@ -225,7 +225,7 @@ async def test_nothing_to_change_reads_as_not_found(
         scheduler.get_execution_schedules.return_value = [
             _every_minute_follow_up(user_id, id="routine-job", routine_id=off.id),
             _every_minute_follow_up(
-                user_id, id="one-shot", cron=None, run_at=datetime.now(UTC)
+                user_id, id="one-shot", cron=None, run_at=datetime.now(timezone.utc)
             ),
         ]
 
@@ -255,7 +255,7 @@ async def test_a_paused_chat_is_resumed_first(
                 "provider": "gmail",
                 "failures": 3,
                 "wholeRunFailures": 3,
-                "pausedAt": datetime.now(UTC),
+                "pausedAt": datetime.now(timezone.utc),
             }
         )
 

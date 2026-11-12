@@ -55,8 +55,9 @@ async def test_resume_without_a_live_scheduled_cancellation_is_conflict(
     live_stripe.retrieve.return_value = None if live is None else _live(current, **live)
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=current)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.resume_trial(current.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(current.user_id)
     assert (error.value.status_code, error.value.detail) == (409, detail)
     live_stripe.modify.assert_not_awaited()
     live_stripe.expire.assert_not_awaited()
@@ -74,8 +75,9 @@ async def test_resume_while_a_checkout_is_starting_is_a_retryable_conflict(
     )
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=pending)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.resume_trial(pending.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(pending.user_id)
     assert (error.value.status_code, error.value.detail) == (
         409,
         "Your trial is already being updated. Please retry.",
@@ -100,8 +102,9 @@ async def test_resume_with_another_plan_live_is_conflict_untouched(trial, live_s
     )
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=pending)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.resume_trial(pending.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(pending.user_id)
     assert (error.value.status_code, error.value.detail) == (
         409,
         "Another plan is already active. Manage it in billing.",
@@ -117,8 +120,9 @@ async def test_resume_stripe_failure_is_retryable_without_a_sync(trial, live_str
     live_stripe.modify.side_effect = routes.stripe.APIConnectionError("unreachable")
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=pending)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.resume_trial(pending.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.resume_trial(pending.user_id)
     assert error.value.status_code == 502
     assert error.value.detail == "Unable to resume your trial. Please retry."
     live_stripe.sync.assert_not_awaited()

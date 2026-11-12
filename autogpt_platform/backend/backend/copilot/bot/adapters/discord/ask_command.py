@@ -6,7 +6,7 @@ core handler like any other message. Expert picks are DM-only.
 """
 
 import logging
-from collections.abc import Awaitable, Callable
+from typing import Awaitable, Callable
 
 import discord
 from discord import app_commands

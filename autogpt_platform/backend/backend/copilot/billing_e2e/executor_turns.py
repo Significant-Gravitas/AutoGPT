@@ -20,8 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
-from backend.copilot import budget_gate, rate_limit, stream_registry, tools
+from backend.copilot import budget_gate
 from backend.copilot import model as chat_model
+from backend.copilot import rate_limit, stream_registry, tools
 from backend.copilot.baseline import service as baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor import processor

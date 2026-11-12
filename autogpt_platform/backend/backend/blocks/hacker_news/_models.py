@@ -5,7 +5,7 @@ official API name the same things differently (`author` or `by`, `points` or
 `score`, `created_at_i` or `time`), so each has its own mapping.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -207,5 +207,5 @@ def iso_time(timestamp: int | None) -> str | None:
     """Unix seconds as ISO 8601 in UTC, e.g. 2026-10-05T14:44:04Z."""
     if timestamp is None:
         return None
-    moment = datetime.fromtimestamp(timestamp, tz=UTC)
+    moment = datetime.fromtimestamp(timestamp, tz=timezone.utc)
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")

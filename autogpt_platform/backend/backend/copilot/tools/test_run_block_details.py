@@ -123,29 +123,30 @@ async def test_run_block_returns_details_when_only_credentials_provided():
     with patch(
         "backend.copilot.tools.helpers.get_block",
         return_value=mock,
-    ), patch(
-        "backend.copilot.tools.helpers.resolve_block_credentials",
-        new_callable=AsyncMock,
-        return_value=(
-            {
-                "credentials": CredentialsMetaInput(
-                    id="cred-id",
-                    provider=ProviderName("test_provider"),
-                    type="api_key",
-                    title="Test Credential",
-                )
-            },
-            [],
-        ),
     ):
-        tool = RunBlockTool()
-        response = await tool._execute(
-            user_id=_TEST_USER_ID,
-            session=session,
-            block_id="api-block-id",
-            input_data={"credentials": {"some": "cred"}},  # Only credential
-            dry_run=False,
-        )
+        with patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            new_callable=AsyncMock,
+            return_value=(
+                {
+                    "credentials": CredentialsMetaInput(
+                        id="cred-id",
+                        provider=ProviderName("test_provider"),
+                        type="api_key",
+                        title="Test Credential",
+                    )
+                },
+                [],
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="api-block-id",
+                input_data={"credentials": {"some": "cred"}},  # Only credential
+                dry_run=False,
+            )
 
     # Should return details because no non-credential inputs provided
     assert isinstance(response, BlockDetailsResponse)

@@ -9,7 +9,7 @@ forgotten. Incomplete verification settles only that source revision.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
@@ -283,7 +283,7 @@ def finish(
     if skip_reason is not None:
         result.skipped = True
         result.skip_reason = skip_reason
-    result.completed_at = datetime.now(UTC)
+    result.completed_at = datetime.now(timezone.utc)
     result.elapsed_seconds = (result.completed_at - result.started_at).total_seconds()
     logger.info(
         "Skill learning %s for user %s (%s): reviewed=%d applied=%d proposed=%d "

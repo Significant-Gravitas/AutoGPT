@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any
+from typing import Any, Optional
 
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -168,7 +168,7 @@ async def _fetch_tail(
     as someone else's."""
     tail: deque[dict[str, Any]] = deque(maxlen=TAIL_SIZE)
     own_bot_ids: set[str] = set()
-    cursor: str | None = None
+    cursor: Optional[str] = None
     for page in range(MAX_PAGES):
         try:
             resp = await client.conversations_replies(

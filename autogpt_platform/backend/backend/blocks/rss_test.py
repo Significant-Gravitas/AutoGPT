@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, call
 
 import pytest
@@ -12,7 +12,7 @@ from backend.blocks.rss import ReadRSSFeedBlock, RSSEntry
 async def test_run_once_does_not_sleep(monkeypatch, has_entries, polling_rate):
     """Run once emits its results and finishes without a polling wait."""
     block = ReadRSSFeedBlock()
-    published = datetime.now(UTC).replace(microsecond=0)
+    published = datetime.now(timezone.utc).replace(microsecond=0)
     entry = {
         "title": "Example RSS item",
         "link": "https://example.com/article",

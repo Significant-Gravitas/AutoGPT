@@ -6,8 +6,7 @@ request may touch, what a run's status has to be, or when execution resumes.
 
 import asyncio
 import logging
-from collections.abc import Sequence
-from typing import Any
+from typing import Any, Optional, Sequence
 
 from fastapi import HTTPException, status
 from prisma.enums import ReviewStatus
@@ -50,7 +49,7 @@ logger = logging.getLogger(__name__)
 class ReviewOutcome(BaseModel):
     """What processing a batch of review decisions did."""
 
-    graph_exec_id: str | None = Field(
+    graph_exec_id: Optional[str] = Field(
         description="The run the reviews belonged to; None for an AutoPilot chat's"
     )
     approved_count: int
@@ -68,9 +67,9 @@ async def process_reviews(
     user_id: str,
     reviews: Sequence[ReviewItem],
     *,
-    graph_exec_id: str | None = None,
-    organization_id: str | None = None,
-    team_id: str | None = None,
+    graph_exec_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
     wait_for_other_cards: bool = False,
 ) -> ReviewOutcome:
     """Approve or reject reviews, then resume the run once none are pending.
@@ -210,8 +209,8 @@ async def process_reviews(
 
 
 def _one_scope(
-    reviews, graph_exec_id: str | None
-) -> tuple[str | None, str | None]:
+    reviews, graph_exec_id: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
     """The one run, or the one chat, every decision belongs to."""
     scopes = {(review.graph_exec_id, review.session_id) for review in reviews}
     if graph_exec_id is not None:
@@ -256,7 +255,7 @@ async def _record_auto_approvals(
     user_id: str,
     requested: dict[str, bool],
     updated_reviews: dict[str, Any],
-    graph_exec_id: str | None,
+    graph_exec_id: Optional[str],
 ) -> int:
     """Save one auto-approval per node, returning how many could not be saved."""
     node_exec_ids = [
@@ -303,7 +302,7 @@ async def _create_auto_approval(user_id: str, node_id: str, review) -> bool:
 
 
 async def _resolve_node_ids(
-    node_exec_ids: list[str], graph_exec_id: str | None
+    node_exec_ids: list[str], graph_exec_id: Optional[str]
 ) -> dict[str, str]:
     """Resolve node_exec_id -> node_id for auto-approval records.
 
@@ -328,8 +327,8 @@ async def _resume_if_nothing_pending(
     graph_exec_id: str,
     updated_reviews: dict[str, Any],
     *,
-    organization_id: str | None,
-    team_id: str | None,
+    organization_id: Optional[str],
+    team_id: Optional[str],
 ) -> None:
     if await has_pending_reviews_for_graph_exec(graph_exec_id):
         return
@@ -348,11 +347,11 @@ async def _resume_if_nothing_pending(
 async def _resume(
     user_id: str,
     graph_exec_id: str,
-    graph_id: str | None,
-    graph_version: int | None,
+    graph_id: Optional[str],
+    graph_version: Optional[int],
     *,
-    organization_id: str | None,
-    team_id: str | None,
+    organization_id: Optional[str],
+    team_id: Optional[str],
 ) -> None:
     """Re-queue a run whose reviews are all answered; its paused steps re-run
     and find their answers."""

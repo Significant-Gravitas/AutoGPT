@@ -4,7 +4,7 @@ Every field carries a default so a payload from a newer API version, or one
 with fields the platform does not surface, still validates.
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import ConfigDict, field_validator
 
@@ -19,7 +19,7 @@ from ._types import (
 )
 
 
-def absolute_api_url(value: str | None) -> str | None:
+def absolute_api_url(value: Optional[str]) -> Optional[str]:
     """RMFG returns links to its own resources as paths such as ``/v1/...``.
 
     Downstream blocks and people need a full URL, so prefix the API origin.
@@ -38,8 +38,8 @@ class Material(BaseModel):
     type: str = ""
     thickness_in: float = 0
     thickness_mm: float = 0
-    display_thickness: str | None = None
-    description: str | None = None
+    display_thickness: Optional[str] = None
+    description: Optional[str] = None
     bendable: bool = False
     weight_g_per_cm2: float = 0
 
@@ -52,11 +52,11 @@ class TubeProfile(BaseModel):
     type: str = ""
     shape: str = ""
     display_name: str = ""
-    outer_width_mm: float | None = None
-    outer_height_mm: float | None = None
-    outer_diameter_mm: float | None = None
-    wall_thickness_mm: float | None = None
-    default_stock_length_mm: float | None = None
+    outer_width_mm: Optional[float] = None
+    outer_height_mm: Optional[float] = None
+    outer_diameter_mm: Optional[float] = None
+    wall_thickness_mm: Optional[float] = None
+    default_stock_length_mm: Optional[float] = None
 
 
 class Finish(BaseModel):
@@ -65,8 +65,8 @@ class Finish(BaseModel):
     id: str = ""
     name: str = ""
     slug: str = ""
-    description: str | None = None
-    category: str | None = None
+    description: Optional[str] = None
+    category: Optional[str] = None
     processes: list[Process] = Field(default_factory=list)
     base_price_cents: int = 0
     price_per_cm2_cents: float = 0
@@ -93,8 +93,8 @@ class HardwareOption(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     id: str = ""
-    size: str | None = None
-    hole_diameter_mm: float | None = None
+    size: Optional[str] = None
+    hole_diameter_mm: Optional[float] = None
 
 
 class Dimensions(BaseModel):
@@ -109,10 +109,10 @@ class Hole(BaseModel):
     id: int = 0
     shape: str = "round"
     diameter_mm: float = 0
-    face_id: int | None = None
-    nearest_bend_id: int | None = None
-    distance_to_nearest_edge_mm: float | None = None
-    distance_to_nearest_bend_mm: float | None = None
+    face_id: Optional[int] = None
+    nearest_bend_id: Optional[int] = None
+    distance_to_nearest_edge_mm: Optional[float] = None
+    distance_to_nearest_bend_mm: Optional[float] = None
 
 
 class Bend(BaseModel):
@@ -130,21 +130,21 @@ class Part(BaseModel):
     suggested_process: Process = Process.SHEET_METAL
     instance_count: int = 1
     formed_dimensions: Dimensions = Field(default_factory=Dimensions)
-    flat_pattern_dimensions: Dimensions | None = None
-    detected_thickness_mm: float | None = None
+    flat_pattern_dimensions: Optional[Dimensions] = None
+    detected_thickness_mm: Optional[float] = None
     bend_count: int = 0
     bends: list[Bend] = Field(default_factory=list)
     hole_count: int = 0
     holes: list[Hole] = Field(default_factory=list)
-    surface_area_cm2: float | None = None
-    cut_length_mm: float | None = None
+    surface_area_cm2: Optional[float] = None
+    cut_length_mm: Optional[float] = None
     model_url: str = ""
-    flat_pattern_model_url: str | None = None
-    image_url: str | None = None
+    flat_pattern_model_url: Optional[str] = None
+    image_url: Optional[str] = None
 
     @field_validator("model_url", "flat_pattern_model_url", "image_url")
     @classmethod
-    def _absolute(cls, value: str | None) -> str | None:
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
         return absolute_api_url(value)
 
 
@@ -165,19 +165,19 @@ class Design(BaseModel):
     id: str = ""
     status: DesignStatus = DesignStatus.QUEUED
     name: str = ""
-    formed_dimensions: Dimensions | None = None
+    formed_dimensions: Optional[Dimensions] = None
     parts: list[Part] = Field(default_factory=list)
     part_instances: list[PartInstance] = Field(default_factory=list)
-    model_url: str | None = None
-    image_url: str | None = None
-    review_url: str | None = None
-    review_link_id: str | None = None
-    created_at: str | None = None
-    error: ResourceError | None = None
+    model_url: Optional[str] = None
+    image_url: Optional[str] = None
+    review_url: Optional[str] = None
+    review_link_id: Optional[str] = None
+    created_at: Optional[str] = None
+    error: Optional[ResourceError] = None
 
     @field_validator("model_url", "image_url")
     @classmethod
-    def _absolute(cls, value: str | None) -> str | None:
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
         return absolute_api_url(value)
 
 
@@ -186,14 +186,14 @@ class Requirement(BaseModel):
 
     code: str = ""
     message: str = ""
-    part_id: str | None = None
+    part_id: Optional[str] = None
     part_ids: list[str] = Field(default_factory=list)
-    field: str | None = None
-    allowed_values_url: str | None = None
+    field: Optional[str] = None
+    allowed_values_url: Optional[str] = None
 
     @field_validator("allowed_values_url")
     @classmethod
-    def _absolute(cls, value: str | None) -> str | None:
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
         return absolute_api_url(value)
 
 
@@ -203,10 +203,10 @@ class DFMIssue(BaseModel):
     severity: str = "blocking"
     accepted: bool = False
     source: str = ""
-    part_id: str | None = None
-    hole_id: int | None = None
-    bend_id: int | None = None
-    operation: str | None = None
+    part_id: Optional[str] = None
+    hole_id: Optional[int] = None
+    bend_id: Optional[int] = None
+    operation: Optional[str] = None
     details: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -214,18 +214,18 @@ class CapabilityOption(BaseModel):
     id: str = ""
     name: str = ""
     available: bool = True
-    unavailable_reason: str | None = None
+    unavailable_reason: Optional[str] = None
 
 
 class OperationCapability(BaseModel):
     available: bool = False
-    unavailable_reason: str | None = None
+    unavailable_reason: Optional[str] = None
     options: list[CapabilityOption] = Field(default_factory=list)
 
 
 class HoleOperationCapability(BaseModel):
     available: bool = False
-    unavailable_reason: str | None = None
+    unavailable_reason: Optional[str] = None
     option_ids: list[str] = Field(default_factory=list)
 
 
@@ -265,9 +265,9 @@ class ManufacturingReviewWarning(BaseModel):
 
 class ProductionFilesStatus(BaseModel):
     status: str = "skipped"
-    reason: str | None = None
-    error: ResourceError | None = None
-    review_warning: ManufacturingReviewWarning | None = None
+    reason: Optional[str] = None
+    error: Optional[ResourceError] = None
+    review_warning: Optional[ManufacturingReviewWarning] = None
     corrections_applied: bool = False
 
 
@@ -275,13 +275,13 @@ class PartDFM(BaseModel):
     part_id: str = ""
     status: ManufacturabilityStatus = ManufacturabilityStatus.READY
     issues: list[DFMIssue] = Field(default_factory=list)
-    capabilities: PartCapabilities | None = None
-    image_url: str | None = None
+    capabilities: Optional[PartCapabilities] = None
+    image_url: Optional[str] = None
     production_warnings: list[str] = Field(default_factory=list)
 
     @field_validator("image_url")
     @classmethod
-    def _absolute(cls, value: str | None) -> str | None:
+    def _absolute(cls, value: Optional[str]) -> Optional[str]:
         return absolute_api_url(value)
 
 
@@ -291,8 +291,8 @@ class DFMReport(BaseModel):
     id: str = ""
     design_id: str = ""
     status: ManufacturabilityStatus = ManufacturabilityStatus.READY
-    review_url: str | None = None
-    review_link_id: str | None = None
+    review_url: Optional[str] = None
+    review_link_id: Optional[str] = None
     configuration: ManufacturingConfiguration = Field(
         default_factory=ManufacturingConfiguration
     )

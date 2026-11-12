@@ -13,8 +13,7 @@ otherwise hit.
 import base64
 import binascii
 import json
-from collections.abc import Sequence
-from typing import Annotated, Any, Generic, TypeVar
+from typing import Annotated, Any, Generic, Optional, Sequence, TypeVar
 
 from fastapi import Depends, HTTPException, Query
 from pydantic import BaseModel, Field, model_validator
@@ -35,10 +34,10 @@ class Page(BaseModel, Generic[T]):
     """The response envelope of every v2 list endpoint."""
 
     items: list[T]
-    next_cursor: str | None = Field(
+    next_cursor: Optional[str] = Field(
         description="Pass as `cursor` to fetch the next page. `null` on the last page."
     )
-    total_count: int | None = Field(
+    total_count: Optional[int] = Field(
         description=(
             "Items matching the request across all pages, or `null` where the "
             "underlying source cannot report one. Always present."
@@ -50,7 +49,7 @@ class PageRequest(BaseModel):
     """The `limit`/`cursor` query parameters of every v2 list endpoint."""
 
     limit: int
-    cursor: str | None = None
+    cursor: Optional[str] = None
     position: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
@@ -72,7 +71,7 @@ class PageRequest(BaseModel):
         return page
 
     @property
-    def token(self) -> str | None:
+    def token(self) -> Optional[str]:
         """Opaque position, for the keyset-paginated sources."""
         if not self.position:
             return None
@@ -102,8 +101,8 @@ class PageRequest(BaseModel):
     def keyset(
         self,
         items: Sequence[T],
-        next_token: str | None,
-        total_count: int | None = None,
+        next_token: Optional[str],
+        total_count: Optional[int] = None,
     ) -> Page[T]:
         """For a keyset-paginated source, which may not be able to report a total."""
         # Checked here too: a caller that never reads `token` would otherwise
@@ -136,7 +135,7 @@ def page_request(
         ),
     ] = DEFAULT_PAGE_SIZE,
     cursor: Annotated[
-        str | None,
+        Optional[str],
         Query(description="`next_cursor` from the previous response"),
     ] = None,
 ) -> PageRequest:
@@ -168,7 +167,7 @@ def _encode(payload: dict[str, Any]) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def _decode(cursor: str | None) -> dict[str, Any]:
+def _decode(cursor: Optional[str]) -> dict[str, Any]:
     if not cursor:
         return {}
     try:

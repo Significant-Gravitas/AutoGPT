@@ -10,8 +10,7 @@ routes.py stays free of Redis/Lua details.
 import asyncio
 import logging
 import uuid
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel

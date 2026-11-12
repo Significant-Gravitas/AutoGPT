@@ -11,8 +11,8 @@ import base64
 import inspect
 import json
 import logging
-from datetime import UTC, datetime
-from typing import Any, get_origin, get_type_hints
+from datetime import datetime, timezone
+from typing import Any, Optional, get_origin, get_type_hints
 from unittest import mock
 
 import fastapi
@@ -53,7 +53,7 @@ _api_key_auth = APIAuthorizationInfo(
     user_id=TEST_USER_ID,
     scopes=list(APIKeyPermission),
     type="api_key",
-    created_at=datetime.now(tz=UTC),
+    created_at=datetime.now(tz=timezone.utc),
 )
 
 _tenant = TenantContext(
@@ -262,7 +262,7 @@ async def test_listing_runs_passes_the_status_and_time_filters_through(
             return_value=mock.Mock(executions=[], pagination=mock.Mock(total_items=0))
         ),
     )
-    since = datetime(2026, 9, 1, tzinfo=UTC)
+    since = datetime(2026, 9, 1, tzinfo=timezone.utc)
 
     await runs.list_runs(
         graph_id=None,
@@ -808,7 +808,7 @@ def _v2_routes() -> list[APIRoute]:
     return [r for r in v2_router.routes if isinstance(r, APIRoute)]
 
 
-def _error_client(exception: Exception | None) -> fastapi.testclient.TestClient:
+def _error_client(exception: Optional[Exception]) -> fastapi.testclient.TestClient:
     from backend.api.external.v2.errors import add_v2_exception_handlers
 
     app = fastapi.FastAPI()
@@ -853,7 +853,7 @@ def _review(node_exec_id: str, status: ReviewStatus) -> PendingHumanReviewModel:
         payload={},
         editable=True,
         status=status,
-        created_at=datetime.now(tz=UTC),
+        created_at=datetime.now(tz=timezone.utc),
     )
 
 
@@ -939,7 +939,7 @@ def _first_matching_endpoint(router: Any, method: str, path: str) -> str | None:
 
 
 async def _call_rate_limit_middleware(
-    headers: list[tuple[bytes, bytes]], capture: list[dict] | None = None
+    headers: list[tuple[bytes, bytes]], capture: Optional[list[dict]] = None
 ) -> None:
     from backend.api.external.v2.global_rate_limit import GlobalRateLimitMiddleware
 

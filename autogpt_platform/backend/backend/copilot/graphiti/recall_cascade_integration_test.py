@@ -17,7 +17,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -122,7 +122,7 @@ async def _set_status(
         uuid=uuid,
         status=status,
         reason=reason,
-        now=datetime.now(UTC).isoformat(),
+        now=datetime.now(timezone.utc).isoformat(),
     )
 
 

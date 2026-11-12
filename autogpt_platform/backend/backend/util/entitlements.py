@@ -1,6 +1,6 @@
-from collections.abc import Mapping
 from enum import Enum
 from types import MappingProxyType
+from typing import Mapping
 
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, ConfigDict

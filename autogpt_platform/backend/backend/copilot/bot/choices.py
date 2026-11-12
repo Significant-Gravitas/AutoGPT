@@ -21,7 +21,7 @@ token lives with the linking manager, which checks who may answer.
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -62,7 +62,7 @@ class ResolvedChoice(BaseModel):
     right person can still answer.
     """
 
-    text: str | None
+    text: Optional[str]
     refused: bool = False
 
 
@@ -75,9 +75,9 @@ class ButtonAnswer(BaseModel):
     shown to the clicker alone.
     """
 
-    reply: str | None
+    reply: Optional[str]
     text: str
-    follow: CardTurn | None = None
+    follow: Optional[CardTurn] = None
 
     @property
     def answered(self) -> bool:
@@ -91,7 +91,7 @@ async def answer_button(
     token: str,
     index: int,
     clicker_id: str,
-    server_id: str | None,
+    server_id: Optional[str],
 ) -> ButtonAnswer:
     """Never raises: a click runs detached from anything that would report it."""
     try:
@@ -173,7 +173,7 @@ async def clear_choice(platform: str, token: str) -> None:
     await redis.delete(_key(platform, token))
 
 
-def _owner_of(raw: bytes | str) -> str | None:
+def _owner_of(raw: bytes | str) -> Optional[str]:
     try:
         return str(json.loads(raw)["owner"])
     except (ValueError, TypeError, KeyError):

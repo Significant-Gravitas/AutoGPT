@@ -63,7 +63,7 @@ _PARAMS_SUMMARY_MAX_CHARS = 400
 
 def _service_name(host: str) -> str:
     """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
-    return host.removeprefix("mcp.")
+    return host[4:] if host.startswith("mcp.") else host
 
 
 def _args_contain_file_ref(value: Any) -> bool:

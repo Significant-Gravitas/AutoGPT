@@ -132,8 +132,9 @@ async def test_cancel_after_the_trial_ended_reconciles_then_conflicts(
     live_stripe.retrieve.return_value = ended
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=started)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.cancel_trial(started.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
     assert (error.value.status_code, error.value.detail) == (409, ENDED)
     live_stripe.sync.assert_awaited_once_with(dict(ended))
     live_stripe.modify.assert_not_awaited()
@@ -156,8 +157,9 @@ async def test_cancel_refuses_a_subscription_the_trial_does_not_own(
     live_stripe.retrieve.return_value = _live(started, **change)
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=started)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.cancel_trial(started.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
     assert (error.value.status_code, error.value.detail) == (409, ENDED)
     live_stripe.modify.assert_not_awaited()
     live_stripe.end_now.assert_not_awaited()
@@ -171,8 +173,9 @@ async def test_cancel_stripe_failure_is_retryable_without_a_sync(trial, live_str
     live_stripe.modify.side_effect = routes.stripe.APIConnectionError("unreachable")
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=started)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.cancel_trial(started.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
     assert error.value.status_code == 502
     assert error.value.detail == "Unable to cancel your trial. Please retry."
     live_stripe.sync.assert_not_awaited()
@@ -190,8 +193,9 @@ async def test_cancel_while_the_trial_is_being_updated_is_a_retryable_conflict(
     )
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=started)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.cancel_trial(started.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(started.user_id)
     assert (error.value.status_code, error.value.detail) == (
         409,
         "Your trial is already being updated. Please retry.",
@@ -206,8 +210,9 @@ async def test_cancel_of_a_converted_trial_is_conflict(trial, live_stripe):
     converted = _started(trial, converted_at=datetime.now(UTC))
     with patch.object(
         routes, "get_subscription_trial", AsyncMock(return_value=converted)
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.cancel_trial(converted.user_id)
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.cancel_trial(converted.user_id)
     assert error.value.status_code == 409
     live_stripe.retrieve.assert_not_awaited()
 

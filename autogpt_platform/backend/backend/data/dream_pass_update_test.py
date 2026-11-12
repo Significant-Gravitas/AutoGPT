@@ -5,7 +5,7 @@ out of order or at the same time end in the row they should."""
 import asyncio
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from prisma.enums import (
@@ -37,7 +37,7 @@ from .dream_pass_models import (
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-_NOW = datetime.now(UTC).replace(microsecond=0)
+_NOW = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 @pytest.fixture
@@ -227,7 +227,7 @@ async def test_timestamps_land_as_the_same_instant(owner):
     )
 
     row = await _row(pass_id)
-    assert row.lease_expires_at == datetime(2026, 9, 26, 3, 0, tzinfo=UTC)
+    assert row.lease_expires_at == datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
     assert row.window_start == _NOW
     # The insert stamps updatedAt with the client's clock and the update
     # with the database's, which can trail it by a few milliseconds.

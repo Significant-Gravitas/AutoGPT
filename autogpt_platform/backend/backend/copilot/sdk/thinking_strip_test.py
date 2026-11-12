@@ -7,14 +7,14 @@ stripped from the SSE stream and the persisted assistant message.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
 
-_NOW = datetime(2024, 1, 1, tzinfo=UTC)
+_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
 def _make_ctx() -> MagicMock:

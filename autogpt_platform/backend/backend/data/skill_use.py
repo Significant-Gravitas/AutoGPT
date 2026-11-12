@@ -27,7 +27,7 @@ class SkillUseEventRecord(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillUseEvent) -> SkillUseEventRecord:
+    def from_db(cls, row: prisma.models.SkillUseEvent) -> "SkillUseEventRecord":
         return cls(
             id=row.id,
             skill_name=row.skillName,
@@ -50,7 +50,7 @@ class SkillSuppressionRecord(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_db(cls, row: prisma.models.SkillSuppression) -> SkillSuppressionRecord:
+    def from_db(cls, row: prisma.models.SkillSuppression) -> "SkillSuppressionRecord":
         return cls(
             id=row.id,
             skill_name=row.skillName,

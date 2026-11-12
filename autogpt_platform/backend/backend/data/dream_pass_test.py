@@ -3,7 +3,7 @@ merges, the owner check, and that a finished pass's row is final."""
 
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from prisma.enums import (
@@ -50,7 +50,7 @@ from .dream_pass_models import (
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 # Postgres keeps TIMESTAMP(3): whole milliseconds read back exactly.
-_NOW = datetime.now(UTC).replace(microsecond=0)
+_NOW = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 @pytest.fixture

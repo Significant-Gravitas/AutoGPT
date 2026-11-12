@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -254,7 +254,7 @@ def test_accuracy_trends_accepts_in_range_days_back(accuracy_client, days_back):
         params["days_back"] = days_back
     empty = AccuracyTrendsResponse(
         latest_data=AccuracyLatestData(
-            date=datetime(2026, 10, 17, tzinfo=UTC),
+            date=datetime(2026, 10, 17, tzinfo=timezone.utc),
             daily_score=None,
             three_day_avg=None,
             seven_day_avg=None,

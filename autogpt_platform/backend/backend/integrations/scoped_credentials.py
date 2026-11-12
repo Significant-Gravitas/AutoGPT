@@ -10,6 +10,7 @@ reads from the User.integrations encrypted blob.
 """
 
 import logging
+from typing import Optional
 
 from backend.data.db import prisma
 from backend.util.encryption import JSONCryptor
@@ -88,7 +89,7 @@ async def get_credential_by_id(
     organization_id: str,
     team_id: str | None = None,
     decrypt: bool = False,
-) -> dict | None:
+) -> Optional[dict]:
     """Get a specific credential by ID if the user has access.
 
     Access rules (enforced HERE, not trusted to callers):

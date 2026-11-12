@@ -86,7 +86,7 @@ Neither the typed email nor the account's email is ever logged.
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import stripe
 from autogpt_libs.auth import remember_account_closed
@@ -232,7 +232,7 @@ async def _winners_erase_after(user_id: str) -> datetime:
     if winner is not None:
         return winner.eraseAfter
     # Reopened in the meantime: a fresh request would get this date.
-    return datetime.now(UTC) + GRACE_PERIOD
+    return datetime.now(timezone.utc) + GRACE_PERIOD
 
 
 async def _send_confirmation(

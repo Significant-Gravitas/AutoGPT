@@ -64,8 +64,9 @@ async def _run(*, apply: bool, yes: bool) -> None:
     from backend.cli.mailerlite_backfill import stripe_billing_countries
     from backend.data.db import connect, disconnect
     from backend.data.user import is_marketing_opted_out
-    from backend.notifications import mailerlite, role_backfill
+    from backend.notifications import mailerlite
     from backend.notifications import mailerlite_field_backfill as field_backfill
+    from backend.notifications import role_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
     from backend.util.settings import Settings
 

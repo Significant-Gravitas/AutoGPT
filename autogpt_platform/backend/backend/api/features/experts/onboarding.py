@@ -1,4 +1,4 @@
-from autogpt_libs import auth
+import autogpt_libs.auth as auth
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, ValidationError
 

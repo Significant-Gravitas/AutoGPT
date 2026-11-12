@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Dict, Optional, Union
 
 from backend.sdk import APIKeyCredentials, OAuth2Credentials, Requests
 
@@ -24,13 +24,13 @@ class LinearClient:
 
     def __init__(
         self,
-        credentials: OAuth2Credentials | APIKeyCredentials | None = None,
-        custom_requests: Requests | None = None,
+        credentials: Union[OAuth2Credentials, APIKeyCredentials, None] = None,
+        custom_requests: Optional[Requests] = None,
     ):
         if custom_requests:
             self._requests = custom_requests
         else:
-            headers: dict[str, str] = {
+            headers: Dict[str, str] = {
                 "Content-Type": "application/json",
             }
             if credentials:
@@ -55,7 +55,7 @@ class LinearClient:
         Returns:
             The parsed JSON response data, or raises a LinearAPIException on error.
         """
-        payload: dict[str, Any] = {"query": query}
+        payload: Dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
 
@@ -86,7 +86,7 @@ class LinearClient:
 
         return response_data["data"]
 
-    async def query(self, query: str, variables: dict | None = None) -> dict:
+    async def query(self, query: str, variables: Optional[dict] = None) -> dict:
         """Executes a GraphQL query.
 
         Args:
@@ -98,7 +98,7 @@ class LinearClient:
         """
         return await self._execute_graphql_request(query, variables)
 
-    async def mutate(self, mutation: str, variables: dict | None = None) -> dict:
+    async def mutate(self, mutation: str, variables: Optional[dict] = None) -> dict:
         """Executes a GraphQL mutation.
 
         Args:

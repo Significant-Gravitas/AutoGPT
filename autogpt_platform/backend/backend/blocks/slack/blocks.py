@@ -3,6 +3,7 @@ Slack action blocks for sending messages to channels and DMs.
 """
 
 import logging
+from typing import Optional
 
 from backend.blocks._base import (
     Block,
@@ -38,19 +39,19 @@ class SendSlackMessageBlock(Block):
             description="Message text. Supports Slack mrkdwn: "
             "*bold*, _italic_, `code`, <https://example.com|link>."
         )
-        thread_ts: str | None = SchemaField(
+        thread_ts: Optional[str] = SchemaField(
             description="Timestamp of the parent message to reply in a thread. "
             "Use the 'ts' output from a previous Send Slack Message block.",
             default=None,
             advanced=True,
         )
-        username: str | None = SchemaField(
+        username: Optional[str] = SchemaField(
             description="Custom display name for the bot in this message. "
             "Requires chat:write.customize scope.",
             default=None,
             advanced=True,
         )
-        icon_emoji: str | None = SchemaField(
+        icon_emoji: Optional[str] = SchemaField(
             description="Emoji to use as the bot's icon (e.g. :robot_face:). "
             "Requires chat:write.customize scope.",
             default=None,
@@ -125,9 +126,9 @@ class SendSlackMessageBlock(Block):
         credentials: APIKeyCredentials,
         channel: str,
         text: str,
-        thread_ts: str | None,
-        username: str | None,
-        icon_emoji: str | None,
+        thread_ts: Optional[str],
+        username: Optional[str],
+        icon_emoji: Optional[str],
         unfurl_links: bool,
         mrkdwn: bool,
     ) -> SlackMessageResult:

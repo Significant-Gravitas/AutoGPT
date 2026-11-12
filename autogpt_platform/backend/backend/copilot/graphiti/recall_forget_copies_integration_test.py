@@ -25,7 +25,7 @@ migrated database::
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -183,7 +183,7 @@ async def _kept(pass_id: str, session_id: str | None) -> list[str]:
 
 
 def _completed(scope: MemoryScope, pass_id: str, stats: dict, ops) -> DreamPassResult:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return DreamPassResult(
         user_id=scope.owner_user_id,
         pass_id=pass_id,

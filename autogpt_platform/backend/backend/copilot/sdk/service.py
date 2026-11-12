@@ -3,10 +3,11 @@
 # isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
 
 import asyncio
-import base64
 import contextlib
 import contextvars
+import base64
 import functools
+from copy import copy
 import json
 import logging
 import os
@@ -18,7 +19,6 @@ import sys
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
-from copy import copy
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
@@ -44,35 +44,34 @@ from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot.ai_spans import stamp_turn_trace_id
-from backend.copilot.budget_gate import gate_auto_continue
-from backend.copilot.budget_signal import build_turn_budget_block
-from backend.copilot.cli_session_entry import rewrite_user_entry
-from backend.copilot.continuation import as_model_prompt
-from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
-from backend.copilot.expert_check import forget_expert_checks
-from backend.copilot.gate import active_mode
-from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti import context_refresh
-from backend.copilot.graphiti.context import fetch_warm_context
-from backend.copilot.graphiti.context_marker import (
-    INJECTED_MEMORY_NONCE,
-    append_injected_memory_block,
-    strip_injected_memory_text,
-)
-from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-from backend.copilot.host_fs import cli_tmpdir, save_new_file
-from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
-from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
-from backend.copilot.markers import append_error_marker
 from backend.copilot.model_router import (
     ResolvedModel,
     RoutingSource,
     resolve_codex_model_route,
     resolve_model_route,
 )
-from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.ai_spans import stamp_turn_trace_id
+from backend.copilot.budget_gate import gate_auto_continue
+from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.sandbox_status import build_sandbox_replaced_notice
+from backend.copilot.continuation import as_model_prompt
+from backend.copilot.expert_check import forget_expert_checks
+from backend.copilot.cli_session_entry import rewrite_user_entry
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.context_marker import (
+    INJECTED_MEMORY_NONCE,
+    append_injected_memory_block,
+    strip_injected_memory_text,
+)
+from backend.copilot.host_fs import cli_tmpdir, save_new_file
+from backend.copilot.markers import append_error_marker
+from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.segments import Segment, stamp_segment
+from backend.copilot.tools.skill_matching import build_matched_skills_notice
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.sdk.cli_prelaunch import CLIPrelaunch
 from backend.copilot.sdk.codex_compat_gateway import (
     GATEWAY_REFUSED_CODE,
@@ -82,23 +81,21 @@ from backend.copilot.sdk.codex_compat_gateway import (
 )
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
-)
-from backend.copilot.sdk.cost_tracking import (
     read_cli_session_usage,
 )
-from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.tool_display import tool_calls_for_provider
-from backend.copilot.tools.skill_matching import build_matched_skills_notice
+from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
 from backend.copilot.turn_budget import resolve_turn_budget
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data.db_accessors import chat_db
-from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
+from backend.copilot.gate import active_mode
+from backend.copilot.gate.held import resolve_answered
 from backend.util.llm.provider_billing import (
     PROVIDER_UNAVAILABLE_CODE,
     PROVIDER_UNAVAILABLE_MESSAGE,
@@ -112,10 +109,6 @@ from backend.util.prompt import (
 )
 from backend.util.sandbox_limits import SandboxLimitError
 
-from ..builder_context import (
-    build_builder_context_turn_prefix,
-    build_builder_system_prompt_suffix,
-)
 from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
     COPILOT_ERROR_PREFIX,
@@ -128,10 +121,15 @@ from ..constants import (
     is_transient_api_error,
     is_transient_assistant_error,
 )
+from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager, is_unattended_turn
-from ..expert_context import build_expert_identity_suffix
-from ..expert_kickoff import is_expert_kickoff_turn
 from ..hidden_rows import visible_to_model
+from ..model_normalize import normalize_model_for_transport
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
+
+from ..moonshot import (
+    is_moonshot_model as _is_moonshot_model,
+)
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -139,10 +137,6 @@ from ..model import (
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
-)
-from ..model_normalize import normalize_model_for_transport
-from ..moonshot import (
-    is_moonshot_model as _is_moonshot_model,
 )
 from ..pending_message_helpers import (
     combine_pending_with_current,
@@ -167,12 +161,12 @@ from ..permissions import (
 from ..prompting import (
     approval_mode_supplement,
     get_chat_platform_supplement,
+    get_provider_ceiling_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
-    get_graphiti_supplement,
-    get_provider_ceiling_supplement,
-    get_sdk_supplement,
     get_team_building_supplement,
+    get_graphiti_supplement,
+    get_sdk_supplement,
 )
 from ..response_model import (
     StreamBaseResponse,
@@ -180,10 +174,10 @@ from ..response_model import (
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
+    StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
     StreamPendingDrained,
-    StreamProviderFailure,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -199,6 +193,12 @@ from ..response_model import (
     StreamTurnPaused,
     StreamUsage,
 )
+from ..builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
+)
+from ..expert_context import build_expert_identity_suffix
+from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     _build_system_prompt,
     _update_title_async,
@@ -206,7 +206,6 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
-from ..session_cleanup import prune_orphan_tool_calls
 from ..skill_invocation import (
     get_persisted_skill_invocation,
     inject_skill_invocation,
@@ -232,8 +231,8 @@ from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
 from ..transcript import (
-    TranscriptDownload,
     _run_compression,
+    TranscriptDownload,
     cleanup_stale_project_dirs,
     cli_session_path,
     compact_transcript,
@@ -249,7 +248,6 @@ from ..transcript import (
     validate_transcript,
 )
 from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
-from .cli_io import send_user_blocks, send_user_text
 from .cli_version import require_verbatim_prompts_cli
 from .compaction import (
     CompactionStats,
@@ -258,11 +256,9 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
-from .env import (
-    DISABLE_SLASH_COMMANDS_FLAG,
-    build_sdk_env,
-    cli_prompt_text,
-)
+from .cli_io import send_user_blocks, send_user_text
+from .env import DISABLE_SLASH_COMMANDS_FLAG, cli_prompt_text
+from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .first_turn_context import FirstTurnContext
 from .governor import TurnGovernor
 from .launch_env import launch_options
@@ -270,8 +266,8 @@ from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
-    MCP_TOOL_PREFIX,
     cap_late_tool_result,
+    MCP_TOOL_PREFIX,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
@@ -2414,7 +2410,7 @@ async def _resolve_sdk_model_for_request(
     if config.claude_agent_model:
         return config.claude_agent_model, "env"
 
-    tier_name: CopilotLLMModel = "advanced" if model == "advanced" else "standard"
+    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
     # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
     # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
     # comparison below spuriously diverge — ``resolve_model`` already strips
@@ -5039,7 +5035,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Stamping state for THIS turn: messages beyond this index were created
     # by the current turn and get model/routing_source at persist time.
     # Pre-feature history rows (NULL model) must never be back-stamped.
-    routing_source: RoutingSource = "env"
+    routing_source: "RoutingSource" = "env"
 
     # The session row is the tenancy anchor; the turn entry's org/team only
     # backfills sessions created before org tagging (pre-migration rows).
@@ -5248,7 +5244,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # a pre-query row on ANY failure in this function, including ones raised
     # before that point, so it must tolerate ``compaction`` still being None.
     compaction: CompactionTracker | None = None
-    codex_effort: CodexReasoningEffort | None = None
+    codex_effort: "CodexReasoningEffort | None" = None
     codex_gateway: CodexAnthropicGateway | None = None
     tool_display_bridge = SDKToolDisplayBridge()
     deferred_codex_cleanup_error: BaseException | None = None
@@ -5570,7 +5566,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
         if credential_lease is not None:
-            tier_name: CopilotLLMModel = (
+            tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
             sdk_model, codex_effort, routing_source = await resolve_codex_model_route(
@@ -7314,7 +7310,8 @@ def _canonical_model(model: str) -> str:
     """Spelling-insensitive model identity for fallback detection:
     vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
     tail = model.lower().split("/")[-1]
-    tail = tail.removeprefix("anthropic.")
+    if tail.startswith("anthropic."):
+        tail = tail[len("anthropic.") :]
     return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
 
 

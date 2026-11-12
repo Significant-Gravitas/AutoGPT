@@ -12,8 +12,7 @@ import hashlib
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Awaitable, Callable, Literal
 
 from prometheus_client import Counter
 from pydantic import BaseModel

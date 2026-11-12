@@ -7,7 +7,7 @@ import logging
 import mimetypes
 import os
 from collections import deque
-from typing import Any
+from typing import Any, Optional
 
 from prisma.enums import APIKeyPermission
 from pydantic import Field
@@ -260,7 +260,7 @@ def _fit_utf8(text: str, max_bytes: int) -> str:
 def _read_local_tool_result(
     path: str,
     char_offset: int,
-    char_length: int | None,
+    char_length: Optional[int],
     session_id: str,
     sdk_cwd: str | None = None,
 ) -> ToolResponseBase:
@@ -455,8 +455,8 @@ class ListWorkspaceFilesTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        path_prefix: str | None = None,
-        folder_id: str | None = None,
+        path_prefix: Optional[str] = None,
+        folder_id: Optional[str] = None,
         recursive: bool = False,
         limit: int = 50,
         include_all_sessions: bool = False,
@@ -690,12 +690,12 @@ class ReadWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        file_id: str | None = None,
-        path: str | None = None,
-        save_to_path: str | None = None,
+        file_id: Optional[str] = None,
+        path: Optional[str] = None,
+        save_to_path: Optional[str] = None,
         force_download_url: bool = False,
         offset: int = 0,
-        length: int | None = None,
+        length: Optional[int] = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -705,7 +705,7 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
         char_offset: int = max(0, offset)
-        char_length: int | None = length
+        char_length: Optional[int] = length
 
         if not file_id and not path:
             return ErrorResponse(
@@ -1349,8 +1349,8 @@ class DeleteWorkspaceFileTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        file_id: str | None = None,
-        path: str | None = None,
+        file_id: Optional[str] = None,
+        path: Optional[str] = None,
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id

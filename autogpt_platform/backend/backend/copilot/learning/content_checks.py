@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter
-from collections.abc import Iterable
+from typing import Iterable
 
 from pydantic import BaseModel
 

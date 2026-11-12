@@ -5,9 +5,11 @@ thread creation, typing, button rendering. All platform-agnostic logic lives
 in the core handler. Slash commands live in commands.py.
 """
 
+import asyncio
 import io
 import logging
 import re
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -113,7 +115,7 @@ class DiscordAdapter(SocketAdapter):
         )
         self._tree = app_commands.CommandTree(self._client)
         self._api = api
-        self._on_message_callback: MessageCallback | None = None
+        self._on_message_callback: Optional[MessageCallback] = None
         self._commands_synced = False
 
         self._register_events()
@@ -292,7 +294,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
-    ) -> str | None:
+    ) -> Optional[str]:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.TextChannel):
             logger.warning("Cannot create thread in non-text channel %s", channel_id)
@@ -346,7 +348,7 @@ class DiscordAdapter(SocketAdapter):
                 )
         return channels
 
-    async def get_channel_server_id(self, channel_id: str) -> str | None:
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
         channel = await self._resolve_channel(channel_id)
         # Guild channels and threads carry `.guild`; DM/group channels don't,
         # so they resolve to None (never authorized for a server post).
@@ -354,7 +356,7 @@ class DiscordAdapter(SocketAdapter):
             return str(channel.guild.id)
         return None
 
-    async def open_dm_channel(self, platform_user_id: str) -> str | None:
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
         try:
             user = self._client.get_user(
                 int(platform_user_id)
@@ -367,7 +369,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def post_channel_message(
         self, channel_id: str, text: str
-    ) -> PostedRef | None:
+    ) -> Optional[PostedRef]:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             logger.warning("Cannot post to non-messageable channel %s", channel_id)
@@ -383,7 +385,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
-    ) -> PostedRef | None:
+    ) -> Optional[PostedRef]:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.TextChannel):
             logger.warning("Cannot create thread in non-text channel %s", channel_id)
@@ -399,7 +401,7 @@ class DiscordAdapter(SocketAdapter):
         # The thread now exists on Discord. Surface its ref even if posting the
         # body fails, so the caller reports partial success and doesn't retry
         # into a duplicate thread.
-        first: discord.Message | None = None
+        first: Optional[discord.Message] = None
         sent = 0
         try:
             first, sent = await self._send_chunked(thread, text)
@@ -455,7 +457,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def _send_chunked(
         self, channel: discord.abc.Messageable, text: str
-    ) -> tuple[discord.Message | None, int]:
+    ) -> tuple[Optional[discord.Message], int]:
         """Send ``text`` to ``channel``, splitting at natural boundaries to stay
         under Discord's per-message cap. Returns the first message sent (the one
         callers permalink to) and how many chunks actually landed, or
@@ -468,7 +470,7 @@ class DiscordAdapter(SocketAdapter):
         rendered, allowed = _resolve_mentions(
             text, await self._mentionables_for(channel, text, ())
         )
-        first: discord.Message | None = None
+        first: Optional[discord.Message] = None
         sent = 0
         for chunk in iter_chunks(rendered, config.CHUNK_FLUSH_AT):
             try:
@@ -843,7 +845,7 @@ class DiscordAdapter(SocketAdapter):
         return f"[Forwarded message]\n{forwarded}"
 
     def _with_reply_context(
-        self, replied: discord.Message | None, message_text: str
+        self, replied: Optional[discord.Message], message_text: str
     ) -> str:
         """Prepend the replied-to message so the bot sees what's being answered.
 
@@ -862,7 +864,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def _resolve_reply(
         self, message: discord.Message
-    ) -> discord.Message | None:
+    ) -> Optional[discord.Message]:
         ref = message.reference
         if ref is None:
             return None
@@ -1011,13 +1013,18 @@ class DiscordAdapter(SocketAdapter):
             return await guild.query_members(
                 query=query, limit=MENTION_QUERY_LIMIT, cache=False
             )
-        except (TimeoutError, ValueError, discord.ClientException, discord.HTTPException):
+        except (
+            asyncio.TimeoutError,
+            ValueError,
+            discord.ClientException,
+            discord.HTTPException,
+        ):
             logger.warning("Member lookup for @%s failed", query, exc_info=True)
             return []
 
     async def _guild_member(
         self, guild: discord.Guild, user_id: int
-    ) -> discord.Member | None:
+    ) -> Optional[discord.Member]:
         """The server member behind a raw ``<@id>``, or None when that id is not
         a member here. Cache first, then one REST lookup."""
         member = guild.get_member(user_id)
@@ -1029,7 +1036,7 @@ class DiscordAdapter(SocketAdapter):
             return None
 
     async def _thread_history(
-        self, message: discord.Message, thread: discord.Thread | None = None
+        self, message: discord.Message, thread: Optional[discord.Thread] = None
     ) -> tuple[MessageHistoryEntry, ...]:
         channel = thread or message.channel
         if not isinstance(channel, discord.Thread):
@@ -1057,7 +1064,7 @@ class DiscordAdapter(SocketAdapter):
         return (entry, *history) if entry else history
 
     async def _channel_history(
-        self, message: discord.Message, requester: discord.Member | None
+        self, message: discord.Message, requester: Optional[discord.Member]
     ) -> tuple[MessageHistoryEntry, ...]:
         """The channel messages before ``message``, as ``requester`` could
         read them. The bot can see history a member who may post here can't
@@ -1084,7 +1091,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def _thread_starter(
         self, thread: discord.Thread
-    ) -> discord.Message | None:
+    ) -> Optional[discord.Message]:
         """The message a thread was opened from, if it has one.
 
         A thread created from a channel post shares that post's id, but the
@@ -1110,7 +1117,7 @@ class DiscordAdapter(SocketAdapter):
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             return None
 
-    def _starter_entry(self, starter: discord.Message) -> MessageHistoryEntry | None:
+    def _starter_entry(self, starter: discord.Message) -> Optional[MessageHistoryEntry]:
         """The starter as the oldest history entry, outside the character
         budget so it is never truncated away.
 
@@ -1184,7 +1191,7 @@ class DiscordAdapter(SocketAdapter):
         return tuple(conversations)
 
     @staticmethod
-    def _requester_of(message: discord.Message) -> discord.Member | None:
+    def _requester_of(message: discord.Message) -> Optional[discord.Member]:
         if message.guild is None:
             return None
         # ``message.author`` IS the guild Member (the gateway attaches it to the
@@ -1197,7 +1204,7 @@ class DiscordAdapter(SocketAdapter):
 
     async def _fetch_one_referenced(
         self, guild: discord.Guild, requester: discord.Member, target: ReferenceTarget
-    ) -> ReferencedConversation | None:
+    ) -> Optional[ReferencedConversation]:
         channel = await self._resolve_channel(target.channel_id)
         if not isinstance(channel, (discord.TextChannel, discord.Thread)):
             return None

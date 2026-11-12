@@ -80,8 +80,9 @@ async def test_unavailable_or_ambiguous_filaments_require_explicit_choice(filame
     block = Slant3DFilamentBlock()
     with patch.object(
         block, "_make_request", AsyncMock(return_value={"data": filaments})
-    ), pytest.raises(ValueError, match="filament_id"):
-        await block._resolve_filament_id(Profile.PLA, "black", "key")
+    ):
+        with pytest.raises(ValueError, match="filament_id"):
+            await block._resolve_filament_id(Profile.PLA, "black", "key")
 
 
 @pytest.mark.parametrize("quantity", [0, -1, "invalid", 1.5])

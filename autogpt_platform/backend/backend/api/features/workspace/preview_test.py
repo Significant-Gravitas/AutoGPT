@@ -4,7 +4,7 @@ import io
 import math
 import time
 import zipfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -45,8 +45,8 @@ def _make_workspace() -> Workspace:
     return Workspace(
         id="ws-001",
         user_id="test-user-id",
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
 
 
@@ -54,8 +54,8 @@ def _make_file(**overrides) -> WorkspaceFile:
     defaults = {
         "id": "file-001",
         "workspace_id": "ws-001",
-        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
-        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "name": "test.bin",
         "path": "/test.bin",
         "storage_path": "local://test.bin",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -68,7 +68,7 @@ def store(monkeypatch, test_user_id):
     experts.get_expert = AsyncMock(return_value=None)
     monkeypatch.setattr(routes, "experts_db", experts)
     monkeypatch.setattr(routes, "is_feature_enabled", AsyncMock(return_value=True))
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     session = ChatSessionInfo(
         session_id=SESSION,
         user_id=test_user_id,
@@ -456,7 +456,7 @@ def test_run_now_uses_the_same_pass(store, monkeypatch):
             user_id="u",
             run_id="r",
             trigger="admin",
-            started_at=datetime.now(UTC),
+            started_at=datetime.now(timezone.utc),
             skipped=True,
             skip_reason="no_eligible_work",
         )
@@ -486,7 +486,7 @@ def test_expert_learning_pause_endpoint(store, monkeypatch, test_user_id):
         source_template_id=None,
         is_archived=False,
         workflows=[],
-        learning_paused_at=datetime.now(UTC),
+        learning_paused_at=datetime.now(timezone.utc),
     )
     routes.experts_db.set_expert_learning_paused = AsyncMock(return_value=expert)
     resp = client.post(

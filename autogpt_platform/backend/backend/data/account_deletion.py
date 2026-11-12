@@ -11,7 +11,7 @@ the account. A ban for another reason is left exactly as it was, so a banned
 person can close their account but never sign in to reopen it.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 from prisma import Prisma
@@ -63,7 +63,7 @@ async def close_account(
     this call closed it. ``grace`` is the time the owner has to keep it: zero
     only for an owner who asked by email to be erased at once.
     """
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     try:
         async with transaction() as tx:
             request = await tx.accountdeletionrequest.create(
@@ -95,7 +95,7 @@ async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOut
     ``REOPENED_DAILY_EMAIL_LIMIT`` a day again, with every kind still off
     until the owner switches it back on.
     """
-    now = now or datetime.now(UTC)
+    now = now or datetime.now(timezone.utc)
     async with transaction() as tx:
         reopened = await tx.accountdeletionrequest.delete_many(
             where={
@@ -122,7 +122,7 @@ async def mark_confirmation_sent(user_id: str) -> None:
     sends it for a request still unmarked, before it erases the address."""
     await AccountDeletionRequest.prisma().update(
         where={"userId": user_id},
-        data={"confirmationSentAt": datetime.now(UTC)},
+        data={"confirmationSentAt": datetime.now(timezone.utc)},
     )
 
 

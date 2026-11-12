@@ -26,7 +26,7 @@ episode a dream write placed and is still writing (``write_pending``,
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
@@ -265,7 +265,7 @@ async def recent_episodes(scope: MemoryScope, n: int) -> list[EpisodicNode]:
     """
     client = await get_graphiti_client(scope.group_id)
     records = await recallable_episodes(
-        client.driver, scope.group_id, datetime.now(UTC), n
+        client.driver, scope.group_id, datetime.now(timezone.utc), n
     )
     return [get_episodic_node_from_record(record) for record in reversed(records)]
 

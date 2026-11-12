@@ -12,9 +12,9 @@ import os
 import threading
 import time
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL

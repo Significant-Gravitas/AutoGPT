@@ -2,7 +2,7 @@ import httpx
 import openai
 import pytest
 
-from backend.blocks import llm
+import backend.blocks.llm as llm
 from backend.blocks.llm_errors import format_llm_error_message, is_invalid_model_error
 
 

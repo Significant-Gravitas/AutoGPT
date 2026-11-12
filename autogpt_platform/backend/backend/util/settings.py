@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from enum import Enum
-from typing import Any, Generic, Literal, Self, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Self, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -82,7 +82,7 @@ class FlagDefinitionCacheBackend(str, Enum):
 
 
 class UpdateTrackingModel(BaseModel, Generic[T]):
-    _updated_fields: set[str] = PrivateAttr(default_factory=set)
+    _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
     def __setattr__(self, name: str, value) -> None:
         if name in UpdateTrackingModel.model_fields:
@@ -96,7 +96,7 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
     def clear_updates(self) -> None:
         self._updated_fields.clear()
 
-    def get_updates(self) -> dict[str, Any]:
+    def get_updates(self) -> Dict[str, Any]:
         return {field: getattr(self, field) for field in self._updated_fields}
 
     @property
@@ -402,7 +402,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=5 * 60,
         description="Interval in seconds between account erasure sweeps.",
     )
-    account_erasure_unused_services: list[str] = Field(
+    account_erasure_unused_services: List[str] = Field(
         default=[],
         description=(
             "Outside services this stack does not use, so the account erasure "
@@ -646,7 +646,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "connects with sign-in codes.",
     )
 
-    trusted_frontend_origins: list[str] = Field(
+    trusted_frontend_origins: List[str] = Field(
         default=[],
         description="Extra frontend origins (in addition to frontend_base_url) "
         "that transactional auth-email action links may point at. Entries are "
@@ -1248,7 +1248,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Name of the websocket notification event bus",
     )
 
-    trust_endpoints_for_requests: list[str] = Field(
+    trust_endpoints_for_requests: List[str] = Field(
         default_factory=list,
         description="A whitelist of trusted internal endpoints for the backend to make requests to.",
     )
@@ -1258,13 +1258,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum message size limit for communication with the message bus",
     )
 
-    backend_cors_allow_origins: list[str] = Field(
+    backend_cors_allow_origins: List[str] = Field(
         default=["http://localhost:3000"],
         description="Allowed Origins for CORS. Supports exact URLs (http/https) or entries prefixed with "
         '"regex:" to match via regular expression.',
     )
 
-    external_oauth_callback_origins: list[str] = Field(
+    external_oauth_callback_origins: List[str] = Field(
         default=["http://localhost:3000"],
         description="Allowed callback URL origins for external OAuth flows. "
         "External apps must have their callback URLs start with one of these origins.",
@@ -1272,7 +1272,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     @field_validator("trusted_frontend_origins")
     @classmethod
-    def validate_trusted_frontend_origins(cls, v: list[str]) -> list[str]:
+    def validate_trusted_frontend_origins(cls, v: List[str]) -> List[str]:
         """Reject unusable entries at startup rather than at send time.
 
         These patterns are compiled per request in the auth-email route, so a
@@ -1294,8 +1294,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
-    def validate_cors_allow_origins(cls, v: list[str]) -> list[str]:
-        validated: list[str] = []
+    def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:
+        validated: List[str] = []
         localhost_ports: set[str] = set()
         ip127_ports: set[str] = set()
 
@@ -1346,12 +1346,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     @classmethod
     def settings_customise_sources(
         cls,
-        settings_cls: type[BaseSettings],
+        settings_cls: Type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
         return (
             env_settings,
             file_secret_settings,
@@ -1703,7 +1703,7 @@ class Settings(BaseModel):
             config_path = os.path.join(get_data_path(), "config.json")
             if os.path.exists(config_path):
                 with open(config_path, "r+") as f:
-                    existing_config: dict[str, Any] = json.load(f)
+                    existing_config: Dict[str, Any] = json.load(f)
                     existing_config.update(config_to_save)
                     f.seek(0)
                     json.dump(existing_config, f, indent=2)

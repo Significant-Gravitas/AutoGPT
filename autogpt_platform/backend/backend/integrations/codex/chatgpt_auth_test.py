@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -71,7 +71,7 @@ def test_verification_url_is_the_fixed_codex_device_page() -> None:
 
 
 def test_seconds_remaining_uses_the_absolute_expiry() -> None:
-    now = datetime(2026, 1, 1, tzinfo=UTC)
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     device = ChatGPTDeviceCode(
         device_auth_id="deviceauth_x",
         user_code="AAAA-BBBBB",
@@ -143,8 +143,9 @@ async def test_an_unknown_error_raises_rather_than_polling_forever() -> None:
 
 @pytest.mark.asyncio
 async def test_a_non_json_body_is_a_failure_not_a_pending_state() -> None:
-    with _patch_post(_FakeResponse(502, None)), pytest.raises(CodexAuthError):
-        await poll_device_code("deviceauth_x", "AAAA-BBBBB")
+    with _patch_post(_FakeResponse(502, None)):
+        with pytest.raises(CodexAuthError):
+            await poll_device_code("deviceauth_x", "AAAA-BBBBB")
 
 
 @pytest.mark.asyncio

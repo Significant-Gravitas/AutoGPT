@@ -1,3 +1,4 @@
+from typing import Optional
 
 from pydantic import SecretStr
 
@@ -58,7 +59,7 @@ def expert_volume_name(expert_id: str) -> str:
 
 
 def workspace_volume_mounts(
-    user_id: str | None, expert_id: str | None = None
+    user_id: Optional[str], expert_id: Optional[str] = None
 ) -> dict[str, str]:
     """Mount map (``path -> volume name``) for a CoPilot shell or desktop.
 

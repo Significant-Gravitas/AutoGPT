@@ -6,7 +6,7 @@ the blob" is observable.
 """
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,9 +17,9 @@ from backend.api.features.onboarding_dump import retention, storage
 from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 
 BUCKET = "private-bucket"
-NOW = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
 # After every unmarked recording is gone: only the marker counts.
-LATER = datetime(2027, 2, 1, 12, 0, tzinfo=UTC)
+LATER = datetime(2027, 2, 1, 12, 0, tzinfo=timezone.utc)
 MAX_AGE = timedelta(hours=42)
 OLD = "uploads/users/user-1/uuid-a/brain-dump-rec-old.webm"
 RECENT = "uploads/users/user-1/uuid-b/brain-dump-rec-new.webm"
@@ -169,7 +169,7 @@ def test_unmarked_recordings_are_recognised_until_2027():
     on or after that release, or an unmarked recording stored in between is
     never deleted."""
     assert retention._UNMARKED_RECORDINGS_BEFORE == datetime(
-        2027, 1, 1, tzinfo=UTC
+        2027, 1, 1, tzinfo=timezone.utc
     )
 
 

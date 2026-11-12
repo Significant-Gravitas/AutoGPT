@@ -118,7 +118,7 @@ class OpenRouterDeltaExtension(BaseModel):
     reasoning_details: list[ReasoningDetail] = Field(default_factory=list)
 
     @classmethod
-    def from_delta(cls, delta: ChoiceDelta) -> OpenRouterDeltaExtension:
+    def from_delta(cls, delta: ChoiceDelta) -> "OpenRouterDeltaExtension":
         """Build an extension view from ``delta.model_extra``.
 
         Malformed provider payloads (e.g. ``reasoning_details`` shipped as

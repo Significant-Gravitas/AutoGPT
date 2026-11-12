@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -55,7 +55,7 @@ def test_timeseries_returns_list(mocker):
     mock_timeseries = AsyncMock(
         return_value=[
             BotTimeseriesPoint(
-                date=datetime(2026, 6, 1, tzinfo=UTC),
+                date=datetime(2026, 6, 1, tzinfo=timezone.utc),
                 messages=10,
                 replies=9,
                 errors=1,
@@ -83,7 +83,7 @@ def test_command_usage_and_guilds(mocker):
                 platform="DISCORD",
                 server_id="9",
                 name="Srv",
-                joined_at=datetime(2026, 5, 1, tzinfo=UTC),
+                joined_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
                 left_at=None,
                 active=True,
             )

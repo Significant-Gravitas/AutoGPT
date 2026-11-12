@@ -1,8 +1,8 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable
 from enum import Enum
+from typing import Awaitable, Optional
 from uuid import uuid4
 
 import aio_pika
@@ -63,9 +63,9 @@ class Queue(BaseModel):
     durable: bool = True
     auto_delete: bool = False
     # Optional exchange binding configuration
-    exchange: Exchange | None = None
-    routing_key: str | None = None
-    arguments: dict | None = None
+    exchange: Optional[Exchange] = None
+    routing_key: Optional[str] = None
+    arguments: Optional[dict] = None
 
 
 class RabbitMQConfig(BaseModel):
@@ -180,14 +180,17 @@ class RabbitMQBase(ABC):
     @abstractmethod
     def connect(self) -> None | Awaitable[None]:
         """Establish connection to RabbitMQ"""
+        pass
 
     @abstractmethod
     def disconnect(self) -> None | Awaitable[None]:
         """Close connection to RabbitMQ"""
+        pass
 
     @abstractmethod
     def declare_infrastructure(self) -> None | Awaitable[None]:
         """Declare exchanges and queues for this service"""
+        pass
 
 
 class SyncRabbitMQ(RabbitMQBase):
@@ -272,8 +275,8 @@ class SyncRabbitMQ(RabbitMQBase):
         self,
         routing_key: str,
         message: str,
-        exchange: Exchange | None = None,
-        properties: BasicProperties | None = None,
+        exchange: Optional[Exchange] = None,
+        properties: Optional[BasicProperties] = None,
         mandatory: bool = True,
     ) -> None:
         if not self.is_ready:
@@ -412,7 +415,7 @@ class AsyncRabbitMQ(RabbitMQBase):
         self,
         routing_key: str,
         message: str,
-        exchange: Exchange | None = None,
+        exchange: Optional[Exchange] = None,
         persistent: bool = True,
     ) -> None:
         channel = await self._ensure_channel()
@@ -439,7 +442,7 @@ class AsyncRabbitMQ(RabbitMQBase):
         self,
         routing_key: str,
         message: str,
-        exchange: Exchange | None = None,
+        exchange: Optional[Exchange] = None,
         persistent: bool = True,
     ) -> None:
         try:

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from backend.sdk import BaseModel, SchemaField
 
@@ -54,7 +54,7 @@ class TavilySearchResult(BaseModel):
         description="Query-relevant content snippet extracted from the page"
     )
     score: float = SchemaField(description="Relevance score for the query (0-1)")
-    raw_content: str | None = SchemaField(
+    raw_content: Optional[str] = SchemaField(
         description="Full page content, present when include_raw_content is enabled",
         default=None,
     )

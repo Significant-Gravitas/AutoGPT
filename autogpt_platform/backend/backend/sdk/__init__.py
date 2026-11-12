@@ -31,16 +31,14 @@ from backend.blocks._base import (
 )
 from backend.blocks._preview import ChangePreview, PreviewField, PreviewTable
 from backend.data.integrations import Webhook, update_webhook
+from backend.data.model import APIKeyCredentials, Credentials, CredentialsField
+from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 from backend.data.model import (
-    APIKeyCredentials,
-    Credentials,
-    CredentialsField,
     NodeExecutionStats,
     OAuth2Credentials,
     SchemaField,
     UserPasswordCredentials,
 )
-from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 
 # === INTEGRATIONS ===
 from backend.integrations.providers import ProviderName

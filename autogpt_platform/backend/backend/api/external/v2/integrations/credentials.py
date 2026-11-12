@@ -5,7 +5,7 @@ Provides endpoints for managing integration credentials.
 """
 
 import logging
-from typing import Annotated
+from typing import Annotated, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security
@@ -40,7 +40,7 @@ credentials_router = APIRouter()
     operation_id="listIntegrationCredentials",
 )
 async def list_credentials(
-    provider: str | None = Query(
+    provider: Optional[str] = Query(
         default=None,
         description="Filter by provider name (e.g., 'github', 'google')",
     ),

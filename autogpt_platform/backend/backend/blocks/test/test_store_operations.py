@@ -164,7 +164,7 @@ async def test_search_store_agents_block_empty_results(mocker):
 
 
 def _real_library_agent(creator_name: str) -> library_model.LibraryAgent:
-    now = datetime.datetime.now(datetime.UTC)
+    now = datetime.datetime.now(datetime.timezone.utc)
     return library_model.LibraryAgent(
         id="lib-agent-1",
         graph_id="graph-1",

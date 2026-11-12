@@ -16,7 +16,7 @@ flag, virus scanner, cost accounting, and memory link are mocked. Pins:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -291,7 +291,7 @@ async def test_same_second_overwrites_do_not_collide_on_the_tombstone(
         )
         assert len(rows) == 2
         assert all(r.path == "/skills/rapid/SKILL.md" for r in rows)
-        started = datetime.now(UTC)
+        started = datetime.now(timezone.utc)
         assert all(r.deletedAt is not None and r.deletedAt <= started for r in rows)
     finally:
         await User.prisma().delete_many(where={"id": user})

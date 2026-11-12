@@ -46,27 +46,28 @@ async def test_command_persistence_failure_completes_the_turn_with_stream_error(
         patch(
             "backend.copilot.skill_invocation.resolve_invocable_skill",
             AsyncMock(return_value=found),
-        ),pytest.raises(
-        RuntimeError, match="Cannot persist the current user message"
-    ) as raised
+        ),
     ):
-        if engine == "baseline":
-            session = baseline_tests._baseline_session("/report weekly")
-            session.messages[0].sequence = None
-            await baseline_tests._run_baseline_turn(
-                session, first_block=None, refresh=baseline_tests._refresh_nothing
-            )
-        else:
-            helper = sdk_tests.TestFirstTurnWarmContextIsEphemeral()
-            session = helper._first_turn("/report weekly")
-            session.messages[0].sequence = None
-            await helper._run(
-                session,
-                sdk_tests.TestFollowUpWarmContextCallSite._clients(queries),
-                first_block=None,
-                refresh=helper._no_refresh,
-                expect_error=True,
-            )
+        with pytest.raises(
+            RuntimeError, match="Cannot persist the current user message"
+        ) as raised:
+            if engine == "baseline":
+                session = baseline_tests._baseline_session("/report weekly")
+                session.messages[0].sequence = None
+                await baseline_tests._run_baseline_turn(
+                    session, first_block=None, refresh=baseline_tests._refresh_nothing
+                )
+            else:
+                helper = sdk_tests.TestFirstTurnWarmContextIsEphemeral()
+                session = helper._first_turn("/report weekly")
+                session.messages[0].sequence = None
+                await helper._run(
+                    session,
+                    sdk_tests.TestFollowUpWarmContextCallSite._clients(queries),
+                    first_block=None,
+                    refresh=helper._no_refresh,
+                    expect_error=True,
+                )
     assert not queries
     assert "<skill_invocation>" not in (session.messages[0].content or "")
     errors = [event for event in captured if isinstance(event, StreamError)]

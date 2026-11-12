@@ -1,6 +1,6 @@
 """Tests for run-health helpers in execution_utils."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
 
@@ -14,7 +14,7 @@ def make_node_execution(
     output_data: dict | None = None,
     block_id: str = STORE_VALUE_BLOCK_ID,
 ) -> NodeExecutionResult:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return NodeExecutionResult(
         user_id="user-1",
         graph_id="graph-1",

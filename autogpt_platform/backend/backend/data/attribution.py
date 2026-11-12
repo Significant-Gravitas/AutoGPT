@@ -13,7 +13,7 @@ the session it happened to report in rather than a signup, and write-once
 would make that permanent.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import cast
 
 import prisma.errors
@@ -147,5 +147,5 @@ async def _is_recent_signup(user_id: str) -> bool:
         return False
     created_at = user.createdAt
     if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=UTC)
-    return datetime.now(UTC) - created_at <= SIGNUP_ATTRIBUTION_WINDOW
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - created_at <= SIGNUP_ATTRIBUTION_WINDOW

@@ -31,9 +31,8 @@ Run with the platform stack up::
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, AsyncIterator
 
 import pytest
 import pytest_asyncio
@@ -316,7 +315,7 @@ async def _backdate_edge(
     await driver.execute_query(
         "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() SET e.created_at = $created_at",
         uuid=edge_uuid,
-        created_at=(datetime.now(UTC) - age).isoformat(),
+        created_at=(datetime.now(timezone.utc) - age).isoformat(),
     )
 
 
@@ -506,7 +505,7 @@ async def test_sweep_supersedes_an_unhit_edge_last_recalled_before_the_window(
         "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() "
         "SET e.recall_count = 1, e.last_recalled_at = $recalled",
         uuid=edge_uuid,
-        recalled=stamp_time(datetime.now(UTC) - timedelta(days=40)),
+        recalled=stamp_time(datetime.now(timezone.utc) - timedelta(days=40)),
     )
 
     result = await run_ratification_pass(user_id)

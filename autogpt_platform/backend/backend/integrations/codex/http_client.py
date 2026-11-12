@@ -11,8 +11,7 @@ reports usage without any bespoke SSE handling.
 
 import logging
 import uuid
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, Mapping
 
 from openai import AsyncOpenAI
 

@@ -7,13 +7,13 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 
+import backend.data.redis_client as redis_client
 from backend.api.model import NotificationPayload
-from backend.data import redis_client
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
@@ -76,10 +76,10 @@ def _make_node_event(*, user_id: str, graph_id: str, gex_id: str, marker: str):
         status=ExecutionStatus.COMPLETED,
         input_data={"in": marker},
         output_data={"out": [marker]},
-        add_time=datetime.now(tz=UTC),
+        add_time=datetime.now(tz=timezone.utc),
         queue_time=None,
-        start_time=datetime.now(tz=UTC),
-        end_time=datetime.now(tz=UTC),
+        start_time=datetime.now(tz=timezone.utc),
+        end_time=datetime.now(tz=timezone.utc),
     )
 
 

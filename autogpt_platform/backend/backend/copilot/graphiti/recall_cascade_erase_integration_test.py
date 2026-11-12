@@ -13,7 +13,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -119,7 +119,7 @@ async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
         "SET e.status = 'superseded', e.expiration_reason = 'stale_fact', "
         "e.expired_at = $now",
         uuid=bakery.boule_flour,
-        now=datetime.now(UTC).isoformat(),
+        now=datetime.now(timezone.utc).isoformat(),
     )
     boule_turn = await _user_turn(driver, bakery.boule)
     await driver.execute_query(

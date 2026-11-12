@@ -35,9 +35,9 @@ from .model import (
     ChatSessionMetadata,
     _get_session_lock,
     cache_chat_session,
-    invalidate_session_cache,
 )
 from .model import get_chat_session as get_chat_session_cached
+from .model import invalidate_session_cache
 from .transports import resolve_default_chat_route
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -29,7 +29,7 @@ CATALOG = get_catalog()
 def _payload(models: list[CatalogModel], routing=None) -> CatalogPayload:
     return CatalogPayload(
         schema_version=CATALOG_SCHEMA_VERSION,
-        generated_at=datetime(2026, 7, 18, tzinfo=UTC),
+        generated_at=datetime(2026, 7, 18, tzinfo=timezone.utc),
         providers=[CatalogProvider(name="openai", display_name="OpenAI")],
         creators=[CatalogCreator(name="openai", display_name="OpenAI")],
         models=models,

@@ -69,7 +69,7 @@ def test_trial_conversion_welcomes_the_customer_in_both_formats():
 
 def test_inline_content_column_survives_style_removal():
     html = _email("payment_failed").html
-    stripped = re.sub(r"<style\b[^>]*>.*?</style>", "", html, flags=re.DOTALL)
+    stripped = re.sub(r"<style\b[^>]*>.*?</style>", "", html, flags=re.S)
     assert 'class="content"' in stripped
     assert "max-width:464px" in stripped
     assert "padding:0 22px" in stripped

@@ -9,8 +9,8 @@ and the timeout it applies are the real ones.
 import json
 import threading
 import time
-from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
 import pytest

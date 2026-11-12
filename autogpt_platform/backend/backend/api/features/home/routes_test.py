@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -21,7 +21,7 @@ app = fastapi.FastAPI()
 app.include_router(router)
 client = fastapi.testclient.TestClient(app)
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture(autouse=True)

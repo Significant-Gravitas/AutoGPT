@@ -14,7 +14,7 @@ import hmac
 import logging
 import secrets
 import time
-from collections.abc import Callable
+from typing import Callable, Optional
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Response
@@ -70,7 +70,7 @@ def is_enabled() -> bool:
 
 
 def register_routes(
-    app: FastAPI, on_installed: Callable[[str], None] | None = None
+    app: FastAPI, on_installed: Optional[Callable[[str], None]] = None
 ) -> None:
     # on_installed(team_id) fires after a successful (re)install so the adapter
     # can drop any cached client built from the workspace's previous token.
@@ -109,7 +109,7 @@ async def _handle_install(request: Request) -> Response:
 
 
 async def _handle_callback(
-    request: Request, on_installed: Callable[[str], None] | None = None
+    request: Request, on_installed: Optional[Callable[[str], None]] = None
 ) -> Response:
     if error := request.query_params.get("error"):
         # User declined, or Slack rejected the request.

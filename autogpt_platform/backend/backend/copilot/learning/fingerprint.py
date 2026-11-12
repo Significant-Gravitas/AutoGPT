@@ -23,7 +23,8 @@ import re
 from backend.data.skill_version_files import SkillVersionFile, version_package_hash
 
 _STOPWORDS = frozenset(
-    ["the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "then", "that", "this", "is", "are", "be", "as", "at", "by", "it", "its", "into", "from", "your", "you", "we", "our", "use", "using", "via", "each", "any", "all"]
+    "the a an and or to of in on for with then that this is are be as at by "
+    "it its into from your you we our use using via each any all".split()
 )
 _STEP_LINE_RE = re.compile(r"^(?:\d+[.)]|[-*•])\s+(\S.*)$")
 _TOKEN_RE = re.compile(r"[a-z0-9_]{2,}|\d")

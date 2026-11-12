@@ -14,9 +14,8 @@ never a recording.
 
 import base64
 import logging
-from collections.abc import Awaitable
-from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from datetime import datetime, timedelta, timezone
+from typing import Any, Awaitable, cast
 
 from backend.data import redis_client
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -209,7 +208,7 @@ async def audio_available(audio_path: str, now: datetime | None = None) -> bool:
     created = await blob_created_at(bucket, blob)
     if created is None:
         return False
-    return (now or datetime.now(UTC)) - created < audio_max_age()
+    return (now or datetime.now(timezone.utc)) - created < audio_max_age()
 
 
 async def delete_audio(audio_path: str) -> None:

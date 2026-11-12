@@ -644,8 +644,9 @@ async def test_a_cancelled_record_still_closes_the_turns_browser(database_manage
     with patch(
         "backend.copilot.executor.processor.close_browser_daemon",
         new=AsyncMock(return_value=False),
-    ) as close_browser, pytest.raises(asyncio.CancelledError):
-        await _run_turn(_entry(_weekly()), [_run_agent_success()])
+    ) as close_browser:
+        with pytest.raises(asyncio.CancelledError):
+            await _run_turn(_entry(_weekly()), [_run_agent_success()])
 
     close_browser.assert_awaited_once()
 

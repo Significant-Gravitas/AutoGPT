@@ -36,9 +36,8 @@ import asyncio
 import json
 import logging
 import threading
-from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -125,7 +124,7 @@ class PendingEntry(BaseModel):
         a careless producer (the queue is an open contract) can't write
         the poison — and ``_deserialize`` can't re-hydrate it."""
         if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
+            return value.replace(tzinfo=timezone.utc)
         return value
 
 
@@ -291,7 +290,7 @@ async def walk_once(api_key_for: Callable[[ProviderLiteral], str | None]) -> Non
     factory so this module doesn't need to know how settings are
     organized.
     """
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     entries = await list_pending()
     for entry in entries:
         try:
@@ -707,7 +706,7 @@ def _bump_delay(current_seconds: int) -> int:
 
 
 def _next_poll_at(delay_seconds: int) -> datetime:
-    return datetime.now(UTC).replace(microsecond=0) + _seconds(delay_seconds)
+    return datetime.now(timezone.utc).replace(microsecond=0) + _seconds(delay_seconds)
 
 
 def _seconds(s: int):

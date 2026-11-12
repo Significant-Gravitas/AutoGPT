@@ -11,7 +11,7 @@ heavy dependencies that are irrelevant for error handling tests.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import aiohttp
@@ -313,7 +313,7 @@ def test_a_download_that_cannot_read_its_content(
     storage_error: Exception,
     expected_status: int,
 ) -> None:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     mocker.patch(
         "backend.api.external.v2.files.get_workspace",
         new_callable=AsyncMock,

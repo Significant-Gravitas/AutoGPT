@@ -1,6 +1,6 @@
 import time
 import urllib.parse
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from pydantic import SecretStr
 
@@ -35,7 +35,7 @@ class TodoistOAuthHandler(BaseOAuthHandler):
         self.redirect_uri = redirect_uri
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: str | None
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
     ) -> str:
         params = {
             "client_id": self.client_id,
@@ -46,7 +46,7 @@ class TodoistOAuthHandler(BaseOAuthHandler):
         return f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: str | None
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         """Exchange authorization code for access tokens"""
 

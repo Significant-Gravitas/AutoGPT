@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import prisma.models
@@ -102,7 +102,7 @@ async def test_a_live_claim_is_left_to_its_run_and_a_dead_one_is_taken_over(serv
             await reviews.get_review_for_revision(user, source.id, source.revision, 1)
             == live
         )
-        died_at = datetime.now(UTC) - timedelta(
+        died_at = datetime.now(timezone.utc) - timedelta(
             seconds=reviews.LIVE_REVIEW_SECONDS + 1
         )
         await prisma.models.SkillLearningReview.prisma().update(
@@ -149,7 +149,7 @@ async def test_another_runs_write_leaves_a_live_claim_alone(server):
         await prisma.models.SkillLearningReview.prisma().update(
             where={"id": live.id},
             data={
-                "updatedAt": datetime.now(UTC)
+                "updatedAt": datetime.now(timezone.utc)
                 - timedelta(seconds=reviews.LIVE_REVIEW_SECONDS + 1)
             },
         )

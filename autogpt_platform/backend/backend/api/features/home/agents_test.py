@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 
 from .agents import compose_agent_statuses, compose_team_summary
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 
 
 def _expert(
@@ -118,7 +118,7 @@ def test_spend_lands_on_the_matching_expert_and_totals_on_the_team() -> None:
 
 
 def test_next_run_time_comes_from_the_expert_index() -> None:
-    earliest = datetime(2026, 8, 10, 10, 0, tzinfo=UTC)
+    earliest = datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc)
 
     statuses = compose_agent_statuses(
         experts=[_expert(expert_id="scheduled"), _expert(expert_id="idle")],

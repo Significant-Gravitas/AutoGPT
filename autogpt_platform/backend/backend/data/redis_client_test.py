@@ -15,7 +15,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.retry import Retry
 
-from backend.data import redis_client
+import backend.data.redis_client as redis_client
 from backend.util.testing import is_tcp_port_reachable
 
 

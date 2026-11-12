@@ -1,8 +1,7 @@
 import logging
 import time
-from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from prisma.enums import ContentType
 

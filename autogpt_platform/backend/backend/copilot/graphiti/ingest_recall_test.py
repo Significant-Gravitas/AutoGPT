@@ -9,7 +9,7 @@ The live runs are ``ingest_recall_integration_test.py`` and
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,7 +22,7 @@ from .recall import is_recallable_episode, recallable_episode_predicate
 from .recall_fake_redis import FakeRedis
 from .scope import write_lock_key
 
-_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
 _LOCK = write_lock_key("user_test")
 # What the episode store holds, newest first as the query orders them.
 _STORED = [

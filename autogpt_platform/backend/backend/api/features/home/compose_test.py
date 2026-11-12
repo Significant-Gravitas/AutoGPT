@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
@@ -9,7 +9,7 @@ from backend.data.execution_cost_summary import (
 
 from .compose import compose_home_dashboard
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 
 
 def _expert(

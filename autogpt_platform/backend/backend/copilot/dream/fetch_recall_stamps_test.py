@@ -5,7 +5,7 @@ the pass's durable record (``data/dream_pass_update.py``). A fact without
 stamps, or a bundle written before them, reads as never recalled."""
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -45,7 +45,7 @@ def _fact(uuid: str, **stamps: object) -> FactRow:
 
 
 def _bundle(*facts: FactRow) -> DreamInput:
-    now = datetime(2026, 9, 28, 3, tzinfo=UTC)
+    now = datetime(2026, 9, 28, 3, tzinfo=timezone.utc)
     return DreamInput(
         user_id="u1",
         group_id="user_u1",

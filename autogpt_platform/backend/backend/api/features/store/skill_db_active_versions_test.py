@@ -27,7 +27,7 @@ def _row(slug: str, **overrides) -> skill_db._ActiveVersionRow:
 
 
 def _legacy_version(version_id: str) -> prisma.models.SkillListingVersion:
-    now = datetime.datetime.now(datetime.UTC)
+    now = datetime.datetime.now(datetime.timezone.utc)
     return prisma.models.SkillListingVersion(
         id=version_id,
         version=2,

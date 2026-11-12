@@ -306,9 +306,10 @@ async def test_a_stripe_error_reaches_the_caller(failing):
         patch(
             "backend.data.credit.stripe.Subscription.cancel_async",
             stripe_methods["cancel_async"],
-        ),pytest.raises(stripe.StripeError)
+        ),
     ):
-        await credit.cancel_all_subscriptions_now("user-1")
+        with pytest.raises(stripe.StripeError):
+            await credit.cancel_all_subscriptions_now("user-1")
 
 
 @pytest.mark.asyncio

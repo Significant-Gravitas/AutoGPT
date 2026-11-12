@@ -19,8 +19,9 @@ from prisma.enums import ReviewStatus
 from backend.copilot.ai_spans import set_turn_span, trace_id_for
 from backend.copilot.context import set_execution_context
 from backend.copilot.executor.utils import CoPilotExecutionEntry
-from backend.copilot.gate import held, shadow
+from backend.copilot.gate import held
 from backend.copilot.gate import review as review_store
+from backend.copilot.gate import shadow
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads_test import _Fetch, _plain_output, _Rows
 from backend.copilot.gate.tool_images_test import _ImageRead, image

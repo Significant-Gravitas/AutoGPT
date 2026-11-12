@@ -2,7 +2,7 @@
 Tests for cloud storage utilities.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -115,7 +115,7 @@ class TestCloudStorageHandler:
         mock_async_client = AsyncMock()
         mock_get_async_client.return_value = mock_async_client
 
-        before = datetime.now(UTC)
+        before = datetime.now(timezone.utc)
         await handler.store_file(
             b"audio",
             "brain-dump-rec.webm",
@@ -319,8 +319,8 @@ class TestCloudStorageHandler:
         mock_get_async_client.return_value = mock_async_client
 
         # Mock list_objects response with expired and valid files
-        expired_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
-        valid_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        expired_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        valid_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
         mock_list_response = {
             "items": [
@@ -357,7 +357,7 @@ class TestCloudStorageHandler:
         mock_get_async_client.return_value = mock_async_client
 
         # Test with expired file
-        expired_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        expired_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         mock_async_client.download_metadata = AsyncMock(
             return_value={"metadata": {"expires_at": expired_time}}
         )
@@ -366,7 +366,7 @@ class TestCloudStorageHandler:
         assert result is True
 
         # Test with valid file
-        valid_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        valid_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         mock_async_client.download_metadata = AsyncMock(
             return_value={"metadata": {"expires_at": valid_time}}
         )

@@ -5,7 +5,7 @@ cap would hand its slot to another target, and the pass could then demote
 more than it would without usage data (#13776's first redo did, 1 -> 2)."""
 
 import random
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.copilot.graphiti.recall_stamp import stamp_time
 
@@ -16,7 +16,7 @@ from .schemas import DreamDemotion, DreamOperations, EntityInvalidation
 
 def _fact(uuid: str, recalled_days_ago: float | None = None) -> FactRow:
     last = (
-        stamp_time(datetime.now(UTC) - timedelta(days=recalled_days_ago))
+        stamp_time(datetime.now(timezone.utc) - timedelta(days=recalled_days_ago))
         if recalled_days_ago is not None
         else None
     )
@@ -37,7 +37,7 @@ def _fact(uuid: str, recalled_days_ago: float | None = None) -> FactRow:
 
 
 def _bundle(facts: list[FactRow]) -> DreamInput:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return DreamInput(
         user_id="u",
         group_id="g",

@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 
 from cryptography.fernet import Fernet
 
@@ -8,7 +9,7 @@ ENCRYPTION_KEY = Settings().secrets.encryption_key
 
 
 class JSONCryptor:
-    def __init__(self, key: str | None = None):
+    def __init__(self, key: Optional[str] = None):
         # Use provided key or get from environment
         self.key = key or ENCRYPTION_KEY
         if not self.key:

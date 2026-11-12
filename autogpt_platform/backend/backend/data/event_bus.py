@@ -1,11 +1,13 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Generator
 from typing import (
     TYPE_CHECKING,
     Any,
+    AsyncGenerator,
+    Generator,
     Generic,
+    Optional,
     TypeVar,
 )
 
@@ -159,7 +161,7 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         own client/pubsub locally so concurrent calls on a singleton (e.g.
         ``_webhook_event_bus``) cannot clobber each other's connection.
         """
-        return
+        return None
 
     async def publish_event(self, event: M, channel_key: str):
         """Publish via SPUBLISH; swallow failures so Redis blips don't crash callers."""
@@ -180,7 +182,7 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         # a plain AsyncRedis to that node. Both client and pubsub stay
         # generator-local — concurrent listen_events on the same instance
         # (e.g. the singleton _webhook_event_bus) must not share state.
-        client: AsyncRedis = await redis.connect_sharded_pubsub_async(
+        client: "AsyncRedis" = await redis.connect_sharded_pubsub_async(
             full_channel_name
         )
         pubsub: AsyncPubSub = client.pubsub()
@@ -205,7 +207,7 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
                 )
 
     async def wait_for_event(
-        self, channel_key: str, timeout: float | None = None
+        self, channel_key: str, timeout: Optional[float] = None
     ) -> M | None:
         try:
             return await asyncio.wait_for(

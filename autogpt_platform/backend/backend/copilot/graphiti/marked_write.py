@@ -24,7 +24,7 @@ the pass's ``ingest.IngestionCompletion``.
 import logging
 import uuid as uuidlib
 from collections.abc import Awaitable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from graphiti_core import Graphiti
@@ -104,7 +104,7 @@ async def placed(
         source_description=payload["source_description"],
         source=payload["source"].value,
         content=payload["episode_body"],
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
         valid_at=payload["reference_time"],
     )
 

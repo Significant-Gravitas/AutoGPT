@@ -123,10 +123,11 @@ class TestAnthropicToolPath:
         fake = tool_response('{"facts": "not a list"}', prompt_tokens=7)
         with patch(ROUTING, return_value=ANTHROPIC), patch(
             CALL_PROVIDER, AsyncMock(return_value=fake)
-        ), pytest.raises(InferenceError, match="did not match") as exc_info:
-            await structured_complete(
-                sync_ctx("anthropic", "claude-sonnet-5"), MESSAGES, SampleOutput
-            )
+        ):
+            with pytest.raises(InferenceError, match="did not match") as exc_info:
+                await structured_complete(
+                    sync_ctx("anthropic", "claude-sonnet-5"), MESSAGES, SampleOutput
+                )
         assert exc_info.value.usage is not None
         assert exc_info.value.usage.input_tokens == 7
 
@@ -135,10 +136,11 @@ class TestAnthropicToolPath:
         call_provider = AsyncMock()
         with patch(ROUTING, return_value=ANTHROPIC), patch(
             CALL_PROVIDER, call_provider
-        ), pytest.raises(InferenceError, match="requires an Anthropic model"):
-            await structured_complete(
-                sync_ctx("anthropic", "openai/gpt-4.1-mini"), MESSAGES, SampleOutput
-            )
+        ):
+            with pytest.raises(InferenceError, match="requires an Anthropic model"):
+                await structured_complete(
+                    sync_ctx("anthropic", "openai/gpt-4.1-mini"), MESSAGES, SampleOutput
+                )
         call_provider.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -241,9 +243,10 @@ async def test_truncated_tool_output_fails_with_usage(arguments):
     fake.stop_reason = "max_tokens"
     with patch(ROUTING, return_value=ANTHROPIC), patch(
         CALL_PROVIDER, AsyncMock(return_value=fake)
-    ), pytest.raises(InferenceError, match="max_tokens") as caught:
-        await structured_complete(
-            sync_ctx("anthropic", "claude-sonnet-5"), MESSAGES, SampleOutput
-        )
+    ):
+        with pytest.raises(InferenceError, match="max_tokens") as caught:
+            await structured_complete(
+                sync_ctx("anthropic", "claude-sonnet-5"), MESSAGES, SampleOutput
+            )
     assert caught.value.usage.input_tokens == 12
     assert caught.value.usage.output_tokens == 4096

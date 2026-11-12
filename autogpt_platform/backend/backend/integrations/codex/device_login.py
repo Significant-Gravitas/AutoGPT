@@ -8,9 +8,8 @@ to ``auth.openai.com``.
 
 import asyncio
 import logging
-from collections.abc import Awaitable
-from datetime import UTC, datetime
-from typing import TypeVar
+from datetime import datetime, timezone
+from typing import Awaitable, TypeVar
 
 from backend.integrations.codex.chatgpt_auth import (
     ChatGPTDeviceCode,
@@ -42,7 +41,7 @@ class CodexHttpDeviceLogin:
         *,
         timeout_seconds: float,
         sleep=asyncio.sleep,
-        now=lambda: datetime.now(UTC),
+        now=lambda: datetime.now(timezone.utc),
     ) -> None:
         self._device = device
         self._timeout_seconds = timeout_seconds

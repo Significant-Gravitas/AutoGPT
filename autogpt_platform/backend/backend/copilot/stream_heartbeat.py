@@ -148,7 +148,7 @@ class SilenceWatchdog:
                     break  # one emission per tick; suppression window paces the next tier
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 — defensive: keep loop alive on bugs in emit
             logger.exception("[SilenceWatchdog] unexpected error in tick loop")
 
     async def _safe_emit(self, message: str) -> None:
@@ -158,7 +158,7 @@ class SilenceWatchdog:
         """
         try:
             await self._emit_status(StreamStatus(message=message))
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.warning(
                 "[SilenceWatchdog] emit_status raised; continuing", exc_info=True
             )

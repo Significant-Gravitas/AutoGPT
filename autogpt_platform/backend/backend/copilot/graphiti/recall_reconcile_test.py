@@ -11,7 +11,7 @@ sweep is in ``provenance_pending_test.py``; the live runs are
 ``recall_marker_crash_integration_test.py``.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,7 +19,7 @@ import pytest
 from . import recall_reconcile
 from .recall_citations import Citations
 
-_NOW = datetime.now(UTC)
+_NOW = datetime.now(timezone.utc)
 
 
 def _marker(
@@ -217,11 +217,11 @@ class TestInFlight:
     async def test_counts_the_pending_writes_citing_what_it_is_given(self) -> None:
         driver = _driver([{"count": 2}])
         expiry = timedelta(seconds=recall_reconcile.MARKER_EXPIRY_SECONDS)
-        before = datetime.now(UTC)
+        before = datetime.now(timezone.utc)
 
         count = await recall_reconcile.in_flight(driver, ["f1"], ["ep1"])
 
-        after = datetime.now(UTC)
+        after = datetime.now(timezone.utc)
         assert count == 2
         [read] = driver.execute_query.await_args_list
         assert read.args[0] == recall_reconcile.IN_FLIGHT_QUERY

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -109,7 +109,7 @@ def _entry(
     delay: int = INITIAL_POLL_DELAY_SECONDS,
     payload: dict[str, Any] | None = None,
 ) -> PendingEntry:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return PendingEntry(
         provider="anthropic",
         provider_batch_id=provider_batch_id,
@@ -141,7 +141,7 @@ class TestQueueRoundtrip:
         entry = _entry(delay=30)
         await enqueue_pending(entry)
         entry.poll_delay_seconds = 120
-        entry.next_poll_at = datetime.now(UTC) + timedelta(seconds=120)
+        entry.next_poll_at = datetime.now(timezone.utc) + timedelta(seconds=120)
         await update_pending(entry)
         result = (await list_pending())[0]
         assert result.poll_delay_seconds == 120
@@ -314,7 +314,7 @@ class TestWalkOnceDispatch:
     @pytest.mark.asyncio
     async def test_skips_entry_whose_next_poll_is_in_future(self, fake_redis):
         register_handler("dream_pass", AsyncMock())
-        future_time = datetime.now(UTC) + timedelta(seconds=300)
+        future_time = datetime.now(timezone.utc) + timedelta(seconds=300)
         await enqueue_pending(_entry(next_poll_at=future_time))
         poll_mock = AsyncMock(return_value="ended")
         with patch("backend.executor.batch_executor.poll_batch", poll_mock):
@@ -334,7 +334,7 @@ class TestWalkOnceDispatch:
             captured.append(list(rows))
 
         register_handler("dream_pass", fake_handler)
-        long_ago = datetime.now(UTC) - timedelta(
+        long_ago = datetime.now(timezone.utc) - timedelta(
             seconds=MAX_BATCH_LIFETIME_SECONDS + 1
         )
         await enqueue_pending(_entry(submitted_at=long_ago))
@@ -363,7 +363,7 @@ class TestWalkOnceDispatch:
             captured.append(list(rows))
 
         register_handler("dream_pass", fake_handler)
-        long_ago = datetime.now(UTC) - timedelta(
+        long_ago = datetime.now(timezone.utc) - timedelta(
             seconds=MAX_BATCH_LIFETIME_SECONDS + 1
         )
         await enqueue_pending(_entry(submitted_at=long_ago))
@@ -543,7 +543,7 @@ class TestShouldDispatch:
         handler = AsyncMock()
         check = AsyncMock(return_value=False)
         register_handler("dream_pass", handler, should_dispatch=check)
-        long_ago = datetime.now(UTC) - timedelta(
+        long_ago = datetime.now(timezone.utc) - timedelta(
             seconds=MAX_BATCH_LIFETIME_SECONDS + 1
         )
         await enqueue_pending(_entry(submitted_at=long_ago))
@@ -558,7 +558,7 @@ class TestShouldDispatch:
     async def test_an_entry_not_yet_due_is_not_checked(self, fake_redis):
         check = AsyncMock(return_value=False)
         register_handler("dream_pass", AsyncMock(), should_dispatch=check)
-        later = datetime.now(UTC) + timedelta(minutes=5)
+        later = datetime.now(timezone.utc) + timedelta(minutes=5)
         await enqueue_pending(_entry(next_poll_at=later))
 
         await walk_once(api_key_for=lambda p: "sk-ant-test")
@@ -618,7 +618,7 @@ class TestUnknownNamespace:
         once the entry crosses MAX_BATCH_LIFETIME_SECONDS the timeout
         path claims + removes it even with no handler registered
         (_dispatch_error no-ops when the handler is absent)."""
-        long_ago = datetime.now(UTC) - timedelta(
+        long_ago = datetime.now(timezone.utc) - timedelta(
             seconds=MAX_BATCH_LIFETIME_SECONDS + 1
         )
         await enqueue_pending(
@@ -681,7 +681,7 @@ class TestWalkCrashGuard:
         and brick every entry behind it in hash order."""
         stub, store = fake_redis
         naive_iso = (
-            (datetime.now(UTC) - timedelta(seconds=60))
+            (datetime.now(timezone.utc) - timedelta(seconds=60))
             .replace(tzinfo=None)
             .isoformat()
         )
@@ -701,8 +701,8 @@ class TestWalkCrashGuard:
         register_handler("dream_pass", AsyncMock())
 
         entries = await list_pending()
-        assert entries[0].submitted_at.tzinfo == UTC
-        assert entries[0].next_poll_at.tzinfo == UTC
+        assert entries[0].submitted_at.tzinfo == timezone.utc
+        assert entries[0].next_poll_at.tzinfo == timezone.utc
 
         with patch(
             "backend.executor.batch_executor.poll_batch",
@@ -722,8 +722,8 @@ class TestWalkCrashGuard:
             submitted_at=naive,
             next_poll_at=naive,
         )
-        assert entry.submitted_at.tzinfo == UTC
-        assert entry.next_poll_at.tzinfo == UTC
+        assert entry.submitted_at.tzinfo == timezone.utc
+        assert entry.next_poll_at.tzinfo == timezone.utc
 
 
 class TestDispatchErrorGuard:
@@ -752,9 +752,9 @@ class TestBackoffMath:
         assert _bump_delay(MAX_POLL_DELAY_SECONDS * 10) == MAX_POLL_DELAY_SECONDS
 
     def test_next_poll_at_is_in_future(self):
-        before = datetime.now(UTC)
+        before = datetime.now(timezone.utc)
         result = _next_poll_at(60)
-        after = datetime.now(UTC) + timedelta(seconds=60)
+        after = datetime.now(timezone.utc) + timedelta(seconds=60)
         assert before + timedelta(seconds=59) <= result <= after + timedelta(seconds=1)
 
 

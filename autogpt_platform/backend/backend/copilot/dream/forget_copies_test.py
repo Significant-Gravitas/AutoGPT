@@ -10,7 +10,7 @@ row and its transitions) and ``backend/copilot/db_dream_narrative_test.py``
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -54,7 +54,7 @@ from .schemas import (
 from .store import record_batch_complete, record_sync_outcome, write_stop
 
 _SCOPE = MemoryScope.for_user("u1")
-_NOW = datetime.now(UTC)
+_NOW = datetime.now(timezone.utc)
 _FORGOTTEN = "fact-forgotten"
 _SENTENCE = "Alice runs the Atlas launch"
 

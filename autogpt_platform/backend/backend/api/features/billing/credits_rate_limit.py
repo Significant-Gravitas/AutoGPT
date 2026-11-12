@@ -118,7 +118,14 @@ async def enforce_subscription_status_rate_limit(
             _incr_window(key),
             timeout=SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS,
         )
-    except (TimeoutError, RedisError, RedisClusterException, ConnectionError, OSError, ValueError) as e:
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        asyncio.TimeoutError,
+        ValueError,
+    ) as e:
         logger.warning(
             "Subscription-status rate-limit check failed open for user %s: %s",
             user_id,

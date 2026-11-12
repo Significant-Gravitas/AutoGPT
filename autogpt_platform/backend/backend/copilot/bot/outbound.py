@@ -18,7 +18,7 @@ thread creation); this module never imports ``discord``.
 """
 
 import logging
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -46,17 +46,17 @@ class DeliveryResult(BaseModel):
 
     ok: bool
     kind: Literal["message", "thread", "dm"]
-    channel_id: str | None = None
-    ref_id: str | None = None
-    url: str | None = None
-    error: str | None = None
+    channel_id: Optional[str] = None
+    ref_id: Optional[str] = None
+    url: Optional[str] = None
+    error: Optional[str] = None
 
 
 class EditResult(BaseModel):
     """Outcome of a proactive edit, shaped for a tool/LLM to relay."""
 
     ok: bool
-    error: str | None = None
+    error: Optional[str] = None
 
 
 async def list_channels(
@@ -270,7 +270,7 @@ async def _resolve_target(
     platform: str,
     user_id: str,
     channel: str,
-) -> tuple[str | None, str | None]:
+) -> tuple[Optional[str], Optional[str]]:
     """Resolve a channel reference to an authorized channel ID.
 
     Returns ``(channel_id, None)`` on success or ``(None, error_code)``. Both

@@ -22,8 +22,7 @@ here without editing their text:
 import logging
 import re
 import shlex
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, Mapping
 
 from pydantic import BaseModel, ConfigDict
 

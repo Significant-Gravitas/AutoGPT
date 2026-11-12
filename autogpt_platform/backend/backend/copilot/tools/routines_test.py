@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -267,7 +267,7 @@ async def test_the_owner_can_still_ask_for_one_that_touches_nothing(experts):
 async def test_a_one_shot_is_recorded_as_a_time_not_a_cadence(experts):
     """ "Check the deploy in an hour" gets a row like anything else, so it can
     be listed, reworded and cancelled rather than living only as a job."""
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
     await ScheduleRoutineTool()._execute(
         "user-1",
         _session(None),
@@ -400,7 +400,7 @@ async def test_the_confirmation_of_a_one_shot_names_its_time(experts):
     experts.enable_routine.return_value = _routine(
         enabled=True,
         crons=[],
-        run_at=datetime(2026, 9, 20, 14, 30, tzinfo=UTC),
+        run_at=datetime(2026, 9, 20, 14, 30, tzinfo=timezone.utc),
     )
     result = await ScheduleRoutineTool()._execute(
         "user-1", _session("expert-a"), routine_id="routine-1", enabled=True

@@ -545,8 +545,9 @@ async def test_a_package_write_swaps_every_file_or_none(
         with patch(
             "backend.data.workspace_skill._replace_root",
             AsyncMock(side_effect=RuntimeError("database unavailable")),
-        ), pytest.raises(RuntimeError, match="database unavailable"):
-            await manager.write_skill_package(**update)
+        ):
+            with pytest.raises(RuntimeError, match="database unavailable"):
+                await manager.write_skill_package(**update)
         assert (await contents(), blobs()) == (before, stored)
 
         await manager.write_skill_package(**update)

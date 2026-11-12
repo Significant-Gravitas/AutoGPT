@@ -8,7 +8,7 @@ The live runs, through the production worker, are
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -440,7 +440,7 @@ def _failing_parser(text: str) -> None:
     raise RuntimeError("parser bug")
 
 
-_THEN = datetime(2026, 9, 27, tzinfo=UTC)
+_THEN = datetime(2026, 9, 27, tzinfo=timezone.utc)
 
 
 def _edge(uuid: str, fact: str) -> EntityEdge:
@@ -545,7 +545,7 @@ class TestAGuardThatHitsAnError:
 
 
 def _episode_record(uuid: str) -> dict[str, Any]:
-    when = datetime(2026, 10, 1, tzinfo=UTC)
+    when = datetime(2026, 10, 1, tzinfo=timezone.utc)
     return {
         "uuid": uuid,
         "name": f"conversation_{uuid}",

@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import copy
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
@@ -1507,7 +1507,8 @@ class TestMidLoopPendingFlushOrdering:
             recorded = "".join(
                 m.content or "" for m in state.session_messages if m.role == "assistant"
             )
-            final_text = final_text.removeprefix(recorded)
+            if final_text.startswith(recorded):
+                final_text = final_text[len(recorded) :]
         if final_text.strip():
             session_messages.append(ChatMessage(role="assistant", content=final_text))
 
@@ -2085,12 +2086,13 @@ class TestBaselineReasoningStreaming:
         with patch(
             "backend.copilot.baseline.service._get_main_client",
             return_value=mock_client,
-        ), pytest.raises(RuntimeError):
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "hi"}],
-                tools=[],
-                state=state,
-            )
+        ):
+            with pytest.raises(RuntimeError):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
 
         types = [type(e).__name__ for e in state.emitted_events]
         # The reasoning block was opened, the exception fired, and the
@@ -3130,10 +3132,10 @@ def _staging_edge() -> EntityEdge:
         group_id="user_u-1",
         source_node_uuid="staging",
         target_node_uuid="k3s",
-        created_at=datetime(2025, 6, 1, tzinfo=UTC),
+        created_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
         name="runs_on",
         fact="the staging environment runs on k3s",
-        valid_at=datetime(2025, 1, 1, tzinfo=UTC),
+        valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         attributes={"status": "active"},
     )
 
@@ -3976,6 +3978,7 @@ async def test_a_command_runs_with_the_turns_sandbox_bound():
 
     async def resolve(*_args, **_kwargs):
         seen.append(get_current_sandbox())
+        return None
 
     await _run_baseline_turn(
         _baseline_session("/report weekly"),

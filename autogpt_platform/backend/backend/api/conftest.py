@@ -5,7 +5,6 @@ setup_test_user, and setup_admin_user are defined in the parent conftest.py
 (backend/conftest.py) and are available here automatically.
 """
 
-from datetime import UTC
 from types import SimpleNamespace
 
 import pytest
@@ -174,14 +173,14 @@ def auth_row(mocker, real_ban_lookup):
     ``is_user_banned``: ``auth_row("banned" | "until_tomorrow" | "lapsed" |
     "unbanned") -> user_id``."""
     import uuid
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from prisma.models import AuthUser
 
     from backend.data import db
     from backend.data import user as user_module
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     states = {
         "banned": (True, None),
         "until_tomorrow": (True, now + timedelta(days=1)),

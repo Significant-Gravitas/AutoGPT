@@ -118,10 +118,11 @@ async def test_runtime_snapshot_times_out_during_credential_contention() -> None
     with patch(
         "backend.integrations.codex.transport.IntegrationCredentialsManager",
         return_value=manager,
-    ), pytest.raises(CodexCredentialBusyError, match="codex_credential_busy"):
-        await CodexTransport().acquire_runtime_lease(
-            "user-a", "cred-id", lock_timeout_seconds=0.01
-        )
+    ):
+        with pytest.raises(CodexCredentialBusyError, match="codex_credential_busy"):
+            await CodexTransport().acquire_runtime_lease(
+                "user-a", "cred-id", lock_timeout_seconds=0.01
+            )
 
 
 @pytest.mark.asyncio

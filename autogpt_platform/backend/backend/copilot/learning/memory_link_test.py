@@ -3,7 +3,7 @@ the account's for an account skill, the expert's for an expert's, through
 ``enqueue_episode`` as it is declared (the episode's scope its first
 argument)."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -36,7 +36,7 @@ def _version(expert_id: str | None) -> SkillVersionRecord:
         state_reason="",
         blocked_pattern_class=None,
         blocked_step=None,
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
     )
 
 

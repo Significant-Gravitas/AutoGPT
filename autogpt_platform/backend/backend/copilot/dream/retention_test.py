@@ -4,7 +4,7 @@ and logged."""
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 from prisma.enums import DreamPassRoute, DreamPassStatus, DreamPassTrigger
@@ -14,7 +14,7 @@ from backend.data.dream_pass_models import DreamPassDraft
 from . import retention as retention_mod
 from .retention import delete_expired_records
 
-_NOW = datetime.now(UTC)
+_NOW = datetime.now(timezone.utc)
 
 
 class TestRetention:

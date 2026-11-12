@@ -43,10 +43,11 @@ async def test_scope_restores_parent_even_on_failure(store, exit_error):
     assert get_trial_cost_context("user-1") is None
     async with trial_cost_context("user-1"):
         parent = get_trial_cost_context("user-1")
-        with pytest.raises(exit_error), restore_cost_context(
-            None, TrialCostContext(user_id=None, trial_id=None)
-        ):
-            raise exit_error()
+        with pytest.raises(exit_error):
+            with restore_cost_context(
+                None, TrialCostContext(user_id=None, trial_id=None)
+            ):
+                raise exit_error()
         assert get_trial_cost_context("user-1") is parent
     assert get_trial_cost_context("user-1") is None
     store.get_usage_activation_state.assert_awaited_once_with("user-1")

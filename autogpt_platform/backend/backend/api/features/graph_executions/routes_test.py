@@ -1,6 +1,6 @@
 """Tests for the execution routes."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -192,7 +192,7 @@ def test_executions_cost_summary_returns_payload(
                 execution_id="exec-1",
                 graph_id="g-1",
                 cost_cents=2500,
-                started_at=datetime(2026, 5, 10, 12, 0, tzinfo=UTC),
+                started_at=datetime(2026, 5, 10, 12, 0, tzinfo=timezone.utc),
                 status=AgentExecutionStatus.COMPLETED,
                 duration_seconds=45.5,
                 node_error_count=0,
@@ -263,8 +263,8 @@ def test_executions_cost_summary_forwards_since_until(
     assert response.status_code == 200
     kwargs = mock_fn.await_args.kwargs
     assert kwargs["user_id"] == test_user_id
-    assert kwargs["since"] == datetime(2026, 5, 1, tzinfo=UTC)
-    assert kwargs["until"] == datetime(2026, 5, 15, tzinfo=UTC)
+    assert kwargs["since"] == datetime(2026, 5, 1, tzinfo=timezone.utc)
+    assert kwargs["until"] == datetime(2026, 5, 15, tzinfo=timezone.utc)
     assert kwargs["top_runs_limit"] == 5
 
 

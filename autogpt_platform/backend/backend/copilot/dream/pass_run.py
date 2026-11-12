@@ -14,7 +14,7 @@ the run (``hold``) for the renewals at each step (``lease.py``).
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -56,7 +56,7 @@ class DreamPassRun(BaseModel):
         return cls(
             user_id=user_id,
             pass_id=str(uuid.uuid4()),
-            started_at=datetime.now(UTC),
+            started_at=datetime.now(timezone.utc),
             monotonic_start=asyncio.get_event_loop().time(),
             execution_path=execution_path,
             force=force,
@@ -107,7 +107,7 @@ class DreamPassRun(BaseModel):
             user_id=self.user_id,
             pass_id=self.pass_id,
             started_at=self.started_at,
-            completed_at=datetime.now(UTC),
+            completed_at=datetime.now(timezone.utc),
             elapsed_seconds=self.elapsed_seconds(),
             execution_path=self.execution_path,
             error=error,

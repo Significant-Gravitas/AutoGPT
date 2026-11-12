@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,7 +17,7 @@ from .service import _get_pending_questions, _get_work_events, build_home_dashbo
 def _execution() -> GraphExecutionMeta:
     # `build_home_dashboard` reads the live clock, so anchor the run to now — a
     # fixed timestamp would drop out of the 24h briefing window over time.
-    ran_at = datetime.now(UTC) - timedelta(minutes=5)
+    ran_at = datetime.now(timezone.utc) - timedelta(minutes=5)
     return GraphExecutionMeta(
         id="exec-1",
         user_id="user-1",
@@ -119,11 +119,11 @@ def _stored_briefing(**overrides) -> BriefingContent:
         summary="Filed the report. Nothing else was pending.",
         title="Filed the report.",
         detail="Nothing else was pending.",
-        occurred_at=datetime.now(UTC) - timedelta(hours=1),
+        occurred_at=datetime.now(timezone.utc) - timedelta(hours=1),
         link=None,
     )
     return BriefingContent(
-        generated_at=datetime.now(UTC) - timedelta(minutes=30),
+        generated_at=datetime.now(timezone.utc) - timedelta(minutes=30),
         timezone="UTC",
         zero_expert_fallback=True,
         run_items=[item],
@@ -247,7 +247,7 @@ async def test_briefing_date_comes_from_the_requests_own_clock(
     """Loading the source data can cross local midnight. The row looked up has
     to be the one for the date the rest of the dashboard was composed against —
     a second clock read would fetch tomorrow's row for today's dashboard."""
-    just_before_midnight = datetime(2026, 8, 10, 23, 59, 59, tzinfo=UTC)
+    just_before_midnight = datetime(2026, 8, 10, 23, 59, 59, tzinfo=timezone.utc)
     clock = MagicMock(wraps=datetime)
     # Any read after the first lands on the next day; only one is allowed.
     clock.now.side_effect = [
@@ -336,7 +336,7 @@ async def test_a_paused_scheduled_chat_needs_attention(
                     reason="connection",
                     provider="discord",
                     summary="Paused: can't use Discord",
-                    paused_at=datetime.now(UTC),
+                    paused_at=datetime.now(timezone.utc),
                 )
             ]
         ),
@@ -465,7 +465,7 @@ def _file_event(event_id: str, name: str, file_id: str) -> ActivityEvent:
     return ActivityEvent(
         id=event_id,
         user_id="user-1",
-        created_at=datetime(2026, 10, 23, 11, 0, tzinfo=UTC),
+        created_at=datetime(2026, 10, 23, 11, 0, tzinfo=timezone.utc),
         category="FILE",
         event_type="file.created",
         title=name,
@@ -489,7 +489,7 @@ async def test_recent_work_drops_files_marked_as_ottos_own(mocker: MockerFixture
     )
 
     events = await _get_work_events(
-        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=UTC)
+        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
     )
 
     assert [event.title for event in events] == ["sticker-01.png"]
@@ -513,7 +513,7 @@ async def test_recent_work_keeps_actions_when_the_file_check_fails(
     )
 
     events = await _get_work_events(
-        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=UTC)
+        user_id="user-1", since=datetime(2026, 10, 16, tzinfo=timezone.utc)
     )
 
     assert [event.title for event in events] == ["Airtable Create Table"]

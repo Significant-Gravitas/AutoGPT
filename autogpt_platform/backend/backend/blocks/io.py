@@ -1,6 +1,6 @@
 import copy
 from datetime import date, time
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import AliasChoices, Field
 
@@ -212,7 +212,7 @@ class AgentOutputBlock(Block):
 
 class AgentShortTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: ShortTextType | None = SchemaField(
+        value: Optional[ShortTextType] = SchemaField(
             description="Short text input.",
             default=None,
             advanced=False,
@@ -250,7 +250,7 @@ class AgentShortTextInputBlock(AgentInputBlock):
 
 class AgentLongTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: LongTextType | None = SchemaField(
+        value: Optional[LongTextType] = SchemaField(
             description="Long text input (potentially multi-line).",
             default=None,
             advanced=False,
@@ -288,7 +288,7 @@ class AgentLongTextInputBlock(AgentInputBlock):
 
 class AgentNumberInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: int | None = SchemaField(
+        value: Optional[int] = SchemaField(
             description="Number input.",
             default=None,
             advanced=False,
@@ -326,7 +326,7 @@ class AgentNumberInputBlock(AgentInputBlock):
 
 class AgentDateInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: date | None = SchemaField(
+        value: Optional[date] = SchemaField(
             description="Date input (YYYY-MM-DD).",
             default=None,
             advanced=False,
@@ -365,7 +365,7 @@ class AgentDateInputBlock(AgentInputBlock):
 
 class AgentTimeInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: time | None = SchemaField(
+        value: Optional[time] = SchemaField(
             description="Time input (HH:MM:SS).",
             default=None,
             advanced=False,
@@ -408,7 +408,7 @@ class AgentFileInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: MediaFileType | None = SchemaField(
+        value: Optional[MediaFileType] = SchemaField(
             description="Path or reference to an uploaded file.",
             default=None,
             advanced=False,
@@ -477,7 +477,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: str | None = SchemaField(
+        value: Optional[str] = SchemaField(
             description="Text selected from a dropdown.",
             default=None,
             advanced=False,
@@ -582,7 +582,7 @@ class AgentTableInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: list[dict[str, Any]] | None = SchemaField(
+        value: Optional[list[dict[str, Any]]] = SchemaField(
             description="The table data as a list of dictionaries.",
             default=None,
             advanced=False,
@@ -667,7 +667,7 @@ class AgentGoogleDriveFileInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: GoogleDriveFile | None = SchemaField(
+        value: Optional[GoogleDriveFile] = SchemaField(
             description="The selected Google Drive file.",
             default=None,
             advanced=False,

@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
@@ -30,7 +31,7 @@ router = APIRouter(
 @router.get(
     "/pending",
     summary="Get Pending Reviews",
-    response_model=list[PendingHumanReviewModel],
+    response_model=List[PendingHumanReviewModel],
     responses={
         200: {"description": "List of pending reviews"},
         500: {"description": "Server error", "content": {"application/json": {}}},
@@ -40,7 +41,7 @@ async def list_pending_reviews(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     page: int = Query(1, ge=1, le=MAX_PAGE, description="Page number (1-indexed)"),
     page_size: int = Query(25, ge=1, le=100, description="Number of reviews per page"),
-) -> list[PendingHumanReviewModel]:
+) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for the current user.
 
     Retrieves all reviews with status "WAITING" that belong to the authenticated user.
@@ -66,7 +67,7 @@ async def list_pending_reviews(
 @router.get(
     "/execution/{graph_exec_id}",
     summary="Get Pending Reviews for Execution",
-    response_model=list[PendingHumanReviewModel],
+    response_model=List[PendingHumanReviewModel],
     responses={
         200: {"description": "List of pending reviews for the execution"},
         404: {"description": "Graph execution not found"},
@@ -76,7 +77,7 @@ async def list_pending_reviews(
 async def list_pending_reviews_for_execution(
     graph_exec_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> list[PendingHumanReviewModel]:
+) -> List[PendingHumanReviewModel]:
     """Get all pending reviews for a specific graph execution.
 
     Retrieves all reviews with status "WAITING" for the specified graph execution
@@ -120,7 +121,7 @@ async def list_pending_reviews_for_execution(
 @router.get(
     "/session/{chat_session_id}",
     summary="Get Pending Reviews for Chat Session",
-    response_model=list[PendingHumanReviewModel],
+    response_model=List[PendingHumanReviewModel],
     responses={
         200: {"description": "List of pending reviews for the chat session"},
         500: {"description": "Server error", "content": {"application/json": {}}},
@@ -129,7 +130,7 @@ async def list_pending_reviews_for_execution(
 async def list_pending_reviews_for_chat_session(
     chat_session_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> list[PendingHumanReviewModel]:
+) -> List[PendingHumanReviewModel]:
     """Get the reviews an AutoPilot chat is waiting on, oldest first.
 
     Only the caller's own reviews are returned, so another user's chat session
@@ -141,12 +142,12 @@ async def list_pending_reviews_for_chat_session(
 @router.get(
     "/session/{chat_session_id}/answered",
     summary="Get Answered Reviews Waiting to Run for Chat Session",
-    response_model=list[PendingHumanReviewModel],
+    response_model=List[PendingHumanReviewModel],
 )
 async def list_answered_reviews_for_chat_session(
     chat_session_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-) -> list[PendingHumanReviewModel]:
+) -> List[PendingHumanReviewModel]:
     """The chat's answered cards whose calls have not run yet, oldest first, so
     its box still shows them as answered, with Close and continue, after a reload."""
     return await held_answered_cards(user_id, chat_session_id)

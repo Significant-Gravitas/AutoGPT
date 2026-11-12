@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,7 +17,7 @@ from .context_refresh import refresh_warm_context
 from .memory_model import MemoryEnvelope
 from .scope import MemoryScope
 
-_NOW = datetime(2025, 6, 1, tzinfo=UTC)
+_NOW = datetime(2025, 6, 1, tzinfo=timezone.utc)
 
 
 def _edge(uuid: str = "edge-a", fact: str = "user likes python") -> EntityEdge:
@@ -29,7 +29,7 @@ def _edge(uuid: str = "edge-a", fact: str = "user likes python") -> EntityEdge:
         created_at=_NOW,
         name="preference",
         fact=fact,
-        valid_at=datetime(2025, 1, 1, tzinfo=UTC),
+        valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
         attributes={"status": "active"},
     )
 

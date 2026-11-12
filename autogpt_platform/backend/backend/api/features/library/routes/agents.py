@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
@@ -29,7 +29,7 @@ async def list_library_agents(
     ctx: autogpt_auth_lib.RequestContext = Security(
         autogpt_auth_lib.get_request_context
     ),
-    search_term: str | None = Query(
+    search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
     sort_by: library_model.LibraryAgentSort = Query(
@@ -48,7 +48,7 @@ async def list_library_agents(
         le=MAX_PAGE_SIZE,
         description="Number of agents per page (must be >= 1)",
     ),
-    folder_id: str | None = Query(
+    folder_id: Optional[str] = Query(
         None,
         description="Filter by folder ID",
     ),
@@ -56,7 +56,7 @@ async def list_library_agents(
         False,
         description="Only return agents without a folder (root-level agents)",
     ),
-    is_hidden: bool | None = Query(
+    is_hidden: Optional[bool] = Query(
         None,
         description=(
             "Filter by hidden status. True = only hidden, "
@@ -86,7 +86,7 @@ async def list_library_agents(
 )
 async def list_favorite_library_agents(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    search_term: str | None = Query(
+    search_term: Optional[str] = Query(
         None, description="Search term to filter favorite agents"
     ),
     page: int = Query(
@@ -140,7 +140,7 @@ async def get_library_agent(
 @router.get("/by-graph/{graph_id}")
 async def get_library_agent_by_graph_id(
     graph_id: str,
-    version: int | None = Query(default=None),
+    version: Optional[int] = Query(default=None),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     library_agent = await library_db.get_library_agent_by_graph_id(

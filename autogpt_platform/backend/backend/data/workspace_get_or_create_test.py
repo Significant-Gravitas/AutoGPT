@@ -12,7 +12,7 @@ from backend.data import workspace as workspace_db
 
 
 def _row(workspace_id: str = "workspace-1") -> prisma.models.UserWorkspace:
-    now = datetime.datetime.now(datetime.UTC)
+    now = datetime.datetime.now(datetime.timezone.utc)
     return prisma.models.UserWorkspace(
         id=workspace_id, userId="user-1", createdAt=now, updatedAt=now
     )

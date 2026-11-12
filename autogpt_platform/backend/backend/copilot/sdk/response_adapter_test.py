@@ -37,9 +37,11 @@ from backend.copilot.response_model import (
 
 from .compaction import compaction_events
 from .response_adapter import SDKResponseAdapter
-from .tool_adapter import MCP_TOOL_PREFIX, _stash_event, wait_for_stash
+from .tool_adapter import MCP_TOOL_PREFIX
 from .tool_adapter import _pending_tool_outputs as _pto
+from .tool_adapter import _stash_event
 from .tool_adapter import stash_pending_tool_output as _stash
+from .tool_adapter import wait_for_stash
 
 
 def _adapter() -> SDKResponseAdapter:

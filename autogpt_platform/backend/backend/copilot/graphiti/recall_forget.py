@@ -14,7 +14,7 @@ made before it) and, for forgets made before the marker existed, by
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
@@ -161,7 +161,7 @@ async def _forget(
     driver: GraphDriver, group_id: str, uuids: list[str], hard: bool, reason: str
 ) -> ForgetResult:
     result = ForgetResult()
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     missing = await unreconciled(driver, group_id)
     found = await _existing_edges(driver, group_id, uuids, result)
     result.resumed = await _purged_roots(driver, group_id, result)

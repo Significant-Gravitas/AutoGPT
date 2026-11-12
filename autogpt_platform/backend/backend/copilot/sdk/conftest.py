@@ -73,7 +73,7 @@ def _fresh_cli_version_checks():
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
     """No-op server stub — SDK tests don't need the full backend."""
-    return
+    return None
 
 
 @pytest.fixture()

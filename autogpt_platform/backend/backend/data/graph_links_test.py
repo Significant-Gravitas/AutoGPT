@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import prisma
@@ -33,7 +33,7 @@ def _graph_row(nodes: list[AgentNode]) -> AgentGraph:
         description="",
         userId="owner",
         isActive=True,
-        createdAt=datetime.now(UTC),
+        createdAt=datetime.now(timezone.utc),
         visibility=ResourceVisibility.PRIVATE,
         Nodes=nodes,
     )

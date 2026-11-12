@@ -19,7 +19,7 @@ so neither the event loop nor its thread pool waits on one.
 import asyncio
 import base64
 import logging
-from collections.abc import Awaitable, Callable
+from typing import Awaitable, Callable
 
 import fastapi
 from fastapi.responses import Response

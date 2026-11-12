@@ -8,7 +8,7 @@ schedule's jobs, persist the streak, and tell the owner in the chat.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma.errors import UniqueViolationError
 from prisma.models import ExpertRoutine, ScheduledChatStreak
@@ -295,7 +295,7 @@ async def _save(
     that saw the pause, and found the jobs firing again, replaces it
     (*replaces_pause*). Returns None, having written nothing, when the pause
     stands."""
-    now = datetime.now(tz=UTC)
+    now = datetime.now(tz=timezone.utc)
     fields = {
         "scheduleIds": paused_ids,
         "title": title,

@@ -8,8 +8,9 @@ from unittest.mock import AsyncMock
 
 from backend.copilot.graphiti.recall_reconcile import MARKERS_QUERY
 
-from . import backfill_cascade, legacy_citations
+from . import backfill_cascade
 from . import backfill_derivations as backfill
+from . import legacy_citations
 
 
 class BackfillGraph:

@@ -4,9 +4,9 @@ import ipaddress
 import re
 import socket
 import ssl
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from io import BytesIO
-from typing import Any
+from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
 from urllib.parse import quote, urljoin, urlparse
 
@@ -343,7 +343,7 @@ async def _resolve_host(hostname: str) -> list[str]:
 
 
 async def validate_url_host(
-    url: str, trusted_hostnames: list[str] | None = None
+    url: str, trusted_hostnames: Optional[list[str]] = None
 ) -> tuple[URL, bool, list[str]]:
     """
     Validates a (URL's) host string to prevent SSRF attacks by ensuring it does not
@@ -460,7 +460,7 @@ def parse_url(url: str) -> URL:
     return urlparse(url)
 
 
-def pin_url(url: URL, ip_addresses: list[str] | None = None) -> URL:
+def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:
     """
     Pins a URL to a specific IP address to prevent DNS rebinding attacks.
 
@@ -560,7 +560,7 @@ class Response:
 
 def _response_charset(content_type: str) -> str | None:
     """The allowed codec a ``Content-Type`` header names, or None."""
-    match = re.search(r"charset=([^\s;]+)", content_type, flags=re.IGNORECASE)
+    match = re.search(r"charset=([^\s;]+)", content_type, flags=re.I)
     if not match:
         return None
     try:
@@ -636,7 +636,7 @@ class Requests:
         method: str,
         url: str,
         *,
-        headers: dict | None = None,
+        headers: Optional[dict] = None,
         files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
         data: Any | None = None,
         json: Any | None = None,
@@ -685,7 +685,7 @@ class Requests:
         method: str,
         url: str,
         *,
-        headers: dict | None = None,
+        headers: Optional[dict] = None,
         files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
         data: Any | None = None,
         json: Any | None = None,
@@ -742,7 +742,7 @@ class Requests:
             raise ValueError(f"Invalid URL: Unable to determine hostname of {url}")
 
         original_url = parsed_url.geturl()
-        connector: aiohttp.TCPConnector | None = None
+        connector: Optional[aiohttp.TCPConnector] = None
         if not is_trusted:
             # Replace hostname with IP for connection but preserve SNI via resolver
             resolver = HostResolver(ssl_hostname=hostname, ip_addresses=ip_addresses)

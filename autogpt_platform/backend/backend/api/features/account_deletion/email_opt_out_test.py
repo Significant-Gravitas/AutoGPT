@@ -5,8 +5,8 @@ out of marketing, and MailerLite is told to stop mailing it. Nobody else's
 settings move.
 """
 
-from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+from typing import AsyncIterator
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -120,7 +120,7 @@ async def test_an_earlier_opt_out_keeps_its_date_and_source(
     unsubscribe is a no-op for someone it already does not mail, and it is the
     last chance to catch one whose earlier unsubscribe never got queued."""
     user_id, _ = accounts
-    refused_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+    refused_at = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
     await User.prisma().update(
         where={"id": user_id},
         data={"marketingOptOutAt": refused_at, "marketingOptOutSource": "signup"},

@@ -7,6 +7,7 @@ for all FastAPI services in the AutoGPT platform.
 
 import logging
 import os
+from typing import Optional
 
 from fastapi import FastAPI
 from prometheus_client import Counter, Gauge, Histogram, Info, start_http_server
@@ -164,7 +165,7 @@ def instrument_fastapi(
     expose_endpoint: bool = True,
     endpoint: str = "/metrics",
     include_in_schema: bool = False,
-    excluded_handlers: list | None = None,
+    excluded_handlers: Optional[list] = None,
 ) -> Instrumentator:
     """
     Instrument a FastAPI application with Prometheus metrics.

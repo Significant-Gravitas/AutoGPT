@@ -3,7 +3,7 @@ app's own error handlers."""
 
 import base64
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -200,7 +200,7 @@ def _token_for(user_id: str) -> str:
 
 
 def _user_row(user_id: str) -> PrismaUser:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return PrismaUser(
         id=user_id,
         email="user@example.com",

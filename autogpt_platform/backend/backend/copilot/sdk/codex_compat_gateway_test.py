@@ -687,19 +687,20 @@ async def test_messages_default_to_nonstreaming_and_report_estimated_input() -> 
         credential_lease=_lease(),
         model="gpt-5.6-luna",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        response = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json={"messages": [{"role": "user", "content": "hello"}]},
-        )
-        payload = await response.json()
-        count_response = await client.post(
-            f"{gateway.base_url}/v1/messages/count_tokens",
-            headers=_headers(gateway),
-            json={"messages": [{"role": "user", "content": "hello"}]},
-        )
-        count_payload = await count_response.json()
+    ) as gateway:
+        async with ClientSession() as client:
+            response = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={"messages": [{"role": "user", "content": "hello"}]},
+            )
+            payload = await response.json()
+            count_response = await client.post(
+                f"{gateway.base_url}/v1/messages/count_tokens",
+                headers=_headers(gateway),
+                json={"messages": [{"role": "user", "content": "hello"}]},
+            )
+            count_payload = await count_response.json()
 
     assert response.status == 200
     assert payload["type"] == "message"
@@ -715,32 +716,33 @@ async def test_final_response_fallback_is_scoped_to_each_tool_boundary() -> None
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run", stream=True),
-        )
-        first_events = _events(await first.text())
-        tool_start = next(
-            event
-            for event in first_events
-            if event["type"] == "content_block_start"
-            and event["content_block"]["type"] == "tool_use"
-        )
-        gateway_call_id = tool_start["content_block"]["id"]
-        assert isinstance(gateway_call_id, str)
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            first_events = _events(await first.text())
+            tool_start = next(
+                event
+                for event in first_events
+                if event["type"] == "content_block_start"
+                and event["content_block"]["type"] == "tool_use"
+            )
+            gateway_call_id = tool_start["content_block"]["id"]
+            assert isinstance(gateway_call_id, str)
 
-        second = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_result_request(
-                gateway_call_id,
-                "ok",
-                stream=True,
-            ),
-        )
-        second_events = _events(await second.text())
+            second = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(
+                    gateway_call_id,
+                    "ok",
+                    stream=True,
+                ),
+            )
+            second_events = _events(await second.text())
 
     assert any(
         event.get("delta") == {"type": "text_delta", "text": "before tool"}
@@ -760,66 +762,67 @@ async def test_raw_codex_call_id_collisions_are_isolated_by_gateway_ids() -> Non
         credential_lease=_lease(),
         model="gpt-5.6-sol",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first_response, second_response = await asyncio.gather(
-            client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=_tool_request("first"),
-            ),
-            client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=_tool_request("second"),
-            ),
-        )
-        first_payload, second_payload = await asyncio.gather(
-            first_response.json(),
-            second_response.json(),
-        )
-        first_id = _tool_use_id(first_payload)
-        second_id = _tool_use_id(second_payload)
+    ) as gateway:
+        async with ClientSession() as client:
+            first_response, second_response = await asyncio.gather(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=_tool_request("first"),
+                ),
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=_tool_request("second"),
+                ),
+            )
+            first_payload, second_payload = await asyncio.gather(
+                first_response.json(),
+                second_response.json(),
+            )
+            first_id = _tool_use_id(first_payload)
+            second_id = _tool_use_id(second_payload)
 
-        cross_conversation = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json={
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": first_id,
-                                "content": "wrong-first",
-                            },
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": second_id,
-                                "content": "wrong-second",
-                            },
-                        ],
-                    }
-                ]
-            },
-        )
+            cross_conversation = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": first_id,
+                                    "content": "wrong-first",
+                                },
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": second_id,
+                                    "content": "wrong-second",
+                                },
+                            ],
+                        }
+                    ]
+                },
+            )
 
-        first_result, second_result = await asyncio.gather(
-            client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=_tool_result_request(first_id, "first-result"),
-            ),
-            client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=_tool_result_request(second_id, "second-result"),
-            ),
-        )
-        first_completed, second_completed = await asyncio.gather(
-            first_result.json(),
-            second_result.json(),
-        )
+            first_result, second_result = await asyncio.gather(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=_tool_result_request(first_id, "first-result"),
+                ),
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=_tool_result_request(second_id, "second-result"),
+                ),
+            )
+            first_completed, second_completed = await asyncio.gather(
+                first_result.json(),
+                second_result.json(),
+            )
 
     assert first_id != second_id
     assert cross_conversation.status == 400
@@ -856,28 +859,29 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        gateway_call_id = _tool_use_id(await first.json())
-        continuation = _tool_result_request(gateway_call_id, "one result")
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
 
-        responses = await asyncio.gather(
-            client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=continuation,
-            ),
-            client.post(
-                f"{gateway.base_url}/v1/messages",
-                headers=_headers(gateway),
-                json=continuation,
-            ),
-        )
-        bodies = await asyncio.gather(*(response.read() for response in responses))
+            responses = await asyncio.gather(
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                ),
+                client.post(
+                    f"{gateway.base_url}/v1/messages",
+                    headers=_headers(gateway),
+                    json=continuation,
+                ),
+            )
+            bodies = await asyncio.gather(*(response.read() for response in responses))
 
     assert [response.status for response in responses] == [200, 200]
     assert bodies[0] == bodies[1]
@@ -904,52 +908,53 @@ async def test_a_relaunched_attempt_starts_a_new_conversation() -> None:
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        abandoned_call_id = _tool_use_id(await first.json())
-        answered = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_result_request(abandoned_call_id, "one result"),
-        )
-        assert answered.status == 200
-        await answered.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            abandoned_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(abandoned_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
 
-        relaunch = _tool_result_request(abandoned_call_id, "one result")
-        relaunch_messages = relaunch["messages"]
-        assert isinstance(relaunch_messages, list)
-        replayed_result = relaunch_messages[0]
-        relaunch_messages.append(
-            {"role": "user", "content": "Building mode is now active"}
-        )
-        # Every request carries the tool list, this one included: it is
-        # the one that has to open a conversation of its own.
-        relaunch["tools"] = _tool_request("run")["tools"]
-        resumed = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=relaunch,
-        )
-        assert resumed.status == 200
-        resumed_call_id = _tool_use_id(await resumed.json())
+            relaunch = _tool_result_request(abandoned_call_id, "one result")
+            relaunch_messages = relaunch["messages"]
+            assert isinstance(relaunch_messages, list)
+            replayed_result = relaunch_messages[0]
+            relaunch_messages.append(
+                {"role": "user", "content": "Building mode is now active"}
+            )
+            # Every request carries the tool list, this one included: it is
+            # the one that has to open a conversation of its own.
+            relaunch["tools"] = _tool_request("run")["tools"]
+            resumed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert resumed.status == 200
+            resumed_call_id = _tool_use_id(await resumed.json())
 
-        # The resumed session replays the abandoned result alongside the
-        # new one on every later round, so they must not refuse it either.
-        continuation = _tool_result_request(resumed_call_id, "second result")
-        continuation_messages = continuation["messages"]
-        assert isinstance(continuation_messages, list)
-        continuation_messages.insert(0, replayed_result)
-        continued = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        assert continued.status == 200
-        await continued.read()
+            # The resumed session replays the abandoned result alongside the
+            # new one on every later round, so they must not refuse it either.
+            continuation = _tool_result_request(resumed_call_id, "second result")
+            continuation_messages = continuation["messages"]
+            assert isinstance(continuation_messages, list)
+            continuation_messages.insert(0, replayed_result)
+            continued = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            assert continued.status == 200
+            await continued.read()
 
     assert resumed_call_id != abandoned_call_id
     assert len(agent_session.requests) == 2
@@ -974,45 +979,46 @@ async def test_a_resent_relaunch_is_replayed_without_a_second_invocation() -> No
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        abandoned_call_id = _tool_use_id(await first.json())
-        answered = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_result_request(abandoned_call_id, "one result"),
-        )
-        assert answered.status == 200
-        await answered.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            abandoned_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(abandoned_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
 
-        relaunch = _tool_result_request(abandoned_call_id, "one result")
-        relaunch_messages = relaunch["messages"]
-        assert isinstance(relaunch_messages, list)
-        relaunch_messages.append(
-            {"role": "user", "content": "Building mode is now active"}
-        )
-        relaunch["tools"] = _tool_request("run")["tools"]
-        resumed = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=relaunch,
-        )
-        assert resumed.status == 200
-        resumed_body = await resumed.json()
+            relaunch = _tool_result_request(abandoned_call_id, "one result")
+            relaunch_messages = relaunch["messages"]
+            assert isinstance(relaunch_messages, list)
+            relaunch_messages.append(
+                {"role": "user", "content": "Building mode is now active"}
+            )
+            relaunch["tools"] = _tool_request("run")["tools"]
+            resumed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert resumed.status == 200
+            resumed_body = await resumed.json()
 
-        # What the CLI sends when it times out or disconnects waiting on
-        # the relaunch: the same bytes again.
-        resent = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=relaunch,
-        )
-        assert resent.status == 200
-        resent_body = await resent.json()
+            # What the CLI sends when it times out or disconnects waiting on
+            # the relaunch: the same bytes again.
+            resent = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert resent.status == 200
+            resent_body = await resent.json()
 
     assert resent_body == resumed_body
     assert gateway.last_refusal is None
@@ -1033,43 +1039,44 @@ async def test_a_retry_after_a_failed_relaunch_opens_a_new_attempt() -> None:
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        abandoned_call_id = _tool_use_id(await first.json())
-        answered = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_result_request(abandoned_call_id, "one result"),
-        )
-        assert answered.status == 200
-        await answered.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            abandoned_call_id = _tool_use_id(await first.json())
+            answered = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_result_request(abandoned_call_id, "one result"),
+            )
+            assert answered.status == 200
+            await answered.read()
 
-        relaunch = _tool_result_request(abandoned_call_id, "one result")
-        relaunch_messages = relaunch["messages"]
-        assert isinstance(relaunch_messages, list)
-        relaunch_messages.append(
-            {"role": "user", "content": "Building mode is now active"}
-        )
-        relaunch["tools"] = _tool_request("run")["tools"]
-        failed = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=relaunch,
-        )
-        assert failed.status >= 500
-        await failed.read()
+            relaunch = _tool_result_request(abandoned_call_id, "one result")
+            relaunch_messages = relaunch["messages"]
+            assert isinstance(relaunch_messages, list)
+            relaunch_messages.append(
+                {"role": "user", "content": "Building mode is now active"}
+            )
+            relaunch["tools"] = _tool_request("run")["tools"]
+            failed = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert failed.status >= 500
+            await failed.read()
 
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=relaunch,
-        )
-        assert retried.status == 200
-        recovered = await retried.json()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=relaunch,
+            )
+            assert retried.status == 200
+            recovered = await retried.json()
 
     assert recovered["content"][0]["text"] == "recovered"
     assert len(agent_session.requests) == 3
@@ -1131,13 +1138,14 @@ async def test_closing_while_a_tool_call_is_unanswered_cancels_the_codex_turn() 
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        response = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run", stream=True),
-        )
-        _streamed_tool_use_id(_events(await response.text()))
+    ) as gateway:
+        async with ClientSession() as client:
+            response = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            _streamed_tool_use_id(_events(await response.text()))
 
     assert agent_session.cancelled.is_set()
     assert agent_session.tool_result is None
@@ -1195,30 +1203,31 @@ async def test_identical_tool_result_retry_replays_the_streamed_response() -> No
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run", stream=True),
-        )
-        gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
-        continuation = _tool_result_request(
-            gateway_call_id,
-            "one result",
-            stream=True,
-        )
-        accepted = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        accepted_body = await accepted.read()
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        retried_body = await retried.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = _tool_result_request(
+                gateway_call_id,
+                "one result",
+                stream=True,
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_body = await retried.read()
 
     assert accepted.status == 200
     assert retried.status == 200
@@ -1235,26 +1244,27 @@ async def test_identical_tool_result_retry_replays_the_json_response() -> None:
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        gateway_call_id = _tool_use_id(await first.json())
-        continuation = _tool_result_request(gateway_call_id, "one result")
-        accepted = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        accepted_body = await accepted.read()
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        retried_body = await retried.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_body = await retried.read()
 
     assert accepted.status == 200
     assert retried.status == 200
@@ -1274,26 +1284,27 @@ async def test_evicted_replay_falls_back_to_the_duplicate_error(
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        gateway_call_id = _tool_use_id(await first.json())
-        continuation = _tool_result_request(gateway_call_id, "one result")
-        accepted = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        await accepted.read()
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        retried_payload = await retried.json()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_payload = await retried.json()
 
     assert accepted.status == 200
     assert retried.status == 409
@@ -1344,26 +1355,27 @@ async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run"),
-        )
-        gateway_call_id = _tool_use_id(await first.json())
-        continuation = _tool_result_request(gateway_call_id, "one result")
-        accepted = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        accepted_body = await accepted.read()
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json={**continuation, "system": "recomposed for the retry"},
-        )
-        retried_body = await retried.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run"),
+            )
+            gateway_call_id = _tool_use_id(await first.json())
+            continuation = _tool_result_request(gateway_call_id, "one result")
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={**continuation, "system": "recomposed for the retry"},
+            )
+            retried_body = await retried.read()
 
     assert accepted.status == 200
     assert retried.status == 200
@@ -1413,14 +1425,15 @@ async def test_only_the_users_queued_messages_reach_codex_as_a_followup(
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=_FakeTransport(agent_session),
-    ) as gateway, ClientSession() as client:
-        continuation = await _answer_first_tool_call(client, gateway, shape)
-        continued = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        await continued.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            continuation = await _answer_first_tool_call(client, gateway, shape)
+            continued = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            await continued.read()
 
     assert continued.status == 200
     assert agent_session.tool_result == expected
@@ -1434,16 +1447,17 @@ async def test_a_round_with_only_the_clis_own_note_forwards_nothing() -> None:
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=_FakeTransport(agent_session),
-    ) as gateway, ClientSession() as client:
-        continuation = await _answer_first_tool_call(
-            client, gateway, "system-message", _TOTAL_TOKENS
-        )
-        continued = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        await continued.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            continuation = await _answer_first_tool_call(
+                client, gateway, "system-message", _TOTAL_TOKENS
+            )
+            continued = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            await continued.read()
 
     assert continued.status == 200
     assert agent_session.tool_result == CodexDynamicToolResult(content="one result")
@@ -1456,22 +1470,23 @@ async def test_a_retried_followup_request_replays_and_reaches_codex_once() -> No
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=_FakeTransport(agent_session),
-    ) as gateway, ClientSession() as client:
-        continuation = await _answer_first_tool_call(
-            client, gateway, "system-message"
-        )
-        accepted = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        accepted_body = await accepted.read()
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        retried_body = await retried.read()
+    ) as gateway:
+        async with ClientSession() as client:
+            continuation = await _answer_first_tool_call(
+                client, gateway, "system-message"
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_body = await accepted.read()
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_body = await retried.read()
 
     assert [accepted.status, retried.status] == [200, 200]
     assert retried_body == accepted_body
@@ -1493,40 +1508,41 @@ async def test_the_round_after_a_followup_is_not_a_conflict() -> None:
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        start = _tool_request("run", stream=True)
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=start,
-        )
-        first_id = _streamed_tool_use_id(_events(await first.text()))
-        history = [
-            {"role": "user", "content": "run"},
-            _tool_use_message(first_id),
-            _tool_result_message(first_id, "first result"),
-            {"role": "system", "content": _HOOK_CONTEXT},
-        ]
-        second = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json={**start, "messages": history},
-        )
-        second_id = _streamed_tool_use_id(_events(await second.text()))
-        third = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json={
-                **start,
-                "messages": [
-                    *history,
-                    _tool_use_message(second_id),
-                    _tool_result_message(second_id, "second result"),
-                    {"role": "system", "content": _TOTAL_TOKENS},
-                ],
-            },
-        )
-        third_events = _events(await third.text())
+    ) as gateway:
+        async with ClientSession() as client:
+            start = _tool_request("run", stream=True)
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=start,
+            )
+            first_id = _streamed_tool_use_id(_events(await first.text()))
+            history = [
+                {"role": "user", "content": "run"},
+                _tool_use_message(first_id),
+                _tool_result_message(first_id, "first result"),
+                {"role": "system", "content": _HOOK_CONTEXT},
+            ]
+            second = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={**start, "messages": history},
+            )
+            second_id = _streamed_tool_use_id(_events(await second.text()))
+            third = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json={
+                    **start,
+                    "messages": [
+                        *history,
+                        _tool_use_message(second_id),
+                        _tool_result_message(second_id, "second result"),
+                        {"role": "system", "content": _TOTAL_TOKENS},
+                    ],
+                },
+            )
+            third_events = _events(await third.text())
 
     assert [first.status, second.status, third.status] == [200, 200, 200]
     assert any(
@@ -1627,30 +1643,31 @@ async def test_a_stream_past_the_replay_cap_is_forwarded_whole_and_not_cached(
         credential_lease=_lease(),
         model="gpt-5.6-terra",
         transport=transport,
-    ) as gateway, ClientSession() as client:
-        first = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=_tool_request("run", stream=True),
-        )
-        gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
-        continuation = _tool_result_request(
-            gateway_call_id,
-            "one result",
-            stream=True,
-        )
-        accepted = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        accepted_events = _events(await accepted.text())
-        retried = await client.post(
-            f"{gateway.base_url}/v1/messages",
-            headers=_headers(gateway),
-            json=continuation,
-        )
-        retried_payload = await retried.json()
+    ) as gateway:
+        async with ClientSession() as client:
+            first = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=_tool_request("run", stream=True),
+            )
+            gateway_call_id = _streamed_tool_use_id(_events(await first.text()))
+            continuation = _tool_result_request(
+                gateway_call_id,
+                "one result",
+                stream=True,
+            )
+            accepted = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            accepted_events = _events(await accepted.text())
+            retried = await client.post(
+                f"{gateway.base_url}/v1/messages",
+                headers=_headers(gateway),
+                json=continuation,
+            )
+            retried_payload = await retried.json()
 
     assert accepted.status == 200
     assert [event["type"] for event in accepted_events][-1] == "message_stop"

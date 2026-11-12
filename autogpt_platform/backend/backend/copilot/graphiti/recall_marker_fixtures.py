@@ -10,7 +10,7 @@ Not collected by pytest.
 
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
@@ -57,7 +57,7 @@ async def seed_root(driver: AutoGPTFalkorDriver, group_id: str, root: str) -> No
         """,
         gid=group_id,
         root=root,
-        now=datetime.now(UTC).isoformat(),
+        now=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -93,7 +93,7 @@ async def land(
         edge=edge,
         content=content,
         missing=list(missing),
-        now=datetime.now(UTC).isoformat(),
+        now=datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -104,7 +104,7 @@ def placed_payload(name: str) -> dict[str, Any]:
         "episode_body": '{"content": "A dream fact"}',
         "source": EpisodeType.json,
         "source_description": "dream-pass consolidation",
-        "reference_time": datetime.now(UTC),
+        "reference_time": datetime.now(timezone.utc),
     }
 
 

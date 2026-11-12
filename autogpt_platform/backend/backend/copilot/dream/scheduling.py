@@ -26,8 +26,7 @@ and owner restrictions before running.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Awaitable, Callable, Literal
 
 from pydantic.dataclasses import dataclass
 

@@ -2,7 +2,7 @@ import asyncio
 import itertools
 import logging
 from collections.abc import Mapping
-from typing import Literal, LiteralString, cast
+from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
 import prisma.enums
@@ -105,17 +105,17 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
 
 async def list_library_agents(
     user_id: str,
-    search_term: str | None = None,
-    published: bool | None = None,
-    favorite: bool | None = None,
+    search_term: Optional[str] = None,
+    published: Optional[bool] = None,
+    favorite: Optional[bool] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
     include_executions: bool = False,
-    folder_id: str | None = None,
+    folder_id: Optional[str] = None,
     include_root_only: bool = False,
-    is_hidden: bool | None = None,
-    organization_id: str | None = None,
+    is_hidden: Optional[bool] = None,
+    organization_id: Optional[str] = None,
     include_nodes: bool = False,
     folder_ids: list[str] | None = None,
 ) -> library_model.LibraryAgentResponse:
@@ -151,7 +151,7 @@ async def list_library_agents(
     """
     logger.debug(
         f"Fetching library agents for user_id={user_id}, "
-        f"search_term={search_term!r}, "
+        f"search_term={repr(search_term)}, "
         f"sort_by={sort_by}, page={page}, page_size={page_size}"
     )
 
@@ -160,7 +160,7 @@ async def list_library_agents(
         raise InvalidInputError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
-        logger.warning(f"Search term too long: {search_term!r}")
+        logger.warning(f"Search term too long: {repr(search_term)}")
         raise InvalidInputError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
@@ -325,7 +325,7 @@ async def _listed_graph_ids(where: prisma.types.LibraryAgentWhereInput) -> list[
 
 async def list_favorite_library_agents(
     user_id: str,
-    search_term: str | None = None,
+    search_term: Optional[str] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> library_model.LibraryAgentResponse:
@@ -521,7 +521,7 @@ async def get_library_agent_refs_by_graph_ids(
 async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
-    graph_version: int | None = None,
+    graph_version: Optional[int] = None,
     include_archived: bool = False,
 ) -> library_model.LibraryAgent | None:
     filter: prisma.types.LibraryAgentWhereInput = {
@@ -556,7 +556,7 @@ async def add_generated_agent_image(
     graph: graph_db.GraphBaseMeta,
     user_id: str,
     library_agent_id: str,
-) -> prisma.models.LibraryAgent | None:
+) -> Optional[prisma.models.LibraryAgent]:
     """
     Generates an image for the specified LibraryAgent and updates its record.
     """
@@ -749,8 +749,8 @@ async def update_agent_version_in_library(
     agent_graph_id: str,
     agent_graph_version: int,
     *,
-    library_agent_id: str | None = None,
-    organization_ids: frozenset[str | None] | None = None,
+    library_agent_id: Optional[str] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the agent version in the library for any agent owned by the user.
@@ -1027,7 +1027,7 @@ async def _assert_target_version(
     user_id: str,
     graph_id: str,
     version: int,
-    organization_ids: frozenset[str | None] | None,
+    organization_ids: Optional[frozenset[str | None]],
 ) -> None:
     """Refuse a graph version the user may not point a library entry at.
 
@@ -1066,15 +1066,15 @@ async def _assert_target_version(
 async def update_library_agent(
     library_agent_id: str,
     user_id: str,
-    auto_update_version: bool | None = None,
-    graph_version: int | None = None,
-    is_favorite: bool | None = None,
-    is_archived: bool | None = None,
-    is_hidden: bool | None = None,
-    is_deleted: Literal[False] | None = None,
-    settings: GraphSettings | None = None,
-    folder_id: str | None = None,
-    organization_ids: frozenset[str | None] | None = None,
+    auto_update_version: Optional[bool] = None,
+    graph_version: Optional[int] = None,
+    is_favorite: Optional[bool] = None,
+    is_archived: Optional[bool] = None,
+    is_hidden: Optional[bool] = None,
+    is_deleted: Optional[Literal[False]] = None,
+    settings: Optional[GraphSettings] = None,
+    folder_id: Optional[str] = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -1366,7 +1366,7 @@ async def is_store_listing_version_available_for_install(
     lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
     query = cast(
         LiteralString,
-        f"""
+        """
         SELECT slv.id
         FROM {schema_prefix}"StoreListingVersion" AS slv
         JOIN {schema_prefix}"StoreListing" AS sl
@@ -1377,7 +1377,9 @@ async def is_store_listing_version_available_for_install(
           AND slv."submissionStatus" = 'APPROVED'
           AND sl."isDeleted" = false
         {lock_clause}
-        """,
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
     )
     client = tx if tx is not None else prisma.get_client()
     rows = await client.query_raw(query, store_listing_version_id)
@@ -1514,9 +1516,9 @@ async def add_store_agent_to_library_as_admin(
 
 async def list_folders(
     user_id: str,
-    parent_id: str | None = None,
+    parent_id: Optional[str] = None,
     include_relations: bool = True,
-    organization_id: str | None = None,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryFolder]:
     """
     Lists folders for a user, optionally filtered by parent.
@@ -1551,7 +1553,7 @@ async def list_folders(
 
 async def get_folder_tree(
     user_id: str,
-    organization_id: str | None = None,
+    organization_id: Optional[str] = None,
 ) -> list[library_model.LibraryFolderTree]:
     """
     Gets the full folder tree for a user.
@@ -1594,9 +1596,9 @@ async def get_folder_tree(
 
 async def _fetch_user_folders(
     user_id: str,
-    extra_where: prisma.types.LibraryFolderWhereInput | None = None,
+    extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
     include_relations: bool = True,
-    organization_id: str | None = None,
+    organization_id: Optional[str] = None,
 ) -> list[prisma.models.LibraryFolder]:
     """
     Shared helper to fetch folders for a user with consistent query params.
@@ -1669,11 +1671,11 @@ async def get_folder(
 async def create_folder(
     user_id: str,
     name: str,
-    parent_id: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
-    organization_id: str | None = None,
-    team_id: str | None = None,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a new folder for the user.
@@ -1730,9 +1732,9 @@ async def create_folder(
 async def create_folder_with_unique_name(
     user_id: str,
     base_name: str,
-    parent_id: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a folder, appending (2), (3), etc. if name exists.
@@ -1766,9 +1768,9 @@ async def create_folder_with_unique_name(
 async def update_folder(
     folder_id: str,
     user_id: str,
-    name: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
+    name: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Updates a folder's properties.
@@ -1828,7 +1830,7 @@ async def update_folder(
 async def move_folder(
     folder_id: str,
     user_id: str,
-    target_parent_id: str | None,
+    target_parent_id: Optional[str],
 ) -> library_model.LibraryFolder:
     """
     Moves a folder to a new parent.
@@ -2024,7 +2026,7 @@ async def _get_descendant_folder_ids(
 
 async def move_agent_to_folder(
     library_agent_id: str,
-    folder_id: str | None,
+    folder_id: Optional[str],
     user_id: str,
 ) -> library_model.LibraryAgent:
     """
@@ -2063,7 +2065,7 @@ async def move_agent_to_folder(
 
 async def bulk_move_agents_to_folder(
     agent_ids: list[str],
-    folder_id: str | None,
+    folder_id: Optional[str],
     user_id: str,
 ) -> list[library_model.LibraryAgent]:
     """
@@ -2135,7 +2137,7 @@ def collect_tree_ids(
 
 async def get_root_agent_summaries(
     user_id: str,
-    organization_id: str | None = None,
+    organization_id: Optional[str] = None,
 ) -> list[dict[str, str | None]]:
     """Get a lightweight list of root-level agents (folderId IS NULL)."""
     all_agents: list[library_model.LibraryAgent] = []
@@ -2159,7 +2161,7 @@ _FOLDER_AGENTS_MAX_PAGES = 8
 
 
 async def get_folder_agents_map(
-    user_id: str, folder_ids: list[str], organization_id: str | None = None
+    user_id: str, folder_ids: list[str], organization_id: Optional[str] = None
 ) -> dict[str, list[dict[str, str | None]]]:
     """Get a lightweight list of agents (id, name, description) per folder.
 
@@ -2211,10 +2213,10 @@ async def list_presets(
     user_id: str,
     page: int,
     page_size: int,
-    graph_id: str | None = None,
+    graph_id: Optional[str] = None,
     expert_id: str | None = None,
     filter_by_expert: bool = False,
-    organization_id: str | None = None,
+    organization_id: Optional[str] = None,
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -2361,7 +2363,7 @@ async def create_preset(
         DatabaseError: If there's a database error in creating the preset.
     """
     logger.debug(
-        f"Creating preset ({preset.name!r}) for user #{user_id}",
+        f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
     check_preset_text(preset.name, preset.description)
     # Fast preflight; the count that actually gates the write is re-run
@@ -2510,11 +2512,11 @@ async def create_preset_from_graph_execution(
 async def update_preset(
     user_id: str,
     preset_id: str,
-    inputs: GraphInput | None = None,
-    credentials: dict[str, CredentialsMetaInput] | None = None,
-    name: str | None = None,
-    description: str | None = None,
-    is_active: bool | None = None,
+    inputs: Optional[GraphInput] = None,
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    is_active: Optional[bool] = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Updates an existing AgentPreset for a user.
@@ -2539,7 +2541,7 @@ async def update_preset(
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found for user #{user_id}")
     logger.debug(
-        f"Updating preset #{preset_id} ({current.name!r}) for user #{user_id}",
+        f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
     check_preset_text(name, description)
 
@@ -2619,7 +2621,7 @@ MAX_PRESETS_PER_USER = 1000
 
 # A caller with a side effect of its own calls these before it, so a value
 # this would refuse never reaches a webhook registration.
-def check_preset_text(name: str | None, description: str | None) -> None:
+def check_preset_text(name: Optional[str], description: Optional[str]) -> None:
     for field_name, value, max_length in (
         ("name", name, MAX_PRESET_NAME_LENGTH),
         ("description", description, MAX_PRESET_DESCRIPTION_LENGTH),
@@ -2753,7 +2755,7 @@ async def migrate_webhook_presets_to_new_version(
     user_id: str,
     new_graph: graph_db.GraphModel,
     *,
-    organization_ids: frozenset[str | None] | None = None,
+    organization_ids: Optional[frozenset[str | None]] = None,
 ) -> library_model.WebhookPresetMigrationResult:
     """
     Migrates webhook-attached presets for a graph to a newly activated version.
@@ -3063,7 +3065,7 @@ async def list_trigger_agents(
     user_id: str,
     library_agent_id: str,
     *,
-    parent_graph_id: str | None = None,
+    parent_graph_id: Optional[str] = None,
 ) -> list[library_model.LibraryAgent]:
     """List trigger agents for the given parent library agent.
 

@@ -10,7 +10,7 @@ the claims, the batch state and the row transitions are the real ones."""
 
 import logging
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -146,7 +146,7 @@ class TestAProviderThatCannotConfirmTheStop:
         await _dead_batch_pass(fake_dream_db)
         fake_dream_db.rows["p1"].update(
             status=DreamPassStatus.EXPIRED,
-            cleanup_pending_at=datetime.now(UTC)
+            cleanup_pending_at=datetime.now(timezone.utc)
             - timedelta(hours=marked_hours_ago),
         )
 

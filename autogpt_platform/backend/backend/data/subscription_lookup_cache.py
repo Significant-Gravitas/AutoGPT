@@ -7,7 +7,7 @@ in Redis (see :mod:`backend.data.versioned_cache` for how a change reaches
 every worker on its next read).
 """
 
-from collections.abc import Awaitable, Callable
+from typing import Awaitable, Callable
 
 import stripe
 from pydantic import BaseModel

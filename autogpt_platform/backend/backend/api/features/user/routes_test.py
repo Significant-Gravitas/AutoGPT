@@ -3,7 +3,7 @@ import re
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -84,7 +84,7 @@ def test_get_or_create_user_route(
 ) -> None:
     """Test get or create user endpoint"""
     mock_user = Mock()
-    mock_user.created_at = datetime.now(UTC)
+    mock_user.created_at = datetime.now(timezone.utc)
     mock_user.model_dump.return_value = {
         "id": test_user_id,
         "email": "test@example.com",
@@ -114,7 +114,7 @@ def test_get_or_create_user_route_reports_creation(
     test_user_id: str,
 ) -> None:
     mock_user = Mock()
-    mock_user.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
     mock_user.model_dump.return_value = {
         "id": test_user_id,
         "email": "test@example.com",
@@ -137,7 +137,7 @@ def test_get_or_create_user_route_flags_an_internal_sign_in(
 ) -> None:
     """A sign-in sets is_internal again; a new account was sent it already."""
     mock_user = Mock(id=test_user_id, email="test@example.com")
-    mock_user.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
     mock_user.model_dump.return_value = {"id": test_user_id}
     mocker.patch(
         "backend.api.features.user.routes.get_or_create_user_with_status",
@@ -165,7 +165,7 @@ def test_get_or_create_user_route_sets_the_tier_at_a_sign_in(
         email="test@example.com",
         subscription_tier=SubscriptionTier.BUSINESS,
     )
-    mock_user.created_at = datetime(2020, 1, 1, tzinfo=UTC)
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
     mock_user.model_dump.return_value = {"id": test_user_id}
     mocker.patch(
         "backend.api.features.user.routes.get_or_create_user_with_status",
@@ -234,7 +234,7 @@ def test_a_closed_account_is_refused_and_never_provisioned(
 
 
 def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:
-    accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
     return User(
         id=user_id,
         email="test@example.com",
@@ -254,7 +254,7 @@ def test_record_user_consent_route(
 ) -> None:
     """Records for the caller's own account, whatever the body claims, and
     answers with the four consent fields only."""
-    opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=UTC)
+    opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=timezone.utc)
     record = mocker.patch(
         "backend.api.features.user.routes.record_signup_consent",
         return_value=_consented_user(test_user_id, opted_out_at),
@@ -700,7 +700,7 @@ def _apply_footer_choice(user_id: str, choice: str) -> httpx.Response:
 
 
 def _preference_row(user_id: str) -> PrismaUser:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return PrismaUser(
         id=user_id,
         email="user@example.com",

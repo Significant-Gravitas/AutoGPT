@@ -128,7 +128,7 @@ async def _guard_local_only(
 
 async def _run_e2e_generation() -> GenerateTestDataResponse:
     """Run the E2E seeding script against the shared Prisma connection."""
-    creator_class = _load_test_script("e2e_test_data").TestDataCreator
+    creator_class = getattr(_load_test_script("e2e_test_data"), "TestDataCreator")
 
     if not prisma.is_connected():
         await prisma.connect()
@@ -152,7 +152,7 @@ async def _run_e2e_generation() -> GenerateTestDataResponse:
 
 async def _run_full_generation() -> GenerateTestDataResponse:
     """Run the comprehensive seeding script (owns its own Prisma lifecycle)."""
-    run_full = _load_test_script("test_data_creator").main
+    run_full = getattr(_load_test_script("test_data_creator"), "main")
     await run_full()
 
     return GenerateTestDataResponse(

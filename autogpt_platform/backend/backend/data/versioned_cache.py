@@ -29,8 +29,7 @@ time.
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, Generic, TypeVar
+from typing import Any, Awaitable, Callable, Coroutine, Generic, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel, TypeAdapter, ValidationError

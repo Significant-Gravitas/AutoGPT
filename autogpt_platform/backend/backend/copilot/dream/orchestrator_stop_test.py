@@ -5,7 +5,7 @@ it, the master flag turned off after the cron fired, and a pass cancelled at
 each of its checks."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -60,7 +60,7 @@ def _route(scope, job, *, config=None) -> RouteDecision:
 
 
 def _input() -> DreamInput:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     episode = EpisodeRow(
         uuid="e1",
         name=None,
@@ -143,7 +143,7 @@ def _seed_other_pass(fake_dream_db, **columns) -> str:
         trigger=DreamPassTrigger.CRON,
         phase=DreamPassPhase.RECOMBINE,
     )
-    written = datetime.now(UTC) - timedelta(minutes=1)
+    written = datetime.now(timezone.utc) - timedelta(minutes=1)
     fake_dream_db.seed(draft, **{"updated_at": written, **columns})
     return draft.id
 
@@ -202,7 +202,7 @@ class TestTheGuard:
     async def test_a_stale_open_pass_is_expired_and_the_pass_runs(
         self, mocker, fake_dream_db, gather, apply
     ):
-        stale_at = datetime.now(UTC) - timedelta(
+        stale_at = datetime.now(timezone.utc) - timedelta(
             seconds=DEFAULT_LOCK_TTL_SECONDS + 60
         )
         other = _seed_other_pass(fake_dream_db, updated_at=stale_at)

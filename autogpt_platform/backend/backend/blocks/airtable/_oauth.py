@@ -5,7 +5,7 @@ Airtable OAuth handler implementation.
 import time
 from enum import Enum
 from logging import getLogger
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from backend.sdk import (
     BaseOAuthHandler,
@@ -76,7 +76,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
         ]
     ]
 
-    def __init__(self, client_id: str, client_secret: str | None, redirect_uri: str):
+    def __init__(self, client_id: str, client_secret: Optional[str], redirect_uri: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
@@ -85,7 +85,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
         self.token_url = "https://airtable.com/oauth2/v1/token"
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: str | None
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
     ) -> str:
         logger.debug("Generating Airtable OAuth login URL")
         # Generate code_challenge if not provided (PKCE is required)
@@ -107,11 +107,11 @@ class AirtableOAuthHandler(BaseOAuthHandler):
             logger.debug(f"Generated OAuth URL: {url}")
             return url
         except Exception as e:
-            logger.error(f"Failed to generate OAuth URL: {e!s}")
+            logger.error(f"Failed to generate OAuth URL: {str(e)}")
             raise
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: str | None
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         logger.debug("Exchanging authorization code for tokens")
         logger.debug(f"Code: {code[:4]}...")  # Log first 4 chars only for security
@@ -145,7 +145,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
             return credentials
 
         except Exception as e:
-            logger.error(f"Failed to exchange code for tokens: {e!s}")
+            logger.error(f"Failed to exchange code for tokens: {str(e)}")
             raise
 
     async def _refresh_tokens(
@@ -183,7 +183,7 @@ class AirtableOAuthHandler(BaseOAuthHandler):
             return new_credentials
 
         except Exception as e:
-            logger.error(f"Failed to refresh tokens: {e!s}")
+            logger.error(f"Failed to refresh tokens: {str(e)}")
             raise
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:

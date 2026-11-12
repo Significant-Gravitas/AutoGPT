@@ -1,7 +1,6 @@
 import logging
 import urllib.parse
-from collections.abc import Sequence
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
@@ -61,7 +60,7 @@ v1_router.include_router(tools_router)
 
 class UserInfoResponse(BaseModel):
     id: str
-    name: str | None
+    name: Optional[str]
     email: str
     timezone: str = Field(
         description="The user's last known timezone (e.g. 'Europe/Amsterdam'), "
@@ -324,7 +323,7 @@ class GraphExecutionResult(TypedDict):
     execution_id: str
     status: str
     nodes: list[ExecutionNode]
-    output: list[dict[str, str]] | None
+    output: Optional[list[dict[str, str]]]
 
 
 @v1_router.get(

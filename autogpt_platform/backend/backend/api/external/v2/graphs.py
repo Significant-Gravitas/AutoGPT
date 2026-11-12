@@ -6,6 +6,7 @@ Provides endpoints for managing agent graphs (CRUD operations).
 
 import asyncio
 import logging
+from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
@@ -79,7 +80,7 @@ async def list_graphs(
 )
 async def get_graph(
     graph_id: str,
-    version: int | None = Query(
+    version: Optional[int] = Query(
         default=None,
         description="Specific version to retrieve (default: active version)",
     ),
@@ -544,8 +545,8 @@ async def _writable_organizations(
 
 
 async def _get_graph_version(
-    graph_id: str, version: int | None, user_id: str, organization_id: str
-) -> graph_db.GraphModel | None:
+    graph_id: str, version: Optional[int], user_id: str, organization_id: str
+) -> Optional[graph_db.GraphModel]:
     """`version`, or else the active one, with its sub-graphs."""
     if version is None:
         version = await graph_db.get_active_graph_version(

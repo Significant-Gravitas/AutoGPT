@@ -205,7 +205,7 @@ class DecisionRequest(BaseModel):
     edited_body: str | None = Field(default=None, max_length=20_000)
 
     @model_validator(mode="after")
-    def edits_carry_a_body(self) -> DecisionRequest:
+    def edits_carry_a_body(self) -> "DecisionRequest":
         if self.action == "apply_edited" and not (self.edited_body or "").strip():
             raise ValueError("An edited alternative needs a body")
         return self

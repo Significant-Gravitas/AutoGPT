@@ -8,7 +8,7 @@ lease and the input bundle."""
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -50,7 +50,7 @@ from .store import write_stop
 
 _SCOPE = MemoryScope.for_user("u")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
-_LONG_AGO = datetime(2000, 1, 1, tzinfo=UTC)
+_LONG_AGO = datetime(2000, 1, 1, tzinfo=timezone.utc)
 _BILLED = InferenceUsage(
     model="m", input_tokens=100, output_tokens=20, payer="platform_allowance"
 )
@@ -120,7 +120,7 @@ class TestTheSyncLease:
             row["lease_expires_at"] = _LONG_AGO
 
         _phases(mocker, during)
-        started = datetime.now(UTC)
+        started = datetime.now(timezone.utc)
 
         result = await orchestrator_mod.execute_dream_pass("u")
 
@@ -239,7 +239,7 @@ class TestAClosingRow:
         [
             lambda: outcome(_result(skipped=True), None),
             lambda: outcome(_result(), None),
-            lambda: failed("boom", None, datetime.now(UTC)),
+            lambda: failed("boom", None, datetime.now(timezone.utc)),
         ],
         ids=["skipped", "complete", "errored"],
     )
@@ -250,7 +250,7 @@ class TestAClosingRow:
         fake_dream_db.seed(
             _draft("p1"),
             lease_token="tok",
-            lease_expires_at=datetime.now(UTC),
+            lease_expires_at=datetime.now(timezone.utc),
             input_bundle=_input(),
             phase_outputs={"consolidate": ConsolidationOutput()},
         )
@@ -267,7 +267,7 @@ class TestAClosingRow:
         "close",
         [
             lambda: outcome(_result(), None, marked=True),
-            lambda: failed("boom", None, datetime.now(UTC), marked=True),
+            lambda: failed("boom", None, datetime.now(timezone.utc), marked=True),
             lambda: cancelled("cancelled: by_admin", owner_user_id="u"),
             lambda: expired("expired: forced", not_updated_since=None),
         ],
@@ -281,7 +281,7 @@ class TestAClosingRow:
         token to release the lock with, the expiry that says whether the pass
         may still run) until the write that says it finished."""
         closing = close()
-        lapses = datetime.now(UTC)
+        lapses = datetime.now(timezone.utc)
         fake_dream_db.seed(
             _draft("p1"),
             lease_token="tok",
@@ -332,7 +332,7 @@ class TestAClosingRow:
         """The reaper's expiry keeps the token its cleanup may need and marks
         the row; the write that says the cleanup finished is the one a closed
         row takes, and it only clears."""
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         fake_dream_db.seed(
             _draft("p1"), lease_token="tok", lease_expires_at=now, updated_at=now
         )
@@ -364,7 +364,7 @@ class TestAClosingRow:
         assert set(opened[17]) == {s.value for s in OPEN_STATUSES}
         assert closed[21] == ["cleanupPendingAt", "leaseExpiresAt", "leaseToken"]
         marked = transition_args(
-            "p1", reaped("x", not_updated_since=datetime.now(UTC))
+            "p1", reaped("x", not_updated_since=datetime.now(timezone.utc))
         )
         assert marked[22] is not None and "leaseToken" not in marked[21]
 
@@ -434,7 +434,7 @@ def _route(scope, job, *, config=None) -> RouteDecision:
 
 
 def _input() -> DreamInput:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     episode = EpisodeRow(
         uuid="e1",
         name=None,

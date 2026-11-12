@@ -12,7 +12,7 @@ record itself is pinned in ``recall_derivation_test.py``.
 
 import asyncio
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -31,7 +31,7 @@ def _payload(citations: Citations | None, completion=None) -> dict:
         "episode_body": '{"content": "Alice works on Atlas"}',
         "source": EpisodeType.json,
         "source_description": "dream-pass consolidation",
-        "reference_time": datetime(2026, 9, 28, tzinfo=UTC),
+        "reference_time": datetime(2026, 9, 28, tzinfo=timezone.utc),
         "group_id": "user_test",
         "_citations": citations,
         "_completion": completion,

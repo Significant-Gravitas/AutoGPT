@@ -9,7 +9,7 @@ registers its own handlers over both rather than inheriting either.
 """
 
 import logging
-from collections.abc import Mapping
+from typing import Mapping, Optional
 
 import fastapi
 import fastapi.responses
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 class ErrorDetail(BaseModel):
     code: str = Field(description="Stable machine-readable identifier for the failure")
     message: str = Field(description="Human-readable explanation")
-    details: dict[str, JsonValue] | None = Field(
+    details: Optional[dict[str, JsonValue]] = Field(
         default=None, description="Structured context, when the failure has any"
     )
 
@@ -90,9 +90,9 @@ def add_v2_exception_handlers(app: fastapi.FastAPI) -> None:
 def error_response(
     status_code: int,
     message: str,
-    code: str | None = None,
-    details: dict[str, JsonValue] | None = None,
-    headers: Mapping[str, str] | None = None,
+    code: Optional[str] = None,
+    details: Optional[dict[str, JsonValue]] = None,
+    headers: Optional[Mapping[str, str]] = None,
 ) -> fastapi.responses.JSONResponse:
     """Build a v2 error body. Also used outside the handlers, by the middleware."""
     body = ErrorResponse(

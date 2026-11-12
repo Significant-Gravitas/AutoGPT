@@ -200,8 +200,8 @@ def test_real_seeding_scripts_expose_the_entrypoints_the_route_uses():
     e2e_module = _load_test_script("e2e_test_data")
     full_module = _load_test_script("test_data_creator")
 
-    creator_class = e2e_module.TestDataCreator
-    assert callable(creator_class.create_all_test_data)
+    creator_class = getattr(e2e_module, "TestDataCreator")
+    assert callable(getattr(creator_class, "create_all_test_data"))
     for attribute in (
         "users",
         "agent_graphs",
@@ -212,4 +212,4 @@ def test_real_seeding_scripts_expose_the_entrypoints_the_route_uses():
     ):
         assert attribute in creator_class().__dict__
 
-    assert callable(full_module.main)
+    assert callable(getattr(full_module, "main"))

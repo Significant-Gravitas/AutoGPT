@@ -6,14 +6,14 @@ ones that need too many rows to set up there (runs, reviews).
 """
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from prisma.enums import AccountDeletionSource
 from prisma.errors import UniqueViolationError
 
-from backend.data import account_deletion
+import backend.data.account_deletion as account_deletion
 from backend.data.account_deletion import (
     GRACE_PERIOD,
     ReopenOutcome,
@@ -152,7 +152,7 @@ async def test_a_closed_account_is_not_closed_again(tx: MagicMock):
 async def test_reopening_deletes_the_request_only_before_its_erasure_date(
     tx: MagicMock,
 ):
-    now = datetime(2026, 11, 1, tzinfo=UTC)
+    now = datetime(2026, 11, 1, tzinfo=timezone.utc)
     tx.accountdeletionrequest.delete_many.return_value = 1
 
     assert await reopen_account(USER_ID, now=now) is ReopenOutcome.REOPENED

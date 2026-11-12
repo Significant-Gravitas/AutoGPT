@@ -6,7 +6,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import prisma.models
@@ -134,7 +134,7 @@ async def _seed_closed_account() -> str:
         data={
             "userId": user_id,
             "source": AccountDeletionSource.SETTINGS,
-            "eraseAfter": datetime.now(UTC) + GRACE_PERIOD,
+            "eraseAfter": datetime.now(timezone.utc) + GRACE_PERIOD,
         }
     )
     return user_id

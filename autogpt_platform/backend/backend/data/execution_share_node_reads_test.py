@@ -5,7 +5,7 @@ one query for the distinct nodes, and no node in the per-execution include.
 """
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import prisma.models
@@ -17,7 +17,7 @@ from backend.data.execution import get_graph_execution_by_share_token
 
 OUTPUT_BLOCK_ID = AgentOutputBlock().id
 SHARED_NODE_ID = "node-shared"
-_T0 = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+_T0 = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
 _EXECUTIONS_OF_ONE_NODE = 5
 
 

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -18,7 +18,7 @@ from backend.util.exceptions import NotFoundError
 MODULE = "backend.api.features.account_deletion.autopilot_work"
 BEST_EFFORT_MODULE = "backend.api.features.account_deletion.best_effort"
 USER_ID = "user-1"
-LINKED_AT = datetime(2026, 10, 1, tzinfo=UTC)
+LINKED_AT = datetime(2026, 10, 1, tzinfo=timezone.utc)
 
 
 def _chat(session_id: str) -> MagicMock:

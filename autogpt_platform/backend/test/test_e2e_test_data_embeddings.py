@@ -5,11 +5,10 @@ Stubs the search-embedding functions to avoid needing a database or an LLM.
 
 import asyncio
 import time
+from test import e2e_test_data
 from unittest.mock import patch
 
 import pytest
-
-from test import e2e_test_data
 
 
 def _stats(missing: int, total: int = 5584):

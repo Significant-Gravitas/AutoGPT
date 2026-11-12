@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import prisma
@@ -15,7 +15,7 @@ def _created_run(node_count: int) -> AgentGraphExecution:
     nested under it and carry no copy of it."""
     return AgentGraphExecution(
         id="exec-1",
-        createdAt=datetime.now(UTC),
+        createdAt=datetime.now(timezone.utc),
         isDeleted=False,
         executionStatus=AgentExecutionStatus.INCOMPLETE,
         agentGraphId="graph-1",
@@ -30,7 +30,7 @@ def _created_run(node_count: int) -> AgentGraphExecution:
                 agentGraphExecutionId="exec-1",
                 agentNodeId=f"node-{i}",
                 executionStatus=AgentExecutionStatus.QUEUED,
-                addedTime=datetime.now(UTC),
+                addedTime=datetime.now(timezone.utc),
             )
             for i in range(node_count)
         ],

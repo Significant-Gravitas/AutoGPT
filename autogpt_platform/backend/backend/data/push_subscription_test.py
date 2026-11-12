@@ -1,7 +1,7 @@
 """Tests for Web Push subscription CRUD operations."""
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -156,7 +156,7 @@ class TestUpsertPushSubscription:
             MagicMock(
                 id=f"row-{i}",
                 endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
-                updatedAt=datetime(2026, 10, 1 + i, tzinfo=UTC),
+                updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
                 failCount=0,
             )
             for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
@@ -191,7 +191,7 @@ class TestUpsertPushSubscription:
             MagicMock(
                 id=f"row-{i}",
                 endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
-                updatedAt=datetime(2026, 10, 1 + i, tzinfo=UTC),
+                updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
                 failCount=0,
             )
             for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
@@ -222,7 +222,7 @@ class TestUpsertPushSubscription:
             MagicMock(
                 id=f"row-{i}",
                 endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}",
-                updatedAt=datetime(2026, 10, 1 + i, tzinfo=UTC),
+                updatedAt=datetime(2026, 10, 1 + i, tzinfo=timezone.utc),
                 failCount=0,
             )
             for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)

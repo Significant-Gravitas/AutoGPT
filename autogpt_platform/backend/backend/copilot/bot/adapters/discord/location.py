@@ -18,7 +18,7 @@ class Location(BaseModel):
 def location_of(guild: discord.Guild | None, channel: object) -> Location:
     if guild is None or channel is None:
         return Location()
-    channel_id = str(channel.id)
+    channel_id = str(getattr(channel, "id"))
     location = Location(
         server_name=str(guild.name),
         public_channel_id=channel_id,

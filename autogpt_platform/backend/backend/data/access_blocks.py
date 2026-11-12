@@ -8,7 +8,7 @@ value is normalised.
 import functools
 import ipaddress
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma.enums import AuthAccessBlockKind
 from prisma.models import AuthAccessBlock, AuthUser
@@ -266,7 +266,7 @@ async def create_access_block(
         raise ValueError("Give a reason for the block.")
     if len(reason) > MAX_REASON_LENGTH:
         raise ValueError(f"Keep the reason under {MAX_REASON_LENGTH} characters.")
-    if expires_at is not None and expires_at <= datetime.now(UTC):
+    if expires_at is not None and expires_at <= datetime.now(timezone.utc):
         raise ValueError("The block would expire before it starts.")
 
     # One statement, so two admins blocking the same value at once can't both
@@ -397,6 +397,6 @@ def _active_where() -> AuthAccessBlockWhereInput:
     return {
         "OR": [
             {"expiresAt": None},
-            {"expiresAt": {"gt": datetime.now(UTC)}},
+            {"expiresAt": {"gt": datetime.now(timezone.utc)}},
         ]
     }

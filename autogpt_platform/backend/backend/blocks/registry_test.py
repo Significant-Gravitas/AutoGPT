@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from backend import blocks
+import backend.blocks as blocks
 from backend.blocks._base import BlockType
 
 

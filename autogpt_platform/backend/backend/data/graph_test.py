@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import UUID, uuid4
@@ -40,6 +40,9 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+)
+from backend.data.graph import create_graph as db_create_graph
+from backend.data.graph import (
     delete_graph,
     fork_graph,
     get_graph,
@@ -54,7 +57,6 @@ from backend.data.graph import (
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
-from backend.data.graph import create_graph as db_create_graph
 from backend.data.model import CredentialsFieldInfo, SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
@@ -946,7 +948,7 @@ def _sheets_graph_row(owner_id: str) -> AgentGraph:
         description="",
         userId=owner_id,
         isActive=True,
-        createdAt=datetime.now(UTC),
+        createdAt=datetime.now(timezone.utc),
         visibility=ResourceVisibility.PRIVATE,
         organizationId="org-1",
         Nodes=[
@@ -1283,7 +1285,7 @@ def test_credentials_input_schema_excludes_auto_creds():
     (is_auto_credential=True) from the schema. Auto_credentials are
     transparently resolved at execution time via file picker data.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from unittest.mock import PropertyMock, patch
 
     from backend.data.graph import GraphModel, NodeModel
@@ -1304,7 +1306,7 @@ def test_credentials_input_schema_excludes_auto_creds():
         name="Test",
         description="Test",
         user_id="test-user",
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
         nodes=[
             NodeModel(
                 id="node-1",
@@ -1378,7 +1380,7 @@ def test_credentials_input_schema_groups_each_input_by_provider_once():
         name="Test",
         description="Test",
         user_id="test-user",
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
         nodes=[],
         links=[],
     )
@@ -3419,7 +3421,7 @@ AI_STRUCTURED_RESPONSE_BLOCK_ID = "ed55ac19-356e-4243-a6cb-bc599e9b716f"
 
 
 def _graph_with(nodes: list[NodeModel]) -> GraphModel:
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     return GraphModel(
         id="agg-graph",
@@ -3427,7 +3429,7 @@ def _graph_with(nodes: list[NodeModel]) -> GraphModel:
         name="Aggregation",
         description="",
         user_id="u-1",
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
         nodes=nodes,
         links=[],
     )

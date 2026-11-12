@@ -176,7 +176,8 @@ def build_sdk_env(
 
     elif stand_in_model_url is not None:
         base = stand_in_model_url.rstrip("/")
-        base = base.removesuffix("/v1")
+        if base.endswith("/v1"):
+            base = base[:-3]
         parsed_stand_in = urlparse(base)
         if parsed_stand_in.scheme not in {"http", "https"} or not (
             parsed_stand_in.hostname
@@ -234,7 +235,8 @@ def build_sdk_env(
     # --- Mode 3: OpenRouter proxy ---
     else:
         base = (config.base_url or "").rstrip("/")
-        base = base.removesuffix("/v1")
+        if base.endswith("/v1"):
+            base = base[:-3]
         env = {
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": config.api_key or "",

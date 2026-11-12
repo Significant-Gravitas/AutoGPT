@@ -8,6 +8,7 @@ tell apart: the run started, the run already started, and it is still starting.
 
 import asyncio
 import json
+from typing import Optional
 from unittest import mock
 
 import fastapi
@@ -31,7 +32,7 @@ KEY = "client-chosen-key"
 REQUEST = request_fingerprint(agent_id="agent-1", request={"inputs": {"q": "a"}})
 
 
-def _held(run_id: str | None = None, request: str = REQUEST) -> str:
+def _held(run_id: Optional[str] = None, request: str = REQUEST) -> str:
     """What the store holds for a key claimed by `request`."""
     return json.dumps({"request": request, "run": run_id})
 
@@ -262,7 +263,7 @@ async def test_a_cancelled_request_releases_its_key(
 @pytest.mark.parametrize(
     "sent,expected", [(None, None), ("", None), ("  ", None), (" k ", "k")]
 )
-def test_a_blank_header_is_no_key(sent: str | None, expected: str | None) -> None:
+def test_a_blank_header_is_no_key(sent: Optional[str], expected: Optional[str]) -> None:
     assert idempotency_key(sent) == expected
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -96,10 +96,10 @@ class SocialPlatform(str, Enum):
 
 class EmailConfig(BaseModel):
     to: str
-    subject: str | None = None
-    body: str | None = None
-    from_name: str | None = None
-    from_email: str | None = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    from_name: Optional[str] = None
+    from_email: Optional[str] = None
 
 
 class JWTResponse(BaseModel):
@@ -107,8 +107,8 @@ class JWTResponse(BaseModel):
     title: str
     token: str
     url: str
-    emailSent: bool | None = None
-    expiresIn: str | None = None
+    emailSent: Optional[bool] = None
+    expiresIn: Optional[str] = None
 
 
 class ProfileResponse(BaseModel):
@@ -116,7 +116,7 @@ class ProfileResponse(BaseModel):
     title: str
     refId: str
     profileKey: str
-    messagingActive: bool | None = None
+    messagingActive: Optional[bool] = None
 
 
 class PostResponse(BaseModel):
@@ -125,9 +125,9 @@ class PostResponse(BaseModel):
     refId: str
     profileTitle: str
     post: str
-    postIds: list[PostIds] | None = None
-    scheduleDate: str | None = None
-    errors: list[str] | None = None
+    postIds: Optional[list[PostIds]] = None
+    scheduleDate: Optional[str] = None
+    errors: Optional[list[str]] = None
 
 
 class PostIds(BaseModel):
@@ -138,27 +138,27 @@ class PostIds(BaseModel):
 
 
 class AutoHashtag(BaseModel):
-    max: int | None = None
-    position: str | None = None
+    max: Optional[int] = None
+    position: Optional[str] = None
 
 
 class FirstComment(BaseModel):
     text: str
-    platforms: list[SocialPlatform] | None = None
+    platforms: Optional[list[SocialPlatform]] = None
 
 
 class AutoSchedule(BaseModel):
     interval: str
-    platforms: list[SocialPlatform] | None = None
-    startDate: str | None = None
-    endDate: str | None = None
+    platforms: Optional[list[SocialPlatform]] = None
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
 
 
 class AutoRepost(BaseModel):
     interval: str
-    platforms: list[SocialPlatform] | None = None
-    startDate: str | None = None
-    endDate: str | None = None
+    platforms: Optional[list[SocialPlatform]] = None
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
 
 
 class AyrshareClient:
@@ -171,7 +171,7 @@ class AyrshareClient:
 
     def __init__(
         self,
-        custom_requests: Requests | None = None,
+        custom_requests: Optional[Requests] = None,
     ):
         if not settings.secrets.ayrshare_api_key:
             raise MissingConfigError("AYRSHARE_API_KEY is not configured")
@@ -199,13 +199,13 @@ class AyrshareClient:
         self,
         private_key: str,
         profile_key: str,
-        logout: bool | None = None,
-        redirect: str | None = None,
-        allowed_social: list[SocialPlatform] | None = None,
-        verify: bool | None = None,
-        base64: bool | None = None,
-        expires_in: int | None = None,
-        email: EmailConfig | None = None,
+        logout: Optional[bool] = None,
+        redirect: Optional[str] = None,
+        allowed_social: Optional[list[SocialPlatform]] = None,
+        verify: Optional[bool] = None,
+        base64: Optional[bool] = None,
+        expires_in: Optional[int] = None,
+        email: Optional[EmailConfig] = None,
     ) -> JWTResponse:
         """
         Generate a JSON Web Token (JWT) for use with single sign on.
@@ -277,14 +277,14 @@ class AyrshareClient:
     async def create_profile(
         self,
         title: str,
-        messaging_active: bool | None = None,
-        hide_top_header: bool | None = None,
-        top_header: str | None = None,
-        disable_social: list[SocialPlatform] | None = None,
-        team: bool | None = None,
-        email: str | None = None,
-        sub_header: str | None = None,
-        tags: list[str] | None = None,
+        messaging_active: Optional[bool] = None,
+        hide_top_header: Optional[bool] = None,
+        top_header: Optional[str] = None,
+        disable_social: Optional[list[SocialPlatform]] = None,
+        team: Optional[bool] = None,
+        email: Optional[str] = None,
+        sub_header: Optional[str] = None,
+        tags: Optional[list[str]] = None,
     ) -> ProfileResponse:
         """
         Create a new User Profile under your Primary Profile.
@@ -352,36 +352,36 @@ class AyrshareClient:
         post: str,
         platforms: list[SocialPlatform],
         *,
-        media_urls: list[str] | None = None,
-        is_video: bool | None = None,
-        schedule_date: str | None = None,
-        validate_schedule: bool | None = None,
-        first_comment: FirstComment | None = None,
-        disable_comments: bool | None = None,
-        shorten_links: bool | None = None,
-        auto_schedule: AutoSchedule | None = None,
-        auto_repost: AutoRepost | None = None,
-        auto_hashtag: AutoHashtag | bool | None = None,
-        unsplash: str | None = None,
-        bluesky_options: dict[str, Any] | None = None,
-        facebook_options: dict[str, Any] | None = None,
-        gmb_options: dict[str, Any] | None = None,
-        instagram_options: dict[str, Any] | None = None,
-        linkedin_options: dict[str, Any] | None = None,
-        pinterest_options: dict[str, Any] | None = None,
-        reddit_options: dict[str, Any] | None = None,
-        snapchat_options: dict[str, Any] | None = None,
-        telegram_options: dict[str, Any] | None = None,
-        threads_options: dict[str, Any] | None = None,
-        tiktok_options: dict[str, Any] | None = None,
-        twitter_options: dict[str, Any] | None = None,
-        youtube_options: dict[str, Any] | None = None,
-        requires_approval: bool | None = None,
-        random_post: bool | None = None,
-        random_media_url: bool | None = None,
-        idempotency_key: str | None = None,
-        notes: str | None = None,
-        profile_key: str | None = None,
+        media_urls: Optional[list[str]] = None,
+        is_video: Optional[bool] = None,
+        schedule_date: Optional[str] = None,
+        validate_schedule: Optional[bool] = None,
+        first_comment: Optional[FirstComment] = None,
+        disable_comments: Optional[bool] = None,
+        shorten_links: Optional[bool] = None,
+        auto_schedule: Optional[AutoSchedule] = None,
+        auto_repost: Optional[AutoRepost] = None,
+        auto_hashtag: Optional[AutoHashtag | bool] = None,
+        unsplash: Optional[str] = None,
+        bluesky_options: Optional[dict[str, Any]] = None,
+        facebook_options: Optional[dict[str, Any]] = None,
+        gmb_options: Optional[dict[str, Any]] = None,
+        instagram_options: Optional[dict[str, Any]] = None,
+        linkedin_options: Optional[dict[str, Any]] = None,
+        pinterest_options: Optional[dict[str, Any]] = None,
+        reddit_options: Optional[dict[str, Any]] = None,
+        snapchat_options: Optional[dict[str, Any]] = None,
+        telegram_options: Optional[dict[str, Any]] = None,
+        threads_options: Optional[dict[str, Any]] = None,
+        tiktok_options: Optional[dict[str, Any]] = None,
+        twitter_options: Optional[dict[str, Any]] = None,
+        youtube_options: Optional[dict[str, Any]] = None,
+        requires_approval: Optional[bool] = None,
+        random_post: Optional[bool] = None,
+        random_media_url: Optional[bool] = None,
+        idempotency_key: Optional[str] = None,
+        notes: Optional[str] = None,
+        profile_key: Optional[str] = None,
     ) -> PostResponse:
         """
         Create a post across multiple social media platforms.
@@ -557,5 +557,5 @@ class AyrshareClient:
                 "Ayrshare API returned no posts",
                 response.status,
             )
-        logger.warning(f"Ayrshare API returned posts: {response_data['posts']}")
+        logger.warn(f"Ayrshare API returned posts: {response_data['posts']}")
         return PostResponse(**response_data["posts"][0])

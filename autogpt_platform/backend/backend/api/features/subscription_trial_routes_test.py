@@ -307,11 +307,12 @@ async def test_unavailable_offer_is_conflict_not_success(trial):
         routes,
         "create_trial_checkout",
         AsyncMock(side_effect=routes.TrialUnavailable("Offer changed")),
-    ), pytest.raises(routes.HTTPException) as error:
-        await routes.start_trial_checkout(
-            routes.TrialCheckoutRequest(offer_token=trial.offer.token),
-            trial.user_id,
-        )
+    ):
+        with pytest.raises(routes.HTTPException) as error:
+            await routes.start_trial_checkout(
+                routes.TrialCheckoutRequest(offer_token=trial.offer.token),
+                trial.user_id,
+            )
     assert error.value.status_code == 409
 
 

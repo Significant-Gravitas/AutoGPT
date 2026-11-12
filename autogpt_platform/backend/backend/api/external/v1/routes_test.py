@@ -1,6 +1,6 @@
 import asyncio
 import threading
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -32,7 +32,7 @@ def setup_auth(test_user_id, v1_counter):
             user_id=test_user_id,
             scopes=list(APIKeyPermission),
             type="api_key",
-            created_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
         )
 
     app.dependency_overrides[require_auth] = fake_require_auth
@@ -318,7 +318,7 @@ def test_execute_block_context_carries_key_org_and_team(
             user_id=test_user_id,
             scopes=[APIKeyPermission.EXECUTE_BLOCK],
             type="api_key",
-            created_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
             organization_id="org-a",
             team_id_restriction="team-a",
         )
@@ -395,7 +395,7 @@ def test_execute_graph_uses_key_org_not_user_default(
             user_id=test_user_id,
             scopes=list(APIKeyPermission),
             type="api_key",
-            created_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
             organization_id="org-from-key",
         )
 
@@ -437,7 +437,7 @@ def test_execute_graph_honors_key_team_restriction(
             user_id=test_user_id,
             scopes=list(APIKeyPermission),
             type="api_key",
-            created_at=datetime.now(UTC),
+            created_at=datetime.now(timezone.utc),
             organization_id="org-from-key",
             team_id_restriction="team-from-key",
         )

@@ -5,7 +5,7 @@ reading a pass's outcome, and the jobs' args and results."""
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -226,7 +226,7 @@ def test_job_kwargs_keep_the_accounts_legacy_shape():
 
 
 def test_job_results_carry_the_scope_key():
-    when = datetime(2026, 9, 28, 4, tzinfo=UTC)
+    when = datetime(2026, 9, 28, 4, tzinfo=timezone.utc)
 
     added = scope_crons.memory_job_result(EXPERT, "job-1", when, "Asia/Tokyo")
     skipped = scope_crons.memory_job_skipped(ACCOUNT, "UTC", "dream_pass_disabled")

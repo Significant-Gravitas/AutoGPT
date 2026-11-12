@@ -23,7 +23,7 @@ and cascades from it under its own name.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from graphiti_core.driver.driver import GraphDriver
 from pydantic import BaseModel, Field
@@ -73,7 +73,7 @@ async def settle(driver: GraphDriver, group_id: str, citations: Citations) -> bo
     if not reached.any():
         return True
     result = ForgetResult()
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     for facts, seeds, erase in (
         (reached.hard, reached.hard_seeds, True),
         (reached.soft, reached.soft_seeds, False),

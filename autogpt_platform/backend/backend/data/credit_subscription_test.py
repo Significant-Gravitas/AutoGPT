@@ -2,7 +2,6 @@
 Tests for Stripe-based subscription tier billing.
 """
 
-from datetime import UTC
 from typing import Protocol
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -827,9 +826,10 @@ async def test_cancel_stripe_subscription_raises_on_list_failure():
         patch(
             "backend.data.credit.stripe.Subscription.list_async",
             side_effect=stripe.StripeError("network error"),
-        ),pytest.raises(stripe.StripeError)
+        ),
     ):
-        await cancel_stripe_subscription("user-1")
+        with pytest.raises(stripe.StripeError):
+            await cancel_stripe_subscription("user-1")
 
 
 @pytest.mark.asyncio
@@ -1151,13 +1151,14 @@ async def test_create_subscription_checkout_no_price_raises(checkout_guard):
         "backend.data.credit.get_subscription_price_id",
         new_callable=AsyncMock,
         return_value=None,
-    ), pytest.raises(ValueError, match="not available"):
-        await create_subscription_checkout(
-            user_id="user-1",
-            tier=SubscriptionTier.PRO,
-            success_url="https://app.example.com/success",
-            cancel_url="https://app.example.com/cancel",
-        )
+    ):
+        with pytest.raises(ValueError, match="not available"):
+            await create_subscription_checkout(
+                user_id="user-1",
+                tier=SubscriptionTier.PRO,
+                success_url="https://app.example.com/success",
+                cancel_url="https://app.example.com/cancel",
+            )
 
 
 @pytest.fixture
@@ -1789,9 +1790,10 @@ async def test_cancel_stripe_subscription_raises_on_cancel_error():
         patch(
             "backend.data.credit.stripe.Subscription.modify_async",
             side_effect=stripe_mod.StripeError("network error"),
-        ),pytest.raises(stripe_mod.StripeError)
+        ),
     ):
-        await cancel_stripe_subscription("user-1")
+        with pytest.raises(stripe_mod.StripeError):
+            await cancel_stripe_subscription("user-1")
 
 
 @pytest.mark.asyncio
@@ -2916,8 +2918,9 @@ async def test_modify_stripe_subscription_for_tier_raises_on_missing_price_id():
         "backend.data.credit.get_subscription_price_id",
         new_callable=AsyncMock,
         return_value=None,
-    ), pytest.raises(ValueError, match="No Stripe price ID configured"):
-        await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.PRO)
+    ):
+        with pytest.raises(ValueError, match="No Stripe price ID configured"):
+            await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.PRO)
 
 
 def test_tier_order_helpers():
@@ -3250,9 +3253,10 @@ async def test_modify_stripe_subscription_for_tier_pro_to_max_card_decline_does_
         patch(
             "backend.data.credit.set_subscription_tier",
             new_callable=AsyncMock,
-        ) as mock_set_tier,pytest.raises(stripe.CardError)
+        ) as mock_set_tier,
     ):
-        await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.MAX)
+        with pytest.raises(stripe.CardError):
+            await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.MAX)
 
     mock_set_tier.assert_not_awaited()
 
@@ -4229,9 +4233,10 @@ async def test_schedule_downgrade_rolls_back_orphan_on_modify_failure():
         patch(
             "backend.data.credit.stripe.SubscriptionSchedule.release_async",
             new_callable=AsyncMock,
-        ) as mock_release,pytest.raises(stripe.APIConnectionError)
+        ) as mock_release,
     ):
-        await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.PRO)
+        with pytest.raises(stripe.APIConnectionError):
+            await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.PRO)
 
     mock_create.assert_called_once_with(from_subscription="sub_biz")
     mock_schedule_modify.assert_called_once()
@@ -4254,8 +4259,9 @@ async def test_release_ignoring_terminal_reraises_non_terminal_error():
             "No such subscription_schedule: 'sub_sched_typo'",
             param="schedule",
         ),
-    ), pytest.raises(stripe.InvalidRequestError):
-        await _release_schedule_ignoring_terminal("sub_sched_typo", "test_context")
+    ):
+        with pytest.raises(stripe.InvalidRequestError):
+            await _release_schedule_ignoring_terminal("sub_sched_typo", "test_context")
 
 
 @pytest.mark.asyncio
@@ -4631,7 +4637,7 @@ async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
     """The ledger outlives the account (no foreign key to User), so a row
     whose account is gone lists without an email instead of failing the
     whole page."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from prisma.enums import CreditTransactionType
 
@@ -4639,7 +4645,7 @@ async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
 
     row = MagicMock(
         transactionKey="tx-1",
-        createdAt=datetime(2026, 4, 1, tzinfo=UTC),
+        createdAt=datetime(2026, 4, 1, tzinfo=timezone.utc),
         type=CreditTransactionType.USAGE,
         amount=-5,
         runningBalance=10,
@@ -4658,7 +4664,7 @@ async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
             AsyncMock(
                 return_value=MagicMock(
                     _get_credits=AsyncMock(
-                        return_value=(10, datetime.now(UTC))
+                        return_value=(10, datetime.now(timezone.utc))
                     )
                 )
             ),

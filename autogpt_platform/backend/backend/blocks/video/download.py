@@ -112,7 +112,7 @@ class VideoDownloadBlock(VideoMediaStorage, Block):
             output_dir, f"{node_exec_id}_%(title).50s.%(ext)s"
         )
 
-        ydl_opts: _Params = {
+        ydl_opts: "_Params" = {
             "format": f"{self._get_format_string(quality)}/best",
             "outtmpl": output_template,
             "merge_output_format": output_format,

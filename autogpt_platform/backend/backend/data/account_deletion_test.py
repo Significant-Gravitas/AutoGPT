@@ -9,9 +9,9 @@ the row only while the grace period lasts.
 """
 
 import asyncio
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import AsyncIterator
 from uuid import uuid4
 
 import pytest
@@ -30,7 +30,7 @@ from prisma.models import (
     User,
 )
 
-from backend.data import account_deletion
+import backend.data.account_deletion as account_deletion
 from backend.data.account_deletion import (
     GRACE_PERIOD,
     REOPENED_DAILY_EMAIL_LIMIT,
@@ -50,13 +50,13 @@ async def _add_session(user_id: str) -> None:
             "id": str(uuid4()),
             "token": str(uuid4()),
             "userId": user_id,
-            "expiresAt": datetime.now(UTC) + timedelta(days=1),
+            "expiresAt": datetime.now(timezone.utc) + timedelta(days=1),
         }
     )
 
 
 def _tomorrow() -> datetime:
-    return datetime.now(UTC) + timedelta(days=1)
+    return datetime.now(timezone.utc) + timedelta(days=1)
 
 
 async def _create_account(user_id: str) -> None:
@@ -231,7 +231,7 @@ async def test_the_sent_confirmation_is_recorded_on_the_request_only(
     request = await get_deletion_request(user_id)
     assert request is not None and request.confirmationSentAt is None
 
-    before = datetime.now(UTC)
+    before = datetime.now(timezone.utc)
     await mark_confirmation_sent(user_id)
 
     request = await get_deletion_request(user_id)
@@ -362,7 +362,7 @@ async def test_an_account_whose_erasure_started_cannot_be_reopened(
     assert request is not None
     await AccountDeletionRequest.prisma().update(
         where={"userId": user_id},
-        data={"startedAt": datetime.now(UTC)},
+        data={"startedAt": datetime.now(timezone.utc)},
     )
 
     outcome = await reopen_account(user_id, now=request.requestedAt)
@@ -377,7 +377,7 @@ async def test_an_erased_account_cannot_be_reopened(accounts: tuple[str, str]):
     await close_account(user_id, AccountDeletionSource.SETTINGS)
     await AccountDeletionRequest.prisma().update(
         where={"userId": user_id},
-        data={"completedAt": datetime.now(UTC)},
+        data={"completedAt": datetime.now(timezone.utc)},
     )
 
     assert await reopen_account(user_id) is ReopenOutcome.TOO_LATE
@@ -390,7 +390,7 @@ async def _shared_chat(user_id: str) -> str:
             "userId": user_id,
             "isShared": True,
             "shareToken": str(uuid4()),
-            "sharedAt": datetime.now(UTC),
+            "sharedAt": datetime.now(timezone.utc),
         }
     )
     return chat.id

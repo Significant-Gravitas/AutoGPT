@@ -76,4 +76,4 @@ This is a "quoted" string."""
             )
             yield "encoded_text", encoded_text
         except Exception as e:
-            yield "error", f"Encoding error: {e!s}"
+            yield "error", f"Encoding error: {str(e)}"

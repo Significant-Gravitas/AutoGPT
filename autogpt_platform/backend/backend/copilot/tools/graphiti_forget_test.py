@@ -5,7 +5,7 @@ The retraction itself (Cypher, per-uuid failures) is pinned in
 layer either mocked or driven through a mock driver.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -99,10 +99,10 @@ class TestForgetSearchCandidates:
             group_id="user_user-abc",
             source_node_uuid="a",
             target_node_uuid="b",
-            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
             name="works_on",
             fact="Alice works on Atlas",
-            valid_at=datetime(2025, 1, 1, tzinfo=UTC),
+            valid_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
             attributes={"status": status} if status else {},
         )
         session = ChatSession.new("user-abc", dry_run=False)
@@ -137,7 +137,7 @@ class TestForgetSearchForgottenCandidates:
             group_id="user_user-abc",
             source_node_uuid="a",
             target_node_uuid="b",
-            created_at=datetime(2025, 1, 1, tzinfo=UTC),
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
             name="works_on",
             fact=fact,
             expired_at=expired_at,
@@ -187,7 +187,7 @@ class TestForgetSearchForgottenCandidates:
             self._edge(
                 "e2",
                 FORGOTTEN_FACT,
-                valid_at=datetime(2024, 3, 9, tzinfo=UTC),
+                valid_at=datetime(2024, 3, 9, tzinfo=timezone.utc),
                 fact_redacted="Alice works on the secret Atlas plan",
                 name_redacted="works_on_secret_plan",
                 scope="project:Orion",
@@ -197,7 +197,7 @@ class TestForgetSearchForgottenCandidates:
             self._edge(
                 "e3",
                 "Carol owns the Atlas budget",
-                expired_at=datetime(2025, 6, 1, tzinfo=UTC),
+                expired_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
             ),
         ]
 

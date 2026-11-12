@@ -9,7 +9,7 @@ Credentials and then called .before_request() on it.
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import Event
 from unittest.mock import AsyncMock, MagicMock
 
@@ -50,7 +50,7 @@ async def test_refresh_keeps_the_event_loop_responsive(mocker: MockerFixture):
     google_creds = MagicMock(
         token="new-access",
         refresh_token="refresh-token-value",
-        expiry=datetime(2030, 1, 1, tzinfo=UTC),
+        expiry=datetime(2030, 1, 1, tzinfo=timezone.utc),
         scopes=_creds().scopes,
     )
 
@@ -114,7 +114,7 @@ async def test_revoke_tokens_revokes_the_grant_when_the_access_token_expired(
         return_value=MagicMock(post=mock_post),
     )
     creds = _creds()
-    expired = datetime.now(UTC) - timedelta(days=3)
+    expired = datetime.now(timezone.utc) - timedelta(days=3)
     creds.access_token_expires_at = int(expired.timestamp())
 
     result = await _handler().revoke_tokens(creds)

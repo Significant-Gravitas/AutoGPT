@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -83,7 +83,7 @@ class FakeRegistryDB:
         if self.fail:
             raise ConnectionError("db down")
         if scope_key not in self.rows:
-            now = datetime.now(UTC)
+            now = datetime.now(timezone.utc)
             self.rows[scope_key] = MemoryScopeSchedule(
                 scope_key=scope_key,
                 user_id=user_id,
@@ -157,7 +157,7 @@ class FakeRegistryDB:
         if await self.get_scope_schedule(user_id, scope_key) is None:
             return False
         field = "last_nightly_run_at" if kind == "nightly" else "last_community_run_at"
-        self.update(scope_key, **{field: datetime.now(UTC)})
+        self.update(scope_key, **{field: datetime.now(timezone.utc)})
         return True
 
     async def list_user_scope_schedules(

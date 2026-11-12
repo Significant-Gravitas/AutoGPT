@@ -35,9 +35,9 @@ from backend.copilot.dream import (
     cancel,
     cleanup,
     guard,
-    reaper,
 )
 from backend.copilot.dream import orchestrator as orchestrator_mod
+from backend.copilot.dream import reaper
 from backend.copilot.dream.fetch import DreamInput, EpisodeRow, FactRow
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.usage_activation import UsageActivationUnavailable, usage_keys

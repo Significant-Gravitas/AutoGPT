@@ -25,7 +25,7 @@ import asyncio
 import json
 import logging
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, LiteralString, cast
 
 import prisma.models
@@ -214,7 +214,7 @@ async def revert_model_migration(migration_id: str) -> RevertResult:
         # touching any nodes (fixes the check-then-act race on isReverted).
         claimed = await tx.llmmodelmigration.update_many(
             where={"id": migration_id, "isReverted": False},
-            data={"isReverted": True, "revertedAt": datetime.now(UTC)},
+            data={"isReverted": True, "revertedAt": datetime.now(timezone.utc)},
         )
         if claimed == 0:
             raise ValueError(f"Migration '{migration_id}' has already been reverted")

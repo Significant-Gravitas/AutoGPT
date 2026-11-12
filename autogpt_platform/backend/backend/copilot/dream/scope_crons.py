@@ -10,9 +10,8 @@ Registry calls run under the registry deadline and fail soft.
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from prisma.enums import MemoryScopeScheduleState
 

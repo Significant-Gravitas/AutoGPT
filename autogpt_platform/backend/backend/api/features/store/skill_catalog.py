@@ -141,7 +141,7 @@ async def _drop_active_versions_cache() -> None:
         await asyncio.wait_for(
             skill_db.invalidate_active_versions_cache(), timeout=_CACHE_DROP_TIMEOUT_S
         )
-    except (TimeoutError, Exception):
+    except (asyncio.TimeoutError, Exception):
         logger.warning(
             "Active skill versions cache not dropped; copies will see the "
             f"publish within {skill_db.ACTIVE_VERSIONS_CACHE_TTL_S}s"

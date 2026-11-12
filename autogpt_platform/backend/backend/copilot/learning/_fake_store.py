@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import itertools
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from backend.data.skill_content_approvals import SkillContentApproval
@@ -52,7 +52,7 @@ from backend.data.skill_versions import (
 
 
 def _now() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class FakeLearningStore:

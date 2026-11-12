@@ -7,8 +7,7 @@ the way each REST route is.
 """
 
 import logging
-from collections.abc import Sequence
-from typing import Any
+from typing import Any, Sequence
 
 from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError

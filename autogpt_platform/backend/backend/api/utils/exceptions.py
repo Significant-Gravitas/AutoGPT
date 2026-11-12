@@ -8,7 +8,7 @@ ensures that all mounted sub-apps (v1, v2, main) handle errors uniformly.
 
 import json
 import logging
-from collections.abc import Sequence
+from typing import Sequence
 
 import fastapi
 import fastapi.responses

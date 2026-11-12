@@ -14,9 +14,8 @@ for the chat's last card, so a burst of answers starts one turn.
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator, Callable, Iterable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Iterable, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError

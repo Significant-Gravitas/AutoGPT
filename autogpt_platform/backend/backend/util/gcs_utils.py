@@ -7,9 +7,9 @@ including path parsing, client management, and signed URL generation.
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import AsyncIterator
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -167,7 +167,7 @@ def object_created_at(item: dict) -> datetime:
     # RFC 3339 with a trailing "Z", which ``fromisoformat`` only reads from
     # Python 3.11 on.
     created = datetime.fromisoformat(item["timeCreated"].replace("Z", "+00:00"))
-    return created if created.tzinfo else created.replace(tzinfo=UTC)
+    return created if created.tzinfo else created.replace(tzinfo=timezone.utc)
 
 
 async def blob_created_at(bucket: str, blob: str) -> datetime | None:
@@ -210,7 +210,7 @@ async def generate_signed_url(
     return await asyncio.to_thread(
         blob.generate_signed_url,
         version="v4",
-        expiration=datetime.now(UTC) + timedelta(seconds=expires_in),
+        expiration=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
         method="GET",
     )
 
@@ -227,7 +227,7 @@ async def generate_iam_signed_url(
 
     def generate() -> str:
         credentials, _ = google_auth_default(scopes=[CLOUD_PLATFORM_SCOPE])
-        expiration = datetime.now(UTC) + timedelta(seconds=expires_in)
+        expiration = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         if isinstance(credentials, Signing):
             return blob.generate_signed_url(
                 version="v4",

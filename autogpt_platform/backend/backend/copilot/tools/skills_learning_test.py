@@ -8,7 +8,7 @@ an unreadable registry fails closed for the owner's skills only, and a
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,7 +35,7 @@ EXPERT = "expert-1"
 
 
 def _session(expert_id: str | None = None) -> ChatSession:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return ChatSession(
         session_id="sess-1",
         user_id=USER,

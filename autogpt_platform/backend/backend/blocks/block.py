@@ -1,5 +1,6 @@
 import os
 import re
+from typing import Type
 
 from backend.blocks._base import (
     Block,
@@ -64,7 +65,7 @@ class BlockInstallationBlock(Block):
 
         try:
             module = __import__(module_name, fromlist=[class_name])
-            block_class: type[Block] = getattr(module, class_name)
+            block_class: Type[Block] = getattr(module, class_name)
             block = block_class()
 
             from backend.util.test import execute_block_test
@@ -73,4 +74,4 @@ class BlockInstallationBlock(Block):
             yield "success", "Block installed successfully."
         except Exception as e:
             os.remove(file_path)
-            raise RuntimeError(f"[Code]\n{code}\n\n[Error]\n{e!s}")
+            raise RuntimeError(f"[Code]\n{code}\n\n[Error]\n{str(e)}")

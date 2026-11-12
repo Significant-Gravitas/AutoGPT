@@ -37,7 +37,7 @@ REVIEW_TIMEOUT_SECONDS = 240
 # error, carrying the usage a provider billed for an answer that did not parse.
 DreamLLMError = InferenceError
 
-__all__ = ["DreamLLMError", "record_review_cost", "review_evidence", "reviewer_model"]
+__all__ = ["DreamLLMError", "review_evidence", "record_review_cost", "reviewer_model"]
 
 
 def reviewer_model(config: ChatConfig) -> str:

@@ -71,12 +71,13 @@ class TestForcedToolRetry:
         )
         with patch(ROUTING, return_value=ANTHROPIC), patch(
             CALL_PROVIDER, call_provider
-        ), pytest.raises(InferenceError, match="tool_choice") as exc_info:
-            await structured_complete(
-                sync_ctx("anthropic", "claude-sonnet-5"),
-                [{"role": "user", "content": "hi"}],
-                SampleOutput,
-            )
+        ):
+            with pytest.raises(InferenceError, match="tool_choice") as exc_info:
+                await structured_complete(
+                    sync_ctx("anthropic", "claude-sonnet-5"),
+                    [{"role": "user", "content": "hi"}],
+                    SampleOutput,
+                )
         assert call_provider.await_count == 2
         # Neither call came back with a response, so nothing was billed.
         assert exc_info.value.usage is None
@@ -93,12 +94,13 @@ class TestForcedToolRetry:
         call_provider = AsyncMock(side_effect=error)
         with patch(ROUTING, return_value=ANTHROPIC), patch(
             CALL_PROVIDER, call_provider
-        ), pytest.raises(InferenceError, match="tool_choice"):
-            await structured_complete(
-                sync_ctx("anthropic", "claude-sonnet-5"),
-                [{"role": "user", "content": "hi"}],
-                SampleOutput,
-            )
+        ):
+            with pytest.raises(InferenceError, match="tool_choice"):
+                await structured_complete(
+                    sync_ctx("anthropic", "claude-sonnet-5"),
+                    [{"role": "user", "content": "hi"}],
+                    SampleOutput,
+                )
         assert call_provider.await_count == 1
 
     @pytest.mark.asyncio
@@ -108,10 +110,11 @@ class TestForcedToolRetry:
         )
         with patch(ROUTING, return_value=ANTHROPIC), patch(
             CALL_PROVIDER, call_provider
-        ), pytest.raises(InferenceError, match="at least one message"):
-            await structured_complete(
-                sync_ctx("anthropic", "claude-sonnet-5"),
-                [{"role": "user", "content": "hi"}],
-                SampleOutput,
-            )
+        ):
+            with pytest.raises(InferenceError, match="at least one message"):
+                await structured_complete(
+                    sync_ctx("anthropic", "claude-sonnet-5"),
+                    [{"role": "user", "content": "hi"}],
+                    SampleOutput,
+                )
         assert call_provider.await_count == 1

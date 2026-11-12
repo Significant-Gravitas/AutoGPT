@@ -233,7 +233,7 @@ def _patch_upstream_episode_order() -> None:
         return _in_the_order_asked(await upstream(cls, driver, uuids), uuids)
 
     get_by_uuids._autogpt_ordered = True  # type: ignore[attr-defined]
-    EpisodicNode.get_by_uuids = classmethod(get_by_uuids)
+    setattr(EpisodicNode, "get_by_uuids", classmethod(get_by_uuids))
 
 
 _patch_upstream_episode_order()

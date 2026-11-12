@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -77,7 +77,7 @@ def test_a_date_that_never_comes_reads_as_unreadable():
 
 
 def test_times_stay_on_the_schedules_own_clock():
-    utc_now = _NOW.astimezone(UTC)
+    utc_now = _NOW.astimezone(timezone.utc)
 
     assert less_often(["30 8 * * *"], _CHICAGO, utc_now)[0].cron == "30 8 * * mon-fri"
 
@@ -269,7 +269,7 @@ def _scheduled(cron: str, start: datetime, end: datetime) -> list[datetime]:
     ],
 )
 def test_runs_are_counted_as_the_scheduler_fires_them(cron):
-    start = datetime(2026, 10, 11, tzinfo=UTC)
+    start = datetime(2026, 10, 11, tzinfo=timezone.utc)
     four_weeks = timedelta(weeks=4)
 
     counted = _fires([cron], "UTC", start, span=four_weeks)

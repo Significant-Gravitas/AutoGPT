@@ -14,7 +14,6 @@ The processor skips StreamFinish and publishes its own via mark_session_complete
 
 import asyncio
 import os
-from datetime import UTC
 from uuid import uuid4
 
 import pytest
@@ -233,7 +232,7 @@ async def test_concurrent_sessions():
 )
 async def test_session_state_persistence():
     """Test that session state is maintained across multiple messages."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     session_id = f"test-session-{uuid4()}"
     user_id = "test-user"
@@ -247,8 +246,8 @@ async def test_session_state_persistence():
             ChatMessage(role="assistant", content="Hi there!"),
         ],
         usage=[],
-        started_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
+        started_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     await upsert_chat_session(session)
 

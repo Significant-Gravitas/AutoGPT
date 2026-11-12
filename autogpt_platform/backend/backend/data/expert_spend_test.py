@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -6,7 +6,7 @@ import pytest
 from backend.data import expert_spend
 
 # A Wednesday in ISO week 37; that week starts on Monday 2026-09-07.
-WEDNESDAY = datetime(2026, 9, 9, 15, 30, tzinfo=UTC)
+WEDNESDAY = datetime(2026, 9, 9, 15, 30, tzinfo=timezone.utc)
 
 
 def test_keys_bucket_by_window() -> None:
@@ -17,10 +17,10 @@ def test_keys_bucket_by_window() -> None:
 
 def test_window_start_is_monday_or_midnight() -> None:
     assert expert_spend.window_start("week", WEDNESDAY) == datetime(
-        2026, 9, 7, tzinfo=UTC
+        2026, 9, 7, tzinfo=timezone.utc
     )
     assert expert_spend.window_start("day", WEDNESDAY) == datetime(
-        2026, 9, 9, tzinfo=UTC
+        2026, 9, 9, tzinfo=timezone.utc
     )
 
 

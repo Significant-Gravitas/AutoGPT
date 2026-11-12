@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 from backend.util.clients import get_scheduler_client
 from backend.util.settings import Settings
@@ -10,7 +11,7 @@ settings = Settings()
 
 
 async def _fetch_schedule_info(
-    user_id: str, graph_id: str | None = None
+    user_id: str, graph_id: Optional[str] = None
 ) -> dict[str, str]:
     """Fetch a map of graph ID to earliest next-run time.
 
@@ -38,7 +39,7 @@ async def _fetch_schedule_info(
             if current is None or parsed < current[0]:
                 earliest[schedule.graph_id] = (parsed, schedule.next_run_time)
         return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning(
             "Scheduler did not answer within "
             f"{settings.config.schedule_read_timeout_seconds}s; library agents "
@@ -50,7 +51,7 @@ async def _fetch_schedule_info(
         return {}
 
 
-def _parse_iso_datetime(value: str) -> datetime | None:
+def _parse_iso_datetime(value: str) -> Optional[datetime]:
     """Parse an ISO 8601 datetime, tolerating Z and naive UTC forms."""
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -58,5 +59,5 @@ def _parse_iso_datetime(value: str) -> datetime | None:
         logger.warning("Failed to parse schedule next_run_time: %s", value)
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+        parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed

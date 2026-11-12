@@ -2143,6 +2143,7 @@ class TestSetupCardIsPostedOncePerThread:
 
         async def _retried_set(key, value, ex=None, nx=False):
             await store_then_refuse(key, value, ex=ex, nx=nx)
+            return None
 
         redis.set = _retried_set
         adapter = await self._run_turns([_linear_card()], redis)

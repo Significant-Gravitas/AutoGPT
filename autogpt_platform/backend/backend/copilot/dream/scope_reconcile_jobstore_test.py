@@ -26,7 +26,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import UTC
+from datetime import timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -71,7 +71,7 @@ def _scheduler(store: ResilientSQLAlchemyJobStore) -> Iterator[sm.Scheduler]:
     """A ``Scheduler`` whose APScheduler, started paused, keeps its EXECUTION
     jobs in ``store``."""
     apscheduler = BackgroundScheduler(
-        jobstores={_EXECUTION: store}, timezone=UTC
+        jobstores={_EXECUTION: store}, timezone=timezone.utc
     )
     apscheduler.start(paused=True)
     service = sm.Scheduler(register_system_tasks=False)

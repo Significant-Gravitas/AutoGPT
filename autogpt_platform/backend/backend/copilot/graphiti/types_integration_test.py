@@ -17,7 +17,7 @@ finding that motivated P-1.1 — metadata stranded inside
 properties at least *can* live on the durable edge.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -155,7 +155,7 @@ async def test_status_filter_is_cypher_native(seeded_graph) -> None:
             e.expired_at = $now,
             e.expiration_reason = 'integration-test-demotion'
         """,
-        now=datetime.now(UTC).isoformat(),
+        now=datetime.now(timezone.utc).isoformat(),
     )
 
     records, _, _ = await driver.execute_query(

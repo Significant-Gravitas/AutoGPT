@@ -6,7 +6,7 @@ an open row nothing has written since the instant it names."""
 import asyncio
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from prisma.enums import (
@@ -70,7 +70,7 @@ async def _new_pass(owner: str) -> str:
             scope_key=owner,
             route=DreamPassRoute.ANTHROPIC_BATCH,
             trigger=DreamPassTrigger.CRON,
-            started_at=datetime.now(UTC),
+            started_at=datetime.now(timezone.utc),
         )
     )
     return pass_id
@@ -103,7 +103,7 @@ async def test_a_cancel_reaches_only_an_open_row(owner):
         DreamPassUpdate(
             status=DreamPassStatus.COMPLETE,
             phase=DreamPassPhase.DONE,
-            completed_at=datetime.now(UTC),
+            completed_at=datetime.now(timezone.utc),
         ),
     )
 
@@ -133,7 +133,7 @@ async def test_a_cancel_reaches_only_the_owners_row(owner):
 async def test_nothing_moves_a_cancelled_row(owner):
     pass_id = await _new_pass(owner)
     await update_dream_pass(pass_id, cancelled(_BY_ADMIN, owner_user_id=owner))
-    later = datetime.now(UTC)
+    later = datetime.now(timezone.utc)
 
     for update in (
         failed(pass_error("apply", "crashed"), None, later),
@@ -157,7 +157,7 @@ async def test_nothing_moves_a_cancelled_row(owner):
 async def test_racing_cancels_bump_the_generation_exactly_once(owner):
     """Eight cancels race; each names its own completion time, so the row
     shows which one landed: exactly one, the row holding its write."""
-    base = datetime.now(UTC).replace(microsecond=0)
+    base = datetime.now(timezone.utc).replace(microsecond=0)
     for _ in range(5):
         pass_id = await _new_pass(owner)
         cancels = [
@@ -221,7 +221,7 @@ async def test_an_expiry_lands_only_if_nothing_wrote_the_row_since(owner):
 async def test_an_expiry_with_a_stale_cutoff_lands_only_on_an_old_row(owner):
     pass_id = await _new_pass(owner)
     await update_dream_pass(pass_id, DreamPassUpdate(phase=DreamPassPhase.CONSOLIDATE))
-    cutoff = datetime.now(UTC) - timedelta(minutes=30)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
 
     assert not await update_dream_pass(
         pass_id, expired(_STALLED, not_updated_since=cutoff)
@@ -270,7 +270,7 @@ async def test_open_passes_list_newest_first_and_capped(owner):
 async def test_the_times_the_guard_compares_read_back_in_utc(owner):
     """The guard compares a row's lease and last write with an aware "now"."""
     pass_id = await _new_pass(owner)
-    lease = datetime.now(UTC) + timedelta(hours=24)
+    lease = datetime.now(timezone.utc) + timedelta(hours=24)
     await update_dream_pass(pass_id, DreamPassUpdate(lease_expires_at=lease))
 
     row = await _row(pass_id)

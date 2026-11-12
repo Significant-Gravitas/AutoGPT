@@ -6,7 +6,7 @@ genuinely does not.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -20,7 +20,7 @@ def _msg(**overrides) -> ChatMessageDomain:
         role="assistant",
         content=None,
         sequence=0,
-        created_at=datetime(2026, 5, 11, tzinfo=UTC),
+        created_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
     )
     defaults.update(overrides)
     return ChatMessageDomain(**defaults)

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -183,7 +183,7 @@ async def test_blob_created_at_reads_metadata_only(mocker):
     )
 
     assert await blob_created_at("bucket", "blob") == datetime(
-        2026, 10, 13, 12, 0, 0, 123000, tzinfo=UTC
+        2026, 10, 13, 12, 0, 0, 123000, tzinfo=timezone.utc
     )
     client.download_metadata.assert_awaited_once_with("bucket", "blob")
     client.download.assert_not_awaited()

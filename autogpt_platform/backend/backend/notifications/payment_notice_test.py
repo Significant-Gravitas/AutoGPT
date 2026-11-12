@@ -1,6 +1,6 @@
 """Payment notices follow collection state, not a missing retry timestamp."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,7 +13,7 @@ from backend.notifications.lifecycle_test import _invoice, _run, _User
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", ["past_due", "unpaid", "canceled"])
 async def test_missing_retry_date_uses_subscription_state(status):
-    attempted_at = int(datetime(2026, 10, 24, tzinfo=UTC).timestamp())
+    attempted_at = int(datetime(2026, 10, 24, tzinfo=timezone.utc).timestamp())
     with patch(
         "backend.notifications.lifecycle.stripe_call",
         AsyncMock(return_value={"status": status}),

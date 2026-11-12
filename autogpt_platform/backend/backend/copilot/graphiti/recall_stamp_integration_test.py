@@ -14,7 +14,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -47,7 +47,7 @@ async def _edge(
         """,
         uuid=uuid,
         g=group_id,
-        created=stamp_time(datetime.now(UTC)),
+        created=stamp_time(datetime.now(timezone.utc)),
         props=props,
     )
 
@@ -68,7 +68,7 @@ async def _stamps(driver: AutoGPTFalkorDriver, uuid: str) -> dict[str, Any]:
 
 
 def _ago(**kwargs: float) -> str:
-    return stamp_time(datetime.now(UTC) - timedelta(**kwargs))
+    return stamp_time(datetime.now(timezone.utc) - timedelta(**kwargs))
 
 
 _PAST_THE_DEDUPE = {"seconds": RECALL_DEDUPE_INTERVAL.total_seconds() + 3600}

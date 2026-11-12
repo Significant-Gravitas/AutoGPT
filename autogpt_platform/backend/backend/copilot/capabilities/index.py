@@ -141,7 +141,7 @@ class CapabilityIndex:
         context: CapabilityContext = "direct",
         kind: CapabilityKindName | None = None,
         connections: ConnectionState | None = None,
-        permissions: CopilotPermissions | None = None,
+        permissions: "CopilotPermissions | None" = None,
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
         prefer_mcp: bool = False,
@@ -176,7 +176,7 @@ class CapabilityIndex:
         context: CapabilityContext,
         kind: CapabilityKindName | None,
         connections: ConnectionState | None,
-        permissions: CopilotPermissions | None,
+        permissions: "CopilotPermissions | None",
         limit: int,
         fallback_limit: int,
         prefer_mcp: bool = False,
@@ -265,7 +265,7 @@ class CapabilityIndex:
         context: CapabilityContext,
         kind: CapabilityKindName,
         connections: ConnectionState | None,
-        permissions: CopilotPermissions | None,
+        permissions: "CopilotPermissions | None",
         prefer_mcp: bool,
     ) -> None:
         """Fill ``result.other_kinds`` from the same search without *kind*.
@@ -307,7 +307,7 @@ class CapabilityIndex:
         self,
         context: CapabilityContext,
         kind: CapabilityKindName | None,
-        permissions: CopilotPermissions | None,
+        permissions: "CopilotPermissions | None",
     ) -> set[int]:
         allowed_tools: frozenset[str] | None = None
         if permissions is not None:

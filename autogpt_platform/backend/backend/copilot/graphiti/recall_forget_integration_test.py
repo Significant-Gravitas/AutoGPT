@@ -15,7 +15,7 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -70,7 +70,7 @@ async def _what_recall_shows(
     )
     await asyncio.gather(*hit_tasks)
     assert isinstance(found, MemorySearchResponse)
-    window_start = datetime.now(UTC) - timedelta(days=14)
+    window_start = datetime.now(timezone.utc) - timedelta(days=14)
     dream = await _fetch_recent_episodes(driver, scope.group_id, window_start, 50)
     return [
         *recent,

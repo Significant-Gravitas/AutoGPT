@@ -30,16 +30,9 @@ from backend.copilot.rate_limit import is_user_paywalled
 from backend.data.db_accessors import graph_db, review_db
 from backend.data.execution import ExecutionContext
 
-from . import (
-    Ruling,
-    _judged_args,
-    _typed_messages,
-    chat_rules,
-    gate_active,
-    rule_on,
-    unified_approvals,
-)
+from . import Ruling, _judged_args, _typed_messages, chat_rules, gate_active
 from . import review as review_store
+from . import rule_on, unified_approvals
 from .classifier import Judgement, supervise
 from .policy import DEFAULT_MODE, Effect
 from .subject import Subject, block_subject

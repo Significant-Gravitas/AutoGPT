@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 
@@ -54,7 +54,7 @@ class BlockErrorMonitor:
             logger.info("Checking block error rates")
 
             # Get executions from the last 24 hours
-            end_time = datetime.now(UTC)
+            end_time = datetime.now(timezone.utc)
             start_time = end_time - timedelta(hours=24)
 
             # Use SQL aggregation to efficiently count totals and failures by block

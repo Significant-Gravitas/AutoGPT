@@ -5,7 +5,7 @@ written before them reads none dropped."""
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from prisma.enums import DreamPassRoute, DreamPassTrigger
@@ -21,7 +21,7 @@ from .dream_pass_models import DreamPassDraft
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-_NOW = datetime.now(UTC).replace(microsecond=0)
+_NOW = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 @pytest.fixture

@@ -102,7 +102,7 @@ class TestRecordTurnCostFromOpenRouter:
         reliance on the fallback estimate."""
         real_cost = 0.02900595
 
-        async def _get(self, url, **kwargs):
+        async def _get(self, url, **kwargs):  # noqa: ARG001
             return httpx.Response(200, json=_mock_generation_response(real_cost))
 
         with (
@@ -142,7 +142,7 @@ class TestRecordTurnCostFromOpenRouter:
         of ``total_cost`` across all rounds — recorded in a single row."""
         costs_by_id = {"gen-a": 0.029, "gen-b": 0.030}
 
-        async def _get(self, url, **kwargs):
+        async def _get(self, url, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
             return httpx.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
@@ -191,7 +191,7 @@ class TestRecordTurnCostFromOpenRouter:
             ]
         )
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             return next(seq)
 
         with (
@@ -227,7 +227,7 @@ class TestRecordTurnCostFromOpenRouter:
         quota and delays the fallback."""
         call_count = {"n": 0}
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             call_count["n"] += 1
             return httpx.Response(401, text="unauthorized")
 
@@ -272,7 +272,7 @@ class TestRecordTurnCostFromOpenRouter:
             ]
         )
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             return next(seq)
 
         with (
@@ -308,7 +308,7 @@ class TestRecordTurnCostFromOpenRouter:
         behaviour."""
         fallback = 0.02
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             raise httpx.ConnectError("no network")
 
         with (
@@ -359,7 +359,7 @@ class TestRecordTurnCostFromOpenRouter:
             "gen-compact-2": 0.003,
         }
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
             return httpx.Response(
                 200, json=_mock_generation_response(costs_by_id[gen_id])
@@ -400,7 +400,7 @@ class TestRecordTurnCostFromOpenRouter:
         session_id = "sess-none"
         (tmp_path / session_id).mkdir()
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             return httpx.Response(200, json=_mock_generation_response(0.02))
 
         with (
@@ -480,7 +480,7 @@ class TestRecordTurnCostFromOpenRouter:
             "gen-fresh-1": 0.004,
         }
 
-        async def _get(self, *args, **kwargs):
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
             gen_id = kwargs.get("params", {}).get("id")
             # If the sweep leaks a stale/foreign ID, the test fails here
             # with a KeyError rather than silently over-billing.

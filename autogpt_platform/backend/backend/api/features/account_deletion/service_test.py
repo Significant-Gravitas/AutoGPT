@@ -6,7 +6,7 @@ flow against the real database.
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,7 +26,7 @@ MODULE = "backend.api.features.account_deletion.service"
 USER_ID = "user-1"
 EMAIL = "Ada.Lovelace@Example.com"
 TYPED = "  ada.lovelace@example.COM "
-ERASE_AFTER = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+ERASE_AFTER = datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc)
 
 LOAD = ["get_user_by_id", "get_deletion_request"]
 BEFORE_CLOSE = [
@@ -64,7 +64,7 @@ def _user() -> MagicMock:
         id=USER_ID,
         email=EMAIL,
         subscription_tier=SubscriptionTier.PRO,
-        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
 
 

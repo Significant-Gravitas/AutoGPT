@@ -32,7 +32,7 @@ Operational notes:
 import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -293,7 +293,7 @@ async def rebuild_communities_for_user(
     ``activity`` (the gate's stats). Always returns a dict even on
     failure so the scheduler can record the outcome.
     """
-    started_at = datetime.now(UTC)
+    started_at = datetime.now(timezone.utc)
     result: dict[str, Any] = {
         "user_id": user_id,
         "started_at": started_at.isoformat(),
@@ -417,7 +417,7 @@ async def rebuild_communities_for_user(
     finally:
         if flex_client is not None:
             await close_graphiti_client(flex_client)
-        ended_at = datetime.now(UTC)
+        ended_at = datetime.now(timezone.utc)
         result["elapsed_seconds"] = (ended_at - started_at).total_seconds()
         await _release_rebuild_lock(redis, lock_key, lock_token)
 

@@ -8,7 +8,8 @@ for Google Cloud Storage (cloud deployments) and local filesystem (self-hosted d
 import asyncio
 import hashlib
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -44,9 +45,9 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     def __init__(self, bucket_name: str):
         self.bucket_name = bucket_name
-        self._async_client: async_gcs_storage.Storage | None = None
-        self._sync_client: gcs_storage.Client | None = None
-        self._session: aiohttp.ClientSession | None = None
+        self._async_client: Optional[async_gcs_storage.Storage] = None
+        self._sync_client: Optional[gcs_storage.Client] = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_async_client(self) -> async_gcs_storage.Storage:
         """Get or create async GCS client."""
@@ -95,7 +96,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         blob_name = self._build_blob_name(workspace_id, file_id, filename)
 
         # Upload with metadata
-        upload_time = datetime.now(UTC)
+        upload_time = datetime.now(timezone.utc)
         await client.upload(
             self.bucket_name,
             blob_name,
@@ -183,7 +184,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 # gets its own ``ClientSession``.
 # ---------------------------------------------------------------------------
 
-_local_storage: LocalWorkspaceStorage | None = None
+_local_storage: Optional[LocalWorkspaceStorage] = None
 _gcs_storages: dict[int, GCSWorkspaceStorage] = {}
 _storage_lock = asyncio.Lock()
 

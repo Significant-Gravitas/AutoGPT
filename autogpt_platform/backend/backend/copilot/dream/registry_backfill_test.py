@@ -4,7 +4,7 @@ are mocked; ``registry_test.py`` covers what they do."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -35,7 +35,7 @@ PARTLY_FAILED = {
 
 def _row(user_id: str, expert_id: str | None = None) -> MemoryScopeSchedule:
     scope = MemoryScope.build(user_id, expert_id)
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return MemoryScopeSchedule(
         scope_key=scope.scope_key,
         user_id=user_id,

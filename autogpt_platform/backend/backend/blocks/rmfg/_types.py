@@ -5,7 +5,7 @@ Response-side models live in ``_models`` and ``_models_commerce``.
 """
 
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Optional
 
 from backend.sdk import APIKeyCredentials, BaseModel, Field, OAuth2Credentials
 
@@ -190,24 +190,24 @@ class WeldingOperation(BaseModel):
 class DefaultSelection(BaseModel):
     """Choices applied to every compatible part unless a part overrides them."""
 
-    material_id: str | None = Field(
+    material_id: Optional[str] = Field(
         default=None, description="Sheet-metal stock; applies to sheet parts only"
     )
-    tube_profile_id: str | None = Field(
+    tube_profile_id: Optional[str] = Field(
         default=None, description="Tube stock; applies to tube-laser parts only"
     )
-    powder_coat_color_id: str | None = None
-    finish_id: str | None = None
+    powder_coat_color_id: Optional[str] = None
+    finish_id: Optional[str] = None
 
 
 class PartConfiguration(BaseModel):
     """Choices for one unique part; set fields override the defaults for it."""
 
     part_id: str = Field(description="Part ID from the analyzed design's parts[]")
-    material_id: str | None = None
-    tube_profile_id: str | None = None
-    powder_coat_color_id: str | None = None
-    finish_id: str | None = None
+    material_id: Optional[str] = None
+    tube_profile_id: Optional[str] = None
+    powder_coat_color_id: Optional[str] = None
+    finish_id: Optional[str] = None
     taps: list[TapOperation] = Field(default_factory=list)
     studs: list[StudOperation] = Field(default_factory=list)
     nuts: list[NutOperation] = Field(default_factory=list)
@@ -247,7 +247,7 @@ class QuoteItemRequest(BaseModel):
     configuration: ManufacturingConfiguration = Field(
         default_factory=ManufacturingConfiguration
     )
-    client_reference_id: str | None = None
+    client_reference_id: Optional[str] = None
     quantity_options: list[Annotated[int, Field(ge=1)]] = Field(
         default_factory=list,
         max_length=10,
@@ -262,15 +262,15 @@ class QuoteItemRequest(BaseModel):
 
 class ShipTo(BaseModel):
     name: str = Field(description="Recipient name")
-    company: str | None = None
+    company: Optional[str] = None
     street1: str = Field(description="Street address line 1")
-    street2: str | None = None
+    street2: Optional[str] = None
     city: str
     state: str = Field(description="Two-letter state code, e.g. TX")
     postal_code: str
     country: str = Field(default="US", description="Two-letter country code")
-    phone: str | None = None
-    email: str | None = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
 
     def to_payload(self) -> dict:
         return self.model_dump(mode="json", exclude_none=True)

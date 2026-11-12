@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,7 +18,7 @@ async def _backlog(store):
     for index, source in enumerate(sources):
         store.sources[source.id] = source.model_copy(
             update={
-                "updated_at": datetime(2020, 1, 1, tzinfo=UTC)
+                "updated_at": datetime(2020, 1, 1, tzinfo=timezone.utc)
                 + timedelta(seconds=index)
             }
         )

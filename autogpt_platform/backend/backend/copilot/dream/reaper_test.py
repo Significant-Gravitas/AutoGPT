@@ -5,7 +5,7 @@ transitions are the real ones."""
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -136,9 +136,9 @@ class TestAPassThatOutlivedItsLease:
         compare-and-set refuses, and nothing of the pass is touched."""
         await _dead_batch_pass(fake_dream_db)
         listed = await reaper_mod.read_expired_passes(
-            datetime.now(UTC), limit=10
+            datetime.now(timezone.utc), limit=10
         )
-        fake_dream_db.rows["p1"]["updated_at"] = datetime.now(UTC)
+        fake_dream_db.rows["p1"]["updated_at"] = datetime.now(timezone.utc)
         mocker.patch.object(
             reaper_mod, "read_expired_passes", AsyncMock(return_value=listed)
         )
@@ -381,7 +381,7 @@ async def _dead_batch_pass(
     """A batch pass that died at *phase*: consolidate landed in its state
     (recording *model*, the one it ran on, when given), recombine's batch in
     flight, its bundle kept, its lease lapsed *lapsed* seconds ago."""
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     await persist_input_bundle(
         pass_id,
         DreamInput(
@@ -425,7 +425,7 @@ def _seed(
     """A row (open, unless *status* says otherwise) whose lease lapsed
     *lapsed* seconds ago and that nothing has written since; *columns* set
     the rest of it."""
-    lease_end = datetime.now(UTC) - timedelta(seconds=lapsed)
+    lease_end = datetime.now(timezone.utc) - timedelta(seconds=lapsed)
     fake_dream_db.seed(
         DreamPassDraft(
             id=pass_id,

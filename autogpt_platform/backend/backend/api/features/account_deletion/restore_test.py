@@ -1,7 +1,7 @@
 """Keeping a closed account: the status the sign-in screen reads, and the
 reopen. routes_test.py runs both against the real database."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -17,7 +17,7 @@ from backend.util.posthog_events import PostHogEvent
 
 MODULE = "backend.api.features.account_deletion.restore"
 USER_ID = "user-1"
-ERASE_AFTER = datetime.now(UTC) + timedelta(days=10)
+ERASE_AFTER = datetime.now(timezone.utc) + timedelta(days=10)
 
 
 @pytest.mark.asyncio
@@ -36,9 +36,9 @@ async def test_an_open_account_has_nothing_scheduled(mocker: MockerFixture):
 @pytest.mark.parametrize(
     "fields",
     [
-        {"startedAt": datetime(2026, 11, 1, tzinfo=UTC)},
-        {"completedAt": datetime(2026, 11, 1, tzinfo=UTC)},
-        {"eraseAfter": datetime(2020, 1, 1, tzinfo=UTC)},
+        {"startedAt": datetime(2026, 11, 1, tzinfo=timezone.utc)},
+        {"completedAt": datetime(2026, 11, 1, tzinfo=timezone.utc)},
+        {"eraseAfter": datetime(2020, 1, 1, tzinfo=timezone.utc)},
     ],
     ids=["erasure-claimed", "erased", "date-passed"],
 )
@@ -84,7 +84,7 @@ def edges(mocker: MockerFixture) -> MagicMock:
     mocker.patch(
         f"{MODULE}.get_user_by_id",
         AsyncMock(
-            return_value=MagicMock(created_at=datetime(2025, 1, 1, tzinfo=UTC))
+            return_value=MagicMock(created_at=datetime(2025, 1, 1, tzinfo=timezone.utc))
         ),
     )
     return parent

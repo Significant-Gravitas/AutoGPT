@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,7 +14,7 @@ from .dispositions import SkillLearningResult
 async def test_dreaming_reviews_private_skills_even_when_memory_dreaming_fails(
     monkeypatch,
 ):
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     user = "account-a"
     learned = SkillLearningResult(
         user_id=user, run_id="learn-1", trigger="nightly", started_at=now, applied=1
@@ -57,7 +57,7 @@ async def test_an_experts_nightly_batch_leaves_skill_learning_to_the_account(
 ):
     """One pass reviews the account's skills and its experts': each expert's
     nightly batch running it again would only queue up behind the lease."""
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     user = "account-a"
     run = AsyncMock()
     monkeypatch.setattr(

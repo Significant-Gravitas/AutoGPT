@@ -10,7 +10,7 @@ user. Docs: https://core.telegram.org/widgets/login#checking-authorization
 import hashlib
 import hmac
 import time
-from collections.abc import Mapping
+from typing import Mapping, Optional
 
 # Telegram-signed payloads expire — a day matches Telegram's own guidance.
 MAX_AUTH_AGE_SECONDS = 24 * 60 * 60
@@ -20,7 +20,7 @@ MAX_AUTH_AGE_SECONDS = 24 * 60 * 60
 _SIGNED_KEYS = ("auth_date", "first_name", "id", "last_name", "photo_url", "username")
 
 
-def verify_login(params: Mapping[str, str], bot_token: str) -> str | None:
+def verify_login(params: Mapping[str, str], bot_token: str) -> Optional[str]:
     """Return the verified Telegram user id, or None if the payload doesn't
     check out (bad hash, stale auth_date, missing fields)."""
     received_hash = params.get("hash", "")

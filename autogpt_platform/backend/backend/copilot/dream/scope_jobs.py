@@ -16,8 +16,7 @@ the reconcile had registered it, when its next pass takes it back.)
 """
 
 import logging
-from collections.abc import Iterable
-from typing import Any
+from typing import Any, Iterable
 
 from prisma.enums import MemoryScopeScheduleState
 

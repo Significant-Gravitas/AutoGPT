@@ -27,7 +27,7 @@ index to add should it grow.
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .store import delete_old_passes
 
@@ -47,7 +47,7 @@ async def delete_expired_records(
     """Delete the closed passes created more than *retention_days* ago, a
     batch at a time, and say how many went. Never raises: a batch that fails
     or a run out of budget stops it, logged, and the next run goes on."""
-    cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=retention_days)
     deleted = 0
     try:
         async with asyncio.timeout(RETENTION_BUDGET_SECONDS):

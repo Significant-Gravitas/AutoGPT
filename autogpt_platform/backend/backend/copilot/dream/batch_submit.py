@@ -121,7 +121,7 @@ PHASE_DESCRIPTIONS: dict[DreamPhase, str] = {
 }
 
 
-def phase_models_for_config(config: ChatConfig) -> dict[str, str]:
+def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
     """Per-phase model map (native-Anthropic form) for the batch path.
 
     Mirrors the sync orchestrator's per-phase choice: the standard tier

@@ -6,7 +6,7 @@ and applies; a callback whose lock a newer pass took ends the pass without
 chaining. Only the provider, the charges and apply are stubbed."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -78,7 +78,7 @@ class TestTheBatchLease:
     ):
         await _submitted(fake_dream_db, fake_dream_redis)
         fake_dream_redis.ttls[_LOCK_KEY] = 60
-        before = datetime.now(UTC)
+        before = datetime.now(timezone.utc)
 
         await _deliver("consolidate")
 
@@ -148,7 +148,7 @@ class TestTheBatchLease:
 async def _submitted(fake_dream_db, fake_dream_redis) -> None:
     """Pass p1 as its handoff leaves it: consolidate submitted, the lock
     extended to a batch lifetime under the token its bundle carries."""
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     bundle = DreamInput(
         user_id="u1", group_id=_SCOPE.group_id, window_start=now, window_end=now
     )
@@ -172,7 +172,7 @@ async def _submitted(fake_dream_db, fake_dream_redis) -> None:
 
 
 async def _deliver(phase: str) -> None:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     entry = PendingEntry(
         provider="anthropic",
         provider_batch_id=f"msgbatch_{phase}",

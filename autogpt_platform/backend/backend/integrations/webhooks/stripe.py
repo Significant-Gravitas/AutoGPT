@@ -110,7 +110,7 @@ class StripeWebhooksManager(BaseWebhooksManager):
         payload_body = await request.body()
         expected = hmac.new(
             signing_secret.encode("utf-8"),
-            msg=f"{timestamp}.".encode() + payload_body,
+            msg=f"{timestamp}.".encode("utf-8") + payload_body,
             digestmod=hashlib.sha256,
         ).hexdigest()
 

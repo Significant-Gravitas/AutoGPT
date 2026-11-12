@@ -2,7 +2,7 @@
 sent with a reply-to so a reply reaches the shared inbox."""
 
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from typing import get_args
 from unittest.mock import MagicMock, call
@@ -18,7 +18,7 @@ from backend.notifications.auth import (
 )
 from backend.notifications.renderer import build_urls
 
-ERASE_AFTER = datetime(2026, 11, 13, 23, 30, tzinfo=UTC)
+ERASE_AFTER = datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc)
 # When closing sends the email: the 14 days are still ahead.
 SENT_AT = ERASE_AFTER - timedelta(days=14)
 DATED_PREHEADER = (
@@ -261,10 +261,10 @@ async def test_send_account_deleted_email_names_the_last_day_to_keep_the_account
     [
         # 02:00 UTC on 13 Nov is 18:00 on 12 Nov in California: too late to
         # name 12 Nov there.
-        (datetime(2026, 11, 13, 2, 0, tzinfo=UTC), "11 Nov 2026"),
-        (datetime(2026, 11, 13, 12, 0, tzinfo=UTC), "12 Nov 2026"),
-        (datetime(2026, 11, 13, 23, 30, tzinfo=UTC), "12 Nov 2026"),
-        (datetime(2026, 12, 1, 0, 0, tzinfo=UTC), "29 Nov 2026"),
+        (datetime(2026, 11, 13, 2, 0, tzinfo=timezone.utc), "11 Nov 2026"),
+        (datetime(2026, 11, 13, 12, 0, tzinfo=timezone.utc), "12 Nov 2026"),
+        (datetime(2026, 11, 13, 23, 30, tzinfo=timezone.utc), "12 Nov 2026"),
+        (datetime(2026, 12, 1, 0, 0, tzinfo=timezone.utc), "29 Nov 2026"),
     ],
 )
 def test_the_email_names_a_day_over_before_the_erasure_everywhere(
@@ -280,11 +280,11 @@ def test_the_email_names_a_day_over_before_the_erasure_everywhere(
 def test_the_named_day_ends_before_the_erasure_even_at_utc_minus_12(hour):
     """The last zone to finish a day is UTC-12, whose day ends at 12:00 UTC
     the next day: that must be no later than the erasure, at any hour."""
-    erase_after = datetime(2026, 11, 13, hour, 0, tzinfo=UTC)
+    erase_after = datetime(2026, 11, 13, hour, 0, tzinfo=timezone.utc)
     preheader = auth_email.account_closed_preheader(erase_after)
     named = datetime.strptime(
         preheader.split("Sign in by ")[1].split(" and")[0], "%d %b %Y"
-    ).replace(tzinfo=UTC)
+    ).replace(tzinfo=timezone.utc)
 
     assert named + timedelta(days=1, hours=12) <= erase_after
 

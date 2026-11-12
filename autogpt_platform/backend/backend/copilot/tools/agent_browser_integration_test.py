@@ -28,7 +28,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import pytest
@@ -240,8 +240,8 @@ _TEST_SESSION = ChatSession(
     user_id="test-user",
     messages=[],
     usage=[],
-    started_at=datetime.now(UTC),
-    updated_at=datetime.now(UTC),
+    started_at=datetime.now(timezone.utc),
+    updated_at=datetime.now(timezone.utc),
 )
 
 

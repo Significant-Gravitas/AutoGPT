@@ -2,7 +2,7 @@
 answered the card can stream that turn's reply and no other."""
 
 import logging
-from collections.abc import Iterable
+from typing import Iterable
 
 from backend.data.redis_client import get_redis_async
 

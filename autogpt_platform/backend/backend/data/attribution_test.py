@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import prisma.errors
@@ -28,7 +28,7 @@ _COLUMNS = (
 def _row(**values: str) -> MagicMock:
     row = MagicMock()
     row.userId = "user-1"
-    row.createdAt = datetime(2026, 9, 4, tzinfo=UTC)
+    row.createdAt = datetime(2026, 9, 4, tzinfo=timezone.utc)
     row.updatedAt = row.createdAt
     for column in _COLUMNS:
         setattr(row, column, values.get(column))
@@ -50,7 +50,7 @@ def _unique_violation() -> prisma.errors.UniqueViolationError:
 def account(mocker: pytest_mock.MockerFixture) -> MagicMock:
     """A brand-new account, so acquisition fields are accepted by default."""
     row = MagicMock()
-    row.createdAt = datetime.now(UTC)
+    row.createdAt = datetime.now(timezone.utc)
     user_client = MagicMock()
     user_client.find_unique = AsyncMock(return_value=row)
     mocker.patch("prisma.models.User.prisma", return_value=user_client)
@@ -129,7 +129,7 @@ async def test_an_account_older_than_the_window_records_no_signup_channel(
     client: MagicMock, account: MagicMock
 ) -> None:
     account.createdAt = (
-        datetime.now(UTC) - SIGNUP_ATTRIBUTION_WINDOW - timedelta(minutes=1)
+        datetime.now(timezone.utc) - SIGNUP_ATTRIBUTION_WINDOW - timedelta(minutes=1)
     )
     client.create.return_value = _row(anonymousId="anon-1")
 
@@ -154,7 +154,7 @@ async def test_an_account_inside_the_window_records_the_channel(
     client: MagicMock, account: MagicMock
 ) -> None:
     account.createdAt = (
-        datetime.now(UTC) - SIGNUP_ATTRIBUTION_WINDOW + timedelta(minutes=1)
+        datetime.now(timezone.utc) - SIGNUP_ATTRIBUTION_WINDOW + timedelta(minutes=1)
     )
     client.create.return_value = _row(anonymousId="anon-1", utmSource="newsletter")
 
@@ -208,7 +208,7 @@ async def test_the_update_path_also_withholds_the_signup_channel(
     """The filter runs before the create/update branch; pin it on both, so moving
     it into the create branch alone cannot pass."""
     account.createdAt = (
-        datetime.now(UTC) - SIGNUP_ATTRIBUTION_WINDOW - timedelta(minutes=1)
+        datetime.now(timezone.utc) - SIGNUP_ATTRIBUTION_WINDOW - timedelta(minutes=1)
     )
     client.find_unique.return_value = _row()
     client.update.return_value = _row(anonymousId="anon-1")

@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -129,7 +129,7 @@ class TestCreateLinkTokens:
         api._client.create_server_link_token = AsyncMock(
             return_value=LinkTokenResponse(
                 token="abc",
-                expires_at=datetime.now(UTC),
+                expires_at=datetime.now(timezone.utc),
                 link_url="https://example.com/link/abc",
             )
         )
@@ -164,7 +164,7 @@ class TestCreateLinkTokens:
         api._client.create_user_link_token = AsyncMock(
             return_value=LinkTokenResponse(
                 token="xyz",
-                expires_at=datetime.now(UTC),
+                expires_at=datetime.now(timezone.utc),
                 link_url="https://example.com/link/xyz",
             )
         )

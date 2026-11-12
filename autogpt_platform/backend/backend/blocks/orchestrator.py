@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from backend.blocks import llm
+import backend.blocks.llm as llm
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -29,8 +29,9 @@ from backend.blocks._base import (
 from backend.blocks.agent import AgentExecutorBlock
 from backend.copilot.sdk.cli_io import send_user_text
 from backend.copilot.sdk.cli_version import require_verbatim_prompts_cli
-from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG, without_url_credentials
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 from backend.copilot.sdk.env import config as copilot_config
+from backend.copilot.sdk.env import without_url_credentials
 from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
@@ -901,7 +902,7 @@ class OrchestratorBlock(Block):
 
         return_tool_functions: list[dict[str, Any]] = []
 
-        grouped_tool_links: dict[str, tuple[Node, list[Link]]] = {}
+        grouped_tool_links: dict[str, tuple["Node", list["Link"]]] = {}
         for link, node in tools:
             if link.sink_id not in grouped_tool_links:
                 grouped_tool_links[link.sink_id] = (node, [link])
@@ -1761,7 +1762,8 @@ class OrchestratorBlock(Block):
             or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
                 "/"
             )
-            or_base = or_base.removesuffix("/v1")
+            if or_base.endswith("/v1"):
+                or_base = or_base[:-3]
             sdk_env = {
                 "ANTHROPIC_BASE_URL": or_base,
                 "ANTHROPIC_AUTH_TOKEN": api_key,
@@ -2227,7 +2229,7 @@ class OrchestratorBlock(Block):
                 last_error = e
                 error_feedback = (
                     "Your tool call had errors. Please fix the following issues and try again:\n"
-                    + f"- {e!s}\n"
+                    + f"- {str(e)}\n"
                     + "\nPlease make sure to use the exact tool and parameter names as specified in the function schema."
                 )
                 current_prompt = list(current_prompt) + [

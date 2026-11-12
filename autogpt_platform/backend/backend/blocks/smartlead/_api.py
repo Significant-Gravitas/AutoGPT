@@ -38,7 +38,7 @@ class SmartLeadClient:
             response_data = response.json()
             return CreateCampaignResponse(**response_data)
         except ValueError as e:
-            raise ValueError(f"Invalid response format: {e!s}")
+            raise ValueError(f"Invalid response format: {str(e)}")
         except Exception as e:
             raise ValueError(f"Failed to create campaign: {self._handle_error(e)}")
 
@@ -60,7 +60,7 @@ class SmartLeadClient:
                 )
             return response_parsed
         except ValueError as e:
-            raise ValueError(f"Invalid response format: {e!s}")
+            raise ValueError(f"Invalid response format: {str(e)}")
         except Exception as e:
             raise ValueError(
                 f"Failed to add leads to campaign: {self._handle_error(e)}"

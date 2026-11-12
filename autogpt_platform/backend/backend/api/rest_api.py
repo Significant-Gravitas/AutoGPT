@@ -4,7 +4,7 @@ import logging
 import platform
 from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 import fastapi
 import starlette.middleware.cors
@@ -75,6 +75,8 @@ import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
+import backend.api.features.subscription_activation_routes as subscription_activation_routes
+import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -90,10 +92,6 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features import (
-    subscription_activation_routes,
-    subscription_trial_routes,
-)
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
@@ -258,7 +256,7 @@ async def _run_data_migrations() -> None:
     for name, migrate in migrations:
         try:
             await migrate()
-        except TimeoutError:
+        except asyncio.TimeoutError:
             # A bounded migration resumes on the next start; not worth an alert.
             logger.warning(f"Start-up data migration '{name}' timed out")
         except Exception:
@@ -708,8 +706,8 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_graph(
         graph_id: str,
         user_id: str,
-        graph_version: int | None = None,
-        node_input: dict[str, Any] | None = None,
+        graph_version: Optional[int] = None,
+        node_input: Optional[dict[str, Any]] = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 
@@ -863,7 +861,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_preset(
         preset_id: str,
         user_id: str,
-        inputs: dict[str, Any] | None = None,
+        inputs: Optional[dict[str, Any]] = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 

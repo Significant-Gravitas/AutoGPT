@@ -7,7 +7,8 @@ subscription status, invoices, and execution cost summary.
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
@@ -73,7 +74,7 @@ async def get_balance(
     operation_id="listCreditTransactions",
 )
 async def get_transactions(
-    transaction_type: TransactionType | None = Query(
+    transaction_type: Optional[TransactionType] = Query(
         default=None, description="Filter by transaction type"
     ),
     page: PageRequest = Depends(page_request),
@@ -196,7 +197,7 @@ async def get_subscription_status(
         # Stripe reports the period end as a unix timestamp; every other v2
         # timestamp is an ISO datetime, so it is converted at the boundary.
         current_period_end=(
-            datetime.fromtimestamp(current_period_end, tz=UTC)
+            datetime.fromtimestamp(current_period_end, tz=timezone.utc)
             if current_period_end is not None
             else None
         ),
@@ -246,11 +247,11 @@ async def list_invoices(
     operation_id="getAutomationCostSummary",
 )
 async def get_cost_summary(
-    since: datetime | None = Query(
+    since: Optional[datetime] = Query(
         default=None,
         description="Window start (UTC). Defaults to start of current calendar month.",
     ),
-    until: datetime | None = Query(
+    until: Optional[datetime] = Query(
         default=None,
         description="Window end (UTC). Defaults to now.",
     ),
@@ -265,8 +266,8 @@ async def get_cost_summary(
     """Aggregated cost breakdown for the user's graph executions."""
     # A time without an offset is UTC, as documented; comparing it with one
     # that has an offset would otherwise fail.
-    since = since.replace(tzinfo=UTC) if since and not since.tzinfo else since
-    until = until.replace(tzinfo=UTC) if until and not until.tzinfo else until
+    since = since.replace(tzinfo=timezone.utc) if since and not since.tzinfo else since
+    until = until.replace(tzinfo=timezone.utc) if until and not until.tzinfo else until
     if since is not None and until is not None and since > until:
         raise HTTPException(
             status_code=422,

@@ -9,7 +9,7 @@ rows. There is no message content or user identity anywhere in the schema.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
@@ -72,7 +72,7 @@ class BotGuildInfo(BaseModel):
 
 
 def _since(days: int) -> datetime:
-    return datetime.now(UTC) - timedelta(days=days)
+    return datetime.now(timezone.utc) - timedelta(days=days)
 
 
 def _platform_filter(platform: str | None, params: list, *, alias: str = "") -> str:

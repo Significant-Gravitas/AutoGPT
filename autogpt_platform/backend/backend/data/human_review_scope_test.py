@@ -5,7 +5,7 @@ graph execution; these tests pin the chat shape, the graph shape, and the
 reading of rows (and callers) still in the old shape.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -336,7 +336,7 @@ async def test_every_pending_review_of_an_execution_is_returned_oldest_first(use
     """The review UI and submission read this list whole, in the order the run
     asked; a page of the newest 25 would drop the oldest from both."""
     graph_exec_id = str(uuid4())
-    start = datetime.now(UTC)
+    start = datetime.now(timezone.utc)
     created = [str(uuid4()) for _ in range(26)]
     for i, node_exec_id in enumerate(created):
         await PendingHumanReview.prisma().create(

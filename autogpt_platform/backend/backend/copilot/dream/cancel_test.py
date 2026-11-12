@@ -5,7 +5,7 @@ cancelled or expired row and never on a store that does not answer."""
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -35,7 +35,7 @@ from .cancel import (
 from .pass_run import DreamPassRun, PassEnded
 from .schemas import PhaseUsage
 
-_NOW = datetime.now(UTC)
+_NOW = datetime.now(timezone.utc)
 _SCOPE = MemoryScope.for_user("u1")
 _BATCH_PASS = BatchPass(
     user_id="u1", expert_id=None, pass_id="p1", job_id="j1", phase_models={}

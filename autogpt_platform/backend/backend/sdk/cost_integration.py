@@ -6,8 +6,7 @@ BLOCK_COSTS configuration used by the execution system.
 """
 
 import logging
-from collections.abc import Iterable
-from typing import TypeVar
+from typing import Iterable, List, Type, TypeVar
 
 from backend.blocks._base import Block, BlockCost
 from backend.data.block_cost_config import BLOCK_COSTS
@@ -16,12 +15,12 @@ from backend.integrations.credentials_store import DEFAULT_CREDENTIALS
 from backend.sdk.provider import Provider
 from backend.sdk.registry import AutoRegistry
 
-BlockT = TypeVar("BlockT", bound=type[Block])
+BlockT = TypeVar("BlockT", bound=Type[Block])
 
 logger = logging.getLogger(__name__)
 
 
-def register_provider_costs_for_block(block_class: type[Block]) -> None:
+def register_provider_costs_for_block(block_class: Type[Block]) -> None:
     """
     Register provider base costs for a specific block in BLOCK_COSTS.
 
@@ -61,7 +60,7 @@ def register_provider_costs_for_block(block_class: type[Block]) -> None:
         logger.debug(f"Block {block_class.__name__} has no credentials fields")
         return
 
-    block_costs: list[BlockCost] = []
+    block_costs: List[BlockCost] = []
 
     # Get provider information from credentials fields
     for field_name, field_info in credentials_fields.items():
@@ -95,11 +94,11 @@ def register_provider_costs_for_block(block_class: type[Block]) -> None:
         )
 
 
-def _platform_priced_costs(provider: Provider, field_name: str) -> list[BlockCost]:
+def _platform_priced_costs(provider: Provider, field_name: str) -> List[BlockCost]:
     """The provider's base costs, each gated on one of its platform credentials
     in ``field_name``. Free costs charge nothing, so they stay unfiltered."""
     platform_ids = _platform_credential_ids(provider.name, provider.default_credentials)
-    costs: list[BlockCost] = []
+    costs: List[BlockCost] = []
     for base_cost in provider.base_costs:
         if base_cost.is_free:
             costs.append(base_cost)
@@ -119,8 +118,8 @@ def _platform_priced_costs(provider: Provider, field_name: str) -> list[BlockCos
 
 
 def _platform_credential_ids(
-    provider_name: str, provider_creds: list[Credentials]
-) -> list[str]:
+    provider_name: str, provider_creds: List[Credentials]
+) -> List[str]:
     """IDs of the credentials the platform provides for ``provider_name``: the
     SDK ``<provider>-default`` key (set from the provider's env var) and any
     system credential in ``credentials_store`` (e.g. Exa's "Use Credits for Exa
@@ -134,7 +133,7 @@ def _platform_credential_ids(
     return ids
 
 
-def sync_all_provider_costs(block_classes: Iterable[type[Block]]) -> None:
+def sync_all_provider_costs(block_classes: Iterable[Type[Block]]) -> None:
     """
     Sync all provider base costs to blocks that use them.
 
@@ -159,7 +158,7 @@ def sync_all_provider_costs(block_classes: Iterable[type[Block]]) -> None:
     logger.info(f"Synced {total_costs} costs to {blocks_with_costs} blocks")
 
 
-def get_block_costs(block_class: type[Block]) -> list[BlockCost]:
+def get_block_costs(block_class: Type[Block]) -> List[BlockCost]:
     """
     Get all costs for a block, including both explicit and provider costs.
 

@@ -2,7 +2,7 @@
 the same service as the web app, so a revoked share can't keep its files
 downloadable."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -33,7 +33,7 @@ def _auth() -> TenantContext:
 
 
 def _run(status: ExecutionStatus = ExecutionStatus.RUNNING) -> GraphExecution:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return GraphExecution(
         id="run-1",
         user_id=USER_ID,

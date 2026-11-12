@@ -195,8 +195,9 @@ class TestDelegation:
         call_provider = AsyncMock()
         with patch(ROUTING, return_value=platform_routing(api_key="")), patch(
             CALL_PROVIDER, call_provider
-        ), pytest.raises(InferenceError, match="OPEN_ROUTER_API_KEY"):
-            await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
+        ):
+            with pytest.raises(InferenceError, match="OPEN_ROUTER_API_KEY"):
+                await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
         call_provider.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -210,8 +211,9 @@ class TestDelegation:
         """So a caller's per-call failure handling runs, and bills nothing."""
         with patch(ROUTING, return_value=platform_routing()), patch(
             CALL_PROVIDER, AsyncMock(side_effect=RuntimeError("upstream 502"))
-        ), pytest.raises(InferenceError, match="upstream 502") as exc_info:
-            await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
+        ):
+            with pytest.raises(InferenceError, match="upstream 502") as exc_info:
+                await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
         assert exc_info.value.usage is None
 
     @pytest.mark.parametrize(
@@ -229,8 +231,9 @@ class TestDelegation:
         fake = ProviderResponse(content=content, prompt_tokens=9, completion_tokens=2)
         with patch(ROUTING, return_value=platform_routing()), patch(
             CALL_PROVIDER, AsyncMock(return_value=fake)
-        ), pytest.raises(InferenceError, match=match) as exc_info:
-            await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
+        ):
+            with pytest.raises(InferenceError, match=match) as exc_info:
+                await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
         assert exc_info.value.usage is not None
         assert exc_info.value.usage.input_tokens == 9
 

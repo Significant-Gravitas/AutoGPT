@@ -12,7 +12,7 @@ import ast
 import inspect
 import re
 import textwrap
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -303,7 +303,7 @@ async def test_key_is_rejected_once_membership_ends(
 async def test_key_is_rejected_when_the_org_is_deleted(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    _mock_membership(mocker, org_id=ORG_A, deleted_at=datetime.now(tz=UTC))
+    _mock_membership(mocker, org_id=ORG_A, deleted_at=datetime.now(tz=timezone.utc))
 
     with pytest.raises(NotAuthorizedError):
         await resolve_tenant(_credential(organization_id=ORG_A))
@@ -773,7 +773,7 @@ def _credential(
         user_id=USER_ID,
         scopes=list(APIKeyPermission),
         type="api_key",
-        created_at=datetime.now(tz=UTC),
+        created_at=datetime.now(tz=timezone.utc),
         organization_id=organization_id,
         team_id_restriction=team_id_restriction,
     )

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, cast
+from typing import List, Literal, Optional, Union, cast
 
 import tweepy
 from pydantic import BaseModel
@@ -48,29 +48,29 @@ from backend.data.model import SchemaField
 
 class Media(BaseModel):
     discriminator: Literal["media"]
-    media_ids: list[str] | None = None
-    media_tagged_user_ids: list[str] | None = None
+    media_ids: Optional[List[str]] = None
+    media_tagged_user_ids: Optional[List[str]] = None
 
 
 class DeepLink(BaseModel):
     discriminator: Literal["deep_link"]
-    direct_message_deep_link: str | None = None
+    direct_message_deep_link: Optional[str] = None
 
 
 class Poll(BaseModel):
     discriminator: Literal["poll"]
-    poll_options: list[str] | None = None
-    poll_duration_minutes: int | None = None
+    poll_options: Optional[List[str]] = None
+    poll_duration_minutes: Optional[int] = None
 
 
 class Place(BaseModel):
     discriminator: Literal["place"]
-    place_id: str | None = None
+    place_id: Optional[str] = None
 
 
 class Quote(BaseModel):
     discriminator: Literal["quote"]
-    quote_tweet_id: str | None = None
+    quote_tweet_id: Optional[str] = None
 
 
 class TwitterPostTweetBlock(Block):
@@ -97,21 +97,21 @@ class TwitterPostTweetBlock(Block):
             default=False,
         )
 
-        attachment: Media | DeepLink | Poll | Place | Quote | None = SchemaField(
+        attachment: Union[Media, DeepLink, Poll, Place, Quote] | None = SchemaField(
             discriminator="discriminator",
             description="Additional tweet data (media, deep link, poll, place or quote)",
             advanced=False,
             default=Media(discriminator="media"),
         )
 
-        exclude_reply_user_ids: list[str] | None = SchemaField(
+        exclude_reply_user_ids: Optional[List[str]] = SchemaField(
             description="User IDs to exclude from reply Tweet thread. [ex - 6253282]",
             placeholder="Enter user IDs to exclude",
             advanced=True,
             default=None,
         )
 
-        in_reply_to_tweet_id: str | None = SchemaField(
+        in_reply_to_tweet_id: Optional[str] = SchemaField(
             description="Tweet ID being replied to. Please note that in_reply_to_tweet_id needs to be in the request if exclude_reply_user_ids is present",
             default=None,
             placeholder="Enter in reply to tweet ID",
@@ -170,10 +170,10 @@ class TwitterPostTweetBlock(Block):
         self,
         credentials: TwitterCredentials,
         input_txt: str | None,
-        attachment: Media | DeepLink | Poll | Place | Quote | None,
+        attachment: Union[Media, DeepLink, Poll, Place, Quote] | None,
         for_super_followers_only: bool,
-        exclude_reply_user_ids: list[str] | None,
-        in_reply_to_tweet_id: str | None,
+        exclude_reply_user_ids: Optional[List[str]],
+        in_reply_to_tweet_id: Optional[str],
         reply_settings: TweetReplySettingsFilter,
     ):
         try:

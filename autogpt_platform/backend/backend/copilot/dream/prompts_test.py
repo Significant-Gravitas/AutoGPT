@@ -7,7 +7,7 @@ shape — no LLM call.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from .fetch import DreamInput, EpisodeRow, FactRow, SessionRow
 from .prompts import (
@@ -24,8 +24,8 @@ def _build_bundle() -> DreamInput:
     return DreamInput(
         user_id="u-1",
         group_id="g-1",
-        window_start=datetime(2026, 5, 1, tzinfo=UTC),
-        window_end=datetime(2026, 5, 14, tzinfo=UTC),
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
         episodes=[
             EpisodeRow(
                 uuid="ep-1",
@@ -64,7 +64,7 @@ def _build_bundle() -> DreamInput:
             SessionRow(
                 session_id="s-1",
                 title="Chat about food",
-                created_at=datetime(2026, 5, 10, tzinfo=UTC),
+                created_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
                 body="user: I love Belgian chocolate\nassistant: noted",
             ),
         ],
@@ -166,8 +166,8 @@ def test_sanitize_prompt_surfaces_stale_fact_candidates():
     bundle = DreamInput(
         user_id="u-1",
         group_id="g-1",
-        window_start=datetime(2026, 5, 1, tzinfo=UTC),
-        window_end=datetime(2026, 5, 14, tzinfo=UTC),
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
         facts=[
             # Stale candidate — fires the version + recency heuristics.
             FactRow(
@@ -213,8 +213,8 @@ def test_sanitize_prompt_emits_no_stale_candidates_placeholder_when_clean():
     bundle = DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime(2026, 5, 1, tzinfo=UTC),
-        window_end=datetime(2026, 5, 14, tzinfo=UTC),
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
         facts=[
             FactRow(
                 uuid="stable",
@@ -257,8 +257,8 @@ def test_prompts_tolerate_empty_inputs():
     bundle = DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime.now(UTC),
-        window_end=datetime.now(UTC),
+        window_start=datetime.now(timezone.utc),
+        window_end=datetime.now(timezone.utc),
     )
     consolidate_msgs = build_consolidate_prompt(bundle)
     recombine_msgs = build_recombine_prompt(bundle, "{}")

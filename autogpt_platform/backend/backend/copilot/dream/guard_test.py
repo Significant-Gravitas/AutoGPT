@@ -5,7 +5,7 @@ pass up."""
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,7 +28,7 @@ from . import guard, store
 from .locks import DEFAULT_LOCK_TTL_SECONDS
 from .pass_run import DreamPassRun, PassEnded
 
-_NOW = datetime.now(UTC)
+_NOW = datetime.now(timezone.utc)
 _SCOPE = MemoryScope.for_user("u1")
 _STALE = _NOW - timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS + 60)
 

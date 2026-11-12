@@ -25,6 +25,7 @@ endpoint's own auth dependency handles 401, and the rate limiter fails open.
 import contextlib
 import hashlib
 import logging
+from typing import Optional
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from fastapi import HTTPException
@@ -129,8 +130,8 @@ class GlobalRateLimitMiddleware:
 
 
 def _credential_bucket(
-    ip: str, api_key: str | None, bearer: HTTPAuthorizationCredentials | None
-) -> str | None:
+    ip: str, api_key: Optional[str], bearer: Optional[HTTPAuthorizationCredentials]
+) -> Optional[str]:
     """The pre-verification bucket of a credential that costs work to check, or None.
 
     An API key is bucketed by its head. `X-API-Key` is always tried as a key,
@@ -158,7 +159,7 @@ def _token_digest(token: str) -> str:
     return hashlib.sha256(f"v2-rate-limit:{token}".encode()).hexdigest()[:32]
 
 
-async def _refuse_before_verifying(ip: str, bucket: str) -> Response | None:
+async def _refuse_before_verifying(ip: str, bucket: str) -> Optional[Response]:
     """A 429 for a credential that may not be checked now, or None to go on.
 
     Counts the presentation itself, so a valid credential flooding the API is
@@ -212,7 +213,7 @@ def client_ip(scope: Scope) -> str:
     return forwarded[-hops] if len(forwarded) >= hops else peer
 
 
-def _with_rate_limit_headers(send: Send, state: RateLimitState | None) -> Send:
+def _with_rate_limit_headers(send: Send, state: Optional[RateLimitState]) -> Send:
     """Attach the caller's window position to the response headers."""
     if state is None:
         return send

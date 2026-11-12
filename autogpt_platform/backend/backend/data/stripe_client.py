@@ -93,7 +93,7 @@ async def _call(
     started = time.perf_counter()
     try:
         result = await asyncio.wait_for(fn(*args, **kwargs), timeout=timeout_seconds)
-    except TimeoutError as exc:
+    except asyncio.TimeoutError as exc:
         record_stripe_request(
             resource, method, "timeout", time.perf_counter() - started
         )

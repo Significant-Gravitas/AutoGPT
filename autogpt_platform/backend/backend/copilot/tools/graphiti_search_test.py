@@ -1,6 +1,6 @@
 """Tests for the memory_search tool."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,7 +14,7 @@ from backend.copilot.tools.graphiti_search import MemorySearchTool
 from backend.copilot.tools.models import MemorySearchResponse
 
 _MODULE = "backend.copilot.tools.graphiti_search"
-_NOW = datetime(2025, 1, 1, tzinfo=UTC)
+_NOW = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
 
 def _edge(uuid: str, fact: str) -> EntityEdge:

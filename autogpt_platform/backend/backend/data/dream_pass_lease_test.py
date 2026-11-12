@@ -11,7 +11,7 @@ a time, none whose cleanup is pending."""
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from prisma.enums import (
@@ -61,10 +61,10 @@ _STALLED = pass_error("expired", "stalled")
 _REAPED = pass_error("gather", "reaped")
 
 # Postgres keeps TIMESTAMP(3): whole milliseconds read back exactly.
-_NOW = datetime.now(UTC).replace(microsecond=0)
+_NOW = datetime.now(timezone.utc).replace(microsecond=0)
 # Lapses far older than any other test's rows, so the global scans that
 # list the oldest first reach these.
-_LONG_AGO = datetime(2001, 1, 1, tzinfo=UTC)
+_LONG_AGO = datetime(2001, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest.fixture

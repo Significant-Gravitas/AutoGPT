@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.data.notifications import AudienceAction, SubscriptionStatus
+from backend.data.notifications import AudienceAction
 from backend.data.notifications import SubscriberField as F
+from backend.data.notifications import SubscriptionStatus
 from backend.data.posthog_lifecycle import LifecycleSnapshot, LifecycleStatus
 from backend.data.posthog_lifecycle_test import (
     NOW,

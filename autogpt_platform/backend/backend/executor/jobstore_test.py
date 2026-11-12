@@ -5,7 +5,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from unittest.mock import MagicMock, patch
 
@@ -33,7 +33,7 @@ POISONED_STATE = pickle.dumps(
 )
 
 
-class _RemovedEnum(Enum):
+class _RemovedEnum(Enum):  # noqa: F811 - deliberate rebind, drops GONE
     KEPT = "kept"
 
 
@@ -156,7 +156,7 @@ def test_listing_unparks_a_restorable_job_once(caplog, prefix):
             "interval",
             seconds=60,
             id=job_id,
-            next_run_time=datetime.now(UTC) - timedelta(minutes=2),
+            next_run_time=datetime.now(timezone.utc) - timedelta(minutes=2),
         )
         healthy = _job_state(store, job_id)
         _poison(store, job_id)
@@ -175,7 +175,7 @@ def test_listing_unparks_a_restorable_job_once(caplog, prefix):
         assert _job_state(store, job_id) == healthy
         assert store._parked_ids == set()
         assert caplog.text.count('Resuming restored job "ordinary_job"') == 1
-        assert [j.id for j in store.get_due_jobs(datetime.now(UTC))] == [
+        assert [j.id for j in store.get_due_jobs(datetime.now(timezone.utc))] == [
             job_id
         ]
 
@@ -509,6 +509,6 @@ def _next_run_time(store, job_id: str):
 
 
 def _utc(timestamp: float):
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    return datetime.fromtimestamp(timestamp, tz=UTC)
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc)

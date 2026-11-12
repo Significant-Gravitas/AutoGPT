@@ -25,7 +25,7 @@ and surfaced via ``RatificationResult`` for the scheduler wrapper.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
@@ -55,8 +55,8 @@ UNRATIFIED_REASON = "unratified"
 # nightly batch fan-out) only have to know one module name.
 __all__ = (
     "HIT_TRACKER_KEY_PREFIX",
-    "RATIFICATION_GRACE_PERIOD",
     "HitRatification",
+    "RATIFICATION_GRACE_PERIOD",
     "RatificationResult",
     "record_memory_hit",
     "run_ratification_pass",
@@ -116,14 +116,14 @@ async def run_ratification_pass(
         unknown is reported there too, and also leaves
         ``accounting_complete`` False.
     """
-    started_at = datetime.now(UTC)
+    started_at = datetime.now(timezone.utc)
     result = RatificationResult(user_id=user_id, started_at=started_at)
 
     try:
         scope = MemoryScope.build(user_id, expert_id)
     except ValueError as exc:
         result.error = f"invalid_user_id: {exc}"
-        result.completed_at = datetime.now(UTC)
+        result.completed_at = datetime.now(timezone.utc)
         logger.warning(
             "Ratification skipped — invalid user_id %s: %s", user_id[:12], exc
         )
@@ -135,7 +135,7 @@ async def run_ratification_pass(
             tentatives = await _list_tentative_edges(driver)
         except Exception as exc:
             result.error = f"list_tentative_edges_failed: {exc}"
-            result.completed_at = datetime.now(UTC)
+            result.completed_at = datetime.now(timezone.utc)
             logger.warning(
                 "Ratification list failed for user %s",
                 user_id[:12],
@@ -145,14 +145,14 @@ async def run_ratification_pass(
 
         result.examined_count = len(tentatives)
         if not tentatives:
-            result.completed_at = datetime.now(UTC)
+            result.completed_at = datetime.now(timezone.utc)
             logger.info(
                 "Ratification no-op for user %s — no tentative edges",
                 user_id[:12],
             )
             return result
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         protection = DemotionGuard.at(now, ()).protection(UNRATIFIED_REASON)
         for edge in tentatives:
             try:
@@ -179,7 +179,7 @@ async def run_ratification_pass(
     finally:
         await driver.close()
 
-    result.completed_at = datetime.now(UTC)
+    result.completed_at = datetime.now(timezone.utc)
     logger.info(
         "Ratification complete for user %s: examined=%d ratified=%d superseded=%d "
         "protected=%d errors=%d",
@@ -387,7 +387,7 @@ async def _promote_if_tentative(driver: GraphDriver, edge_uuid: str) -> WriteOut
     """
     try:
         result = await driver.execute_query(
-            query, uuid=edge_uuid, now=datetime.now(UTC).isoformat()
+            query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
         )
     except Exception:
         logger.warning(

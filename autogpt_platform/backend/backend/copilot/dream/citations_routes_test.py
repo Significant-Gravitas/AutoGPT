@@ -16,7 +16,7 @@ stubbed; the rest runs on ``conftest.py``'s in-memory Redis and store."""
 
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -81,7 +81,7 @@ _OPS = DreamOperations(
 
 
 def _bundle(user_id: str) -> DreamInput:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     fact = FactRow(
         uuid="f-read",
         source="Nick",
@@ -245,7 +245,7 @@ def test_the_sync_route_reports_the_dropped_writes_everywhere(
 
 
 def _entry(phase: str) -> PendingEntry:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     custom_id = f"p-batch:{phase}"
     return PendingEntry(
         provider="anthropic",
@@ -296,7 +296,7 @@ async def test_the_batch_route_reports_the_dropped_writes_everywhere(
             trigger=DreamPassTrigger.CRON,
             status=DreamPassStatus.SUBMITTED,
             phase=DreamPassPhase.CONSOLIDATE,
-            started_at=datetime.now(UTC),
+            started_at=datetime.now(timezone.utc),
         )
     )
     await write_initial_status(kind="dream_pass", job_id="j-batch", user_id="u-batch")

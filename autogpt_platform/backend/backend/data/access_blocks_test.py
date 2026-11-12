@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -98,7 +98,7 @@ async def test_a_block_in_force_conflicts_and_a_lapsed_one_is_replaced(
             )
         await AuthAccessBlock.prisma().update(
             where={"id": first.id},
-            data={"expiresAt": datetime.now(UTC) - timedelta(minutes=1)},
+            data={"expiresAt": datetime.now(timezone.utc) - timedelta(minutes=1)},
         )
         listed = [b.id for b in (await list_active_access_blocks(limit=200)).blocks]
         assert first.id not in listed
@@ -107,7 +107,7 @@ async def test_a_block_in_force_conflicts_and_a_lapsed_one_is_replaced(
             kind=AuthAccessBlockKind.EMAIL_DOMAIN,
             value=domain,
             reason="second",
-            expires_at=datetime.now(UTC) + timedelta(days=1),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=1),
             created_by_id="admin-2",
         )
 
@@ -140,7 +140,7 @@ async def test_create_refuses_a_blank_reason_and_a_past_expiry(
             kind=AuthAccessBlockKind.IP,
             value="198.51.100.78",
             reason="past",
-            expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            expires_at=datetime.now(timezone.utc) - timedelta(seconds=1),
             created_by_id="admin-1",
         )
     assert await AuthAccessBlock.prisma().count(where={"value": "198.51.100.78"}) == 0
@@ -155,7 +155,7 @@ async def test_deleting_an_unknown_block_is_not_found(server: SpinTestServer):
 @pytest.fixture
 async def seeded_blocks():
     domain = f"{uuid4().hex[:8]}.example"
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     rows = [
         ("IP", "198.51.100.81", None),
         ("IP", "198.51.100.82", now - timedelta(minutes=1)),

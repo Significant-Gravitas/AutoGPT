@@ -5,7 +5,7 @@ listing defaults to the current conversation, and the user's uploads live at
 the workspace root or in a folder.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,7 +22,7 @@ from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceScope
 from backend.util.workspace import WorkspaceManager
 
-NOW = datetime(2026, 9, 22, tzinfo=UTC)
+NOW = datetime(2026, 9, 22, tzinfo=timezone.utc)
 
 
 def _folder(folder_id: str, name: str, parent_id: str | None = None, files: int = 0):

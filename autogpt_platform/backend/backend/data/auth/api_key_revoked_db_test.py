@@ -4,7 +4,7 @@ These run against the CI test database through the real data-layer functions,
 so the conditional UPDATE is exercised by Postgres rather than by a mock.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -78,7 +78,7 @@ async def test_revoke_between_read_and_suspend_is_not_overwritten(
                 where={"id": key.id},
                 data={
                     "status": APIKeyStatus.REVOKED,
-                    "revokedAt": datetime.now(UTC),
+                    "revokedAt": datetime.now(timezone.utc),
                 },
             )
             return row

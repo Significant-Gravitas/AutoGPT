@@ -5,6 +5,7 @@ Provides endpoints for managing execution schedules.
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
@@ -41,7 +42,7 @@ schedules_router = APIRouter(tags=["schedules"])
     operation_id="listGraphRunSchedules",
 )
 async def list_all_schedules(
-    graph_id: str | None = Query(default=None, description="Filter by graph ID"),
+    graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_SCHEDULE)),
 ) -> Page[AgentRunSchedule]:
@@ -146,7 +147,7 @@ async def create_schedule(
 
 
 async def _visible_schedules(
-    auth: TenantContext, graph_id: str | None = None
+    auth: TenantContext, graph_id: Optional[str] = None
 ) -> list[GraphExecutionJobInfo]:
     """The schedules the internal routes show: paused ones included, except
     those an archived expert's removal paused, which only a re-hire may touch.

@@ -125,7 +125,7 @@ class LinearCreateIssueBlock(Block):
         except LinearAPIException as e:
             yield "error", str(e)
         except Exception as e:
-            yield "error", f"Unexpected error: {e!s}"
+            yield "error", f"Unexpected error: {str(e)}"
 
 
 class LinearSearchIssuesBlock(Block):
@@ -240,7 +240,7 @@ class LinearSearchIssuesBlock(Block):
         except LinearAPIException as e:
             yield "error", str(e)
         except Exception as e:
-            yield "error", f"Unexpected error: {e!s}"
+            yield "error", f"Unexpected error: {str(e)}"
 
 
 class LinearGetProjectIssuesBlock(Block):

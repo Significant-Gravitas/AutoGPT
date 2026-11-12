@@ -1,7 +1,7 @@
 """DB-backed tests for the execution accuracy trends query (#15640)."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from statistics import mean
 from uuid import uuid4
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def day_anchor() -> datetime:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     today = now.replace(hour=12, minute=0, second=0, microsecond=0)
     if today > now:
         today -= timedelta(days=1)

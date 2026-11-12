@@ -1,13 +1,13 @@
 import logging
 import secrets
 from abc import ABC, abstractmethod
-from typing import ClassVar, Generic, TypeVar
+from typing import ClassVar, Generic, Optional, TypeVar
 from uuid import uuid4
 
 from fastapi import Request
 from strenum import StrEnum
 
-from backend.data import integrations
+import backend.data.integrations as integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError, WebhookRegistrationError
@@ -97,8 +97,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         user_id: str,
         webhook_type: WT,
         events: list[str],
-        graph_id: str | None = None,
-        preset_id: str | None = None,
+        graph_id: Optional[str] = None,
+        preset_id: Optional[str] = None,
         organization_id: str | None = None,
         team_id: str | None = None,
     ) -> integrations.Webhook:
@@ -159,7 +159,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         return webhook.organization_id == organization_id and webhook.team_id == team_id
 
     async def prune_webhook_if_dangling(
-        self, user_id: str, webhook_id: str, credentials: Credentials | None
+        self, user_id: str, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
         webhook = await integrations.get_webhook(webhook_id, include_relations=True)
         if webhook.triggered_nodes or webhook.triggered_presets:
@@ -283,7 +283,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         webhook_type: WT,
         events: list[str],
         resource: str = "",
-        credentials: Credentials | None = None,
+        credentials: Optional[Credentials] = None,
         register: bool = True,
         organization_id: str | None = None,
         team_id: str | None = None,

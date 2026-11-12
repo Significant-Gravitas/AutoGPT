@@ -3,7 +3,7 @@
 import asyncio
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, TypeVar
+from typing import Any, Optional, TypeVar
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -24,8 +24,8 @@ class APIError(BaseModel):
     type: str = ""
     code: str = ""
     message: str = ""
-    param: str | None = None
-    request_id: str | None = None
+    param: Optional[str] = None
+    request_id: Optional[str] = None
 
 
 class ErrorEnvelope(BaseModel):
@@ -99,7 +99,7 @@ async def poll(
             raise _timeout(timeout_seconds, what)
         try:
             resource = await asyncio.wait_for(fetch(), timeout=remaining)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             raise _timeout(timeout_seconds, what) from None
     return resource
 

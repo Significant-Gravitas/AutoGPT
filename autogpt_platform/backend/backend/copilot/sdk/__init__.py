@@ -28,8 +28,8 @@ if TYPE_CHECKING:
     from .tool_adapter import create_copilot_mcp_server as create_copilot_mcp_server
 
 __all__ = [
-    "create_copilot_mcp_server",
     "stream_chat_completion_sdk",
+    "create_copilot_mcp_server",
 ]
 
 # Dispatch table for PEP 562 lazy imports.  Each entry is a (module, attr)

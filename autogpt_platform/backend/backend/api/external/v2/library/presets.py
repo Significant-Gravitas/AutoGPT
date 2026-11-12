@@ -7,7 +7,7 @@ the webhook triggers built on them.
 
 import functools
 import logging
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission
@@ -69,7 +69,7 @@ presets_router = APIRouter(tags=["presets"])
     operation_id="listAgentRunPresets",
 )
 async def list_presets(
-    graph_id: str | None = Query(default=None, description="Filter by graph ID"),
+    graph_id: Optional[str] = Query(default=None, description="Filter by graph ID"),
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[AgentPreset]:
@@ -287,7 +287,7 @@ async def execute_preset(
     response: Response,
     preset_id: str,
     request: AgentPresetRunRequest = AgentPresetRunRequest(),
-    idempotency: Annotated[str | None, Depends(idempotency_key)] = None,
+    idempotency: Annotated[Optional[str], Depends(idempotency_key)] = None,
     auth: TenantContext = Security(require_paid_permission(APIKeyPermission.RUN_AGENT)),
 ) -> AgentGraphRun:
     """
@@ -364,7 +364,7 @@ async def _leaves_a_live_trigger(
 
 async def _inputs_to_store(
     request: AgentPresetUpdateRequest, current: LibraryAgentPreset, user_id: str
-) -> dict | None:
+) -> Optional[dict]:
     """The request's `inputs` and `trigger_config` in the shape a preset stores,
     each left out keeping its saved value, as do the hidden secret settings."""
     if request.inputs is None and request.trigger_config is None:

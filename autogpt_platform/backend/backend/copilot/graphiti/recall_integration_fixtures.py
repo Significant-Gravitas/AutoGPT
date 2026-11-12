@@ -10,7 +10,7 @@ collected by pytest.
 import asyncio
 import json
 from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -130,7 +130,7 @@ async def ingest_facts(
         episode_body=body or ". ".join(sentence for _, _, sentence in facts),
         source=EpisodeType.text,
         source_description=description,
-        reference_time=datetime.now(UTC) - timedelta(minutes=1),
+        reference_time=datetime.now(timezone.utc) - timedelta(minutes=1),
         group_id=scope.group_id,
         entity_types=ENTITY_TYPES,
         edge_types=EDGE_TYPES,

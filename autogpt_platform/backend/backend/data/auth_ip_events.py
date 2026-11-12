@@ -7,7 +7,7 @@ the scheduler deletes rows older than `auth_ip_event_retention_days`.
 
 import ipaddress
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from prisma.enums import AuthAccessBlockKind, AuthIPEventKind, SubscriptionTier
@@ -173,7 +173,7 @@ async def get_account_ip_report(user_id: str, retention_days: int) -> AccountIPR
 
 
 async def delete_expired_ip_events(retention_days: int) -> int:
-    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     deleted = await AuthIPEvent.prisma().delete_many(
         where={"createdAt": {"lt": cutoff}}
     )
@@ -354,7 +354,7 @@ def _display_address(stored: str) -> str:
 def _to_related_account(row: _RelatedRow) -> RelatedAccount:
     # Better Auth clears a lapsed ban only at the account's next sign-in.
     banned = bool(row.banned) and (
-        row.ban_expires is None or row.ban_expires > datetime.now(UTC)
+        row.ban_expires is None or row.ban_expires > datetime.now(timezone.utc)
     )
     return RelatedAccount(
         id=row.id,

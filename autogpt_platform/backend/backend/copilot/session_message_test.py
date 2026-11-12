@@ -1,7 +1,7 @@
 """Integration tests for append_session_message (notes posted between turns)."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
@@ -126,7 +126,7 @@ async def test_an_autopilot_schedule_without_a_chat_gets_one_note_chat_per_windo
         notice = skip_notice(
             TurnRefusal(reason="paywalled", kind="no_plan"),
             title="Morning digest",
-            now=datetime(2026, 10, 19, 9, tzinfo=UTC),
+            now=datetime(2026, 10, 19, 9, tzinfo=timezone.utc),
             run="recurring",
         )
         assert notice is not None

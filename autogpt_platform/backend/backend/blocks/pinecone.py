@@ -88,7 +88,7 @@ class PineconeInitBlock(Block):
             yield "index", input_data.index_name
             yield "message", message
         except Exception as e:
-            yield "message", f"Error initializing Pinecone index: {e!s}"
+            yield "message", f"Error initializing Pinecone index: {str(e)}"
 
 
 class PineconeQueryBlock(Block):
@@ -174,7 +174,7 @@ class PineconeQueryBlock(Block):
             yield "combined_results", combined_text
 
         except Exception as e:
-            error_msg = f"Error querying Pinecone: {e!s}"
+            error_msg = f"Error querying Pinecone: {str(e)}"
             raise RuntimeError(error_msg) from e
 
 
@@ -246,5 +246,5 @@ class PineconeInsertBlock(Block):
             yield "upsert_response", "successfully upserted"
 
         except Exception as e:
-            error_msg = f"Error uploading to Pinecone: {e!s}"
+            error_msg = f"Error uploading to Pinecone: {str(e)}"
             raise RuntimeError(error_msg) from e

@@ -5,8 +5,7 @@ block, an input another node supplies, a sub-graph that is not there — and
 every caller treats it as EXTERNAL.
 """
 
-from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, Callable, Iterable, NamedTuple
 
 from backend.blocks._base import Block, BlockEffect, BlockType
 
@@ -44,7 +43,7 @@ def graph_effect(graph: "GraphModel") -> Resolved:
     walk never stops early: an irreversible node anywhere names the run, since
     approving the card lifts the pause that would otherwise have caught it.
     """
-    graphs: list[BaseGraph] = [graph, *graph.sub_graphs]
+    graphs: list["BaseGraph"] = [graph, *graph.sub_graphs]
     present = {g.id for g in graphs}
     worst = Resolved(BlockEffect.NONE)
     unreadable: Block | None = None

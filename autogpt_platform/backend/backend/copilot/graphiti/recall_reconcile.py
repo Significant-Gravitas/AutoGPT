@@ -41,7 +41,7 @@ stamps the same record.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
@@ -91,7 +91,7 @@ async def reconcile(
         await driver.execute_query(MARKERS_QUERY, group_id=group_id, limit=limit + 1)
     )
     done = Reconciled(left=len(markers) > limit and markers[limit]["rank"] == LANDED)
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     for marker in markers[:limit]:
         await _resolve(driver, group_id, marker, now, done)
     if done.completed or done.dropped or done.unsettled:
@@ -164,7 +164,7 @@ async def in_flight(driver: GraphDriver, facts: list[str], episodes: list[str]) 
     ``episodes``."""
     if not (facts or episodes):
         return 0
-    cutoff = datetime.now(UTC) - timedelta(seconds=MARKER_EXPIRY_SECONDS)
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=MARKER_EXPIRY_SECONDS)
     rows = _rows(
         await driver.execute_query(
             IN_FLIGHT_QUERY,
@@ -184,7 +184,7 @@ def age_seconds(created_at: object, now: datetime) -> float:
     except ValueError:
         return float("inf")
     if written.tzinfo is None:
-        written = written.replace(tzinfo=UTC)
+        written = written.replace(tzinfo=timezone.utc)
     return (now - written).total_seconds()
 
 

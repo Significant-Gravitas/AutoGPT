@@ -70,7 +70,7 @@ class FakeRedis:
         self.ttls[key] = seconds
         return 1
 
-    def pipeline(self, transaction: bool = True) -> _FakePipeline:
+    def pipeline(self, transaction: bool = True) -> "_FakePipeline":
         return _FakePipeline(self)
 
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
@@ -99,15 +99,15 @@ class _FakePipeline:
     """Queues commands and applies them in order on ``execute``, like redis-py:
     the command methods are synchronous and only ``execute`` is awaited."""
 
-    def __init__(self, redis: FakeRedis) -> None:
+    def __init__(self, redis: "FakeRedis") -> None:
         self._redis = redis
         self._queued: list[tuple[str, tuple[Any, ...]]] = []
 
-    def hincrby(self, key: str, field: str, amount: int) -> _FakePipeline:
+    def hincrby(self, key: str, field: str, amount: int) -> "_FakePipeline":
         self._queued.append(("hincrby", (key, field, amount)))
         return self
 
-    def expire(self, key: str, seconds: int) -> _FakePipeline:
+    def expire(self, key: str, seconds: int) -> "_FakePipeline":
         self._queued.append(("expire", (key, seconds)))
         return self
 

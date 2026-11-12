@@ -4,7 +4,7 @@ sanitize rule under which recall protects a fact and its absence condemns
 none."""
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from .fetch import DreamInput, FactRow
 from .prompts import (
@@ -42,8 +42,8 @@ def _bundle(*facts: FactRow) -> DreamInput:
     return DreamInput(
         user_id="u-1",
         group_id="g-1",
-        window_start=datetime(2026, 9, 14, tzinfo=UTC),
-        window_end=datetime(2026, 9, 28, tzinfo=UTC),
+        window_start=datetime(2026, 9, 14, tzinfo=timezone.utc),
+        window_end=datetime(2026, 9, 28, tzinfo=timezone.utc),
         facts=list(facts),
         known_fact_uuids={f.uuid for f in facts},
     )
