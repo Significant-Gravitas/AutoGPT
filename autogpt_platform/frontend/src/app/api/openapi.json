@@ -3563,6 +3563,54 @@
         }
       }
     },
+    "/api/auth/email/ban-record": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether an address belongs to an erased, banned account",
+        "description": "Asked by sign-up before it creates an account: an address whose banned\naccount was erased can't sign up again while its ban record lasts\n(`account_erasure/ban_record.py`).",
+        "operationId": "checkAuthEmailBanRecord",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailBanRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailBanRecordResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/email/send": {
       "post": {
         "tags": ["auth-email"],
@@ -4499,6 +4547,7 @@
                       "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
                     },
                     { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/UIBlocksResponse" },
                     {
                       "$ref": "#/components/schemas/FeedbackPromptToolResponse"
                     }
@@ -5342,9 +5391,21 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" },
+          "429": {
+            "description": "Call-frequency cap exceeded or pending message buffer full",
+            "headers": {
+              "X-Error-Code": {
+                "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+                "schema": { "type": "string", "enum": ["pending_buffer_full"] }
+              },
+              "Retry-After": {
+                "description": "Seconds to wait before retrying admission",
+                "schema": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
           "503": {
-            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -5662,10 +5723,20 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded, or pending message buffer full",
+            "headers": {
+              "X-Error-Code": {
+                "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+                "schema": { "type": "string", "enum": ["pending_buffer_full"] }
+              },
+              "Retry-After": {
+                "description": "Seconds to wait before retrying admission",
+                "schema": { "type": "integer", "minimum": 0 }
+              }
+            }
           },
           "503": {
-            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -21019,6 +21090,25 @@
         "enum": ["IP", "EMAIL_DOMAIN"],
         "title": "AuthAccessBlockKind"
       },
+      "AuthEmailBanRecordRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "AuthEmailBanRecordRequest"
+      },
+      "AuthEmailBanRecordResponse": {
+        "properties": { "banned": { "type": "boolean", "title": "Banned" } },
+        "type": "object",
+        "required": ["banned"],
+        "title": "AuthEmailBanRecordResponse"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -22368,6 +22458,97 @@
         "required": ["version", "changes_summary", "date"],
         "title": "ChangelogEntry"
       },
+      "ChartAnnotation": {
+        "properties": {
+          "x": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "X",
+            "description": "One of x_labels."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["x", "label"],
+        "title": "ChartAnnotation"
+      },
+      "ChartBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "chart", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["line", "area", "bar"],
+            "title": "Kind"
+          },
+          "x_labels": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "X Labels"
+          },
+          "series": {
+            "items": { "$ref": "#/components/schemas/ChartSeries" },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Series"
+          },
+          "unit": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Unit"
+          },
+          "annotation": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartAnnotation" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "kind", "x_labels", "series"],
+        "title": "ChartBlock",
+        "description": "A trend or comparison over labelled points."
+      },
+      "ChartSeries": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "values": {
+            "items": { "type": "number" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name", "values"],
+        "title": "ChartSeries"
+      },
       "ChatRequest": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -22420,6 +22601,11 @@
           "source_platform": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
+          },
+          "text_only_result": {
+            "type": "boolean",
+            "title": "Text Only Result",
+            "default": false
           },
           "origin": {
             "anyOf": [
@@ -23756,6 +23942,7 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
+              "text_only_result": false,
               "kind": "normal"
             }
           },
@@ -24048,6 +24235,12 @@
           "is_managed": {
             "type": "boolean",
             "title": "Is Managed",
+            "default": false
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "One of the platform's own keys, billed in credits, rather than a credential the user connected",
             "default": false
           },
           "service": { "type": "string", "title": "Service", "default": "" },
@@ -27476,6 +27669,50 @@
         "type": "object",
         "required": ["flags", "configured"],
         "title": "FrontendFlagValues"
+      },
+      "GalleryBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "gallery", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "images": {
+            "items": { "$ref": "#/components/schemas/GalleryImage" },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Images"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "images"],
+        "title": "GalleryBlock",
+        "description": "Images from the user's workspace."
+      },
+      "GalleryImage": {
+        "properties": {
+          "src": {
+            "type": "string",
+            "pattern": "^workspace://[A-Za-z0-9_-]+(#image/[a-z0-9.+-]+)?$",
+            "title": "Src",
+            "description": "workspace://<file_id> image."
+          },
+          "caption": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Caption"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["src", "caption"],
+        "title": "GalleryImage"
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -31901,6 +32138,55 @@
         "required": ["items"],
         "title": "OpenDecisionsResponse"
       },
+      "OptionItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Sent as the user's reply when clicked."
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "OptionItem"
+      },
+      "OptionsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "options", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/OptionItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "OptionsBlock",
+        "description": "Next steps the user can pick with one click."
+      },
       "OrgAliasResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -33678,11 +33964,11 @@
           },
           "message_id": {
             "anyOf": [
-              { "type": "string", "maxLength": 64 },
+              { "type": "string", "maxLength": 64, "minLength": 1 },
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-send UUID, scoped like ``StreamChatRequest.message_id``. A retransmit of a follow-up already queued is answered as accepted without queueing it again."
+            "description": "Per-send idempotency key, scoped to the user and session. Reuse on retries; use a new key for a separate send."
           }
         },
         "type": "object",
@@ -34318,6 +34604,7 @@
           "expert_chat_list",
           "expert_chat_transcript",
           "expert_onboarding",
+          "ui_blocks",
           "feedback_prompt",
           "team_consult",
           "session_list",
@@ -35095,6 +35382,7 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
+              "text_only_result": false,
               "kind": "normal"
             }
           },
@@ -35937,6 +36225,43 @@
         "required": ["text"],
         "title": "SpeechRequest"
       },
+      "StatItem": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "change": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Change"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "value"],
+        "title": "StatItem"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -36007,6 +36332,23 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StatsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "stats", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/StatItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "StatsBlock",
+        "description": "Headline numbers."
       },
       "StopExecutionRequest": {
         "properties": {
@@ -37277,6 +37619,40 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TableBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "table", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "columns": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": { "type": "string", "maxLength": 200, "minLength": 1 },
+              "type": "array"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "columns", "rows"],
+        "title": "TableBlock",
+        "description": "Rows of exact values, when nothing more visual fits."
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -37383,6 +37759,65 @@
         "enum": ["full", "e2e"],
         "title": "TestDataScriptType",
         "description": "Available test data generation scripts."
+      },
+      "TimelineBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "timeline", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/TimelineItem" },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "TimelineBlock",
+        "description": "Events or plan steps over time."
+      },
+      "TimelineItem": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Date"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "anyOf": [
+              { "type": "string", "enum": ["ok", "warning", "error", "idle"] },
+              { "type": "null" }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "TimelineItem"
       },
       "TimezoneResponse": {
         "properties": {
@@ -38491,6 +38926,50 @@
         "required": ["entry_id", "rows", "sequence"],
         "title": "TurnCheckpoint",
         "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
+      "UIBlocksResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "ui_blocks"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "blocks": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/StatsBlock" },
+                { "$ref": "#/components/schemas/ChartBlock" },
+                { "$ref": "#/components/schemas/WorkflowDiagramBlock" },
+                { "$ref": "#/components/schemas/GalleryBlock" },
+                { "$ref": "#/components/schemas/TimelineBlock" },
+                { "$ref": "#/components/schemas/OptionsBlock" },
+                { "$ref": "#/components/schemas/TableBlock" }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "gallery": "#/components/schemas/GalleryBlock",
+                  "options": "#/components/schemas/OptionsBlock",
+                  "stats": "#/components/schemas/StatsBlock",
+                  "table": "#/components/schemas/TableBlock",
+                  "timeline": "#/components/schemas/TimelineBlock",
+                  "workflow_diagram": "#/components/schemas/WorkflowDiagramBlock"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "UIBlocksResponse",
+        "description": "The cards the chat draws for this call."
       },
       "UnderstandingUpdatedResponse": {
         "properties": {
@@ -40264,6 +40743,61 @@
         ],
         "title": "WebhookWithoutSecrets",
         "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
+      },
+      "WorkflowDiagramBlock": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "workflow_diagram",
+            "title": "Type"
+          },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/WorkflowStep" },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "steps"],
+        "title": "WorkflowDiagramBlock",
+        "description": "Steps of a workflow in order, showing where things stand."
+      },
+      "WorkflowStep": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "warning", "error", "idle"],
+            "title": "Status",
+            "default": "idle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label"],
+        "title": "WorkflowStep"
       },
       "WorkspaceFile": {
         "properties": {
