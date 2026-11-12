@@ -156,7 +156,27 @@ async def test_a_folder_with_a_failed_delete_is_not_counted_as_deleted(monkeypat
     assert (report.deleted, report.files) == (1, 1)
     line = report.line("uploads/users/", "User", True)
     assert "1 files failed to delete" in line and GONE not in line
+    assert "maybe partly deleted" in line
     assert not await tool.delete_objects(bucket, BUCKET, ["already-gone"])
+
+
+async def test_a_file_written_after_the_first_listing_keeps_its_folder(monkeypatch):
+    bucket = FakeBucket({f"workspaces/{GONE}/f/a.txt": (1, OLD)})
+    calls = 0
+
+    async def existing(table: str, ids: list[str]) -> set[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            bucket.objects[f"workspaces/{GONE}/f/new.txt"] = (1, FRESH)
+        return set()
+
+    monkeypatch.setattr(tool, "existing", existing)
+
+    report = await _sweep(bucket, "workspaces/", "UserWorkspace", apply=True)
+
+    assert (report.deleted, report.kept_recent) == (0, 1)
+    assert bucket.deleted == []
 
 
 async def test_report_line_names_no_folder(monkeypatch):

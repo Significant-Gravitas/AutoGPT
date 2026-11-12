@@ -12,13 +12,14 @@ created after the check.
 The default is a read-only dry run that prints what would go. ``--apply``
 deletes. Output is counts only, never an ID or a file name.
 
-Runs from a checkout on any backend image, inside a database manager pod
-(it has the database and the bucket settings); see
+Runs from a checkout on any backend image, inside the database manager pod
+using the least memory (it has the database and the bucket settings); see
 `docs/engineering/account-deletion.md`::
 
-    kubectl exec -i deploy/autogpt-database-manager -- \\
+    kubectl top pod | grep database-manager
+    kubectl exec -i <that pod> -- \\
         poetry run python -u - < scripts/delete_orphan_bucket_folders.py
-    kubectl exec -i deploy/autogpt-database-manager -- \\
+    kubectl exec -i <that pod> -- \\
         poetry run python -u - --apply < scripts/delete_orphan_bucket_folders.py
 """
 
@@ -31,11 +32,11 @@ import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
+import aiohttp
 from gcloud.aio import storage as gcs
 from pydantic import BaseModel
 
 from backend.data import db
-from backend.util.gcs_utils import is_not_found_error
 from backend.util.settings import Settings
 
 # (folder prefix, the table the folder name is an ID of)
@@ -123,7 +124,8 @@ class PrefixReport(BaseModel):
         if self.failed:
             line += (
                 f"; {sum(self.failed.values())} files failed to delete"
-                f" ({dict(self.failed)}), so their folders stay"
+                f" ({dict(self.failed)}); their folders stay, maybe partly"
+                " deleted, so run it again"
             )
         return line
 
@@ -194,10 +196,9 @@ async def shown_media_owners() -> set[str]:
     return {r["owner"] for r in rows if r["owner"]}
 
 
-def error_kind(error: Exception) -> str:
+def error_kind(error: Exception, status: int | None = None) -> str:
     """An error's type and HTTP status, never its message: a storage error's
     message carries the request URL, which names the folder."""
-    status = getattr(error, "status", None)
     return f"{type(error).__name__} {status}" if status else type(error).__name__
 
 
@@ -207,13 +208,17 @@ async def delete_objects(
     """Delete the objects; count the failures by kind. One gone already is fine."""
     failed: dict[str, int] = {}
 
+    def count(kind: str) -> None:
+        failed[kind] = failed.get(kind, 0) + 1
+
     async def delete(name: str) -> None:
         try:
             await client.delete(bucket, name)
+        except aiohttp.ClientResponseError as e:
+            if e.status != 404:
+                count(error_kind(e, e.status))
         except Exception as e:
-            if not is_not_found_error(e):
-                kind = error_kind(e)
-                failed[kind] = failed.get(kind, 0) + 1
+            count(error_kind(e))
 
     for i in range(0, len(names), CONCURRENT_DELETES):
         await asyncio.gather(*(delete(n) for n in names[i : i + CONCURRENT_DELETES]))
@@ -254,7 +259,8 @@ async def sweep_prefix(
         return report
 
     # Just before deleting, check again: a row created since the first check
-    # takes its folder back, and so does a listing that now shows its media.
+    # takes its folder back, and so does a listing that now shows its media or
+    # a file written since the first listing.
     back = await existing(table, [f.name for f in doomed])
     shown = await shown_media_owners() if has_media else set()
     for folder in doomed:
@@ -263,6 +269,11 @@ async def sweep_prefix(
             continue
         if folder.name in shown:
             report.kept_shown += 1
+            continue
+        objects = await list_objects(client, bucket, f"{prefix}{folder.name}/")
+        folder = Folder(name=folder.name, objects=objects)
+        if folder.is_recent(now):
+            report.kept_recent += 1
             continue
         names = [o["name"] for o in folder.objects]
         failed = await delete_objects(client, bucket, names) if apply else {}
@@ -306,9 +317,11 @@ async def run(apply: bool) -> int:
         print("No bucket is configured on this pod; nothing to do.")
         return 1
     print(
-        "APPLY: deleting orphan folders."
-        if apply
-        else "DRY RUN: nothing is deleted. Run again with --apply to delete.",
+        (
+            "APPLY: deleting orphan folders."
+            if apply
+            else "DRY RUN: nothing is deleted. Run again with --apply to delete."
+        ),
         flush=True,
     )
     now = datetime.now(timezone.utc)
@@ -320,6 +333,10 @@ async def run(apply: bool) -> int:
                 print(f"\n== {label} bucket {bucket}", flush=True)
                 try:
                     share = await orphan_share(client, bucket)
+                except aiohttp.ClientResponseError as e:
+                    print(f"stopped by {error_kind(e, e.status)}", flush=True)
+                    errors += 1
+                    continue
                 except Exception as e:
                     print(f"stopped by {error_kind(e)}", flush=True)
                     errors += 1
@@ -338,8 +355,13 @@ async def run(apply: bool) -> int:
                         report = await sweep_prefix(
                             client, bucket, prefix, table, apply=apply, now=now
                         )
-                    except Exception as e:
+                    except aiohttp.ClientResponseError as e:
                         # Never the traceback: its request URL names a folder.
+                        kind = error_kind(e, e.status)
+                        print(f"{prefix}: stopped by {kind}", flush=True)
+                        errors += 1
+                        continue
+                    except Exception as e:
                         print(f"{prefix}: stopped by {error_kind(e)}", flush=True)
                         errors += 1
                         continue
