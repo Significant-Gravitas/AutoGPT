@@ -1,4 +1,5 @@
-"""Revoke what AutoGPT issued on a user's behalf, as part of closing their account."""
+"""Revoke what AutoGPT issued on a user's behalf, as part of closing their
+account, and again when they keep it (``restore.py``)."""
 
 import logging
 

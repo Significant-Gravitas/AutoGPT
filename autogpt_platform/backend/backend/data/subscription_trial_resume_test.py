@@ -83,6 +83,7 @@ def boundaries(trial, session, subscriptions):
     with (
         patch.object(checkout, "_find_checkout", AsyncMock(return_value=session)),
         patch.object(checkout, "expire_other_subscription_checkouts", AsyncMock()),
+        patch.object(checkout, "refuse_closed_account", AsyncMock()),
         patch.object(eligibility, "get_user_by_id", AsyncMock(return_value=user)),
         patch.object(
             stripe.Subscription,

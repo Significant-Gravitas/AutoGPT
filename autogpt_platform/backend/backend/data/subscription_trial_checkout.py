@@ -9,6 +9,7 @@ from prisma.errors import PrismaError
 from prisma.models import SubscriptionTrial
 
 from backend.data import experiments
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.credit import (
     get_stripe_customer_id,
     get_subscription_price_id,
@@ -155,6 +156,9 @@ async def _resume_checkout(trial: TrialState) -> str:
         await _verify_eligibility(
             trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
         )
+    # Past the auth cache, before an open Checkout is handed out or a new one
+    # started: closing expires them, and a closed account must get none.
+    await refuse_closed_account(trial.user_id)
     if session is None:
         no_charge_copy = await _shows_no_charge_copy(trial.user_id)
         session = await stripe_call(

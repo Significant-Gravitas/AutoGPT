@@ -14,6 +14,8 @@ person can close their account but never sign in to reopen it.
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
+from fastapi import HTTPException
 from prisma import Prisma
 from prisma.enums import AccountDeletionSource
 from prisma.errors import UniqueViolationError
@@ -43,6 +45,18 @@ async def get_deletion_request(user_id: str) -> AccountDeletionRequest | None:
 
 async def is_account_closed(user_id: str) -> bool:
     return await get_deletion_request(user_id) is not None
+
+
+async def refuse_closed_account(user_id: str) -> None:
+    """HTTP 401 for a closed account, read from the database.
+
+    Backend auth rejects a closed account through a per-worker cache, so for
+    up to its TTL after the close another worker still lets a token issued
+    before it through. A step that must never run for a closed account, such
+    as starting a Stripe Checkout, asks here too, just before it acts.
+    """
+    if await is_account_closed(user_id):
+        raise HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
 
 
 async def close_account(
@@ -91,9 +105,12 @@ async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOut
     statement: the routine runs on another server whose clock may differ, so
     the date alone can't keep the two apart.
     Everything closing stopped stays stopped: the plan, connected apps, API
-    keys, schedules, share links and listings. Product email is limited to
-    ``REOPENED_DAILY_EMAIL_LIMIT`` a day again, with every kind still off
-    until the owner switches it back on.
+    keys, schedules, share links and listings (keys and grants made in the
+    seconds after the close are revoked by ``restore_account`` first). Not
+    sign-ins: a token issued before the close (up to an hour) and the
+    browser's cached session cookie (up to 5 minutes) work again. Product
+    email is limited to ``REOPENED_DAILY_EMAIL_LIMIT`` a day again, with
+    every kind still off until the owner switches it back on.
     """
     now = now or datetime.now(timezone.utc)
     async with transaction() as tx:

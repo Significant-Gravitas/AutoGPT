@@ -25,7 +25,16 @@ owner can sign in and keep it (``restore.py``).
    and the chat platforms unlinked, in one transaction. Sign-in is not
    banned: signing in is how the owner keeps the account. This worker
    rejects the user at once; the others within their cache TTL.
-7. Send the confirmation email (with the last day to keep the account) and
+7. Cancel the plan, expire the open Checkouts and revoke the API keys and
+   OAuth grants again, best effort. Until the other workers' cache runs out,
+   a token issued before the close can still reach them, and so can a
+   request that was already past its auth check: a key or Checkout made
+   that way before this step is caught here. A key made after it is refused
+   while the account is closed, and revoked when the owner keeps the account
+   (``restore.py``); the erasure cancels the account's own subscriptions
+   again (``account_erasure/subscriptions.py``), and starting a Checkout
+   reads the closed state from the database (``refuse_closed_account``).
+8. Send the confirmation email (with the last day to keep the account) and
    record one anonymous count.
 
 Every step before the close must succeed or raise, so the account never
@@ -94,6 +103,7 @@ from prisma.enums import AccountDeletionSource
 from prisma.models import AccountDeletionRequest
 
 from backend.api.features.account_deletion.analytics import plan_state
+from backend.api.features.account_deletion.best_effort import attempt_step
 from backend.api.features.account_deletion.connected_apps import revoke_connected_apps
 from backend.api.features.account_deletion.email_opt_out import stop_account_emails
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
@@ -163,6 +173,7 @@ async def delete_account(
     request = await _close(user_id, source, grace)
     if request is None:
         return await _winners_erase_after(user_id)
+    await _sweep_after_close(user_id)
     await _send_confirmation(
         user_id, user.email, source, request.eraseAfter, erase_now=grace < GRACE_PERIOD
     )
@@ -224,6 +235,22 @@ async def _close(
             f"request, which closed the account and sends the confirmation"
         )
     return request
+
+
+async def _sweep_after_close(user_id: str) -> None:
+    """Step 7, best effort: the account is closed, so nothing here may fail
+    the call. What it misses is refused while the account is closed, revoked
+    again on Keep and cancelled again by the erasure."""
+    await attempt_step(
+        "revoke the API keys and OAuth grants again",
+        user_id,
+        revoke_issued_access(user_id),
+    )
+    await attempt_step(
+        "cancel the plan and expire the Checkouts again",
+        user_id,
+        cancel_all_subscriptions_now(user_id),
+    )
 
 
 async def _winners_erase_after(user_id: str) -> datetime:

@@ -829,6 +829,25 @@ def test_top_up_at_stripes_ceiling_reaches_stripe(handled_client, mocker):
     assert line_item["price_data"]["unit_amount"] == MAX_TOP_UP_AMOUNT
 
 
+def test_a_closed_account_gets_no_top_up_checkout(handled_client, mocker):
+    """Asked of the database just before Stripe: for a few seconds after the
+    close, another worker's cache can still let an old token through."""
+    stripe_create, add_transaction = _real_top_up_path(mocker)
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=True),
+    )
+
+    response = handled_client.post("/credits", json={"credit_amount": 500})
+
+    assert (response.status_code, response.json()) == (
+        401,
+        {"detail": "This account is closed."},
+    )
+    stripe_create.assert_not_called()
+    add_transaction.assert_not_called()
+
+
 @pytest.mark.parametrize("amount", [MAX_TOP_UP_AMOUNT + 100, 2_147_483_700])
 def test_top_up_beyond_stripes_ceiling_is_refused_before_stripe(
     handled_client, mocker, amount
@@ -860,6 +879,10 @@ def _real_top_up_path(mocker: pytest_mock.MockFixture) -> tuple[AsyncMock, Async
     )
     mocker.patch(
         "backend.data.credit.get_feature_flag_value", AsyncMock(return_value=None)
+    )
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=False),
     )
     session = MagicMock(id="cs_test_topup", url="https://checkout.stripe.com/c/cs")
     stripe_create = mocker.patch(

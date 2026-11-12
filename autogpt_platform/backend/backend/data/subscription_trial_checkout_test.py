@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import urllib3.connectionpool
+from fastapi import HTTPException
 from posthog import Posthog
 from prisma.enums import SubscriptionTier
 from prisma.errors import PrismaError
@@ -419,12 +420,42 @@ async def test_a_failed_assignment_still_opens_todays_checkout(
     assert "custom_text" not in stripe_session_create.await_args.kwargs
 
 
+@pytest.mark.parametrize("open_session", [False, True], ids=["new", "resumed"])
+async def test_a_closed_account_gets_no_trial_checkout(
+    mocker, trial, stripe_session_create, open_session
+):
+    """Neither a new session nor the open one closing expired: for a few
+    seconds after the close, another worker's cache can still let an old
+    token through, so the database is asked just before."""
+    if open_session:
+        session = mocker.Mock(id="cs_0", status="open", url="https://checkout.test/0")
+        mocker.patch.object(checkout, "_find_checkout", AsyncMock(return_value=session))
+    closed = mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=True),
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        await checkout._resume_checkout(trial)
+
+    assert (refused.value.status_code, refused.value.detail) == (
+        401,
+        "This account is closed.",
+    )
+    closed.assert_awaited_once_with(trial.user_id)
+    stripe_session_create.assert_not_awaited()
+
+
 @pytest.fixture
 def stripe_session_create(mocker) -> AsyncMock:
     """Leads `_resume_checkout` to create a session; awaited with its params."""
     mocker.patch.object(checkout, "_find_checkout", AsyncMock(return_value=None))
     mocker.patch.object(checkout, "expire_other_subscription_checkouts", AsyncMock())
     mocker.patch.object(checkout, "_verify_eligibility", AsyncMock())
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=False),
+    )
     trials = mocker.patch.object(checkout.SubscriptionTrial, "prisma")
     trials.return_value.update_many = AsyncMock()
     session = mocker.Mock(id="cs_1", status="open", url="https://checkout.test/cs_1")

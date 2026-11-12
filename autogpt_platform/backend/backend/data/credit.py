@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.api.features.admin.model import UserHistoryResponse
 from backend.data import subscription_activation, subscription_trial_stripe
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.credit_admin_lookup import search_history_keys, user_emails
 from backend.data.credit_history import get_credit_history
@@ -1454,13 +1455,17 @@ class UserCredit(UserCreditBase):
             ]
         )
 
+        customer_id = await get_stripe_customer_id(user_id)
+        # Last, past the auth cache: a closed account's open Checkouts are
+        # expired, and one started after that must not exist.
+        await refuse_closed_account(user_id)
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = await stripe_call(
             stripe.checkout.Session.create_async,
-            customer=await get_stripe_customer_id(user_id),
+            customer=customer_id,
             line_items=line_items,
             mode="payment",
             ui_mode="hosted",
@@ -3112,6 +3117,9 @@ async def _create_subscription_checkout(
     return_to = urlunsplit(
         ("", "", destination.path or "/", destination.query, destination.fragment)
     )
+    # Last, past the auth cache: closing expires the open Checkouts, and one
+    # started after that must not exist.
+    await refuse_closed_account(user_id)
     session = await stripe_call(
         stripe.checkout.Session.create_async,
         customer=customer_id,
