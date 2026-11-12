@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
 import httpx
+import pydantic
 import pytest
 import sentry_sdk
 import uvicorn
@@ -191,6 +192,17 @@ def test_every_record_shape_on_a_filtered_logger_is_masked(
 async def test_sentry_gets_no_credentials_from_request_urls(
     sentry: "_CapturingTransport", monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # A model our own code fails to build still logs at ERROR, so it sends an
+    # error event; a 422 for a malformed request is only a warning.
+    monkeypatch.setattr(
+        integrations_router,
+        "get_webhook",
+        AsyncMock(
+            side_effect=pydantic.ValidationError.from_exception_data(
+                "Webhook", [{"type": "missing", "loc": ("id",), "input": {}}]
+            )
+        ),
+    )
     async with _serve_websocket_server(monkeypatch) as host:
         await _open_websockets(host)
     async with (
@@ -213,15 +225,21 @@ async def test_sentry_gets_no_credentials_from_request_urls(
             params={"limit": "many"},
             headers={"host": "evil?"},
         )
-        await client.get(
-            f"/api/integrations/generic_webhook/webhooks/{WEBHOOK_ID}/ingress",
+        await client.post(
+            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
             params=query,
+            json={},
         )
 
     for credential in CREDENTIALS:
         assert credential not in sentry.payload
     requests = [event["request"] for event in sentry.events if "request" in event]
-    assert len(requests) >= 6
+    assert len(requests) >= 5
+    # Error events pass through before_send, transactions through its sibling.
+    assert {event.get("type", "error") for event in sentry.events} == {
+        "error",
+        "transaction",
+    }
     assert {request.get("query_string") for request in requests} == {REDACTED}
     assert any(
         f"/api/public/shared/chats/{REDACTED}/messages" in request["url"]
