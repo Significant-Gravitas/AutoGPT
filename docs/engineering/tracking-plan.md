@@ -645,7 +645,7 @@ acting as a user sends none.
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
-| `chunk_reload_triggered` | browser | live | `surface` (`unhandled_rejection`, `error_boundary`), `path` | Ops signal: a tab on an older build could not load a code chunk after a deploy (`ChunkLoadError`), and the page reloaded once to pick up the current build (`lib/chunk-load-reload.ts`). At most one reload a minute per tab. Not a user action; keep out of funnels. |
+| `chunk_reload_triggered` | browser | live | `surface` (`unhandled_rejection`, `error_boundary`), `kind` (`chunk_load`, `missing_module`), `path` | Ops signal: a tab on an older build could not load a code chunk after a deploy (`ChunkLoadError`, `kind: chunk_load`), or its webpack runtime was asked for a module its build never had (`TypeError` reading `call`, `kind: missing_module`), and the page reloaded once to pick up the current build (`lib/chunk-load-reload.ts`). At most one reload a minute per tab. Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.

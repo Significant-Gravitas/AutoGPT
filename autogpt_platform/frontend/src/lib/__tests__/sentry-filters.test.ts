@@ -195,6 +195,44 @@ describe("Sentry deploy skew tag", () => {
 
     expect(event).not.toHaveProperty("tags");
   });
+
+  // Sentry's Next.js client rewrites frame URLs to app:///_next/… before
+  // beforeSend, and lists frames oldest first.
+  const WEBPACK_RUNTIME =
+    "app:///_next/static/chunks/webpack-8e5c5f3b1a7d9c2e.js";
+
+  function missingModuleEvent(crashingFile: string) {
+    return tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [
+          {
+            type: "TypeError",
+            value: "Cannot read properties of undefined (reading 'call')",
+            stacktrace: {
+              frames: [
+                { filename: WEBPACK_RUNTIME },
+                { filename: crashingFile },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  it("tags a module the old build's webpack runtime doesn't have", () => {
+    const event = missingModuleEvent(WEBPACK_RUNTIME);
+
+    expect(event.tags).toEqual({ deploy_skew: true });
+  });
+
+  it("leaves the same error thrown in our own code untagged", () => {
+    const event = missingModuleEvent(
+      "app:///_next/static/chunks/app/(platform)/home/page-1f2e.js",
+    );
+
+    expect(event).not.toHaveProperty("tags");
+  });
 });
 
 describe("Sentry user privacy filters", () => {

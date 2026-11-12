@@ -65,6 +65,7 @@ describe("reloadForChunkLoadError", () => {
     expect(reload).toHaveBeenCalledTimes(1);
     expect(capturePostHogEvent).toHaveBeenCalledWith("chunk_reload_triggered", {
       surface: "error_boundary",
+      kind: "chunk_load",
       path: "/home",
     });
   });
@@ -109,6 +110,71 @@ describe("reloadForChunkLoadError", () => {
   });
 });
 
+// The old tab's webpack runtime is asked for a module the new page names and
+// its build never had, so it reads `.call` off undefined.
+const WEBPACK_RUNTIME =
+  "https://platform.agpt.co/_next/static/chunks/webpack-8e5c5f3b1a7d9c2e.js";
+const OUR_CODE =
+  "https://platform.agpt.co/_next/static/chunks/app/(platform)/home/page-1f2e3d4c5b6a7980.js";
+
+const MISSING_MODULE_ERRORS = {
+  Chrome: {
+    message: "Cannot read properties of undefined (reading 'call')",
+    frame: (name: string, url: string) => `    at ${name} (${url}:1:143)`,
+  },
+  Safari: {
+    message: "undefined is not an object (evaluating 'e[d].call')",
+    frame: (name: string, url: string) => `${name}@${url}:1:143`,
+  },
+  Firefox: {
+    message: `can't access property "call", e[d] is undefined`,
+    frame: (name: string, url: string) => `${name}@${url}:1:143`,
+  },
+};
+type Browser = keyof typeof MISSING_MODULE_ERRORS;
+
+function missingModuleError(
+  browser: Browser,
+  frames: [name: string, url: string][],
+) {
+  const { message, frame } = MISSING_MODULE_ERRORS[browser];
+  const error = new TypeError(message);
+  const lines = frames.map(([name, url]) => frame(name, url));
+  error.stack = (
+    browser === "Chrome" ? [`TypeError: ${message}`, ...lines] : lines
+  ).join("\n");
+  return error;
+}
+
+describe.each(Object.keys(MISSING_MODULE_ERRORS) as Browser[])(
+  "a module missing from the old build (%s)",
+  (browser) => {
+    it("reloads once when webpack's runtime is where it failed", () => {
+      const error = missingModuleError(browser, [
+        ["r", WEBPACK_RUNTIME],
+        ["requireModule", OUR_CODE],
+      ]);
+
+      expect(reloadForChunkLoadError(error, "error_boundary")).toBe(true);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(capturePostHogEvent).toHaveBeenCalledWith(
+        "chunk_reload_triggered",
+        { surface: "error_boundary", kind: "missing_module", path: "/home" },
+      );
+    });
+
+    it("leaves the same error from our own code to the error screen", () => {
+      const error = missingModuleError(browser, [
+        ["onClick", OUR_CODE],
+        ["r", WEBPACK_RUNTIME],
+      ]);
+
+      expect(reloadForChunkLoadError(error, "error_boundary")).toBe(false);
+      expect(reload).not.toHaveBeenCalled();
+    });
+  },
+);
+
 describe("reloadOnUnhandledChunkLoadError", () => {
   it("records a reload for a chunk a click handler failed to import", () => {
     const stopListening = reloadOnUnhandledChunkLoadError();
@@ -120,6 +186,7 @@ describe("reloadOnUnhandledChunkLoadError", () => {
     expect(reload).toHaveBeenCalledTimes(1);
     expect(capturePostHogEvent).toHaveBeenCalledWith("chunk_reload_triggered", {
       surface: "unhandled_rejection",
+      kind: "chunk_load",
       path: "/home",
     });
   });
