@@ -18,10 +18,13 @@ from typing import Any
 import pytest
 
 from backend.util.tool_call_loop import (
+    ConversationUpdater,
+    LLMCaller,
     LLMLoopResponse,
     LLMToolCall,
     ToolCallLoopResult,
     ToolCallResult,
+    ToolExecutor,
     tool_call_loop,
 )
 
@@ -74,11 +77,6 @@ async def test_text_response_no_tool_calls():
     ) -> LLMLoopResponse:
         return _make_response(text="Hello world")
 
-    async def execute_tool(
-        tool_call: LLMToolCall, tools: Sequence[Any]
-    ) -> ToolCallResult:
-        raise AssertionError("Should not be called")
-
     def update_conversation(
         messages: list[dict[str, Any]],
         response: LLMLoopResponse,
@@ -86,16 +84,7 @@ async def test_text_response_no_tool_calls():
     ) -> None:
         messages.append({"role": "assistant", "content": response.response_text})
 
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Hi"}]
-    results: list[ToolCallLoopResult] = []
-    async for r in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-    ):
-        results.append(r)
+    results = await _run_loop("Hi", llm_call, _execute_never, update_conversation)
 
     assert len(results) == 1
     assert results[0].finished_naturally is True
@@ -150,16 +139,7 @@ async def test_single_tool_call_then_text():
                     }
                 )
 
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Weather?"}]
-    results: list[ToolCallLoopResult] = []
-    async for r in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-    ):
-        results.append(r)
+    results = await _run_loop("Weather?", llm_call, execute_tool, update_conversation)
 
     # First yield: tool call iteration (not finished)
     # Second yield: text response (finished)
@@ -194,24 +174,9 @@ async def test_max_iterations_reached():
             tool_call_id=tool_call.id, tool_name=tool_call.name, content="result"
         )
 
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        pass
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
-    results: list[ToolCallLoopResult] = []
-    async for r in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-        max_iterations=3,
-    ):
-        results.append(r)
+    results = await _run_loop(
+        "Go", llm_call, execute_tool, _skip_update, max_iterations=3
+    )
 
     # 3 tool-call iterations + 1 final "max reached"
     assert len(results) == 4
@@ -232,28 +197,7 @@ async def test_no_tools_first_response_text():
     ) -> LLMLoopResponse:
         return _make_response(text="No tools needed")
 
-    async def execute_tool(
-        tool_call: LLMToolCall, tools: Sequence[Any]
-    ) -> ToolCallResult:
-        raise AssertionError("Should not be called")
-
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        pass
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Hi"}]
-    results: list[ToolCallLoopResult] = []
-    async for r in tool_call_loop(
-        messages=msgs,
-        tools=[],
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-    ):
-        results.append(r)
+    results = await _run_loop("Hi", llm_call, _execute_never, _skip_update, tools=[])
 
     assert len(results) == 1
     assert results[0].finished_naturally is True
@@ -276,23 +220,8 @@ async def test_tool_executor_exception_propagates():
     ) -> ToolCallResult:
         raise RuntimeError("Tool execution failed!")
 
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        pass
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
     with pytest.raises(RuntimeError, match="Tool execution failed!"):
-        async for _ in tool_call_loop(
-            messages=msgs,
-            tools=TOOL_DEFS,
-            llm_call=llm_call,
-            execute_tool=execute_tool,
-            update_conversation=update_conversation,
-        ):
-            pass
+        await _run_loop("Go", llm_call, execute_tool, _skip_update)
 
 
 @pytest.mark.asyncio
@@ -324,31 +253,7 @@ async def test_parallel_tool_execution():
             tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
         )
 
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        messages.append({"role": "assistant", "content": "called tools"})
-        if tool_results:
-            for tr in tool_results:
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tr.tool_call_id,
-                        "content": tr.content,
-                    }
-                )
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Run both"}]
-    async for _ in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-    ):
-        pass
+    await _run_loop("Run both", llm_call, execute_tool, _append_called_tools)
 
     # With parallel execution, tool_b (no delay) finishes before tool_a
     assert execution_order == ["tool_b", "tool_a"]
@@ -382,32 +287,13 @@ async def test_sequential_tool_execution():
             tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
         )
 
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        messages.append({"role": "assistant", "content": "called tools"})
-        if tool_results:
-            for tr in tool_results:
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tr.tool_call_id,
-                        "content": tr.content,
-                    }
-                )
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Run both"}]
-    async for _ in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
+    await _run_loop(
+        "Run both",
+        llm_call,
+        execute_tool,
+        _append_called_tools,
         parallel_tool_calls=False,
-    ):
-        pass
+    )
 
     # With sequential execution, tool_a runs first despite being slower
     assert execution_order == ["tool_a", "tool_b"]
@@ -425,28 +311,10 @@ async def _run_one_round(
             return _make_response(tool_calls=tool_calls)
         return _make_response(text="Done")
 
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        messages.append({"role": "assistant", "content": "called tools"})
-        for tr in tool_results or []:
-            messages.append(
-                {"role": "tool", "tool_call_id": tr.tool_call_id, "content": tr.content}
-            )
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "go"}]
-    async for _ in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-        runs_alone=runs_alone,
-    ):
-        pass
-    return [m for m in msgs if m["role"] == "tool"]
+    results = await _run_loop(
+        "go", llm_call, execute_tool, _append_called_tools, runs_alone=runs_alone
+    )
+    return [m for m in results[-1].messages if m["role"] == "tool"]
 
 
 @pytest.mark.asyncio
@@ -536,31 +404,14 @@ async def test_last_iteration_message_appended():
             tool_calls=[LLMToolCall(id="tc_1", name="get_weather", arguments="{}")]
         )
 
-    async def execute_tool(
-        tool_call: LLMToolCall, tools: Sequence[Any]
-    ) -> ToolCallResult:
-        return ToolCallResult(
-            tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
-        )
-
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        pass
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
-    async for _ in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
+    await _run_loop(
+        "Go",
+        llm_call,
+        _execute_ok,
+        _skip_update,
         max_iterations=2,
         last_iteration_message="Please finish now.",
-    ):
-        pass
+    )
 
     # First iteration: no extra message, tools available
     assert len(captured_messages[0]) == 1
@@ -597,32 +448,9 @@ async def test_token_accumulation():
             )
         return _make_response(text="Final", prompt_tokens=100, completion_tokens=50)
 
-    async def execute_tool(
-        tool_call: LLMToolCall, tools: Sequence[Any]
-    ) -> ToolCallResult:
-        return ToolCallResult(
-            tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
-        )
+    results = await _run_loop("Go", llm_call, _execute_ok, _skip_update)
 
-    def update_conversation(
-        messages: list[dict[str, Any]],
-        response: LLMLoopResponse,
-        tool_results: list[ToolCallResult] | None = None,
-    ) -> None:
-        pass
-
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
-    final_result = None
-    async for r in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-    ):
-        final_result = r
-
-    assert final_result is not None
+    final_result = results[-1]
     assert final_result.total_prompt_tokens == 300  # 3 calls * 100
     assert final_result.total_completion_tokens == 150  # 3 calls * 50
     assert final_result.iterations == 3
@@ -649,19 +477,65 @@ async def test_max_iterations_zero_no_loop():
     ) -> None:
         raise AssertionError("Updater should not be called when max_iterations=0")
 
-    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
-    results: list[ToolCallLoopResult] = []
-    async for r in tool_call_loop(
-        messages=msgs,
-        tools=TOOL_DEFS,
-        llm_call=llm_call,
-        execute_tool=execute_tool,
-        update_conversation=update_conversation,
-        max_iterations=0,
-    ):
-        results.append(r)
+    results = await _run_loop(
+        "Go", llm_call, execute_tool, update_conversation, max_iterations=0
+    )
 
     assert len(results) == 1
     assert results[0].finished_naturally is False
     assert results[0].iterations == 0
     assert "0 iterations" in results[0].response_text
+
+
+async def _run_loop(
+    prompt: str,
+    llm_call: LLMCaller,
+    execute_tool: ToolExecutor,
+    update_conversation: ConversationUpdater,
+    tools: Sequence[Any] = TOOL_DEFS,
+    **kwargs: Any,
+) -> list[ToolCallLoopResult]:
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+    return [
+        r
+        async for r in tool_call_loop(
+            messages=msgs,
+            tools=tools,
+            llm_call=llm_call,
+            execute_tool=execute_tool,
+            update_conversation=update_conversation,
+            **kwargs,
+        )
+    ]
+
+
+async def _execute_never(
+    tool_call: LLMToolCall, tools: Sequence[Any]
+) -> ToolCallResult:
+    raise AssertionError("Should not be called")
+
+
+async def _execute_ok(tool_call: LLMToolCall, tools: Sequence[Any]) -> ToolCallResult:
+    return ToolCallResult(
+        tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
+    )
+
+
+def _skip_update(
+    messages: list[dict[str, Any]],
+    response: LLMLoopResponse,
+    tool_results: list[ToolCallResult] | None = None,
+) -> None:
+    pass
+
+
+def _append_called_tools(
+    messages: list[dict[str, Any]],
+    response: LLMLoopResponse,
+    tool_results: list[ToolCallResult] | None = None,
+) -> None:
+    messages.append({"role": "assistant", "content": "called tools"})
+    for tr in tool_results or []:
+        messages.append(
+            {"role": "tool", "tool_call_id": tr.tool_call_id, "content": tr.content}
+        )
