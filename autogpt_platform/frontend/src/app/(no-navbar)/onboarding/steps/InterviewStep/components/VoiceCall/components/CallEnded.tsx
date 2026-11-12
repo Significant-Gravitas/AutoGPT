@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { finishFailureCopy, type StartFailure } from "../../../helpers";
+import { savedBeforeCopy } from "../earlierTake";
 import { type CallEnding, endedCopy } from "../helpers";
 import { CallInsufficient } from "./CallInsufficient";
 
@@ -49,7 +50,13 @@ export function CallEnded({
   const handOffFailed =
     ending.kind === "no_words" ||
     ending.kind === "retry" ||
-    ending.kind === "unsaved";
+    ending.kind === "unsaved" ||
+    ending.kind === "saved_before";
+  // Meet your team leads while some call's words wait for the person.
+  const meetsTeam =
+    ending.kind === "team" ||
+    ending.kind === "lost" ||
+    ending.kind === "saved_before";
   const otherWays = (
     <>
       <Button
@@ -87,6 +94,11 @@ export function CallEnded({
           What you said so far is saved.
         </Text>
       )}
+      {ending.kind === "saved_before" && (
+        <Text variant="body" align="center">
+          {savedBeforeCopy(ending.latest)}
+        </Text>
+      )}
       {ending.kind === "retry" && (
         <Text variant="body" align="center">
           What you said is kept, but we couldn&apos;t finish setting up from it
@@ -107,7 +119,7 @@ export function CallEnded({
       )}
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        {(ending.kind === "team" || ending.kind === "lost") && (
+        {meetsTeam && (
           <Button
             variant="primary"
             size="large"
@@ -130,6 +142,7 @@ export function CallEnded({
           </Button>
         )}
         {(ending.kind === "lost" ||
+          ending.kind === "saved_before" ||
           ending.kind === "missing" ||
           ending.kind === "no_words" ||
           ending.kind === "unsaved" ||

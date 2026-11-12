@@ -322,6 +322,10 @@ export type CallEnding =
   // Something went wrong on our side saving the call, so it kept nothing to
   // hand off: "Call again" and "Type instead".
   | { kind: "unsaved"; reason: string | null }
+  // The latest call left no take (`latest`: nothing heard, or nothing
+  // saved), and an earlier call's words still wait: "Meet your team" (a
+  // finish of that earlier call), "Call again" and "Type instead".
+  | { kind: "saved_before"; latest: "no_words" | "unsaved" }
   // Nothing is left to read of the call.
   | { kind: "missing" };
 

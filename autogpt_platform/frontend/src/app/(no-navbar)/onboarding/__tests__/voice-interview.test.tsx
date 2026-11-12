@@ -1887,6 +1887,67 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(finishes).toEqual([]);
   });
 
+  it.each([
+    [
+      "no_usable_speech",
+      "We didn't hear you on that call. What you said before is still saved.",
+    ],
+    [
+      "transcription_unavailable",
+      "Something went wrong saving that call. What you said before is still saved.",
+    ],
+  ])(
+    "offers Meet your team with the words of a call hung up before, after another call left %s",
+    async (code, savedBefore) => {
+      callStates[CALL_ID] = [callRecord({ end_reason: "user_hangup" })];
+      render(<OnboardingPage />);
+      const user = userEvent.setup();
+      const first = await liveCall();
+      endCall(first, "user_hangup");
+      const callAgain = await screen.findByRole("button", {
+        name: "Call again",
+      });
+      // The second call leaves nothing to hand off, and the server's read of
+      // the person's latest call looks back past it to the call before.
+      mintAnswer = { ...STARTED, call_id: OTHER_CALL_ID };
+      callStates[OTHER_CALL_ID] = [
+        callRecord({
+          call_id: OTHER_CALL_ID,
+          status: "failed",
+          end_reason: "user_hangup",
+          hand_off: { status: "failed", input_mode: "typed", error_code: code },
+        }),
+      ];
+      latestCall = callRecord({ end_reason: "user_hangup" });
+      await user.click(callAgain);
+      const second = await relaySocketAfter(first);
+      act(() => second.accept());
+      ready(second);
+      await screen.findByText("You're on the call with Otto");
+
+      endCall(second, "user_hangup");
+
+      const saved = await screen.findByText(savedBefore);
+      expect(precedes(screen.getByText("You ended the call."), saved)).toBe(
+        true,
+      );
+      expect(screen.queryByText(DIDNT_HEAR_YOU)).toBeNull();
+      const meetTeam = screen.getByRole("button", { name: "Meet your team" });
+      const again = screen.getByRole("button", { name: "Call again" });
+      const typeInstead = screen.getByRole("button", { name: "Type instead" });
+      expect(precedes(meetTeam, again)).toBe(true);
+      expect(precedes(again, typeInstead)).toBe(true);
+      expect(meetTeam.className).toContain("bg-action");
+
+      await user.click(meetTeam);
+
+      await expectPlanStep();
+      // The finish takes the earlier call, whose words are the take.
+      expect(finishes).toEqual([CALL_ID]);
+      expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+    },
+  );
+
   it("offers another call or typing, never Try again, for a call whose words were not kept", async () => {
     callStates[CALL_ID] = [
       callRecord({

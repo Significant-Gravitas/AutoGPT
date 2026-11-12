@@ -2281,6 +2281,27 @@ async def test_a_cut_off_call_before_a_no_words_call_leaves_the_interview_open(
     assert rig.interviews.taken is None
 
 
+@pytest.mark.parametrize("settled", NO_WORDS_ANSWERS)
+async def test_meet_your_team_after_a_later_call_left_no_words_takes_the_hung_up_calls_words(
+    rig: Rig, dumps: DumpStore, quality_gate: AsyncMock, settled: str
+):
+    """The person hung up, called again, and the second call left no words:
+    the call they hung up is still the one a reload finds, and their Meet
+    your team on it makes its take the interview's."""
+    hung_up = await rig.call(end_reason=HUNG_UP)
+    await rig.hand_off(hung_up)
+    later = await rig.call(None, end_reason=HUNG_UP)
+    await rig.no_words(later, settled)
+
+    assert (await voice.latest_call(USER)).call_id == hung_up
+    answered = await _finish(hung_up)
+
+    assert answered.status != BrainDumpStatus.failed
+    assert rig.interviews.taken == hung_up
+    assert dumps.row is not None and dumps.row.transcript == SAID[0]
+    assert quality_gate.await_count == 1
+
+
 async def test_a_no_words_answer_settles_the_call_before_it_at_once(
     rig: Rig, dumps: DumpStore, mocker: MockerFixture
 ):

@@ -61,6 +61,9 @@ export function InterviewChat({
             queuedMessages={queuedMessages}
             isTurnSettling={isTurnSettling}
             variant="compact"
+            // The step's heading names Otto; a chip floating over the top
+            // of a card this small would cover the transcript's first line.
+            showThreadHeader={false}
           />
         </div>
         <div className="flex shrink-0 flex-col gap-2 border-t border-separator px-3 py-3">

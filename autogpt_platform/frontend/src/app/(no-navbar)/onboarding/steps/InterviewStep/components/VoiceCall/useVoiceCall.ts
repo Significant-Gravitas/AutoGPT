@@ -48,6 +48,7 @@ import {
   sleep,
   stopTracks,
 } from "./connection";
+import { endingWithEarlierTake, leavesNoTake } from "./earlierTake";
 import { newOttoListening, ottoListeningSummary } from "./ottoStats";
 import {
   answerOf,
@@ -192,19 +193,7 @@ export function useVoiceCall(args: Args) {
     const conn = connRef.current;
     const attempt = ++conn.attempt;
     setPhase("checking");
-    let call: VoiceCallStatusResponse | null = null;
-    const giveUp = new AbortController();
-    const timer = setTimeout(() => giveUp.abort(), OPENING_READ_TIMEOUT_MS);
-    try {
-      const response = await getLatestOnboardingVoiceCall({
-        signal: giveUp.signal,
-      });
-      if (response.status === 200) call = response.data;
-    } catch {
-      // No call yet, none that can be read, or no answer in time.
-    } finally {
-      clearTimeout(timer);
-    }
+    const call = await readLatestCall();
     if (attempt !== conn.attempt) return;
     if (!call) {
       await argsRef.current.onNoCall();
@@ -228,6 +217,24 @@ export function useVoiceCall(args: Args) {
     }
     setPhase("wrapping_up");
     void awaitEnding(call.call_id);
+  }
+
+  // The person's latest call as the server reads it, looking back past calls
+  // that left no take; null with none yet, none that can be read, or no
+  // answer in time.
+  async function readLatestCall() {
+    const giveUp = new AbortController();
+    const timer = setTimeout(() => giveUp.abort(), OPENING_READ_TIMEOUT_MS);
+    try {
+      const response = await getLatestOnboardingVoiceCall({
+        signal: giveUp.signal,
+      });
+      return response.status === 200 ? response.data : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // A take the person made after the call owns the interview: the call is
@@ -811,7 +818,7 @@ export function useVoiceCall(args: Args) {
         return;
       }
       if (answer && call) {
-        settle(answer, call);
+        await settleCall(answer, call, poll);
         return;
       }
       const isPastWindow = Date.now() >= windowEndsAt;
@@ -819,6 +826,32 @@ export function useVoiceCall(args: Args) {
       await sleep(isPastWindow ? ENDING_SLOW_POLL_MS : ENDING_POLL_MS);
       if (poll !== conn.poll) return;
     }
+  }
+
+  // A call that left no take settles beside the take before it, as a reload
+  // shows it: the server's read of the latest call looks back past such
+  // calls, and an earlier call whose words still wait is the one the ending
+  // then finishes.
+  async function settleCall(
+    answer: CallEnding,
+    call: VoiceCallStatusResponse,
+    poll: number,
+  ) {
+    const conn = connRef.current;
+    let earlier: VoiceCallStatusResponse | null = null;
+    if (leavesNoTake(answer)) {
+      const latest = await readLatestCall();
+      if (poll !== conn.poll) return;
+      if (latest && latest.call_id !== call.call_id) earlier = latest;
+    }
+    const shown = endingWithEarlierTake(answer, earlier);
+    if (shown === answer || !earlier) {
+      settle(answer, call);
+      return;
+    }
+    reportLostCall(call.end_reason ?? null);
+    conn.shownCallId = earlier.call_id;
+    settle(shown, shown.kind === "saved_before" ? call : earlier);
   }
 
   // A call lost on the way is reported ended once with what ended it, its

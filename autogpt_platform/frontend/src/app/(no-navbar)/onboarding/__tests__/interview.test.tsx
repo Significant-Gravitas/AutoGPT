@@ -478,6 +478,25 @@ describe("onboarding interview", () => {
     expect(streamBodies.join()).toContain("I run a bakery with five staff.");
   });
 
+  it("floats no name chip over the transcript, whose heading already names Otto", async () => {
+    serverInterview = {
+      messages: [KICKOFF_ROW],
+      stage: null,
+      activeTurn: "turn-greeting",
+    };
+    startsWith({
+      session_id: SESSION_ID,
+      turn_id: "turn-greeting",
+      stage: null,
+    });
+    server.use(...interviewHandlers());
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(screen.queryByTestId("expert-thread-header")).toBeNull();
+  });
+
   it("gives the composer's place to Meet your team once the interview closes, keeping the goodbye", async () => {
     serverInterview.messages = [
       KICKOFF_ROW,
