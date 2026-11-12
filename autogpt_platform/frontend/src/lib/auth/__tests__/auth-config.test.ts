@@ -9,6 +9,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer", hooks: { before: [], after: [] } })),
   jwt: vi.fn((opts: unknown) => ({ id: "jwt", opts })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -32,10 +33,10 @@ interface JwtPluginOptions {
       user: { id: string; email: string; name: string; role?: string };
       session: { id: string };
     }) => {
-      sid: string;
       email: string;
       role: string;
       user_metadata: { name: string };
+      sid: string;
     };
   };
 }
@@ -106,6 +107,8 @@ const PROVIDER_ENV_KEYS = [
   "AUTH_GITHUB_CLIENT_SECRET",
   "AUTH_DISCORD_CLIENT_ID",
   "AUTH_DISCORD_CLIENT_SECRET",
+  "AUTH_MICROSOFT_CLIENT_ID",
+  "AUTH_MICROSOFT_CLIENT_SECRET",
 ];
 
 beforeEach(() => {
@@ -154,7 +157,7 @@ describe("auth config", () => {
     expect(jwtPlugin?.opts?.jwt.expirationTime).toBe("1h");
   });
 
-  it("puts the session id in the JWT payload, with admins as admin and everyone else as authenticated", async () => {
+  it("maps admin users to the admin role and everyone else to authenticated in the JWT payload", async () => {
     const options = await loadAuthOptions();
     const jwtPlugin = options.plugins.find((plugin) => plugin.id === "jwt");
     const definePayload = jwtPlugin?.opts?.jwt.definePayload;
@@ -162,32 +165,32 @@ describe("auth config", () => {
     expect(definePayload).toBeDefined();
     expect(
       definePayload?.({
+        session: { id: "session-1" },
         user: {
           id: "u1",
           email: "admin@example.com",
           name: "Admin",
           role: "admin",
         },
-        session: { id: "s1" },
       }),
     ).toEqual({
-      sid: "s1",
+      sid: "session-1",
       email: "admin@example.com",
       role: "admin",
       user_metadata: { name: "Admin" },
     });
     expect(
       definePayload?.({
+        session: { id: "session-2" },
         user: {
           id: "u2",
           email: "user@example.com",
           name: "Regular",
           role: "user",
         },
-        session: { id: "s2" },
       }),
     ).toEqual({
-      sid: "s2",
+      sid: "session-2",
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },
@@ -235,6 +238,27 @@ describe("auth config", () => {
     });
   });
 
+  it("registers microsoft for sign-in only, letting the person pick an account", async () => {
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client-id");
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_SECRET", "microsoft-client-secret");
+
+    const options = await loadAuthOptions();
+    const microsoft = (
+      options.socialProviders as Record<string, Record<string, unknown>>
+    ).microsoft;
+
+    expect(microsoft).toMatchObject({
+      clientId: "microsoft-client-id",
+      clientSecret: "microsoft-client-secret", // pragma: allowlist secret
+      tenantId: "common",
+      prompt: "select_account",
+      disableDefaultScope: true,
+      scope: ["openid", "profile", "email"],
+      // Only the redirect flow, which the sign-up policy guards, signs in.
+      disableIdTokenSignIn: true,
+    });
+  });
+
   it("sends password reset emails with the reset link", async () => {
     const options = await loadAuthOptions();
 
@@ -271,6 +295,7 @@ describe("auth config", () => {
 
     expect(pluginIds).toEqual([
       "admin",
+      "bearer",
       "jwt",
       "supabase-bridge",
       "next-cookies",

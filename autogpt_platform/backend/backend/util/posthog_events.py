@@ -48,6 +48,9 @@ class PostHogEvent(StrEnum):
     CHAT_TOOL_CALLED = "chat_tool_called"
     CHAT_OUTCOME = "chat_outcome"
     CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
+    # backend/copilot/limit_tracking.py (SECRT-3411): a usage limit refused,
+    # paused or queued work, from any surface.
+    CHAT_BLOCKED = "chat_blocked"
     # backend/copilot/gate/shadow.py
     CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
 
@@ -83,6 +86,12 @@ class PostHogEvent(StrEnum):
     # root, and a tool call or expert subtask within it.
     AI_TRACE = "$ai_trace"
     AI_SPAN = "$ai_span"
+
+    # In-app feedback prompts: backend/api/features/feedback_prompts/analytics.py
+    FEEDBACK_PROMPT_SHOWN = "feedback_prompt_shown"
+    FEEDBACK_PROMPT_ANSWERED = "feedback_prompt_answered"
+    # backend/copilot/tools/feedback_prompts.py
+    OTTO_MISTAKE_FLAGGED = "otto_mistake_flagged"
 
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"

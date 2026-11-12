@@ -47,6 +47,7 @@ from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdl
 from backend.copilot.at_reset import (
     AT_RESET_JOB_NAMES,
     AtResetKind,
+    FireVerdict,
     at_reset_schedule_id,
     fire_verdict,
     load_at_reset_chat,
@@ -89,6 +90,11 @@ from backend.copilot.dream.scope_reconcile import (
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.limit_tracking import (
+    track_chat_blocked,
+    track_turn_cap,
+    track_turn_refusal,
+)
 from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
@@ -754,17 +760,11 @@ async def _execute_copilot_turn(**kwargs):
         )
         if args.run_at is not None:
             await _reschedule_one_shot_after_expert_unavailable(args)
-    except (ConcurrentTurnLimitError, SessionNotIdle) as e:
-        # The user's cap or a busy chat prevented admission. For cron schedules the
-        # next tick retries automatically; for one-shot (run_at) schedules
-        # APScheduler removes the job after fire regardless of our error,
-        # so re-schedule a copy 5 min out to give the slot time to free.
-        logger.warning(
-            f"Scheduled copilot turn for session {_session_id_label(args)} "
-            f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
-        )
-        if args.run_at is not None:
-            await _reschedule_one_shot_after_cap(args)
+    except ConcurrentTurnLimitError as e:
+        track_turn_cap(args.user_id, e, surface="schedule", outcome="refused")
+        await _skip_fire_without_slot(args, e)
+    except SessionNotIdle as e:
+        await _skip_fire_without_slot(args, e)
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
@@ -772,6 +772,19 @@ async def _execute_copilot_turn(**kwargs):
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
         )
+
+
+async def _skip_fire_without_slot(args: "CopilotTurnJobArgs", e: Exception) -> None:
+    """The user's cap or a busy chat prevented admission. For cron schedules the
+    next tick retries automatically; for one-shot (run_at) schedules
+    APScheduler removes the job after fire regardless of our error, so
+    re-schedule a copy 5 min out to give the slot time to free."""
+    logger.warning(
+        f"Scheduled copilot turn for session {_session_id_label(args)} "
+        f"could not acquire a turn slot; cron={args.cron is not None}: {e}"
+    )
+    if args.run_at is not None:
+        await _reschedule_one_shot_after_cap(args)
 
 
 async def _refuse_if_turn_may_not_start(
@@ -826,6 +839,14 @@ async def _refuse_if_turn_may_not_start(
         )
     else:
         run, outcome = "dropped", "the one-shot is dropped"
+    # A one-shot moved to the window's reset is held back; any other fire
+    # doesn't run.
+    track_turn_refusal(
+        job_args.user_id,
+        refusal,
+        surface="schedule",
+        outcome="queued" if waits and run == "waits_for_reset" else "refused",
+    )
     logger.log(
         logging.WARNING if refusal.transient else logging.INFO,
         f"Skipping scheduled copilot turn {job_args.schedule_id}: owner "
@@ -1209,8 +1230,13 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
                 "while it ran; dropping it"
             )
             return
+        _track_at_reset_verdict(args.user_id, verdict)
         if verdict.action == "fire":
-            await _dispatch_at_reset_turn(args, kind, chat.session)
+            try:
+                await _dispatch_at_reset_turn(args, kind, chat.session)
+            except ConcurrentTurnLimitError as cap:
+                track_turn_cap(args.user_id, cap, surface="schedule", outcome="refused")
+                raise
         elif verdict.action == "wait" and verdict.run_at is not None:
             logger.info(
                 f"{kind}-at-reset turn for session {label} is still out of "
@@ -1229,6 +1255,22 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             exc_info=True,
         )
         await _rearm_at_reset_turn(args, reason=f"{type(e).__name__}: {e}")
+
+
+def _track_at_reset_verdict(user_id: str, verdict: FireVerdict) -> None:
+    """``chat_blocked`` for an at-reset turn a used-up window holds back:
+    ``queued`` when it moves to the next reset, ``refused`` when nothing
+    refills."""
+    if verdict.window is None or verdict.action not in ("wait", "drop"):
+        return
+    track_chat_blocked(
+        user_id,
+        limit=verdict.window,
+        outcome="queued" if verdict.action == "wait" else "refused",
+        surface="schedule",
+        reading=verdict.reading,
+        resets_at=verdict.refills_at if verdict.action == "wait" else None,
+    )
 
 
 async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None:
@@ -2334,6 +2376,24 @@ def sync_posthog_lifecycles():
     run_async(_start())
 
 
+def erase_closed_accounts():
+    """Erase the accounts closed from Settings, the paywall or by email
+    (SECRT-2854).
+
+    Only starts the sweep; it runs inside the database manager, which has the
+    Prisma connection and the settings the erasure needs.
+    """
+    # Also stops a job persisted while the sweep was on.
+    if not config.account_erasure_sweep_enabled:
+        return
+
+    async def _start():
+        db = get_database_manager_async_client()
+        return await db.start_account_erasure_sweep()
+
+    run_async(_start())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -3167,6 +3227,19 @@ class Scheduler(AppService):
                     replace_existing=True,
                     max_instances=1,
                     seconds=config.auth_identity_orphan_check_interval_secs,
+                    jobstore=Jobstores.EXECUTION.value,
+                )
+
+            # Account erasure: works through the closed accounts not erased
+            # yet. Off by default (account_erasure_sweep_enabled).
+            if config.account_erasure_sweep_enabled:
+                system_jobs.add_job(
+                    erase_closed_accounts,
+                    id="erase_closed_accounts",
+                    trigger="interval",
+                    replace_existing=True,
+                    max_instances=1,
+                    seconds=config.account_erasure_sweep_interval_secs,
                     jobstore=Jobstores.EXECUTION.value,
                 )
 

@@ -1507,8 +1507,9 @@ async def _enforce_expert_credential_scope(
     copilot tool runs alike. Enforcing at creation also means a revoke takes effect
     on the next run instead of only on newly created schedules.
 
-    System credentials (platform LLM keys) carry no grant and are always allowed;
-    filtering them would stop every expert from running an LLM block.
+    The platform's own keys (system LLM keys, and the shared key of a provider
+    such as Firecrawl) carry no grant and are always allowed; filtering them
+    would stop every expert from running an LLM block or a platform-keyed one.
     """
     if not graph_credentials_inputs:
         return
@@ -2359,6 +2360,13 @@ class NodeExecutionProgress:
                 return next_output.pop(0)
 
         return None
+
+    def has_ended(self) -> bool:
+        """Whether every task of this node's executions has ended, its block
+        and its bookkeeping alike. Unlike is_done, a stop doesn't make it so:
+        a block that ignores the cancel runs on until it returns."""
+        with self._lock:
+            return not self._unwinding and not self._settling
 
     def is_done(self, wait_time: float = 0.0) -> bool:
         exec_id = self._next_exec()

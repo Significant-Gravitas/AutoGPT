@@ -139,8 +139,9 @@ them out (SECRT-2728):
   to them (`src/services/analytics/posthog-request-context.ts`).
 - **An admin acting as a user never changes the user's person.** The backend
   drops `$set_person_properties` while impersonated (the onboarding role, the
-  checkout properties). The lifecycle sync still runs, since it mirrors the
-  stored trial and Stripe state rather than the admin's action.
+  checkout properties, the tier a sign-in sets). The lifecycle sync still
+  runs, since it mirrors the stored trial, tier and Stripe state rather than
+  the admin's action.
 - **Session.** With analytics consent, and not while impersonating, the
   browser sends its PostHog session id as `X-PostHog-Session-Id` on API
   requests (`customMutator` through the proxy, and the chat's direct
@@ -336,7 +337,7 @@ merges the website pageviews into the new user:
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
-| `onboarding_step_viewed` | browser | live | `step` (`team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. |
+| `onboarding_step_viewed` | browser | live | `step` (`access`, `team`, `autopilot`, `role`, `pain_points`, `subscription`, `connect`, `preparing`) | A wizard step is shown (once per tab). `access` offers an account that signed up with Microsoft its Microsoft 365 connection; other accounts never see it. `subscription` is the plan step (Otto's plan beside the trial), with or without a paywall; with one it also sends `paywall_viewed`. The order varies: `access` comes first by default, straight after `subscription` when payments are on, and wherever the `onboarding-step-order` flag puts it. The flag can move the other steps too, and only `preparing` is always last, so a funnel over `step` must not assume one order. |
 | `onboarding_completed` | backend | live | — | `ONBOARDING_COMPLETE` is first recorded for the user (`complete_onboarding_step`). |
 | `brain_dump_started` | browser | live | `prompt_set` (the role's "Otto might ask" set) | Recording starts. |
 | `brain_dump_completed` | browser | live | `input_mode`, `duration_secs` and `finalize_latency_ms` (voice) or `chars` (typed), `prompt_set`, `prompts_seen` (distinct live prompts shown), `follow_up` (only `true`, after the not-enough screen) | A dump was accepted and the wizard advances. `finalize_latency_ms` is the `finalizeBrainDump()` round trip, timed after the upload flush. |
@@ -390,6 +391,7 @@ merges the website pageviews into the new user:
 | `chat_outcome` | backend | live | `outcome_type` (`agent_run_success`, `schedule_created`), `chat_session_id`; `agent_run_success`: `graph_id`, `execution_id`, `library_agent_id`; `schedule_created`: `target` (`agent`: `graph_id`, `schedule_id`, `cron`, `library_agent_id`; `followup`: `schedule_id`, `target_chat_session_id`, `is_recurring`) | A moment of value in a chat: the copilot started a (non-dry) run or created a schedule for the user. `agent_run_started` / `schedule_created` still count the run or schedule itself. |
 | `chat_library_check_outcome` | backend | live | `chat_session_id`, `outcome`, `matches_count`, `top_score` | The create-agent library check ends. |
 | `chat_read_screen_shadow_decision` | backend | live | `tool_name`, `tool_call_id`, `source_kind` (`web`, `file`, `shell`, `mcp`, `block`, `workflow`, `chat`, `skill`, …), `chat_session_id`, `trace_id` (the reply's trace, the `$ai_trace_id` of its generations and spans, shared by the subtasks it spawns; the tool call's `$ai_span` with the same `tool_call_id` names the turn), `expert_id`, `verdict` (`allow`, `hold`, `judge_error`), `reason_code`, `judge` (`jev`, `content`; null when the shadow itself failed), `llm_model`, `jev_model`, `rubric_version`, `latency_ms`, `impersonated`, `judgement_id`, `sample_rate` | With `copilot-read-screen` serving `shadow`, the prompt-injection check judges an outside read in a sampled interactive chat (`backend/copilot/gate/shadow.py`). Nothing is held. No content, URL or judge wording is sent. |
+| `chat_blocked` | backend | live | `reason` (`usage_limit` for `daily`, `weekly`, `trial`, `task`; `rate_limit` for `rate`, `concurrency`), `limit` (`daily`, `weekly`, `trial`, `task` (a single task's budget), `rate` (the per-minute cap on queued messages; the message is still kept), `concurrency` (the running or in-flight turn cap)), `outcome` (`refused`: never started; `paused`: stopped mid-turn; `queued`: held back, waiting for a free slot or, at queue promotion and for a "Send/Resume at reset", for the window to refill), `surface` (`chat`, `schedule`, `chat_bot`, `block` (a workflow's AutoPilot block or a block run on the platform's key), `voice`, `api` (external API/MCP), `background` (subtasks, approval wakes, unattended work, the nightly memory pass)), `tier` (the plan tier, when the check read it; null for the turn caps: break down by the person property `subscription_tier` to split every refusal by plan), `used` and `cap` (dollars for the cost limits, counts for `rate` and `concurrency`; null when the check did not read them, as for a turn that pauses mid-turn; a plan with no allowance, or an ended trial, is `cap` 0 under `weekly` or `trial`), `resets_at` (when the window refills; null for a trial, a window that allows nothing, and the turn caps) | A usage limit refuses, pauses or queues work, from any surface (`backend/copilot/limit_tracking.py`, sent where each refusal is answered: the chat and continuation routes, the queued-message endpoint, chat bots, voice, the external API, the scheduler and its "Send/Resume at reset" turns, queue promotion, the executor's pre-turn gate and streamed pauses, sub-sessions and the AutoPilot block, approval wakes, per-call platform spend, the nightly memory pass). A step check-in is not a limit and sends nothing; nor does an outage that leaves the limits unreadable. Each refusal check sends its own event, but each backend process sends at most one per user, `limit`, `outcome` and `surface` a minute, so a client retrying a refused request in a loop sends one event a minute, not one per retry; one turn whose tool calls are refused again and again, or a nightly pass that checks several times, can still send several: count users, not events, for "how many hit a limit". A queued turn a usage window holds back at promotion is checked on every pass over the queue (passes run when a turn ends), and sends within the same one-a-minute limit. No message content. |
 | `voice_mode_started` | browser | live | `entry` | Voice mode is switched on. |
 | `voice_mode_stopped` | browser | live | `turns`, `state` | Switched off by the user. |
 | `voice_mode_timed_out` | browser | live | `turns`, `state` | Closed by the silence timeout. |
@@ -588,7 +590,7 @@ they can hold Gmail or Drive content (Google Limited Use).
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
 | `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `$ai_trace_id` = `trace.trace_id` (the reply's trace: the id of the executor turn that made the call, or for a subtask the trace of the turn that spawned it, so all calls behind one reply share it; absent for a call made outside a turn), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`, `metadata_turn_origin` (what started the turn that made the call: `chat`, `scheduled`, `spawned`, `automation` (a workflow's AutoPilot block) or `system`; a reply's own calls match its `$ai_trace` `turn_origin`, a subtask's calls carry the subtask's, as on its `$ai_span`; absent for a call made outside a turn); `metadata_revision` (the deployed build's git sha, `config.sentry_release`) when it is set; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
-| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`, `work_check`, `otto_mistake`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down; a work check is `0` bad, `1` okay, `2` great; a mistake is `0`), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating), `impersonated`; `$ai_trace_id` when the reply row records its trace (`ChatMessage.traceId`, replies written since SECRT-2979); `$ai_feedback_text` when a thumbs-down has a comment; `reason` when a work check or mistake card has a picked option | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
 | `$ai_trace` | backend | live | `$ai_trace_id` (the turn id), `$ai_span_name` = `copilot-turn`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `$ai_error` (the error code, when failed), `turn_id`, `outcome` (`completed`, `cancelled`, `failed`), `engine` (`sdk`, `baseline`, ...), `turn_origin` (`chat`, `scheduled`, `automation` for a turn a workflow's AutoPilot block started, `system`; `spawned` on a subtask's span), `tool_call_count`, `impersonated` | A reply's turn ends, if it reached its engine (`copilot/turn_tracing.py`, `copilot/ai_spans.py`). A redelivered turn sends it again under the same event uuid (dedup key = the turn id), so PostHog keeps one; likewise a subtask's span. |
 | `$ai_span` | backend | live | `$ai_trace_id`, `$ai_span_id`, `$ai_parent_id`, `$ai_span_name`, `$ai_session_id` and `chat_session_id`, `$ai_latency` (seconds), `$ai_is_error`, `impersonated`. A **tool call**: `$ai_span_name` = the tool's name, `tool_call_id`, `cancelled` (platform tools) or `builtin` (the SDK CLI's own tools, sub-agents' calls included; the high-volume lookups `TodoWrite`, `Read`, `Glob`, `Grep`, `LS` and `NotebookRead` get no span, and no built-in gets one with `CHAT_POSTHOG_BUILTIN_TOOL_SPANS=false`), `$ai_is_error` true when it raised, a gate refused it or it answered with an error, but not when it stopped for an approval card or a sign-in, `$ai_error` = the exception's type name when a platform tool raised (never its message); its parent is the turn (the trace root, or the subtask's span) or the tool that called it. A built-in tool's span is parented to the turn, not to the `Task` span of the sub-agent that called it. A **subtask**: `$ai_span_name` = `copilot-subtask`, `$ai_span_id` = its turn id, parent = the spawning tool's span, which its envelope keeps, so a child that waited in the turn queue or a subtask woken by an approval stays in the trace and under the span its spawner gave it (the trace root for one queued or held before this was recorded), `depth`, plus the `$ai_trace` turn properties, with `turn_origin` = `spawned` (or `scheduled` when the subtask's own turn runs unattended) | A platform tool call ends (`BaseTool.execute`, both engines), an SDK built-in tool call ends (Pre/PostToolUse hooks), or a spawned turn ends. |
 
@@ -626,6 +628,17 @@ that are not attributed yet (the baseline path's context compaction, the
 action gate's classifiers, web search, Graphiti memory) arrive without the
 user or chat when their client goes through OpenRouter.
 
+## Feedback prompts
+
+Sent server-side for every user, whatever their cookie consent. An admin
+acting as a user sends none.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `feedback_prompt_shown` | backend | live | `prompt_id`, `kind` | A prompt's limit allows it and the app or Otto claims it (`POST /api/feedback-prompts/claim`, `copilot/tools/feedback_prompts.py`). |
+| `feedback_prompt_answered` | backend | live | `prompt_id`, `kind`, `reason`, `note`, `score` | A tap on a page-level prompt is saved (`PATCH /api/feedback-prompts/{id}`). Each tap sends another event; the latest per `prompt_id` stands. Work checks and mistake cards send `$ai_metric` instead. |
+| `otto_mistake_flagged` | backend | live | `$ai_session_id` and `chat_session_id`, `prompt_id`; `$ai_trace_id` when the turn has one; `reason` when the user's message already said what went wrong (then no card asks); no conversation content | Otto calls `flag_mistake`, at most once per chat, on every surface including chat platforms. |
+
 ## Experiments
 
 | Event | Sender | Status | Required properties | Fires when |
@@ -640,11 +653,15 @@ so an experiment can be read in PostHog and Looker alike.
 
 The backend keeps these on the person (distinct id = platform user id) with
 a `$set` event (`PostHogEvent.SET_PERSON_PROPERTIES`), sent from
-`backend/data/posthog_lifecycle_sync.py` after signup, tier changes and every
-Stripe subscription sync, and by a daily sweep at 04:15 UTC. The lifecycle
-events above mark the moment something happens; these properties hold the
-person's current state, so a cohort or breakdown can filter on them without
-replaying events.
+`backend/data/posthog_lifecycle_sync.py` after signup, every Stripe
+subscription sync (except a cancel made by an account deletion, whose person
+the erasure deletes) and every tier write outside one
+(`credit.set_subscription_tier`, the admin's `rate_limit.set_user_tier`), and
+by a daily sweep at 04:15 UTC. The 6-hourly tier sweep sends nothing itself:
+its users all have a Stripe customer, so the daily sweep brings their persons
+up to date. The lifecycle events above mark the moment
+something happens; these properties hold the person's current state, so a
+cohort or breakdown can filter on them without replaying events.
 
 | Property | Value |
 | --- | --- |
@@ -654,10 +671,21 @@ replaying events.
 | `subscription_started_at` | When the person first became a paying subscriber: the earliest start of any paid subscription, kept across a resubscribe after a gap. For a converted trial, the conversion (its first successful charge), not the trial start. |
 | `subscription_canceled_at` | When the current or last paid subscription was canceled, while `subscription_canceled` or `subscription_ended`. |
 | `subscription_ended_at` | When it ended, while `subscription_ended`. |
+| `subscription_tier` | The plan tier as stored (`User.subscriptionTier`): `NO_TIER`, `TRIAL`, `PRO`, `MAX`, `BUSINESS` (Team), `ENTERPRISE`, or the legacy `BASIC`, the same values as the events' `subscription_tier` and `chat_blocked.tier`. It is the plan the account is on, not proof of payment (an admin grant is a tier too; `subscription_status` says who pays); the usage limits treat a `TRIAL` whose trial has ended as `NO_TIER` until Stripe's trial-end update moves the stored tier. Break any event down by it, `chat_blocked` included, to split it by plan (SECRT-3411). The event property of the same name on `plan_selected`, `checkout_started`, `trial_offer_viewed` and `trial_started` is the plan picked or offered, not the person's plan: pick the person property in a breakdown. |
 
 Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
+
+`subscription_tier` is also set at every sign-in of an existing account
+(`POST /api/auth/user`), from the stored row. That reaches accounts the daily
+sweep doesn't cover (no Stripe customer and no trial, such as an admin grant
+or a signup on `NO_TIER`) before their tier next changes, and repairs a sync
+PostHog never got. A tier change that lands during a sign-in can be
+overwritten by the sign-in's older read until the next sign-in or sync. `poetry run python
+scripts/backfill_posthog_lifecycle.py --send --all-users` sets it on everyone
+at once. A person property is the value now, not at the time of the event:
+a breakdown of last month's events by it shows each person's current plan.
 
 `subscription_status` counts only **paying** subscribers as `subscribed`
 (SECRT-2795). First match wins:
@@ -687,9 +715,10 @@ null.
   now has a live free subscription (another one, or the same one given a
   coupon after it first charged) is `signed` (not `payment_failed` or
   `subscription_ended`), keeping their first paid start.
-- **The plan tier is not read.** An admin-granted plan (ENTERPRISE, BUSINESS
-  or any other) with no paid Stripe subscription is `signed`; one who pays
-  through Stripe is `subscribed` by the usual rule.
+- **The status does not read the plan tier.** An admin-granted plan
+  (ENTERPRISE, BUSINESS or any other) with no paid Stripe subscription is
+  `signed`; one who pays through Stripe is `subscribed` by the usual rule.
+  The tier is `subscription_tier`, beside it.
 - **The user canceled** a trial when it was set to cancel, or canceled on
   request without a comment of ours (a comment the customer typed in the
   billing portal still counts as theirs). Our own cancels (after a failed
@@ -847,11 +876,15 @@ line:
 - **`subscription_changed` covers upgrades only.** The plan also counts
   cancellations and downgrades there; `subscription_cancellation_scheduled`
   and `subscription_ended` stay separate events.
+- **`chat_blocked` covers every surface, not only the chat.** The plan's
+  `reason` (`usage_limit`, `rate_limit`) is kept, and `limit`, `outcome` and
+  `surface` say which limit stopped what, and where: a schedule, a chat bot
+  or a block refused by the same limit is the same event.
 - **`chat_outcome` has two outcome types.** Only `agent_run_success` and
   `schedule_created` have an emitter. `agent_created`, `trigger_setup`,
   `artifact_created`, `file_produced` and `answer_only` do not.
 - **Plan events we do not send yet** (`signup_started`, `chat_session_started`,
-  `chat_response_completed`, `chat_blocked`, `screen_viewed`,
+  `chat_response_completed`, `screen_viewed`,
   `screen_engaged`, `milestone_reached`, the builder and library families,
   `email_sent`, ...) come with the plan's phases, not with this list.
 - **`email_delivered` instead of the plan's `email_sent`.** Postmark's

@@ -1,13 +1,17 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from prisma.models import AuthSession
 
+from backend.data.auth.ban import is_ban_active
 
-async def is_auth_session_live(session_id: str, user_id: str) -> bool:
-    """Whether the session exists, belongs to the user and hasn't expired."""
-    session = await AuthSession.prisma().find_unique(where={"id": session_id})
-    return (
-        session is not None
-        and session.userId == user_id
-        and session.expiresAt > datetime.now(timezone.utc)
+
+async def is_auth_session_active(session_id: str, user_id: str) -> bool:
+    now = datetime.now(UTC)
+    session = await AuthSession.prisma().find_first(
+        where={"id": session_id, "userId": user_id, "expiresAt": {"gt": now}},
+        include={"user": True},
     )
+    if session is None or session.user is None:
+        return False
+    user = session.user
+    return not is_ban_active(user.banned, user.banExpires, now)
