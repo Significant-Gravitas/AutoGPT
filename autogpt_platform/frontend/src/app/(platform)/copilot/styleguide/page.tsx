@@ -37,6 +37,7 @@ import { ThinkingIndicator } from "../components/ChatMessagesContainer/component
 import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
 import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
+import { RenderUISamples } from "./RenderUISamples";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +62,7 @@ const SECTIONS = [
   "Tool: Schedule Agent",
   "Tool: Create Agent",
   "Tool: Edit Agent",
+  "Tool: Visual answers",
   "Tool: View Agent Output",
   "Tool: Search Feature Requests",
   "Tool: Create Feature Request",
@@ -1362,6 +1364,12 @@ export default function StyleguidePage() {
             {/* ============================================================= */}
             {/* VIEW AGENT OUTPUT                                              */}
             {/* ============================================================= */}
+
+            <Section title="Tool: Visual answers">
+              <SubSection label="Every block type">
+                <RenderUISamples />
+              </SubSection>
+            </Section>
 
             <Section title="Tool: View Agent Output">
               <SubSection label="Input streaming">
