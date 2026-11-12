@@ -9,6 +9,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer", hooks: { before: [], after: [] } })),
   jwt: vi.fn((opts: unknown) => ({ id: "jwt", opts })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -30,10 +31,12 @@ interface JwtPluginOptions {
     expirationTime: string;
     definePayload: (args: {
       user: { id: string; email: string; name: string; role?: string };
+      session: { id: string };
     }) => {
       email: string;
       role: string;
       user_metadata: { name: string };
+      sid: string;
     };
   };
 }
@@ -104,6 +107,8 @@ const PROVIDER_ENV_KEYS = [
   "AUTH_GITHUB_CLIENT_SECRET",
   "AUTH_DISCORD_CLIENT_ID",
   "AUTH_DISCORD_CLIENT_SECRET",
+  "AUTH_MICROSOFT_CLIENT_ID",
+  "AUTH_MICROSOFT_CLIENT_SECRET",
 ];
 
 beforeEach(() => {
@@ -160,6 +165,7 @@ describe("auth config", () => {
     expect(definePayload).toBeDefined();
     expect(
       definePayload?.({
+        session: { id: "session-1" },
         user: {
           id: "u1",
           email: "admin@example.com",
@@ -168,12 +174,14 @@ describe("auth config", () => {
         },
       }),
     ).toEqual({
+      sid: "session-1",
       email: "admin@example.com",
       role: "admin",
       user_metadata: { name: "Admin" },
     });
     expect(
       definePayload?.({
+        session: { id: "session-2" },
         user: {
           id: "u2",
           email: "user@example.com",
@@ -182,6 +190,7 @@ describe("auth config", () => {
         },
       }),
     ).toEqual({
+      sid: "session-2",
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },
@@ -229,6 +238,27 @@ describe("auth config", () => {
     });
   });
 
+  it("registers microsoft for sign-in only, letting the person pick an account", async () => {
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client-id");
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_SECRET", "microsoft-client-secret");
+
+    const options = await loadAuthOptions();
+    const microsoft = (
+      options.socialProviders as Record<string, Record<string, unknown>>
+    ).microsoft;
+
+    expect(microsoft).toMatchObject({
+      clientId: "microsoft-client-id",
+      clientSecret: "microsoft-client-secret", // pragma: allowlist secret
+      tenantId: "common",
+      prompt: "select_account",
+      disableDefaultScope: true,
+      scope: ["openid", "profile", "email"],
+      // Only the redirect flow, which the sign-up policy guards, signs in.
+      disableIdTokenSignIn: true,
+    });
+  });
+
   it("sends password reset emails with the reset link", async () => {
     const options = await loadAuthOptions();
 
@@ -265,6 +295,7 @@ describe("auth config", () => {
 
     expect(pluginIds).toEqual([
       "admin",
+      "bearer",
       "jwt",
       "supabase-bridge",
       "next-cookies",

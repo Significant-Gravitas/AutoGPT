@@ -43,6 +43,7 @@ async def _enqueue(
     meeting: Rendezvous,
     links: list[Link],
     failing: frozenset[str] = frozenset(),
+    output: tuple[str, object] = ("result", "hello"),
 ):
     """Register ``links``; every upsert but a ``late`` pin's meets the others,
     and a ``failing`` pin's upsert raises once it has.
@@ -78,7 +79,7 @@ async def _enqueue(
     return await manager._enqueue_next_nodes(
         db_client=db,
         node=Node(id="source", block_id="block-source", output_links=links),
-        output=("result", "hello"),
+        output=output,
         user_id="user-1",
         graph_exec_id="run-1",
         graph_id="graph-1",
@@ -98,6 +99,32 @@ def _most_upserts_at_once(events: list[str]) -> int:
         elif event.startswith("end "):
             in_flight -= 1
     return most
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "output,selector,expected",
+    [
+        (("result", None), "result", [{"x": None}]),
+        (("result", None), "result_#_key", [{"x": None}]),
+        (("result", None), "result_$_0", [{"x": None}]),
+        (("result", None), "other_#_key", []),
+        (("result", {}), "result_#_key", []),
+        (("result", []), "result_$_0", []),
+    ],
+)
+async def test_blank_outputs_populate_only_their_own_links(
+    enqueue_stand_ins: None,
+    output: tuple[str, object],
+    selector: str,
+    expected: list[dict[str, object]],
+) -> None:
+    link = _link("a", "x")
+    link.source_name = selector
+
+    entries = await _enqueue([], Rendezvous(1), [link], output=output)
+
+    assert [entry.inputs for entry in entries] == expected
 
 
 @pytest.mark.asyncio

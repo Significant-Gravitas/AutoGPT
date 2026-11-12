@@ -7,10 +7,12 @@ import {
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
+import { nativeSessionBearer } from "./native-session-bearer";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
-import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { authDbPool } from "./auth-db-pool";
+import { assertNotBannedAddress } from "./ban-record";
 import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
@@ -49,6 +51,8 @@ import {
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { getMicrosoftLoginProvider } from "./microsoft-login";
+import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -70,30 +74,8 @@ function getSocialProviders() {
     }
   }
 
-  return providers;
-}
-
-// Shared with the databaseHooks below so the verified-email mirror reuses the
-// same connection/search_path instead of opening a second pool.
-// Cached on globalThis in development: `next dev` re-evaluates this module on
-// every hot reload, and a fresh Pool per reload leaks its idle connections
-// (the old one is never ended), eventually exhausting Postgres backends.
-// Production evaluates it once, so the cache is a no-op there.
-const globalForAuthDb = globalThis as { __authDbPool?: Pool };
-
-const authDbPool =
-  globalForAuthDb.__authDbPool ??
-  new Pool({
-    // No fallback: the database password is generated per install, and
-    // `make init-env` writes it into frontend/.env's DATABASE_URL.
-    connectionString: process.env.DATABASE_URL,
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForAuthDb.__authDbPool = authDbPool;
+  const microsoft = getMicrosoftLoginProvider();
+  return microsoft ? { ...providers, microsoft } : providers;
 }
 
 const requireEmailVerification =
@@ -112,6 +94,8 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: { id?: string };
+  body?: unknown;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -223,7 +207,12 @@ export const auth = betterAuth({
       create: {
         // Fires for both email/password signup AND a first OAuth sign-in,
         // since both create a user row. The SQL data-migration bypasses it.
-        before: async (user: { email: string }, ctx: HookContext) => {
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
+          // Microsoft's first: its refusals carry codes /login explains.
+          assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
           if (
@@ -470,6 +459,7 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    nativeSessionBearer(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
@@ -486,7 +476,8 @@ export const auth = betterAuth({
         // interchangeable during the migration window.
         audience: "authenticated",
         expirationTime: "1h",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
+          sid: session.id,
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },
@@ -519,13 +510,15 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
   }
 }
 
-// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
-// before the disposable list, so an admin's domain block keeps its message.
+// IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
+// record of an erased, banned account (ban-record.ts) answer before the
+// disposable list, so an admin's block keeps its message.
 async function assertEmailSignUpAllowed(
   email: string,
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
+  await assertNotBannedAddress(email);
   const dns = sharedLookups();
   await assertNotDisposableEmail(email, { dns });
   await assertEmailHasMailServer(email, { dns });

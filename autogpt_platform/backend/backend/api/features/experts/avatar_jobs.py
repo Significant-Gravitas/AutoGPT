@@ -20,6 +20,7 @@ JOB_TTL = 3600
 GENERATION_TIMEOUT = 240
 # Regenerating is the picker's main control, so the gap between attempts is
 # short enough to feel like a shuffle and long enough to stop a held key.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 DAILY_LIMIT = 10
 COOLDOWN = 15
 _RESERVE = f"""

@@ -671,19 +671,19 @@ class TestXlsxUnpackedSize:
 
 
 # ---------------------------------------------------------------------------
-# CSV sniffer fallback
+# Fallback delimiter
 # ---------------------------------------------------------------------------
 
 
-class TestCsvSnifferFallback:
+class TestFallbackDelimiter:
     def test_tab_delimited_with_csv_format(self):
-        """Tab-delimited content parsed as csv should use sniffer fallback."""
+        """Tab-delimited content parsed as csv uses the fallback delimiter."""
         content = "Name\tScore\nAlice\t90\nBob\t85"
         result = parse_file_content(content, "csv")
         assert result == [["Name", "Score"], ["Alice", "90"], ["Bob", "85"]]
 
-    def test_sniffer_failure_returns_content(self):
-        """When sniffer fails, single-column falls back to raw content."""
+    def test_no_fallback_delimiter_returns_content(self):
+        """Single-column content with no other delimiter stays raw content."""
         content = "Name\nAlice\nBob"
         result = parse_file_content(content, "csv")
         assert result == content

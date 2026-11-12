@@ -12,12 +12,11 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.video._render import get_video_codecs, strip_chapters_inplace
 from backend.blocks.video._utils import (
     VideoMediaStorage,
     extract_source_name,
-    get_video_codecs,
     open_video_clip,
-    strip_chapters_inplace,
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField

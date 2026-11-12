@@ -22,6 +22,7 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 # Per-user cap on agent thumbnails generated with the platform's provider key.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 DAILY_LIMIT = 25
 
 
