@@ -2,6 +2,8 @@
 in force, keyed so the table alone names nobody, as long as the ban would
 have lasted and 3 years at most, checked at sign-up and purged after."""
 
+import hashlib
+import hmac
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -60,6 +62,51 @@ def test_without_a_key_there_is_no_hash(monkeypatch):
     monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "")
 
     assert ban_record.email_hash(EMAIL) is None
+    assert ban_record.email_hashes(EMAIL) == []
+
+
+@pytest.mark.parametrize(
+    "spelling, canonical",
+    [
+        (" Sam@Example.com ", "sam@example.com"),
+        ("sam+shop@example.com", "sam@example.com"),
+        ("sam+a+b@example.com", "sam@example.com"),
+        ("s.a.m@example.com", "s.a.m@example.com"),
+        ("S.am+x@Gmail.com", "sam@gmail.com"),
+        ("s.am@googlemail.com", "sam@gmail.com"),
+        ("+only@example.com", "+only@example.com"),
+        ("...@gmail.com", "...@gmail.com"),
+        ("no-at-sign", "no-at-sign"),
+    ],
+)
+def test_the_spellings_of_one_mailbox_share_a_canonical_form(spelling, canonical):
+    """`+tag` goes on every domain; dots go only on Gmail, where they reach
+    the same mailbox. A part that would come out empty is left as it is."""
+    assert ban_record.canonical_address(spelling) == canonical
+
+
+def test_the_hash_is_of_the_canonical_form(monkeypatch):
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "key")
+
+    assert ban_record.email_hash("s.am+x@googlemail.com") == ban_record.email_hash(
+        "sam@gmail.com"
+    )
+    assert ban_record.email_hash("s.am@example.com") != ban_record.email_hash(
+        "sam@example.com"
+    )
+
+
+def test_an_address_folded_by_the_rule_also_has_its_old_hash(monkeypatch):
+    """Records written before the canonical form hold the hash of the
+    trimmed, lower-cased address, so the lookup asks for both."""
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "key")
+    old = hmac.new(b"key", b"sam+x@example.com", hashlib.sha256).hexdigest()
+
+    assert ban_record.email_hashes(" Sam+X@example.com ") == [
+        ban_record.email_hash("sam@example.com"),
+        old,
+    ]
+    assert ban_record.email_hashes(EMAIL) == [ban_record.email_hash(EMAIL)]
 
 
 @pytest.mark.asyncio
@@ -178,11 +225,63 @@ async def test_sign_up_finds_only_a_record_still_in_force(records):
 
     assert await ban_record.is_banned_address("SAM@example.com", now=now)
     assert records.find_first.await_args.kwargs["where"] == {
-        "emailHash": ban_record.email_hash(EMAIL),
+        "emailHash": {"in": [ban_record.email_hash(EMAIL)]},
         "deleteAfter": {"gt": now},
     }
     records.find_first.return_value = None
     assert not await ban_record.is_banned_address(EMAIL, now=now)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "spelling",
+    ["sam+again@example.com", "SAM+x@Example.com", " sam@example.com "],
+)
+async def test_sign_up_with_another_spelling_finds_the_record(records, spelling):
+    records.find_first.return_value = object()
+
+    assert await ban_record.is_banned_address(spelling)
+    digests = records.find_first.await_args.kwargs["where"]["emailHash"]["in"]
+    assert ban_record.email_hash(EMAIL) in digests
+
+
+@pytest.mark.asyncio
+async def test_a_gmail_record_matches_its_dotted_and_googlemail_forms(records):
+    """The record of an address banned on Gmail is written under the
+    canonical hash, which every spelling of that mailbox asks for."""
+    gmail = BANNED.model_copy(update={"email": "Sam.Lee+work@gmail.com"})
+    await ban_record.keep_ban_record(gmail, dry_run=False)
+    written = records.create.await_args.kwargs["data"]["emailHash"]
+    records.find_first.return_value = object()
+
+    for spelling in ("samlee@gmail.com", "s.a.m.lee@googlemail.com"):
+        await ban_record.is_banned_address(spelling)
+        assert (
+            written in records.find_first.await_args.kwargs["where"]["emailHash"]["in"]
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_record_written_before_the_rule_still_matches(records):
+    """An old record holds the hash of the address as it was banned, trimmed
+    and lower-cased; that exact address still finds it."""
+    old = hmac.new(
+        b"test-ban-record-key", b"sam+old@example.com", hashlib.sha256
+    ).hexdigest()
+    records.find_first.return_value = object()
+
+    assert await ban_record.is_banned_address("Sam+Old@example.com")
+    assert old in records.find_first.await_args.kwargs["where"]["emailHash"]["in"]
+
+
+@pytest.mark.asyncio
+async def test_a_different_mailbox_asks_for_no_banned_hash(records):
+    """Outside Gmail a dot makes another mailbox: its lookup never asks for
+    the banned address's hash."""
+    await ban_record.is_banned_address("s.am@example.com")
+
+    digests = records.find_first.await_args.kwargs["where"]["emailHash"]["in"]
+    assert ban_record.email_hash(EMAIL) not in digests
 
 
 @pytest.mark.asyncio

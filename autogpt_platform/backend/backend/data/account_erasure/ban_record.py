@@ -7,6 +7,12 @@ address, the ban's category (never the admin's free-text reason) and the
 dates. Sign-up asks `is_banned_address` (through
 `api/features/auth_email/routes.py`) and refuses a match.
 
+The hash is taken of the address's canonical form (`canonical_address`), so
+the other spellings of one mailbox match its record: any case, `+tag` dropped
+on every domain, and for Gmail the dots dropped and `googlemail.com` read as
+`gmail.com`. Records written before that rule hold the hash of the trimmed,
+lower-cased address; the lookup matches those too, and they stay as they are.
+
 A record lasts as long as the ban would have, and 3 years at most; the sweep
 purges the ones past their date (`purge_expired_ban_records`). The hash is
 keyed with `BAN_RECORD_HASH_KEY`, a key of its own that never reaches the
@@ -60,13 +66,17 @@ async def keep_ban_record(subject: Subject, *, dry_run: bool) -> StepReport:
 
 
 async def is_banned_address(email: str, *, now: datetime | None = None) -> bool:
-    """Whether an erased, banned account had this address and its record has
-    not run out. False on a service with no key to hash with."""
-    digest = email_hash(email)
-    if digest is None:
+    """Whether an erased, banned account had this address, or another
+    spelling of its mailbox, and its record has not run out. False on a
+    service with no key to hash with."""
+    digests = email_hashes(email)
+    if not digests:
         return False
     record = await AccountBanRecord.prisma().find_first(
-        where={"emailHash": digest, "deleteAfter": {"gt": now or datetime.now(UTC)}}
+        where={
+            "emailHash": {"in": digests},
+            "deleteAfter": {"gt": now or datetime.now(UTC)},
+        }
     )
     return record is not None
 
@@ -115,13 +125,45 @@ async def _kept(digest: str, now: datetime) -> bool:
 
 
 def email_hash(email: str) -> str | None:
-    """The keyed hash of an address, alike in any case and without the
-    surrounding spaces; None without a key."""
+    """The keyed hash of an address's canonical form, the one a new record
+    holds; None without a key."""
+    return _keyed_hash(canonical_address(email))
+
+
+def email_hashes(email: str) -> list[str]:
+    """Every hash a record of this address may hold: the canonical one, and
+    the trimmed, lower-cased one records written before the canonical form
+    hold. Empty without a key."""
+    digests = [_keyed_hash(canonical_address(email)), _keyed_hash(_trimmed(email))]
+    return list(dict.fromkeys(d for d in digests if d is not None))
+
+
+def canonical_address(email: str) -> str:
+    """One spelling for the addresses that reach the same mailbox: trimmed,
+    lower-cased, the `+tag` dropped, and on Gmail the dots too."""
+    address = _trimmed(email)
+    local, at, domain = address.rpartition("@")
+    if not at:
+        return address
+    local = local.split("+", 1)[0] or local
+    if domain in _GMAIL_DOMAINS:
+        local = local.replace(".", "") or local
+        domain = "gmail.com"
+    return f"{local}@{domain}"
+
+
+_GMAIL_DOMAINS = frozenset({"gmail.com", "googlemail.com"})
+
+
+def _trimmed(email: str) -> str:
+    return email.strip().lower()
+
+
+def _keyed_hash(address: str) -> str | None:
     key = settings.secrets.ban_record_hash_key
     if not key:
         return None
-    address = email.strip().lower().encode()
-    return hmac.new(key.encode(), address, hashlib.sha256).hexdigest()
+    return hmac.new(key.encode(), address.encode(), hashlib.sha256).hexdigest()
 
 
 def _ban_in_force(subject: Subject, now: datetime) -> bool:
