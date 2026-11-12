@@ -11,6 +11,7 @@ import { PERSIST_MAX_AGE_MS, queryPersister } from "@/lib/queryPersist";
 const SIGN_OUT_TIMEOUT_MS = 8_000;
 
 let pendingSignOut: Promise<void> | null = null;
+let generation = 0;
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
@@ -36,6 +37,14 @@ export function signOut() {
   return pendingSignOut;
 }
 
+/**
+ * Changes on every sign-out. A request started before one must not write its
+ * answer into the cache after it, or the old account's data comes back.
+ */
+export function sessionGeneration() {
+  return generation;
+}
+
 /** Resolves once no sign-out is in flight, so a new sign-in can't be undone by it. */
 export async function whenSignedOut() {
   await pendingSignOut;
@@ -51,7 +60,9 @@ export function isSessionGone(error: unknown) {
 async function clearSession() {
   // The local session goes first, so a slow network can't leave the old
   // user's data on screen.
+  generation += 1;
   clearAccessToken();
+  void queryClient.cancelQueries();
   queryClient.clear();
   void queryPersister.removeClient();
   const controller = new AbortController();

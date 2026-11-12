@@ -1,6 +1,6 @@
 import "@/polyfills";
 
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   DarkTheme,
   DefaultTheme,
@@ -16,12 +16,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { applyAppearance, readAppearance } from "@/lib/appearance";
 import { authClient } from "@/lib/auth/client";
-import {
-  PERSIST_BUSTER,
-  PERSIST_MAX_AGE_MS,
-  queryPersister,
-  shouldPersistQuery,
-} from "@/lib/queryPersist";
+import { CachePersistence } from "@/components/CachePersistence";
 import { queryClient } from "@/lib/session";
 import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
 
@@ -44,13 +39,6 @@ function navigationTheme(scheme: Scheme, colors: Colors): Theme {
   };
 }
 
-const persistOptions = {
-  persister: queryPersister,
-  maxAge: PERSIST_MAX_AGE_MS,
-  buster: PERSIST_BUSTER,
-  dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
-};
-
 export default function RootLayout() {
   const styles = useStyles();
   const scheme = useScheme();
@@ -58,12 +46,12 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <KeyboardProvider>
-        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+        <QueryClientProvider client={queryClient}>
           <ThemeProvider value={navigationTheme(scheme, colors)}>
             <StatusBar style="auto" />
             <RootStack />
           </ThemeProvider>
-        </PersistQueryClientProvider>
+        </QueryClientProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
@@ -79,15 +67,20 @@ function RootStack() {
   if (!isPending && !hasSettled) setHasSettled(true);
   if (!hasSettled) return <View style={styles.root} />;
 
+  const userID = session?.user.id;
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!!session}>
-        <Stack.Screen name="(app)" />
-      </Stack.Protected>
-      <Stack.Protected guard={!session}>
-        <Stack.Screen name="login" />
-      </Stack.Protected>
-    </Stack>
+    <>
+      {/* Keyed by user: a new account starts from its own saved copy, or none. */}
+      {userID ? <CachePersistence key={userID} userID={userID} /> : null}
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Protected guard={!!session}>
+          <Stack.Screen name="(app)" />
+        </Stack.Protected>
+        <Stack.Protected guard={!session}>
+          <Stack.Screen name="login" />
+        </Stack.Protected>
+      </Stack>
+    </>
   );
 }
 

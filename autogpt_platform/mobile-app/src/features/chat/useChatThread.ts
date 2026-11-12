@@ -11,7 +11,7 @@ import {
 } from "@/lib/api/chat";
 import { homeKeys } from "@/lib/api/home";
 import { SignedOutError } from "@/lib/auth/errors";
-import { queryClient, signOut } from "@/lib/session";
+import { queryClient, sessionGeneration, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import { toUIMessages } from "./convertMessages";
@@ -92,10 +92,11 @@ export function useChatThread({ sessionID, detail, isCached }: Args) {
     }
     isSyncing.current = true;
     let fresh: SessionDetail;
+    const startedIn = sessionGeneration();
     try {
       fresh = await getSession(sessionID);
+      if (!isMounted.current || startedIn !== sessionGeneration()) return;
       queryClient.setQueryData(chatKeys.session(sessionID), fresh);
-      if (!isMounted.current) return;
       await chat.stop();
       if (!isMounted.current) return;
       earlier.showServerMessages(fresh);
