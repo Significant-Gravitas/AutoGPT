@@ -375,6 +375,7 @@ def test_update_subscription_tier_no_tier_trial_without_a_card_opens_checkout(
     assert trial_without_card.calls == [
         f"lock:{TEST_USER_ID}",
         "retrieve",
+        "expire",
         "others",
         "cancel",
         "sync",
@@ -438,6 +439,7 @@ def test_update_subscription_tier_no_tier_trial_not_live_in_stripe_is_left_alone
     _post_plan(client, "PRO")
 
     trial_without_card.card.assert_not_awaited()
+    trial_without_card.expire.assert_not_awaited()
     trial_without_card.cancel.assert_not_awaited()
 
 
@@ -461,6 +463,7 @@ def test_update_subscription_tier_no_tier_trial_without_a_card_keeps_it_beside_a
 
     assert response.status_code == 409
     assert response.json()["detail"] == ANOTHER_PLAN_LIVE_DETAIL
+    trial_without_card.expire.assert_awaited_once_with("cus_1")
     trial_without_card.cancel.assert_not_awaited()
     trial_without_card.sync.assert_not_awaited()
     trial_without_card.checkout.assert_not_awaited()

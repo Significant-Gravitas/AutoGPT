@@ -110,6 +110,9 @@ async def _end_without_card_locked(trial: TrialState, subscription_id: str) -> b
         return False
     if await subscription_card_can_be_charged(subscription.id, datetime.now(UTC)):
         return False
+    # An open Checkout could still finish after the check below and leave a
+    # plan live beside the one Checkout is about to sell.
+    await expire_other_subscription_checkouts(trial.customer_id)
     # A plan bought through Checkout ends the trial only once its webhook is
     # handled; while the trial is live, Checkout refuses a second plan beside
     # that one. Ending the trial first would let it sell one and bill twice.
