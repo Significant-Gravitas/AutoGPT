@@ -9,11 +9,12 @@ vi.mock("@/services/environment", () => ({
     isClientSide: vi.fn(),
     isServerSide: vi.fn(),
     getAGPTServerBaseUrl: vi.fn(() => "http://localhost:8006"),
+    getCookiebotCBID: vi.fn(() => ""),
   },
 }));
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
-  ApiError: class ApiError extends Error {
+vi.mock("@/lib/autogpt-server-api/helpers", () => {
+  class ApiError extends Error {
     constructor(
       message: string,
       public status: number,
@@ -21,10 +22,20 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
     ) {
       super(message);
     }
-  },
-  createRequestHeaders: vi.fn(() => ({})),
-  getServerAuthToken: vi.fn(),
-}));
+  }
+  return {
+    ApiError,
+    AuthTokenUnavailableError: class AuthTokenUnavailableError extends ApiError {
+      constructor() {
+        super("Could not verify your sign-in", 503, {
+          code: "auth_token_unavailable",
+        });
+      }
+    },
+    createRequestHeaders: vi.fn(() => ({})),
+    getServerAuthToken: vi.fn(),
+  };
+});
 
 vi.mock("@/services/analytics/posthog-request-context", () => ({
   getPostHogSessionHeader: vi.fn(() => ({})),
@@ -37,6 +48,10 @@ vi.mock("@sentry/nextjs", () => ({
 }));
 
 import { customMutator } from "../custom-mutator";
+import {
+  AuthTokenUnavailableError,
+  getServerAuthToken,
+} from "@/lib/autogpt-server-api/helpers";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
@@ -466,12 +481,27 @@ describe("customMutator — banned account", () => {
     expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
   });
 
+  it("shows a closed account when it will be erased, with Keep my account", async () => {
+    respondWith(401, { detail: "This account is closed." });
+
+    await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
+      "This account is closed.",
+    );
+    expect(replace).toHaveBeenCalledWith("/account-closed");
+  });
+
   it.each([
     ["another 403", 403, { detail: "Admin access required" }],
     [
       "the banned code on another status",
       401,
       { detail: { code: "account_banned" } },
+    ],
+    ["another 401", 401, { detail: "Not authenticated" }],
+    [
+      "the closed detail on another status",
+      403,
+      { detail: "This account is closed." },
     ],
   ])("leaves the user signed in on %s", async (_, status, body) => {
     respondWith(status, body);
@@ -480,5 +510,32 @@ describe("customMutator — banned account", () => {
       customMutator("/api/foo", { method: "GET" }),
     ).rejects.toBeDefined();
     expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("customMutator — server-side auth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(false);
+    vi.mocked(environment.isServerSide).mockReturnValue(true);
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mockIsClientSide.mockReset();
+    vi.mocked(environment.isServerSide).mockReset();
+    vi.mocked(getServerAuthToken).mockReset();
+  });
+
+  it("fails rather than calling the backend without a signed-in user's token", async () => {
+    vi.mocked(getServerAuthToken).mockRejectedValue(
+      new AuthTokenUnavailableError(),
+    );
+
+    await expect(
+      customMutator("/api/library/agents", { method: "GET" }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

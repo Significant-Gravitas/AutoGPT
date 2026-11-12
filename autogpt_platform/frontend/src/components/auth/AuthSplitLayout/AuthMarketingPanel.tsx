@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 import { FeatureList } from "./components/FeatureList";
 import { FeatureItem } from "./components/FeatureListItem";
@@ -8,25 +9,31 @@ interface Props {
   headingLines: ReactNode[];
   description?: string;
   itemsTitle?: string;
-  items: FeatureItem[];
+  items?: FeatureItem[];
   footerText?: string;
+  /** Shown under the header in place of the feature list. */
+  children?: ReactNode;
 }
 
 export function AuthMarketingPanel({
   headingLines,
   description,
   itemsTitle,
-  items,
+  items = [],
   footerText = "Connects with the tools you already use",
+  children,
 }: Props) {
   return (
-    <div className="flex h-full w-full flex-col justify-between gap-12 px-12 pb-12 pt-10 xl:px-16 xl:pb-16">
-      <div className="flex flex-col gap-12">
+    <div className="flex h-full w-full flex-col justify-between gap-12 px-12 pt-10 pb-12 xl:px-16 xl:pb-16">
+      {/* Custom content (the login page's release list) shrinks into the
+          space above the footer and scrolls there. The feature list can't
+          shrink, so on a short screen the whole panel scrolls instead. */}
+      <div className={cn("flex flex-col gap-12", children && "min-h-0 flex-1")}>
         <MarketingHeader
           headingLines={headingLines}
           description={description}
         />
-        <FeatureList itemsTitle={itemsTitle} items={items} />
+        {children ?? <FeatureList itemsTitle={itemsTitle} items={items} />}
       </div>
       <MarketingFooter footerText={footerText} />
     </div>

@@ -9,12 +9,15 @@ sub is created in, and who may poll it afterwards.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.copilot.active_turns import spawn_limit_message
-from backend.copilot.sdk.session_waiter import SessionResult
+from backend.copilot.executor.utils import TurnPublishUnconfirmed
+from backend.copilot.model import ChatMessage
+from backend.copilot.sdk.session_waiter import SessionResult, TurnNotDispatched
 
 from .delegate_to_expert import DelegateToExpertTool
 from .expert_delegation import CALLER_NAME_LIMIT
@@ -44,6 +47,18 @@ def _session(
     # assertion would pass even if the kwarg were dropped.
     sess.metadata.origin = origin
     sess.expert_id = expert_id
+    sess.messages = []
+    return sess
+
+
+def _card_retry_session(name: str) -> MagicMock:
+    """Otto's chat, answering the hire card's Try again for *name*."""
+    sess = _session(expert_id=None)
+    sess.messages = [
+        ChatMessage(
+            role="user", content=f"Try handing the weekly report to {name} again."
+        )
+    ]
     return sess
 
 
@@ -435,6 +450,89 @@ class TestValidation:
 
 
 class TestDelegation:
+    @pytest.mark.asyncio
+    async def test_the_cards_try_again_opens_with_an_introduction(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """SECRT-3401: the hire card's Try again reaches a new expert through
+        Otto and here, and is still the card's hand-off, so the expert says
+        hello before the work."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_card_retry_session("Bea"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        message = mock_turn.await_args.kwargs["message"]
+        assert "open with one line introducing yourself" in message
+        assert "then do the task" in message
+        assert "ask the user first" not in message
+
+    @pytest.mark.asyncio
+    async def test_a_delegation_not_from_the_card_gets_no_introduction(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """A teammate (or Otto, unprompted by the card) passing work to an
+        expert with no chat yet just starts the work."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert "introducing yourself" not in mock_turn.await_args.kwargs["message"]
+
+    @pytest.mark.asyncio
+    async def test_a_try_again_for_another_expert_gets_no_introduction(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_card_retry_session("Someone Else"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert "introducing yourself" not in mock_turn.await_args.kwargs["message"]
+
+    @pytest.mark.asyncio
+    async def test_a_later_chat_gets_no_introduction(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.get_user_sessions",
+            AsyncMock(return_value=([MagicMock()], 1)),
+        )
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_card_retry_session("Bea"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert "introducing yourself" not in mock_turn.await_args.kwargs["message"]
+
+    @pytest.mark.asyncio
+    async def test_an_unattended_turn_gives_a_new_expert_no_introduction(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """Nobody reads a scheduled or automated turn's thread, so the task
+        just starts."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.expert_delegation.is_unattended_turn",
+            lambda: True,
+        )
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_card_retry_session("Bea"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert "introducing yourself" not in mock_turn.await_args.kwargs["message"]
+
     @pytest.mark.asyncio
     async def test_sub_runs_in_target_scope_with_provenance(
         self, roster, mock_turn, mock_sessions
@@ -1041,4 +1139,98 @@ class TestRefusedDelegationCleanup:
             delegated_session_id="inner-1",
         )
 
+        deleted.assert_not_awaited()
+
+
+class TestAfterTheDispatch:
+    @pytest.mark.asyncio
+    async def test_a_failed_spawn_note_does_not_undo_a_dispatched_task(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The tree note is decoration on a task already queued. Raising there
+        would report a running delegation as a failure, and a caller that
+        retries on it would run the task twice (SECRT-3138 review)."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.build_spawn_state_note",
+            AsyncMock(side_effect=RuntimeError("redis blip")),
+        )
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+
+        assert isinstance(result, SubSessionStatusResponse)
+        assert result.status == "running"
+        assert result.sub_session_id == mock_sessions[0].session_id
+
+
+class TestASendThatFailed:
+    """A fresh delegation thread is removed only when the turn provably never
+    reached the queue (``TurnNotDispatched``). A cancellation, the user
+    pressing Stop, can land inside the publish, so like a publish that raised
+    it may have delivered the task, and that thread stays (Sentry)."""
+
+    def _failed_send(self, monkeypatch, error: BaseException):
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.run_copilot_turn_via_queue",
+            AsyncMock(side_effect=error),
+        )
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted
+        )
+        return deleted
+
+    async def _delegate(self, **kwargs):
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s1"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+            **kwargs,
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_thread_nothing_reached_is_removed(
+        self, roster, mock_sessions, monkeypatch
+    ):
+        deleted = self._failed_send(monkeypatch, TurnNotDispatched("redis down"))
+        with pytest.raises(TurnNotDispatched):
+            await self._delegate()
+        deleted.assert_awaited_once_with(mock_sessions[0].session_id, "alice")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pytest.param(asyncio.CancelledError(), id="stopped-mid-send"),
+            pytest.param(TurnPublishUnconfirmed("confirm lost"), id="publish"),
+            pytest.param(RuntimeError("unknown"), id="unknown"),
+        ],
+    )
+    async def test_a_thread_the_task_may_have_reached_is_kept(
+        self, roster, mock_sessions, monkeypatch, error
+    ):
+        deleted = self._failed_send(monkeypatch, error)
+        with pytest.raises(type(error)):
+            await self._delegate()
+        assert len(mock_sessions) == 1
+        deleted.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_thread_it_did_not_open_is_kept(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        await self._delegate()
+        mock_turn.side_effect = TurnNotDispatched("redis down")
+        deleted = AsyncMock()
+        monkeypatch.setattr(
+            "backend.copilot.tools.delegate_to_expert.delete_chat_session", deleted
+        )
+        with pytest.raises(TurnNotDispatched):
+            await self._delegate(delegated_session_id="inner-1")
         deleted.assert_not_awaited()

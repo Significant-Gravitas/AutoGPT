@@ -136,7 +136,6 @@ class SdkTurns:
             "delete_transcript": AsyncMock(side_effect=self._delete),
             "compact_transcript": AsyncMock(return_value=None),
             "get_redis_async": AsyncMock(),
-            "propagate_attributes": MagicMock(),
             "_build_system_prompt": AsyncMock(
                 return_value=("You are a test assistant. Reply briefly.", None)
             ),
@@ -148,7 +147,6 @@ class SdkTurns:
             "create_security_hooks": MagicMock(),
             "get_copilot_tool_names": MagicMock(return_value=[]),
             "get_sdk_disallowed_tools": MagicMock(return_value=[]),
-            "get_user_tier": AsyncMock(return_value=None),
             # Well above any turn here, so the governor never lands one.
             "resolve_turn_budget": AsyncMock(
                 return_value=TurnBudget(usd=100.0, limiting="task")

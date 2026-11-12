@@ -68,10 +68,6 @@ def _make_patches(*, role_split_enabled: bool = False):
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),
         ("os.makedirs", {}),
         (
-            f"{_SVC}.propagate_attributes",
-            dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
-        ),
-        (
             f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
@@ -129,7 +125,6 @@ def _make_patches(*, role_split_enabled: bool = False):
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
             ),
         ),
-        (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
             f"{_SVC}.resolve_turn_budget",
             dict(

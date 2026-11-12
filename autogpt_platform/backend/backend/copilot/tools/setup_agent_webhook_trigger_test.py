@@ -77,11 +77,14 @@ def _make_graph(
     manual: bool,
     regular_credentials: dict | None = None,
     config_schema: dict | None = None,
+    input_schema: dict | None = None,
 ):
     """Build a fake graph with a webhook trigger node.
 
     ``config_schema`` defaults to an empty (no-required) schema so the trigger
     config check passes; pass one with ``required`` to exercise that path.
+    ``input_schema`` is the graph's regular input schema (for agents with input
+    nodes alongside the trigger); defaults to empty (no required inputs).
     """
     node = MagicMock()
     node.id = "trigger-node"
@@ -94,6 +97,7 @@ def _make_graph(
     graph.webhook_input_node = node
     graph.regular_credentials_inputs = regular_credentials or {}
     graph.trigger_setup_info = MagicMock(config_schema=config_schema or {})
+    graph.input_schema = input_schema or {}
     return graph
 
 
@@ -440,6 +444,80 @@ async def test_provider_webhook_config_and_creds_provided_proceeds(tool, session
 
 
 @pytest.mark.asyncio
+async def test_constant_inputs_forwarded_to_setup(tool, session):
+    """Regular graph inputs (input nodes alongside the trigger) are passed
+    through to setup_triggered_preset as `constant_inputs`."""
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            name="My Trigger",
+            graph_id="graph-1",
+            constant_inputs={"topic": "weather"},
+        )
+    assert isinstance(result, TriggerSetupResponse)
+    setup_mock.assert_awaited_once()
+    assert setup_mock.await_args.kwargs["constant_inputs"] == {"topic": "weather"}
+
+
+@pytest.mark.asyncio
+async def test_missing_required_inputs_asks_user(tool, session):
+    """A graph with required regular inputs the LLM didn't supply -> ask the
+    user conversationally and surface the input schema; don't attempt setup."""
+    graph = _make_graph(
+        manual=True,
+        regular_credentials={},
+        input_schema={
+            "properties": {"topic": {"type": "string"}},
+            "required": ["topic"],
+        },
+    )
+    ctxs, setup_mock = _patches(graph)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert isinstance(result, TriggerConfigRequiredResponse)
+    assert result.missing_inputs == ["topic"]
+    assert result.input_schema == {
+        "properties": {"topic": {"type": "string"}},
+        "required": ["topic"],
+    }
+    setup_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_required_inputs_provided_proceeds(tool, session):
+    """Once the required regular inputs are supplied, setup proceeds and forwards
+    them as `constant_inputs`."""
+    graph = _make_graph(
+        manual=True,
+        regular_credentials={},
+        input_schema={
+            "properties": {"topic": {"type": "string"}},
+            "required": ["topic"],
+        },
+    )
+    preset = _make_preset(provider="generic_webhook", webhook_id="wh-1")
+    ctxs, setup_mock = _patches(graph, preset=preset)
+    with ctxs[0], ctxs[1], ctxs[2], ctxs[3], ctxs[4]:
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            name="My Trigger",
+            graph_id="graph-1",
+            constant_inputs={"topic": "weather"},
+        )
+    assert isinstance(result, TriggerSetupResponse)
+    setup_mock.assert_awaited_once()
+    assert setup_mock.await_args.kwargs["constant_inputs"] == {"topic": "weather"}
+
+
+@pytest.mark.asyncio
 async def test_setup_failure_surfaces_actionable_message(tool, session):
     """A webhook-setup InvalidInputError (e.g. no enabled events) surfaces its
     specific reason, not a generic error."""
@@ -561,3 +639,24 @@ def test_is_filled_treats_falsy_valid_values_as_filled():
     assert _is_filled("") is False
     assert _is_filled({}) is False
     assert _is_filled([]) is False
+
+
+@pytest.mark.asyncio
+async def test_an_external_call_files_the_library_entry_in_its_organization(tool):
+    session = make_session(_USER)
+    session.external_caller = True
+    session.organization_id, session.team_id = "org-1", "team-1"
+    graph = _make_graph(manual=True, regular_credentials={})
+    preset = MagicMock(id="preset-1", is_active=True)
+    preset.name = "My Trigger"
+    preset.webhook.url, preset.webhook.provider = "https://x/ingress", "generic_webhook"
+    ctxs, _ = _patches(graph, preset=preset)
+    library_entry = AsyncMock(return_value=MagicMock(id="lib-1"))
+    with ctxs[0], ctxs[2], ctxs[3], ctxs[4], patch(
+        f"{_PATH}.get_or_create_library_agent", new=library_entry
+    ):
+        await tool._execute(
+            user_id=_USER, session=session, name="My Trigger", graph_id="graph-1"
+        )
+
+    assert library_entry.await_args.args[2:] == ("org-1", "team-1")

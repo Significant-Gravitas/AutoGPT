@@ -54,8 +54,6 @@ export function useOnboardingChoices({
   );
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  useImperativeHandle(ref, () => ({ pickLetter }));
-
   function toggle(option: string) {
     const next = selected.includes(option)
       ? selected.filter((pick) => pick !== option)
@@ -104,6 +102,8 @@ export function useOnboardingChoices({
     else choose(options[letter]);
     return true;
   }
+
+  useImperativeHandle(ref, () => ({ pickLetter }));
 
   function handleOptionKeyDown(event: KeyboardEvent, index: number) {
     const option = options[index];

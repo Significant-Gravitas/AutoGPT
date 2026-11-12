@@ -435,7 +435,7 @@ async def main():
                 username=faker.unique.user_name(),
                 description=faker.text(),
                 links=[faker.url() for _ in range(3)],
-                # Empty (not None) — Creator view requires non-null avatar_url.
+                # Empty string renders the frontend's fallback avatar.
                 avatarUrl="",
             )
         )

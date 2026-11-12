@@ -54,13 +54,14 @@ export function EditScheduleModal({
       <Dialog.Trigger>
         {iconOnly ? (
           <Button variant="icon" size="icon" aria-label="Edit schedule">
-            <Icon icon={PencilEdit02Icon} size={18} className="text-zinc-700" />
+            <Icon icon={PencilEdit02Icon} size={18} />
           </Button>
         ) : (
           <Button
             variant="ghost"
             size="small"
-            className={triggerClassName ?? "absolute -right-2 -top-2"}
+            // oxlint-disable-next-line design-system/require-static-classes -- callers outside library pass layout/size overrides
+            className={triggerClassName ?? "absolute -top-2 -right-2"}
           >
             <Icon icon={PencilEdit02Icon} className="size-4" /> Edit schedule
           </Button>

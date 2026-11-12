@@ -33,12 +33,32 @@ def _make_test_ctx(user_id: str = "user-1") -> RequestContext:
 _PRISMA_PATCH_TARGET = "prisma.models.AgentPreset.prisma"
 
 
+@pytest.fixture(autouse=True)
+def caller_owns_every_graph_id(mocker):
+    mocker.patch(
+        "backend.data.graph.graph_owner_id", new=AsyncMock(return_value="user-1")
+    )
+
+
 @pytest.fixture
 def mock_prisma():
     with patch(_PRISMA_PATCH_TARGET) as mock:
         mock_client = AsyncMock()
         mock.return_value = mock_client
         yield mock_client
+
+
+@pytest.fixture(autouse=True)
+def mock_input_output_prisma():
+    """migrate_webhook_presets_to_new_version re-keys the trigger mask via
+    AgentNodeExecutionInputOutput.update_many; mock it so these DB-less tests
+    don't hit a real (unconnected) client. Re-key assertions live in
+    db_test.py::test_migrate_webhook_presets_rekeys_input_mask."""
+    with patch("prisma.models.AgentNodeExecutionInputOutput.prisma") as mock:
+        io_client = AsyncMock()
+        io_client.update_many = AsyncMock(return_value=0)
+        mock.return_value = io_client
+        yield io_client
 
 
 def _make_graph(
@@ -347,7 +367,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
     )
     mocker.patch.object(
         library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     mocker.patch.object(
@@ -366,6 +386,7 @@ async def test_update_graph_in_library_migrates_when_webhook_node_present(
     migrate_mock.assert_awaited_once_with(
         user_id="user-1",
         new_graph=new_graph,
+        organization_ids=None,
     )
 
 
@@ -386,7 +407,7 @@ async def test_update_graph_in_library_skips_when_no_webhook_node(mocker):
     )
     mocker.patch.object(
         library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     mocker.patch.object(
@@ -438,7 +459,7 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
     )
     mocker.patch.object(
         graph_routes.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     skipped = library_model.SkippedWebhookPreset(
@@ -503,7 +524,7 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
     )
     mocker.patch.object(
         graph_routes.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(
@@ -544,7 +565,7 @@ async def test_v1_set_graph_active_version_migrates_when_webhook_node_present(
     mocker.patch.object(graph_routes.graph_db, "set_graph_active_version")
     mocker.patch.object(
         graph_routes.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     skipped = library_model.SkippedWebhookPreset(
@@ -593,7 +614,7 @@ async def test_v1_set_graph_active_version_skips_when_no_webhook_node(mocker):
     mocker.patch.object(graph_routes.graph_db, "set_graph_active_version")
     mocker.patch.object(
         graph_routes.library_db,
-        "update_library_agent_version_and_settings",
+        "update_agent_version_in_library",
         return_value=AsyncMock(),
     )
     migrate_mock = mocker.patch.object(

@@ -42,6 +42,9 @@ def catalog_slug(entry: MCPCatalogEntry) -> str:
 def service_for_provider(provider: str) -> ServiceIdentity:
     """A block provider is its own service; its logo is filed under its slug."""
     slug = canonical_provider(provider)
+    if slug == ProviderName.MICROSOFT_365_COPILOT.value:
+        # Copilot connections made before Microsoft's were combined into one.
+        return ServiceIdentity(service="microsoft", icon="microsoft")
     return ServiceIdentity(service=slug, icon=slug)
 
 
@@ -72,6 +75,20 @@ def service_for_credential(credential: Credentials) -> ServiceIdentity:
         _warn_once(credential.id, "has an unparseable server URL")
         return ServiceIdentity(service=UNKNOWN_MCP_SERVICE)
     return ServiceIdentity(service=f"mcp:{host}", name=host)
+
+
+def credential_display_name(credential: Credentials) -> str:
+    """What to call a stored credential when listing it beside others.
+
+    Most OAuth sign-ins (Google, GitHub, Discord, Reddit, X, Todoist) store no
+    title, only the account's email or handle, so falling back to the provider
+    alone would list every account for that provider under the same name.
+    """
+    if credential.title:
+        return credential.title
+    if isinstance(credential, OAuth2Credentials) and credential.username:
+        return credential.username
+    return str(credential.provider)
 
 
 def _warn_once(credential_id: str, reason: str) -> None:

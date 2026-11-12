@@ -109,7 +109,7 @@ function renderVideo(
       <div className="group relative aspect-video w-full">
         <YouTubeEmbed
           url={videoUrl}
-          className="rounded-md border border-gray-200"
+          className="rounded-md border border-border-base"
         />
       </div>
     );
@@ -123,7 +123,7 @@ function renderVideo(
         href={getYouTubeWatchUrl(videoUrl) ?? undefined}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 underline"
+        className="text-info-foreground underline"
       >
         {videoUrl}
       </a>
@@ -135,7 +135,7 @@ function renderVideo(
     return (
       <div className="group relative aspect-video w-full">
         <iframe
-          className="h-full w-full rounded-md border border-gray-200"
+          className="h-full w-full rounded-md border border-border-base"
           src={`https://player.vimeo.com/video/${vimeoID}`}
           allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
@@ -150,7 +150,7 @@ function renderVideo(
     <div className="group relative">
       <video
         controls
-        className="h-auto max-w-full rounded-md border border-gray-200"
+        className="h-auto max-w-full rounded-md border border-border-base"
         preload="metadata"
       >
         <source src={videoUrl} type={metadata?.mimeType || "video/mp4"} />

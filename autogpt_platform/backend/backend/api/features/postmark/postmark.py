@@ -2,14 +2,16 @@ import logging
 from types import TracebackType
 from typing import Annotated, Self
 
-from fastapi import APIRouter, Body, Query, Security
+from fastapi import APIRouter, Body, Query, Request, Security
 from fastapi.responses import JSONResponse
 
 from backend.api.utils.api_key_auth import APIKeyAuthenticator
 from backend.data.user import (
+    disable_all_user_notifications,
     get_user_by_email,
     set_user_email_verification,
     unsubscribe_user_by_token,
+    verify_unsubscribe_token,
 )
 from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
@@ -25,6 +27,7 @@ from .models import (
     PostmarkSubscriptionChangeWebhook,
     PostmarkWebhook,
 )
+from .unsubscribe_page import confirm_page, invalid_link_page, unsubscribed_page
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -37,10 +40,34 @@ postmark_api_key_auth = APIKeyAuthenticator(
 )
 
 
+@router.get("/unsubscribe", include_in_schema=False)
+async def unsubscribe_confirm_page(token: Annotated[str, Query()] = ""):
+    # A click only shows the page: mail scanners open links, and must not
+    # unsubscribe anyone by doing so.
+    try:
+        verify_unsubscribe_token(token)
+    except ValueError:
+        return invalid_link_page()
+    return confirm_page()
+
+
 @router.post("/unsubscribe", summary="One Click Email Unsubscribe")
-async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
-    logger.info("Received unsubscribe request from One Click Unsubscribe")
-    await unsubscribe_user_by_token(token)
+async def unsubscribe_via_one_click(request: Request, token: Annotated[str, Query()]):
+    # The confirm page's form asks for a page back; a mail app's one-click POST
+    # (RFC 8058) reads only the status.
+    from_page = "text/html" in request.headers.get("accept", "")
+    logger.info(
+        "Received unsubscribe request from "
+        f"{'the confirm page' if from_page else 'One Click Unsubscribe'}"
+    )
+    try:
+        await unsubscribe_user_by_token(token)
+    except ValueError:
+        if from_page:
+            return invalid_link_page()
+        raise
+    if from_page:
+        return unsubscribed_page()
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
@@ -109,13 +136,13 @@ async def _handle(webhook: PostmarkWebhook) -> None:
         case PostmarkBounceWebhook():
             await bounce_handler(webhook)
         case PostmarkSpamComplaintWebhook():
-            spam_handler(webhook)
+            await spam_handler(webhook)
         case PostmarkOpenWebhook():
             await open_handler(webhook)
         case PostmarkClickWebhook():
             await click_handler(webhook)
         case PostmarkSubscriptionChangeWebhook():
-            subscription_handler(webhook)
+            await subscription_handler(webhook)
         case _:
             logger.warning(
                 "Unhandled Postmark webhook type %s. Update handler mappings.",
@@ -123,7 +150,7 @@ async def _handle(webhook: PostmarkWebhook) -> None:
             )
 
 
-async def _user_id_for(recipient: str, message_id: str) -> str | None:
+async def _user_id_for(recipient: str, message_id: str | None) -> str | None:
     """The user an email went to, or None for an address with no account,
     such as the internal Ops inbox."""
     user = await get_user_by_email(recipient)
@@ -183,11 +210,25 @@ async def bounce_handler(event: PostmarkBounceWebhook):
         )
         return
     await set_user_email_verification(user_id, False)
-    logger.debug(f"Setting email verification to false for user: {user_id}")
+    await disable_all_user_notifications(user_id)
+    logger.info("Hard bounce for user %s: unverified, notifications off", user_id)
 
 
-def spam_handler(event: PostmarkSpamComplaintWebhook):
-    logger.info("Spam handler")
+async def spam_handler(event: PostmarkSpamComplaintWebhook):
+    """Postmark has suppressed the address, and every further email we queue
+    for it is refused; worse, Postmark pauses sending for everyone once
+    complaints pass 0.1%. Stop mailing the complainer at the source."""
+    user_id = await _user_id_for(event.Email, event.MessageID)
+    if not user_id:
+        return
+    track_email_event(
+        user_id,
+        PostHogEvent.EMAIL_COMPLAINED,
+        event,
+        occurred_at=event.BouncedAt,
+    )
+    await _stop_mailing(user_id)
+    logger.info("Spam complaint from user %s: notifications off", user_id)
 
 
 async def delivery_handler(event: PostmarkDeliveryWebhook):
@@ -222,5 +263,26 @@ async def click_handler(event: PostmarkClickWebhook):
         )
 
 
-def subscription_handler(event: PostmarkSubscriptionChangeWebhook):
-    logger.info("Subscription handler")
+async def subscription_handler(event: PostmarkSubscriptionChangeWebhook):
+    """A suppression (a complaint, a hard bounce, an unsubscribe through
+    Postmark or a manual one) means Postmark will refuse to send to the
+    address, so we stop queueing for it. A reactivation changes nothing here:
+    the user turns their notifications back on themselves."""
+    if not event.SuppressSending:
+        return
+    user_id = await _user_id_for(event.Recipient, event.MessageID)
+    if not user_id:
+        return
+    await _stop_mailing(user_id)
+    logger.info(
+        "Postmark suppressed user %s (%s): notifications off",
+        user_id,
+        event.SuppressionReason,
+    )
+
+
+async def _stop_mailing(user_id: str) -> None:
+    """Unverify the address and turn every notification off, daily ceiling
+    included, so the consumer skips the user before calling Postmark."""
+    await set_user_email_verification(user_id, False)
+    await disable_all_user_notifications(user_id, zero_daily_limit=True)

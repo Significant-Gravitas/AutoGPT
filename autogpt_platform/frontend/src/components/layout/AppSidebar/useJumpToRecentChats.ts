@@ -1,4 +1,4 @@
-import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { afterAnimations, scrollSidebarToWhenReachable } from "./helpers";

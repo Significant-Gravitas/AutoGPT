@@ -16,12 +16,25 @@ vi.mock("@/lib/auth/client-ip-token", () => ({
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: vi.fn(() => "https://backend.test"),
+    isClientSide: vi.fn(() => false),
+    isServerSide: vi.fn(() => true),
   },
+}));
+
+vi.mock("@/lib/auth/server/getServerSession", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/auth/server/getServerSession")
+  >()),
+  readServerSession: vi.fn(),
 }));
 
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { readServerSession } from "@/lib/auth/server/getServerSession";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
+import { APIError } from "better-auth/api";
+import { encodeImpersonation } from "@/lib/impersonation";
 import { GET, POST } from "../route";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
@@ -385,6 +398,23 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("authorization")).toBeNull();
   });
 
+  it("answers a retryable 503 instead of forwarding a session it could not mint a token for", async () => {
+    // Forwarded without a token, the request got a 401 from the backend, which
+    // the browser reads as a logout (W51 N2: the auth database had run out of
+    // connections for the frontend role).
+    vi.mocked(getServerAuthToken).mockRejectedValueOnce(
+      new AuthTokenUnavailableError(),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("2");
+    expect(await res.json()).toMatchObject({ code: "auth_token_unavailable" });
+  });
+
   it("returns 502 with error detail when backend fetch throws (network error)", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("ECONNRESET"));
     const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -455,6 +485,25 @@ describe("proxy route — handler pass-through", () => {
 
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
       `${BACKEND}/api/v1/items?page=2&size=20`,
+    );
+  });
+
+  it("keeps an encoded ?, # or / inside its path segment", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest(
+      "https://app.test/api/proxy/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2",
+    );
+    // Next.js hands the route each segment already decoded
+    await GET(req, makeParams(["api", "v1", "items", "a?b=c#d/e"]));
+
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      `${BACKEND}/api/v1/items/a%3Fb%3Dc%23d%2Fe?page=2`,
     );
   });
 
@@ -624,6 +673,70 @@ describe("proxy route — handler pass-through", () => {
     expect(res.headers.get("content-security-policy")).toBe("sandbox");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
+
+  it.each([
+    "text/html; charset=utf-8",
+    "image/svg+xml",
+    "application/xhtml+xml",
+    "text/xml",
+  ])(
+    "relays a %s response from any other route as a download",
+    async (type) => {
+      vi.mocked(fetch).mockResolvedValue(
+        new Response("hello", {
+          status: 200,
+          headers: {
+            "Content-Type": type,
+            "Content-Disposition": 'inline; filename="page"',
+          },
+        }),
+      );
+
+      const path = ["api", "v1", "items"];
+      const req = new NextRequest(
+        `https://app.test/api/proxy/${path.join("/")}`,
+      );
+      const res = await GET(req, makeParams(path));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-disposition")).toBe(
+        'attachment; filename="page"',
+      );
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await res.text()).toBe("hello");
+    },
+  );
+
+  it("leaves a JSON response renderable", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+
+  it("still renders the Codex device-login page", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("<p>sign in</p>", {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
+    );
+
+    const path = ["api", "integrations", "codex", "device-login", "login-1"];
+    const req = new NextRequest(`https://app.test/api/proxy/${path.join("/")}`);
+    const res = await GET(req, makeParams(path));
+
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(res.headers.get("content-disposition")).toBeNull();
+  });
 });
 
 describe("proxy route — response-start timeout", () => {
@@ -659,5 +772,106 @@ describe("proxy route — response-start timeout", () => {
     expect(await res.json()).toMatchObject({
       error: "Proxy request timed out",
     });
+  });
+});
+
+describe("proxy: admin impersonation header", () => {
+  const ACT_AS = "x-act-as-user-id";
+
+  beforeEach(() => {
+    vi.mocked(getServerAuthToken).mockResolvedValue("test-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function sessionAs(id: string, role: string) {
+    vi.mocked(readServerSession).mockResolvedValue({
+      user: { id, role },
+    } as never);
+  }
+
+  async function forwardedActAs(
+    cookieRecord: string | null,
+    requested = "target-a",
+  ) {
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      headers: { [ACT_AS]: requested },
+    });
+    // The test Request drops a Cookie header, so set it on the cookie jar.
+    if (cookieRecord)
+      req.cookies.set("admin-impersonate-user-id", cookieRecord);
+    await GET(req, makeParams(["api", "v1", "items"]));
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    return new Headers((init as RequestInit).headers).get(ACT_AS);
+  }
+
+  it("forwards it for the signed-in admin who chose that target", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBe("target-a");
+  });
+
+  it("drops it when the session is a different admin", async () => {
+    sessionAs("admin-2", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("drops a header no impersonation cookie backs", async () => {
+    sessionAs("admin-1", "admin");
+    expect(await forwardedActAs(null)).toBeNull();
+  });
+
+  it("drops the target when the auth backend rejects the session", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("UNAUTHORIZED"),
+    );
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("fails the request rather than send it as the admin when the session can't be read", async () => {
+    vi.mocked(readServerSession).mockRejectedValue(
+      new APIError("INTERNAL_SERVER_ERROR"),
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items", {
+      method: "POST",
+      headers: { [ACT_AS]: "target-a" },
+    });
+    req.cookies.set(
+      "admin-impersonate-user-id",
+      encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+    );
+
+    const response = await POST(req, makeParams(["api", "v1", "items"]));
+
+    expect(response.status).toBe(502);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("drops a target the owner's cookie doesn't name", async () => {
+    sessionAs("admin-1", "admin");
+    expect(
+      await forwardedActAs(
+        encodeImpersonation({ target: "target-a", owner: "admin-1" }),
+        "target-b",
+      ),
+    ).toBeNull();
   });
 });

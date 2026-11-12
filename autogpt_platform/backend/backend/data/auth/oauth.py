@@ -9,10 +9,12 @@ Hashing strategy:
 - Client secrets: Scrypt with salt (lookup by client_id, then verify with salt)
 """
 
+import asyncio
 import hashlib
 import logging
 import secrets
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
 
@@ -25,12 +27,23 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.types import OAuthApplicationUpdateInput
 from pydantic import BaseModel, Field, SecretStr
 
+from backend.data.db import transaction
 from backend.data.user import is_user_banned
 
 from .base import APIAuthorizationInfo
 
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()  # Only used for client secret hashing (Scrypt)
+
+# A Scrypt check of a client secret costs about 30 ms of CPU and 16 MiB of
+# memory. The checks get a pool of their own, so a burst of them queues here
+# rather than taking the threads asyncio.to_thread hands to everything else,
+# API-key checks included. Four threads use at most four cores and 64 MiB at
+# once, and still get through about 130 checks a second.
+CLIENT_SECRET_CHECK_THREADS = 4
+_client_secret_checks = ThreadPoolExecutor(
+    max_workers=CLIENT_SECRET_CHECK_THREADS, thread_name_prefix="oauth-secret"
+)
 
 
 def _generate_token() -> str:
@@ -50,6 +63,16 @@ REFRESH_TOKEN_TTL = timedelta(days=30)
 
 ACCESS_TOKEN_PREFIX = "agpt_xt_"
 REFRESH_TOKEN_PREFIX = "agpt_rt_"
+
+
+def is_access_token(credential: str) -> bool:
+    """Whether a credential is in the OAuth access-token format.
+
+    Such a value is only ever looked up as a token, never tried as an API key:
+    a key issued before `APIKeySmith` reserved the prefix can start the same
+    way, and trying every forged token as a key would cost a Scrypt hash each.
+    """
+    return credential.startswith(ACCESS_TOKEN_PREFIX)
 
 
 # ============================================================================
@@ -161,10 +184,6 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     code_challenge_method: Optional[str] = None
     used_at: Optional[datetime] = None
 
-    @property
-    def is_used(self) -> bool:
-        return self.used_at is not None
-
     @staticmethod
     def from_db(code: PrismaOAuthAuthorizationCode):
         return OAuthAuthorizationCodeInfo(
@@ -228,10 +247,6 @@ class OAuthRefreshTokenInfo(BaseModel):
     expires_at: datetime
     application_id: str
     revoked_at: Optional[datetime] = None
-
-    @property
-    def is_revoked(self) -> bool:
-        return self.revoked_at is not None
 
     @staticmethod
     def from_db(token: PrismaOAuthRefreshToken):
@@ -313,8 +328,12 @@ async def validate_client_credentials(
     if not app.is_active:
         raise InvalidClientError("Application is not active")
 
-    # Verify client secret
-    if not app.verify_secret(client_secret):
+    # On the event loop, a Scrypt check would stall every other request the
+    # worker is serving.
+    secret_matches = await asyncio.get_running_loop().run_in_executor(
+        _client_secret_checks, app.verify_secret, client_secret
+    )
+    if not secret_matches:
         raise InvalidClientError("Invalid client_secret")
 
     # Return without secret hash
@@ -434,11 +453,23 @@ async def consume_authorization_code(
         ):
             raise InvalidGrantError("PKCE verification failed")
 
-    # Mark code as used
-    await PrismaOAuthAuthorizationCode.prisma().update(
-        where={"code": code},
-        data={"usedAt": now},
+    # Atomically claim the code. The checks above run on a possibly stale read,
+    # so two concurrent redeems can both pass them; only the request whose
+    # conditional write flips usedAt from NULL may mint tokens. Everything is
+    # validated first so a request with a wrong redirect_uri or PKCE verifier
+    # cannot burn a code that belongs to the legitimate client.
+    claimed_at = datetime.now(timezone.utc)
+    claimed = await PrismaOAuthAuthorizationCode.prisma().update_many(
+        where={
+            "code": code,
+            "applicationId": application_id,
+            "usedAt": None,
+            "expiresAt": {"gt": claimed_at},
+        },
+        data={"usedAt": claimed_at},
     )
+    if claimed != 1:
+        raise InvalidGrantError("authorization code already used or expired")
 
     return auth_code.userId, [APIPermission(s) for s in auth_code.scopes]
 
@@ -515,6 +546,11 @@ async def validate_access_token(
         InvalidTokenError: If token is invalid, expired, or revoked
         InvalidClientError: If the client application is not marked as active
     """
+    if not is_access_token(token):
+        # Every access token carries the prefix, so this can't match one, and
+        # an API's rate limits count only the bearers that cost a lookup.
+        raise InvalidTokenError("access token not found")
+
     token_hash = _hash_token(token)
 
     # Direct lookup by hash
@@ -728,6 +764,43 @@ async def revoke_refresh_token(
     except Exception as e:
         logger.exception(f"Error revoking refresh token: {e}")
         return None
+
+
+# ============================================================================
+# User-wide Revocation
+# ============================================================================
+
+
+async def revoke_user_oauth_tokens(user_id: str) -> dict[str, int]:
+    """
+    Revoke every OAuth grant issued for a user, across all applications.
+
+    In one transaction: deletes the user's unused authorization codes (a code
+    has no revoked state, and a used one is already spent) and revokes every
+    access and refresh token that isn't revoked yet. Tokens revoked earlier
+    keep their original ``revokedAt``. Applications the user owns as a
+    developer, and tokens other users granted them, are left alone.
+
+    Returns a dict with counts by type, like ``cleanup_expired_oauth_tokens``.
+    """
+    now = datetime.now(timezone.utc)
+    async with transaction() as tx:
+        codes = await PrismaOAuthAuthorizationCode.prisma(tx).delete_many(
+            where={"userId": user_id, "usedAt": None}
+        )
+        refresh = await PrismaOAuthRefreshToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+        access = await PrismaOAuthAccessToken.prisma(tx).update_many(
+            where={"userId": user_id, "revokedAt": None},
+            data={"revokedAt": now},
+        )
+    return {
+        "authorization_codes": codes,
+        "access_tokens": access,
+        "refresh_tokens": refresh,
+    }
 
 
 # ============================================================================

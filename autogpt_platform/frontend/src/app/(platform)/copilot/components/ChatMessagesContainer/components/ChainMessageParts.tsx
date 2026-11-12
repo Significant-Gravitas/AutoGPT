@@ -10,34 +10,41 @@ import type {
   CompactionPhase,
   CompactionStats,
 } from "../../CompactionCard/helpers";
+import type { FeedbackCardTarget } from "../../../tools/FeedbackPrompts/helpers";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 
 interface Props {
   parts: MessagePart[];
   messageID: string;
   isCurrentlyStreaming: boolean;
+  canActOnCards?: boolean;
   onRetry?: () => void;
   fileUrlBuilder?: (fileId: string) => string;
   readOnly?: boolean;
   compactionPhase?: CompactionPhase | null;
   liveCompactionCallId?: string | null;
   liveCompactionStats?: CompactionStats;
+  feedbackTarget?: FeedbackCardTarget | null;
 }
 
 export function ChainMessageParts({
   parts,
   messageID,
   isCurrentlyStreaming,
+  canActOnCards,
   onRetry,
   fileUrlBuilder,
   readOnly,
   compactionPhase,
   liveCompactionCallId,
   liveCompactionStats,
+  feedbackTarget,
 }: Props) {
   const outcomes = useContext(HeldOutcomesContext);
   // Kept per `parts` so each ToolChain gets the same `parts` array back and
-  // its own row derivation stays memoised.
+  // its own row derivation stays memoised. A manual memo even with the
+  // compiler on, which would rebuild this with the rows below whenever any
+  // prop or the outcomes context changes.
   const segments = useMemo(
     () => buildChainSegments(parts, isChainableToolPart),
     [parts],
@@ -88,6 +95,8 @@ export function ChainMessageParts({
         liveCompactionCallId={liveCompactionCallId}
         liveCompactionStats={liveCompactionStats}
         isCurrentlyStreaming={isCurrentlyStreaming}
+        canActOnCards={canActOnCards}
+        feedbackTarget={feedbackTarget}
       />
     );
   });

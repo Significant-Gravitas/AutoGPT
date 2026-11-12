@@ -2,23 +2,39 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import {
   APIError,
   createAuthMiddleware,
-  getIp,
+  getIP,
   isAPIError,
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
+import { nativeSessionBearer } from "./native-session-bearer";
+import { appleOAuth } from "./apple-oauth";
+import {
+  assertAppleSignInRequest,
+  appleTrustedOrigins,
+  getAppleProvider,
+  type AppleAccountUser,
+} from "./apple-provider";
 import { compare, hash } from "bcryptjs";
-import { Pool } from "pg";
+import { PostgresDialect } from "kysely";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
-import { getTrustedClientIP } from "./client-ip";
+import { authDbPool } from "./auth-db-pool";
+import { assertNotBannedAddress } from "./ban-record";
+import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
+import {
+  assertEmailDeliverable,
+  assertEmailHasMailServer,
+  sharedLookups,
+} from "./email-deliverability";
+import { limitAuthAttempts, refundSuccessfulAttempt } from "./attempt-limits";
 import { isAwaitingEmailVerification } from "./email-verification";
 import { emailRepeatSignUp } from "./existing-user-sign-up";
-import { capAuthEmailsPerIP } from "./ip-email-cap";
+import { capAuthEmailsPerIP, IP_CAPPED_PATHS } from "./ip-email-cap";
 import { recordAuthIP } from "./ip-log";
 import {
   AUTH_PASSWORD_BCRYPT_COST,
@@ -36,8 +52,14 @@ import {
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
 import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
 import { JWKS_ALG } from "./service-token";
-import { isSignupAllowed, readSignupGateConfig } from "./signup-gate";
+import {
+  isSignupAllowed,
+  readSignupGateConfig,
+  SIGN_UP_NOT_ALLOWED_CODE,
+} from "./signup-gate";
 import { supabaseBridge } from "./supabase-bridge";
+import { getMicrosoftLoginProvider } from "./microsoft-login";
+import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
 
@@ -47,8 +69,7 @@ const baseURL =
   "http://localhost:3000";
 
 function getSocialProviders() {
-  const providers: Record<string, { clientId: string; clientSecret: string }> =
-    {};
+  const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 
   for (const provider of ["google", "github", "discord"] as const) {
     const prefix = `AUTH_${provider.toUpperCase()}`;
@@ -59,34 +80,22 @@ function getSocialProviders() {
     }
   }
 
-  return providers;
+  const apple = getAppleProvider(findAppleAccountUser);
+  if (apple) providers.apple = apple;
+
+  const microsoft = getMicrosoftLoginProvider();
+  return microsoft ? { ...providers, microsoft } : providers;
 }
 
-// Shared with the databaseHooks below so the verified-email mirror reuses the
-// same connection/search_path instead of opening a second pool.
-// Cached on globalThis in development: `next dev` re-evaluates this module on
-// every hot reload, and a fresh Pool per reload leaks its idle connections
-// (the old one is never ended), eventually exhausting Postgres backends.
-// Production evaluates it once, so the cache is a no-op there.
-const globalForAuthDb = globalThis as { __authDbPool?: Pool };
-
-const authDbPool =
-  globalForAuthDb.__authDbPool ??
-  new Pool({
-    // Fallback matches the docker-compose db service so `make run-frontend`
-    // works against `make start-core` without a frontend/.env, mirroring the
-    // localhost fallbacks in services/environment. Production must set
-    // DATABASE_URL explicitly.
-    connectionString:
-      process.env.DATABASE_URL ||
-      "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres", // pragma: allowlist secret
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
+async function findAppleAccountUser(
+  subject: string,
+): Promise<AppleAccountUser | null> {
+  const context = await auth.$context;
+  const owner = await context.internalAdapter.findAccountOwnerByKey({
+    providerId: "apple",
+    accountId: subject,
   });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForAuthDb.__authDbPool = authDbPool;
+  return owner?.kind === "owned" ? owner.user : null;
 }
 
 const requireEmailVerification =
@@ -105,6 +114,8 @@ function hasPlatformUser(userId: string) {
 // Better Auth hands database hooks the endpoint context, or null outside one.
 type HookContext = {
   path?: string;
+  params?: { id?: string };
+  body?: unknown;
   headers?: Headers;
   request?: Request;
   context?: { options: BetterAuthOptions };
@@ -118,33 +129,69 @@ const EMAIL_SIGN_UP_PATH = "/sign-up/email";
 function getRequestIP(ctx: HookContext) {
   const headers = ctx?.headers ?? ctx?.request?.headers;
   if (!headers || !ctx?.context) return null;
-  return getTrustedClientIP(getIp(headers, ctx.context.options));
+  return getTrustedClientIP(getIP(headers, ctx.context.options));
 }
 
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
-  database: authDbPool,
+  trustedOrigins: appleTrustedOrigins,
+  // Without database transactions, as before Better Auth 1.7, which turns
+  // them on for a bare pg Pool. A sign-up would then hold one of the pool's
+  // connections throughout while the session hook (access blocks, IP log)
+  // waits on the same pool for another: at ten concurrent sign-ups every
+  // connection waits forever.
+  database: {
+    dialect: new PostgresDialect({ pool: authDbPool }),
+    type: "postgres",
+    transaction: false,
+  },
   telemetry: { enabled: false },
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      // Before Better Auth looks the address up, so an address that already
-      // has an account is refused the same way, in the same time.
-      if (
-        ctx.path === EMAIL_SIGN_UP_PATH &&
-        typeof ctx.body?.email === "string"
-      ) {
-        await assertEmailSignUpAllowed(ctx.body.email, getRequestIP(ctx));
-      }
-      // With verification required, sign-up and resend email an address with
-      // no session yet: at most a few per IP per window (ip-email-cap.ts).
-      if (!requireEmailVerification) return;
-      await capAuthEmailsPerIP({
+      assertAppleSignInRequest(ctx.path, ctx.body);
+      // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
+      await limitAuthAttempts({
         path: ctx.path,
+        body: ctx.body,
         headers: ctx.headers,
         context: ctx.context,
       });
+      const signUpEmail =
+        ctx.path === EMAIL_SIGN_UP_PATH && typeof ctx.body?.email === "string"
+          ? ctx.body.email
+          : null;
+      // Before Better Auth looks the address up, so an address that already
+      // has an account is refused the same way, in the same time.
+      if (signUpEmail) {
+        await assertEmailSignUpAllowed(signUpEmail, getRequestIP(ctx));
+      }
+      // With verification required, sign-up and resend email an address with
+      // no session yet: at most a few per IP per window (ip-email-cap.ts).
+      if (requireEmailVerification) {
+        await capAuthEmailsPerIP({
+          path: ctx.path,
+          headers: ctx.headers,
+          context: ctx.context,
+        });
+        // After the cap, so each mailer lookup spends one of the IP's slots,
+        // and before the address is looked up, so it answers alike with or
+        // without an account.
+        if (
+          IP_CAPPED_PATHS.has(ctx.path) &&
+          typeof ctx.body?.email === "string"
+        ) {
+          await assertEmailDeliverable(ctx.body.email);
+        }
+      }
+      // Here as well as in user.create.before: with verification required,
+      // Better Auth answers a 403 from creating the user with its generic
+      // "check your email" reply, which would hide the reason from the form.
+      // Also before the lookup, so it answers alike with or without an account.
+      if (signUpEmail) {
+        assertSignUpPolicy(signUpEmail, ctx);
+      }
     }),
     // A reset link only reaches whoever holds the address it was mailed to,
     // so opening one verifies that address, if it is still the account's: an
@@ -155,6 +202,12 @@ export const auth = betterAuth({
     // logged and the address left unverified: the next sign-in sends a fresh
     // verify link (sendOnSignIn).
     after: createAuthMiddleware(async (ctx) => {
+      // A successful sign-in doesn't count towards its address's limit.
+      await refundSuccessfulAttempt({
+        path: ctx.path,
+        returned: ctx.context.returned,
+        context: ctx.context,
+      });
       if (ctx.path !== "/reset-password") return;
       if (isAPIError(ctx.context.returned)) return;
       const token = ctx.body?.token ?? ctx.query?.token;
@@ -174,19 +227,15 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // Env-driven signup gate (see signup-gate.ts). Fires for both
-        // email/password signup AND a first OAuth sign-in, since both create
-        // a user row. Existing users and the SQL data-migration bypass it.
-        // The thrown message is phrased so the frontend `isWaitlistError()`
-        // maps it to the existing "not allowed" modal.
-        before: async (user: { email: string }, ctx: HookContext) => {
-          assertTeamEmailUsesGoogle(user.email, ctx);
-          const decision = isSignupAllowed(user.email, readSignupGateConfig());
-          if (!decision.allowed) {
-            throw new APIError("FORBIDDEN", {
-              message: decision.reason ?? "Signups are not allowed.",
-            });
-          }
+        // Fires for both email/password signup AND a first OAuth sign-in,
+        // since both create a user row. The SQL data-migration bypasses it.
+        before: async (
+          user: { email: string; emailVerified?: boolean | null },
+          ctx: HookContext,
+        ) => {
+          // Microsoft's first: its refusals carry codes /login explains.
+          assertMicrosoftSignUpAllowed(user, ctx);
+          assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
           if (
             ctx?.path === ADMIN_CREATE_USER_PATH ||
@@ -279,6 +328,9 @@ export const auth = betterAuth({
     },
   },
   advanced: {
+    // Behind a proxy chain the client IP is only resolvable from the hops the
+    // operator lists; without them every such caller shares one rate-limit bucket.
+    ipAddress: { trustedProxies: trustedProxies() },
     database: {
       // Keep UUID ids: platform User rows reuse the auth user id, and all
       // pre-migration ids are Supabase UUIDs.
@@ -409,6 +461,7 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
       sendChangeEmailConfirmation: async ({
         user,
+        newEmail,
         url,
       }: {
         user: { email: string };
@@ -420,6 +473,7 @@ export const auth = betterAuth({
           to: user.email,
           type: "change_email",
           url,
+          newEmail,
         });
       },
     },
@@ -427,6 +481,8 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    ...appleOAuth(),
+    nativeSessionBearer(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
@@ -443,7 +499,8 @@ export const auth = betterAuth({
         // interchangeable during the migration window.
         audience: "authenticated",
         expirationTime: "1h",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
+          sid: session.id,
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },
@@ -462,12 +519,30 @@ async function getAuthContext(): Promise<ResetLinkContext> {
   return auth.$context;
 }
 
-// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
-// before the disposable list, so an admin's domain block keeps its message.
+// Team addresses sign up through Google (team-email-policy.ts), and the
+// env-driven sign-up gate (signup-gate.ts) phrases its message so the
+// frontend `isWaitlistError()` maps it to the existing "not allowed" modal.
+function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
+  assertTeamEmailUsesGoogle(email, ctx);
+  const decision = isSignupAllowed(email, readSignupGateConfig());
+  if (!decision.allowed) {
+    throw new APIError("FORBIDDEN", {
+      code: SIGN_UP_NOT_ALLOWED_CODE,
+      message: decision.reason ?? "Signups are not allowed.",
+    });
+  }
+}
+
+// IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
+// record of an erased, banned account (ban-record.ts) answer before the
+// disposable list, so an admin's block keeps its message.
 async function assertEmailSignUpAllowed(
   email: string,
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
-  await assertNotDisposableEmail(email);
+  await assertNotBannedAddress(email);
+  const dns = sharedLookups();
+  await assertNotDisposableEmail(email, { dns });
+  await assertEmailHasMailServer(email, { dns });
 }
