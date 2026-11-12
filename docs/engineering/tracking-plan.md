@@ -646,6 +646,7 @@ acting as a user sends none.
 | --- | --- | --- | --- | --- |
 | `$feature_flag_called` | browser (posthog-js) | live | set by PostHog | A PostHog flag is read (`useExperiment`). |
 | `chunk_reload_triggered` | browser | live | `surface` (`unhandled_rejection`, `error_boundary`), `path` | Ops signal: a tab on an older build could not load a code chunk after a deploy (`ChunkLoadError`), and the page reloaded once to pick up the current build (`lib/chunk-load-reload.ts`). At most one reload a minute per tab. Not a user action; keep out of funnels. |
+| `dom_call_skipped` | browser | live | `call` (`removeChild`, `insertBefore`), `path` | Ops signal: a page translator had replaced text React rendered, and React's next `removeChild` or `insertBefore` there named a node that was no longer a child, so it was skipped instead of crashing the page (`lib/page-translator-guard.ts`). At most once per page load; carries no page text. Not a user action; keep out of funnels. |
 
 Arms are also stored in the database (`analytics.experiment_assignment`),
 so an experiment can be read in PostHog and Looker alike.

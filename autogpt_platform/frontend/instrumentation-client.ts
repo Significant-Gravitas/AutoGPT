@@ -4,6 +4,7 @@
 
 import { isLoggedRequestFailure } from "@/app/api/mutators/request-failure-log";
 import { reloadOnUnhandledChunkLoadError } from "@/lib/chunk-load-reload";
+import { toleratePageTranslators } from "@/lib/page-translator-guard";
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
@@ -124,6 +125,7 @@ Sentry.init({
 });
 
 reloadOnUnhandledChunkLoadError();
+toleratePageTranslators();
 
 export function onRouterTransitionStart(
   ...args: Parameters<typeof Sentry.captureRouterTransitionStart>
