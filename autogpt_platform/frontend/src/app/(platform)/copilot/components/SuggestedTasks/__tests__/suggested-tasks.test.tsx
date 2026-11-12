@@ -534,6 +534,29 @@ describe("Suggested first tasks on Home — the rows", () => {
     });
   });
 
+  it("moves Start here onto a row whose title a page translator has rewritten", async () => {
+    renderHome();
+    await screen.findByRole("button", { name: removeName(TASKS[0]) });
+
+    // Translators such as Google Translate swap a text node for <font>
+    // elements, leaving React holding a node that is no longer in the page.
+    const title = within(rowOf(TASKS[1])).getByText(textIs(TASKS[1].title));
+    const textNode = Array.from(title.childNodes).find(
+      (node) => node.nodeType === Node.TEXT_NODE,
+    );
+    if (!textNode) throw new Error("No title text node");
+    const font = document.createElement("font");
+    font.textContent = TASKS[1].title;
+    title.replaceChild(font, textNode);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: removeName(TASKS[0]) }),
+    );
+
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(startHere().pill).toEqual([TASKS[1].title]);
+  });
+
   it("shows a started task as a link to its chat, in progress with its owner, with no Remove button", async () => {
     stored[0] = { ...stored[0], state: "sent", session_id: "chat /one?" };
     renderHome();
