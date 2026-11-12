@@ -10,16 +10,36 @@ export const RENDER_UI_PART_TYPE = "tool-render_ui";
 export type UIBlock = NonNullable<UIBlocksResponse["blocks"]>[number];
 export type BlockTone = "neutral" | "positive" | "negative" | "warning";
 
-// A block's type and the list it can't render without. A type missing here is
-// one this tab is too old to know, and it is skipped.
-const REQUIRED_LIST: Record<string, string> = {
-  stats: "items",
-  chart: "series",
-  workflow_diagram: "steps",
-  gallery: "images",
-  timeline: "items",
-  options: "items",
-  table: "rows",
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isObjectList(value: unknown) {
+  return Array.isArray(value) && value.every(isObject);
+}
+
+// What each block's view reads as a list, so a malformed stored block is
+// skipped instead of breaking the cards next to it. A type missing here is
+// one this tab is too old to know, and it is skipped too.
+const BLOCK_CHECKS: Record<
+  string,
+  (block: Record<string, unknown>) => boolean
+> = {
+  stats: (block) => isObjectList(block.items),
+  chart: (block) =>
+    Array.isArray(block.x_labels) &&
+    isObjectList(block.series) &&
+    (block.series as Record<string, unknown>[]).every((series) =>
+      Array.isArray(series.values),
+    ),
+  workflow_diagram: (block) => isObjectList(block.steps),
+  gallery: (block) => isObjectList(block.images),
+  timeline: (block) => isObjectList(block.items),
+  options: (block) => isObjectList(block.items),
+  table: (block) =>
+    Array.isArray(block.columns) &&
+    Array.isArray(block.rows) &&
+    block.rows.every(Array.isArray),
 };
 
 export const TEXT_TONE: Record<BlockTone, Tone> = {
@@ -39,16 +59,13 @@ function toRecord(value: unknown): Record<string, unknown> | null {
       return null;
     }
   }
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+  return isObject(value) ? value : null;
 }
 
 function isRenderable(value: unknown): value is UIBlock {
-  const block = toRecord(value);
-  if (typeof value !== "object" || !block) return false;
-  const list = REQUIRED_LIST[String(block.type)];
-  return Boolean(list) && Array.isArray(block[list]);
+  if (!isObject(value)) return false;
+  const check = BLOCK_CHECKS[String(value.type)];
+  return Boolean(check) && check(value);
 }
 
 export function parseUIBlocks(part: ToolUIPart): UIBlock[] | null {
@@ -59,11 +76,19 @@ export function parseUIBlocks(part: ToolUIPart): UIBlock[] | null {
   return blocks.length > 0 ? blocks : null;
 }
 
+/** What a screen reader hears for a chart: each point with its label. */
 export function getChartSummary(block: ChartBlock) {
-  const lines = block.series.map(
-    (series) => `${series.name}: ${series.values.join(", ")}`,
-  );
-  return [block.title ?? "Chart", ...lines].join(". ");
+  const unit = block.unit ? ` ${block.unit}` : "";
+  const lines = block.series.map((series) => {
+    const points = block.x_labels.map(
+      (label, index) => `${label}: ${series.values[index]}${unit}`,
+    );
+    return `${series.name} — ${points.join(", ")}`;
+  });
+  const note = block.annotation
+    ? [`Note at ${block.annotation.x}: ${block.annotation.label}`]
+    : [];
+  return [block.title ?? "Chart", ...lines, ...note].join(". ");
 }
 
 export function getChartData(block: ChartBlock) {

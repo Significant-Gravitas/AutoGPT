@@ -73,7 +73,7 @@ describe("render_ui cards", () => {
     expect(screen.getByText("New subject lines")).toBeDefined();
     expect(
       screen.getByRole("img", {
-        name: "Replies per week. This month: 14, 17, 28, 37",
+        name: "Replies per week. This month — Wk 1: 14, Wk 2: 17, Wk 3: 28, Wk 4: 37. Note at Wk 3: New subject lines",
       }),
     ).toBeDefined();
     expect(screen.queryByTestId("tool-chain")).toBeNull();
@@ -128,6 +128,40 @@ describe("render_ui cards", () => {
     });
 
     expect(screen.getByText("Runs")).toBeDefined();
+  });
+
+  it("skips a block missing a list its card reads", () => {
+    renderParts({
+      parts: [
+        withBlocks([
+          { type: "table", rows: [["Meetings"]] },
+          { type: "chart", x_labels: ["Wk 1"], series: [{ name: "Runs" }] },
+          { type: "stats", items: [{ label: "Runs", value: "7" }] },
+        ]),
+      ],
+    });
+
+    expect(screen.getByText("Runs")).toBeDefined();
+    expect(screen.queryByText("Meetings")).toBeNull();
+  });
+
+  it("names a timeline item's trouble on screen, not only by colour", () => {
+    renderParts({
+      parts: [
+        withBlocks([
+          {
+            type: "timeline",
+            items: [
+              { title: "Send emails", status: "error" },
+              { title: "Warm up inbox", status: "warning" },
+            ],
+          },
+        ]),
+      ],
+    });
+
+    expect(screen.getByText("Problem")).toBeDefined();
+    expect(screen.getByText("Needs attention")).toBeDefined();
   });
 
   it("renders nothing for output it cannot read", () => {

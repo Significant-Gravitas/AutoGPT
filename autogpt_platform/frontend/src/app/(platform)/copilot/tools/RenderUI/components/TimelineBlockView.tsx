@@ -1,5 +1,6 @@
 import type { TimelineBlock } from "@/app/api/__generated__/models/timelineBlock";
 import { Text } from "@/components/atoms/Text/Text";
+import type { Tone } from "@/components/styles/tones";
 import { cn } from "@/lib/utils";
 import { BlockCard } from "./BlockCard";
 
@@ -17,6 +18,12 @@ const STATUS_LABELS: Record<string, string> = {
   error: "Problem",
 };
 
+// An item in trouble says so on screen too, not only through its dot.
+const VISIBLE_STATUS_TONES: Record<string, Tone> = {
+  warning: "warning",
+  error: "error-strong",
+};
+
 interface Props {
   block: TimelineBlock;
 }
@@ -30,6 +37,7 @@ export function TimelineBlockView({ block }: Props) {
         {block.items.map((item, index) => {
           const status = item.status ?? "idle";
           const statusLabel = STATUS_LABELS[status];
+          const visibleTone = VISIBLE_STATUS_TONES[status];
           return (
             <li key={index} className="relative flex gap-3.5 pb-5 last:pb-0">
               {index < lastIndex ? (
@@ -54,7 +62,7 @@ export function TimelineBlockView({ block }: Props) {
                     className="min-w-0 break-words"
                   >
                     {item.title}
-                    {statusLabel ? (
+                    {statusLabel && !visibleTone ? (
                       <span className="sr-only">, {statusLabel}</span>
                     ) : null}
                   </Text>
@@ -71,6 +79,11 @@ export function TimelineBlockView({ block }: Props) {
                     </span>
                   ) : null}
                 </div>
+                {visibleTone ? (
+                  <Text variant="small-medium" tone={visibleTone}>
+                    {statusLabel}
+                  </Text>
+                ) : null}
                 {item.detail ? (
                   <Text
                     variant="body-tight"

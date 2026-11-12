@@ -25,15 +25,17 @@ interface Props {
 export function WorkflowDiagramBlockView({ block }: Props) {
   return (
     <BlockCard title={block.title}>
-      {/* A column on phones, where four steps side by side would not fit. */}
-      <ol className="flex flex-col sm:flex-row sm:items-stretch">
+      {/* A column on phones, where four steps side by side would not fit.
+          Wider, each step keeps room for its card and arrow, and the row
+          wraps once they no longer fit. */}
+      <ol className="flex flex-col sm:flex-row sm:flex-wrap sm:items-stretch sm:gap-y-2">
         {block.steps.map((step, index) => {
           const status = step.status ?? "idle";
           const statusLabel = STATUS_LABELS[status];
           return (
             <li
               key={index}
-              className="flex min-w-0 flex-col items-stretch sm:flex-1 sm:flex-row sm:items-center"
+              className="flex min-w-0 flex-col items-stretch sm:min-w-36 sm:flex-1 sm:flex-row sm:items-center"
             >
               <div
                 className={cn(
