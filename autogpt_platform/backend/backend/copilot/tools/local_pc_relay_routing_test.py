@@ -5,11 +5,14 @@ import pytest
 
 from backend.copilot.tools import local_pc_relay_routing as relay_routing
 from backend.copilot.tools.local_pc_relay_protocol import (
+    MAX_STATUS_BYTES,
     RelayBacklogExceeded,
     response_stream_key,
+    status_stream_key,
 )
 from backend.copilot.tools.local_pc_relay_routing import RelayResponseRouter
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis
+from backend.copilot.tools.local_pc_relay_transport import STREAM_TTL_SECONDS
 
 
 def _message(
@@ -20,8 +23,23 @@ def _message(
     return {"type": message_type, "id": message_id, "payload": payload or {}}
 
 
+def _status_envelopes(redis: FakeRedis) -> list[dict[str, Any]]:
+    key = status_stream_key("session-1", "connection-1")
+    return [json.loads(fields["envelope"]) for _, fields in redis.streams.get(key, [])]
+
+
+def _status_bytes_held(redis: FakeRedis) -> int:
+    """The bytes of every STATUS frame in any of the fake's streams."""
+    return sum(
+        len(fields["envelope"].encode())
+        for entries in redis.streams.values()
+        for _, fields in entries
+        if json.loads(fields["envelope"])["type"] == "STATUS"
+    )
+
+
 @pytest.mark.asyncio
-async def test_correlated_and_status_frames_use_the_worker_reply_stream() -> None:
+async def test_a_response_uses_its_reply_stream_and_status_the_connection() -> None:
     redis = FakeRedis()
     router = RelayResponseRouter(
         redis, session_id="session-1", connection_id="connection-1"
@@ -34,12 +52,11 @@ async def test_correlated_and_status_frames_use_the_worker_reply_stream() -> Non
     response = _message("FILE_CONTENTS", "request-1", {"content": "ok"})
     await router.route(json.dumps(response), response)
 
-    key = response_stream_key("session-1", "connection-1", reply_id)
-    envelopes = [json.loads(fields["envelope"]) for _, fields in redis.streams[key]]
-    assert [envelope["type"] for envelope in envelopes] == [
-        "STATUS",
-        "FILE_CONTENTS",
-    ]
+    assert _stream_types(redis, reply_id) == ["FILE_CONTENTS"]
+    assert [envelope["id"] for envelope in _status_envelopes(redis)] == ["status-1"]
+    assert redis.expirations[status_stream_key("session-1", "connection-1")] == (
+        STREAM_TTL_SECONDS
+    )
 
 
 @pytest.mark.asyncio
@@ -96,43 +113,99 @@ async def test_expired_request_correlation_is_pruned(
 
 
 @pytest.mark.asyncio
-async def test_status_broadcast_survives_a_reply_stream_nobody_drains(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A worker that finished its request and stopped reading leaves a reply
-    stream that fills up. STATUS is advisory, so that full stream must not end
-    the shim connection for everyone else, and stops receiving broadcasts."""
+async def test_status_is_held_once_however_many_requests_the_connection_answered() -> (
+    None
+):
+    """A machine request opens a reply stream, reads its answer and stops
+    reading. STATUS needs no request, so copying it into every recent reply
+    stream held each frame once per answered request, in streams nobody
+    reads. The connection holds one STATUS, the latest."""
     redis = FakeRedis()
     router = RelayResponseRouter(
         redis, session_id="session-1", connection_id="connection-1"
     )
-    finished, live = "a" * 32, "b" * 32
-    router.register_request(_message("FILE_READ", "request-1"), finished)
-    done = _message("FILE_CONTENTS", "request-1", {"content": "ok"})
-    await router.route(json.dumps(done), done)
-    router.register_request(_message("FILE_READ", "request-2"), live)
+    answered = [f"{index:032x}" for index in range(25)]
+    for index, reply_id in enumerate(answered):
+        router.register_request(
+            _message("DIRECTORY_LIST_REQUEST", f"request-{index}"), reply_id
+        )
+        done = _message("DIRECTORY_LIST_RESPONSE", f"request-{index}", {"entries": []})
+        await router.route(json.dumps(done), done)
+    outstanding = "f" * 32
+    router.register_request(_message("FILE_READ", "request-open"), outstanding)
 
-    full_key = response_stream_key("session-1", "connection-1", finished)
-    attempts: list[str] = []
-    real_append = relay_routing.append_response
+    frames = [
+        json.dumps(
+            _message("STATUS", f"status-{capacity}", {"pending_capacity": capacity})
+            | {"pad": "x" * 4096}
+        )
+        for capacity in (0, 1, 3)
+    ]
+    for raw in frames:
+        await router.route(raw, json.loads(raw))
 
-    async def append(redis_: Any, key: str, raw: str) -> None:
-        attempts.append(key)
-        if key == full_key:
-            raise RelayBacklogExceeded("full")
-        await real_append(redis_, key, raw)
+    assert _status_bytes_held(redis) == len(frames[-1].encode())
+    [kept] = _status_envelopes(redis)
+    assert kept["payload"] == {"pending_capacity": 3}
+    for reply_id in answered:
+        assert _stream_types(redis, reply_id) == ["DIRECTORY_LIST_RESPONSE"]
+    assert _stream_types(redis, outstanding) == []
 
-    monkeypatch.setattr(relay_routing, "append_response", append)
 
-    status = _message("STATUS", "status-1", {"pending_capacity": 2})
-    await router.route(json.dumps(status), status)
-    await router.route(json.dumps(status), status)
+def _status_of_size(size: int, character: str = "x") -> str:
+    """A STATUS frame of exactly ``size`` UTF-8 bytes."""
+    empty = json.dumps(_message("STATUS", "status-big", {"pad": ""}))
+    width = len(character.encode())
+    assert (size - len(empty)) % width == 0
+    padded = _message(
+        "STATUS", "status-big", {"pad": character * ((size - len(empty)) // width)}
+    )
+    raw = json.dumps(padded, ensure_ascii=False)
+    assert len(raw.encode()) == size
+    return raw
 
-    live_key = response_stream_key("session-1", "connection-1", live)
-    assert [
-        json.loads(fields["envelope"])["type"] for _, fields in redis.streams[live_key]
-    ] == ["STATUS", "STATUS"]
-    assert attempts.count(full_key) == 1
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "raw",
+    [
+        _status_of_size(MAX_STATUS_BYTES + 1),
+        # Fewer characters than the limit, more bytes.
+        _status_of_size(MAX_STATUS_BYTES + 2, "é"),
+    ],
+    ids=["one-byte-characters", "two-byte-characters"],
+)
+async def test_a_status_frame_over_the_limit_is_dropped_and_the_connection_carries_on(
+    raw: str,
+) -> None:
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    reply_id = "a" * 32
+    router.register_request(_message("FILE_READ", "request-1"), reply_id)
+    earlier = _message("STATUS", "status-1", {"pending_capacity": 1})
+    await router.route(json.dumps(earlier), earlier)
+
+    await router.route(raw, json.loads(raw))
+    response = _message("FILE_CONTENTS", "request-1", {"content": "ok"})
+    await router.route(json.dumps(response), response)
+
+    assert [envelope["id"] for envelope in _status_envelopes(redis)] == ["status-1"]
+    assert _stream_types(redis, reply_id) == ["FILE_CONTENTS"]
+
+
+@pytest.mark.asyncio
+async def test_a_status_frame_at_the_limit_is_kept() -> None:
+    redis = FakeRedis()
+    router = RelayResponseRouter(
+        redis, session_id="session-1", connection_id="connection-1"
+    )
+    raw = _status_of_size(MAX_STATUS_BYTES)
+
+    await router.route(raw, json.loads(raw))
+
+    assert [envelope["id"] for envelope in _status_envelopes(redis)] == ["status-big"]
 
 
 def _full_stream(monkeypatch: pytest.MonkeyPatch, full_keys: set[str]) -> list[str]:

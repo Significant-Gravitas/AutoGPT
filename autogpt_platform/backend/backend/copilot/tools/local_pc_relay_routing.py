@@ -8,6 +8,7 @@ from time import monotonic, time
 from typing import Any
 
 from .local_pc_relay_protocol import (
+    MAX_STATUS_BYTES,
     NONTERMINAL_RESPONSE_TYPES,
     PLATFORM_REQUEST_TYPES,
     RelayBacklogExceeded,
@@ -15,12 +16,12 @@ from .local_pc_relay_protocol import (
     is_reply_id,
     register_pending_request,
     response_stream_key,
+    status_stream_key,
     validate_envelope,
     validate_response_correlation,
 )
-from .local_pc_relay_transport import append_response
+from .local_pc_relay_transport import append_response, append_stream_envelope
 
-_REPLY_ACTIVITY_SECONDS = 300.0
 _REQUEST_CORRELATION_SECONDS = 15 * 60.0
 _MAX_PENDING_REQUESTS = 256
 _MAX_RECORDING_OWNERS = 32
@@ -35,8 +36,8 @@ class RelayResponseRouter:
         self._connection_id = connection_id
         self._pending: dict[str, RelayRequestTarget] = {}
         self._pending_activity: dict[str, float] = {}
-        self._reply_activity: dict[str, float] = {}
         self._recording_owners: dict[str, str] = {}
+        self._dropped_status_frames = 0
         # Streaming requests that lost a chunk to a full reply stream: the rest
         # of their stream is dropped too, so the worker never reads a gap.
         self._abandoned: set[str] = set()
@@ -80,10 +81,8 @@ class RelayResponseRouter:
             raise RelayBacklogExceeded(
                 "Local executor has too many outstanding relay requests"
             )
-        target = register_pending_request(message, reply_id, self._pending)
-        now = monotonic()
-        self._pending_activity[message["id"]] = now
-        self._reply_activity[target.reply_id] = now
+        register_pending_request(message, reply_id, self._pending)
+        self._pending_activity[message["id"]] = monotonic()
 
     def remove_request(self, message_id: str) -> None:
         self._pending.pop(message_id, None)
@@ -100,7 +99,7 @@ class RelayResponseRouter:
                 self._update_recording_owner(message, target)
             return
         if message["type"] == "STATUS":
-            await self._broadcast_status(raw)
+            await self._publish_status(raw)
             return
         await self._route_recording_step(raw, message)
 
@@ -129,7 +128,6 @@ class RelayResponseRouter:
         try:
             await append_response(self._redis, key, raw)
         except RelayBacklogExceeded:
-            self._reply_activity.pop(reply_id, None)
             logger.warning(
                 "Dropping a Local PC response for a full reply stream %s",
                 reply_id[:8],
@@ -137,24 +135,36 @@ class RelayResponseRouter:
             return False
         return True
 
-    async def _broadcast_status(self, raw: str) -> None:
-        cutoff = monotonic() - _REPLY_ACTIVITY_SECONDS
-        active = {
-            reply_id
-            for reply_id, last_seen in self._reply_activity.items()
-            if last_seen >= cutoff
-        }
-        active.update(target.reply_id for target in self._pending.values())
-        active.update(self._recording_owners.values())
-        self._reply_activity = {
-            reply_id: last_seen
-            for reply_id, last_seen in self._reply_activity.items()
-            if reply_id in active
-        }
-        # A full stream drops out of _reply_activity, so a worker that stopped
-        # reading and has nothing pending stops getting STATUS.
-        for reply_id in active:
-            await self._append_or_drop(raw, reply_id)
+    async def _publish_status(self, raw: str) -> None:
+        """Keep the shim's latest STATUS once for the whole connection.
+
+        Every transport on the connection reads this one entry beside its own
+        reply stream, so a worker holding back a request until the shim has a
+        free slot hears about it with nothing outstanding. Copying the frame
+        into each recent reply stream instead also filled the streams of
+        requests that had been answered and were read no more: one frame was
+        held in Redis as many times as the connection had recent requests.
+        """
+        # The character count is a lower bound on the byte count, so a long
+        # frame is refused without encoding it.
+        if len(raw) > MAX_STATUS_BYTES or len(raw.encode()) > MAX_STATUS_BYTES:
+            self._dropped_status_frames += 1
+            # Warn once per connection: a shim that sends one oversized frame
+            # sends another every 30s.
+            log = logger.warning if self._dropped_status_frames == 1 else logger.debug
+            log(
+                "Dropping a Local PC STATUS frame over %d bytes (%d dropped on "
+                "this connection)",
+                MAX_STATUS_BYTES,
+                self._dropped_status_frames,
+            )
+            return
+        await append_stream_envelope(
+            self._redis,
+            status_stream_key(self._session_id, self._connection_id),
+            raw,
+            maxlen=1,
+        )
 
     async def _route_recording_step(self, raw: str, message: dict[str, Any]) -> None:
         recording_id = message["payload"].get("recording_id")
