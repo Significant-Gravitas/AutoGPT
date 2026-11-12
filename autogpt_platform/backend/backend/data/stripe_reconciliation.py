@@ -240,7 +240,10 @@ async def _reconcile_one(
             summary.unchanged += 1
             return
         if not pro_candidate:
-            await set_subscription_tier(user.id, target_tier)
+            # No person sync per corrected user: a run that corrects many at
+            # once would fan out one Stripe call each. The daily lifecycle
+            # sweep covers every user here (they all have a customer).
+            await set_subscription_tier(user.id, target_tier, track_lifecycle=False)
     except Exception:
         summary.errors += 1
         logger.exception(

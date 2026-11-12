@@ -61,6 +61,10 @@ from backend.util.llm.provider_billing import (
     report_provider_out_of_credits,
 )
 from backend.util.llm.providers import timeout_error
+from backend.util.llm.request_too_large import (
+    RequestTooLargeError,
+    is_request_too_large,
+)
 from backend.util.llm.saturation import track_llm_call
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
@@ -74,6 +78,25 @@ if TYPE_CHECKING:
 settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
+
+# str.strip() keeps U+FEFF, which the builder's JavaScript trim() removes.
+_KEY_PADDING = re.compile(r"^[\s\ufeff]+|[\s\ufeff]+$")
+
+
+def strip_prompt_value_keys(values: dict[str, str]) -> dict[str, str]:
+    """Strip whitespace around prompt-value keys so `{{name}}` finds `name `.
+
+    A key that is already clean wins over one that only matches once stripped;
+    among padded keys that strip to the same name, the first one wins. A key
+    that is only whitespace is dropped.
+    """
+    stripped: dict[str, str] = {}
+    for key, value in values.items():
+        clean = _KEY_PADDING.sub("", key)
+        if clean and (clean == key or clean not in values):
+            stripped.setdefault(clean, value)
+    return stripped
+
 
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
@@ -349,6 +372,10 @@ async def llm_call(
                 raise ProviderUnavailableError() from e
             if is_prompt_refused(e):
                 raise PromptRefusedError() from e
+            if is_request_too_large(e):
+                raise RequestTooLargeError(
+                    llm_model.metadata.provider_name, str(e)
+                ) from e
             raise
 
 
@@ -676,8 +703,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         logger.debug(f"Calling LLM with input data: {input_data}")
         prompt = [json.to_dict(p) for p in input_data.conversation_history or [] if p]
 
-        values = input_data.prompt_values
-        if values:
+        if input_data.prompt_values:
+            values = strip_prompt_value_keys(input_data.prompt_values)
             input_data.prompt = await fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = await fmt.format_string(
                 input_data.sys_prompt, values
@@ -716,7 +743,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 return f"JSON decode error: {e}"
 
         error_feedback_message = ""
-        refusal: PromptRefusedError | None = None
+        refusal: PromptRefusedError | RequestTooLargeError | None = None
         llm_model = input_data.model
         total_provider_cost: float | None = None
 
@@ -859,8 +886,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     # account stays empty however many times we ask.
                     error_feedback_message = str(e)
                     break
-                if isinstance(e, PromptRefusedError):
-                    # A judgement on the prompt itself, like the user errors below.
+                if isinstance(e, (PromptRefusedError, RequestTooLargeError)):
+                    # A judgement on the prompt itself, like the user errors below;
+                    # the same request is refused the same way every time.
                     refusal = e
                     break
                 # Invalid models cannot recover on retry; other 400s can still

@@ -112,6 +112,7 @@ async def test_a_streamed_errors_code_reaches_the_turns_completion() -> None:
         "sess-1",
         error_message="Usage limit reached.",
         error_code="usage_limit",
+        skip_error_publish=False,
         turn_id="turn-1",
     )
     assert _what_a_bot_user_is_told(mark_completed) is PROVIDER_LIMIT

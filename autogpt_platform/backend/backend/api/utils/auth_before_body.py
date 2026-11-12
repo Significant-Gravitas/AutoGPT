@@ -47,12 +47,11 @@ async def _check_token(request: Request) -> None:
     browser with an expired token refreshes it and retries). Answering with
     the body unread can reset the connection before the client reads it.
 
-    A valid token is verified again when the route resolves its dependencies,
-    which go on to check bans, organizations and impersonation. That second
-    check is deliberate: this one only keeps a refused request from parsing
-    or spooling its body, it doesn't replace the route's own."""
+    Token and session validation are reused within this request. The route's
+    dependencies still check bans, organizations and impersonation; this early
+    check only keeps a refused request from parsing or spooling its body."""
     try:
-        await get_jwt_payload(await bearer_jwt_auth(request))
+        await get_jwt_payload(request, await bearer_jwt_auth(request))
     except Exception:
         # Refused, or failed unexpectedly: either way the body is thrown away
         # before the error goes out.

@@ -244,7 +244,7 @@ async def test_workspace_file_round_trip(setup_test_data):
     from backend.copilot.tools.workspace_files import WorkspaceFileContentResponse
 
     assert isinstance(read_resp, WorkspaceFileContentResponse), read_resp.message
-    decoded = base64.b64decode(read_resp.content_base64).decode()
+    decoded = read_resp.content
     assert decoded == "Hello from e2e test!"
 
     # ---- Read with save_to_path ----
@@ -308,7 +308,7 @@ async def test_read_workspace_file_with_offset_and_length(setup_test_data):
         user_id=user.id, session=session, file_id=file_id, offset=100, length=50
     )
     assert isinstance(resp, WorkspaceFileContentResponse), resp.message
-    decoded = base64.b64decode(resp.content_base64).decode()
+    decoded = resp.content
     assert decoded == content[100:150]
     assert "100" in resp.message
     assert "2,600" in resp.message  # total chars (comma-formatted)
@@ -318,7 +318,7 @@ async def test_read_workspace_file_with_offset_and_length(setup_test_data):
         user_id=user.id, session=session, file_id=file_id, offset=2500
     )
     assert isinstance(resp2, WorkspaceFileContentResponse)
-    decoded2 = base64.b64decode(resp2.content_base64).decode()
+    decoded2 = resp2.content
     assert decoded2 == content[2500:]
     assert len(decoded2) == 100
 
@@ -327,7 +327,7 @@ async def test_read_workspace_file_with_offset_and_length(setup_test_data):
         user_id=user.id, session=session, file_id=file_id, offset=9999, length=10
     )
     assert isinstance(resp3, WorkspaceFileContentResponse)
-    decoded3 = base64.b64decode(resp3.content_base64).decode()
+    decoded3 = resp3.content
     assert decoded3 == ""
 
     # Cleanup
@@ -397,7 +397,7 @@ class TestReadLocalToolResult:
         try:
             result = _read_local_tool_result(path, 0, None, "s1")
             assert isinstance(result, WorkspaceFileContentResponse)
-            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            decoded = result.content
             assert decoded == "hello world"
             assert "text/plain" in result.mime_type
         finally:
@@ -412,7 +412,7 @@ class TestReadLocalToolResult:
         try:
             result = _read_local_tool_result(path, 3, 4, "s1")
             assert isinstance(result, WorkspaceFileContentResponse)
-            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            decoded = result.content
             assert decoded == "DEFG"
         finally:
             _current_project_dir.reset(token)
@@ -427,6 +427,7 @@ class TestReadLocalToolResult:
         try:
             result = _read_local_tool_result(path, 0, None, "s1")
             assert isinstance(result, WorkspaceFileContentResponse)
+            assert result.content is None and result.content_base64 is not None
             decoded = base64.b64decode(result.content_base64)
             assert decoded == binary_data
             assert "binary" in result.message
@@ -480,7 +481,7 @@ class TestReadLocalToolResult:
         try:
             result = _read_local_tool_result(path, 999, 10, "s1")
             assert isinstance(result, WorkspaceFileContentResponse)
-            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            decoded = result.content
             assert decoded == ""
         finally:
             _current_project_dir.reset(token)
@@ -494,7 +495,7 @@ class TestReadLocalToolResult:
         try:
             result = _read_local_tool_result(path, 2, 0, "s1")
             assert isinstance(result, WorkspaceFileContentResponse)
-            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            decoded = result.content
             assert decoded == ""
         finally:
             _current_project_dir.reset(token)
@@ -539,7 +540,7 @@ class TestReadLocalToolResult:
                 path, 0, None, "s1", sdk_cwd="/tmp/copilot-test"
             )
             assert isinstance(result, WorkspaceFileContentResponse)
-            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            decoded = result.content
             assert decoded == "content"
         finally:
             _current_project_dir.reset(token)
@@ -553,7 +554,7 @@ class TestReadLocalToolResult:
         try:
             result = _read_local_tool_result(path, 5, None, "s1")
             assert isinstance(result, WorkspaceFileContentResponse)
-            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            decoded = result.content
             assert decoded == "56789"
         finally:
             _current_project_dir.reset(token)
@@ -604,7 +605,7 @@ async def test_read_workspace_file_falls_back_to_local_tool_result(setup_test_da
             f"Expected fallback to local read, got {type(result).__name__}: "
             f"{getattr(result, 'message', '')}"
         )
-        decoded = base64.b64decode(result.content_base64).decode("utf-8")
+        decoded = result.content
         assert decoded == "fallback content"
         mock_resolve.assert_awaited_once()
     finally:
@@ -658,7 +659,8 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
     patched_local.assert_not_called()
     # Normal workspace path must have produced a content response.
     assert isinstance(result, WorkspaceFileContentResponse)
-    assert base64.b64decode(result.content_base64) == fake_content
+    assert result.content == fake_content.decode()
+    assert result.content_base64 is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -734,6 +736,52 @@ class TestWriteWorkspaceFileToolWorkingFiles:
 
         assert draft is not None
         assert draft.title == "sticker-catalog.json"
+
+
+class TestWriteWorkspaceFileToolReplacedFile:
+    """The result names the file an overwrite replaced, so the panel can follow."""
+
+    async def _write(self, replaced_file_id: str | None) -> WorkspaceWriteResponse:
+        session = make_session("user-1")
+        record = WorkspaceFile(
+            id="new-id",
+            workspace_id="ws-1",
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            name="report.md",
+            path=f"/sessions/{session.session_id}/report.md",
+            storage_path="local://new-id",
+            mime_type="text/markdown",
+            size_bytes=2,
+            replaced_file_id=replaced_file_id,
+        )
+        mock_manager = AsyncMock()
+        mock_manager.write_file = AsyncMock(return_value=record)
+        with patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ):
+            result = await WriteWorkspaceFileTool()._execute(
+                user_id="user-1",
+                session=session,
+                filename="report.md",
+                content="v2",
+                overwrite=True,
+            )
+        assert isinstance(result, WorkspaceWriteResponse), result.message
+        return result
+
+    async def test_an_overwrite_names_the_replaced_file(self):
+        output = json.loads(
+            (await self._write("old-id")).model_dump_json(exclude_none=True)
+        )
+        assert output["replaced_file_id"] == "old-id"
+
+    async def test_a_new_file_adds_nothing_to_the_output(self):
+        output = json.loads(
+            (await self._write(None)).model_dump_json(exclude_none=True)
+        )
+        assert "replaced_file_id" not in output
 
 
 class TestWriteWorkspaceFileToolErrorHandling:
@@ -1091,8 +1139,7 @@ async def test_a_ranged_read_loads_only_the_bytes_it_can_return(
 
     assert isinstance(resp, WorkspaceFileContentResponse), resp.message
     manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
-    sliced = base64.b64decode(resp.content_base64).decode()
-    assert len(sliced) == (length if length is not None else 30_000)
+    assert resp.content == "x" * (length if length is not None else 30_000)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1132,13 +1179,23 @@ async def test_an_external_ranged_read_reads_no_further_than_its_bound(
 
     assert isinstance(resp, WorkspaceFileContentResponse), resp.message
     manager.read_file_head_by_id.assert_awaited_once_with("f-1", reads)
-    assert len(base64.b64decode(resp.content_base64).decode()) == returned
+    assert resp.content == "x" * returned
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_external_ranged_read_comes_back_whole_in_one_tool_result():
-    """A slice past what a result keeps came back cut in the middle, base64 and all."""
-    content = ("é" * 1_000_000).encode()
+@pytest.mark.parametrize(
+    "char, kept",
+    [
+        ("é", 30_000),  # 60,000 bytes
+        ('"', 40_000),  # 80,000 characters escaped
+        ("\x01", 13_333),  # six characters each, escaped
+    ],
+)
+async def test_an_external_ranged_read_comes_back_whole_in_one_tool_result(
+    char: str, kept: int
+):
+    """A slice past what a result keeps came back cut in the middle."""
+    content = (char * 1_000_000).encode()
     manager = AsyncMock()
     manager.get_file_info = AsyncMock(return_value=_text_file(len(content)))
     manager.read_file_head_by_id = AsyncMock(
@@ -1156,14 +1213,13 @@ async def test_an_external_ranged_read_comes_back_whole_in_one_tool_result():
         )
 
     # What the tool result keeps of it, as BaseTool.execute builds it.
-    kept = StreamToolOutputAvailable(
+    result = StreamToolOutputAvailable(
         toolCallId="tc-1", output=resp.model_dump_json(exclude_none=True)
     )
-    assert isinstance(kept.output, str)
-    payload = json.loads(kept.output)
-    sliced = base64.b64decode(payload["content_base64"]).decode()
-    assert sliced == "é" * 30_000
-    assert "Read chars 0–30000 " in payload["message"]
+    assert isinstance(result.output, str)
+    payload = json.loads(result.output)
+    assert payload["content"] == char * kept
+    assert f"Read chars 0–{kept} " in payload["message"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1208,6 +1264,57 @@ async def test_a_large_text_files_preview_reads_only_its_head():
         )
 
     manager.read_file_head_by_id.assert_awaited_once_with("f-1", 501)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_text_file_that_is_not_utf8_comes_back_whole_as_base64():
+    """Decoding it as text would replace the bytes the model may need to recover."""
+    raw = "café, naïve".encode("latin-1")
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(raw)))
+    manager.read_file_by_id = AsyncMock(return_value=raw)
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1", session=make_session("user-1"), file_id="f-1"
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    assert resp.content is None and resp.content_base64 is not None
+    assert base64.b64decode(resp.content_base64) == raw
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("external_caller, as_text", [(False, False), (True, True)])
+async def test_a_whole_read_too_long_once_escaped_comes_back_as_base64(
+    external_caller: bool, as_text: bool
+):
+    """25,000 quotes escape to 50,000 characters: past what an internal result
+    keeps inline, so as text it was saved again as a preview."""
+    raw = ('"' * 25_000).encode()
+    manager = AsyncMock()
+    manager.get_file_info = AsyncMock(return_value=_text_file(len(raw)))
+    manager.read_file_by_id = AsyncMock(return_value=raw)
+    session = make_session("user-1")
+    session.external_caller = external_caller
+
+    with patch(
+        "backend.copilot.tools.workspace_files.get_workspace_manager",
+        AsyncMock(return_value=manager),
+    ):
+        resp = await ReadWorkspaceFileTool()._execute(
+            user_id="user-1", session=session, file_id="f-1"
+        )
+
+    assert isinstance(resp, WorkspaceFileContentResponse), resp.message
+    if as_text:
+        assert resp.content == raw.decode() and resp.content_base64 is None
+    else:
+        assert resp.content is None
+        assert base64.b64decode(resp.content_base64 or "") == raw
 
 
 def _text_file(size_bytes: int) -> WorkspaceFile:
@@ -1282,12 +1389,14 @@ class TestReadingASpilledGoogleOutput:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.parametrize("character", ["x", "é"])
+# '"' is twice as long once escaped as JSON; 20,000 characters fit one read.
+@pytest.mark.parametrize("character", ["x", "é", '"'])
+@pytest.mark.parametrize("size", [20_000, 35_000])
 @pytest.mark.parametrize("source", ["workspace", "local"])
 async def test_workspace_windows_stay_readable_without_another_saved_preview(
-    character, source, tmp_path
+    character, size, source, tmp_path
 ):
-    content = character * 35_000
+    content = character * size
     raw = content.encode()
     manager = AsyncMock()
     manager.get_file_info.return_value = _text_file(len(raw))
@@ -1326,7 +1435,7 @@ async def test_workspace_windows_stay_readable_without_another_saved_preview(
             )
             persist.assert_not_awaited()
             payload = json.loads(result.output)
-            chunk = base64.b64decode(payload["content_base64"]).decode()
+            chunk = payload["content"]
             assert chunk
             assert len(result.output) < 45_000
             chunks.append(chunk)

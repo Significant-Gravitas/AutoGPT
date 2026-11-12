@@ -20,6 +20,8 @@ export interface ExpertIdentity {
   readOnlyReason: ExpertReadOnlyReason | null;
   /** The approval mode a new chat with this expert starts on. */
   autopilotMode?: AutopilotMode | null;
+  /** When they joined the team, where the roster says. */
+  createdAt?: Date | null;
 }
 
 export type ExpertIdentityMap = Map<string, ExpertIdentity>;
@@ -64,6 +66,14 @@ export function resolveExpertIdentity(
   };
 }
 
+// Typed as a Date, but only the response transformer makes it one, and only
+// for a Z-suffixed string; read either, and drop what doesn't parse.
+function joinedAt(value: Date | string | null | undefined): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /**
  * Identity map for expert-scoped chat sessions.
  *
@@ -104,6 +114,7 @@ export function useExpertMap() {
       isArchived: expert.is_archived,
       readOnlyReason: expert.is_archived ? ("fired" as const) : null,
       autopilotMode: expert.autopilot_mode ?? null,
+      createdAt: joinedAt(expert.created_at),
     }));
     const activeExperts = identities.filter((expert) => !expert.isArchived);
     return {
@@ -127,10 +138,15 @@ export function useExpertMap() {
       : EMPTY_IDS,
     isLoadingExperts: expertsQuery.isFetching,
     hasExpertsErrored: expertsQuery.isError && !expertsQuery.isFetching,
+    // The last read failed, and stays so while a retry is in flight.
+    isExpertsError: expertsQuery.isError,
     // Settled = success OR error. resolveExpertIdentity keys off this so an
     // errored roster fetch fails closed (read-only) instead of open.
     hasExpertsSettled:
       !expertsQuery.isFetching &&
       (expertsQuery.isSuccess || expertsQuery.isError),
+    // The roster has answered once (a background refetch keeps it true):
+    // until then nobody can be told apart from "not on the team".
+    hasExpertsLoaded: expertsQuery.isSuccess || expertsQuery.isError,
   };
 }

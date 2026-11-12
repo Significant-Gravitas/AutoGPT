@@ -79,6 +79,10 @@ class Flag(str, Enum):
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
+    # Offers Otto the render_ui tool. The chat draws stored cards either way,
+    # so turning this off never breaks an old conversation.
+    COPILOT_VISUAL_ANSWERS = "copilot-visual-answers"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — per-flag targeting natively
@@ -159,6 +163,13 @@ class Flag(str, Enum):
     # locked offer is never routable.  Off by default so the upsell reaches
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
+
+    # Mirror of the frontend `self-serve-account-deletion` flag. Gates
+    # deleting an account from Settings > Account and the paywall: the
+    # deletion and feedback routes 404 when off. Stays off until the data
+    # erasure routine (SECRT-2854) runs in production, since a closed
+    # account is only erased by it. Fail-closed (default False).
+    SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion"
 
 
 def initialize_feature_flags() -> None:

@@ -28,6 +28,8 @@ from backend.copilot.graphiti.context_marker import (
 from backend.copilot.model import ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.copilot.stream_registry import CANCELLED_MESSAGE
+from backend.copilot.turn_tracing import TurnTrace
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
 from .codex_compat_gateway import CodexAnthropicGateway
@@ -378,16 +380,13 @@ class TestPromptSupplement:
 class TestCleanupSdkToolResults:
     """Tests for _cleanup_sdk_tool_results orchestration and sweep rate-limiting."""
 
-    # All valid cwds must start with /tmp/copilot- (the _SDK_CWD_PREFIX).
-    _CWD_PREFIX = "/tmp/copilot-"
-
     @pytest.mark.asyncio
     async def test_removes_cwd_directory(self):
         """Cleanup removes the session working directory."""
 
-        from .service import _cleanup_sdk_tool_results
+        from .service import _cleanup_sdk_tool_results, _make_sdk_cwd
 
-        cwd = "/tmp/copilot-test-cleanup-remove"
+        cwd = _make_sdk_cwd(f"test-cleanup-remove-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
 
         with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
@@ -404,9 +403,9 @@ class TestCleanupSdkToolResults:
 
         import backend.copilot.sdk.service as svc_mod
 
-        from .service import _cleanup_sdk_tool_results
+        from .service import _cleanup_sdk_tool_results, _make_sdk_cwd
 
-        cwd = "/tmp/copilot-test-sweep-elapsed"
+        cwd = _make_sdk_cwd(f"test-sweep-elapsed-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
 
         with patch(
@@ -425,9 +424,9 @@ class TestCleanupSdkToolResults:
 
         import backend.copilot.sdk.service as svc_mod
 
-        from .service import _cleanup_sdk_tool_results
+        from .service import _cleanup_sdk_tool_results, _make_sdk_cwd
 
-        cwd = "/tmp/copilot-test-sweep-ratelimit"
+        cwd = _make_sdk_cwd(f"test-sweep-ratelimit-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
 
         with patch(
@@ -462,9 +461,9 @@ class TestCliTmpdir:
     async def test_cli_tmpdir_is_private_and_removed_with_the_cwd(self):
         import backend.copilot.sdk.service as svc_mod
 
-        from .service import _cleanup_sdk_tool_results, _make_cli_tmpdir
+        from .service import _cleanup_sdk_tool_results, _make_cli_tmpdir, _make_sdk_cwd
 
-        cwd = f"/tmp/copilot-test-cli-tmpdir-{uuid.uuid4().hex}"
+        cwd = _make_sdk_cwd(f"test-cli-tmpdir-{uuid.uuid4().hex}")
         os.makedirs(cwd, exist_ok=True)
         tmpdir = _make_cli_tmpdir(cwd)
         assert os.path.dirname(tmpdir) == os.path.dirname(cwd)
@@ -2258,6 +2257,37 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in assistant_msgs]
         assert STREAM_INCOMPLETE_MARKER in contents
         assert STOPPED_BY_USER_MARKER not in contents
+
+    @pytest.mark.asyncio
+    async def test_a_hangup_ends_the_turn_failed(self):
+        """The notice is all the turn has in place of a reply, so the turn's
+        outcome is failed, under the notice's code (``turn_tracing``)."""
+        ctx = self._ctx()
+        state = self._state()
+        turn = TurnTrace(MagicMock())
+
+        async def empty_iter(_client, wake=None, tool_display_wake=None):
+            if False:
+                yield None  # pragma: no cover
+
+        fake_client = MagicMock()
+        fake_client.query = AsyncMock()
+        fake_sdk_client = MagicMock()
+        fake_sdk_client.__aenter__ = AsyncMock(return_value=fake_client)
+        fake_sdk_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.ClaudeSDKClient",
+                return_value=fake_sdk_client,
+            ),
+            patch("backend.copilot.sdk.service._iter_sdk_messages", new=empty_iter),
+        ):
+            async for ev in _run_stream_attempt(ctx, state):
+                turn.observe(ev)
+        turn.set_outcome(None, CANCELLED_MESSAGE)
+
+        assert (turn.outcome, turn.error_code) == ("failed", "stream_incomplete")
 
     @pytest.mark.asyncio
     async def test_ended_with_stream_error_persists_stream_error_marker(self):

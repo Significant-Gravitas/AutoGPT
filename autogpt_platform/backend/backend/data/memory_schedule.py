@@ -12,8 +12,9 @@ and matches on both, so a caller only ever reaches rows of the user it names.
 The listings at the bottom are unscoped on purpose: the scheduler's cron
 reconcile pages through every row over the DatabaseManager RPC
 (``list_scope_schedules``) and asks which owners of an account cron with no
-row still exist (``existing_user_ids``), and the backfill's own listings are
-not exposed there.
+row still exist (``existing_user_ids``), its community sweep reads the scopes
+due a rebuild (``list_due_community_scopes``), and the backfill's own listings
+are not exposed there.
 """
 
 from collections.abc import Sequence
@@ -39,7 +40,6 @@ class MemoryScopeSchedule(BaseModel):
     expert_id: str | None
     timezone: str
     state: MemoryScopeScheduleState
-    community_job_id: str | None
     nightly_job_id: str | None
     learning_job_id: str | None
     last_nightly_run_at: datetime | None
@@ -55,7 +55,6 @@ class MemoryScopeSchedule(BaseModel):
             expert_id=row.expertId,
             timezone=row.timezone,
             state=row.state,
-            community_job_id=row.communityJobId,
             nightly_job_id=row.nightlyJobId,
             learning_job_id=row.learningJobId,
             last_nightly_run_at=row.lastNightlyRunAt,
@@ -129,7 +128,6 @@ async def record_scope_jobs(
     scope_key: str,
     *,
     user_timezone: str,
-    community_job_id: str | None,
     nightly_job_id: str | None,
     learning_job_id: str | None,
 ) -> bool:
@@ -152,7 +150,6 @@ async def record_scope_jobs(
         },
         data={
             "timezone": user_timezone,
-            "communityJobId": community_job_id,
             "nightlyJobId": nightly_job_id,
             "learningJobId": learning_job_id,
         },
@@ -183,7 +180,6 @@ async def set_scope_state(
         where["OR"] = [{"state": from_state} for from_state in only_from]
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = {"state": state}
     if state != MemoryScopeScheduleState.ACTIVE:
-        data["communityJobId"] = None
         data["nightlyJobId"] = None
         data["learningJobId"] = None
     updated = await prisma.models.MemoryScopeSchedule.prisma().update_many(
@@ -196,10 +192,6 @@ async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
     """Drop ``job_id`` from the scope's row once the job itself is gone, so
     the next ``ensure_scope_scheduled`` registers it again."""
     table = prisma.models.MemoryScopeSchedule.prisma()
-    community = await table.update_many(
-        where={"scopeKey": scope_key, "userId": user_id, "communityJobId": job_id},
-        data={"communityJobId": None},
-    )
     nightly = await table.update_many(
         where={"scopeKey": scope_key, "userId": user_id, "nightlyJobId": job_id},
         data={"nightlyJobId": None},
@@ -208,11 +200,12 @@ async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
         where={"scopeKey": scope_key, "userId": user_id, "learningJobId": job_id},
         data={"learningJobId": None},
     )
-    return community + nightly + learning > 0
+    return nightly + learning > 0
 
 
 async def record_scope_run(user_id: str, scope_key: str, kind: ScopeRunKind) -> bool:
-    """Stamp the time the scope's nightly or community job last ran cleanly."""
+    """Stamp the time the scope's nightly job last ran cleanly, or the
+    community sweep last took it."""
     now = datetime.now(timezone.utc)
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = (
         {"lastNightlyRunAt": now} if kind == "nightly" else {"lastCommunityRunAt": now}
@@ -260,6 +253,38 @@ async def list_active_scope_schedules(
         where=where, order={"scopeKey": "asc"}, take=limit
     )
     return [MemoryScopeSchedule.from_db(row) for row in rows]
+
+
+async def list_due_community_scopes(
+    *, due_before: datetime, limit: int
+) -> list[MemoryScopeSchedule]:
+    """ACTIVE rows last taken by the community sweep, or created if it never
+    took them, before ``due_before``, the oldest first and at most
+    ``limit``. For the scheduler's hourly community sweep."""
+    table = prisma.models.MemoryScopeSchedule.prisma()
+    # Two reads, because Prisma cannot order on the coalesce of the two.
+    never_run = await table.find_many(
+        where={
+            "state": MemoryScopeScheduleState.ACTIVE,
+            "lastCommunityRunAt": None,
+            "createdAt": {"lt": due_before},
+        },
+        order={"createdAt": "asc"},
+        take=limit,
+    )
+    stale = await table.find_many(
+        where={
+            "state": MemoryScopeScheduleState.ACTIVE,
+            "lastCommunityRunAt": {"lt": due_before},
+        },
+        order={"lastCommunityRunAt": "asc"},
+        take=limit,
+    )
+    rows = sorted(
+        (MemoryScopeSchedule.from_db(row) for row in [*never_run, *stale]),
+        key=lambda row: row.last_community_run_at or row.created_at,
+    )
+    return rows[:limit]
 
 
 async def list_live_expert_scopes(

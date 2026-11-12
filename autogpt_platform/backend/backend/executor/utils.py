@@ -24,6 +24,10 @@ from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
+from backend.blocks._platform_credentials import (
+    is_platform_credential,
+    platform_credentials_refused_message,
+)
 from backend.copilot.model import pauses_irreversible_actions
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
@@ -63,11 +67,12 @@ from backend.data.model import (
     sdk_default_refused_message,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import is_user_banned
+from backend.data.user import is_user_refused
 from backend.executor.input_depth import (
     validate_graph_input_depth,
     validate_starting_node_input_depth,
 )
+from backend.executor.nesting import nested_context, resumed_chain
 from backend.integrations.credentials_store import (
     CredentialsSnapshot,
     is_system_credential,
@@ -93,7 +98,7 @@ from backend.util.exceptions import (
 from backend.util.json import dumps as json_dumps
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
-from backend.util.type import coerce_inputs_to_schema
+from backend.util.type import ConversionError, coerce_inputs_to_schema
 
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
@@ -360,11 +365,22 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 # Dynamic field utilities are now imported from backend.data.dynamic_fields
 
 
+class InputMismatchError(ValueError):
+    """A value the node can't use; unlike missing input, waiting won't fix it.
+    ``data`` is the resolved input the node is queued with to fail."""
+
+    def __init__(self, message: str, data: BlockInput):
+        super().__init__(message)
+        self.data = data
+
+
 def validate_exec(
     node: Node,
     data: BlockInput,
     resolve_input: bool = True,
     dry_run: bool = False,
+    raise_on_mismatch: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -376,6 +392,13 @@ def validate_exec(
         dry_run: When True, credential fields are allowed to be missing — they
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
+        raise_on_mismatch: When True, a value that can't be converted or
+            doesn't match the schema raises ``InputMismatchError``, so the
+            caller can tell it apart from missing input.
+        trigger_setup: Validate a trigger before its first event: absent
+            credential fields and a webhook block's ``payload`` are left out of
+            the missing-input and schema checks; everything else is validated as
+            for a real run.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -396,11 +419,15 @@ def validate_exec(
 
     # For dry runs, supply sentinel values for any missing credential fields so
     # the node can be queued — simulate_block never calls the real API anyway.
+    # The queued input keeps the None, so when the node runs a None here is a
+    # placeholder too, unless its pin is linked: that None was really sent.
+    placeholders: set[str] = set()
     if dry_run:
-        cred_field_names = set(schema.get_credentials_fields().keys())
-        for field_name in cred_field_names:
-            if field_name not in data:
+        linked_pins = {link.sink_name for link in node.input_links}
+        for field_name in schema.get_credentials_fields():
+            if data.get(field_name) is None and field_name not in linked_pins:
                 data = {**data, field_name: None}
+                placeholders.add(field_name)
 
     # Merge input data with default values and resolve dynamic dict/list/object pins.
     input_default = schema.get_input_defaults(node.input_default)
@@ -408,11 +435,25 @@ def validate_exec(
     if resolve_input:
         data = merge_execution_input(data)
 
-    # Coerce non-matching data types to the expected input schema.
-    coerce_inputs_to_schema(data, schema)
+    # Coerce first: some blocks' missing-input checks read the converted values.
+    # A value that can't be converted is reported after that check, so a node
+    # still missing input keeps waiting.
+    conversion_error: str | None = None
+    try:
+        coerce_inputs_to_schema(data, schema)
+    except ConversionError as e:
+        conversion_error = str(e)
+
+    unchecked_fields: set[str] = set()
+    if trigger_setup:
+        unchecked_fields = {
+            f for f in schema.get_credentials_fields() if data.get(f) is None
+        }
+        if node_block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL):
+            unchecked_fields.add("payload")
 
     # Input data post-merge should contain all required fields from the schema.
-    if missing_input := schema.get_missing_input(data):
+    if missing_input := schema.get_missing_input(data) - unchecked_fields:
         if dry_run:
             # In dry-run mode all missing inputs are tolerated — simulate_block()
             # generates synthetic outputs without needing real input values.
@@ -420,12 +461,32 @@ def validate_exec(
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
+    # A required input that arrived as None is skipped, as before, not failed:
+    # None is sometimes sent on purpose. A dry run's credential placeholders
+    # didn't arrive, so they don't count.
+    raise_on_mismatch = raise_on_mismatch and not any(
+        data.get(name, "") is None
+        for name in schema.get_required_fields()
+        if name not in placeholders
+    )
+
+    # A value that can't be converted fails dry runs too, so the builder learns
+    # the wiring is wrong.
+    if conversion_error:
+        error_message = f"{error_prefix} {conversion_error}"
+        if raise_on_mismatch:
+            raise InputMismatchError(error_message, data)
+        logger.warning(error_message)
+        return None, error_message
+
     # Last validation: Validate the input values against the schema.
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
-        if error := schema.get_mismatch_error(data):
+        if error := schema.get_mismatch_error(data, exclude_fields=unchecked_fields):
             error_message = f"{error_prefix} {error}"
+            if raise_on_mismatch:
+                raise InputMismatchError(error_message, data)
             logger.warning(error_message)
             return None, error_message
 
@@ -597,6 +658,17 @@ async def _validate_node_input_credentials(
                 credential_errors[node.id][field_name] = (
                     f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
                     f"{sdk_default_refused_message(credentials_meta.id)}"
+                )
+                continue
+
+            if is_platform_credential(
+                credentials_meta.id
+            ) and block.refuses_platform_credentials_for(
+                {**node.input_default, **(nodes_input_masks or {}).get(node.id, {})}
+            ):
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
+                    f"{platform_credentials_refused_message(credentials_meta.provider)}"
                 )
                 continue
 
@@ -865,6 +937,7 @@ async def _construct_starting_node_execution_input(
     graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     dry_run: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -878,6 +951,8 @@ async def _construct_starting_node_execution_input(
         data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
         dry_run: When True, skip credential validation errors (simulation needs no real creds).
+        trigger_setup: Skip credential errors and a webhook block's payload checks,
+            validating every other input as for a real run.
 
     Returns:
         tuple[
@@ -890,9 +965,9 @@ async def _construct_starting_node_execution_input(
     validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
-    # Dry runs simulate every block — missing credentials are irrelevant.
-    # Strip credential-only errors so the graph can proceed.
-    if dry_run and validation_errors:
+    # Dry runs simulate every block, and trigger setup runs before credentials are
+    # picked: strip credential-only errors so the graph can proceed.
+    if (dry_run or trigger_setup) and validation_errors:
         validation_errors = {
             node_id: {
                 field: msg
@@ -948,7 +1023,12 @@ async def _construct_starting_node_execution_input(
                 "Please use the appropriate trigger to run this workflow."
             )
 
-        input_data, error = validate_exec(node, input_data, dry_run=dry_run)
+        input_data, error = validate_exec(
+            node,
+            input_data,
+            dry_run=dry_run,
+            trigger_setup=trigger_setup,
+        )
         if input_data is None:
             raise ValueError(error)
         else:
@@ -971,6 +1051,7 @@ async def validate_and_construct_node_execution_input(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     is_sub_graph: bool = False,
     dry_run: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -1044,6 +1125,7 @@ async def validate_and_construct_node_execution_input(
         graph_inputs=graph_inputs,
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
+        trigger_setup=trigger_setup,
     )
     validate_starting_node_input_depth(starting_nodes_input)
     # Also enforced by create_graph_execution; here a schedule or a request is
@@ -1425,8 +1507,9 @@ async def _enforce_expert_credential_scope(
     copilot tool runs alike. Enforcing at creation also means a revoke takes effect
     on the next run instead of only on newly created schedules.
 
-    System credentials (platform LLM keys) carry no grant and are always allowed;
-    filtering them would stop every expert from running an LLM block.
+    The platform's own keys (system LLM keys, and the shared key of a provider
+    such as Firecrawl) carry no grant and are always allowed; filtering them
+    would stop every expert from running an LLM block or a platform-keyed one.
     """
     if not graph_credentials_inputs:
         return
@@ -1595,8 +1678,10 @@ async def _add_graph_execution(
 
     if not bypass_paywall and await is_user_paywalled(user_id):
         raise UserPaywalledError("A subscription is required to run workflows.")
-    if await is_user_banned(user_id):
-        raise UserBannedError("This account is banned, so its workflows can't run.")
+    if await is_user_refused(user_id):
+        raise UserBannedError(
+            "This account is banned or closed, so its workflows can't run."
+        )
 
     is_new_execution = graph_exec_id is None
     tenancy_replaced = False
@@ -1724,6 +1809,14 @@ async def _add_graph_execution(
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
     else:
+        parent_exec_id = (
+            execution_context.parent_execution_id if execution_context else None
+        )
+        if execution_context and parent_exec_id is not None:
+            # Refused before anything is written: a workflow already running
+            # in this chain would start itself again without end.
+            execution_context = nested_context(execution_context, graph_id)
+
         if expert_id:
             organization_id, team_id = await _resolve_expert_execution_tenancy(
                 user_id, expert_id
@@ -1733,9 +1826,6 @@ async def _add_graph_execution(
                 user_id, expert_id, graph_credentials_inputs
             )
 
-        parent_exec_id = (
-            execution_context.parent_execution_id if execution_context else None
-        )
         # A sub-graph asks in the chat that started its parent run.
         if trigger == ExecutionTrigger.COPILOT:
             approval_chat_id = trigger_ref
@@ -1955,6 +2045,15 @@ async def _add_graph_execution(
     if nesting:
         execution_context = await _keep_nesting_safe_modes(
             execution_context, nesting, user_id, gdb
+        )
+        # A resumed sub-graph run keeps its place in its chain, by which the
+        # executor admits it and refuses a run of a workflow already in it.
+        execution_context = execution_context.model_copy(
+            update={
+                "ancestor_graph_ids": resumed_chain(
+                    [run.graph_id if run else None for run in nesting]
+                )
+            }
         )
 
     stamp: dict[str, Any] = {
@@ -2261,6 +2360,13 @@ class NodeExecutionProgress:
                 return next_output.pop(0)
 
         return None
+
+    def has_ended(self) -> bool:
+        """Whether every task of this node's executions has ended, its block
+        and its bookkeeping alike. Unlike is_done, a stop doesn't make it so:
+        a block that ignores the cancel runs on until it returns."""
+        with self._lock:
+            return not self._unwinding and not self._settling
 
     def is_done(self, wait_time: float = 0.0) -> bool:
         exec_id = self._next_exec()

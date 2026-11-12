@@ -17,7 +17,7 @@ import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
 from backend.blocks import _all_subclasses, load_all_blocks
-from backend.blocks._base import Block, BlockSchema, BlockSchemaInput
+from backend.blocks._base import Block, BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
@@ -30,6 +30,7 @@ from backend.blocks.io import (
     AgentOutputBlock,
 )
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
@@ -243,10 +244,6 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         create_graph, DEFAULT_USER_ID
     )
 
-    class ExpectedInputSchema(BlockSchemaInput):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
-
     class ExpectedOutputSchema(BlockSchema):
         # Note: Graph output schemas are dynamically generated and don't inherit
         # from BlockSchemaOutput, so we use BlockSchema as the base instead
@@ -258,7 +255,21 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    assert input_schema == ExpectedInputSchema.jsonschema()
+    # Both inputs are advanced, so both are optional, with or without a default.
+    assert input_schema == {
+        "title": "ExpectedInputSchema",
+        "type": "object",
+        "properties": {
+            "in_key_a": {
+                "advanced": True,
+                "default": "A",
+                "secret": False,
+                "title": "Key A",
+            },
+            "in_key_b": {"advanced": True, "secret": False, "title": "in_key_b"},
+        },
+        "required": [],
+    }
 
     # Add snapshot testing for the schemas
     snapshot.snapshot_dir = "snapshots"
@@ -922,6 +933,7 @@ def test_only_known_block_fields_are_marked_secret():
     assert secret_fields == {
         ("AllQuietIncidentTriggerBlock", "signing_secret"),
         ("AutoPilotBlock", "codex_credentials"),
+        ("ExaSearchMonitorTriggerBlock", "webhook_secret"),
         ("GenericWebhookTriggerBlock", "secret_token"),
         ("PublishToMediumBlock", "author_id"),
         ("SQLQueryBlock", "host"),
@@ -4000,3 +4012,96 @@ async def test_create_graph_checks_pin_names_and_the_owner_before_any_write(
     ]
     saved = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
     assert saved.version == 2
+
+
+# ============================================================================
+# A link into an MCP tool's argument
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "sink_name,argument",
+    [
+        ("query", "query"),
+        ("createRequest_#_objects", "createRequest"),
+        ("tool_arguments_#_query", "query"),
+    ],
+)
+def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str):
+    """The builder and AutoPilot name a link into a tool argument after the
+    argument, and validation refused that name, so the workflow could neither
+    be saved nor run. A `tool_arguments_#_` link saved, but its argument still
+    read as missing at run time. Either form now provides the argument."""
+    graph = make_graph_model(
+        _value_to_mcp_tool_graph(sink_name, required=[argument]), user_id="user-1"
+    )
+
+    graph.validate_graph(for_run=False)
+    assert graph.validate_graph_get_errors(for_run=True) == {}
+
+
+def test_a_nested_link_into_a_tool_that_declares_tool_arguments_provides_nothing():
+    """Such a tool's executor passes `tool_arguments_#_query` into its own
+    `tool_arguments` parameter, so a run must still find `query` missing."""
+    graph = _value_to_mcp_tool_graph("tool_arguments_#_query", required=["query"])
+    schema = graph.nodes[1].input_default["tool_input_schema"]
+    schema["properties"]["tool_arguments"] = {"type": "object"}
+
+    errors = make_graph_model(graph, user_id="user-1").validate_graph_get_errors(
+        for_run=True
+    )
+
+    assert errors == {"tool": {"query": "This field is required"}}
+
+
+@pytest.mark.parametrize(
+    "tool_input_schema",
+    [None, "not a schema", {"type": "object", "properties": 5}],
+)
+def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
+    tool_input_schema: Any,
+):
+    """A malformed schema is a 400 (`ValueError`), not an `AttributeError` 500."""
+    graph = _value_to_mcp_tool_graph("query", required=[])
+    graph.nodes[1].input_default["tool_input_schema"] = tool_input_schema
+
+    with pytest.raises(ValueError):
+        make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+
+def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:
+    return Graph(
+        name="Value to MCP tool",
+        description="",
+        nodes=[
+            Node(
+                id="value",
+                block_id=StoreValueBlock().id,
+                input_default={"input": "hi"},
+            ),
+            Node(
+                id="tool",
+                block_id=MCPToolBlock().id,
+                input_default={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "add_lead",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "createRequest": {"type": "object"},
+                        },
+                        "required": required,
+                    },
+                },
+            ),
+        ],
+        links=[
+            Link(
+                source_id="value",
+                sink_id="tool",
+                source_name="output",
+                sink_name=sink_name,
+            )
+        ],
+    )

@@ -66,7 +66,12 @@ from backend.util.text_limits import (
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
-from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
+from .dynamic_fields import (
+    DICT_SPLIT,
+    assert_safe_pin_name,
+    is_tool_pin,
+    sanitize_pin_name,
+)
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -76,6 +81,11 @@ if TYPE_CHECKING:
     from .execution import NodesInputMasks
 
 logger = logging.getLogger(__name__)
+
+SUB_WORKFLOW_RUNS_ITSELF = (
+    "A workflow can't run itself as a sub-workflow, directly or through other "
+    "workflows"
+)
 
 
 class GraphSettings(BaseModel):
@@ -431,15 +441,14 @@ class BaseGraph(GraphBaseMeta):
                             if k not in ["description", "default", "secret"]
                         },
                         "secret": False,
-                        # Default value has to be set for advanced fields.
-                        "advanced": p.advanced and p.value is not None,
+                        "advanced": p.advanced and p.is_optional(),
                         "title": p.title or p.name,
                         **({"description": p.description} if p.description else {}),
                         **({"default": p.value} if p.value is not None else {}),
                     }
                     for p in schema_fields
                 },
-                "required": [p.name for p in schema_fields if p.value is None],
+                "required": [p.name for p in schema_fields if not p.is_optional()],
             }
         except AttributeError as e:
             raise ValueError(str(e)) from e
@@ -966,6 +975,10 @@ class GraphModel(Graph, GraphMeta):
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
             self._validate_graph(sub_graph, for_run, nodes_input_masks)
+        if cycle_errors := self._sub_workflow_cycle_errors():
+            raise GraphValidationError(
+                SUB_WORKFLOW_RUNS_ITSELF, node_errors=cycle_errors
+            )
 
     @staticmethod
     def _validate_graph(
@@ -991,7 +1004,7 @@ class GraphModel(Graph, GraphMeta):
 
         Returns: dict[node_id, dict[field_name, error_message]]
         """
-        return {
+        errors = {
             **self._validate_graph_get_errors(self, for_run, nodes_input_masks),
             **{
                 node_id: error
@@ -1000,6 +1013,36 @@ class GraphModel(Graph, GraphMeta):
                     sub_graph, for_run, nodes_input_masks
                 ).items()
             },
+        }
+        for node_id, cycle_error in self._sub_workflow_cycle_errors().items():
+            errors[node_id] = {**errors.get(node_id, {}), **cycle_error}
+        return errors
+
+    def _sub_workflow_cycle_errors(self) -> dict[str, dict[str, str]]:
+        """Sub-workflow nodes that would start a workflow already running in
+        their chain, so that it starts itself again without end.
+
+        Chains follow the version each node names, through this graph and the
+        sub-graphs it was saved or loaded with. A version not among them is
+        checked when its run starts (see `backend.executor.nesting`).
+        """
+        agent_block_id = AgentExecutorBlock().id
+        calls: dict[tuple[str, int], list[tuple[str, str, Any]]] = {
+            (graph.id, graph.version): [
+                (node.id, target, node.input_default.get("graph_version"))
+                for node in graph.nodes
+                if node.block_id == agent_block_id
+                and isinstance(target := node.input_default.get("graph_id"), str)
+                and target
+            ]
+            for graph in (*self.sub_graphs, self)
+        }
+        above = _workflows_above(calls, (self.id, self.version))
+        return {
+            node_id: {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
+            for graph_key, node_calls in calls.items()
+            for node_id, target, _ in node_calls
+            if target in above.get(graph_key, set())
         }
 
     @staticmethod
@@ -1062,6 +1105,10 @@ class GraphModel(Graph, GraphMeta):
                 ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
             )
+            if block.block_type == BlockType.MCP_TOOL:
+                provided_inputs |= _linked_tool_arguments(
+                    node, input_links.get(node.id, [])
+                )
             InputSchema = block.input_schema
 
             for name in (required_fields := InputSchema.get_required_fields()):
@@ -1325,6 +1372,14 @@ class GraphModel(Graph, GraphMeta):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
+                    if block.block_type == BlockType.MCP_TOOL:
+                        # Tool arguments: the executor folds them into tool_arguments.
+                        properties = _tool_properties(vals)
+                        if properties is None:
+                            raise ValueError(
+                                f"{prefix}, tool_input_schema is not an object"
+                            )
+                        fields = {*fields, *properties}
                 if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
@@ -1422,6 +1477,48 @@ def _describe_node_errors(
     return problems[0]
 
 
+def _workflows_above(
+    calls: Mapping[tuple[str, int], Sequence[tuple[str, str, Any]]],
+    top: tuple[str, int],
+) -> dict[tuple[str, int], set[str]]:
+    """For each (graph id, version) a run of `top` reaches, the ids of the
+    graphs some chain from `top` runs on the way to it, its own included.
+    `calls` holds each graph's (node id, graph id, version) sub-workflow
+    calls; a call to a version not in it, or to a version that is not a
+    number, reaches nothing further."""
+    callees = {
+        caller: {
+            (graph_id, version)
+            for _, graph_id, version in node_calls
+            if isinstance(version, int) and (graph_id, version) in calls
+        }
+        for caller, node_calls in calls.items()
+    }
+    reached = _reachable(callees, top)
+    callers: dict[tuple[str, int], set[tuple[str, int]]] = defaultdict(set)
+    for caller in reached:
+        for callee in callees[caller]:
+            callers[callee].add(caller)
+    return {
+        graph: {graph_id for graph_id, _ in _reachable(callers, graph)}
+        for graph in reached
+    }
+
+
+def _reachable(
+    edges: Mapping[tuple[str, int], Collection[tuple[str, int]]],
+    start: tuple[str, int],
+) -> set[tuple[str, int]]:
+    seen = {start}
+    pending = [start]
+    while pending:
+        for follower in edges.get(pending.pop(), ()):
+            if follower not in seen:
+                seen.add(follower)
+                pending.append(follower)
+    return seen
+
+
 def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
     """An input or output named "" has no name, and the graph's interface needs
     one; one wired in from a link still counts."""
@@ -1430,6 +1527,26 @@ def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
         and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
         and not str(value or "").strip()
     )
+
+
+def _linked_tool_arguments(node: Node, links: list[Link]) -> set[str]:
+    """The MCP tool arguments that `tool_arguments_#_<argument>` links feed. A
+    tool that declares its own `tool_arguments` takes them there, as one value."""
+    if "tool_arguments" in (_tool_properties(node.input_default) or {}):
+        return set()
+    prefix = f"tool_arguments{DICT_SPLIT}"
+    return {
+        sanitize_pin_name(link.sink_name.removeprefix(prefix))
+        for link in links
+        if link.sink_name.startswith(prefix)
+    }
+
+
+def _tool_properties(node_input: BlockInput) -> dict[str, Any] | None:
+    """An MCP tool node's argument schemas, or None if its schema is malformed."""
+    schema = node_input.get("tool_input_schema") or {}
+    properties = schema.get("properties") or {} if isinstance(schema, dict) else None
+    return properties if isinstance(properties, dict) else None
 
 
 def _node_title(node: Node) -> str:
@@ -2752,3 +2869,21 @@ class _UnknownBlockBase(Block):
     async def run(self, input_data, **kwargs):
         """Always yield an error for missing blocks."""
         yield "error", f"Block {self.id} no longer exists"
+
+
+_HAND_OVER_GRAPHS = """
+    UPDATE {schema_prefix}"AgentGraph" SET "userId" = $1
+     WHERE "userId" = $2 AND "id" = ANY($3::text[])
+"""
+
+
+async def hand_over_graphs(
+    graph_ids: list[str], *, from_user_id: str, to_user_id: str, tx: Prisma
+) -> int:
+    """Give every version of these graphs to another account, in the caller's
+    transaction. Only rows `from_user_id` still owns move. Account erasure
+    hands the agents other accounts use to the "deleted user" placeholder
+    with this (`account_erasure/shared_agents.py`)."""
+    return await execute_raw_with_schema(
+        _HAND_OVER_GRAPHS, to_user_id, from_user_id, graph_ids, client=tx
+    )

@@ -1726,6 +1726,7 @@ class TestPR10WebhookTenancy:
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.webhook_id = None
         mock_preset.organization_id = "org-preset"
         mock_preset.team_id = "team-preset"
 
@@ -1772,6 +1773,7 @@ class TestPR10WebhookTenancy:
         mock_preset.graph_version = GRAPH_VERSION
         mock_preset.inputs = {"key": "value"}
         mock_preset.credentials = {}
+        mock_preset.webhook_id = None
         mock_preset.organization_id = None
         mock_preset.team_id = None
 
