@@ -829,16 +829,20 @@ async def test_a_longer_ban_on_another_spelling_outlasts_the_shared_record(
     )
     digest = ban_record.email_hash(mailbox) or ""
 
-    await ban_record.keep_ban_record(first, dry_run=False)
-    await ban_record.keep_ban_record(second, dry_run=False)
-    record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
-        where={"emailHash": digest}
-    )
-    assert record.deleteAfter - record.recordedAt == ban_record.BAN_RECORD_RETENTION
+    try:
+        await ban_record.keep_ban_record(first, dry_run=False)
+        await ban_record.keep_ban_record(second, dry_run=False)
+        record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+            where={"emailHash": digest}
+        )
+        assert record.deleteAfter - record.recordedAt == ban_record.BAN_RECORD_RETENTION
 
-    await ban_record.keep_ban_record(second, dry_run=False)
-    again = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
-        where={"emailHash": digest}
-    )
-    assert again.deleteAfter == record.deleteAfter
-    await prisma.models.AccountBanRecord.prisma().delete(where={"id": record.id})
+        await ban_record.keep_ban_record(second, dry_run=False)
+        again = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+            where={"emailHash": digest}
+        )
+        assert again.deleteAfter == record.deleteAfter
+    finally:
+        await prisma.models.AccountBanRecord.prisma().delete_many(
+            where={"emailHash": digest}
+        )
