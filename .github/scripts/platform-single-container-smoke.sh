@@ -560,6 +560,7 @@ for item in Path(f"/proc/{sys.argv[1]}/environ").read_bytes().split(b"\0"):
 
 forbidden = {
     "AUTH_DATABASE_URL",
+    "BAN_RECORD_HASH_KEY",
     "DB_PASS",
     "DIRECT_URL",
     "ENCRYPTION_KEY",
@@ -601,7 +602,7 @@ SELECT current_user = 'autogpt_frontend'
   AND NOT rolinherit
   AND NOT rolreplication
   AND NOT rolbypassrls
-  AND rolconnlimit = 10
+  AND rolconnlimit = 20
 FROM pg_catalog.pg_roles
 WHERE rolname = current_user;
 

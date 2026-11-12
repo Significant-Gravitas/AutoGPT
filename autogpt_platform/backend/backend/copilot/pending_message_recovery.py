@@ -34,7 +34,7 @@ async def recover_pending_on_failure(
                 asyncio.ensure_future(restore_pending_messages(session_id, pending))
             )
         except Exception:
-            logger.exception("Failed to recover pending messages for %s", session_id)
+            logger.exception(f"Failed to recover pending messages for {session_id}")
         raise
 
 
@@ -56,4 +56,4 @@ async def restore_pending_messages(
             "SPUBLISH", _notify_channel(session_id), _NOTIFY_PAYLOAD
         )
     except Exception:
-        logger.warning("Pending recovery notification failed for %s", session_id)
+        logger.warning(f"Pending recovery notification failed for {session_id}")

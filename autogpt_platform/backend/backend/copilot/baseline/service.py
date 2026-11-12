@@ -95,7 +95,10 @@ from backend.copilot.pending_message_helpers import (
     persist_unfolded_rows,
 )
 from backend.copilot.pending_message_reconciliation import partition_pending_by_history
-from backend.copilot.pending_message_recovery import recover_pending_on_failure
+from backend.copilot.pending_message_recovery import (
+    recover_pending_on_failure,
+    restore_pending_messages,
+)
 from backend.copilot.pending_messages import (
     PendingMessage,
     drain_pending_messages,
@@ -208,6 +211,7 @@ from backend.util.prompt import (
     estimate_token_count,
     estimate_token_count_str,
 )
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
     LLMToolCall,
@@ -2028,6 +2032,23 @@ async def stream_chat_completion_baseline(
                     # unpaused at every later turn end.
                     count_turn=False,
                 )
+            except SandboxLimitError as refusal:
+                # Refused under a running-box limit: the turn ends here rather
+                # than running its commands on the local fallback.
+                await forget_turn_ceiling(session_id, session.expert_id)
+                await _requeue_pending(session_id, drained_at_start_pending)
+                # Saved before the yield, as on the outer error path, so a
+                # reloaded chat still shows why the turn did not run.
+                if append_error_marker(session, str(refusal), retryable=True):
+                    stamp_turn_trace_id(session.messages, turn_start)
+                    try:
+                        await upsert_chat_session(session)
+                    except Exception:
+                        logger.exception(
+                            "[Baseline] Could not record the sandbox refusal"
+                        )
+                yield StreamError(errorText=str(refusal), code=refusal.code)
+                return
             except Exception:
                 logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
                 await forget_turn_ceiling(session_id, session.expert_id)
@@ -3261,6 +3282,15 @@ async def stream_chat_completion_baseline(
     for event in _engine_switch_finish_events(session_id):
         yield event
     yield StreamFinish()
+
+
+async def _requeue_pending(session_id: str, messages: list[PendingMessage]) -> None:
+    """Put back messages a turn drained but will not run, for the next turn,
+    ahead of anything queued since and without duplicating any of them."""
+    try:
+        await restore_pending_messages(session_id, messages)
+    except Exception:
+        logger.exception(f"[Baseline] Could not re-queue messages for {session_id}")
 
 
 def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":

@@ -171,6 +171,7 @@ def _utc_today() -> str:
     return datetime.now(tz=UTC).date().isoformat()
 
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 async def _take_daily_send(counter: str, limit: int) -> bool:
     """Fails closed, unlike the notification cap: this one exists to stop a
     looping run, and a run can retry where a lost payment notice cannot."""
