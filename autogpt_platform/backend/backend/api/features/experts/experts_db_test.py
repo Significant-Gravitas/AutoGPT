@@ -23,9 +23,16 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import experts_db, raise_attachments
+from backend.api.features.experts import (
+    experts_db,
+    raise_attachments,
+    routine_jobs,
+    routines,
+    scheduling,
+    seed,
+)
 from backend.api.features.experts import reset as expert_reset
-from backend.api.features.experts import routine_jobs, routines, scheduling, seed
+from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
     ExpertBundledSkill,
@@ -2851,6 +2858,71 @@ async def test_remove_workflow_detaches_it_from_the_expert(
         where={"id": library_agent_id}
     )
     assert library_agent is not None and not library_agent.isDeleted
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_whose_library_agent_was_deleted_is_not_offered(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+    # A cadence with no schedule is the "needs setup" state, which links too.
+    await prisma.models.ExpertWorkflow.prisma().update(
+        where={"id": installed.id}, data={"scheduleCron": "0 9 * * 1"}
+    )
+    assert await _setup_links(test_user.id, hired.expert.id) == {library_agent_id}
+
+    await library_db.delete_library_agent(library_agent_id, test_user.id)
+
+    with pytest.raises(NotFoundError):
+        await library_db.get_library_agent(library_agent_id, test_user.id)
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.library_agent_id for w in expert.workflows] == []
+    assert await _setup_links(test_user.id, hired.expert.id) == set()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_copy(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Maria", preload_listings=[slv_id], preload_crons={slv_id: "0 9 * * 1"}
+    )
+    sched = AsyncMock()
+    sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    first = hired.expert.workflows[0]
+    assert first.library_agent_id is not None
+    await library_db.delete_library_agent(first.library_agent_id, test_user.id)
+
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        again = await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+
+    assert again.library_agent_id is not None
+    await library_db.get_library_agent(again.library_agent_id, test_user.id)
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.id for w in expert.workflows] == [again.id]
+    # The stale row's job is deleted with it, even if library cleanup missed it.
+    sched.delete_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+        where={"expertId": hired.expert.id}
+    )
+    assert [(r.id, r.scheduleId) for r in rows] == [(again.id, None)]
+
+
+async def _setup_links(user_id: str, expert_id: str) -> set[str | None]:
+    items = await expert_setup.list_setup_items(user_id)
+    return {item.library_agent_id for item in items if item.expert_id == expert_id}
 
 
 @pytest.mark.asyncio(loop_scope="session")
