@@ -592,16 +592,18 @@ describe("useCredits balance reads", () => {
     act(() => {
       olderRead = Promise.resolve(view.result.current.fetchCredits());
     });
-    await waitFor(() => expect(reads).toBe(1));
-    await act(async () => {
-      await Promise.resolve(view.result.current.fetchCredits());
-    });
-    expect(view.result.current.credits).toBe(929);
-
-    await act(async () => {
-      answerOlderRead?.({ credits: 979 });
-      await olderRead;
-    });
+    try {
+      await waitFor(() => expect(reads).toBe(1));
+      await act(async () => {
+        await Promise.resolve(view.result.current.fetchCredits());
+      });
+      expect(view.result.current.credits).toBe(929);
+    } finally {
+      await act(async () => {
+        answerOlderRead?.({ credits: 979 });
+        await olderRead;
+      });
+    }
 
     expect(view.result.current.credits).toBe(929);
   });
