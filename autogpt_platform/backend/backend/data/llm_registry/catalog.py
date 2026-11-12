@@ -411,6 +411,38 @@ def _build_catalog() -> CatalogPayload:
                     provider_cache_creation_usd_per_1m=12.50,
                 ),
             ),
+            CatalogModel(
+                slug="claude-fable-5-2",
+                display_name="Claude Fable 5.2",
+                provider="anthropic",
+                creator="anthropic",
+                # Same compaction-cap convention as the rest of the Claude
+                # 5 family: native window is 1M, capped at 200K here.
+                context_window=200000,
+                max_output_tokens=128000,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # $8/1M in, $40/1M out (Anthropic list price, 20% below
+                # Fable 5.1's $10/$50; checked 2026-11-10 against the
+                # models/fable-5-2 "What's new" pricing table) at the
+                # catalog's standard usd_per_1m x 150 factor -> 1200/6000
+                # credits. Cache reads keep Fable 5.1's 0.025x-of-input
+                # multiplier ($0.20/1M); cache writes (5m) keep the 1.25x
+                # convention ($10/1M).
+                cost=CatalogModelCost(
+                    run_credits=16,
+                    input_credits_per_1m=1200.0,
+                    output_credits_per_1m=6000.0,
+                    cache_read_credits_per_1m=30.0,
+                    cache_creation_credits_per_1m=1500.0,
+                    provider_input_usd_per_1m=8.00,
+                    provider_output_usd_per_1m=40.00,
+                    provider_cache_read_usd_per_1m=0.20,
+                    provider_cache_creation_usd_per_1m=10.00,
+                ),
+            ),
             # ----- Groq -----
             CatalogModel(
                 slug="llama-3.1-8b-instant",
@@ -735,6 +767,24 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-3.1-flash-lite",
+                display_name="Gemini 3.1 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=37.5,
+                    output_credits_per_1m=225.0,
+                    cache_read_credits_per_1m=3.75,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemini-3.1-flash-lite-preview",
                 display_name="Gemini 3.1 Flash Lite Preview",
                 provider="open_router",
@@ -760,6 +810,42 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=5,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1800.0,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash",
+                display_name="Gemini 3.5 Flash",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=1350.0,
+                    cache_read_credits_per_1m=22.5,
+                ),
+            ),
+            CatalogModel(
+                slug="google/gemini-3.5-flash-lite",
+                display_name="Gemini 3.5 Flash Lite",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=45.0,
+                    output_credits_per_1m=375.0,
+                    cache_read_credits_per_1m=4.5,
                 ),
             ),
             CatalogModel(
@@ -948,6 +1034,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-ember",
+                display_name="Muse Ember",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $0.10/$0.50 per Mtok, cache read
+                # $0.004/1M -- live OpenRouter listing 2026-11-10
+                # (meta/muse-ember).
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=75.0,
+                    cache_read_credits_per_1m=0.6,
+                ),
+            ),
+            CatalogModel(
                 slug="microsoft/phi-4",
                 display_name="Phi-4",
                 provider="open_router",
@@ -1050,12 +1157,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=524288,
                 max_output_tokens=262144,
                 price_tier=2,
-                # Live OpenRouter rate as of 2026-10-06: $0.68/$2.09 per 1M
-                # (cache read $0.07); 150 credits per USD.
+                # Live OpenRouter rate as of 2026-10-29: $0.70/$2.10 per 1M
+                # on every Mistral route (down from the $1.36/$4.18 seen on
+                # 2026-10-21); cache read $0.07; 150 credits per USD.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=102.0,
-                    output_credits_per_1m=313.5,
+                    input_credits_per_1m=105.0,
+                    output_credits_per_1m=315.0,
                     cache_read_credits_per_1m=10.5,
                 ),
             ),
@@ -1204,6 +1312,29 @@ def _build_catalog() -> CatalogPayload:
                     cache_read_credits_per_1m=45.0,
                     provider_input_usd_per_1m=3.00,
                     provider_output_usd_per_1m=15.00,
+                ),
+            ),
+            CatalogModel(
+                slug="moonshotai/kimi-k3.1-pro",
+                display_name="Kimi K3.1 Pro",
+                provider="open_router",
+                creator="moonshot-ai",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=3,
+                supports_tools=True,
+                supports_reasoning=True,
+                # Moonshot's K3 successor (multimodal reasoning). OpenRouter's
+                # default Moonshot AI route is $2/$10 per Mtok, cache read
+                # $0.20/1M -- live listing 2026-10-24. Kimi K3 is untouched.
+                cost=CatalogModelCost(
+                    run_credits=9,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=30.0,
+                    provider_input_usd_per_1m=2.00,
+                    provider_output_usd_per_1m=10.00,
+                    provider_cache_read_usd_per_1m=0.20,
                 ),
             ),
             CatalogModel(
@@ -1857,6 +1988,24 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6.1-terra",
+                display_name="GPT-6.1 Terra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $1/1M in, $5/1M out, $0.05/1M cache read -- live
+                # OpenRouter rate as of 2026-10-27. Mid tier between
+                # gpt-6-luna and gpt-6.1-sol; gpt-5.6-terra stays listed.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=150.0,
+                    output_credits_per_1m=750.0,
+                    cache_read_credits_per_1m=7.5,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-6-luna",
                 display_name="GPT-6 Luna",
                 provider="openai",
@@ -2175,6 +2324,28 @@ def _build_catalog() -> CatalogPayload:
                     cache_read_credits_per_1m=6.3,
                     provider_input_usd_per_1m=0.834,
                     provider_output_usd_per_1m=2.501,
+                ),
+            ),
+            CatalogModel(
+                slug="tencent/hy4",
+                display_name="Hy4",
+                provider="open_router",
+                creator="tencent",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_reasoning=True,
+                # OpenRouter live pricing (Tencent fp4 endpoint): $0.417/$1.2505
+                # per Mtok, $0.021/Mtok cached input, credit rates at the
+                # standard 1.5x margin (verified live 2026-11-04).
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=62.55,
+                    output_credits_per_1m=187.575,
+                    cache_read_credits_per_1m=3.15,
+                    provider_input_usd_per_1m=0.417,
+                    provider_output_usd_per_1m=1.2505,
                 ),
             ),
             # ----- Unbiased -----

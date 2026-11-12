@@ -39,7 +39,9 @@ def without_embeddings(cypher_query: str, cypher_code: str) -> str:
 
     replacements: list[tuple[int, int, str]] = []
     for record, projection, lean in _RECORD_PROJECTIONS:
-        projection_offset = record.index(projection)
+        projection_offset = record.find(projection)
+        if projection_offset < 0:
+            continue
         search_from = 0
         while (record_start := cypher_code.find(record, search_from)) >= 0:
             projection_start = record_start + projection_offset

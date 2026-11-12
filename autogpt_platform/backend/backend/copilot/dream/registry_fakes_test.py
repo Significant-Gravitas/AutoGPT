@@ -46,10 +46,7 @@ SHORT_DEADLINE = 0.05
 
 def job_ids(scope: MemoryScope) -> set[str]:
     """The crons the default flags give ``scope``: skill learning's is off."""
-    return {
-        f"community_rebuild_{scope.scope_key}",
-        f"dream_nightly_batch_{scope.scope_key}",
-    }
+    return {f"dream_nightly_batch_{scope.scope_key}"}
 
 
 def learning_job_id(scope: MemoryScope) -> str:
@@ -93,7 +90,6 @@ class FakeRegistryDB:
                 expert_id=expert_id,
                 timezone=user_timezone,
                 state=state,
-                community_job_id=None,
                 nightly_job_id=None,
                 learning_job_id=None,
                 last_nightly_run_at=None,
@@ -111,7 +107,6 @@ class FakeRegistryDB:
         scope_key: str,
         *,
         user_timezone: str,
-        community_job_id: str | None,
         nightly_job_id: str | None,
         learning_job_id: str | None,
     ) -> bool:
@@ -121,7 +116,6 @@ class FakeRegistryDB:
         self.update(
             scope_key,
             timezone=user_timezone,
-            community_job_id=community_job_id,
             nightly_job_id=nightly_job_id,
             learning_job_id=learning_job_id,
         )
@@ -141,7 +135,6 @@ class FakeRegistryDB:
         fields: dict[str, Any] = {"state": state}
         if state != ACTIVE:
             fields |= {
-                "community_job_id": None,
                 "nightly_job_id": None,
                 "learning_job_id": None,
             }
@@ -153,8 +146,6 @@ class FakeRegistryDB:
         if row is None:
             return False
         fields: dict[str, Any] = {}
-        if row.community_job_id == job_id:
-            fields["community_job_id"] = None
         if row.nightly_job_id == job_id:
             fields["nightly_job_id"] = None
         if row.learning_job_id == job_id:
@@ -199,9 +190,6 @@ class FakeScheduler:
         self.jobs: dict[str, str] = {}  # job id -> timezone it runs in
         self.scopes: dict[str, MemoryScope] = {}  # job id -> the scope it is for
         self.tagged: set[str] = set()  # job ids the reconcile registered
-        self.add_scope_community_rebuild_schedule = AsyncMock(
-            side_effect=self._adder("community_rebuild")
-        )
         self.add_scope_nightly_batch_schedule = AsyncMock(
             side_effect=self._adder("dream_nightly_batch")
         )
@@ -269,15 +257,13 @@ class RegistryEnv:
         self.scheduler = FakeScheduler()
         self.crons = FakeCronStore(self.scheduler)
         self.flags = {
-            Flag.GRAPHITI_COMMUNITIES_ENABLED: True,
             Flag.DREAM_PASS_ENABLED: True,
         }
         self.timezone: str | None = PARIS
 
     def adds(self) -> int:
         return (
-            self.scheduler.add_scope_community_rebuild_schedule.await_count
-            + self.scheduler.add_scope_nightly_batch_schedule.await_count
+            self.scheduler.add_scope_nightly_batch_schedule.await_count
             + self.scheduler.add_scope_skill_learning_schedule.await_count
         )
 
@@ -290,8 +276,8 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     """Point the registry modules at a fresh set of fakes."""
     env = RegistryEnv()
 
-    async def flag(flag: Flag, user_id: str) -> bool:
-        return env.flags.get(flag, False)
+    async def flag(flag: Flag, user_id: str) -> tuple[bool, bool]:
+        return env.flags.get(flag, False), True
 
     async def owner_timezone(user_id: str) -> str | None:
         return env.timezone
@@ -299,7 +285,7 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     for module in (registry, scope_jobs, scope_crons, scope_reconcile):
         monkeypatch.setattr(module, "memory_schedule_db", lambda: env.db)
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: env.scheduler)
-    monkeypatch.setattr(scope_jobs, "is_feature_enabled", flag)
+    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flag)
     monkeypatch.setattr(registry, "resolve_user_timezone", owner_timezone)
     # Every walk starts at the first scope, so a test sees key order.
     monkeypatch.setattr(scope_reconcile._Place, "last", "")

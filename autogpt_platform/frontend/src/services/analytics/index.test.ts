@@ -126,7 +126,7 @@ describe("sendDatafastEvent", () => {
   it("does not queue pre-consent events", () => {
     vi.mocked(hasConsentFor).mockReturnValue(false);
 
-    analytics.sendDatafastEvent("run_agent", { id: "graph-1" });
+    analytics.sendDatafastEvent("tour_cta_click", { label: "signup" });
 
     const datafast = vi.fn();
     window.datafast = datafast;
@@ -143,7 +143,7 @@ describe("sendDatafastEvent", () => {
     const datafast = vi.fn();
     window.datafast = datafast;
 
-    analytics.sendDatafastEvent("run_agent", { id: "graph-1" });
+    analytics.sendDatafastEvent("tour_cta_click", { label: "signup" });
 
     expect(datafast).not.toHaveBeenCalled();
   });

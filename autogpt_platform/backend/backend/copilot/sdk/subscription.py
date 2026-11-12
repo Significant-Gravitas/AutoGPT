@@ -11,7 +11,20 @@ import os
 import shutil
 import subprocess
 
+from backend.copilot.sdk.cli_version import _cli_the_sdk_finds
+from backend.copilot.sdk.launch_env import inherited_env
+
 logger = logging.getLogger(__name__)
+
+# The variables a host may hold its Claude login in instead of a
+# ``claude login`` credentials file.
+HOST_LOGIN_NAMES = ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN")
+
+
+def host_login_env() -> dict[str, str]:
+    """The host's Claude login, for a CLI that keeps nothing else of the
+    backend's environment (``launch_env.py``)."""
+    return {name: value for name in HOST_LOGIN_NAMES if (value := os.environ.get(name))}
 
 
 def find_bundled_cli() -> str:
@@ -80,22 +93,32 @@ def provision_credentials_file() -> None:
     logger.info("Provisioned Claude credentials file at %s", creds_path)
 
 
-@functools.cache
-def validate_subscription() -> None:
-    """Validate the bundled Claude CLI is reachable and authenticated.
+def validate_subscription(cli_path: str | None = None) -> None:
+    """Validate the configured Claude CLI, or the bundled/PATH fallback.
 
-    Cached so the blocking subprocess check runs at most once per process
-    lifetime.  On first call, also provisions ``~/.claude/.credentials.json``
-    from the ``CLAUDE_CODE_OAUTH_TOKEN`` env var when available.
+    Resolve before checking the cache so a changed selection or retargeted
+    launcher selects a fresh validation. Invalid overrides cannot provision
+    credentials or silently fall back to another executable.
     """
+    cli = os.path.realpath(cli_path or _cli_the_sdk_finds())
+    if not os.path.isfile(cli) or not os.access(cli, os.X_OK):
+        raise RuntimeError(
+            f"Configured Claude CLI ({os.path.basename(cli)}) is not an executable file"
+        )
+    _validate_subscription(cli)
+
+
+@functools.cache
+def _validate_subscription(cli: str) -> None:
+    """Provision and probe once per resolved executable, caching only success."""
     provision_credentials_file()
 
-    cli = find_bundled_cli()
     result = subprocess.run(
         [cli, "--version"],
         capture_output=True,
         text=True,
         timeout=10,
+        env=inherited_env(),
     )
     if result.returncode != 0:
         raise RuntimeError(
@@ -113,12 +136,7 @@ def validate_subscription() -> None:
         capture_output=True,
         text=True,
         timeout=10,
-        env={
-            **os.environ,
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        },
+        env={**inherited_env(), **host_login_env()},
     )
     if auth_result.returncode != 0:
         raise RuntimeError(
@@ -136,9 +154,8 @@ def validate_subscription() -> None:
                 "or run `claude login`."
             )
         logger.info(
-            "Claude subscription auth: method=%s, email=%s",
+            "Claude subscription auth: method=%s",
             status.get("authMethod"),
-            status.get("email"),
         )
     except json.JSONDecodeError:
         logger.warning("Could not parse `claude auth status` output")

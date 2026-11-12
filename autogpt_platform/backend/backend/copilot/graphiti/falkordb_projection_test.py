@@ -16,7 +16,9 @@ from graphiti_core.search.search_utils import (
     node_fulltext_search,
     node_similarity_search,
 )
+from pytest_mock import MockerFixture
 
+from . import falkordb_projection
 from .falkordb_driver import AutoGPTFalkorDriver, _strip_cypher_noise
 from .falkordb_projection import without_embeddings
 
@@ -75,6 +77,36 @@ def test_multiple_record_projections_are_rewritten_by_position() -> None:
     assert _LEAN_EDGE in rewritten
     assert "properties(n)" not in rewritten
     assert "properties(e)" not in rewritten
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_unfamiliar_upstream_projection_is_left_alone(
+    index: int, mocker: MockerFixture
+) -> None:
+    records = list(falkordb_projection._RECORD_PROJECTIONS)
+    record, projection, lean = records[index]
+    changed_record = record.replace(projection, "NULL AS attributes")
+    records[index] = (changed_record, projection, lean)
+    mocker.patch.object(falkordb_projection, "_RECORD_PROJECTIONS", tuple(records))
+
+    assert _without_embeddings(changed_record) == changed_record
+
+
+@pytest.mark.parametrize("kind", ["literal", "comment", "identifier"])
+def test_decoy_before_real_records_preserves_offsets(kind: str) -> None:
+    edge = get_entity_edge_return_query(GraphProvider.FALKORDB)
+    node = get_entity_node_return_query(GraphProvider.FALKORDB)
+    decoys = {
+        "literal": f"WITH 'an escaped \\' quote, {edge}' AS marker\n",
+        "comment": f"/* decoy {node} */\n",
+        "identifier": f"WITH 1 AS `{edge}`\n",
+    }
+    prefix = decoys[kind]
+    query = prefix + edge + node
+    expected = prefix + edge.replace("properties(e) AS attributes", _LEAN_EDGE)
+    expected += node.replace("properties(n) AS attributes", _LEAN_NODE)
+
+    assert _without_embeddings(query) == expected
 
 
 @pytest.mark.parametrize(

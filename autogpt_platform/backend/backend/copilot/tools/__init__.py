@@ -45,6 +45,7 @@ from .expert_resources import (
     RevokeExpertCredentialTool,
 )
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+from .feedback_prompts import FlagMistakeTool, RequestWorkCheckTool
 from .find_agent import FindAgentTool
 from .find_capability import FindCapabilityTool
 from .find_library_agent import FindLibraryAgentTool
@@ -201,6 +202,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delete_workspace_file": DeleteWorkspaceFileTool(),
     # The hire's first turn (expert sessions only): greeting + intake card.
     "expert_onboarding": ExpertOnboardingTool(),
+    # Feedback cards in the chat. In no TOOL_GROUPS group: both work in expert
+    # chats as well as Otto's.
+    "request_work_check": RequestWorkCheckTool(),
+    "flag_mistake": FlagMistakeTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
@@ -242,7 +247,7 @@ DEFERRED_TOOL_NAMES: frozenset[str] = frozenset(TOOL_REGISTRY) - EAGER_CORE
 
 # Capability groups a tool may belong to.  The service layer can hide all
 # tools in a group when the backing capability isn't available to this user
-# (e.g. Graphiti memory behind a feature flag), so the model doesn't reach
+# (e.g. memory on an anonymous turn), so the model doesn't reach
 # for tools whose backend is off and then hit opaque runtime errors.  Add
 # a new group by extending ``ToolGroup`` and registering its members in
 # ``TOOL_GROUPS`` below.
@@ -276,7 +281,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "read_expert_chat": "expert_admin",
     # Delegation works from either side of ``session.expert_id`` (Otto
     # and expert sessions alike), so it has its own group: the engines
-    # disable it only when the user's hire-experts flag is off.
+    # disable it only for unauthenticated turns.
     "delegate_to_expert": "delegation",
     # A consult is read-only and costs one bounded completion, but it is
     # meaningless without teammates to ask, so it rides the same gate.
@@ -300,8 +305,7 @@ TOOL_GROUPS: dict[str, ToolGroup] = {
     "revoke_expert_credential": "expert_admin",
     # Only an expert has someone to ask.
     "request_credential_grant": "experts",
-    # Read-only, but it shares the same gate: with the flag off there is no
-    # team to list.
+    # Team reads require an authenticated owner.
     "list_team": "delegation",
 }
 
@@ -316,7 +320,7 @@ def expert_tool_disabled_groups(
 ) -> list[ToolGroup]:
     """Expert-team groups to disable for a turn — shared by both engines.
 
-    Without the hire-experts flag every team tool is hidden. With it, the
+    For unauthenticated turns every team tool is hidden. Otherwise, the
     split follows the session role: an expert session loses the staffing
     tools (``expert_admin``), a plain Otto session loses the
     expert-session tools (``experts``).

@@ -81,6 +81,7 @@ interface CapturedAuthOptions {
     };
   };
   advanced: { database: { generateId: () => string } };
+  database: { type: string; transaction?: boolean };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
 }
@@ -103,6 +104,8 @@ const PROVIDER_ENV_KEYS = [
   "AUTH_GITHUB_CLIENT_SECRET",
   "AUTH_DISCORD_CLIENT_ID",
   "AUTH_DISCORD_CLIENT_SECRET",
+  "AUTH_MICROSOFT_CLIENT_ID",
+  "AUTH_MICROSOFT_CLIENT_SECRET",
 ];
 
 beforeEach(() => {
@@ -187,6 +190,17 @@ describe("auth config", () => {
     });
   });
 
+  it("runs the database without transactions", async () => {
+    // Better Auth would hold a pool connection for a whole sign-up while the
+    // session hook waits on the same pool for another (see auth.ts).
+    const options = await loadAuthOptions();
+
+    expect(options.database).toMatchObject({
+      type: "postgres",
+      transaction: false,
+    });
+  });
+
   it("generates UUID-shaped database ids", async () => {
     const options = await loadAuthOptions();
 
@@ -214,6 +228,27 @@ describe("auth config", () => {
         clientId: "google-client-id",
         clientSecret: "google-client-secret",
       },
+    });
+  });
+
+  it("registers microsoft for sign-in only, letting the person pick an account", async () => {
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client-id");
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_SECRET", "microsoft-client-secret");
+
+    const options = await loadAuthOptions();
+    const microsoft = (
+      options.socialProviders as Record<string, Record<string, unknown>>
+    ).microsoft;
+
+    expect(microsoft).toMatchObject({
+      clientId: "microsoft-client-id",
+      clientSecret: "microsoft-client-secret", // pragma: allowlist secret
+      tenantId: "common",
+      prompt: "select_account",
+      disableDefaultScope: true,
+      scope: ["openid", "profile", "email"],
+      // Only the redirect flow, which the sign-up policy guards, signs in.
+      disableIdTokenSignIn: true,
     });
   });
 
@@ -362,6 +397,7 @@ describe("change email", () => {
       to: "old@example.com",
       type: "change_email",
       url: "https://app/approve?token=t",
+      newEmail: "new@example.com",
     });
   });
 

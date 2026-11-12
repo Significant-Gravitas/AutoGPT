@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { ActivationResponse } from "@/app/api/__generated__/models/activationResponse";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
@@ -9,22 +10,21 @@ import {
 } from "./api";
 import { useActivationReadiness } from "./useActivationReadiness";
 import { pendingConsent, storeConsent } from "./storage";
-import { safeReturnTo } from "./helpers";
+import { isCheckoutReturn, safeReturnTo } from "./helpers";
 import { useActivationRecovery } from "./useActivationRecovery";
 
 export function useActivationController() {
   const userID = useAuthStore((state) => state.user?.id);
+  const searchParams = useSearchParams();
   const [attempt, setAttempt] = useState<ActivationResponse | null>(null);
   const [isOpen, setOpen] = useState(false);
   const [isBusy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [needsNewTerms, setNeedsNewTerms] = useState(false);
   const inFlight = useRef(false);
-  const checkoutReturn = useRef(
-    typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("subscription") ===
-        "success",
-  );
+  // The router's URL, not window.location: Next renders a page it navigates
+  // to before writing its URL, so the browser still shows the previous page.
+  const checkoutReturn = useRef(isCheckoutReturn(searchParams));
   const interacted = useRef(false);
   const latestAttempt = useRef<ActivationResponse | null>(null);
   const consent = useRef<{ id: string; token: string } | null>(null);

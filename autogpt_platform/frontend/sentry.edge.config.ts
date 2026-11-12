@@ -4,6 +4,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import {
+  SENTRY_DATA_COLLECTION,
   stripLogUserPII,
   stripRequestCredentials,
   stripSpanDataPII,
@@ -11,6 +12,7 @@ import {
   stripUserPII,
 } from "@/lib/sentry-filters";
 import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
+import { redactEventURLs, redactSpanURLs } from "@/lib/sentry-url-redaction";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
@@ -33,22 +35,36 @@ Sentry.init({
   ],
 
   // No email or IP address reaches Sentry; the user id is enough.
-  sendDefaultPii: false,
+  dataCollection: SENTRY_DATA_COLLECTION,
+
+  // Only errors carry a stack trace, so a console warning or captured message
+  // doesn't open a new issue group.
+  attachStacktrace: false,
+
+  // Send spans inside their transaction, which beforeSendTransaction and the
+  // span filters below are written for; streamed spans would skip them.
+  traceLifecycle: "static",
+
   beforeSend(event) {
-    return stripSpanPII(stripUserPII(stripRequestCredentials(event)));
+    return stripSpanPII(
+      stripUserPII(redactEventURLs(stripRequestCredentials(event))),
+    );
   },
   beforeSendTransaction(event) {
     return isSentryTunnelTransaction(event)
       ? null
-      : stripSpanPII(stripUserPII(stripRequestCredentials(event)));
+      : stripSpanPII(
+          stripUserPII(redactEventURLs(stripRequestCredentials(event))),
+        );
   },
-  beforeSendSpan: stripSpanDataPII,
+  beforeSendSpan: Sentry.withStaticSpan((span) =>
+    redactSpanURLs(stripSpanDataPII(span)),
+  ),
   beforeSendLog: stripLogUserPII,
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
-  enableLogs: true,
   integrations: [
     Sentry.requestDataIntegration({ include: { cookies: false, data: false } }),
     Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),

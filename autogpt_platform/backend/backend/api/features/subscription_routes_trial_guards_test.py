@@ -282,7 +282,7 @@ def test_update_subscription_tier_cancel_pending_trial_converts_without_a_curren
     trial_conversion: MagicMock,
 ) -> None:
     """The conversion bills the price the trial accepted, so it needs no
-    current LaunchDarkly price for the plan."""
+    current PostHog price for the plan."""
     mocker.patch(
         "backend.api.features.billing.subscriptions.routes.get_subscription_price_id",
         new_callable=AsyncMock,

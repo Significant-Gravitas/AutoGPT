@@ -16,6 +16,7 @@ import backend.api.features.store.skill_model as skill_model
 import backend.api.features.store.skill_routes as skill_routes
 import backend.api.features.store.skill_submission_db as skill_submission_db
 import backend.util.json
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,8 @@ router = fastapi.APIRouter(
 async def get_admin_listings_with_versions(
     status: typing.Optional[prisma.enums.SubmissionStatus] = None,
     search: typing.Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = fastapi.Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = fastapi.Query(default=20, ge=1, le=MAX_PAGE_SIZE),
 ) -> store_model.StoreListingsWithVersionsAdminViewResponse:
     """
     Get store listings with their version history for admins.
@@ -180,7 +181,6 @@ async def admin_add_agent_to_library(
     "/skills/submissions",
     summary="Admin List Pending Skill Submissions",
     tags=["store", "admin"],
-    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
     """Skill submissions awaiting review, oldest first."""
@@ -197,7 +197,6 @@ async def list_pending_skill_submissions() -> list[skill_model.SkillSubmission]:
         413: {"description": "File is too large to view"},
         415: {"description": "File is not text"},
     },
-    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def read_skill_submission_file(
     skill_listing_version_id: str,
@@ -217,7 +216,6 @@ async def read_skill_submission_file(
     summary="Review Skill Submission",
     tags=["store", "admin"],
     responses={404: {"description": "Submission not found"}},
-    dependencies=[fastapi.Depends(skill_routes.require_skills_hub_flag)],
 )
 async def review_skill_submission(
     skill_listing_version_id: str,

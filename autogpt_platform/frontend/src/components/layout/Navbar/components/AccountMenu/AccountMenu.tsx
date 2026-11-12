@@ -11,6 +11,7 @@ import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
 import { AccountMenuFeedbackRow } from "./components/AccountMenuFeedbackRow";
 import { AccountMenuHeader } from "./components/AccountMenuHeader";
 import { AccountMenuRow } from "./components/AccountMenuRow";
+import { AccountMenuTourRow } from "./components/AccountMenuTourRow";
 import { InitialAvatar } from "./components/InitialAvatar";
 import { getAccountMenuIcon } from "./helpers";
 
@@ -42,7 +43,7 @@ export function AccountMenu({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
+          className="flex cursor-pointer items-center space-x-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -62,7 +63,7 @@ export function AccountMenu({
         side={side}
         align={align}
         sideOffset={8}
-        className="w-72 overflow-hidden rounded-2xl border border-neutral-200 bg-white px-0 py-2 shadow-lg"
+        className="w-72 overflow-hidden rounded-2xl border border-border-base bg-surface px-0 py-2 shadow-lg"
         data-testid="account-menu-popover"
       >
         <div className="px-2">
@@ -83,9 +84,18 @@ export function AccountMenu({
 
           return (
             <React.Fragment key={`group-${groupIndex}`}>
-              {showDivider && <div className="mx-3 my-1 h-px bg-neutral-200" />}
+              {showDivider && (
+                <div className="mx-3 my-1 h-px bg-surface-active" />
+              )}
               <div className="px-2 py-1">
                 <ul className="flex flex-col gap-0.5">
+                  {/* Help lives in the last group: replaying the first-run
+                      walkthrough sits with "What's new" and the docs. */}
+                  {isLogoutGroup && (
+                    <li>
+                      <AccountMenuTourRow />
+                    </li>
+                  )}
                   {group.items.map((item, itemIndex) => {
                     const key = `${groupIndex}-${itemIndex}-${item.text}`;
                     const icon = getAccountMenuIcon(item.icon);

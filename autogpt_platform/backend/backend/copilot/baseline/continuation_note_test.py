@@ -75,7 +75,7 @@ async def _sent_messages(
     monkeypatch.setattr(service, "call_provider_stream", provider)
     monkeypatch.setattr(service, "resolve_answered", _no_answered_cards)
 
-    async with asyncio.timeout(5):
+    async def consume() -> None:
         async for _ in service.stream_chat_completion_baseline(
             session.session_id,
             message,
@@ -84,6 +84,8 @@ async def _sent_messages(
             session=session,
         ):
             pass
+
+    await asyncio.wait_for(consume(), timeout=5)
 
     assert provider.await_args is not None
     return provider.await_args.kwargs["messages"]

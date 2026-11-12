@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/atoms/Input/Input";
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LongNumberHint } from "@/components/contextual/LongNumberHint/LongNumberHint";
+import { hasLongWholeNumber } from "@/lib/json-text";
 
 interface InputExpanderModalProps {
   isOpen: boolean;
@@ -35,6 +37,10 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
   const [tempValue, setTempValue] = useState(defaultValue);
   const [isCopied, setIsCopied] = useState(false);
   const { toast } = useToast();
+  const longNumberHintId =
+    inputType === "json" && hasLongWholeNumber(tempValue)
+      ? `${inputId}-long-number`
+      : undefined;
 
   useEffect(() => {
     if (isOpen) {
@@ -74,37 +80,42 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
       <Dialog.Content>
         <div className="flex flex-col gap-4 px-1">
           <Text variant="body">{description}</Text>
-          <Input
-            type="textarea"
-            label={title || "Edit value"}
-            hideLabel
-            id={inputId}
-            value={tempValue}
-            className={cn(
-              "!min-h-[300px] rounded-2xlarge",
-              inputType === "json" && "font-mono text-sm",
+          <div className="mb-6 flex flex-col gap-2">
+            <Input
+              type="textarea"
+              label={title || "Edit value"}
+              hideLabel
+              id={inputId}
+              value={tempValue}
+              wrapperClassName="mb-0"
+              className={cn(
+                "!min-h-[300px]",
+                inputType === "json" && "font-mono text-body",
+              )}
+              onChange={(e) => setTempValue(e.target.value)}
+              placeholder={placeholder || "Enter text..."}
+              aria-describedby={longNumberHintId}
+              autoFocus
+            />
+            {longNumberHintId && (
+              <LongNumberHint text={tempValue} id={longNumberHintId} />
             )}
-            onChange={(e) => setTempValue(e.target.value)}
-            placeholder={placeholder || "Enter text..."}
-            autoFocus
-          />
+          </div>
 
           <div className="flex items-center justify-end gap-1">
             <Button
-              variant="secondary"
-              size="small"
+              variant={isCopied ? "success" : "secondary"}
+              size="icon-sm"
+              shape="pill"
+              tone="base"
+              withTooltip={false}
               onClick={copyValue}
               aria-label={
                 isCopied ? "Copied to clipboard" : "Copy to clipboard"
               }
-              className={cn(
-                "h-fit min-w-0 gap-1.5 border border-zinc-200 p-2 text-black hover:text-slate-900",
-                isCopied &&
-                  "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
-              )}
             >
               {isCopied ? (
-                <Icon icon={Tick02Icon} size={16} className="text-green-600" />
+                <Icon icon={Tick02Icon} size={16} tone="success" />
               ) : (
                 <Icon icon={Copy01Icon} size={16} />
               )}

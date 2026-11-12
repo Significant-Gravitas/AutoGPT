@@ -25,14 +25,17 @@ from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_STEP_CARD_PREFIX,
 )
+from backend.copilot.context import replaying_bound_args
 from backend.copilot.google_data_redaction import (
     is_google_call,
     is_google_output,
     remember_google_output,
 )
+from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
+from backend.copilot.tool_image import HeldImage, ToolImage, parse_held_image
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.data.db_accessors import chat_db, review_db
@@ -76,7 +79,9 @@ _RESEND = (
 def is_answer_row(message: "ChatMessage") -> bool:
     """A user row the gate wrote for an answered card, not something the user typed."""
     return bool(message.metadata) and (
-        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+        _WAKE_KEY in message.metadata
+        or _RESULT_KEY in message.metadata
+        or message.metadata.get("background_task_stage") == "followup"
     )
 
 
@@ -97,6 +102,9 @@ class HeldCall(BaseModel):
     tool_name: str
     tool_call_id: str
     args: dict[str, Any]
+    # The args were resolved before the gate (file references expanded), so a
+    # replay runs them as they are instead of resolving them a second time.
+    args_bound: bool = False
     # What a rejection sets to ask for the rest of the chat; the tool when None.
     rule_key: str | None = None
     held_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -362,7 +370,7 @@ async def wake(
                     await woken_turns.record(
                         session_id, [c.review_id for c in calls], turn_id
                     )
-            except ConcurrentTurnLimitError:
+            except ConcurrentTurnLimitError as running_cap:
                 await try_enqueue_turn(
                     user_id=user_id,
                     inflight_cap=get_inflight_turn_limit(),
@@ -379,11 +387,15 @@ async def wake(
                     ),
                     envelope=envelope,
                 )
+                track_turn_cap(
+                    user_id, running_cap, surface="background", outcome="queued"
+                )
             except TreeRefusal as refused:
                 await post_refusal(
                     session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
                 )
-    except InflightCapExceeded:
+    except InflightCapExceeded as inflight_cap:
+        track_turn_cap(user_id, inflight_cap, surface="background", outcome="refused")
         logger.info(f"Held calls in {session_id} wait for the user's next turn")
     except Exception:
         logger.warning(f"Could not wake session {session_id}", exc_info=True)
@@ -439,15 +451,32 @@ async def _resolve(
             outcome, output = await _settled(user_id, session, call, row)
     shown = _card_copy(row)
     google_data = is_google_call(call.args) or is_google_output(output)
+    image_result = parse_held_image(output) if outcome == "approved" else None
+    if image_result is not None:
+        output = image_result.text
     try:
-        deliver(_result_row(call, cap(output), outcome, shown, google_data))
+        deliver(
+            _result_row(
+                call,
+                cap(output),
+                outcome,
+                shown,
+                google_data,
+                image=image_result.image if image_result else None,
+            )
+        )
     except Exception:
         # The outcome is known and may be a refusal; only the engine's cut
         # failed, so deliver it trimmed rather than let recovery guess.
         logger.warning(f"Could not cap held result {call.review_id}", exc_info=True)
         deliver(
             _result_row(
-                call, output[: _MAX_RESULT_CHARS // 2], outcome, shown, google_data
+                call,
+                output[: _MAX_RESULT_CHARS // 2],
+                outcome,
+                shown,
+                google_data,
+                image=image_result.image if image_result else None,
             )
         )
 
@@ -482,6 +511,7 @@ def _result_row(
     outcome: Outcome,
     shown: dict[str, Any] | None = None,
     google_data: bool = False,
+    image: ToolImage | None = None,
 ) -> PendingMessage:
     content = (
         f'<held_call_result tool="{call.tool_name}" '
@@ -493,6 +523,7 @@ def _result_row(
     if google_data:
         remember_google_output(content)
     return HeldResult(
+        model_image=image,
         content=content,
         metadata={
             _RESULT_KEY: {
@@ -590,10 +621,18 @@ async def _run(
     user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool"
 ) -> tuple[Outcome, str]:
     # The gate finds the approval for exactly these arguments and spends it.
-    result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    with replaying_bound_args(call.args_bound):
+        result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
+    if result.image is not None:
+        text = (
+            result.output
+            if isinstance(result.output, str)
+            else json.dumps(result.output, default=str)
+        )
+        return "approved", HeldImage(text=text, image=result.image).model_dump_json()
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)

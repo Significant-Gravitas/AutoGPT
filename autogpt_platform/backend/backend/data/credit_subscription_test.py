@@ -13,7 +13,6 @@ from prisma.models import User
 
 from backend.data import credit
 from backend.data.credit import (
-    PAYMENT_FAILURE_CANCELLATION_COMMENT,
     UserCredit,
     _get_active_subscription_cached,
     _is_stripe_reconcilable,
@@ -22,7 +21,6 @@ from backend.data.credit import (
     create_subscription_checkout,
     get_pending_subscription_change,
     get_proration_credit_cents,
-    handle_subscription_payment_failure,
     handle_subscription_payment_success,
     is_tier_downgrade,
     is_tier_upgrade,
@@ -32,7 +30,16 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
 )
-from backend.util.exceptions import InsufficientBalanceError
+
+
+@pytest.fixture(autouse=True)
+def _no_wallet_payments():
+    """No invoice in these tests was paid from the wallet unless one says so."""
+    with patch(
+        "backend.data.credit.invoice_paid_from_wallet",
+        new=AsyncMock(return_value=False),
+    ) as wallet:
+        yield wallet
 
 
 class _CacheClearable(Protocol):
@@ -46,17 +53,6 @@ class _CacheClearable(Protocol):
 
 def _clear_cache(fn: _CacheClearable) -> None:
     fn.cache_clear()
-
-
-@pytest.fixture(autouse=True)
-def _no_pending_update():
-    """The payment failures here are plans that lapsed, not a change Stripe
-    holds until it's paid (see credit_pending_update_test.py)."""
-    with patch(
-        "backend.data.credit._nothing_left_to_cover",
-        AsyncMock(return_value=False),
-    ):
-        yield
 
 
 @pytest.fixture(autouse=True)
@@ -182,7 +178,8 @@ async def test_sync_subscription_from_stripe_active(billing_boundaries, tier):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": tier}
+            where={"id": "user-1"},
+            data={"subscriptionTier": tier, "subscriptionEndedAt": None},
         )
 
 
@@ -321,7 +318,11 @@ async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro(billing_boun
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -430,7 +431,9 @@ async def test_sync_subscription_from_stripe_cancelled(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -467,7 +470,9 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -491,6 +496,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
+        **_kwargs: object,
     ) -> None:
         mock_user.subscriptionTier = tier
 
@@ -1312,7 +1318,9 @@ async def test_sync_subscription_from_stripe_business_tier(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1367,7 +1375,9 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BASIC, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1423,7 +1433,9 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs(billing_boundari
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
@@ -1479,7 +1491,11 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed(
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -1821,7 +1837,11 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches(
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -1900,207 +1920,12 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check(
         await sync_subscription_from_stripe(stripe_sub)
         # No metadata → cross-check skipped → tier updated normally
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
-
-
-@pytest.mark.asyncio
-async def test_handle_subscription_payment_failure_balance_covers_pays_invoice(
-    billing_boundaries,
-):
-    """When balance covers the invoice, Stripe Invoice.pay is called with
-    paid_out_of_band=True so the card isn't double-charged on top of the
-    balance debit (the card already failed; retrying it would let the
-    success-handler webhook reverse the debit via the credit grant)."""
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
-    invoice = {
-        "id": "in_abc123",
-        "customer": "cus_123",
-        "subscription": "sub_abc123",
-        "amount_due": 2000,
-    }
-
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
-        ),
-        patch(
-            "backend.data.credit.UserCredit._add_transaction",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "backend.data.credit.stripe.Invoice.pay_async", new_callable=AsyncMock
-        ) as mock_pay,
-    ):
-        billing_boundaries.invoice.return_value = {**invoice, "status": "open"}
-        await handle_subscription_payment_failure(invoice)
-        mock_pay.assert_called_once_with("in_abc123", paid_out_of_band=True)
-
-
-@pytest.mark.asyncio
-async def test_handle_subscription_payment_failure_ignores_a_new_plans_first_payment():
-    """A card declined in Checkout leaves the new plan incomplete for the
-    customer to retry. Treating it as a lapsed plan would cancel every live
-    subscription, including a cancel-pending trial that still has access."""
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.TRIAL)
-    invoice = {
-        "id": "in_first",
-        "customer": "cus_123",
-        "subscription": "sub_new_max",
-        "amount_due": 32000,
-        "billing_reason": "subscription_create",
-    }
-
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
-        ),
-        patch(
-            "backend.data.credit.UserCredit._add_transaction", new_callable=AsyncMock
-        ) as mock_add_tx,
-        patch(
-            "backend.data.credit._cancel_customer_subscriptions",
-            new_callable=AsyncMock,
-        ) as mock_cancel,
-        patch(
-            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
-        ) as mock_set,
-    ):
-        await handle_subscription_payment_failure(invoice)
-    mock_add_tx.assert_not_awaited()
-    mock_cancel.assert_not_awaited()
-    mock_set.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_handle_subscription_payment_failure_invoice_pay_error_does_not_raise(
-    billing_boundaries,
-):
-    """Failure to mark the invoice as paid is logged but does not propagate."""
-    import stripe as stripe_mod
-
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
-    invoice = {
-        "id": "in_abc123",
-        "customer": "cus_123",
-        "subscription": "sub_abc123",
-        "amount_due": 2000,
-    }
-
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
-        ),
-        patch(
-            "backend.data.credit.UserCredit._add_transaction",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "backend.data.credit.stripe.Invoice.pay_async",
-            side_effect=stripe_mod.StripeError("network error"),
-        ),
-        patch(
-            "backend.data.credit.invalidate_billing_lookups", new_callable=AsyncMock
-        ) as invalidate,
-    ):
-        # Must not raise — the pay failure is only logged as a warning
-        billing_boundaries.invoice.return_value = {**invoice, "status": "open"}
-        await handle_subscription_payment_failure(invoice)
-    # A timed-out call may still have been applied in Stripe, so the cached
-    # billing lookups are dropped either way.
-    invalidate.assert_awaited_once_with("cus_123")
-
-
-@pytest.mark.asyncio
-async def test_handle_subscription_payment_failure_passes_invoice_id_as_transaction_key(
-    billing_boundaries,
-):
-    """invoice_id is used as the idempotency key to prevent double-charging on webhook retries."""
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
-    invoice = {
-        "id": "in_idempotency_test",
-        "customer": "cus_123",
-        "subscription": "sub_abc123",
-        "amount_due": 2000,
-    }
-
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
-        ),
-        patch(
-            "backend.data.credit.UserCredit._add_transaction",
-            new_callable=AsyncMock,
-        ) as mock_add_tx,
-        patch("backend.data.credit.stripe.Invoice.pay_async", new_callable=AsyncMock),
-    ):
-        billing_boundaries.invoice.return_value = {**invoice, "status": "open"}
-        await handle_subscription_payment_failure(invoice)
-        mock_add_tx.assert_called_once()
-        _, kwargs = mock_add_tx.call_args
-        assert kwargs.get("transaction_key") == "in_idempotency_test"
-
-
-@pytest.mark.asyncio
-async def test_handle_subscription_payment_failure_marks_its_cancel_as_payment_failed(
-    billing_boundaries,
-):
-    """Stripe stamps our API cancel ``cancellation_requested``; the comment is
-    what lets the deletion webhook report it as involuntary churn."""
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
-    invoice = {
-        "id": "in_uncovered",
-        "customer": "cus_123",
-        "subscription": "sub_abc123",
-        "amount_due": 2000,
-    }
-    active_subs = MagicMock()
-    active_subs.data = [
-        stripe.Subscription.construct_from(
-            {"id": "sub_abc123", "schedule": None}, "sk_test"
-        )
-    ]
-    active_subs.has_more = False
-    no_subs = MagicMock()
-    no_subs.data = []
-    no_subs.has_more = False
-
-    def list_side_effect(*args, **kwargs):
-        return no_subs if kwargs.get("status") == "trialing" else active_subs
-
-    with (
-        patch(
-            "backend.data.credit.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
-        ),
-        patch(
-            "backend.data.credit.UserCredit._add_transaction",
-            new_callable=AsyncMock,
-            side_effect=InsufficientBalanceError(
-                message="no balance", user_id="user-1", balance=0, amount=2000
-            ),
-        ),
-        patch(
-            "backend.data.credit.stripe.Subscription.list_async",
-            side_effect=list_side_effect,
-        ),
-        patch(
-            "backend.data.credit.stripe.Subscription.cancel_async",
-            new_callable=AsyncMock,
-        ) as mock_cancel,
-        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
-    ):
-        billing_boundaries.invoice.return_value = {**invoice, "status": "open"}
-        await handle_subscription_payment_failure(invoice)
-
-    mock_cancel.assert_called_once_with(
-        "sub_abc123",
-        cancellation_details={"comment": PAYMENT_FAILURE_CANCELLATION_COMMENT},
-    )
 
 
 def _patch_credit_grant_config(enabled: bool):
@@ -2465,6 +2290,39 @@ async def test_handle_subscription_payment_success_skips_paid_out_of_band():
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_wallet_paid_invoice(
+    _no_wallet_payments,
+):
+    """From Stripe API 2025-03-31.basil the invoice has no ``paid_out_of_band``;
+    the wallet's own record must still stop the grant (a free period)."""
+    _no_wallet_payments.return_value = True
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_wallet_123",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "billing_reason": "subscription_cycle",
+    }
+
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+        _patch_credit_grant_config(True),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_not_called()
+    _no_wallet_payments.assert_awaited_once_with("user-1", "in_wallet_123")
 
 
 @pytest.mark.asyncio
@@ -4110,7 +3968,11 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier(
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -4768,6 +4630,79 @@ async def test_admin_get_user_history_include_inactive_omits_filter():
     where = prisma_mock.find_many.await_args.kwargs["where"]
     assert "isActive" not in where
     assert where["type"] == CreditTransactionType.TOP_UP
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
+    """The ledger outlives the account (no foreign key to User), so a row
+    whose account is gone lists without an email instead of failing the
+    whole page."""
+    from datetime import datetime, timezone
+
+    from prisma.enums import CreditTransactionType
+
+    from backend.data.credit import admin_get_user_history
+
+    row = MagicMock(
+        transactionKey="tx-1",
+        createdAt=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        type=CreditTransactionType.USAGE,
+        amount=-5,
+        runningBalance=10,
+        userId="deleted-user-id",
+        metadata={},
+    )
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[row]),
+        count=AsyncMock(return_value=1),
+    )
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+        patch(
+            "backend.data.credit.get_user_credit_model",
+            AsyncMock(
+                return_value=MagicMock(
+                    _get_credits=AsyncMock(
+                        return_value=(10, datetime.now(timezone.utc))
+                    )
+                )
+            ),
+        ),
+    ):
+        result = await admin_get_user_history()
+
+    assert result.history[0].user_id == "deleted-user-id"
+    assert result.history[0].user_email is None
+    assert "include" not in prisma_mock.find_many.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_history_searches_emails_through_the_lookup():
+    """A search matches the user ID, email or name, as before; emails and
+    names are matched in SQL since the ledger has no relation to User."""
+    from backend.data.credit import admin_get_user_history
+
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[]),
+        count=AsyncMock(return_value=0),
+    )
+    search = AsyncMock(return_value=([("tx-1", "u1")], 1))
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.search_history_keys", search),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+    ):
+        result = await admin_get_user_history(search="sam@", page=2, page_size=10)
+
+    kwargs = search.await_args.kwargs
+    assert search.await_args.args == ("sam@",)
+    assert (kwargs["skip"], kwargs["take"]) == (10, 10)
+    assert kwargs["include_inactive"] is False
+    where = prisma_mock.find_many.await_args.kwargs["where"]
+    assert where == {"OR": [{"transactionKey": "tx-1", "userId": "u1"}]}
+    assert result.pagination.total_items == 1
+    prisma_mock.count.assert_not_awaited()
 
 
 @pytest.mark.asyncio

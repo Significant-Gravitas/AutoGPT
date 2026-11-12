@@ -44,11 +44,13 @@ class FrontendEnvironmentTest(unittest.TestCase):
             "TRANSCRIPTION_MODEL": "whisper-1",
         }
         forbidden = {
+            "BAN_RECORD_HASH_KEY": "ban-record-hash-key",
             "DATABASE_URL": "postgresql://postgres:db-password@127.0.0.1/postgres",  # pragma: allowlist secret
             "DB_PASS": "database-password",
             "DIRECT_URL": "postgresql://superuser:secret@127.0.0.1/postgres",
             "ENCRYPTION_KEY": "master-encryption-key",
             "GRAPHITI_FALKORDB_PASSWORD": "falkor-password",
+            "INTERNAL_API_KEY": "internal-service-key",
             "JWT_VERIFY_KEY": "legacy-backend-secret",
             "POSTGRES_PASSWORD": "postgres-superuser-password",
             "RABBITMQ_DEFAULT_PASS": "rabbitmq-password",
@@ -110,6 +112,7 @@ class FrontendEnvironmentTest(unittest.TestCase):
         self.assertEqual(child_environment["PORT"], "3001")
         self.assertEqual(child_environment["HOSTNAME"], "127.0.0.1")
         self.assertEqual(child_environment["NODE_ENV"], "production")
+        self.assertEqual(child_environment["TRUST_X_FORWARDED_FOR"], "true")
 
     def test_rejects_missing_required_setting(self) -> None:
         result = subprocess.run(

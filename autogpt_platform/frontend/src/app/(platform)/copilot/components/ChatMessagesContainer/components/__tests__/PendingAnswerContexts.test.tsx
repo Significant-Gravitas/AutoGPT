@@ -3,6 +3,7 @@ import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { memo, useContext } from "react";
 import { describe, expect, it } from "vitest";
 import { PendingOnboardingContext } from "../../../ExpertOnboardingCard/PendingOnboardingContext";
+import { AnsweredQuestionsContext } from "../../../QuestionDock/AnsweredQuestionsContext";
 import { PendingQuestionsContext } from "../../../QuestionDock/PendingQuestionsContext";
 import { CurrentPauseContext } from "../../../TurnPausedCard/CurrentPauseContext";
 import { HeldOutcomesContext } from "../../HeldOutcomesContext";
@@ -13,6 +14,7 @@ type Part = Message["parts"][number];
 
 interface Seen {
   questions: unknown;
+  answered: ReadonlyMap<string, ReadonlyMap<string, string>>;
   onboarding: unknown;
   held: ReadonlyMap<string, unknown>;
   pause: unknown;
@@ -39,7 +41,14 @@ const askPart = {
   input: {},
   output: {
     type: "agent_builder_clarification_needed",
-    questions: [{ question: "Which region?", keyword: "region" }],
+    questions: [
+      {
+        question: "Which region?",
+        keyword: "region",
+        options: ["Europe", "Asia"],
+        allow_multiple: true,
+      },
+    ],
   },
 } as unknown as Part;
 
@@ -56,6 +65,7 @@ function setup(initial: Message[]) {
   const Consumer = memo(function Consumer() {
     seen.push({
       questions: useContext(PendingQuestionsContext),
+      answered: useContext(AnsweredQuestionsContext),
       onboarding: useContext(PendingOnboardingContext),
       held: useContext(HeldOutcomesContext),
       pause: useContext(CurrentPauseContext),
@@ -158,6 +168,26 @@ describe("PendingAnswerContexts", () => {
 
     expect(seen).toHaveLength(2);
     expect(seen[1].questions).toBeNull();
+  });
+
+  it("reads the answers back from the user's reply", () => {
+    const { seen, rerender } = setup([assistant("Hi")]);
+
+    rerender([
+      assistant("Hi"),
+      {
+        id: "u1",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "**Here are my answers:**\n\n> Which region?\n\n- Europe\n- Asia\n\nPlease proceed.",
+          },
+        ],
+      },
+    ]);
+
+    expect(seen[1].answered.get("ask-1")?.get("region")).toBe("Europe, Asia");
   });
 
   it("shares one empty map across different messages when nothing is held", () => {
