@@ -293,7 +293,7 @@ def _report(report: "ErasureReport") -> None:
     if not report.account_found:
         click.echo("  no platform account or auth identity (already erased?)")
     if report.not_claimed and report.steps:
-        click.echo(f"  {report.not_claimed}: ran only the PostHog delete again")
+        click.echo(f"  {report.not_claimed}: repeats only the PostHog delete")
     elif report.not_claimed:
         click.echo(f"  nothing ran: {report.not_claimed}")
     for blocker in report.blockers:

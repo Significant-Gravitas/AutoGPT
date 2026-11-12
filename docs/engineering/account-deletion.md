@@ -87,7 +87,7 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
 
    It exits non-zero unless every step finished, and also when the owner kept the account between the dry run and the apply ("nothing ran: kept by its owner, ...").
 
-   On an account erased already (pass its user ID: the email no longer resolves), `--apply` repeats only the PostHog delete, the one outside step that needs nothing but the user ID. It prints "erased already: ran only the PostHog delete again" with its count, leaves the request as it is, and exits non-zero only when that delete failed.
+   On an account erased already (pass its user ID: the email no longer resolves), `--apply` repeats only the PostHog delete, the one outside step that needs nothing but the user ID. It prints "erased already: repeats only the PostHog delete" with its count, leaves the request as it is, and exits non-zero only when that delete failed.
 5. **Confirm.** Wait two minutes after the apply, then run the dry run again with the user ID (the email no longer resolves) and check every count is 0. It reports the account as not found, which is expected now. If the `posthog` line shows `persons` above 0, an event that was already on its way when the rows went (an email delivery webhook, a Stripe event) brought the person back: run `erase-account <user ID> --apply` again, which repeats the PostHog delete (step 4), and confirm again.
 6. **Follow up by hand** on what the routine does not cover (below), then reply to the requester that their account and data are deleted. Record the request and its dates wherever privacy requests are tracked, by user ID; do not paste the email into tickets or channels.
 
