@@ -39,6 +39,7 @@ settings = Settings()
 # 120 req/minute / user = 2 QPS sustained, generous for the 200 ms-debounced
 # search-as-you-type frontend (~5 keystrokes/sec collapse to ~1 call/sec)
 # while still catching runaway clients.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 GLOBAL_SEARCH_WINDOW_SECONDS = 60
 GLOBAL_SEARCH_MAX_REQUESTS = 120
 
@@ -48,6 +49,7 @@ _limiter = RateLimiter(
     window_seconds=GLOBAL_SEARCH_WINDOW_SECONDS,
 )
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 PUBLIC_SEARCH_WINDOW_SECONDS = 60
 PUBLIC_SEARCH_EMBEDDINGS_KEY_PREFIX = "store:search:embeddings"
 PUBLIC_SEARCH_EMBEDDINGS_ALERT_PERCENT = 80

@@ -4,7 +4,7 @@ import logging
 import platform
 from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import fastapi
 import starlette.middleware.cors
@@ -46,6 +46,7 @@ import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
 import backend.api.features.feature_flags.routes as feature_flags_routes
+import backend.api.features.feedback_prompts.routes as feedback_prompt_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -91,6 +92,7 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.session_auth import require_active_auth_session
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.copilot.bot.bot_backend import BotBackend
@@ -104,6 +106,7 @@ from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
+from .external.v1.app import v1_app
 from .external.v2.app import v2_app
 from .external.v2.mcp_server import (
     WELL_KNOWN_PROTECTED_RESOURCE_PATH,
@@ -306,6 +309,9 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
     generate_unique_id_function=custom_generate_unique_id,
 )
+
+for authenticated_app in (app, external_api, v1_app, v2_app):
+    authenticated_app.state.jwt_payload_validator = require_active_auth_session
 
 # First, so it sits inside the others and its 413 carries their headers. It
 # covers the mounted apps too.
@@ -609,6 +615,11 @@ app.include_router(
     prefix="/api/transfers",
 )
 app.include_router(
+    feedback_prompt_routes.router,
+    tags=["v2", "feedback-prompts"],
+    prefix="/api/feedback-prompts",
+)
+app.include_router(
     push_routes.router,
     tags=["push"],
     prefix="/api/push",
@@ -670,6 +681,7 @@ class AgentServer(backend.util.service.AppProcess):
             allow_credentials=True,
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
+            expose_headers=["X-Error-Code"],
         )
 
         # Only add debug in local environment (not supported in all uvicorn versions)
@@ -700,8 +712,8 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_graph(
         graph_id: str,
         user_id: str,
-        graph_version: Optional[int] = None,
-        node_input: Optional[dict[str, Any]] = None,
+        graph_version: int | None = None,
+        node_input: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 
@@ -855,7 +867,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_preset(
         preset_id: str,
         user_id: str,
-        inputs: Optional[dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 

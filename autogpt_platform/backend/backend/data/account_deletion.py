@@ -46,7 +46,10 @@ async def is_account_closed(user_id: str) -> bool:
 
 
 async def close_account(
-    user_id: str, source: AccountDeletionSource
+    user_id: str,
+    source: AccountDeletionSource,
+    *,
+    grace: timedelta = GRACE_PERIOD,
 ) -> AccountDeletionRequest | None:
     """Record the deletion request, end every session, take the user's
     Marketplace listings and reviews down, turn off their share links and
@@ -57,7 +60,8 @@ async def close_account(
     with the User. Reopening the account brings none of it back. Returns
     ``None``, having changed nothing, when the account was already closed
     (including by a concurrent call that won the race); the new request when
-    this call closed it.
+    this call closed it. ``grace`` is the time the owner has to keep it: zero
+    only for an owner who asked by email to be erased at once.
     """
     now = datetime.now(timezone.utc)
     try:
@@ -67,7 +71,7 @@ async def close_account(
                     "userId": user_id,
                     "source": source,
                     "requestedAt": now,
-                    "eraseAfter": now + GRACE_PERIOD,
+                    "eraseAfter": now + grace,
                 }
             )
             await tx.authsession.delete_many(where={"userId": user_id})

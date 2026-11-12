@@ -7,10 +7,19 @@ import {
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
+import { nativeSessionBearer } from "./native-session-bearer";
+import { appleOAuth } from "./apple-oauth";
+import {
+  assertAppleSignInRequest,
+  appleTrustedOrigins,
+  getAppleProvider,
+  type AppleAccountUser,
+} from "./apple-provider";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
-import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { authDbPool } from "./auth-db-pool";
+import { assertNotBannedAddress } from "./ban-record";
 import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
 import { assertNotDisposableEmail } from "./disposable-email";
@@ -61,8 +70,7 @@ const baseURL =
   "http://localhost:3000";
 
 function getSocialProviders() {
-  const providers: Record<string, { clientId: string; clientSecret: string }> =
-    {};
+  const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 
   for (const provider of ["google", "github", "discord"] as const) {
     const prefix = `AUTH_${provider.toUpperCase()}`;
@@ -73,31 +81,22 @@ function getSocialProviders() {
     }
   }
 
+  const apple = getAppleProvider(findAppleAccountUser);
+  if (apple) providers.apple = apple;
+
   const microsoft = getMicrosoftLoginProvider();
   return microsoft ? { ...providers, microsoft } : providers;
 }
 
-// Shared with the databaseHooks below so the verified-email mirror reuses the
-// same connection/search_path instead of opening a second pool.
-// Cached on globalThis in development: `next dev` re-evaluates this module on
-// every hot reload, and a fresh Pool per reload leaks its idle connections
-// (the old one is never ended), eventually exhausting Postgres backends.
-// Production evaluates it once, so the cache is a no-op there.
-const globalForAuthDb = globalThis as { __authDbPool?: Pool };
-
-const authDbPool =
-  globalForAuthDb.__authDbPool ??
-  new Pool({
-    // No fallback: the database password is generated per install, and
-    // `make init-env` writes it into frontend/.env's DATABASE_URL.
-    connectionString: process.env.DATABASE_URL,
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
+async function findAppleAccountUser(
+  subject: string,
+): Promise<AppleAccountUser | null> {
+  const context = await auth.$context;
+  const owner = await context.internalAdapter.findAccountOwnerByKey({
+    providerId: "apple",
+    accountId: subject,
   });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForAuthDb.__authDbPool = authDbPool;
+  return owner?.kind === "owned" ? owner.user : null;
 }
 
 const requireEmailVerification =
@@ -137,6 +136,7 @@ function getRequestIP(ctx: HookContext) {
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
+  trustedOrigins: appleTrustedOrigins,
   // Without database transactions, as before Better Auth 1.7, which turns
   // them on for a bare pg Pool. A sign-up would then hold one of the pool's
   // connections throughout while the session hook (access blocks, IP log)
@@ -151,6 +151,7 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      assertAppleSignInRequest(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
         path: ctx.path,
@@ -484,6 +485,8 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    ...appleOAuth(),
+    nativeSessionBearer(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
@@ -500,7 +503,8 @@ export const auth = betterAuth({
         // interchangeable during the migration window.
         audience: "authenticated",
         expirationTime: "1h",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
+          sid: session.id,
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },
@@ -533,13 +537,15 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
   }
 }
 
-// IP and email-domain blocks from /admin/users (access-blocks.ts) answer
-// before the disposable list, so an admin's domain block keeps its message.
+// IP and email-domain blocks from /admin/users (access-blocks.ts) and the ban
+// record of an erased, banned account (ban-record.ts) answer before the
+// disposable list, so an admin's block keeps its message.
 async function assertEmailSignUpAllowed(
   email: string,
   ipAddress: string | null,
 ) {
   await assertSignUpAllowed(authDbPool, { email, ipAddress });
+  await assertNotBannedAddress(email);
   const dns = sharedLookups();
   await assertNotDisposableEmail(email, { dns });
   await assertEmailHasMailServer(email, { dns });
