@@ -10,8 +10,8 @@ import { admin, jwt } from "better-auth/plugins";
 import { nativeSessionBearer } from "./native-session-bearer";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
-import { Pool } from "pg";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
+import { authDbPool } from "./auth-db-pool";
 import { assertNotBannedAddress } from "./ban-record";
 import { getTrustedClientIP, trustedProxies } from "./client-ip";
 import { DISABLED_AUTH_PATHS } from "./disabled-paths";
@@ -76,29 +76,6 @@ function getSocialProviders() {
 
   const microsoft = getMicrosoftLoginProvider();
   return microsoft ? { ...providers, microsoft } : providers;
-}
-
-// Shared with the databaseHooks below so the verified-email mirror reuses the
-// same connection/search_path instead of opening a second pool.
-// Cached on globalThis in development: `next dev` re-evaluates this module on
-// every hot reload, and a fresh Pool per reload leaks its idle connections
-// (the old one is never ended), eventually exhausting Postgres backends.
-// Production evaluates it once, so the cache is a no-op there.
-const globalForAuthDb = globalThis as { __authDbPool?: Pool };
-
-const authDbPool =
-  globalForAuthDb.__authDbPool ??
-  new Pool({
-    // No fallback: the database password is generated per install, and
-    // `make init-env` writes it into frontend/.env's DATABASE_URL.
-    connectionString: process.env.DATABASE_URL,
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForAuthDb.__authDbPool = authDbPool;
 }
 
 const requireEmailVerification =

@@ -1,4 +1,7 @@
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/lib/auth/auth";
+import { isSessionRejection } from "@/lib/auth/server/getServerSession";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { cookies, headers } from "next/headers";
 import { cache } from "react";
 
@@ -18,6 +21,9 @@ import { cache } from "react";
  * cookie would keep minting backend access for the rest of the JWT's lifetime
  * even after logout or `revokeSessionsOnPasswordReset` deleted the session row.
  * Minting is in-process, so re-checking every request is cheap.
+ *
+ * Every failure propagates from here; getServerAuthToken decides which of
+ * them mean there is no session to send.
  *
  * Server-only: it statically imports `auth`, which pulls in `pg`, so it must
  * never reach the browser bundle. Client-graph modules cannot import it at all
@@ -39,11 +45,30 @@ export const readServerAuthToken = cache(async (): Promise<string | null> => {
   return token ?? null;
 });
 
+/**
+ * Returns null only when there is no session to send. A session whose token
+ * cannot be minted (the auth database refused or timed out) throws
+ * AuthTokenUnavailableError: sending that request on without a token would
+ * get a 401 from the backend, which the browser reads as a logout. Better Auth
+ * still reports a failed *session* lookup as a 401, so only failures after it
+ * (the signing-key read, where the 5-minute session cookie cache sends most
+ * requests) can be told apart.
+ */
 export const getServerAuthToken = cache(async (): Promise<string | null> => {
+  try {
+    await cookies();
+  } catch (error) {
+    // Outside a request (prerendering) there is no session to send.
+    console.error("Failed to get auth token:", error);
+    return null;
+  }
+
   try {
     return await readServerAuthToken();
   } catch (error) {
+    if (isSessionRejection(error)) return null;
     console.error("Failed to get auth token:", error);
-    return null;
+    Sentry.captureException(error);
+    throw new AuthTokenUnavailableError({ cause: error });
   }
 });
