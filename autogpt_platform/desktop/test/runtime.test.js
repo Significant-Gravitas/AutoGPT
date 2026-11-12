@@ -247,7 +247,7 @@ function writeRegistry(t, entries) {
   return registry;
 }
 
-function controlledRuntime(spawn, log) {
+function controlledRuntime(spawn, log, env = process.env) {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../src/runtime.js"), "utf8"), {
     require(name) {
@@ -255,10 +255,63 @@ function controlledRuntime(spawn, log) {
       if (name === "node:fs" && log) return { ...fs, createWriteStream: () => log };
       return require(name);
     },
-    module, process, setTimeout, clearTimeout,
+    module, process: { ...process, env }, setTimeout, clearTimeout,
   });
   return module.exports;
 }
+
+test("runtime and cleanup keep one environment without host Python settings", async (t) => {
+  const host = {
+    PYTHONHOME: "host-home", PyThOnPaTh: "host-modules", PYTHONUSERBASE: "host-user-site",
+    PYTHONSTARTUP: "host-startup.py", PYTHONINSPECT: "1", PYTHONIOENCODING: "bad-codec",
+    PYTHONUTF8: "0", PYTHONNOUSERSITE: "0", PYTHON_FUTURE_OPTION: "host-value",
+    PATH: "host-tools", APP_SETTING: "host-value",
+  };
+  const configured = { PYTHONPATH: "manifest-modules", PYTHONUTF8: "1", APP_SETTING: "configured" };
+  const registry = writeRegistry(t, []);
+  const child = Object.assign(new EventEmitter(), {
+    pid: 1234, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+  });
+  t.after(() => {
+    for (const stream of [child.stdin, child.stdout, child.stderr]) stream.destroy();
+  });
+  const calls = [];
+  const { Runtime: Controlled } = controlledRuntime((command, args, options) => {
+    calls.push({ command, args, options });
+    if (calls.length === 1) return child;
+    const helper = new EventEmitter();
+    queueMicrotask(() => helper.emit("close", 0, null));
+    return helper;
+  }, undefined, host);
+  const runtime = new Controlled({ command: "bundled-python", env: configured, registryFile: registry });
+  runtime.start();
+  host.PYTHONHOME = "later-host-home";
+  host.PATH = "later-tools";
+  configured.PYTHONPATH = "later-manifest-modules";
+  child.emit("exit", 0, null);
+  await runtime.exited;
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual({ ...calls[0].options.env }, {
+    PATH: "host-tools", APP_SETTING: "configured", PYTHONNOUSERSITE: "1",
+    PYTHONPATH: "manifest-modules", PYTHONUTF8: "1",
+  });
+  assert.equal(calls[1].options.env, calls[0].options.env);
+  assert.equal(host.PYTHONUSERBASE, "host-user-site");
+});
+
+test("standalone cleanup removes inherited Python settings", async (t) => {
+  const registry = writeRegistry(t, []);
+  let seen;
+  const { killRecorded: reap } = controlledRuntime((command, args, options) => {
+    seen = options.env;
+    const helper = new EventEmitter();
+    queueMicrotask(() => helper.emit("close", 0, null));
+    return helper;
+  }, undefined, { PYTHONHOME: "host-home", pythonpath: "host-modules", KEEP: "yes" });
+  await reap(registry, { command: "bundled-python" });
+  assert.deepEqual({ ...seen }, { KEEP: "yes", PYTHONNOUSERSITE: "1" });
+});
 
 test("recorded services are delegated to the bounded Python identity-checking reaper", async (t) => {
   const registry = writeRegistry(t, [{ name: "service", pid: 123, started: 456 }]);

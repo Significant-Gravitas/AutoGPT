@@ -47,6 +47,13 @@ const STOP_GRACE_MS = 60_000;
 const MAX_GRACE_SECONDS = 30 * 60;
 const STOP_THE_RUNS = { command: "stop", drain: true };
 
+function launchEnvironment(overrides = {}) {
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !/^PYTHON/i.test(name)),
+  );
+  return { ...inherited, PYTHONNOUSERSITE: "1", ...overrides };
+}
+
 class Runtime extends EventEmitter {
   constructor({
     command,
@@ -73,6 +80,7 @@ class Runtime extends EventEmitter {
   }
 
   start() {
+    const env = launchEnvironment(this.env);
     const log = this.logFile
       ? fs.createWriteStream(this.logFile, { flags: "a" })
       : null;
@@ -93,7 +101,7 @@ class Runtime extends EventEmitter {
     };
     this.child = spawn(this.command, this.args, {
       cwd: this.cwd,
-      env: { ...process.env, ...this.env },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -107,7 +115,7 @@ class Runtime extends EventEmitter {
         if (this.child.pid !== undefined) {
           try {
             await killRecorded(this.registryFile, {
-              command: this.command, cwd: this.cwd, env: { ...process.env, ...this.env },
+              command: this.command, cwd: this.cwd, env,
             });
           } catch (error) {
             const message = `Runtime cleanup could not complete: ${error.message}`;
@@ -191,7 +199,7 @@ async function killRecorded(registryFile, { command, cwd, env } = {}) {
     const helper = spawn(command, [
       "-B", "-m", "autogpt_desktop.reap", "--data-dir", path.dirname(path.dirname(registryFile)),
     ], {
-      cwd, env, stdio: "ignore", windowsHide: true, timeout: 15_000, killSignal: "SIGKILL",
+      cwd, env: env ?? launchEnvironment(), stdio: "ignore", windowsHide: true, timeout: 15_000, killSignal: "SIGKILL",
     });
     helper.once("error", reject);
     helper.once("close", (code, signal) => {
