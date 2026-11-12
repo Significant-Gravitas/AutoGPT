@@ -546,6 +546,8 @@ async def _h_generate_skill(args: dict[str, Any]) -> dict[str, Any]:
     clarifications = args.get("clarifications")
     if clarifications is not None and not isinstance(clarifications, dict):
         return _err("INVALID_ARGUMENT", "clarifications must be an object")
+    if mistyped := _mistyped_clarification(clarifications or {}):
+        return _err("INVALID_ARGUMENT", mistyped)
     data_source_hint = args.get("data_source_hint")
     if data_source_hint is not None and not isinstance(data_source_hint, str):
         return _err("INVALID_ARGUMENT", "data_source_hint must be a string")
@@ -565,6 +567,24 @@ async def _h_generate_skill(args: dict[str, Any]) -> dict[str, Any]:
             q.to_dict() for q in propose_clarifications(recording)
         ]
     return _ok(result)
+
+
+def _mistyped_clarification(clarifications: dict[str, Any]) -> str | None:
+    """Why a confirmation map can't be read, so the model can fix it rather
+    than have its answers ignored; None when both read (or are absent)."""
+    for name, kind, answer in (
+        ("confirmed_parameters", bool, "true or false"),
+        ("data_source_columns", str, "a column name"),
+    ):
+        value = clarifications.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, dict) or not all(
+            isinstance(field, str) and type(given) is kind
+            for field, given in value.items()
+        ):
+            return f"clarifications.{name} must map each field label to {answer}"
+    return None
 
 
 async def _h_dry_run_skill(args: dict[str, Any]) -> dict[str, Any]:

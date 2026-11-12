@@ -292,8 +292,9 @@ def _infer_parameters(
                 field_order.append(key)
             by_field[key].append(step.value.raw)
 
-    confirmations: dict[str, bool] = clarifications.get("confirmed_parameters", {})
-    data_columns: dict[str, str] = clarifications.get("data_source_columns", {})
+    # A null, a list or a mistyped entry is no answer for that field.
+    confirmations = _answers(clarifications.get("confirmed_parameters"), bool)
+    data_columns = _answers(clarifications.get("data_source_columns"), str)
 
     params: list[SkillParameter] = []
     seq_to_param: dict[int, str] = {}
@@ -309,9 +310,14 @@ def _infer_parameters(
         if vtype in _SECRET_TYPES:
             continue
 
-        # Confirmation logic.
-        explicitly_confirmed = confirmations.get(key) or confirmations.get(label)
-        joined_column = data_columns.get(key) or data_columns.get(label)
+        # Confirmation logic: an answer by the field's key, else by its label.
+        # `or` would pass over a False given by key.
+        explicitly_confirmed = (
+            confirmations[key] if key in confirmations else confirmations.get(label)
+        )
+        joined_column = (
+            data_columns[key] if key in data_columns else data_columns.get(label)
+        )
         varied_across_rows = multi_row and len(set(map(_hashable, values))) >= 2
         constant_across_rows = multi_row and len(set(map(_hashable, values))) == 1
 
@@ -407,6 +413,17 @@ _FIELD_ROLES = frozenset(
         "passwordtext",
     }
 )
+
+
+def _answers(value: Any, kind: type[bool] | type[str]) -> dict[str, Any]:
+    """The entries of a clarification map that answer with a ``kind``."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        field: answer
+        for field, answer in value.items()
+        if isinstance(field, str) and type(answer) is kind
+    }
 
 
 def _click_may_act(step: TrajectoryStep) -> bool:
@@ -775,8 +792,9 @@ async def dry_run(
     for i, row in enumerate(data_rows):
         row_result = RowDryRunResult(row_index=i, row=row, ok=True)
         result.rows_attempted += 1
+        bindings = skill.manifest.bindings
         try:
-            for binding in skill.manifest.bindings:
+            for index, binding in enumerate(bindings):
                 step_res = await _replay_step(
                     binding,
                     row,
@@ -789,6 +807,17 @@ async def dry_run(
                     result.destructive_blocked = True
                     # The steps after it would act on a screen the recording
                     # never saw: the form not submitted, the page not opened.
+                    # A held-back last step leaves nothing untested; one with
+                    # steps after it does, so the row proves nothing about them.
+                    untested = len(bindings) - index - 1
+                    if untested:
+                        row_result.ok = False
+                        row_result.error = (
+                            f"stopped at step seq={binding.seq} "
+                            f"({binding.action}), which may act, so the "
+                            f"{untested} step(s) after it were not tested; "
+                            "pass allow_destructive to test them"
+                        )
                     break
                 if not step_res.ok:
                     row_result.ok = False

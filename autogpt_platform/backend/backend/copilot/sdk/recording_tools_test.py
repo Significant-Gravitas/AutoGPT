@@ -548,6 +548,35 @@ class TestDryRunSkill:
         assert _parse(out)["code"] == "SKILL_NEEDS_CONFIRMATION"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "clarifications",
+        [
+            {"confirmed_parameters": ["First Name"]},
+            {"confirmed_parameters": {"First Name": "yes"}},
+            {"data_source_columns": {"First Name": 1}},
+        ],
+        ids=["list", "string-answer", "number-column"],
+    )
+    async def test_a_mistyped_confirmation_is_refused_so_it_can_be_fixed(
+        self, monkeypatch, clarifications
+    ):
+        """A map the generator can't read was ignored without a word, so the
+        model's answers were lost and the skill still asked for them."""
+        shim = _shim()
+        shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
+        _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_1")
+
+        out = await rt._h_generate_skill(
+            {"recording_id": "rec_1", "clarifications": clarifications}
+        )
+
+        assert out["isError"] is True
+        body = _parse(out)
+        assert body["code"] == "INVALID_ARGUMENT"
+        assert "must map each field label to" in body["error"]
+
+    @pytest.mark.asyncio
     async def test_dry_run_requires_rows(self, monkeypatch):
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_two_row_recording())

@@ -1057,6 +1057,41 @@ def _raise_computer_use(resp: dict, shim: "LocalPCShim | None", fallback: str) -
     )
 
 
+# The transport's own errors, which the computer-use handlers and the held-call
+# replay don't catch: the shim too busy to take the call (nothing ran), a read
+# that timed out or lost its connection on the retry too, and a reply that
+# broke the wire contract. Each is raised as a ShimComputerUseError instead.
+_COMPUTER_USE_TRANSPORT_ERRORS = (
+    TimeoutError,
+    OpUnconfirmedError,
+    ShimOverloadedError,
+    ShimProtocolError,
+)
+
+
+def _transport_error_code(exc: BaseException) -> str:
+    if isinstance(exc, (ShimOverloadedError, OpUnconfirmedError)):
+        return exc.code
+    if isinstance(exc, TimeoutError):
+        return "COMMAND_TIMEOUT"
+    return "INTERNAL_ERROR"
+
+
+def _computer_use_transport_error(
+    exc: BaseException, shim: "LocalPCShim | None", details: dict[str, Any]
+) -> ShimComputerUseError:
+    code = _transport_error_code(exc)
+    return ShimComputerUseError(
+        code=code,
+        message=_friendly(
+            {"code": code, "message": str(exc), "details": details},
+            shim,
+            f"{details.get('tool') or details.get('op')} failed",
+        ),
+        details=details,
+    )
+
+
 class _ComputerProxy:
     """The shim's cua-driver tools: COMPUTER_TOOLS_REQUEST lists them with
     the driver's guidance, COMPUTER_TOOL_CALL runs one. See
@@ -1074,9 +1109,14 @@ class _ComputerProxy:
         generation = self._shim._connection_generation
         if self._catalog is not None and self._catalog[0] == generation:
             return self._catalog[1]
-        resp = await self._shim._rpc(
-            "COMPUTER_TOOLS_REQUEST", {}, connection_guard=_guard
-        )
+        try:
+            resp = await self._shim._rpc(
+                "COMPUTER_TOOLS_REQUEST", {}, connection_guard=_guard
+            )
+        except _COMPUTER_USE_TRANSPORT_ERRORS as exc:
+            raise _computer_use_transport_error(
+                exc, self._shim, {"op": "COMPUTER_TOOLS_REQUEST"}
+            ) from exc
         _raise_computer_use(resp, self._shim, "COMPUTER_TOOLS_REQUEST failed")
         payload = resp.get("payload") or {}
         self._catalog = (generation, payload)
@@ -1118,6 +1158,10 @@ class _ComputerProxy:
                     extra_details={"tool": tool},
                 ),
                 details={"tool": tool, "op": exc.op},
+            ) from exc
+        except _COMPUTER_USE_TRANSPORT_ERRORS as exc:
+            raise _computer_use_transport_error(
+                exc, self._shim, {"tool": tool, "op": "COMPUTER_TOOL_CALL"}
             ) from exc
         _raise_computer_use(resp, self._shim, f"{tool} failed")
         return resp.get("payload") or {}
@@ -1265,6 +1309,26 @@ class _RecordingProxy:
     def effective_route_for(self, recording_id: str, fallback: str) -> str:
         return self._effective_routes.get(recording_id, fallback)
 
+    async def _rpc(self, op: str, payload: dict[str, Any]) -> dict:
+        """One recording op. The routes and tools catch ShimRecordingError
+        only, so a transport failure (no reply in time, none confirmed, no
+        capacity, a reply that broke the wire contract) is raised as one, with
+        its code, as computer use's are."""
+        try:
+            return await self._shim._rpc(op, payload)
+        except _COMPUTER_USE_TRANSPORT_ERRORS as exc:
+            code = _transport_error_code(exc)
+            details = {"op": op}
+            raise ShimRecordingError(
+                code=code,
+                message=_friendly(
+                    {"code": code, "message": str(exc), "details": details},
+                    self._shim,
+                    f"{op} failed",
+                ),
+                details=details,
+            ) from exc
+
     async def request_consent(
         self,
         *,
@@ -1277,7 +1341,7 @@ class _RecordingProxy:
         self._validate_advertised(
             interpretation_route=interpretation_route, channels=capture_channels
         )
-        resp = await self._shim._rpc(
+        resp = await self._rpc(
             "REQUEST_RECORDING_CONSENT",
             {
                 "mode": mode,
@@ -1367,7 +1431,7 @@ class _RecordingProxy:
         self._validate_advertised(
             interpretation_route=interpretation_route, channels=list(channels)
         )
-        resp = await self._shim._rpc(
+        resp = await self._rpc(
             "START_RECORDING",
             {
                 "mode": mode,
@@ -1388,7 +1452,7 @@ class _RecordingProxy:
 
     async def stop(self, recording_id: str) -> "RecordingSummary":
         """STOP_RECORDING → return the RECORDING_SUMMARY."""
-        resp = await self._shim._rpc("STOP_RECORDING", {"recording_id": recording_id})
+        resp = await self._rpc("STOP_RECORDING", {"recording_id": recording_id})
         _raise_recording(resp, self._shim, "STOP_RECORDING failed")
         summary = RecordingSummary.from_payload(resp.get("payload") or {})
         if summary.recording_id != recording_id:
@@ -1406,7 +1470,7 @@ class _RecordingProxy:
         redacted_step_seqs: list[int],
     ) -> RecordingReviewApplied:
         """Persist authoritative user review edits in shim-owned storage."""
-        resp = await self._shim._rpc(
+        resp = await self._rpc(
             "APPLY_RECORDING_REVIEW",
             {
                 "recording_id": recording_id,
@@ -1435,7 +1499,7 @@ class _RecordingProxy:
         machine — the shim buffers until STOP + user approval, then the
         platform pulls (§6).
         """
-        resp = await self._shim._rpc("RECORDING_FETCH", {"recording_id": recording_id})
+        resp = await self._rpc("RECORDING_FETCH", {"recording_id": recording_id})
         _raise_recording(resp, self._shim, "RECORDING_FETCH failed")
         payload = resp.get("payload") or {}
         recording = payload.get("recording") if isinstance(payload, dict) else None

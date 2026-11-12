@@ -122,11 +122,16 @@ def _command_timeout(
     timeout = details.get("timeout_seconds")
     timeout_str = f"{timeout}s" if timeout is not None else "configured"
     tool = details.get("tool")
+    if tool and details.get("started") is False:
+        return (
+            f"`{tool}` didn't start: the computer was busy with another call until "
+            f"its {timeout_str} limit passed. Nothing ran; call it again."
+        )
     if tool:
         return (
-            f"`{tool}` didn't finish within its {timeout_str} limit. cua-driver was "
-            "told to stop it, but anything it already did stays done: read the "
-            "window's state before trying again."
+            f"`{tool}` didn't finish within its {timeout_str} limit, so the Local PC "
+            "executor stopped cua-driver to end it. Anything it already did stays "
+            "done: read the window's state before trying again."
         )
     return (
         f"The command exceeded its {timeout_str} timeout. Either increase the "

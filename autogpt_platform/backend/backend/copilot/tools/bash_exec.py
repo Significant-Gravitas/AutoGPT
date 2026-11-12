@@ -315,6 +315,17 @@ class BashExecTool(BaseTool):
         # `bash -l` runs these before the command itself.
         return {**await changed_login_files(sandbox), **scripts}
 
+    @property
+    def is_available(self) -> bool:
+        # A Local PC chat runs commands on the user's computer, which needs
+        # neither E2B nor this server's sandbox; it hides bash itself when the
+        # companion offers no shell.
+        return (
+            bool(chat_config.active_e2b_api_key)
+            or has_full_sandbox()
+            or is_local_pc_executor(get_current_sandbox())
+        )
+
     async def _execute(
         self,
         user_id: str | None,

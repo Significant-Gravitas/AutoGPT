@@ -24,6 +24,10 @@ from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
+from backend.blocks._platform_credentials import (
+    is_platform_credential,
+    platform_credentials_refused_message,
+)
 from backend.copilot.model import pauses_irreversible_actions
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
 from backend.data import execution as execution_db
@@ -414,11 +418,13 @@ def validate_exec(
 
     # For dry runs, supply sentinel values for any missing credential fields so
     # the node can be queued — simulate_block never calls the real API anyway.
+    # The queued input keeps the None, so when the node runs a None here is a
+    # placeholder too, unless its pin is linked: that None was really sent.
     placeholders: set[str] = set()
     if dry_run:
-        cred_field_names = set(schema.get_credentials_fields().keys())
-        for field_name in cred_field_names:
-            if field_name not in data:
+        linked_pins = {link.sink_name for link in node.input_links}
+        for field_name in schema.get_credentials_fields():
+            if data.get(field_name) is None and field_name not in linked_pins:
                 data = {**data, field_name: None}
                 placeholders.add(field_name)
 
@@ -651,6 +657,17 @@ async def _validate_node_input_credentials(
                 credential_errors[node.id][field_name] = (
                     f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
                     f"{sdk_default_refused_message(credentials_meta.id)}"
+                )
+                continue
+
+            if is_platform_credential(
+                credentials_meta.id
+            ) and block.refuses_platform_credentials_for(
+                {**node.input_default, **(nodes_input_masks or {}).get(node.id, {})}
+            ):
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} "
+                    f"{platform_credentials_refused_message(credentials_meta.provider)}"
                 )
                 continue
 

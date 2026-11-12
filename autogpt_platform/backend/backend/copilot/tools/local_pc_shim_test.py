@@ -23,10 +23,12 @@ from .local_pc_shim import (
     ShimHello,
     ShimOverloadedError,
     ShimProtocolError,
+    ShimRecordingError,
     WriteUnconfirmedError,
     _CommandsProxy,
     _ComputerProxy,
     _FilesProxy,
+    _RecordingProxy,
     _RpcAttemptFailed,
 )
 
@@ -888,6 +890,50 @@ class TestFilesStat:
 # ---------------------------------------------------------------------------
 
 
+class TestRecordingProxy:
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        ("error", "code"),
+        [
+            (TimeoutError("RPC timed out (retry also failed)"), "COMMAND_TIMEOUT"),
+            (OpUnconfirmedError("STOP_RECORDING", "id-1"), "OP_UNCONFIRMED"),
+            (ShimOverloadedError("no capacity"), "SHIM_OVERLOADED"),
+            (ShimProtocolError("unexpected reply"), "INTERNAL_ERROR"),
+        ],
+        ids=["timeout", "disconnected", "overloaded", "malformed"],
+    )
+    async def test_a_transport_failure_comes_back_as_a_recording_error(
+        self, error: Exception, code: str
+    ):
+        """The recording routes and tools catch ShimRecordingError only, so
+        these escaped them as a 500 with no code to act on."""
+        shim = _make_shim_with_rpc({})
+        shim._rpc = AsyncMock(side_effect=error)
+        shim.recording_channels = ["floor"]
+        shim.recording_routes = ["extract_then_cloud"]
+        recording = _RecordingProxy(shim)
+        calls = {
+            "REQUEST_RECORDING_CONSENT": recording.request_consent,
+            "START_RECORDING": lambda: recording.start(
+                mode="copilot",
+                interpretation_route="extract_then_cloud",
+                channels=["floor"],
+                consent_token="token",
+            ),
+            "STOP_RECORDING": lambda: recording.stop("rec-1"),
+            "APPLY_RECORDING_REVIEW": lambda: recording.apply_review(
+                "rec-1", removed_step_seqs=[], redacted_step_seqs=[]
+            ),
+            "RECORDING_FETCH": lambda: recording.fetch("rec-1"),
+        }
+
+        for op, call in calls.items():
+            with pytest.raises(ShimRecordingError) as caught:
+                await call()
+            assert caught.value.code == code
+            assert caught.value.details == {"op": op}
+
+
 class TestComputerProxy:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_tools_are_listed_once_per_connection(self):
@@ -955,6 +1001,35 @@ class TestComputerProxy:
         assert exc_info.value.code == "FEATURE_NOT_SUPPORTED"
         assert exc_info.value.details == {"tool": "kill_app"}
         assert "local_pc_computer_tools" in str(exc_info.value)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        ("error", "code"),
+        [
+            (TimeoutError("RPC timed out (retry also failed)"), "COMMAND_TIMEOUT"),
+            (OpUnconfirmedError("COMPUTER_TOOLS_REQUEST", "id-1"), "OP_UNCONFIRMED"),
+            (ShimOverloadedError("no capacity"), "SHIM_OVERLOADED"),
+            (ShimProtocolError("unexpected reply"), "INTERNAL_ERROR"),
+        ],
+        ids=["timeout", "disconnected", "overloaded", "malformed"],
+    )
+    async def test_a_transport_failure_comes_back_as_a_computer_use_error(
+        self, error: Exception, code: str
+    ):
+        """The handlers and the held-call replay catch ShimComputerUseError
+        only, so these escaped them with no code or guidance for Otto."""
+        shim = _make_shim_with_rpc({})
+        shim._rpc = AsyncMock(side_effect=error)
+
+        with pytest.raises(ShimComputerUseError) as listing:
+            await shim.computer.tools()
+        with pytest.raises(ShimComputerUseError) as calling:
+            await shim.computer.call("click", {"element_token": "s1:2"})
+
+        assert listing.value.code == code
+        assert listing.value.details == {"op": "COMPUTER_TOOLS_REQUEST"}
+        assert calling.value.details["tool"] == "click"
+        assert calling.value.code == code
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_an_unconfirmed_call_is_never_retried(self):
