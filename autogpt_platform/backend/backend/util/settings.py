@@ -255,6 +255,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
+    auth_legacy_token_deadline: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
+            "during auth rollout. Unset preserves legacy signature/expiry validation; "
+            "zero rejects them immediately. Tokens with sid always require an active session."
+        ),
+    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
