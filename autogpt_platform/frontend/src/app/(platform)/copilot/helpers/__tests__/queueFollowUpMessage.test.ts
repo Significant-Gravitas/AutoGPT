@@ -5,6 +5,12 @@ import {
   queueFollowUpMessage,
 } from "../queueFollowUpMessage";
 
+const validateSession = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: { getState: () => ({ validateSession }) },
+}));
+
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: () => "https://api.example.test",
@@ -130,7 +136,7 @@ describe("queueFollowUpMessage", () => {
     );
   });
 
-  it("signs out when the session behind the token has ended", async () => {
+  it("checks the session with the auth backend when the one behind the token has ended", async () => {
     const replace = vi.fn();
     vi.stubGlobal("location", { pathname: "/copilot", replace });
     vi.mocked(global.fetch).mockResolvedValueOnce(
@@ -145,7 +151,10 @@ describe("queueFollowUpMessage", () => {
     await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
       /got 401/,
     );
-    expect(replace).toHaveBeenCalledWith("/logout");
+    await vi.waitFor(() =>
+      expect(validateSession).toHaveBeenCalledWith({ force: true }),
+    );
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("stays signed in on a 401 that is not an ended session", async () => {

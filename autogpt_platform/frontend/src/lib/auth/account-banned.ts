@@ -27,15 +27,32 @@ export function isSessionRevokedResponse(status: number, body: unknown) {
   return status === 401 && detailCode(body) === SESSION_REVOKED_CODE;
 }
 
-// A banned account or an ended session leaves through /logout.
+let sessionRecheck: Promise<void> | null = null;
+
+// A banned account leaves through /logout. An ended session is checked with
+// the auth backend first, as a refocus does: the refusal may be a late one
+// for an older session, and only the check knows whether the current one is
+// live. The check signs out to /login?next=… or, when the backend can't
+// answer, leaves the user signed in.
 export function signOutIfRefused(status: number, body: unknown) {
   if (isAccountBannedResponse(status, body)) signOutBannedAccount();
-  else if (isSessionRevokedResponse(status, body)) signOutEndedSession();
+  else if (isSessionRevokedResponse(status, body)) void recheckSession();
 }
 
-function signOutEndedSession() {
-  if (window.location.pathname === "/logout") return;
-  window.location.replace("/logout");
+// A page's refused requests arrive together; they share one check.
+function recheckSession() {
+  sessionRecheck ??= import("./hooks/useAuthStore")
+    .then(({ useAuthStore }) =>
+      useAuthStore.getState().validateSession({ force: true }),
+    )
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      sessionRecheck = null;
+    });
+  return sessionRecheck;
 }
 
 // Through /logout for the full sign-out; every refused request lands here, so

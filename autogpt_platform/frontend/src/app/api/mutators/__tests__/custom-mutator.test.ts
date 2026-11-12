@@ -58,6 +58,12 @@ import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import * as Sentry from "@sentry/nextjs";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
+const validateSession = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: { getState: () => ({ validateSession }) },
+}));
+
 const mockIsClientSide = vi.mocked(environment.isClientSide);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
 const mockGetTraceData = vi.mocked(Sentry.getTraceData);
@@ -490,7 +496,7 @@ describe("customMutator — banned account", () => {
     expect(replace).toHaveBeenCalledWith("/account-closed");
   });
 
-  it("signs out a session that has ended, without the banned notice", async () => {
+  it("checks a session that has ended with the auth backend", async () => {
     respondWith(401, {
       detail: {
         code: "session_revoked",
@@ -501,7 +507,10 @@ describe("customMutator — banned account", () => {
     await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
       "Your session has ended. Please sign in again.",
     );
-    expect(replace).toHaveBeenCalledWith("/logout");
+    await vi.waitFor(() =>
+      expect(validateSession).toHaveBeenCalledWith({ force: true }),
+    );
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it.each([

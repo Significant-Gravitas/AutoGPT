@@ -27,6 +27,12 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
+const validateSession = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: { getState: () => ({ validateSession }) },
+}));
+
 beforeEach(() => {
   isDevelopmentBuild.mockReturnValue(false);
   createUsageCapturingFetch.mockClear();
@@ -112,7 +118,7 @@ describe("copilotStreamTransport refusals", () => {
     }
   });
 
-  it("signs out when the session behind the token has ended", async () => {
+  it("checks the session with the auth backend when the one behind the token has ended", async () => {
     const replace = vi.fn();
     vi.stubGlobal("location", { pathname: "/copilot", replace });
     vi.stubGlobal(
@@ -141,7 +147,10 @@ describe("copilotStreamTransport refusals", () => {
         })
         .catch(() => undefined);
 
-      expect(replace).toHaveBeenCalledWith("/logout");
+      await vi.waitFor(() =>
+        expect(validateSession).toHaveBeenCalledWith({ force: true }),
+      );
+      expect(replace).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
