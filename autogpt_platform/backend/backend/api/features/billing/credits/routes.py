@@ -198,6 +198,14 @@ async def configure_user_auto_top_up(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    try:
+        # Read again after the write: either it sees a close that came while
+        # this ran and switches auto top-up off, or the close came after the
+        # write and closing's sweep switches it off.
+        await refuse_closed_account(user_id)
+    except HTTPException:
+        await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
+        raise
     return "Auto top-up settings updated"
 
 

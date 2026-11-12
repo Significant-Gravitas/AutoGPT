@@ -366,6 +366,31 @@ def test_a_closed_account_cannot_set_auto_top_up(
     saved.assert_not_called()
 
 
+def test_auto_top_up_set_as_the_account_closed_is_switched_off(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """The account closed while the request ran: closing's sweep may have
+    switched auto top-up off already, so the write is undone here."""
+    account_open.side_effect = [
+        None,
+        fastapi.HTTPException(status_code=401, detail="This account is closed."),
+    ]
+    saved = mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    model = mocker.AsyncMock()
+    model.get_credits.return_value = 5000
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 401
+    assert saved.await_args_list[-1].args[1] == AutoTopUpConfig(threshold=0, amount=0)
+
+
 def test_configure_auto_top_up_refuses_when_model_has_no_payment_path(
     mocker: pytest_mock.MockFixture,
 ) -> None:
