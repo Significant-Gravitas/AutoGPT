@@ -312,6 +312,7 @@ OPEN_WHILE_PAYWALLED = {
     # endpoints. A webhook's runs check their owner (add_graph_execution).
     "GET /.well-known/oauth-authorization-server",
     "GET /.well-known/oauth-protected-resource/api/v2/mcp",
+    "POST /api/auth/email/ban-record",
     "POST /api/auth/email/send",
     "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
@@ -320,6 +321,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
     "POST /api/email/mailerlite/webhook",
+    "GET /api/email/unsubscribe",
     "POST /api/email/unsubscribe",
     "GET /api/experts/templates",
     "GET /api/feature-flags",
