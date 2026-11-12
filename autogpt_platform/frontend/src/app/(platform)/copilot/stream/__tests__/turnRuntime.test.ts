@@ -9,7 +9,10 @@ import {
   type Mock,
 } from "vitest";
 
-import { CopilotAuthError } from "../../helpers";
+import { getWebSocketToken } from "@/lib/auth/actions";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
+import { describeChatError } from "../../chatErrorGuidance";
+import { CopilotAuthError, getCopilotAuthHeaders } from "../../helpers";
 import { createTailRenderer } from "../renderTail";
 import {
   ANOMALY_TOAST,
@@ -25,6 +28,8 @@ import {
 import { tailEndSequence } from "../turnTail";
 import { fakeBackend, type FakeBackend } from "./fakeBackend";
 import { loadRecordedTurn } from "./recordedTurns";
+
+vi.mock("@/lib/auth/actions", () => ({ getWebSocketToken: vi.fn() }));
 
 const toolTurn = loadRecordedTurn("baseline-tool-turn");
 const PROMPT = String(toolTurn.rows[0].content);
@@ -723,6 +728,29 @@ describe("refusals no retry can change", () => {
     expect(snapshot().phase).toBe("live");
   });
 
+  it("a send while the server cannot mint a token says to try again, not to sign in", async () => {
+    mintToken(() => false);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(120_000);
+
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    expect(snapshot().error).toBeInstanceOf(AuthTokenUnavailableError);
+    expect(describeChatError(snapshot().error as Error).action).toBeNull();
+  });
+
+  it("a send whose token mint fails once goes out a second later", async () => {
+    let failures = 1;
+    mintToken(() => failures-- <= 0);
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(1_500);
+    backend.publish(FIRST_BLOCK_DONE);
+    await advance(100);
+
+    expect(backend.requests.filter((r) => r.method === "POST")).toHaveLength(1);
+    expect(snapshot().error).toBeNull();
+    expect(snapshot().phase).toBe("live");
+  });
+
   it("a resume whose token fails once resumes", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     tokenFailsFirst(1);
@@ -1395,6 +1423,24 @@ function signOut(isSignedOut: () => boolean, onError = vi.fn()) {
   runtime.bind({ onError }, async () =>
     isSignedOut() ? null : backend.view(),
   );
+}
+
+// The real header path, over a token action whose mint fails while `succeeds` is false.
+function mintToken(succeeds: () => boolean) {
+  vi.mocked(getWebSocketToken).mockImplementation(async () =>
+    succeeds()
+      ? { token: "jwt" }
+      : { token: null, error: "connection timeout", retryable: true },
+  );
+  runtime.dispose();
+  runtime = new TurnRuntime("session-1", {
+    baseUrl: () => "http://backend.test",
+    headers: getCopilotAuthHeaders,
+    fetch: backend.fetch,
+    fetchSession: async () => backend.view(),
+    toast,
+    report,
+  });
 }
 
 // The token action fails the next `count` times, then hands out tokens again.

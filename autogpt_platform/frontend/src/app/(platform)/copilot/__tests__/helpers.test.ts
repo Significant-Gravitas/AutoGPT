@@ -8,9 +8,11 @@ import {
   vi,
   type MockInstance,
 } from "vitest";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import {
   COPILOT_COMPLETION_NOTIFICATION,
+  CopilotAuthError,
   deduplicateMessages,
   extractSendMessageText,
   getCopilotAuthHeaders,
@@ -924,26 +926,27 @@ describe("getCopilotAuthHeaders", () => {
     });
   });
 
-  it("throws when getWebSocketToken returns an error", async () => {
-    mockGetWebSocketToken.mockResolvedValue({
-      token: null,
-      error: "Token fetch failed",
-    });
+  it.each([
+    ["the session is refused", { error: "Unauthorized", retryable: false }],
+    ["there is no session", { error: undefined }],
+  ])("asks to sign in again when %s", async (_case, answer) => {
+    mockGetWebSocketToken.mockResolvedValue({ token: null, ...answer });
 
-    await expect(getCopilotAuthHeaders()).rejects.toThrow(
-      "Authentication failed — please sign in again.",
+    await expect(getCopilotAuthHeaders()).rejects.toBeInstanceOf(
+      CopilotAuthError,
     );
   });
 
-  it("throws when getWebSocketToken returns no token and no error", async () => {
+  it("answers a token the server could not mint with a retryable 503", async () => {
     mockGetWebSocketToken.mockResolvedValue({
       token: null,
-      error: undefined,
+      error: "connection timeout",
+      retryable: true,
     });
 
-    await expect(getCopilotAuthHeaders()).rejects.toThrow(
-      "Authentication failed — please sign in again.",
-    );
+    const error = await getCopilotAuthHeaders().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AuthTokenUnavailableError);
+    expect((error as AuthTokenUnavailableError).status).toBe(503);
   });
 });
 

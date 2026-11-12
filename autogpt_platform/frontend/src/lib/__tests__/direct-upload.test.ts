@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isPaywallError } from "@/components/contextual/PaywallToast/helpers";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 
 import {
   getFileSizeError,
@@ -219,6 +220,21 @@ describe("authentication", () => {
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
       /sign in again/i,
     );
+  });
+
+  it("asks to try again, not to sign in, when the server cannot mint a token", async () => {
+    getTokenMock.mockResolvedValueOnce({
+      token: null,
+      error: "connection timeout",
+      retryable: true,
+    });
+    const fetchMock = mockFetchOnce({ ok: true, status: 200 });
+
+    const error = await uploadSubmissionMediaDirect(makeFile(10)).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(AuthTokenUnavailableError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
