@@ -108,8 +108,8 @@ async def test_a_skip_marked_after_the_run_loaded_the_account_still_holds(email)
     report = await request.send_confirmation(PENDING, dry_run=False)
 
     email.skipped.assert_awaited_once_with(USER_ID)
-    email.send.assert_not_awaited()
-    email.mark.assert_not_awaited()
+    email.send.assert_not_called()
+    email.mark.assert_not_called()
     assert report.counts == {"emails": 0}
 
 
@@ -368,8 +368,8 @@ async def test_a_request_closed_without_the_email_gets_no_late_one(
 
     assert report.counts == {"emails": 0}
     assert "--no-email" in report.note
-    sent.assert_not_awaited()
-    marked.assert_not_awaited()
+    sent.assert_not_called()
+    marked.assert_not_called()
 
 
 @pytest.mark.asyncio
