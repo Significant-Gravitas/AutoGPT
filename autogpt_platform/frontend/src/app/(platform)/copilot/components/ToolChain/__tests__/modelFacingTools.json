@@ -75,6 +75,7 @@
   "read_tool_result",
   "read_workspace_file",
   "remove_expert_workflow",
+  "render_ui",
   "request_credential_grant",
   "request_work_check",
   "resume_capability",
