@@ -1166,12 +1166,7 @@ async def upsert_execution_input(
         "agentGraphExecutionId": graph_exec_id,
         "agentNodeId": node_id,
         "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {
-            "none": {
-                "name": input_name,
-                "time": {"gte": datetime.now(tz=timezone.utc) - timedelta(days=1)},
-            }
-        },
+        "Input": {"none": {"name": input_name}},
     }
     if node_exec_id:
         existing_exec_query_filter["id"] = node_exec_id

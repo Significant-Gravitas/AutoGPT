@@ -428,6 +428,8 @@ class AutoPilotBlock(Block):
             # untrusted upstream data, so this session must not reach the
             # tools that restaff the user's team.
             origin="automation",
+            # The block outputs only the final text.
+            text_only_result=True,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             # The run's expert scope: its grants and tools follow the session.
@@ -473,6 +475,9 @@ class AutoPilotBlock(Block):
         from backend.copilot.sdk.session_waiter import (
             run_copilot_turn_via_queue,  # avoid circular import
         )
+        from backend.copilot.tools.render_ui import (
+            without_render_ui,  # avoid circular import
+        )
         from backend.copilot.tree import SpawnRequest
 
         tokens = _check_recursion(max_recursion_depth)
@@ -506,7 +511,10 @@ class AutoPilotBlock(Block):
                 # SDK enforces its own idle-based timeout inside the
                 # stream_registry pipeline.
                 timeout=_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS,
-                permissions=effective_permissions,
+                # The block outputs only the final text, so no turn it runs
+                # may put the answer in cards, a resumed session included.
+                # The ceiling nested runs inherit stays as the graph set it.
+                permissions=without_render_ui(effective_permissions),
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
                 # Never ride an in-flight turn: the prompt would execute under

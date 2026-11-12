@@ -7,11 +7,13 @@ import {
 } from "@/lib/constants";
 import { getClientIPToken } from "@/lib/auth/client-ip-token";
 import { getCountryToken } from "@/lib/auth/country-token";
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import {
   isSessionRejection,
   readServerSession,
 } from "@/lib/auth/server/getServerSession";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { ImpersonationState } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
@@ -355,6 +357,13 @@ async function handler(
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      const response = authTokenUnavailableResponse(error);
+      if (isPrivateMedia) {
+        hardenPrivateMediaResponseHeaders(response.headers);
+      }
+      return response;
+    }
     const timedOut = isTimeoutError(error);
     const errorMessage = timedOut
       ? "Proxy request timed out"

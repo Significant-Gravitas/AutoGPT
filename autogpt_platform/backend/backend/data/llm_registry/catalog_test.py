@@ -394,6 +394,25 @@ def test_claude_fable_5_1_bills_at_authored_rates():
     assert fable_entry.context_window == 200000
 
 
+def test_claude_fable_5_2_bills_at_authored_rates():
+    """Claude Fable 5.2 (Anthropic list price $8/$40 per 1M, cache reads
+    $0.20/1M, 5m cache writes $10/1M) — flat tier and per-1M projections
+    must match the authored catalog entry."""
+    fable = LLMModel("claude-fable-5-2")
+    assert MODEL_COST[fable] == 16
+    assert TOKEN_COST[fable].model_dump() == {
+        "input": 1200.0,
+        "output": 6000.0,
+        "cache_read": 30.0,
+        "cache_creation": 1500.0,
+    }
+    assert MODEL_METADATA[fable].max_output_tokens == 128000
+    fable_entry = next(m for m in CATALOG.models if m.slug == "claude-fable-5-2")
+    assert fable_entry.price_tier == 3
+    assert fable_entry.context_window == 200000
+    assert fable_entry.supports_tools and fable_entry.supports_reasoning
+
+
 def test_gemini_4_argon_bills_at_authored_rates():
     """Gemini 4 Argon (OpenRouter, $2/$10 per 1M, $0.10/1M cached read,
     $0.1875/1M cache write) — flat tier and per-1M projections must match
