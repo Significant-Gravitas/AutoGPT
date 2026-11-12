@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { useEffect, useState } from "react";
 
 import type { TurnPause } from "../../turnPause";
@@ -34,8 +35,9 @@ export function useStopHere({
   isCurrent,
 }: Args) {
   const storageKey = sessionId ? `${sessionId}:${pauseKey}` : null;
-  const hasPendingStop = Boolean(
-    sessionId && pause && isCurrent && isPendingStop(sessionId, pause),
+  // The held stops live outside React, so they are read on every render.
+  const hasPendingStop = useReadEveryRender(() =>
+    Boolean(sessionId && pause && isCurrent && isPendingStop(sessionId, pause)),
   );
   const [isStopped, setIsStopped] = useState(
     () => (storageKey !== null && isPauseStopped(storageKey)) || hasPendingStop,

@@ -51,7 +51,7 @@ export function FileActionsMenu({ file, className }: Props) {
             type="button"
             aria-label={`Actions for ${file.name}`}
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900",
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-strong",
               className,
             )}
             data-testid="artifacts-card-menu"
@@ -66,11 +66,9 @@ export function FileActionsMenu({ file, className }: Props) {
             data-testid="artifacts-download"
           >
             {isDownloading ? (
-              <Icon
-                icon={Loading03Icon}
-                size={16}
-                className="mr-2 animate-spin"
-              />
+              <span className="mr-2 flex animate-spin">
+                <Icon icon={Loading03Icon} size={16} />
+              </span>
             ) : (
               <Icon icon={Download04Icon} size={16} className="mr-2" />
             )}
@@ -108,15 +106,14 @@ export function FileActionsMenu({ file, className }: Props) {
           <DropdownMenuItem
             onSelect={handleDelete}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-700"
+            // oxlint-disable-next-line design-system/no-restyle -- a destructive item; the menu molecule has no destructive variant
+            className="text-error-hover focus:bg-error-surface focus:text-error-foreground"
             data-testid="artifacts-delete"
           >
             {isDeleting ? (
-              <Icon
-                icon={Loading03Icon}
-                size={16}
-                className="mr-2 animate-spin"
-              />
+              <span className="mr-2 flex animate-spin">
+                <Icon icon={Loading03Icon} size={16} />
+              </span>
             ) : (
               <Icon icon={Delete02Icon} size={16} className="mr-2" />
             )}

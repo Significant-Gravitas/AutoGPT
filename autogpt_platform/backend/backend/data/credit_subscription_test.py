@@ -178,7 +178,8 @@ async def test_sync_subscription_from_stripe_active(billing_boundaries, tier):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": tier}
+            where={"id": "user-1"},
+            data={"subscriptionTier": tier, "subscriptionEndedAt": None},
         )
 
 
@@ -317,7 +318,11 @@ async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro(billing_boun
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -426,7 +431,9 @@ async def test_sync_subscription_from_stripe_cancelled(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -463,7 +470,9 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -487,6 +496,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
+        **_kwargs: object,
     ) -> None:
         mock_user.subscriptionTier = tier
 
@@ -1308,7 +1318,9 @@ async def test_sync_subscription_from_stripe_business_tier(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1363,7 +1375,9 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BASIC, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1419,7 +1433,9 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs(billing_boundari
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
@@ -1475,7 +1491,11 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed(
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -1817,7 +1837,11 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches(
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -1896,7 +1920,11 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check(
         await sync_subscription_from_stripe(stripe_sub)
         # No metadata → cross-check skipped → tier updated normally
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -3940,7 +3968,11 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier(
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
         billing_boundaries.tx.user.update.assert_awaited_once_with(
-            where={"id": "user-1"}, data={"subscriptionTier": SubscriptionTier.PRO}
+            where={"id": "user-1"},
+            data={
+                "subscriptionTier": SubscriptionTier.PRO,
+                "subscriptionEndedAt": None,
+            },
         )
 
 
@@ -4598,6 +4630,79 @@ async def test_admin_get_user_history_include_inactive_omits_filter():
     where = prisma_mock.find_many.await_args.kwargs["where"]
     assert "isActive" not in where
     assert where["type"] == CreditTransactionType.TOP_UP
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
+    """The ledger outlives the account (no foreign key to User), so a row
+    whose account is gone lists without an email instead of failing the
+    whole page."""
+    from datetime import datetime, timezone
+
+    from prisma.enums import CreditTransactionType
+
+    from backend.data.credit import admin_get_user_history
+
+    row = MagicMock(
+        transactionKey="tx-1",
+        createdAt=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        type=CreditTransactionType.USAGE,
+        amount=-5,
+        runningBalance=10,
+        userId="deleted-user-id",
+        metadata={},
+    )
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[row]),
+        count=AsyncMock(return_value=1),
+    )
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+        patch(
+            "backend.data.credit.get_user_credit_model",
+            AsyncMock(
+                return_value=MagicMock(
+                    _get_credits=AsyncMock(
+                        return_value=(10, datetime.now(timezone.utc))
+                    )
+                )
+            ),
+        ),
+    ):
+        result = await admin_get_user_history()
+
+    assert result.history[0].user_id == "deleted-user-id"
+    assert result.history[0].user_email is None
+    assert "include" not in prisma_mock.find_many.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_history_searches_emails_through_the_lookup():
+    """A search matches the user ID, email or name, as before; emails and
+    names are matched in SQL since the ledger has no relation to User."""
+    from backend.data.credit import admin_get_user_history
+
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[]),
+        count=AsyncMock(return_value=0),
+    )
+    search = AsyncMock(return_value=([("tx-1", "u1")], 1))
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.search_history_keys", search),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+    ):
+        result = await admin_get_user_history(search="sam@", page=2, page_size=10)
+
+    kwargs = search.await_args.kwargs
+    assert search.await_args.args == ("sam@",)
+    assert (kwargs["skip"], kwargs["take"]) == (10, 10)
+    assert kwargs["include_inactive"] is False
+    where = prisma_mock.find_many.await_args.kwargs["where"]
+    assert where == {"OR": [{"transactionKey": "tx-1", "userId": "u1"}]}
+    assert result.pagination.total_items == 1
+    prisma_mock.count.assert_not_awaited()
 
 
 @pytest.mark.asyncio

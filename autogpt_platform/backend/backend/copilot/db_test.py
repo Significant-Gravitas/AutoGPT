@@ -662,15 +662,16 @@ async def _session_with_one_message(user_id: str) -> ChatSession:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("start_sequence", [0, 1])
 async def test_a_message_batch_writes_the_session_fields_with_its_rows(
-    setup_test_user, test_user_id
+    setup_test_user, test_user_id, start_sequence: int
 ):
     session = await _session_with_one_message(test_user_id)
 
     await add_chat_messages_batch(
         session_id=session.session_id,
         messages=[{"role": "assistant", "content": "reply"}],
-        start_sequence=1,
+        start_sequence=start_sequence,
         session_fields=_NEW_FIELDS,
     )
 
@@ -1215,7 +1216,6 @@ async def test_batch_persist_maps_stamp_columns_to_prisma_names():
                     "content": "hi",
                     "model": "claude-sonnet-4-6",
                     "routing_source": "catalog",
-                    "langfuse_trace_id": "1edf31f11b1693cc6103f358c1481694",
                     "trace_id": "turn-1",
                 }
             ],
@@ -1225,8 +1225,6 @@ async def test_batch_persist_maps_stamp_columns_to_prisma_names():
     assert row["model"] == "claude-sonnet-4-6"
     assert row["routingSource"] == "catalog"
     assert "routing_source" not in row
-    assert row["langfuseTraceId"] == "1edf31f11b1693cc6103f358c1481694"
-    assert "langfuse_trace_id" not in row
     assert row["traceId"] == "turn-1"
     assert "trace_id" not in row
 
@@ -1243,17 +1241,14 @@ def test_from_db_restores_stamp_columns():
         content="hi",
         model="claude-sonnet-4-6",
         routingSource="catalog",
-        langfuseTraceId="1edf31f11b1693cc6103f358c1481694",
         traceId="turn-1",
         createdAt=datetime.now(UTC),
     )
     restored = ChatMessage.from_db(prisma_msg)
     assert restored.model == "claude-sonnet-4-6"
     assert restored.routing_source == "catalog"
-    assert restored.langfuse_trace_id == "1edf31f11b1693cc6103f358c1481694"
-    # Internal: the trace id never reaches the session payload clients get.
-    assert "langfuse_trace_id" not in restored.model_dump()
     assert restored.trace_id == "turn-1"
+    # Internal: the trace id never reaches the session payload clients get.
     assert "trace_id" not in restored.model_dump()
 
 
@@ -1316,7 +1311,7 @@ async def test_update_chat_message_stamps_writes_the_trace_only_when_known():
             sequence=7,
             model="claude-sonnet-4-6",
             routing_source="env",
-            langfuse_trace_id="1edf31f11b1693cc6103f358c1481694",
+            trace_id="turn-1",
         )
         with_trace = update.call_args.kwargs["data"]
         await update_chat_message_stamps(
@@ -1327,8 +1322,8 @@ async def test_update_chat_message_stamps_writes_the_trace_only_when_known():
         )
         without_trace = update.call_args.kwargs["data"]
 
-    assert with_trace["langfuseTraceId"] == "1edf31f11b1693cc6103f358c1481694"
-    assert "langfuseTraceId" not in without_trace
+    assert with_trace["traceId"] == "turn-1"
+    assert "traceId" not in without_trace
 
 
 @pytest.mark.asyncio

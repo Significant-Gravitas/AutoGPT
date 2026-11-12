@@ -154,7 +154,12 @@ async def test_describe_expert_asks_only_for_what_the_id_does_not_carry(team):
 
     assert isinstance(result, CapabilityDetailsResponse)
     assert "calls hire_expert" in result.message
-    assert set(result.parameters["properties"]) == {"name"}
+    # The task a hire is for is not carried by the id either (SECRT-3138).
+    assert set(result.parameters["properties"]) == {
+        "name",
+        "handoff_title",
+        "handoff_task",
+    }
     assert result.parameters["required"] == []
 
 
@@ -200,6 +205,9 @@ async def test_an_expert_ids_validate_only_answer_is_not_held_by_the_judge(team)
     judge = AsyncMock(return_value=ContentVerdict(held=False))
     with (
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
         patch.object(review_store, "find_review", AsyncMock(return_value=None)),
         patch.object(BaseTool, "_gate", AsyncMock(return_value=(None, ALLOW))),
         patch("backend.copilot.gate.reads.judge_content", judge),

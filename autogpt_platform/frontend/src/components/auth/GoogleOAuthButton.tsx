@@ -16,13 +16,13 @@ export function GoogleOAuthButton({
     <Button
       type="button"
       variant="secondary"
-      className="w-full gap-3"
+      className="w-full"
       onClick={onClick}
       disabled={disabled}
       loading={isLoading}
     >
-      <Image src="/google-logo.svg" alt="Google" width={20} height={20} />
-      {isLoading ? "Connecting..." : "Continue with Google"}
+      <Image src="/google-logo.svg" alt="" width={20} height={20} />
+      {isLoading ? "Connecting…" : "Continue with Google"}
     </Button>
   );
 }

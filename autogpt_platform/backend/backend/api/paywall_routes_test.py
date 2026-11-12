@@ -34,6 +34,12 @@ CHECKED_IN_HANDLER = {
 
 OPEN_WHILE_PAYWALLED = {
     # Signing in and managing the account, its organisations and its links.
+    # The paywall offers Delete account, so its routes stay open, and so do
+    # the screen and the button that keep a closed account.
+    "GET /api/account/deletion",
+    "POST /api/account/deletion",
+    "POST /api/account/deletion/feedback",
+    "POST /api/account/deletion/restore",
     "POST /api/analytics/attribution",
     "GET /api/api-keys",
     "POST /api/api-keys",
@@ -49,7 +55,11 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/user/timezone",
     "PUT /api/chat/transports/default",
     "GET /api/experiments/assignments",
-    "POST /api/experiments/assignments",
+    "GET /api/experiments/assignments/{experiment}",
+    # Feedback stays open during onboarding and after a cancelled checkout.
+    "POST /api/feedback-prompts/claim",
+    "PATCH /api/feedback-prompts/{id}",
+    "GET /api/feedback-prompts/{id}",
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
@@ -61,6 +71,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/memory/facts",
     "DELETE /api/memory/facts/{fact_uuid}",
     "GET /api/memory/overview",
+    "DELETE /api/memory/understanding",
+    "GET /api/memory/understanding",
     "GET /api/oauth/app/{client_id}",
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",
@@ -78,7 +90,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/orgs/{org_id}/invitations",
     "DELETE /api/orgs/{org_id}/invitations/{invitation_id}",
     "GET /api/orgs/{org_id}/members",
-    "POST /api/orgs/{org_id}/members",
     "DELETE /api/orgs/{org_id}/members/{uid}",
     "PATCH /api/orgs/{org_id}/members/{uid}",
     "POST /api/orgs/{org_id}/transfer-ownership",
@@ -134,7 +145,10 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/trial/confirm",
     "POST /api/credits/trial/resume",
     "POST /api/credits/{transaction_key}/refund",
-    # Onboarding, which reaches the plan picker only after hiring the team.
+    # Onboarding: the wizard, the brain dump and the plan shown beside the
+    # trial (settled when the step stops waiting), all before anything is
+    # paid for. The plan's hire checks the paywall. POST /api/experts is here from when onboarding hired the
+    # team before the plan picker.
     "POST /api/experts",
     "GET /api/onboarding",
     "PATCH /api/onboarding",
@@ -144,6 +158,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/onboarding/brain-dump/intro",
     "POST /api/onboarding/brain-dump/intro/complete",
     "POST /api/onboarding/brain-dump/parts",
+    "GET /api/onboarding/brain-dump/plan",
+    "POST /api/onboarding/brain-dump/plan/settle",
     "GET /api/onboarding/brain-dump/recommended-experts",
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
@@ -294,13 +310,17 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/workspace/folders/{folder_id}",
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
+    "GET /.well-known/oauth-protected-resource/api/v2/mcp",
+    "POST /api/auth/email/ban-record",
     "POST /api/auth/email/send",
+    "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
     "POST /api/email/mailerlite/webhook",
+    "GET /api/email/unsubscribe",
     "POST /api/email/unsubscribe",
     "GET /api/experts/templates",
     "GET /api/feature-flags",
@@ -313,6 +333,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/oauth/introspect",
     "POST /api/oauth/revoke",
     "POST /api/oauth/token",
+    "GET /api/platform-config",
     "GET /api/public/shared/chats/{share_token}",
     "GET /api/public/shared/chats/{share_token}/files/{file_id}/download",
     "GET /api/public/shared/chats/{share_token}/messages",

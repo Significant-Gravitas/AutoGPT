@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import ast
 import base64
+import hashlib
 import importlib.util
 import io
+import os
 import re
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 MODULE_PATH = Path(__file__).parents[1] / "runtime_config.py"
@@ -69,17 +74,16 @@ class RuntimeConfigTest(unittest.TestCase):
                     "UNSUBSCRIBE_SECRET_KEY",
                     "GRAPHITI_FALKORDB_PASSWORD",
                     "INTERNAL_API_KEY",
+                    "BAN_RECORD_HASH_KEY",
                     "VAPID_PRIVATE_KEY",
                     "VAPID_PUBLIC_KEY",
                 },
             )
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_first_boot_honors_explicit_values(self) -> None:
-        vapid_private = base64.urlsafe_b64encode(b"p" * 32).rstrip(b"=").decode()
-        vapid_public = (
-            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
-        )
+        vapid_private, vapid_public = _matching_vapid_pair()
         environment = {
             "POSTGRES_PASSWORD": "p" * 40,
             "RABBITMQ_DEFAULT_USER": "self_hosted",
@@ -90,6 +94,7 @@ class RuntimeConfigTest(unittest.TestCase):
             "UNSUBSCRIBE_SECRET_KEY": "u" * 40,
             "GRAPHITI_FALKORDB_PASSWORD": "f" * 40,
             "INTERNAL_API_KEY": "i" * 40,
+            "BAN_RECORD_HASH_KEY": "h" * 40,
             "VAPID_PRIVATE_KEY": vapid_private,
             "VAPID_PUBLIC_KEY": vapid_public,
         }
@@ -126,9 +131,103 @@ class RuntimeConfigTest(unittest.TestCase):
                 runtime_config.ensure_runtime_config(path, {})
 
         self.assertIn(("fsync", False), events)
-        self.assertIn(("fsync", True), events)
         self.assertLess(events.index(("fsync", False)), events.index(("replace",)))
-        self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+        if os.name == "nt":
+            self.assertNotIn(("fsync", True), events)
+        else:
+            self.assertIn(("fsync", True), events)
+            self.assertLess(events.index(("replace",)), events.index(("fsync", True)))
+
+    def test_first_boot_and_reopen_with_windows_apis(self) -> None:
+        def refuse_directories(target: Path, flags: int, mode: int = 0o777) -> int:
+            if os.path.isdir(target):
+                raise PermissionError(13, "Permission denied", str(target))
+            return os.open(target, flags, mode)
+
+        for fchmod_available in (False, True):
+            windows_os = SimpleNamespace(**vars(os))
+            windows_os.name = "nt"
+            windows_os.open = refuse_directories
+            windows_os.fsync = mock.Mock(wraps=os.fsync)
+            windows_os.replace = mock.Mock(wraps=os.replace)
+            windows_os.fchmod = mock.Mock()
+            if not fchmod_available:
+                del windows_os.fchmod
+
+            with (
+                self.subTest(fchmod_available=fchmod_available),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "os", windows_os),
+            ):
+                path = Path(directory) / "runtime.env"
+                with self.assertRaisesRegex(ValueError, "POSTGRES_PASSWORD"):
+                    runtime_config.ensure_runtime_config(
+                        path, {"POSTGRES_PASSWORD": "too-short"}
+                    )
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+                first = runtime_config.ensure_runtime_config(path, {})
+                before = path.read_bytes()
+                self.assertEqual(first, runtime_config.ensure_runtime_config(path, {}))
+                self.assertEqual(path.read_bytes(), before)
+                windows_os.fsync.assert_called_once()
+                windows_os.replace.assert_called_once()
+                if fchmod_available:
+                    windows_os.fchmod.assert_called_once_with(mock.ANY, 0o600)
+
+                with self.assertRaisesRegex(ValueError, "persisted on first boot"):
+                    runtime_config.ensure_runtime_config(
+                        path, {"POSTGRES_PASSWORD": first["POSTGRES_PASSWORD"] + "x"}
+                    )
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(list(Path(directory).iterdir()), [path])
+
+    def test_failed_write_keeps_existing_config_and_removes_temporary_file(
+        self,
+    ) -> None:
+        for operation in ("fsync", "replace"):
+            with (
+                self.subTest(operation=operation),
+                tempfile.TemporaryDirectory() as root,
+            ):
+                path = Path(root) / "runtime.env"
+                _write_version_1_config(path)
+                before = path.read_bytes()
+                with (
+                    mock.patch.object(
+                        runtime_config.os, operation, side_effect=OSError("test")
+                    ),
+                    self.assertRaisesRegex(OSError, "test"),
+                ):
+                    runtime_config.ensure_runtime_config(path, {})
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(list(Path(root).iterdir()), [path])
+
+    @unittest.skipIf(os.name == "nt", "directory fsync requires POSIX")
+    def test_directory_fsync_failure_closes_descriptor_and_keeps_replaced_file(
+        self,
+    ) -> None:
+        real_fsync = os.fsync
+        directory_descriptors: list[int] = []
+
+        def fail_directory_fsync(descriptor: int) -> None:
+            if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                directory_descriptors.append(descriptor)
+                raise OSError("test")
+            real_fsync(descriptor)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            with (
+                mock.patch.object(runtime_config.os, "fsync", fail_directory_fsync),
+                mock.patch.object(runtime_config.os, "close", wraps=os.close) as close,
+                self.assertRaisesRegex(OSError, "test"),
+            ):
+                runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(len(directory_descriptors), 1)
+            close.assert_called_once_with(directory_descriptors[0])
+            runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(list(Path(directory).iterdir()), [path])
 
     def test_first_boot_closes_descriptor_when_fdopen_fails(self) -> None:
         real_close = runtime_config.os.close
@@ -203,6 +302,154 @@ class RuntimeConfigTest(unittest.TestCase):
                     Path(directory) / "runtime.env", environment
                 )
 
+    def test_rejects_an_environment_pair_whose_keys_do_not_match(self) -> None:
+        """Subscriptions would be taken under one key and pushes signed with
+        another, which every push service rejects, so the pair is refused
+        where a half-set one is. A private key that is not a P-256 scalar
+        is left for validation to name."""
+        private, _ = _matching_vapid_pair()
+        other_public = (
+            base64.urlsafe_b64encode(b"\x04" + b"q" * 64).rstrip(b"=").decode()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "not the public key of"),
+        ):
+            runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": other_public},
+            )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ValueError, "exactly 32 bytes"),
+        ):
+            runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": "p" * 40, "VAPID_PUBLIC_KEY": other_public},
+            )
+
+    def test_rejects_a_private_key_outside_the_curve_order(self) -> None:
+        """Thirty-two bytes spelling zero, or the curve order or more, are no
+        private key: no public key derives from them, so the pair check has
+        nothing to say, and validation refuses them. The largest scalar
+        there is, with its own public key, is a pair like any other."""
+        public = runtime_config._base64url(b"\x04" + b"q" * 64)
+        for scalar in (0, runtime_config._P256_N, 2**256 - 1):
+            private = runtime_config._base64url(scalar.to_bytes(32, "big"))
+            with (
+                self.subTest(scalar=hex(scalar)),
+                tempfile.TemporaryDirectory() as directory,
+                self.assertRaisesRegex(ValueError, "P-256 private scalar"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env",
+                    {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public},
+                )
+        largest = runtime_config._P256_N - 1
+        private = runtime_config._base64url(largest.to_bytes(32, "big"))
+        public = runtime_config._base64url(runtime_config._p256_public_point(largest))
+        with tempfile.TemporaryDirectory() as directory:
+            values = runtime_config.ensure_runtime_config(
+                Path(directory) / "runtime.env",
+                {"VAPID_PRIVATE_KEY": private, "VAPID_PUBLIC_KEY": public},
+            )
+        self.assertEqual(
+            (values["VAPID_PRIVATE_KEY"], values["VAPID_PUBLIC_KEY"]), (private, public)
+        )
+
+    def test_a_published_pair_in_the_environment_does_not_stop_the_next_boot(
+        self,
+    ) -> None:
+        """The first boot replaces the published pair, and the environment it
+        came from is passed in unchanged on every later boot, which must take
+        the pair persisted then rather than refuse to start."""
+        environment = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in environment.values()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            path = Path(directory) / "runtime.env"
+
+            first = runtime_config.ensure_runtime_config(path, environment)
+            second = runtime_config.ensure_runtime_config(path, environment)
+
+        self.assertEqual(second, first)
+        self.assertNotIn(first["VAPID_PRIVATE_KEY"], environment.values())
+        self.assertNotIn(first["VAPID_PUBLIC_KEY"], environment.values())
+
+    def test_rejects_a_pair_with_only_one_published_key(self) -> None:
+        """Replacing the published half would drop the other, which the next
+        boot would then read as a changed value and refuse, so the pair is
+        refused at once, whichever half is the published one."""
+        private, public = _matching_vapid_pair()
+        published = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        cases = [
+            {**published, "VAPID_PUBLIC_KEY": public},
+            {**published, "VAPID_PRIVATE_KEY": private},
+        ]
+        for environment in cases:
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+                self.assertRaisesRegex(ValueError, "one is the published key"),
+            ):
+                runtime_config.ensure_runtime_config(
+                    Path(directory) / "runtime.env", environment
+                )
+
+    def test_a_persisted_published_pair_is_replaced_on_the_next_boot(self) -> None:
+        """An earlier release persisted whatever pair the environment gave it,
+        the published one included, and the backend sends no push with that
+        pair. The next boot replaces it the way a first boot would today: with
+        the environment's own pair, or a generated one, saved for the boots
+        after it."""
+        published = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        theirs = dict(zip(runtime_config.VAPID_KEY_SETTINGS, _matching_vapid_pair()))
+        for environment in ({}, theirs):
+            with (
+                self.subTest(environment=environment),
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+            ):
+                path = Path(directory) / "runtime.env"
+                runtime_config.ensure_runtime_config(path, {})
+                content = path.read_text(encoding="ascii")
+                for name, value in published.items():
+                    content = _replace_config_value(content, name, value)
+                path.write_text(content, encoding="ascii")
+
+                replaced = runtime_config.ensure_runtime_config(path, environment)
+                again = runtime_config.ensure_runtime_config(path, environment)
+
+                self.assertEqual(again, replaced)
+                self.assertNotIn(replaced["VAPID_PRIVATE_KEY"], published.values())
+                self.assertNotIn(replaced["VAPID_PUBLIC_KEY"], published.values())
+                for name, value in environment.items():
+                    self.assertEqual(replaced[name], value)
+                self.assertEqual(
+                    runtime_config._read_config(path)["VAPID_PRIVATE_KEY"],
+                    replaced["VAPID_PRIVATE_KEY"],
+                )
+
     def test_rejects_corrupt_existing_config(self) -> None:
         invalid_vapid_public = (
             base64.urlsafe_b64encode(b"\x03" + b"q" * 64).rstrip(b"=").decode()
@@ -221,8 +468,8 @@ class RuntimeConfigTest(unittest.TestCase):
             (
                 "unsupported version",
                 lambda content: content.replace(
-                    "AUTOGPT_RUNTIME_CONFIG_VERSION=2",
                     "AUTOGPT_RUNTIME_CONFIG_VERSION=3",
+                    "AUTOGPT_RUNTIME_CONFIG_VERSION=4",
                 ),
                 "unsupported runtime configuration version",
             ),
@@ -267,16 +514,20 @@ class RuntimeConfigTest(unittest.TestCase):
             upgraded = runtime_config.ensure_runtime_config(path, {})
 
             key = upgraded.pop("INTERNAL_API_KEY")
-            self.assertGreaterEqual(len(key), 32)
-            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
-            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            ban_key = upgraded.pop("BAN_RECORD_HASH_KEY")
+            for generated in (key, ban_key):
+                self.assertGreaterEqual(len(generated), 32)
+                self.assertRegex(generated, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
             self.assertEqual(
                 {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "1"}, original
             )
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             again = runtime_config.ensure_runtime_config(path, {})
             self.assertEqual(again["INTERNAL_API_KEY"], key)
-            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "2")
+            self.assertEqual(again["BAN_RECORD_HASH_KEY"], ban_key)
+            self.assertEqual(again["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_version_1_config_takes_a_configured_internal_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -322,6 +573,57 @@ class RuntimeConfigTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     runtime_config.ensure_runtime_config(path, {})
                 self.assertEqual(path.read_bytes(), before)
+
+    def test_version_2_config_gains_a_ban_record_key_and_keeps_the_rest(
+        self,
+    ) -> None:
+        """Ban records hash with this key, so an upgrade never replaces one."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            original = _version_2_values()
+            _write_config_lines(path, original)
+
+            upgraded = runtime_config.ensure_runtime_config(path, {})
+
+            key = upgraded.pop("BAN_RECORD_HASH_KEY")
+            self.assertGreaterEqual(len(key), 32)
+            self.assertRegex(key, r"^[A-Za-z0-9_-]+$")
+            self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
+            self.assertEqual(
+                {**upgraded, "AUTOGPT_RUNTIME_CONFIG_VERSION": "2"}, original
+            )
+            again = runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(again["BAN_RECORD_HASH_KEY"], key)
+
+    def test_version_2_config_takes_a_configured_ban_record_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_config_lines(path, _version_2_values())
+            configured = {"BAN_RECORD_HASH_KEY": "h" * 40}
+
+            upgraded = runtime_config.ensure_runtime_config(path, configured)
+
+            self.assertEqual(upgraded["BAN_RECORD_HASH_KEY"], "h" * 40)
+
+    def test_rejects_version_2_config_that_already_has_a_ban_record_key(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "runtime.env"
+            _write_config_lines(
+                path, {**_version_2_values(), "BAN_RECORD_HASH_KEY": "h" * 40}
+            )
+            before = path.read_bytes()
+
+            with self.assertRaises(ValueError):
+                runtime_config.ensure_runtime_config(path, {})
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_the_version_2_step_produces_version_3_after_later_bumps(self) -> None:
+        with mock.patch.object(runtime_config, "CONFIG_VERSION", "4"):
+            upgraded = runtime_config._upgraded_from_version_2(_version_2_values(), {})
+
+        self.assertEqual(upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"], "3")
 
     def test_the_version_1_step_produces_version_2_after_later_bumps(self) -> None:
         with mock.patch.object(runtime_config, "CONFIG_VERSION", "3"):
@@ -552,6 +854,7 @@ class FillEnvSecretsTest(unittest.TestCase):
                 keys.append(path.read_text(encoding="utf-8"))
             self.assertNotEqual(keys[0], keys[1])
 
+    @unittest.skipIf(os.name == "nt", "POSIX file modes are unavailable on Windows")
     def test_generated_file_becomes_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / ".env"
@@ -562,19 +865,418 @@ class FillEnvSecretsTest(unittest.TestCase):
 
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_fills_a_blank_vapid_pair_from_one_generated_key(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text("VAPID_PRIVATE_KEY=\nVAPID_PUBLIC_KEY=\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            public = _base64url_decode(values["VAPID_PUBLIC_KEY"])
+            self.assertEqual(len(private), 32)
+            self.assertEqual(len(public), 65)
+            # The public key written is the one for the private key written.
+            self.assertEqual(
+                public,
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_vapid_pair_the_operator_set_is_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "VAPID_PRIVATE_KEY=their-private\nVAPID_PUBLIC_KEY=their-public\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+            values = _env_values(path)
+            self.assertEqual(values["VAPID_PRIVATE_KEY"], "their-private")
+            self.assertEqual(values["VAPID_PUBLIC_KEY"], "their-public")
+
+    def test_a_half_set_vapid_pair_is_refused_not_half_filled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.write_text(
+                "VAPID_PRIVATE_KEY=their-private\nVAPID_PUBLIC_KEY=\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "must be set together"):
+                runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(_env_values(path)["VAPID_PUBLIC_KEY"], "")
+
+    def test_a_bare_name_vapid_line_counts_as_set(self) -> None:
+        """A name alone on a line takes the environment's value when the
+        stack starts, so it is a set key, not a blank one: beside a blank
+        key it is refused as a half-set pair rather than paired with a
+        generated key, and two bare names are left to Compose."""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            half = "VAPID_PRIVATE_KEY\nVAPID_PUBLIC_KEY=\n"
+            path.write_text(half, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must be set together"):
+                runtime_config.fill_env_blanks(path)
+            self.assertEqual(path.read_text(encoding="utf-8"), half)
+
+            both = "VAPID_PRIVATE_KEY\nVAPID_PUBLIC_KEY\n"
+            path.write_text(both, encoding="utf-8")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+            self.assertEqual(path.read_text(encoding="utf-8"), both)
+
+    def test_a_pair_whose_keys_do_not_belong_together_is_refused(self) -> None:
+        """Browsers would subscribe under the public key and the backend sign
+        with a private key it isn't from, which every push service rejects,
+        so the pair is named rather than kept, in any spelling, and the file
+        is left as it was. A private key that isn't a raw scalar is the
+        backend's to load (py-vapid reads a DER key too), and a `$NAME`
+        reference is Compose's to fill in when the stack starts."""
+        private, public = _matching_vapid_pair()
+        other_public = runtime_config._base64url(b"\x04" + b"q" * 64)
+        zero = runtime_config._base64url(bytes(32))
+        refused = {
+            "another key's public key": (private, other_public, "not the public key"),
+            "the same, padded": (
+                private + "=",
+                other_public + "=",
+                "not the public key",
+            ),
+            "a zero scalar": (zero, public, "not a P-256 private key"),
+        }
+        for label, (private_value, public_value, message) in refused.items():
+            text = _vapid_env(private_value, public_value)
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ".env"
+                path.write_text(text, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    runtime_config.fill_env_blanks(path)
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
+        kept = {
+            "the pair, padded": (private + "=", public + "="),
+            "a DER-shaped private key": (
+                runtime_config._base64url(b"\x30" + b"d" * 120),
+                public,
+            ),
+            "a reference for the public key": (private, "${PUSH_PUBLIC}"),
+            "a reference for the private key": ("${PUSH_PRIVATE}", other_public),
+        }
+        for label, (private_value, public_value) in kept.items():
+            text = _vapid_env(private_value, public_value)
+            with self.subTest(label), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / ".env"
+                path.write_text(text, encoding="utf-8")
+                self.assertEqual(runtime_config.fill_env_blanks(path), [])
+                self.assertEqual(path.read_text(encoding="utf-8"), text)
+
+    def test_a_published_vapid_pair_is_replaced(self) -> None:
+        """The pair signs nothing that is stored, so like a service password a
+        published one is replaced rather than kept (the backend refuses to
+        send pushes with it either way)."""
+        published = {
+            "private": "pretend-shipped-private",
+            "public": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in published.values()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            path = Path(directory) / ".env"
+            path.write_text(
+                f"VAPID_PRIVATE_KEY={published['private']}\n"
+                f"VAPID_PUBLIC_KEY={published['public']}\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertNotIn(values["VAPID_PRIVATE_KEY"], published.values())
+            self.assertNotIn(values["VAPID_PUBLIC_KEY"], published.values())
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            self.assertEqual(
+                _base64url_decode(values["VAPID_PUBLIC_KEY"]),
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+
+    def test_every_spelling_of_the_published_key_counts_as_published(self) -> None:
+        """py-vapid drops newlines, restores Base64 padding and takes the
+        standard alphabet, and a decoder ignores the unused bits of the last
+        character, so each of these decodes to the published bytes."""
+        raw = bytes(range(0xE0, 0x100))  # Base64url with both `-` and `_` in it.
+        published = runtime_config._base64url(raw)
+        digests = frozenset({runtime_config._vapid_key_digest(published)})
+        spellings = {
+            "as published": published,
+            "padded": f"{published}=",
+            "wrapped": f"{published[:8]}\n{published[8:]}",
+            "standard alphabet": base64.b64encode(raw).decode(),
+            "other unused bits": _with_other_unused_bits(published),
+        }
+        with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
+            for name, spelling in spellings.items():
+                with self.subTest(spelling=name):
+                    self.assertEqual(_base64url_decode("".join(spelling.split())), raw)
+                    self.assertTrue(runtime_config._is_published_vapid_key(spelling))
+            self.assertFalse(
+                runtime_config._is_published_vapid_key(
+                    runtime_config._base64url(bytes(32))
+                )
+            )
+            self.assertFalse(runtime_config._is_published_vapid_key("their-private"))
+            self.assertFalse(runtime_config._is_published_vapid_key(""))
+            self.assertFalse(runtime_config._is_published_vapid_key("=\n"))
+
+    def test_a_vapid_pair_absent_from_an_older_env_is_appended(self) -> None:
+        """A backend/.env copied before the pair existed gets one, like a
+        password .env.default declared later, rather than inheriting the
+        blank .env.default lines and running with push disabled."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "backend"
+            root.mkdir()
+            (root / ".env.default").write_text(
+                "VAPID_PRIVATE_KEY=\nVAPID_PUBLIC_KEY=\n", encoding="utf-8"
+            )
+            path = root / ".env"
+            path.write_text("OPENAI_API_KEY=sk-theirs\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["VAPID_PRIVATE_KEY", "VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "sk-theirs")
+            private = _base64url_decode(values["VAPID_PRIVATE_KEY"])
+            self.assertEqual(
+                _base64url_decode(values["VAPID_PUBLIC_KEY"]),
+                runtime_config._p256_public_point(int.from_bytes(private, "big")),
+            )
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_ban_record_key_absent_from_an_older_env_is_appended(self) -> None:
+        """A backend/.env copied before the key existed gets one, so erasing a
+        banned account and the sign-up check work after `make init-env`."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "backend"
+            root.mkdir()
+            (root / ".env.default").write_text(
+                "BAN_RECORD_HASH_KEY=\n", encoding="utf-8"
+            )
+            path = root / ".env"
+            path.write_text("OPENAI_API_KEY=sk-theirs\n", encoding="utf-8")
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["BAN_RECORD_HASH_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["OPENAI_API_KEY"], "sk-theirs")
+            self.assertGreaterEqual(len(values["BAN_RECORD_HASH_KEY"]), 32)
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+    def test_a_published_frontend_public_key_is_cleared(self) -> None:
+        """The app takes NEXT_PUBLIC_VAPID_PUBLIC_KEY over the backend's key,
+        so the published one left in frontend/.env would keep browsers
+        subscribing under a pair the backend no longer signs with. Blank, the
+        app fetches the backend's key; any other value is the operator's."""
+        published = "pretend-shipped-public"
+        digests = frozenset({runtime_config._vapid_key_digest(published)})
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests),
+        ):
+            root = Path(directory) / "frontend"
+            root.mkdir()
+            path = root / ".env"
+            path.write_text(
+                f'NEXT_PUBLIC_VAPID_PUBLIC_KEY="{published}"\n'
+                "NEXT_PUBLIC_OTHER=kept\n",
+                encoding="utf-8",
+            )
+
+            filled = runtime_config.fill_env_blanks(path)
+
+            self.assertEqual(filled, ["NEXT_PUBLIC_VAPID_PUBLIC_KEY"])
+            values = _env_values(path)
+            self.assertEqual(values["NEXT_PUBLIC_VAPID_PUBLIC_KEY"], "")
+            self.assertEqual(values["NEXT_PUBLIC_OTHER"], "kept")
+            self.assertEqual(runtime_config.fill_env_blanks(path), [])
+
+            for value in ("", "their-public"):
+                with self.subTest(value=value):
+                    path.write_text(
+                        f"NEXT_PUBLIC_VAPID_PUBLIC_KEY={value}\n", encoding="utf-8"
+                    )
+                    self.assertEqual(runtime_config.fill_env_blanks(path), [])
+                    self.assertEqual(
+                        _env_values(path)["NEXT_PUBLIC_VAPID_PUBLIC_KEY"], value
+                    )
+
+    def test_published_vapid_pair_in_the_environment_is_regenerated(self) -> None:
+        """The single-container first boot takes the pair from the environment,
+        unless it is the published one."""
+        environment = {
+            "VAPID_PRIVATE_KEY": "pretend-shipped-private",
+            "VAPID_PUBLIC_KEY": "pretend-shipped-public",
+        }
+        digests = frozenset(
+            runtime_config._vapid_key_digest(value) for value in environment.values()
+        )
+        with mock.patch.object(runtime_config, "PUBLISHED_VAPID_DIGESTS", digests):
+            private, public = runtime_config._configured_or_generated_vapid(environment)
+
+        self.assertNotIn(private, environment.values())
+        self.assertEqual(len(_base64url_decode(private)), 32)
+        self.assertEqual(len(_base64url_decode(public)), 65)
+        kept = {
+            "VAPID_PRIVATE_KEY": "their-private",
+            "VAPID_PUBLIC_KEY": "their-public",
+        }
+        self.assertEqual(
+            runtime_config._configured_or_generated_vapid(kept),
+            ("their-private", "their-public"),
+        )
+
+    def test_p256_public_point_matches_the_rfc_6979_test_vector(self) -> None:
+        """RFC 6979 appendix A.2.5: the P-256 key pair every implementation
+        agrees on, so the interpreter-only arithmetic is checked against a
+        published answer, not against itself."""
+        private = 0xC9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+        expected = (
+            b"\x04"
+            + (
+                0x60FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6
+            ).to_bytes(32, "big")
+            + (
+                0x7903FE1008B8BC99A41AE9E95628BC64F2F1B20C2D7E9F5177A3C294D4462299
+            ).to_bytes(32, "big")
+        )
+
+        self.assertEqual(runtime_config._p256_public_point(private), expected)
+
+    def test_key_generation_needs_no_cryptography_package(self) -> None:
+        """`make init-env` runs under the system interpreter, which has no
+        `cryptography`: the pair is then made with the interpreter alone.
+
+        The package is blocked under every name on the import path, since an
+        already loaded subpackage is found in sys.modules before its blocked
+        parent is consulted; and the scalar comes from a patched draw, so a
+        pair the package made would fail the check."""
+        # RFC 6979 appendix A.2.5 again, so the point is a published answer.
+        scalar = 0xC9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721
+        blocked = {
+            name: None
+            for name in (
+                "cryptography",
+                "cryptography.hazmat",
+                "cryptography.hazmat.primitives",
+                "cryptography.hazmat.primitives.asymmetric",
+                "cryptography.hazmat.primitives.asymmetric.ec",
+            )
+        }
+        with (
+            mock.patch.dict(sys.modules, blocked),
+            mock.patch.object(
+                runtime_config.secrets, "randbelow", return_value=scalar - 1
+            ),
+        ):
+            private, public = runtime_config._generate_p256_keypair()
+
+        self.assertEqual(int.from_bytes(private, "big"), scalar)
+        self.assertEqual(public, runtime_config._p256_public_point(scalar))
+
+    def test_interpreter_only_p256_agrees_with_cryptography(self) -> None:
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+        except ImportError:
+            self.skipTest("cryptography is not installed in this interpreter")
+
+        private, public = runtime_config._generate_p256_keypair()
+        scalar = int.from_bytes(private, "big")
+        point = ec.derive_private_key(scalar, ec.SECP256R1()).public_key()
+        numbers = point.public_numbers()
+
+        self.assertEqual(
+            public,
+            b"\x04" + numbers.x.to_bytes(32, "big") + numbers.y.to_bytes(32, "big"),
+        )
+        self.assertEqual(runtime_config._p256_public_point(scalar), public)
+
+    def test_the_canonical_spelling_and_its_digest_are_pinned(self) -> None:
+        """The published digests are of canonical spellings, so a change to
+        what counts as canonical would stop them matching, with every mocked
+        test still green. These literals hold the form still; the backend's
+        copy of the canonicalisation pins the same ones."""
+        raw = bytes(range(0xE0, 0x100))
+        canonical = (
+            "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8"  # pragma: allowlist secret
+        )
+        digest = "d90bad97384181273203dd0f8cc30e16a817bef7a51b026eb6bf0a7fcba3312a"  # pragma: allowlist secret
+        for spelling in (
+            canonical,
+            canonical + "=",
+            base64.b64encode(raw).decode(),
+            canonical[:10] + "\n" + canonical[10:],
+        ):
+            self.assertEqual(runtime_config._canonical_vapid_key(spelling), canonical)
+        self.assertEqual(runtime_config._vapid_key_digest(canonical), digest)
+
+    def test_published_digests_match_the_backend_startup_check(self) -> None:
+        """The backend warns about the same published passwords this replaces."""
+        guard = (
+            Path(__file__).parents[2] / "backend/backend/util/secrets_guard.py"
+        ).read_text(encoding="utf-8")
+        assignment = next(
+            node
+            for node in ast.walk(ast.parse(guard))
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "_PUBLISHED_CREDENTIAL_DIGESTS"
+                for target in node.targets
+            )
+        )
+
+        digests = ast.literal_eval(assignment.value)
+        self.assertEqual(digests, set(runtime_config.PUBLISHED_CREDENTIAL_DIGESTS))
+        vapid = next(
+            node
+            for node in ast.walk(ast.parse(guard))
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "_RETIRED_VAPID_PRIVATE_KEY_DIGESTS"
+                for target in node.targets
+            )
+        )
+        # The key the push sender refuses is one `fill-env` replaces.
+        self.assertTrue(
+            ast.literal_eval(vapid.value) <= set(runtime_config.PUBLISHED_VAPID_DIGESTS)
+        )
+        self.assertTrue(digests)
+        self.assertTrue(
+            all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests)
+        )
+
     def test_check_env_defaults_rejects_populated_duplicate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT:
+            for relative_path, names in runtime_config.BLANK_IN_ENV_DEFAULT.items():
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
-                (root / relative_path).write_text("", encoding="utf-8")
-            (root / "backend/.env.default").write_text(
-                "ENCRYPTION_KEY=not-blank\nENCRYPTION_KEY=\nUNSUBSCRIBE_SECRET_KEY=\n"
-                "INTERNAL_API_KEY=\n",
+                (root / relative_path).write_text(
+                    "".join(f"{name}=\n" for name in names), encoding="utf-8"
+                )
+            backend = root / "backend/.env.default"
+            backend.write_text(
+                "ENCRYPTION_KEY=not-blank\n" + backend.read_text(encoding="utf-8"),
                 encoding="utf-8",
-            )
-            (root / "frontend/.env.default").write_text(
-                "BETTER_AUTH_SECRET=\n", encoding="utf-8"
             )
 
             self.assertEqual(
@@ -589,15 +1291,840 @@ class FillEnvSecretsTest(unittest.TestCase):
         self.assertEqual(runtime_config.check_env_defaults(platform_root), [])
 
         with tempfile.TemporaryDirectory() as directory:
-            for relative_path, names in runtime_config.BLANK_IN_ENV_DEFAULT.items():
-                content = (platform_root / relative_path).read_text(encoding="utf-8")
-                copy = Path(directory) / relative_path.replace("/", "_")
-                copy.write_text(content, encoding="utf-8")
-
-                # Blank is only safe if setup can actually fill it back in.
-                self.assertEqual(
-                    sorted(runtime_config.fill_env_blanks(copy)), sorted(names)
+            # A fresh install: each .env copied from its .env.default.
+            env_files = {
+                relative_path: _copy_env_default(
+                    platform_root, Path(directory), relative_path
                 )
+                for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT
+            }
+            for relative_path, names in runtime_config.BLANK_IN_ENV_DEFAULT.items():
+                # Blank is only safe if setup can actually fill it back in. The
+                # frontend's copy of the push key is the one exception: blank,
+                # the app fetches the backend's key, so setup leaves it blank.
+                fillable = [
+                    name
+                    for name in names
+                    if name != runtime_config.FRONTEND_VAPID_PUBLIC_KEY
+                ]
+                self.assertEqual(
+                    sorted(runtime_config.fill_env_blanks(env_files[relative_path])),
+                    sorted(fillable),
+                )
+
+
+class FillEnvServicePasswordsTest(unittest.TestCase):
+    """`make init-env` gives the database, broker and caches their passwords,
+    and moves an existing install off the ones .env.default used to ship."""
+
+    # Stands in for a value a .env.default once shipped: the real ones are
+    # never written into a tracked file, this test's included.
+    PUBLISHED = "pretend-this-shipped-in-a-public-env-default"
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        published = mock.patch.object(
+            runtime_config,
+            "PUBLISHED_CREDENTIAL_DIGESTS",
+            frozenset({hashlib.sha256(self.PUBLISHED.encode()).hexdigest()}),
+        )
+        published.start()
+        self.addCleanup(published.stop)
+
+    def test_fresh_install_shares_one_database_password_across_files(self) -> None:
+        platform_root = Path(__file__).parents[2]
+        for relative_path in runtime_config.BLANK_IN_ENV_DEFAULT:
+            _copy_env_default(platform_root, self.root, relative_path)
+
+        _run_fill_env(
+            self.root / ".env", self.root / "backend/.env", self.root / "frontend/.env"
+        )
+
+        root, backend, frontend = self._values()
+        password = root["POSTGRES_PASSWORD"]
+        self.assertGreaterEqual(len(password), 32)
+        self.assertEqual(backend["DB_PASS"], password)
+        self.assertEqual(
+            frontend["DATABASE_URL"],
+            f"postgresql://postgres:{password}@localhost:5432/postgres",
+        )
+        service_passwords = [
+            backend[name]
+            for name in (
+                "RABBITMQ_DEFAULT_PASS",
+                "REDIS_PASSWORD",
+                "GRAPHITI_FALKORDB_PASSWORD",
+            )
+        ]
+        self.assertTrue(all(len(value) >= 32 for value in service_passwords))
+        self.assertEqual(len({password, *service_passwords}), 4)
+        # backend/.env builds its own connection strings from DB_PASS.
+        self.assertIn("${DB_PASS}", backend["DATABASE_URL"])
+
+    def test_database_password_agrees_whatever_order_files_are_filled(self) -> None:
+        self._write(
+            root="POSTGRES_PASSWORD=\n",
+            backend="DB_PASS=\n",
+            frontend="DATABASE_URL=\n",
+        )
+
+        for path in ("frontend/.env", "backend/.env", ".env"):
+            runtime_config.fill_env_blanks(self.root / path)
+
+        root, backend, frontend = self._values()
+        self.assertEqual(backend["DB_PASS"], root["POSTGRES_PASSWORD"])
+        self.assertIn(f":{root['POSTGRES_PASSWORD']}@", frontend["DATABASE_URL"])
+
+    def test_published_service_passwords_are_replaced_and_keys_are_not(self) -> None:
+        backend_url = '"postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/postgres"'
+        self._write(
+            root=f"POSTGRES_PASSWORD={self.PUBLISHED}\n",
+            backend=(
+                f"DB_PASS={self.PUBLISHED}\n"
+                f"DATABASE_URL={backend_url}\n"
+                f"RABBITMQ_DEFAULT_PASS={self.PUBLISHED}\n"
+                f"REDIS_PASSWORD={self.PUBLISHED}\n"
+                f"GRAPHITI_FALKORDB_PASSWORD={self.PUBLISHED}\n"
+                # Encrypts stored data: replacing it would make that unreadable.
+                f"ENCRYPTION_KEY={self.PUBLISHED}\n"
+            ),
+            frontend=(
+                "DATABASE_URL=postgresql://postgres:"
+                f"{self.PUBLISHED}@localhost:5432/postgres\n"
+            ),
+        )
+
+        _run_fill_env(
+            self.root / ".env", self.root / "backend/.env", self.root / "frontend/.env"
+        )
+
+        root, backend, frontend = self._values()
+        password = root["POSTGRES_PASSWORD"]
+        self.assertNotEqual(password, self.PUBLISHED)
+        self.assertEqual(backend["DB_PASS"], password)
+        self.assertEqual(
+            frontend["DATABASE_URL"],
+            f"postgresql://postgres:{password}@localhost:5432/postgres",
+        )
+        for name in (
+            "RABBITMQ_DEFAULT_PASS",
+            "REDIS_PASSWORD",
+            "GRAPHITI_FALKORDB_PASSWORD",
+        ):
+            self.assertNotEqual(backend[name], self.PUBLISHED, name)
+            self.assertGreaterEqual(len(backend[name]), 32, name)
+        self.assertEqual(backend["ENCRYPTION_KEY"], self.PUBLISHED)
+        self.assertEqual(backend["DATABASE_URL"], backend_url)
+
+    def test_database_password_an_operator_set_is_kept_and_shared(self) -> None:
+        self._write(
+            root=f"POSTGRES_PASSWORD={self.PUBLISHED}\n",
+            backend="DB_PASS=operator-chosen-password\n",
+            frontend="DATABASE_URL=\n",
+        )
+
+        _run_fill_env(
+            self.root / ".env", self.root / "backend/.env", self.root / "frontend/.env"
+        )
+
+        root, backend, frontend = self._values()
+        self.assertEqual(root["POSTGRES_PASSWORD"], "operator-chosen-password")
+        self.assertEqual(backend["DB_PASS"], "operator-chosen-password")
+        self.assertIn(":operator-chosen-password@", frontend["DATABASE_URL"])
+
+    def test_connection_string_with_a_published_password_takes_the_new_one(
+        self,
+    ) -> None:
+        self._write(
+            root="POSTGRES_PASSWORD=\n",
+            backend=(
+                f'DIRECT_URL="postgresql://postgres:{self.PUBLISHED}'
+                '@localhost:5432/postgres?schema=platform"\n'
+            ),
+        )
+
+        _run_fill_env(self.root / ".env", self.root / "backend/.env")
+
+        root, backend, _ = self._values()
+        self.assertEqual(
+            backend["DIRECT_URL"],
+            f'"postgresql://postgres:{root["POSTGRES_PASSWORD"]}'
+            '@localhost:5432/postgres?schema=platform"',
+        )
+
+    def test_credentials_an_older_file_lacks_are_added_but_keys_are_not(self) -> None:
+        (self.root / "backend").mkdir()
+        (self.root / "backend/.env.default").write_text(
+            "REDIS_PASSWORD=\nGRAPHITI_FALKORDB_PASSWORD=\nENCRYPTION_KEY=\n",
+            encoding="utf-8",
+        )
+        # A file copied before these existed: the shards' password was
+        # commented out, FalkorDB's came from .env.default.
+        self._write(backend="# REDIS_PASSWORD=\nOPENAI_API_KEY=sk-test")
+
+        filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+        self.assertEqual(filled, ["REDIS_PASSWORD", "GRAPHITI_FALKORDB_PASSWORD"])
+        content = (self.root / "backend/.env").read_text(encoding="utf-8")
+        self.assertTrue(
+            content.startswith("# REDIS_PASSWORD=\nOPENAI_API_KEY=sk-test\n")
+        )
+        _, backend, _ = self._values()
+        self.assertGreaterEqual(len(backend["REDIS_PASSWORD"]), 32)
+        # The backend refuses to start without it, and the upgrade guide moves
+        # stored credentials to a new one; generating it here would skip that.
+        self.assertNotIn("ENCRYPTION_KEY", backend)
+
+    def test_second_run_changes_nothing(self) -> None:
+        (self.root / "backend").mkdir()
+        (self.root / "backend/.env.default").write_text(
+            "REDIS_PASSWORD=\n", encoding="utf-8"
+        )
+        self._write(
+            root=f"POSTGRES_PASSWORD={self.PUBLISHED}\n",
+            backend="DB_PASS=\n",
+            frontend="DATABASE_URL=\n",
+        )
+        paths = [
+            self.root / ".env",
+            self.root / "backend/.env",
+            self.root / "frontend/.env",
+        ]
+        _run_fill_env(*paths)
+        first = [path.read_text(encoding="utf-8") for path in paths]
+
+        self.assertEqual(
+            [runtime_config.fill_env_blanks(path) for path in paths], [[], [], []]
+        )
+        self.assertEqual([path.read_text(encoding="utf-8") for path in paths], first)
+
+    def test_crlf_files_from_a_windows_checkout_are_filled(self) -> None:
+        self._write(
+            root=f"# Database\r\nPOSTGRES_PASSWORD={self.PUBLISHED}\r\nPOSTGRES_PORT=5432\r\n",
+            backend="DB_PASS=\r\n",
+        )
+
+        _run_fill_env(self.root / ".env", self.root / "backend/.env")
+
+        root, backend, _ = self._values()
+        self.assertNotIn(self.PUBLISHED, root["POSTGRES_PASSWORD"])
+        self.assertGreaterEqual(len(root["POSTGRES_PASSWORD"].strip()), 32)
+        self.assertEqual(backend["DB_PASS"].strip(), root["POSTGRES_PASSWORD"].strip())
+        self.assertEqual(root["POSTGRES_PORT"].strip(), "5432")
+
+    def test_values_are_read_as_compose_reads_them(self) -> None:
+        """A comment, quotes or `export` must not hide a published password,
+        and quotes around nothing must not pass for a password."""
+        self._write(
+            root=f"export POSTGRES_PASSWORD={self.PUBLISHED}  # from the old file\n",
+            backend=(
+                f"RABBITMQ_DEFAULT_PASS={self.PUBLISHED} # legacy\n"
+                f"GRAPHITI_FALKORDB_PASSWORD='{self.PUBLISHED}'\n"
+                'REDIS_PASSWORD=""\n'
+                "DB_PASS =\n"
+            ),
+        )
+
+        _run_fill_env(self.root / ".env", self.root / "backend/.env")
+
+        root_text = (self.root / ".env").read_text(encoding="utf-8")
+        self.assertTrue(root_text.startswith("export POSTGRES_PASSWORD="))
+        self.assertTrue(root_text.endswith("  # from the old file\n"))
+        self.assertNotIn(self.PUBLISHED, root_text)
+        _, backend, _ = self._values()
+        for name in (
+            "RABBITMQ_DEFAULT_PASS",
+            "GRAPHITI_FALKORDB_PASSWORD",
+            "REDIS_PASSWORD",
+        ):
+            self.assertNotIn(self.PUBLISHED, backend[name], name)
+            self.assertGreaterEqual(len(backend[name]), 32, name)
+        password = root_text.split("=", 1)[1].split(" #")[0].strip()
+        self.assertEqual(backend["DB_PASS"], password)
+
+    def test_the_last_of_several_assignments_is_the_one_shared(self) -> None:
+        self._write(
+            root="POSTGRES_PASSWORD=earlier-value\nPOSTGRES_PASSWORD=later-value\n",
+            backend="DB_PASS=\n",
+        )
+
+        _run_fill_env(self.root / ".env", self.root / "backend/.env")
+
+        _, backend, _ = self._values()
+        self.assertEqual(backend["DB_PASS"], "later-value")
+
+    def test_a_password_a_connection_string_cant_carry_is_refused(self) -> None:
+        bell = "DATABASE_URL=postgresql://postgres:pa%07ss@localhost:5432/postgres\n"
+        for root, backend, frontend in (
+            ("POSTGRES_PASSWORD=pa?ss\n", "DB_PASS=\n", ""),
+            ("POSTGRES_PASSWORD=\n", "DB_PASS=pa#ss\n", ""),
+            # A control character, percent-encoded in the frontend's copy.
+            ("POSTGRES_PASSWORD=\n", "DB_PASS=\n", bell),
+        ):
+            with self.subTest(root=root, backend=backend, frontend=frontend):
+                for path in self.root.rglob(".env"):
+                    path.unlink()
+                self._write(root=root, backend=backend, frontend=frontend)
+                arguments = ["fill-env", "--path", str(self.root / ".env")]
+                with (
+                    mock.patch.object(sys, "argv", ["runtime_config.py", *arguments]),
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+                ):
+                    self.assertEqual(runtime_config.main(), 2)
+
+                self.assertIn("connection string", stderr.getvalue())
+                self.assertEqual((self.root / ".env").read_text(encoding="utf-8"), root)
+
+    def test_a_database_of_ones_own_keeps_its_password(self) -> None:
+        external = (
+            f"postgresql://postgres:{self.PUBLISHED}@db.example.com:5432/postgres"
+        )
+        self._write(
+            root="POSTGRES_PASSWORD=\n",
+            backend=(
+                "DB_HOST=db.example.com\n"
+                f"DB_PASS={self.PUBLISHED}\n"
+                f"DIRECT_URL={external}\n"
+            ),
+        )
+
+        _run_fill_env(self.root / ".env", self.root / "backend/.env")
+
+        root, backend, _ = self._values()
+        self.assertEqual(backend["DB_PASS"], self.PUBLISHED)
+        self.assertEqual(backend["DIRECT_URL"], external)
+        # The bundled database's own password is still generated.
+        self.assertGreaterEqual(len(root["POSTGRES_PASSWORD"]), 32)
+
+    def test_services_of_ones_own_keep_their_passwords(self) -> None:
+        (self.root / "backend").mkdir()
+        (self.root / "backend/.env.default").write_text(
+            "REDIS_PASSWORD=\nRABBITMQ_DEFAULT_PASS=\nGRAPHITI_FALKORDB_PASSWORD=\n",
+            encoding="utf-8",
+        )
+        # A Redis that needs no password, a broker still on a value an older
+        # .env.default shipped, and a graph whose password Compose takes from
+        # the environment: each is a service of the operator's, not the stack's.
+        backend = (
+            "REDIS_HOST=redis.internal\n"
+            "RABBITMQ_HOST=mq.example.com\n"
+            f"RABBITMQ_DEFAULT_PASS={self.PUBLISHED}\n"
+            "GRAPHITI_FALKORDB_HOST=graph.example.com\n"
+            "GRAPHITI_FALKORDB_PASSWORD=${GRAPH_PASSWORD}\n"
+        )
+        self._write(backend=backend)
+
+        filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+        self.assertEqual(filled, [])
+        self.assertEqual(
+            (self.root / "backend/.env").read_text(encoding="utf-8"), backend
+        )
+
+    def test_a_service_whose_host_compose_takes_at_start_keeps_its_password(
+        self,
+    ) -> None:
+        # The name alone on a line: Compose takes the host from the environment
+        # it starts in, which may point anywhere.
+        backend = "REDIS_HOST\nREDIS_PASSWORD=\n"
+        self._write(backend=backend)
+
+        filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+        self.assertEqual(filled, [])
+        self.assertEqual(
+            (self.root / "backend/.env").read_text(encoding="utf-8"), backend
+        )
+
+    def test_the_cluster_host_the_backend_reads_first_decides(self) -> None:
+        # The backend takes REDIS_CLUSTER_HOST over REDIS_HOST, and
+        # RABBITMQ_CLUSTER_HOST over RABBITMQ_HOST, unless it is blank.
+        for name, cluster_setting, host_setting, compose_name in (
+            ("REDIS_PASSWORD", "REDIS_CLUSTER_HOST", "REDIS_HOST", "redis-0"),
+            (
+                "RABBITMQ_DEFAULT_PASS",
+                "RABBITMQ_CLUSTER_HOST",
+                "RABBITMQ_HOST",
+                "rabbitmq",
+            ),
+        ):
+            for cluster, host, generated in (
+                ("managed.example.com", "localhost", False),
+                (compose_name, "managed.example.com", True),
+                ("", "managed.example.com", False),
+                ("", "localhost", True),
+            ):
+                with self.subTest(name=name, cluster=cluster, host=host):
+                    self._write(
+                        backend=(
+                            f"{cluster_setting}={cluster}\n"
+                            f"{host_setting}={host}\n{name}=\n"
+                        )
+                    )
+
+                    filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+                    self.assertEqual(filled, [name] if generated else [])
+
+    def test_bundled_services_get_passwords_under_any_name_they_go_by(self) -> None:
+        for name, host_setting, compose_name in (
+            ("DB_PASS", "DB_HOST", "db"),
+            ("REDIS_PASSWORD", "REDIS_HOST", "redis-0"),
+            ("REDIS_PASSWORD", "REDIS_HOST", "redis-2"),
+            ("RABBITMQ_DEFAULT_PASS", "RABBITMQ_HOST", "rabbitmq"),
+            ("GRAPHITI_FALKORDB_PASSWORD", "GRAPHITI_FALKORDB_HOST", "falkordb"),
+        ):
+            for host in (
+                "",
+                "localhost",
+                "127.0.0.1",
+                "::1",
+                "LOCALHOST.",
+                compose_name,
+            ):
+                with self.subTest(name=name, host=host):
+                    self._write(backend=f"{host_setting}={host}\n{name}=\n")
+
+                    filled = runtime_config.fill_env_blanks(self.root / "backend/.env")
+
+                    self.assertEqual(filled, [name])
+
+    def test_a_reference_to_another_setting_is_not_taken_for_a_password(
+        self,
+    ) -> None:
+        self._write(
+            root="POSTGRES_PASSWORD=\n",
+            frontend=(
+                "DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/postgres\n"
+            ),
+        )
+
+        _run_fill_env(self.root / ".env")
+
+        root, _, _ = self._values()
+        self.assertGreaterEqual(len(root["POSTGRES_PASSWORD"]), 32)
+        self.assertNotIn("$", root["POSTGRES_PASSWORD"])
+
+    def test_dotenv_values_are_parsed_as_compose_parses_them(self) -> None:
+        # (as written after `=`, what Compose takes, whether the line alone
+        # tells: Compose fills in a `$` reference when the stack starts).
+        cases = [
+            ("plain", "plain", True),
+            ("  padded  ", "padded", True),
+            ("value # comment", "value", True),
+            ("value#not-a-comment", "value#not-a-comment", True),
+            ("value\t# not a comment either", "value\t# not a comment either", True),
+            ("'single $X \\n \\\\'", "single $X \\n \\\\", True),
+            ("'it\\'s'", "it's", True),
+            ('"a\\nb\\tc\\\\d\\"e\\$X"', 'a\nb\tc\\d"e$X', True),
+            ('"kept \\x \\q"', "kept \\x \\q", True),
+            ('"octal \\0101, not \\012"', "octal A, not \\12", True),
+            ('"quoted" # comment', "quoted", True),
+            ("pa$$word", "pa$word", True),
+            ('"pa$$word"', "pa$word", True),
+            ("$1 p$ $! $", "$1 p$ $! $", True),
+            ('""', "", True),
+            ("", "", True),
+            ("$UNSET", None, False),
+            ("${UNSET}", None, False),
+            ("p$unset", None, False),
+            ('"${UNSET:-fallback}"', None, False),
+            ("pa$$$UNSET", None, False),
+            # Go's case-insensitive [_a-z] takes the Kelvin sign and the long
+            # s as letters of a name, but not the dotless i.
+            ("pa$\u212ass", None, False),
+            ("pa$\u017fss", None, False),
+            ("pa$\u0131ss", "pa$\u0131ss", True),
+        ]
+        for raw, value, literal in cases:
+            with self.subTest(raw=raw):
+                setting = _compose_settings(f"X={raw}\n")["X"]
+                self.assertEqual(setting.literal, literal)
+                if value is not None:
+                    self.assertEqual(setting.value, value)
+        # Compose refuses a whole file with an unclosed quote in it.
+        for raw in ("'unclosed", '"unclosed \\"'):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                _compose_settings(f"X={raw}\nY=1\n")
+
+    def test_whole_files_are_read_as_compose_reads_them(self) -> None:
+        """Each as `docker compose config` reads it: it is not lines that
+        matter but statements, which may be indented, run on over lines,
+        or share one."""
+        cases = [
+            ("\ufeffA=1\n", {"A": "1"}),
+            ("B: yaml-style\n", {"B": "yaml-style"}),
+            ("  C=indented\n\tC2=tab\n", {"C": "indented", "C2": "tab"}),
+            (
+                "D=\"x\" E=two-on-a-line\nF='y'G=no-space\n",
+                {"D": "x", "E": "two-on-a-line", "F": "y", "G": "no-space"},
+            ),
+            (
+                'H="multi\nI=inside\nline"\nJ=after\n',
+                {"H": "multi\nI=inside\nline", "J": "after"},
+            ),
+            ("export\tL=export-tab\n", {"L": "export-tab"}),
+            ("M = spaced\n", {"M": "spaced"}),
+            ("N=crlf\r\nO=too\r\n", {"N": "crlf", "O": "too"}),
+            ("P=no-final-newline", {"P": "no-final-newline"}),
+            ("S= # not a comment\n", {"S": "# not a comment"}),
+            ("T.u-v[w]=key-characters\n", {"T.u-v[w]": "key-characters"}),
+        ]
+        for text, values in cases:
+            with self.subTest(text=text):
+                settings = _compose_settings(text)
+                self.assertEqual({k: s.value for k, s in settings.items()}, values)
+                self.assertTrue(all(s.literal for s in settings.values()))
+        # The name alone takes the environment's value, if there is one.
+        self.assertFalse(_compose_settings("K\nK2=set\n")["K"].literal)
+        # A template no `}` closes runs to the last `}` on its line, so these
+        # braces belong to its default.
+        for text in (
+            "A=${FOO:-${BAR}}\n",
+            'A="${FOO:-a}b}"\n',
+            "A=$${\n",
+            "A=${FOO:-{}}\n",
+            "A=${FOO:-{x}\n",
+            "A=${FOO:-{}x}\n",
+            "A=${FOO:-$${}\n",
+        ):
+            with self.subTest(text=text):
+                _compose_settings(text)
+        # Compose refuses these files outright.
+        for text in (
+            "U V=1\n",
+            "W$=1\n",
+            "A=${}\n",
+            'A="${FOO"\n',
+            "A=${1}\n",
+            "A=x${FOO.BAR}\n",
+            # One `}` can't close both.
+            "A=${FOO:-${BAR}\n",
+            # What follows the `}` that closes one is read as well.
+            "A=${FOO:-a}${}\n",
+            # A lone `{` opens a brace too, so no `}` closes this one: its
+            # default runs to the last `}`, leaving `${BAR:-x` without one.
+            "A=${FOO:-{}${BAR:-x}\n",
+            "A=${\u0131}\n",
+        ):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                _compose_settings(text)
+
+    def test_a_service_password_compose_works_out_at_startup_is_refused(
+        self,
+    ) -> None:
+        """Compose fills it in when the stack starts, possibly with nothing,
+        so the service could end up with no password at all. A line break is
+        refused too: no service can take one."""
+        plain = "not a plain value"
+        for root, backend, message in (
+            ("POSTGRES_PASSWORD=$PG_PASSWORD\n", "", plain),
+            ("", "REDIS_PASSWORD=$UNSET\n", plain),
+            ("", "REDIS_PASSWORD=${UNSET}\n", plain),
+            ("", "REDIS_PASSWORD=p$unset # one letter once Compose is done\n", plain),
+            # The Kelvin sign starts a name as K does: the service would get
+            # `strong`.
+            ("", "REDIS_PASSWORD=strong$\u212a\n", plain),
+            ("", 'RABBITMQ_DEFAULT_PASS="${UNSET:-short}"\n', plain),
+            ("", "DB_HOST=localhost\nDB_PASS=${UNSET}\n", plain),
+            # The name alone: from the environment, if it is set there.
+            ("", "REDIS_PASSWORD\n", plain),
+            # Indented, it is still a setting, and the last one.
+            (
+                "POSTGRES_PASSWORD=strong-one\n  POSTGRES_PASSWORD=${UNSET:-x}\n",
+                "",
+                plain,
+            ),
+            ("", 'GRAPHITI_FALKORDB_PASSWORD="line-one\\nline-two"\n', plain),
+            # Compose refuses these files outright.
+            ("", "GRAPHITI_FALKORDB_PASSWORD='unclosed\n", "can't read"),
+            ("", "MY KEY=1\nREDIS_PASSWORD=\n", "can't read"),
+            ("", "UNRELATED=${}\nREDIS_PASSWORD=\n", "can't read"),
+        ):
+            with self.subTest(root=root, backend=backend):
+                for path in self.root.rglob(".env"):
+                    path.unlink()
+                self._write(root=root or "POSTGRES_PASSWORD=\n", backend=backend)
+                target = self.root / (".env" if root else "backend/.env")
+                before = target.read_text(encoding="utf-8")
+                arguments = ["fill-env", "--path", str(target)]
+                with (
+                    mock.patch.object(sys, "argv", ["runtime_config.py", *arguments]),
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+                ):
+                    self.assertEqual(runtime_config.main(), 2)
+
+                self.assertIn(message, stderr.getvalue())
+                self.assertEqual(target.read_text(encoding="utf-8"), before)
+
+    def test_a_database_password_set_in_the_shell_is_pointed_out(self) -> None:
+        """Compose takes POSTGRES_PASSWORD from the shell over the stack's
+        .env, so one exported there would replace the generated password."""
+        self._write(root="POSTGRES_PASSWORD=\n")
+        root = self.root / ".env"
+        warning = "POSTGRES_PASSWORD is also set in this shell"
+        with mock.patch.dict(os.environ):
+            os.environ.pop("POSTGRES_PASSWORD", None)
+            self.assertNotIn(warning, _run_fill_env(root))
+            os.environ["POSTGRES_PASSWORD"] = "exported-for-another-project"
+            self.assertIn(warning, _run_fill_env(root))
+            os.environ["POSTGRES_PASSWORD"] = _env_values(root)["POSTGRES_PASSWORD"]
+            self.assertNotIn(warning, _run_fill_env(root))
+
+    def test_a_setting_inside_another_value_is_not_one(self) -> None:
+        """Compose reads a quoted value on over lines: a `NAME=` line inside
+        it belongs to that value, so the password it seems to set is still
+        missing and is added, and the value is left as it was."""
+        (self.root / "backend").mkdir()
+        (self.root / "backend/.env.default").write_text(
+            "REDIS_PASSWORD=\n", encoding="utf-8"
+        )
+        other = 'OTHER="begins\nREDIS_PASSWORD=looks-strong\nends"\n'
+        self._write(backend=other)
+
+        _run_fill_env(self.root / "backend/.env")
+
+        text = (self.root / "backend/.env").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith(other))
+        settings = _compose_settings(text)
+        self.assertEqual(
+            settings["OTHER"].value, "begins\nREDIS_PASSWORD=looks-strong\nends"
+        )
+        self.assertGreaterEqual(len(settings["REDIS_PASSWORD"].value), 32)
+
+    def test_values_change_in_place(self) -> None:
+        """Indentation, `export`, `:` for `=`, quotes, comments, a statement
+        sharing the line and CRLF line endings stay: only values change."""
+        self._write(
+            backend=(
+                f'  export RABBITMQ_DEFAULT_PASS: "{self.PUBLISHED}"  # old\r\n'
+                "REDIS_PASSWORD=\r\n"
+                f'A="x" GRAPHITI_FALKORDB_PASSWORD={self.PUBLISHED}\r\n'
+            ),
+        )
+
+        _run_fill_env(self.root / "backend/.env")
+
+        text = (self.root / "backend/.env").read_bytes().decode("utf-8")
+        values = {k: s.value for k, s in _compose_settings(text).items()}
+        rabbitmq = values["RABBITMQ_DEFAULT_PASS"]
+        redis = values["REDIS_PASSWORD"]
+        falkordb = values["GRAPHITI_FALKORDB_PASSWORD"]
+        self.assertEqual(
+            text.split("\r\n"),
+            [
+                f"  export RABBITMQ_DEFAULT_PASS:{rabbitmq}  # old",
+                f"REDIS_PASSWORD={redis}",
+                f'A="x" GRAPHITI_FALKORDB_PASSWORD={falkordb}',
+                "",
+            ],
+        )
+        for value in (rabbitmq, redis, falkordb):
+            self.assertGreaterEqual(len(value), 32)
+
+    def test_an_indented_db_host_still_names_a_database_of_its_own(self) -> None:
+        self._write(
+            root="POSTGRES_PASSWORD=\n",
+            backend="  DB_HOST=db.example.com\nDB_PASS=external-one\n",
+        )
+
+        _run_fill_env(self.root / ".env", self.root / "backend/.env")
+
+        root, backend, _ = self._values()
+        self.assertGreaterEqual(len(root["POSTGRES_PASSWORD"]), 32)
+        self.assertEqual(backend["DB_PASS"], "external-one")
+
+    def test_a_template_connection_string_is_left_alone(self) -> None:
+        """A template with a bracketed host can't be taken apart before Compose
+        fills it in: it holds no password to share, and no reason to stop."""
+        for url in (
+            "postgresql://${DB_USER}:${DB_PASS}@[${DB_HOST}]:5432/postgres",
+            # Nor does one with a broken host, as written.
+            "postgresql://postgres:operator-chosen@[::1:5432/postgres",
+        ):
+            with self.subTest(url=url):
+                self._write(
+                    root="POSTGRES_PASSWORD=\n", frontend=f"DATABASE_URL={url}\n"
+                )
+
+                _run_fill_env(self.root / ".env", self.root / "frontend/.env")
+
+                root, _, frontend = self._values()
+                self.assertGreaterEqual(len(root["POSTGRES_PASSWORD"]), 32)
+                self.assertEqual(frontend["DATABASE_URL"], url)
+
+    def test_a_dollar_written_literally_is_kept(self) -> None:
+        backend = (
+            "REDIS_PASSWORD='pa$sword-in-single-quotes'\n"
+            "RABBITMQ_DEFAULT_PASS=pa$$word-escaped\n"
+            'GRAPHITI_FALKORDB_PASSWORD="pa\\$word-escaped"\n'
+            # A database of the backend's own may use whatever it likes.
+            "DB_HOST=db.example.com\n"
+            "DB_PASS=${EXTERNAL_DB_PASSWORD}\n"
+        )
+        self._write(root="POSTGRES_PASSWORD=\n", backend=backend)
+
+        _run_fill_env(self.root / "backend/.env")
+
+        self.assertEqual(
+            (self.root / "backend/.env").read_text(encoding="utf-8"), backend
+        )
+
+    def test_double_quoted_escapes_are_read_as_compose_decodes_them(self) -> None:
+        """`\\n` in double quotes is a line break to Compose, so the password
+        can't go into a connection string; read as `n` it would have passed."""
+        for value, message in (
+            ('"pa\\nss"', "control character"),
+            ('"pa\\tss"', "control character"),
+            ('"pa\\\\ss"', "connection string"),
+        ):
+            with self.subTest(value=value):
+                root = f"POSTGRES_PASSWORD={value}\n"
+                self._write(root=root)
+                arguments = ["fill-env", "--path", str(self.root / ".env")]
+                with (
+                    mock.patch.object(sys, "argv", ["runtime_config.py", *arguments]),
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+                ):
+                    self.assertEqual(runtime_config.main(), 2)
+
+                self.assertIn(message, stderr.getvalue())
+                self.assertEqual((self.root / ".env").read_text(encoding="utf-8"), root)
+
+    def test_an_external_databases_password_is_never_copied(self) -> None:
+        """A backend or frontend pointed at a database of its own holds that
+        database's password: it must not become the bundled database's."""
+        frontend_url = "postgresql://app:frontend-own-secret@pg.example.com:5432/app"
+        self._write(
+            root="POSTGRES_PASSWORD=\n",
+            backend="DB_HOST=db.example.com\nDB_PASS=ext@rnal-secret\n",
+            frontend=f"DATABASE_URL={frontend_url}\n",
+        )
+
+        _run_fill_env(
+            self.root / ".env", self.root / "backend/.env", self.root / "frontend/.env"
+        )
+
+        root, backend, frontend = self._values()
+        password = root["POSTGRES_PASSWORD"]
+        self.assertGreaterEqual(len(password), 32)
+        self.assertNotIn("secret", password)
+        self.assertEqual(backend["DB_PASS"], "ext@rnal-secret")
+        self.assertEqual(frontend["DATABASE_URL"], frontend_url)
+
+    def test_the_bundled_database_is_recognised_however_its_host_is_written(
+        self,
+    ) -> None:
+        for host in ("LOCALHOST", "localhost.", "DB"):
+            with self.subTest(host=host):
+                self._write(
+                    root="POSTGRES_PASSWORD=operator-chosen-password\n",
+                    backend=f"DB_HOST={host}\nDB_PASS=\n",
+                )
+
+                _run_fill_env(self.root / "backend/.env")
+
+                _, backend, _ = self._values()
+                self.assertEqual(backend["DB_PASS"], "operator-chosen-password")
+
+    def test_a_connection_string_keeps_its_quotes_and_comment(self) -> None:
+        self._write(
+            root="POSTGRES_PASSWORD=operator-chosen-password\n",
+            frontend=(
+                "DATABASE_URL='postgresql://postgres:"
+                f"{self.PUBLISHED}@localhost:5432/postgres' # bundled database\n"
+            ),
+        )
+
+        _run_fill_env(self.root / "frontend/.env")
+
+        self.assertEqual(
+            (self.root / "frontend/.env").read_text(encoding="utf-8"),
+            "DATABASE_URL='postgresql://postgres:operator-chosen-password"
+            "@localhost:5432/postgres' # bundled database\n",
+        )
+
+    @unittest.skipIf(sys.platform == "win32", "symlinks need a privilege there")
+    def test_a_symlinked_file_is_read_but_never_written(self) -> None:
+        target = self.root / "shared.env"
+        target.write_text(
+            "POSTGRES_PASSWORD=operator-chosen-password\n", encoding="utf-8"
+        )
+        (self.root / ".env").symlink_to(target)
+        self._write(backend="DB_PASS=\n", frontend="DATABASE_URL=\n")
+
+        with mock.patch("sys.stderr", new_callable=io.StringIO):
+            _run_fill_env(
+                self.root / ".env",
+                self.root / "backend/.env",
+                self.root / "frontend/.env",
+            )
+
+        _, backend, frontend = self._values()
+        self.assertEqual(backend["DB_PASS"], "operator-chosen-password")
+        self.assertIn(":operator-chosen-password@", frontend["DATABASE_URL"])
+        self.assertTrue((self.root / ".env").is_symlink())
+
+    def _write(self, root: str = "", backend: str = "", frontend: str = "") -> None:
+        for relative_path, content in (
+            (".env", root),
+            ("backend/.env", backend),
+            ("frontend/.env", frontend),
+        ):
+            if content:
+                path = self.root / relative_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content.encode())
+
+    def _values(self) -> list[dict[str, str]]:
+        return [
+            _env_values(self.root / relative_path)
+            for relative_path in (".env", "backend/.env", "frontend/.env")
+        ]
+
+
+def _base64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def _copy_env_default(platform_root: Path, root: Path, relative_path: str) -> Path:
+    env_path = root / relative_path.replace(".env.default", ".env")
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text(
+        (platform_root / relative_path).read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return env_path
+
+
+def _run_fill_env(*paths: Path) -> str:
+    """Run `fill-env` on `paths`, and return what it wrote to stderr."""
+    arguments = ["runtime_config.py", "fill-env"]
+    for path in paths:
+        arguments += ["--path", str(path)]
+    with (
+        mock.patch.object(sys, "argv", arguments),
+        mock.patch("sys.stdout", new_callable=io.StringIO),
+        mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+    ):
+        assert runtime_config.main() == 0
+    return stderr.getvalue()
+
+
+def _compose_settings(text: str) -> dict[str, runtime_config.Setting]:
+    return runtime_config._effective(runtime_config._settings(text))
+
+
+def _env_values(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    return {
+        name.strip(): value
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if "=" in line and not line.startswith("#")
+        for name, value in [line.split("=", 1)]
+    }
 
 
 def _version_1_values() -> dict[str, str]:
@@ -619,6 +2146,15 @@ def _version_1_values() -> dict[str, str]:
     }
 
 
+def _version_2_values() -> dict[str, str]:
+    """Every key a version 2 image wrote, before BAN_RECORD_HASH_KEY existed."""
+    return {
+        **_version_1_values(),
+        "AUTOGPT_RUNTIME_CONFIG_VERSION": "2",
+        "INTERNAL_API_KEY": "i" * 40,
+    }
+
+
 def _write_version_1_config(path: Path) -> dict[str, str]:
     values = _version_1_values()
     _write_config_lines(path, values)
@@ -630,6 +2166,28 @@ def _write_config_lines(path: Path, values: dict[str, str]) -> None:
     lines += [f"{name}={value}" for name, value in values.items()]
     path.write_text("\n".join(lines) + "\n", encoding="ascii")
     path.chmod(0o600)
+
+
+_BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def _matching_vapid_pair() -> tuple[str, str]:
+    """A fixed P-256 private key and the public key that belongs to it, in
+    the Base64url form the settings take."""
+    private = b"p" * 32
+    public = runtime_config._p256_public_point(int.from_bytes(private, "big"))
+    return runtime_config._base64url(private), runtime_config._base64url(public)
+
+
+def _vapid_env(private: str, public: str) -> str:
+    return f"VAPID_PRIVATE_KEY={private}\nVAPID_PUBLIC_KEY={public}\n"
+
+
+def _with_other_unused_bits(key: str) -> str:
+    """`key` with the lowest bit of its last character flipped: for 32 bytes
+    that bit is one of the two the decoder ignores, so the bytes are the same."""
+    last = _BASE64URL_ALPHABET.index(key[-1]) ^ 1
+    return key[:-1] + _BASE64URL_ALPHABET[last]
 
 
 def _replace_config_value(content: str, name: str, value: str) -> str:

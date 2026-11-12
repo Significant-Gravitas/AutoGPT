@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.blocks._base import (
     Block,
@@ -16,6 +16,9 @@ from backend.util.clients import get_database_manager_async_client
 
 logger = logging.getLogger(__name__)
 
+# Placeholder creator name set by library_model.LibraryAgent.from_db
+UNKNOWN_CREATOR = "Unknown"
+
 
 # Duplicate pydantic models for store data so we don't accidently change the data shape in the blocks unintentionally when editing the backend
 class LibraryAgent(BaseModel):
@@ -28,7 +31,13 @@ class LibraryAgent(BaseModel):
     description: str = ""
     creator: str = ""
     is_archived: bool = False
-    categories: list[str] = []
+    categories: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Marketplace categories of the agent. Not populated yet: library "
+            "agents don't store categories, so this is always an empty list."
+        ),
+    )
 
 
 class AddToLibraryFromStoreBlock(Block):
@@ -276,10 +285,16 @@ class ListLibraryAgentsBlock(Block):
                 agent_id=agent.graph_id,
                 agent_version=agent.graph_version,
                 agent_name=agent.name,
-                description=getattr(agent, "description", ""),
-                creator=getattr(agent, "creator", ""),
-                is_archived=getattr(agent, "is_archived", False),
-                categories=getattr(agent, "categories", []),
+                description=agent.description,
+                # The library model uses "Unknown" as a placeholder when no
+                # creator profile is linked; expose that as empty instead.
+                creator=(
+                    "" if agent.creator_name == UNKNOWN_CREATOR else agent.creator_name
+                ),
+                # list_library_agents only returns non-archived agents.
+                is_archived=False,
+                # Library agents don't carry categories (marketplace-only).
+                categories=[],
             )
             for agent in result.agents
         ]

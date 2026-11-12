@@ -29,7 +29,8 @@ const floatingControlsClassName: Record<FloatingControls, string> = {
   newLayout: "max-lg:top-2 max-lg:justify-center",
 };
 
-const chipButtonClassName = "size-9 shrink-0 rounded-full hover:bg-zinc-100";
+const chipButtonClassName =
+  "size-9 shrink-0 rounded-full hover:bg-surface-hover";
 
 interface Props {
   expertIdentity?: ExpertIdentity | null;
@@ -71,7 +72,7 @@ export function ThreadHeader({
       >
         <div
           className={cn(
-            "pointer-events-auto flex min-w-0 items-center gap-1 rounded-full border border-zinc-200/70 bg-white/75 py-1 pl-1.5 pr-5 shadow-sm backdrop-blur-md max-lg:shadow-md",
+            "pointer-events-auto flex min-w-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 py-1 pr-5 pl-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md",
             hasSidebarButton && "max-md:pl-1",
           )}
         >
@@ -89,7 +90,7 @@ export function ThreadHeader({
                     isResolving ? "Loading expert" : `${name} — ${roleLabel}`
                   }
                   className={cn(
-                    "flex min-w-0 items-center gap-2 whitespace-nowrap rounded-full",
+                    "flex min-w-0 items-center gap-2 rounded-full whitespace-nowrap",
                     hasSidebarButton && "max-md:ml-1.5",
                   )}
                 >
@@ -104,7 +105,7 @@ export function ThreadHeader({
                   {isResolving ? (
                     <Skeleton className="h-3.5 w-16 rounded" />
                   ) : (
-                    <span className="min-w-0 max-w-[10rem]">
+                    <span className="max-w-[10rem] min-w-0">
                       <ExpertIdentityDetails
                         isOtto={!expertIdentity}
                         name={name}

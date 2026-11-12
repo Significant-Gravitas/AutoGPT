@@ -25,6 +25,7 @@ from backend.copilot.dream.schemas import (
 )
 from backend.copilot.model import ChatSessionSaveFields
 from backend.util.json import to_dict
+from backend.util.service import EXPOSED_FLAG
 
 from .db_manager import DatabaseManager, DatabaseManagerAsyncClient
 from .dream_pass_models import (
@@ -43,10 +44,9 @@ def test_async_client_exposes_chat_methods() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "update_chat_session_llm_route")
 
 
-def test_a_turns_session_fields_ride_the_rpc_with_its_rows() -> None:
-    """The copilot executor saves a turn's rows over this RPC, and the
-    session's fields go in the same call: they must arrive as they left. A
-    caller that sends none (one from before this argument) gets none."""
+def test_session_fields_are_optional_and_round_trip_through_rpc() -> None:
+    """A caller that supplies session fields gets them through unchanged.
+    Current executor calls omit them for older-manager compatibility."""
     fields = ChatSessionSaveFields(
         credentials={"github": {"id": "cred-1"}},
         successful_agent_runs={"graph-1": 2},
@@ -82,6 +82,22 @@ def test_bot_analytics_methods_registered() -> None:
 def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.add_store_agent_to_library)
+
+
+def test_every_exposed_method_has_a_constructible_rpc_schema() -> None:
+    """The service builds them all as it starts. One it can't build stops the
+    database manager, and every run and call waiting on it hangs."""
+    manager = DatabaseManager()
+    failures = []
+    for name, method in vars(DatabaseManager).items():
+        if not getattr(method, EXPOSED_FLAG, False):
+            continue
+        try:
+            manager._create_fastapi_endpoint(method)
+        except Exception as error:
+            failures.append(f"{name}: {type(error).__name__}: {error}")
+
+    assert not failures, "\n".join(failures)
 
 
 _DREAM_PASS_METHODS = (

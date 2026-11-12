@@ -68,7 +68,9 @@ async def test_a_paid_switch_to_the_chosen_plan_converts_the_trial_onto_it(
         "in_max" if activation_ready else None
     )
     granted = boundaries.user.update_many.await_args.kwargs["data"]
-    assert granted == {"subscriptionTier": expected}
+    assert granted["subscriptionTier"] == expected
+    # A plan clears the product-mail win-back date; ending the trial stamps it.
+    assert (granted["subscriptionEndedAt"] is None) == activation_ready
 
 
 @pytest.mark.asyncio

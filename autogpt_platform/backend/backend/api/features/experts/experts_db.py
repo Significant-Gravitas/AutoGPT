@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -46,6 +46,7 @@ from backend.api.features.experts.errors import (
 )
 from backend.api.features.experts.models import (
     PROTECTED_SOUL_RULES,
+    CheckedExpert,
     Expert,
     ExpertActivity,
     ExpertActivityDay,
@@ -63,6 +64,7 @@ from backend.api.features.experts.models import (
     ExpertWorkflowRef,
     HireResult,
     HireSurface,
+    HireVia,
     RaiseAttachment,
     RaiseResult,
     decode_day_one,
@@ -118,6 +120,8 @@ from backend.data.expert_run_output import (
 )
 from backend.data.expert_spend import get_weekly_spend
 from backend.data.model import NodeExecutionStats
+from backend.data.onboarding import complete_onboarding_step
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_user_by_id
 from backend.util import type as type_utils
 from backend.util.background import spawn_background_task
@@ -293,7 +297,7 @@ def _to_model(
         is_archived=row.isArchived,
         workflows=[_to_workflow_ref(w) for w in row.Workflows or []],
         last_run_at=latest_run.createdAt if latest_run else None,
-        last_run_status=(str(latest_run.executionStatus) if latest_run else None),
+        last_run_status=run_status(latest_run) if latest_run else None,
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
@@ -321,7 +325,7 @@ async def set_expert_learning_paused(
             "isTemplate": False,
             "isArchived": False,
         },
-        data={"learningPausedAt": datetime.now(timezone.utc) if paused else None},
+        data={"learningPausedAt": datetime.now(UTC) if paused else None},
     )
     if updated == 0:
         return None
@@ -332,10 +336,27 @@ def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
     # A job whose lease ran out died with its process; show it as retryable.
     if row.setupStatus == prisma.enums.ExpertSetupStatus.INSTALLING and (
         row.setupStartedAt is None
-        or row.setupStartedAt < datetime.now(timezone.utc) - SETUP_LEASE
+        or row.setupStartedAt < datetime.now(UTC) - SETUP_LEASE
     ):
         return "failed"
     return cast(ExpertSetupStatus, row.setupStatus.lower())
+
+
+def run_status(execution: prisma.models.AgentGraphExecution) -> str:
+    """The run's status as an expert surface reports it.
+
+    A step that fails without a typed reason (a bad credential, say) leaves
+    the run COMPLETED (executor/manager.py), but a run with a failed step
+    must never read as done, so it reports FAILED."""
+    status = str(execution.executionStatus)
+    stats = execution.stats if isinstance(execution.stats, dict) else {}
+    try:
+        failed_steps = int(stats.get("node_error_count") or 0)
+    except (TypeError, ValueError):
+        failed_steps = 0
+    if status == prisma.enums.AgentExecutionStatus.COMPLETED and failed_steps > 0:
+        return str(prisma.enums.AgentExecutionStatus.FAILED)
+    return status
 
 
 async def _latest_runs(
@@ -531,7 +552,8 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
                    WHEN "autopilotMode" IN ('ask_first', 'auto', 'unsupervised')
                    THEN "autopilotMode"
                    ELSE NULL
-               END AS "autopilot_mode"
+               END AS "autopilot_mode",
+               "createdAt" AS "created_at"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
@@ -683,15 +705,17 @@ async def list_expert_runs(
     # Exact per-execution review state (WAITING reviews for exactly these
     # ids) — a page of the user's newest reviews could miss an older run
     # that is still genuinely blocked.
-    waiting_reviews = await prisma.models.PendingHumanReview.prisma().find_many(
-        where={
-            "userId": user_id,
-            "status": prisma.enums.ReviewStatus.WAITING,
-            "graphExecId": {"in": execution_ids},
-        }
+    waiting_reviews, classified = await asyncio.gather(
+        prisma.models.PendingHumanReview.prisma().find_many(
+            where={
+                "userId": user_id,
+                "status": prisma.enums.ReviewStatus.WAITING,
+                "graphExecId": {"in": execution_ids},
+            }
+        ),
+        _classify_run_outputs(execution_ids),
     )
     reviewing = {review.graphExecId for review in waiting_reviews}
-    classified = await _classify_run_outputs(execution_ids)
 
     return [
         _to_expert_run(
@@ -892,7 +916,7 @@ def _to_expert_run(
         graph_id=execution.agentGraphId,
         agent_name=agent_name,
         library_agent_id=library_agent_id,
-        status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
+        status=cast(ExpertRunStatus, run_status(execution).lower()),
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,
@@ -940,6 +964,30 @@ async def resolve_private_expert_tenancy(
     those future scopes fail-closed instead of silently moving them into the
     owner's personal organization.
     """
+    await _active_private_expert_row(user_id, expert_id)
+    return await _private_expert_owner_scope(user_id, expert_id)
+
+
+async def check_private_expert(user_id: str, expert_id: str) -> CheckedExpert:
+    """The owner's active PRIVATE expert and the scope its work belongs to.
+
+    Everything an expert's turn needs to know about its expert before the
+    model runs, in one call: that the expert is still the owner's own (the
+    rules of :func:`resolve_private_expert_tenancy`), the personal
+    organization and team it works in, how far its hire setup got, and the
+    columns its identity prompt is built from. The latest run and the weekly
+    spend that :func:`get_expert` adds for the roster are not read.
+    """
+    row = await _active_private_expert_row(user_id, expert_id)
+    organization_id, team_id = await _private_expert_owner_scope(user_id, expert_id)
+    return CheckedExpert(
+        expert=_to_model(row), organization_id=organization_id, team_id=team_id
+    )
+
+
+async def _active_private_expert_row(
+    user_id: str, expert_id: str
+) -> prisma.models.Expert:
     expert = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -951,7 +999,12 @@ async def resolve_private_expert_tenancy(
     )
     if expert is None:
         raise ExpertNotFoundError(expert_id)
+    return expert
 
+
+async def _private_expert_owner_scope(
+    user_id: str, expert_id: str
+) -> tuple[str, str | None]:
     organization_id, team_id = await get_user_default_team(user_id)
     if organization_id is None:
         raise ExpertPrivateTenancyNotFoundError(expert_id)
@@ -963,6 +1016,7 @@ async def hire_expert(
     template_id: str,
     name: str | None,
     surface: HireSurface | None = None,
+    via: HireVia | None = None,
 ) -> HireResult:
     """Hire *template_id* and return as soon as the expert's row exists.
 
@@ -971,7 +1025,7 @@ async def hire_expert(
     whose setup failed or was abandoned starts that setup again.
     """
     try:
-        return await _hire_expert_impl(user_id, template_id, name, surface)
+        return await _hire_expert_impl(user_id, template_id, name, surface, via)
     except Exception:
         emit_funnel_event(
             user_id,
@@ -982,7 +1036,11 @@ async def hire_expert(
 
 
 async def _hire_expert_impl(
-    user_id: str, template_id: str, name: str | None, surface: HireSurface | None
+    user_id: str,
+    template_id: str,
+    name: str | None,
+    surface: HireSurface | None,
+    via: HireVia | None = None,
 ) -> HireResult:
     template = await prisma.models.Expert.prisma().find_first(
         where={"id": template_id, "isTemplate": True, "isArchived": False},
@@ -1019,7 +1077,7 @@ async def _hire_expert_impl(
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
     create_data["setupStatus"] = prisma.enums.ExpertSetupStatus.INSTALLING
-    create_data["setupStartedAt"] = datetime.now(timezone.utc)
+    create_data["setupStartedAt"] = datetime.now(UTC)
 
     try:
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
@@ -1034,6 +1092,13 @@ async def _hire_expert_impl(
         expert = await _resume_revived_hire(expert)
     elif state == "created":
         _schedule_expert_memory(user_id, expert.id)
+    # A hire the user made themselves ticks the wallet's marketplace step and the
+    # onboarding wizard's picks don't; recording it never fails the hire.
+    if state != "existing" and surface in ("expert_page", "copilot"):
+        spawn_background_task(
+            complete_onboarding_step(user_id, OnboardingStep.MARKETPLACE_ADD_AGENT),
+            name=f"marketplace-step-{expert.id}",
+        )
     # A hire that runs setup is counted by its job, once its preloads are
     # known; an idempotent re-hire of an already-active expert is not a hire.
     if state == "created" or await _claim_setup(expert.id):
@@ -1044,14 +1109,15 @@ async def _hire_expert_impl(
                 template.id,
                 count_hire=state != "existing",
                 surface=surface,
+                via=via,
             ),
             name=f"hire-setup-{expert.id}",
         )
         if state != "created":
             expert = await _reload_expert(expert)
     elif state == "revived":
-        _emit_expert_hired(user_id, expert, template.id, 0, surface)
-    return HireResult(expert=_to_model(expert))
+        _emit_expert_hired(user_id, expert, template.id, 0, surface, via)
+    return HireResult.of(_to_model(expert), joined=state != "existing")
 
 
 def _schedule_expert_memory(user_id: str, expert_id: str) -> None:
@@ -1074,6 +1140,7 @@ def _emit_expert_hired(
     template_id: str,
     failed_preloads_count: int,
     surface: HireSurface | None,
+    via: HireVia | None = None,
 ) -> None:
     hired: dict[str, str | int] = {
         "expert_id": expert.id,
@@ -1083,6 +1150,8 @@ def _emit_expert_hired(
     }
     if surface is not None:
         hired["surface"] = surface
+    if via is not None:
+        hired["via"] = via
     emit_funnel_event(user_id, PostHogEvent.EXPERT_HIRED, hired)
 
 
@@ -1098,7 +1167,7 @@ async def _claim_setup(expert_id: str) -> bool:
 
     One conditional update, so two concurrent re-hires start one job.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claimed = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,
@@ -1125,6 +1194,7 @@ async def _run_hire_setup(
     *,
     count_hire: bool = False,
     surface: HireSurface | None = None,
+    via: HireVia | None = None,
 ) -> None:
     """Install a hire's workflows, skills and routines, retrying what failed.
 
@@ -1165,7 +1235,9 @@ async def _run_hire_setup(
         },
     )
     if count_hire and settled is not None:
-        _emit_expert_hired(user_id, settled, template_id, len(failed_preloads), surface)
+        _emit_expert_hired(
+            user_id, settled, template_id, len(failed_preloads), surface, via
+        )
 
 
 async def _uninstalled_preloads(expert_id: str, template_id: str) -> list[str]:
