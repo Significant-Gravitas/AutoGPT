@@ -7,6 +7,146 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/account/deletion": {
+      "get": {
+        "tags": ["account"],
+        "summary": "Get account deletion status",
+        "operationId": "getAccountGet account deletion status",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["account"],
+        "summary": "Delete account",
+        "operationId": "postAccountDelete account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": { "description": "That email doesn't match your account." },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "We couldn't cancel your plan. Nothing was deleted. Try again."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/feedback": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Send exit feedback",
+        "operationId": "postAccountSend exit feedback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many answers from this account" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/restore": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Keep my account",
+        "operationId": "postAccountKeep my account",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "409": {
+            "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/access-blocks": {
       "get": {
         "tags": ["admin"],
@@ -3423,6 +3563,54 @@
         }
       }
     },
+    "/api/auth/email/ban-record": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether an address belongs to an erased, banned account",
+        "description": "Asked by sign-up before it creates an account: an address whose banned\naccount was erased can't sign up again while its ban record lasts\n(`account_erasure/ban_record.py`).",
+        "operationId": "checkAuthEmailBanRecord",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailBanRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailBanRecordResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/email/send": {
       "post": {
         "tags": ["auth-email"],
@@ -4358,7 +4546,11 @@
                     {
                       "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
                     },
-                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" }
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/UIBlocksResponse" },
+                    {
+                      "$ref": "#/components/schemas/FeedbackPromptToolResponse"
+                    }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -5053,6 +5245,7 @@
               }
             }
           },
+          "429": { "description": "Too many sandboxes are running" },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -5201,9 +5394,21 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" },
+          "429": {
+            "description": "Call-frequency cap exceeded or pending message buffer full",
+            "headers": {
+              "X-Error-Code": {
+                "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+                "schema": { "type": "string", "enum": ["pending_buffer_full"] }
+              },
+              "Retry-After": {
+                "description": "Seconds to wait before retrying admission",
+                "schema": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
           "503": {
-            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -5521,10 +5726,20 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded, or pending message buffer full",
+            "headers": {
+              "X-Error-Code": {
+                "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+                "schema": { "type": "string", "enum": ["pending_buffer_full"] }
+              },
+              "Retry-After": {
+                "description": "Seconds to wait before retrying admission",
+                "schema": { "type": "integer", "minimum": 0 }
+              }
+            }
           },
           "503": {
-            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -7312,6 +7527,19 @@
         "tags": ["trials"],
         "summary": "Cancel Trial",
         "operationId": "postTrialsCancelTrial",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CancelTrialRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7325,6 +7553,14 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "409": { "description": "No cancelable trial subscription" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
           "502": {
             "description": "Stripe cancellation temporarily unavailable"
           }
@@ -8536,6 +8772,7 @@
               }
             }
           },
+          "429": { "description": "Too many sandboxes are running" },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
         }
@@ -9161,6 +9398,134 @@
               }
             }
           },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/feedback-prompts/claim": {
+      "post": {
+        "tags": ["v2", "feedback-prompts"],
+        "summary": "Claim feedback prompt",
+        "description": "Record a showing if the prompt's limit allows one.",
+        "operationId": "postV2Claim feedback prompt",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimFeedbackPromptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimFeedbackPromptResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/feedback-prompts/{id}": {
+      "get": {
+        "tags": ["v2", "feedback-prompts"],
+        "summary": "Get feedback prompt",
+        "description": "What a chat card needs to tell asked, answered and closed apart.",
+        "operationId": "getV2Get feedback prompt",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackPromptState" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such prompt, or not the caller's" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "feedback-prompts"],
+        "summary": "Update feedback prompt",
+        "description": "Save the fields given and keep the rest.",
+        "operationId": "patchV2Update feedback prompt",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeedbackPromptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackPromptState" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No such prompt, or not the caller's" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -20336,6 +20701,43 @@
         "required": ["blocks", "total"],
         "title": "AccessBlockPage"
       },
+      "AccountDeletionRequestBody": {
+        "properties": {
+          "confirm_email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Confirm Email"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["settings", "paywall"],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": ["confirm_email", "source"],
+        "title": "AccountDeletionRequestBody"
+      },
+      "AccountDeletionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["open", "scheduled", "too_late"],
+            "title": "Status"
+          },
+          "erase_after": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erase After"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "AccountDeletionResponse",
+        "description": "Whether the account is closed and waiting to be erased. While it is,\n``erase_after`` says when the erasure may start: until then (``scheduled``)\nits owner can keep the account; from then on, or once the erasure has\nclaimed the request, it is ``too_late``."
+      },
       "AccountIP": {
         "properties": {
           "ip_address": { "type": "string", "title": "Ip Address" },
@@ -21212,6 +21614,25 @@
         "type": "string",
         "enum": ["IP", "EMAIL_DOMAIN"],
         "title": "AuthAccessBlockKind"
+      },
+      "AuthEmailBanRecordRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "AuthEmailBanRecordRequest"
+      },
+      "AuthEmailBanRecordResponse": {
+        "properties": { "banned": { "type": "boolean", "title": "Banned" } },
+        "type": "object",
+        "required": ["banned"],
+        "title": "AuthEmailBanRecordResponse"
       },
       "AuthEmailRequest": {
         "properties": {
@@ -22503,6 +22924,36 @@
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
       },
+      "CancelTrialRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "too_expensive",
+                  "no_results_yet",
+                  "missing_something",
+                  "only_trying",
+                  "other"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "The reason picked in the cancel dialog, if any."
+          },
+          "comment": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "title": "CancelTrialRequest"
+      },
       "ChangeSessionConnectionRequest": {
         "properties": {
           "llm_auth_provider": {
@@ -22532,6 +22983,97 @@
         "type": "object",
         "required": ["version", "changes_summary", "date"],
         "title": "ChangelogEntry"
+      },
+      "ChartAnnotation": {
+        "properties": {
+          "x": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "X",
+            "description": "One of x_labels."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["x", "label"],
+        "title": "ChartAnnotation"
+      },
+      "ChartBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "chart", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["line", "area", "bar"],
+            "title": "Kind"
+          },
+          "x_labels": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "X Labels"
+          },
+          "series": {
+            "items": { "$ref": "#/components/schemas/ChartSeries" },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Series"
+          },
+          "unit": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Unit"
+          },
+          "annotation": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartAnnotation" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "kind", "x_labels", "series"],
+        "title": "ChartBlock",
+        "description": "A trend or comparison over labelled points."
+      },
+      "ChartSeries": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "values": {
+            "items": { "type": "number" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name", "values"],
+        "title": "ChartSeries"
       },
       "ChatRequest": {
         "properties": {
@@ -22637,6 +23179,37 @@
         "type": "object",
         "required": ["transports"],
         "title": "ChatTransportsResponse"
+      },
+      "ClaimFeedbackPromptRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trial_cancel",
+              "upgrade_checkout",
+              "work_check",
+              "otto_mistake",
+              "top_up",
+              "nps"
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "ClaimFeedbackPromptRequest"
+      },
+      "ClaimFeedbackPromptResponse": {
+        "properties": {
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id",
+            "description": "The showing's id, or null when the prompt must not appear."
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "ClaimFeedbackPromptResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -24177,6 +24750,12 @@
             "title": "Is Managed",
             "default": false
           },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "One of the platform's own keys, billed in credits, rather than a credential the user connected",
+            "default": false
+          },
           "service": { "type": "string", "title": "Service", "default": "" },
           "service_name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -24504,6 +25083,66 @@
         "type": "object",
         "required": ["success"],
         "title": "DeleteLinkResponse"
+      },
+      "DeletionFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["opened", "answer", "alternative_clicked"],
+            "title": "Kind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "privacy",
+                  "cost",
+                  "not_using",
+                  "missing_capability",
+                  "limits",
+                  "other",
+                  "skipped"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "text": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Text"
+          },
+          "alternative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "manage_apps",
+                  "disconnect_all",
+                  "billing",
+                  "keep_account"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Alternative"
+          },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "enum": ["settings", "paywall"] },
+              { "type": "null" }
+            ],
+            "title": "Surface"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "DeletionFeedbackRequest",
+        "description": "One open of the Delete account dialog (with the surface it was opened\nfrom), one answer to \"Why are you leaving?\", or one click on the\nalternative it offered. Nothing here identifies the person; the route adds\nno identity either."
       },
       "DemotionSummary": {
         "properties": {
@@ -26643,6 +27282,13 @@
               { "type": "null" }
             ],
             "title": "Autopilot Mode"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
           }
         },
         "type": "object",
@@ -27415,6 +28061,74 @@
         "title": "FailedExecutionsListResponse",
         "description": "Response model for list of failed executions"
       },
+      "FeedbackPromptState": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trial_cancel",
+              "upgrade_checkout",
+              "work_check",
+              "otto_mistake",
+              "top_up",
+              "nps"
+            ],
+            "title": "Kind"
+          },
+          "answered": { "type": "boolean", "title": "Answered" },
+          "dismissed": { "type": "boolean", "title": "Dismissed" },
+          "reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reason"
+          },
+          "score": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": ["id", "kind", "answered", "dismissed", "reason", "score"],
+        "title": "FeedbackPromptState"
+      },
+      "FeedbackPromptToolResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "feedback_prompt"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "trial_cancel",
+              "upgrade_checkout",
+              "work_check",
+              "otto_mistake",
+              "top_up",
+              "nps"
+            ],
+            "title": "Kind"
+          },
+          "prompt_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Prompt Id"
+          },
+          "is_first": {
+            "type": "boolean",
+            "title": "Is First",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message", "kind"],
+        "title": "FeedbackPromptToolResponse",
+        "description": "A work check or mistake card, or the news that none will appear."
+      },
       "FinalizeRequest": {
         "properties": {
           "recording_id": {
@@ -27457,6 +28171,30 @@
           "transcript_preview": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript Preview"
+          },
+          "otto_reply_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mic_check",
+                  "greeting",
+                  "unsure",
+                  "reluctant",
+                  "what_to_say",
+                  "wants_to_skip",
+                  "about_otto",
+                  "busy",
+                  "annoyed",
+                  "some_work",
+                  "garbled",
+                  "test",
+                  "other"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Otto Reply Kind"
           },
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -27632,7 +28370,9 @@
           "copilot-voice-mode",
           "copilot-auto-mode",
           "copilot-stream-shadow",
-          "copilot-stream-runtime"
+          "copilot-stream-runtime",
+          "onboarding-step-order",
+          "self-serve-account-deletion"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -27653,7 +28393,9 @@
           "COPILOT_VOICE_MODE",
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
-          "COPILOT_STREAM_RUNTIME"
+          "COPILOT_STREAM_RUNTIME",
+          "ONBOARDING_STEP_ORDER",
+          "SELF_SERVE_ACCOUNT_DELETION"
         ]
       },
       "FrontendFlagValues": {
@@ -27674,6 +28416,50 @@
         "type": "object",
         "required": ["flags", "configured"],
         "title": "FrontendFlagValues"
+      },
+      "GalleryBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "gallery", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "images": {
+            "items": { "$ref": "#/components/schemas/GalleryImage" },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Images"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "images"],
+        "title": "GalleryBlock",
+        "description": "Images from the user's workspace."
+      },
+      "GalleryImage": {
+        "properties": {
+          "src": {
+            "type": "string",
+            "pattern": "^workspace://[A-Za-z0-9_-]+(#image/[a-z0-9.+-]+)?$",
+            "title": "Src",
+            "description": "workspace://<file_id> image."
+          },
+          "caption": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Caption"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["src", "caption"],
+        "title": "GalleryImage"
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -31225,15 +32011,15 @@
           },
           "score_name": {
             "type": "string",
-            "enum": ["user-feedback", "copy"],
+            "enum": ["user-feedback", "copy", "work_check", "otto_mistake"],
             "title": "Score Name",
-            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply."
+            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply, \"work_check\" and \"otto_mistake\" for those cards."
           },
           "score_value": {
             "type": "integer",
-            "enum": [0, 1],
+            "enum": [0, 1, 2],
             "title": "Score Value",
-            "description": "1 for thumbs up or a copy, 0 for thumbs down."
+            "description": "1 for thumbs up or a copy, 0 for thumbs down; a work check is 0 bad, 1 okay, 2 great; a mistake is always 0."
           },
           "comment": {
             "anyOf": [
@@ -31242,6 +32028,14 @@
             ],
             "title": "Comment",
             "description": "What the user said was wrong, from the thumbs-down form."
+          },
+          "reason": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Reason",
+            "description": "The option picked on a work check or mistake card."
           }
         },
         "type": "object",
@@ -32021,6 +32815,7 @@
           "currentStep": {
             "type": "string",
             "enum": [
+              "access",
               "team",
               "autopilot",
               "role",
@@ -32036,6 +32831,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "access",
                 "team",
                 "autopilot",
                 "role",
@@ -32136,6 +32932,55 @@
         "type": "object",
         "required": ["items"],
         "title": "OpenDecisionsResponse"
+      },
+      "OptionItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Sent as the user's reply when clicked."
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "OptionItem"
+      },
+      "OptionsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "options", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/OptionItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "OptionsBlock",
+        "description": "Next steps the user can pick with one click."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -34030,11 +34875,11 @@
           },
           "message_id": {
             "anyOf": [
-              { "type": "string", "maxLength": 64 },
+              { "type": "string", "maxLength": 64, "minLength": 1 },
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-send UUID, scoped like ``StreamChatRequest.message_id``. A retransmit of a follow-up already queued is answered as accepted without queueing it again."
+            "description": "Per-send idempotency key, scoped to the user and session. Reuse on retries; use a new key for a separate send."
           }
         },
         "type": "object",
@@ -34787,6 +35632,8 @@
           "expert_chat_list",
           "expert_chat_transcript",
           "expert_onboarding",
+          "ui_blocks",
+          "feedback_prompt",
           "team_consult",
           "session_list",
           "session_message"
@@ -36406,6 +37253,43 @@
         "required": ["text"],
         "title": "SpeechRequest"
       },
+      "StatItem": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "change": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Change"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "value"],
+        "title": "StatItem"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -36476,6 +37360,23 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StatsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "stats", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/StatItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "StatsBlock",
+        "description": "Headline numbers."
       },
       "StepEnrichment": {
         "properties": {
@@ -37791,6 +38692,40 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TableBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "table", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "columns": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": { "type": "string", "maxLength": 200, "minLength": 1 },
+              "type": "array"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "columns", "rows"],
+        "title": "TableBlock",
+        "description": "Rows of exact values, when nothing more visual fits."
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -37897,6 +38832,65 @@
         "enum": ["full", "e2e"],
         "title": "TestDataScriptType",
         "description": "Available test data generation scripts."
+      },
+      "TimelineBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "timeline", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/TimelineItem" },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "TimelineBlock",
+        "description": "Events or plan steps over time."
+      },
+      "TimelineItem": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Date"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "anyOf": [
+              { "type": "string", "enum": ["ok", "warning", "error", "idle"] },
+              { "type": "null" }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "TimelineItem"
       },
       "TimezoneResponse": {
         "properties": {
@@ -39001,6 +39995,50 @@
         "title": "TurnCheckpoint",
         "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
       },
+      "UIBlocksResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "ui_blocks"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "blocks": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/StatsBlock" },
+                { "$ref": "#/components/schemas/ChartBlock" },
+                { "$ref": "#/components/schemas/WorkflowDiagramBlock" },
+                { "$ref": "#/components/schemas/GalleryBlock" },
+                { "$ref": "#/components/schemas/TimelineBlock" },
+                { "$ref": "#/components/schemas/OptionsBlock" },
+                { "$ref": "#/components/schemas/TableBlock" }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "gallery": "#/components/schemas/GalleryBlock",
+                  "options": "#/components/schemas/OptionsBlock",
+                  "stats": "#/components/schemas/StatsBlock",
+                  "table": "#/components/schemas/TableBlock",
+                  "timeline": "#/components/schemas/TimelineBlock",
+                  "workflow_diagram": "#/components/schemas/WorkflowDiagramBlock"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "UIBlocksResponse",
+        "description": "The cards the chat draws for this call."
+      },
       "UnderstandingUpdatedResponse": {
         "properties": {
           "type": {
@@ -39090,6 +40128,38 @@
         "type": "object",
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
+      },
+      "UpdateFeedbackPromptRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "note": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Note"
+          },
+          "score": {
+            "anyOf": [
+              { "type": "integer", "maximum": 10.0, "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Score"
+          },
+          "dismissed": {
+            "type": "boolean",
+            "title": "Dismissed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "UpdateFeedbackPromptRequest"
       },
       "UpdateGraphResponse": {
         "properties": {
@@ -40742,6 +41812,34 @@
         "title": "WebhookWithoutSecrets",
         "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
       },
+      "WorkflowDiagramBlock": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "workflow_diagram",
+            "title": "Type"
+          },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/WorkflowStep" },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "steps"],
+        "title": "WorkflowDiagramBlock",
+        "description": "Steps of a workflow in order, showing where things stand."
+      },
       "WorkflowRecording": {
         "properties": {
           "recording_id": {
@@ -40779,6 +41877,33 @@
         "type": "object",
         "title": "WorkflowRecording",
         "description": "A full recording as returned by RECORDING_DATA / RECORDING_FETCH (§1)."
+      },
+      "WorkflowStep": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "warning", "error", "idle"],
+            "title": "Status",
+            "default": "idle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label"],
+        "title": "WorkflowStep"
       },
       "WorkspaceFile": {
         "properties": {
