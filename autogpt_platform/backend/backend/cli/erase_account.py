@@ -50,14 +50,15 @@ def erase_account_command(
     crons, sends the confirmation if it has not gone out, cancels the
     subscriptions of the orgs that go with the account, hands the agents
     other accounts use to a "deleted user" account, deletes the rest of its
-    marketplace presence, its files in every bucket, its AutoPilot memory,
-    its PostHog person and MailerLite subscriber, keeps a ban record if the
-    account is banned, deletes its rows and auth identity last, and marks the
-    request done. The credit ledger and Stripe's billing records stay.
+    marketplace presence, its files in every bucket, its AutoPilot memory and
+    its MailerLite subscriber, keeps a ban record if the account is banned,
+    deletes its rows and auth identity, then its PostHog person, and marks
+    the request done. The credit ledger and Stripe's billing records stay.
 
     Dry run by default, with counts only. Idempotent: a failed --apply stops
-    with the account in place, and running it again resumes. The runbook is
-    docs/engineering/account-deletion.md.
+    and running it again resumes. On an account erased already, --apply
+    repeats only the PostHog (and, given an email, MailerLite) delete. The
+    runbook is docs/engineering/account-deletion.md.
     """
     if pending == bool(account):
         raise click.UsageError("Pass an ACCOUNT or --pending, not both.")
@@ -291,7 +292,9 @@ def _report(report: "ErasureReport") -> None:
     click.echo(f"{mode} for account {report.user_id}")
     if not report.account_found:
         click.echo("  no platform account or auth identity (already erased?)")
-    if report.not_claimed:
+    if report.not_claimed and report.steps:
+        click.echo(f"  {report.not_claimed}: ran only the outside services again")
+    elif report.not_claimed:
         click.echo(f"  nothing ran: {report.not_claimed}")
     for blocker in report.blockers:
         click.echo(f"BLOCKED {blocker.name}: {blocker.count}")
@@ -313,10 +316,12 @@ def _finish(reports: list["ErasureReport"]) -> None:
             "At least one account was not erased: its owner kept it, or another "
             "run is erasing it (see above)."
         )
+    # A finished erasure still fails the command when its repeated outside
+    # deletes (PostHog, MailerLite) failed.
     unfinished = [
         report.user_id
         for report in reports
-        if not report.complete and report not in finished
+        if report.failed or (not report.complete and report not in finished)
     ]
     if unfinished:
         raise click.ClickException(

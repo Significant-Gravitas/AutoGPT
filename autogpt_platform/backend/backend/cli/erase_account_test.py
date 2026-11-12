@@ -347,6 +347,34 @@ def test_an_account_erased_already_is_a_success(run):
     assert "nothing ran: erased already" in result.output
 
 
+@pytest.mark.parametrize(
+    "status, exit_code", [(StepStatus.DONE, 0), (StepStatus.FAILED, 1)]
+)
+def test_a_rerun_of_a_finished_erasure_reports_its_repeated_deletes(
+    run, status, exit_code
+):
+    """A rerun repeats the PostHog delete; it fails the command only when
+    that delete failed, so a leftover person is never read as gone."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        if dry_run:
+            return _report(dry_run=True)
+        return ErasureReport(
+            user_id=user_id,
+            dry_run=False,
+            not_claimed=routine.ERASED_ALREADY,
+            steps=[StepReport(name="posthog", status=status, counts={"persons": 1})],
+        )
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--apply", "--yes")
+
+    assert result.exit_code == exit_code, result.output
+    assert "erased already: ran only the outside services again" in result.output
+    assert f"posthog           {status.value}" in result.output
+
+
 def test_an_erasure_the_owner_kept_meanwhile_fails_the_command(run):
     def erasing(user_id, *, dry_run, **kw):
         if dry_run:
