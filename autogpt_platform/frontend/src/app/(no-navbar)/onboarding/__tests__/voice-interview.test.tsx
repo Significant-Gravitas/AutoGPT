@@ -1818,32 +1818,73 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
   });
 
-  it("shows the lost screen with its three ways on after a call that went quiet, and types from it", async () => {
-    callStates[CALL_ID] = [callRecord({ end_reason: "idle" })];
+  it.each([
+    ["idle", "We didn't hear anything for a while, so the call ended."],
+    ["user_hangup", "You ended the call."],
+  ])(
+    "shows the lost screen with its three ways on after a call that ended with %s, and types from it",
+    async (reason, ended) => {
+      callStates[CALL_ID] = [callRecord({ end_reason: reason })];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
+
+      endCall(socket, reason);
+
+      expect(await screen.findByText(ended)).toBeDefined();
+      expect(screen.getByText("What you said so far is saved.")).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Meet your team" }),
+      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
+      // The interview is still open behind a call hung up or cut off.
+      expect(
+        screen.getByRole("button", { name: "Skip for now" }),
+      ).toBeDefined();
+
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "Type instead" }));
+
+      expect(await screen.findByText(GREETING)).toBeDefined();
+      expect(typedStartCount).toBe(1);
+    },
+  );
+
+  it("after a hang-up, says the person ended the call, then that their words are saved, with Meet your team leading Call again and Type instead", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "user_hangup" })];
     render(<OnboardingPage />);
     const socket = await liveCall();
 
-    endCall(socket, "idle");
+    endCall(socket, "user_hangup");
 
-    expect(
-      await screen.findByText(
-        "We didn't hear anything for a while, so the call ended.",
-      ),
-    ).toBeDefined();
-    expect(screen.getByText("What you said so far is saved.")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: "Meet your team" }),
-    ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
-    // The interview is still open behind a call that was cut off.
-    expect(screen.getByRole("button", { name: "Skip for now" })).toBeDefined();
+    const ended = await screen.findByText("You ended the call.");
+    const saved = screen.getByText("What you said so far is saved.");
+    const meetTeam = screen.getByRole("button", { name: "Meet your team" });
+    const callAgain = screen.getByRole("button", { name: "Call again" });
+    const typeInstead = screen.getByRole("button", { name: "Type instead" });
+    expect(precedes(ended, saved)).toBe(true);
+    expect(precedes(saved, meetTeam)).toBe(true);
+    expect(precedes(meetTeam, callAgain)).toBe(true);
+    expect(precedes(callAgain, typeInstead)).toBe(true);
+    // Meet your team is the one primary way on.
+    expect(meetTeam.className).toContain("bg-action");
+    expect(callAgain.className).not.toContain("bg-action");
+    expect(typeInstead.className).not.toContain("bg-action");
+  });
 
+  it("starts a new call from Call again after a hang-up", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "user_hangup" })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "user_hangup");
     await userEvent
       .setup()
-      .click(screen.getByRole("button", { name: "Type instead" }));
+      .click(await screen.findByRole("button", { name: "Call again" }));
 
-    expect(await screen.findByText(GREETING)).toBeDefined();
-    expect(typedStartCount).toBe(1);
+    await relaySocketAfter(socket);
+    expect(mints).toBe(2);
+    expect(finishes).toEqual([]);
   });
 
   it("offers another call or typing, never Try again, for a call whose words were not kept", async () => {
@@ -2074,20 +2115,23 @@ describe("onboarding interview by voice: how a call ends", () => {
     ]);
   });
 
-  it("finishes a call that was cut off before Meet your team moves on", async () => {
-    callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
-    render(<OnboardingPage />);
-    const socket = await liveCall();
+  it.each(["vendor_error", "user_hangup"])(
+    "finishes a call that ended with %s before Meet your team moves on",
+    async (reason) => {
+      callStates[CALL_ID] = [callRecord({ end_reason: reason })];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
 
-    endCall(socket, "vendor_error");
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "Meet your team" }));
+      endCall(socket, reason);
+      await userEvent
+        .setup()
+        .click(await screen.findByRole("button", { name: "Meet your team" }));
 
-    await expectPlanStep();
-    expect(finishes).toEqual([CALL_ID]);
-    expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
-  });
+      await expectPlanStep();
+      expect(finishes).toEqual([CALL_ID]);
+      expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
+    },
+  );
 
   it("opens the typed interview when the call's finish answers that the person's typing superseded it", async () => {
     callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
@@ -2541,6 +2585,23 @@ describe("onboarding interview by voice: one interview, typed or spoken", () => 
     expect(screen.queryByRole("button", { name: "Call again" })).toBeNull();
     expect(screen.queryByText(GREETING)).toBeNull();
     // The typed interview is never read first.
+    expect(typedStartCount).toBe(0);
+  });
+
+  it("shows a hung-up call's ending again when the person comes back, with its three ways on", async () => {
+    latestCall = callRecord({ end_reason: "user_hangup" });
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("You ended the call.")).toBeDefined();
+    expect(screen.getByText("What you said so far is saved.")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    // Nothing is decided until the person picks a way on.
+    expect(finishes).toEqual([]);
     expect(typedStartCount).toBe(0);
   });
 

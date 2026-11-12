@@ -218,9 +218,9 @@ async def start_onboarding_interview(
     while a voice call of theirs is live, and 409
     ``onboarding_interview_closed`` once a call took the interview (its words
     accepted from a call that ran to its close, or that the person
-    confirmed), each naming the call (``call_id``). A call that was cut off
-    leaves the typed interview open. 429 at its turn
-    budget, 503 while the budget, the chat stream or the person's calls
+    confirmed), each naming the call (``call_id``). A call that was cut off,
+    or that the person hung up, leaves the typed interview open. 429 at its
+    turn budget, 503 while the budget, the chat stream or the person's calls
     cannot be read. A 429 carries its wait in the body
     (``retry_after_seconds``) as well as in ``Retry-After``: the browser's API
     client keeps a refusal's body, not its headers.
@@ -372,8 +372,9 @@ async def finish_onboarding_voice_call(
     whose words the pipeline ruled on, is answered as it stands, and a call
     the person's typing superseded is answered ``superseded``. A call waiting
     for the confirm, one whose hand-off the pipeline never ruled on, or one
-    cut off with its words accepted hands its words off now, with any
-    ``corrections`` after them, and its accepted take becomes the interview's.
+    cut off or hung up with its words accepted hands its words off now, with
+    any ``corrections`` after them, and its accepted take becomes the
+    interview's.
     The client reads the answer as it reads the typed interview's finish. 404
     for a call that is not theirs; 409
     (``call_not_ready``) while the call's words are not ready. A 429 or 503

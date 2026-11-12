@@ -35,8 +35,9 @@ refuses a call once the typed interview is over; the typed interview is
 refused while a call of theirs is live, and is over once a call took the
 interview (:func:`refuse_while_a_call_holds_the_interview`). A call takes it
 when its words were accepted and the call ran to its close, or the person
-confirmed it; a call that was cut off leaves the interview open, for a later
-call or the typed interview to replace its take. The take the person made
+confirmed it; a call that was cut off, or that the person hung up, leaves
+the interview open, for a later call or the typed interview to replace its
+take. The take the person made
 last owns the interview: their first typed message after a call ended
 supersedes the call's words, unless they took the interview first
 (:func:`supersede_the_latest_call`). A call whose hand-off another take beat
@@ -329,8 +330,9 @@ async def call_that_took_the_interview(user_id: str) -> str | None:
     None.
 
     A call takes the interview when the pipeline accepted its words and the
-    call ran to its close, or the person confirmed it; one that was cut off
-    leaves the interview open (``voice_handoff``). The hand-off writes
+    call ran to its close, or the person confirmed it; one that was cut off,
+    or that the person hung up, leaves the interview open
+    (``voice_handoff``). The hand-off writes
     that on the person's onboarding row, which outlives the call's record,
     and the row is what is read.
     """

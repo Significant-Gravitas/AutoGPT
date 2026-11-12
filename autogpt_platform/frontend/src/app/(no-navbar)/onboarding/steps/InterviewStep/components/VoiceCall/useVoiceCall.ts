@@ -884,8 +884,7 @@ export function useVoiceCall(args: Args) {
   }
 
   // Leaves the call for the typed interview. A live call is ended first, so
-  // its words are kept as a call cut off rather than one the person closed,
-  // and the typed interview opens.
+  // its words are kept as a call cut off, and the typed interview opens.
   async function typeInstead() {
     const conn = connRef.current;
     if (phase === "ended") trackEndingAction("type_instead");

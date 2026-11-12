@@ -133,7 +133,7 @@ export function CallEnded({
           ending.kind === "missing" ||
           ending.kind === "no_words" ||
           ending.kind === "unsaved" ||
-          (ending.kind === "retry" && ending.cutOff)) &&
+          (ending.kind === "retry" && ending.leftOpen)) &&
           otherWays}
       </div>
 

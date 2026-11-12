@@ -132,7 +132,6 @@ describe("onboarding layout", () => {
     expect(result.current.isLayoutAnswered).toBe(false);
   });
 
-
   it("includes team introductions, brain dump, and the plan + trial step without rollout flags", () => {
     const { result } = renderHook(useOnboardingLayout, { initialProps });
     expect(result.current.isReady).toBe(true);

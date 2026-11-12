@@ -266,16 +266,16 @@ export function callStatusCopy({
 
 // --- How a call ended -----------------------------------------------------
 
-// A call that ran to its close: Otto's goodbye, the server's caps, the scope
-// rule or the person's Hang up. Its accepted words take the interview. Every
-// other end cut the call off, which leaves the interview open.
+// A call that ran to its close: Otto's goodbye, the server's caps or the
+// scope rule. Its accepted words take the interview. Every other end leaves
+// the interview open: the person's Hang up, and every end that cut the call
+// off.
 const RAN_TO_CLOSE = new Set([
   "finished",
   "wall_clock",
   "turn_cap",
   "spend_cap",
   "scope",
-  "user_hangup",
 ]);
 
 // The call is running, or its words are still on their way to a take: being
@@ -309,15 +309,16 @@ export type CallEnding =
   // "Meet your team". `path` is the one the hand-off decided; null when the
   // click must finish the call first.
   | { kind: "team"; path: "A" | null }
-  // Cut off with the words saved: "Meet your team" (a finish of this call),
-  // "Call again" and "Type instead".
+  // Cut off or hung up, with the words saved: "Meet your team" (a finish of
+  // this call), "Call again" and "Type instead".
   | { kind: "lost"; reason: string | null }
   // Nothing the person said was heard: "Call again" and "Type instead".
   | { kind: "no_words" }
   | { kind: "insufficient" }
   // The pipeline never ruled on the words: "Try again" through the finish
-  // route, beside the other ways on after a cut-off call.
-  | { kind: "retry"; cutOff: boolean; reason: string | null }
+  // route, beside the other ways on when the call left the interview open
+  // (`leftOpen`: it was cut off, or the person hung up).
+  | { kind: "retry"; leftOpen: boolean; reason: string | null }
   // Something went wrong on our side saving the call, so it kept nothing to
   // hand off: "Call again" and "Type instead".
   | { kind: "unsaved"; reason: string | null }
@@ -351,7 +352,8 @@ export function answerOf(
     const failure = failureOf(call.hand_off?.error_code ?? null);
     if (failure === "no_words") return { kind: "no_words" };
     if (failure === "insufficient") return { kind: "insufficient" };
-    if (failure === "retry") return { kind: "retry", cutOff: !closed, reason };
+    if (failure === "retry")
+      return { kind: "retry", leftOpen: !closed, reason };
     return { kind: "unsaved", reason };
   }
   if (closed && call.status === "handed_off") {

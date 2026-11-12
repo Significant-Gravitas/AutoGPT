@@ -115,4 +115,3 @@ function useHasWaited(ms: number, isWaiting: boolean) {
   }, [isResolutionStarted, isWaiting, ms]);
   return hasWaited;
 }
-

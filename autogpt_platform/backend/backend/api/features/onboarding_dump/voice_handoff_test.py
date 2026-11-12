@@ -16,12 +16,13 @@ import pytest
 from fakeredis import FakeServer
 from fakeredis.aioredis import FakeRedis
 from fastapi import BackgroundTasks, HTTPException
-from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from prisma.enums import BrainDumpInputMode, BrainDumpStatus, SubscriptionTier
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import (
     interview,
     quality,
+    rate_limit,
     service,
     voice,
     voice_handoff,
@@ -54,6 +55,7 @@ from backend.copilot.model import (
     ChatSession,
 )
 from backend.copilot.onboarding_interview import INTERVIEW_CLOSED
+from backend.util.settings import BehaveAs
 from backend.voice_relay import locks, tokens
 from backend.voice_relay.conftest import MemoryRecordings, ScriptedTranscriber
 from backend.voice_relay.locks import TurnMark
@@ -962,7 +964,6 @@ RAN_TO_ITS_CLOSE = (
     "turn_cap",
     "spend_cap",
     "scope",
-    "user_hangup",
 )
 CUT_OFF = (
     "client_gone",
@@ -972,11 +973,15 @@ CUT_OFF = (
     "superseded",
     "crashed",
 )
+# The person's Hang up, which leaves the interview open as a call cut off
+# does.
+HUNG_UP = "user_hangup"
 
 
-def test_the_ends_that_run_a_call_to_its_close_are_these_six():
+def test_the_ends_that_run_a_call_to_its_close_are_these_five():
     assert voice_handoff.RAN_TO_ITS_CLOSE == frozenset(RAN_TO_ITS_CLOSE)
     assert not any(voice_handoff.ran_to_its_close(end) for end in CUT_OFF)
+    assert not voice_handoff.ran_to_its_close(HUNG_UP)
 
 
 async def _typed_refusals(stored: StoredInterview) -> list[tuple[int, object]]:
@@ -1044,8 +1049,8 @@ async def test_an_accepted_call_that_ran_to_its_close_takes_the_interview(
     assert await _typed_refusals(stored) == [closed] * 3
 
 
-@pytest.mark.parametrize("end_reason", CUT_OFF)
-async def test_an_accepted_call_that_was_cut_off_leaves_the_interview_open(
+@pytest.mark.parametrize("end_reason", (*CUT_OFF, HUNG_UP))
+async def test_an_accepted_call_cut_off_or_hung_up_leaves_the_interview_open(
     rig: Rig,
     dumps: DumpStore,
     opening: dict[str, MagicMock],
@@ -1066,11 +1071,16 @@ async def test_an_accepted_call_that_was_cut_off_leaves_the_interview_open(
     assert started.turn_id == "turn-1"
 
 
-async def test_the_typed_interview_replaces_a_cut_off_calls_take(
-    rig: Rig, stored: StoredInterview, allowance: AsyncMock, dumps: DumpStore
+@pytest.mark.parametrize("end_reason", ["client_gone", HUNG_UP])
+async def test_the_typed_interview_replaces_the_take_of_a_call_cut_off_or_hung_up(
+    rig: Rig,
+    stored: StoredInterview,
+    allowance: AsyncMock,
+    dumps: DumpStore,
+    end_reason: str,
 ):
     rig.interviews.typed = stored.session
-    call_id = await rig.call(end_reason="client_gone")
+    call_id = await rig.call(end_reason=end_reason)
     await rig.hand_off(call_id)
 
     await _type(stored)
@@ -1094,10 +1104,11 @@ async def test_a_second_call_replaces_a_cut_off_calls_take(rig: Rig, dumps: Dump
     assert dumps.row is not None and dumps.row.recordingId == f"interview-{second}"
 
 
-async def test_the_persons_finish_of_a_cut_off_call_makes_its_take_the_interviews(
-    rig: Rig, quality_gate: AsyncMock
+@pytest.mark.parametrize("end_reason", ["vendor_error", HUNG_UP])
+async def test_the_persons_finish_of_a_call_cut_off_or_hung_up_makes_its_take_the_interviews(
+    rig: Rig, quality_gate: AsyncMock, dumps: DumpStore, end_reason: str
 ):
-    call_id = await rig.call(end_reason="vendor_error")
+    call_id = await rig.call(end_reason=end_reason)
     await rig.hand_off(call_id)
 
     answered = await _finish(call_id)
@@ -1107,7 +1118,34 @@ async def test_the_persons_finish_of_a_cut_off_call_makes_its_take_the_interview
     record = await rig.read(call_id)
     assert record.interview == locks.INTERVIEW_TAKEN
     assert rig.interviews.taken == call_id
-    # The take was the call's already: its words were judged once.
+    # The take was the call's already, with its words: judged once.
+    assert dumps.row is not None and dumps.row.transcript == SAID[0]
+    assert quality_gate.await_count == 1
+
+
+async def test_a_hung_up_calls_words_wait_for_the_person_to_come_back(
+    rig: Rig, dumps: DumpStore, quality_gate: AsyncMock
+):
+    """The person hung up and left the page. Their words are handed off with
+    nobody polling, so they have a Home if they never return; when they come
+    back, the step's reload finds the call, and Meet your team makes its take
+    the interview's."""
+    call_id = await rig.call(end_reason=HUNG_UP)
+
+    assert await voice_handoff.sweep() == [call_id]
+
+    assert dumps.row is not None and dumps.row.transcript == SAID[0]
+    assert rig.interviews.taken is None
+    returned = await voice.latest_call(USER)
+    assert (returned.call_id, returned.status, returned.end_reason) == (
+        call_id,
+        locks.HANDED_OFF,
+        HUNG_UP,
+    )
+    assert returned.interview is None
+    await _finish(call_id)
+    assert rig.interviews.taken == call_id
+    assert dumps.row.transcript == SAID[0]
     assert quality_gate.await_count == 1
 
 
@@ -2096,15 +2134,10 @@ async def test_a_second_finish_finds_the_first_ones_verdict_and_judges_nothing(
     assert len(reads) == 2
 
 
-async def test_a_call_ended_from_another_device_leaves_room_for_a_new_call(
-    rig: Rig, mocker: MockerFixture, monkeypatch
-):
-    """ "End that call" cuts the call off: its take never closes the
-    interview, so the person can call again."""
-    call_id = await rig.call(end_reason="superseded")
-    record = await rig.hand_off(call_id)
-    assert record.status == locks.HANDED_OFF and record.interview is None
-
+@pytest.fixture
+async def voice_starts(rig: Rig, mocker: MockerFixture, monkeypatch) -> None:
+    """A deployment that can carry a call, with voice on for the person, who
+    has not opened the typed interview and is in no ending experiment."""
     monkeypatch.setattr(
         voice.settings.config, "voice_relay_public_url", "wss://api.example.com/voice"
     )
@@ -2123,12 +2156,55 @@ async def test_a_call_ended_from_another_device_leaves_room_for_a_new_call(
     mocker.patch.object(
         voice, "find_onboarding_interview_session", AsyncMock(return_value=None)
     )
-    mocker.patch.object(voice, "enforce_voice_call_budget", AsyncMock())
     mocker.patch.object(voice, "assigned_ending", AsyncMock(return_value=None))
+
+
+@pytest.mark.parametrize("end_reason", ["superseded", HUNG_UP])
+async def test_a_call_cut_off_or_hung_up_leaves_room_for_a_new_call(
+    rig: Rig, voice_starts: None, mocker: MockerFixture, end_reason: str
+):
+    """ "End that call" cuts the call off, and Hang up leaves the interview
+    open the same way: the call's take never closes the interview, so the
+    person can call again."""
+    call_id = await rig.call(end_reason=end_reason)
+    record = await rig.hand_off(call_id)
+    assert record.status == locks.HANDED_OFF and record.interview is None
+    mocker.patch.object(voice, "enforce_voice_call_budget", AsyncMock())
 
     started = await voice.start_voice_call(USER)
 
     assert started.call_id != call_id
+
+
+async def test_a_call_after_a_hang_up_still_counts_against_the_persons_allowance(
+    rig: Rig, voice_starts: None, mocker: MockerFixture, set_platform_payment
+):
+    """Call again after a hang-up is a call like any other: the relay counts
+    it once it is ready, and a start past the person's allowance waits."""
+    mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.CLOUD)
+    set_platform_payment(True)
+    mocker.patch.object(
+        rate_limit, "get_redis_async", AsyncMock(return_value=rig.redis)
+    )
+    mocker.patch.object(
+        rate_limit,
+        "get_user_subscription_tier",
+        AsyncMock(return_value=SubscriptionTier.PRO),
+    )
+    # The person's calls this hour, the one they hung up last, each counted
+    # once it was ready.
+    for _ in range(rate_limit.VOICE_HOURLY_CALLS - 1):
+        await rate_limit.count_voice_call(rig.redis, USER)
+    hung_up = await rig.call(end_reason=HUNG_UP)
+    await rig.hand_off(hung_up)
+
+    again = await voice.start_voice_call(USER)
+    await locks.CallStore(rig.redis, call_id=again.call_id, user_id=USER).count_call()
+
+    with pytest.raises(HTTPException) as refused:
+        await voice.start_voice_call(USER)
+    assert again.call_id != hung_up
+    assert refused.value.status_code == 429
 
 
 # ---------- a later call that produced no take ----------

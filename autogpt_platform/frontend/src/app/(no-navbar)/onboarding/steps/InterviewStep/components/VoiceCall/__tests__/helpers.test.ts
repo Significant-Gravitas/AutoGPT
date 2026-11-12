@@ -177,7 +177,6 @@ describe("what a call's record answers", () => {
     ["turn_cap"],
     ["spend_cap"],
     ["scope"],
-    ["user_hangup"],
   ])(
     "leads a call that ran to its close (%s) straight on to the team",
     (reason) => {
@@ -189,13 +188,14 @@ describe("what a call's record answers", () => {
   );
 
   it.each([
+    ["user_hangup"],
     ["client_gone"],
     ["idle"],
     ["vendor_error"],
     ["server_restart"],
     ["superseded"],
     ["crashed"],
-  ])("shows the lost screen for a call cut off (%s)", (reason) => {
+  ])("shows the lost screen for a call hung up or cut off (%s)", (reason) => {
     expect(answerOf(call({ end_reason: reason }))).toEqual({
       kind: "lost",
       reason,
@@ -268,22 +268,20 @@ describe("what a call's record answers", () => {
     }
   });
 
-  it("offers Try again for a hand-off the pipeline never ruled on, with the other ways on after a cut-off call", () => {
+  it("offers Try again for a hand-off the pipeline never ruled on, with the other ways on after a call hung up or cut off", () => {
     const unruled = failed("quality_check_unavailable");
     expect(answerOf(call({ status: "failed", hand_off: unruled }))).toEqual({
       kind: "retry",
-      cutOff: false,
+      leftOpen: false,
       reason: "finished",
     });
-    expect(
-      answerOf(
-        call({
-          status: "failed",
-          end_reason: "vendor_error",
-          hand_off: unruled,
-        }),
-      ),
-    ).toEqual({ kind: "retry", cutOff: true, reason: "vendor_error" });
+    for (const reason of ["user_hangup", "vendor_error"]) {
+      expect(
+        answerOf(
+          call({ status: "failed", end_reason: reason, hand_off: unruled }),
+        ),
+      ).toEqual({ kind: "retry", leftOpen: true, reason });
+    }
   });
 
   it.each([
@@ -319,7 +317,7 @@ describe("what a call's record answers", () => {
         answerOf(call({ status: "failed", hand_off: failed(code) })),
       ).toEqual({
         kind: "retry",
-        cutOff: false,
+        leftOpen: false,
         reason: "finished",
       });
     },
@@ -332,8 +330,9 @@ describe("what a call's record answers", () => {
     });
   });
 
-  it("tells a call that ran to its close from one cut off", () => {
-    expect(ranToClose("user_hangup")).toBe(true);
+  it("tells a call that ran to its close from one hung up or cut off", () => {
+    expect(ranToClose("finished")).toBe(true);
+    expect(ranToClose("user_hangup")).toBe(false);
     expect(ranToClose("client_gone")).toBe(false);
     expect(ranToClose(null)).toBe(false);
   });

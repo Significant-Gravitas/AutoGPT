@@ -41,10 +41,11 @@ the words or another take owns the interview, ``failed`` with the answer
 while the interview stays open, or ``transcribed`` while a confirm arm waits
 for the person. A call whose words the pipeline accepted takes the person's
 interview when it ran to its close (:data:`RAN_TO_ITS_CLOSE`), or when the
-person confirmed it. A call that was cut off is handed off all the same, so
-the person has a Home if they never come back, but leaves the interview
-open: a later call, or the typed interview, replaces its take as any re-take
-does.
+person confirmed it. A call that was cut off, or that the person hung up, is
+handed off all the same, so the person has a Home if they never come back,
+but leaves the interview open: the person's finish of it takes the
+interview, and a later call, or the typed interview, replaces its take as any
+re-take does.
 
 The take the person made last owns the interview. A call takes it by claiming
 ``taken`` on its record, set-if-absent; the person's first typed message, or
@@ -95,11 +96,11 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 # How a call ends when it runs to its close: Otto's goodbye, the server's caps,
-# the scope rule, or the person's Hang up. Every other end cut the call off:
-# the connection, silence, the vendor, a pod, or "End that call" from another
-# device.
+# or the scope rule. Every other end leaves the interview open: the person's
+# Hang up, and every end that cut the call off: the connection, silence, the
+# vendor, a pod, or "End that call" from another device.
 RAN_TO_ITS_CLOSE = frozenset(
-    {"finished", "wall_clock", "turn_cap", "spend_cap", "scope", "user_hangup"}
+    {"finished", "wall_clock", "turn_cap", "spend_cap", "scope"}
 )
 
 # The pipeline's refusals to take a hand-off for now, as a call records them:
@@ -179,7 +180,8 @@ def interview_reason(end_reason: str | None) -> InterviewEndReason:
 
 def ran_to_its_close(end_reason: str | None) -> bool:
     """Whether a call that ended with *end_reason* ran to its close, rather
-    than being cut off. An end this code does not know counts as cut off."""
+    than being hung up or cut off. An end this code does not know counts as
+    cut off."""
     return end_reason in RAN_TO_ITS_CLOSE
 
 

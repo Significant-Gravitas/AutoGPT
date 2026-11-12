@@ -420,8 +420,9 @@ async def finish_call(
     answered as it stands, so a second click costs nothing; so is a call the
     person's typing superseded, answered ``superseded`` without the pipeline.
     A call waiting for its confirm, one whose hand-off the pipeline never
-    ruled on, or one cut off with its words accepted hands its transcript of
-    record off now, with *corrections* after it as the person's own words,
+    ruled on, or one cut off or hung up with its words accepted hands its
+    transcript of record off now, with *corrections* after it as the person's
+    own words,
     and its accepted take becomes the interview's. The record is read again
     once this finish holds the call, so a finish that ran meanwhile is
     answered, never repeated. The pipeline's jobs run after the response.
@@ -527,7 +528,8 @@ def _answer_as_it_stands(record: CallRecord) -> FinalizeResponse | None:
     if record.transcript_of_record is None or stored.error_code in _VERDICTS:
         return stored
     if record.status == locks.HANDED_OFF and (
-        # A cut-off call's accepted take waits for the person's finish.
+        # The accepted take of a call cut off or hung up waits for the
+        # person's finish.
         record.took_interview
         or not record.accepted
     ):
