@@ -521,11 +521,10 @@ export class TurnRuntime {
     try {
       return await this.deps.headers();
     } catch (error) {
-      if (
-        !(error instanceof CopilotAuthError) &&
-        !(error instanceof AuthTokenUnavailableError)
-      )
-        throw error;
+      const askAgain =
+        error instanceof CopilotAuthError ||
+        error instanceof AuthTokenUnavailableError;
+      if (!askAgain) throw error;
       await sleep(TOKEN_RETRY_MS);
       if (conn.controller.signal.aborted) throw error;
       return this.deps.headers();
