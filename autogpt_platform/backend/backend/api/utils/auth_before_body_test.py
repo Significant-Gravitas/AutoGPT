@@ -329,10 +329,20 @@ async def test_the_early_401_carries_the_cors_headers_a_browser_needs(
 async def test_the_platform_api_still_parses_a_signed_in_users_body():
     """Past the early check, a valid token reaches the route's own handling:
     here, its body validation."""
-    with patch(
-        "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
-        AsyncMock(return_value={"sub": "user-1", "role": "authenticated"}),
+    with (
+        patch(
+            "autogpt_libs.auth.jwt_utils.parse_jwt_token_async",
+            AsyncMock(
+                return_value={
+                    "sub": "user-1",
+                    "sid": "session-1",
+                    "role": "authenticated",
+                }
+            ),
+        ),
+        patch("backend.api.session_auth.auth_session_db") as auth_db,
     ):
+        auth_db.return_value.is_auth_session_active = AsyncMock(return_value=True)
         status, _, _, _, parsed = await _post(
             rest_api.app,
             "/api/graphs",

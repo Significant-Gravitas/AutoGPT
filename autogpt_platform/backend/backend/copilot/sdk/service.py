@@ -67,6 +67,11 @@ from backend.copilot.graphiti.context_marker import (
 )
 from backend.copilot.host_fs import cli_tmpdir, save_new_file
 from backend.copilot.markers import append_error_marker
+from backend.copilot.pending_message_recovery import (
+    recover_pending_on_failure,
+    restore_pending_messages,
+)
+from backend.copilot.pending_message_reconciliation import partition_pending_by_history
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.tools.skill_matching import build_matched_skills_notice
@@ -150,7 +155,6 @@ from ..pending_message_helpers import (
 from ..pending_messages import (
     PendingMessage,
     drain_pending_for_persist,
-    push_pending_message,
 )
 from ..permissions import (
     CopilotPermissions,
@@ -876,15 +880,19 @@ async def _consume_sdk_until_done(
                 and dispatched is not None
                 and acc.has_tool_results
             ):
-                followup_drained = await drain_pending_for_persist(
-                    ctx.session.session_id
-                )
-                if followup_drained and await persist_pending_as_user_rows(
-                    ctx.session,
-                    state.transcript_builder,
-                    followup_drained,
-                    log_prefix=ctx.log_prefix,
-                ):
+                async with recover_pending_on_failure(
+                    ctx.session.session_id,
+                    drain_pending_for_persist(ctx.session.session_id),
+                ) as followup_drained:
+                    persisted = bool(
+                        followup_drained
+                    ) and await persist_pending_as_user_rows(
+                        ctx.session,
+                        state.transcript_builder,
+                        followup_drained,
+                        log_prefix=ctx.log_prefix,
+                    )
+                if persisted:
                     # Track CLI-JSONL-invisible rows so the upload
                     # watermark excludes them and the next turn's
                     # detect_gap picks them up as gap-fill.
@@ -5821,19 +5829,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             user_id, session, unsaved_held.append, cap=cap_late_tool_result
         ):
             yield held_status
-        pending_messages: list[PendingMessage] = [*unsaved_held]
-        pending_messages += await drain_pending_safe(session_id, log_prefix)
-        if pending_messages:
-            logger.info(
-                "%s Draining %d pending message(s) at turn start",
-                log_prefix,
-                len(pending_messages),
-            )
-            # NOTE: combining and per-row persistence both happen *after*
-            # ``inject_user_context`` below — see the comment near that
-            # call.  At this point ``current_message`` is still the
-            # original turn-starting send (no pending text yet).
-
         if not current_message.strip():
             yield StreamError(
                 errorText="Message cannot be empty.",
@@ -5841,137 +5836,154 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             return
 
-        # Strip any user-injected <user_context> tags from current_message.
-        # On --resume, current_message may come from session history which was
-        # already sanitized on the original turn; strip again as defence-in-depth.
-        current_message = strip_user_context_tags(current_message)
-        if not is_user_message:
-            # A continuation note is stored as a system row; the model gets
-            # its instruction without the rendering marker.
-            current_message = as_model_prompt(current_message)
-        # What memory is searched with: the user's own words (and any pending
-        # messages folded in below), never the context blocks
-        # ``inject_user_context`` puts in front of them on a first turn.
-        recall_message = current_message
-        if persisted_invocation is not None:
-            current_message = persisted_invocation
-
-        # On the first turn inject user context into the message before building
-        # the query so that _build_query_message sees the full prefixed content.
-        # The system prompt is now static (same for all users) so the LLM can
-        # cache it across sessions.
-        #
-        # On resume (has_history=True) we intentionally skip re-injection: the
-        # transcript already contains the <user_context> prefix and its
-        # siblings from the original turn (persisted to the DB via
-        # inject_user_context), so the SDK replay carries context continuity
-        # without us prepending them again. Warm context is not among them:
-        # no turn persists its memory block, and every send carries its own
-        # (``_append_warm_context`` below).
-        # Only a first turn (no history) started its context reads.
-        if first_turn_context is not None:
-            # Build env_ctx for the working directory and pass it into
-            # inject_user_context so it is prepended AFTER
-            # sanitize_user_supplied_context runs — preventing the trusted
-            # <env_context> block from being stripped by the sanitizer.
-            env_ctx_content = ""
-            if not use_e2b and sdk_cwd:
-                env_ctx_content = f"working_dir: {sdk_cwd}"
-            # The session block lands in the per-turn user message (after
-            # the last cache breakpoint) so it does NOT bust the
-            # cross-session prefix cache. A failed skills read leaves the
-            # index empty rather than blocking the turn.
-            (
-                session_ctx_content,
-                skills_ctx_content,
-                expert_ctx_content,
-            ) = await first_turn_context.results()
-            # Pass env_ctx and its siblings to inject_user_context so they are
-            # prepended AFTER sanitize_user_supplied_context runs — preventing
-            # trusted server-injected blocks from being stripped by the sanitizer.
-            # inject_user_context persists the fully prefixed message to DB.
-            # The first turn's warm context (``warm_ctx_task``) is not passed: it
-            # goes into the query only, marked, like every later turn's block
-            # (``_append_warm_context`` below), so a fact forgotten later in
-            # the session is in no stored message and no uploaded transcript.
-            prefixed_message = await inject_user_context(
-                understanding,
-                current_message,
-                session_id,
-                session.messages,
-                env_ctx=env_ctx_content,
-                session_ctx=session_ctx_content,
-                skills_ctx=skills_ctx_content,
-                user_id=user_id,
-                expert_id=session.expert_id,
-                expert_ctx=expert_ctx_content,
+        async with recover_pending_on_failure(
+            session_id, drain_pending_safe(session_id, log_prefix, drain_backlog=True)
+        ) as drained_pending:
+            pending_messages: list[PendingMessage] = [*unsaved_held, *drained_pending]
+            pending_messages, recovered_in_history = partition_pending_by_history(
+                session, pending_messages
             )
-            if prefixed_message is not None:
-                current_message = prefixed_message
+            if pending_messages:
+                logger.info(
+                    "%s Draining %d pending message(s) at turn start",
+                    log_prefix,
+                    len(pending_messages),
+                )
+                # NOTE: combining and per-row persistence both happen *after*
+                # ``inject_user_context`` below — see the comment near that
+                # call.  At this point ``current_message`` is still the
+                # original turn-starting send (no pending text yet).
 
-        # A ``/skill-name arguments`` send carries the skill's instructions
-        # into this turn and every later one. Same row as the injection
-        # above, and before pending messages are folded in for the same
-        # reason.
-        if is_user_message and not continued_pending:
-            invoked_message = await inject_skill_invocation(
-                current_message,
-                session_id,
-                session.messages,
-                user_id=user_id,
-                expert_id=session.expert_id,
-            )
-            if invoked_message is not None:
-                current_message = invoked_message
+            # Strip any user-injected <user_context> tags from current_message.
+            # On --resume, current_message may come from session history which was
+            # already sanitized on the original turn; strip again as defence-in-depth.
+            current_message = strip_user_context_tags(current_message)
+            if not is_user_message:
+                # A continuation note is stored as a system row; the model gets
+                # its instruction without the rendering marker.
+                current_message = as_model_prompt(current_message)
+            # What memory is searched with: the user's own words (and any pending
+            # messages folded in below), never the context blocks
+            # ``inject_user_context`` puts in front of them on a first turn.
+            recall_message = current_message
+            if persisted_invocation is not None:
+                current_message = persisted_invocation
 
-        # Now that ``inject_user_context`` has wrapped + persisted the
-        # ORIGINAL turn-starting send into its row, fold any pending
-        # chips into the prompt the model sees AND persist each pending
-        # message as its own raw-text user row in the DB.  Order matters
-        # because:
-        #
-        #   - inject targets the last user row (= routes.py-saved row at
-        #     this point) and writes envelopes + the value passed in.
-        #     If we'd combined first, the wrapped row would carry the
-        #     chip text too, and persisting the chip as a separate row
-        #     below would make the chip appear twice in the UI.
-        #   - inject targets the last user row.  If we'd persisted
-        #     pending rows first, inject would land on a pending row
-        #     instead of the original send.
-        #
-        # ``transcript_builder=None``: the model still sees the combined
-        # text below as a single user turn that gets written to the
-        # transcript at turn-end via ``append_user(current_message)``.
-        # Adding each pending to the transcript here would triple-count
-        # them in the next turn's ``--resume`` context.
-        if pending_messages:
-            # Persist FIRST.  Only fold pending into the model's prompt
-            # when persistence succeeded — if the helper rolled back and
-            # re-queued the pending into Redis, leaving ``current_message``
-            # untouched ensures the NEXT turn's drain doesn't double-
-            # combine (re-queued pending + combined-from-this-turn) into
-            # the model's context.
-            # The helper appends the rows before its first await, so from here
-            # the turn's own save, or its re-queue, carries the held results.
-            unsaved_held = []
-            persisted_ok = await persist_pending_as_user_rows(
-                session,
-                None,
-                pending_messages,
-                log_prefix=log_prefix,
-            )
-            if persisted_ok:
-                yield drained_rows_entry(pending_messages)
-                current_message = combine_pending_with_current(
-                    pending_messages,
+            # On the first turn inject user context into the message before building
+            # the query so that _build_query_message sees the full prefixed content.
+            # The system prompt is now static (same for all users) so the LLM can
+            # cache it across sessions.
+            #
+            # On resume (has_history=True) we intentionally skip re-injection: the
+            # transcript already contains the <user_context> prefix and its
+            # siblings from the original turn (persisted to the DB via
+            # inject_user_context), so the SDK replay carries context continuity
+            # without us prepending them again. Warm context is not among them:
+            # no turn persists its memory block, and every send carries its own
+            # (``_append_warm_context`` below).
+            # Only a first turn (no history) started its context reads.
+            if first_turn_context is not None:
+                # Build env_ctx for the working directory and pass it into
+                # inject_user_context so it is prepended AFTER
+                # sanitize_user_supplied_context runs — preventing the trusted
+                # <env_context> block from being stripped by the sanitizer.
+                env_ctx_content = ""
+                if not use_e2b and sdk_cwd:
+                    env_ctx_content = f"working_dir: {sdk_cwd}"
+                # The session block lands in the per-turn user message (after
+                # the last cache breakpoint) so it does NOT bust the
+                # cross-session prefix cache. A failed skills read leaves the
+                # index empty rather than blocking the turn.
+                (
+                    session_ctx_content,
+                    skills_ctx_content,
+                    expert_ctx_content,
+                ) = await first_turn_context.results()
+                # Pass env_ctx and its siblings to inject_user_context so they are
+                # prepended AFTER sanitize_user_supplied_context runs — preventing
+                # trusted server-injected blocks from being stripped by the sanitizer.
+                # inject_user_context persists the fully prefixed message to DB.
+                # The first turn's warm context (``warm_ctx_task``) is not passed: it
+                # goes into the query only, marked, like every later turn's block
+                # (``_append_warm_context`` below), so a fact forgotten later in
+                # the session is in no stored message and no uploaded transcript.
+                prefixed_message = await inject_user_context(
+                    understanding,
                     current_message,
-                    request_arrival_at=request_arrival_at,
+                    session_id,
+                    session.messages,
+                    env_ctx=env_ctx_content,
+                    session_ctx=session_ctx_content,
+                    skills_ctx=skills_ctx_content,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                    expert_ctx=expert_ctx_content,
                 )
-                recall_message = combine_pending_with_current(
+                if prefixed_message is not None:
+                    current_message = prefixed_message
+
+            # A ``/skill-name arguments`` send carries the skill's instructions
+            # into this turn and every later one. Same row as the injection
+            # above, and before pending messages are folded in for the same
+            # reason.
+            if is_user_message and not continued_pending:
+                invoked_message = await inject_skill_invocation(
+                    current_message,
+                    session_id,
+                    session.messages,
+                    user_id=user_id,
+                    expert_id=session.expert_id,
+                )
+                if invoked_message is not None:
+                    current_message = invoked_message
+
+            # Now that ``inject_user_context`` has wrapped + persisted the
+            # ORIGINAL turn-starting send into its row, fold any pending
+            # chips into the prompt the model sees AND persist each pending
+            # message as its own raw-text user row in the DB.  Order matters
+            # because:
+            #
+            #   - inject targets the last user row (= routes.py-saved row at
+            #     this point) and writes envelopes + the value passed in.
+            #     If we'd combined first, the wrapped row would carry the
+            #     chip text too, and persisting the chip as a separate row
+            #     below would make the chip appear twice in the UI.
+            #   - inject targets the last user row.  If we'd persisted
+            #     pending rows first, inject would land on a pending row
+            #     instead of the original send.
+            #
+            # ``transcript_builder=None``: the model still sees the combined
+            # text below as a single user turn that gets written to the
+            # transcript at turn-end via ``append_user(current_message)``.
+            # Adding each pending to the transcript here would triple-count
+            # them in the next turn's ``--resume`` context.
+            persisted_ok = False
+            if pending_messages:
+                # Persist FIRST.  Only fold pending into the model's prompt
+                # when persistence succeeded — if the helper rolled back and
+                # re-queued the pending into Redis, leaving ``current_message``
+                # untouched ensures the NEXT turn's drain doesn't double-
+                # combine (re-queued pending + combined-from-this-turn) into
+                # the model's context.
+                persisted_ok = await persist_pending_as_user_rows(
+                    session,
+                    None,
                     pending_messages,
-                    recall_message,
-                    request_arrival_at=request_arrival_at,
+                    log_prefix=log_prefix,
                 )
+                unsaved_held = []
+        if persisted_ok:
+            yield drained_rows_entry(pending_messages)
+            current_message = combine_pending_with_current(
+                pending_messages,
+                current_message,
+                request_arrival_at=request_arrival_at,
+            )
+            recall_message = combine_pending_with_current(
+                pending_messages,
+                recall_message,
+                request_arrival_at=request_arrival_at,
+            )
 
         # SECRT-2378: start the follow-up warm-context refresh HERE rather
         # than at the injection point below — ``recall_message`` is final
@@ -6062,7 +6074,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         )
         attachments.image_blocks.extend(
             pm.model_image.anthropic()
-            for pm in continued_pending or []
+            for pm in [*(continued_pending or []), *recovered_in_history]
             if pm.model_image
         )
         if pending_messages and persisted_ok:
@@ -7182,14 +7194,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     reason,
                     len(_auto_pending_messages),
                 )
-                for _pm in _auto_pending_messages:
-                    try:
-                        await push_pending_message(session_id, _pm)
-                    except Exception:
-                        logger.exception(
-                            "%s Failed to re-queue auto-continue message",
-                            log_prefix,
-                        )
+                try:
+                    await restore_pending_messages(session_id, _auto_pending_messages)
+                except Exception:
+                    logger.exception(
+                        "%s Failed to restore auto-continue batch", log_prefix
+                    )
 
             try:
                 async for event in stream_chat_completion_sdk(
