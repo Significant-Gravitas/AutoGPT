@@ -1,8 +1,9 @@
 // The release list and its loading skeleton share this geometry, so the
-// panel keeps its height when the releases arrive.
+// panel keeps its height when the releases arrive. The list scrolls inside
+// the panel rather than making the page taller.
 
 export const RELEASE_LIST_CLASS =
-  "flex flex-col gap-1 rounded-2xl bg-surface p-1.5 smooth-shadow-ring-sm";
+  "flex min-h-0 flex-col gap-1 overflow-y-auto rounded-2xl bg-surface p-1.5 smooth-shadow-ring-sm scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-active";
 
 export const RELEASE_ROW_CLASS = "flex gap-3 px-3.5 py-2.5";
 
