@@ -137,8 +137,8 @@ def test_the_data_directory_has_no_place_for_a_backend_config():
 
 def test_the_backend_files_that_resolve_paths_beside_the_code_are_the_known_ones():
     """get_data_path() is the backend package's parent directory: in the
-    bundle. The two live users follow WORKSPACE_STORAGE_DIR, which the runtime
-    sets; settings.py uses it only for the config.json nobody saves."""
+    bundle. Live users, including account erasure, follow WORKSPACE_STORAGE_DIR,
+    which the runtime sets; settings.py uses it only for config.json nobody saves."""
     backend = PLATFORM / "backend" / "backend"
     callers = {
         path.relative_to(backend).as_posix()
@@ -151,6 +151,7 @@ def test_the_backend_files_that_resolve_paths_beside_the_code_are_the_known_ones
         "util/settings.py",
         "util/workspace_storage_local.py",
         "api/features/store/local_media.py",
+        "data/account_erasure/storage.py",
     }, (
         f"the backend files calling get_data_path() are now {sorted(callers)}. A new caller "
         "may write beside the code, which is inside the installed bundle: see where it writes "

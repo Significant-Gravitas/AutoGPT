@@ -217,6 +217,22 @@ async def revoke_api_key(
     return APIKeyInfo.from_db(updated_api_key)
 
 
+async def revoke_user_api_keys(user_id: str) -> int:
+    """Revoke every key of the user that isn't revoked yet; returns how many.
+
+    Suspended keys are revoked too, so nothing can bring them back. Keys the
+    user minted for an organization are included: they act as the user who
+    created them. Keys revoked earlier keep their original ``revokedAt``.
+    """
+    return await PrismaAPIKey.prisma().update_many(
+        where={"userId": user_id, "status": {"not": APIKeyStatus.REVOKED}},
+        data={
+            "status": APIKeyStatus.REVOKED,
+            "revokedAt": datetime.now(timezone.utc),
+        },
+    )
+
+
 async def list_user_api_keys(
     user_id: str,
     limit: int = MAX_USER_API_KEYS_FETCH,

@@ -1155,6 +1155,21 @@
     }
   },
   {
+    "name": "mcp_wix",
+    "display_name": "Wix",
+    "description": "Manage Wix sites and search Wix developer documentation, with API calls on your sites.",
+    "mcp_server": {
+      "server_url": "https://mcp.wix.com/mcp",
+      "documentation_url": "https://dev.wix.com/docs/api-reference/articles/ai-tools/wix-mcp/about-the-wix-mcp",
+      "setup_instructions": "Sign in with your Wix account and approve access. Choose the sites to connect; your Wix account permissions apply to every tool call.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "wix"
+    }
+  },
+  {
     "name": "mcp_wonder",
     "display_name": "Wonder",
     "description": "Read and edit canvas designs, components, and design documentation.",

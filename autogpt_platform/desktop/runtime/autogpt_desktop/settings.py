@@ -211,6 +211,7 @@ def backend_environment(
         "JWT_JWKS_URL": f"{frontend_origin}/api/auth/jwks",
         "ENCRYPTION_KEY": secret["ENCRYPTION_KEY"],
         "INTERNAL_API_KEY": secret["INTERNAL_API_KEY"],
+        "BAN_RECORD_HASH_KEY": secret["BAN_RECORD_HASH_KEY"],
         "UNSUBSCRIBE_SECRET_KEY": secret["UNSUBSCRIBE_SECRET_KEY"],
         "VAPID_PRIVATE_KEY": secret["VAPID_PRIVATE_KEY"],
         "VAPID_PUBLIC_KEY": secret["VAPID_PUBLIC_KEY"],

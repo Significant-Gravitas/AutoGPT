@@ -1805,6 +1805,7 @@ def test_lifecycle_smoke_overlay_survives_service_environment_filtering(
             "BETTER_AUTH_SECRET",
             "ENCRYPTION_KEY",
             "INTERNAL_API_KEY",
+            "BAN_RECORD_HASH_KEY",
             "UNSUBSCRIBE_SECRET_KEY",
             "VAPID_PRIVATE_KEY",
             "VAPID_PUBLIC_KEY",

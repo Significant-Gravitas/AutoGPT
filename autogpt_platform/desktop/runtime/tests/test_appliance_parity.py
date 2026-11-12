@@ -2321,9 +2321,9 @@ def test_the_frontend_is_built_with_the_appliances_settings():
         for instruction, arguments in stage_of(DOCKERFILE, FRONTEND_STAGE)
         if instruction == "RUN" and "pnpm build" in arguments
     ]
-    assert len(builds) == 1 and re.match(
-        r"pnpm run generate:api && NODE_OPTIONS=\S+ pnpm build( |$)", builds[0]
-    ), drift(
+    assert builds == [
+        "pnpm run generate:api && pnpm build && rm -f .env .env.local .env.production"
+    ], drift(
         DOCKERFILE,
         f"the frontend is no longer built with `pnpm run generate:api && pnpm build`: {builds}",
         "Do the same in step_frontend in desktop/build/build_runtime.py, then update this test.",

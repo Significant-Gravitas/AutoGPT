@@ -116,7 +116,7 @@ class AutoModManager:
                     f"Moderation failed for graph execution {graph_exec.graph_exec_id}"
                 )
                 # Update node statuses for frontend display before raising error
-                await self._update_failed_nodes_for_moderation(
+                await self.update_failed_nodes_for_moderation(
                     db_client, graph_exec.graph_exec_id, "input", content_id
                 )
 
@@ -130,11 +130,6 @@ class AutoModManager:
 
             return None
 
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation"
-            )
-            return None  # Bypass moderation on timeout
         except Exception as e:
             logger.warning(f"Input moderation execution failed: {e}")
             return ModerationError(
@@ -199,7 +194,7 @@ class AutoModManager:
             if not moderation_passed:
                 logger.warning(f"Moderation failed for graph execution {graph_exec_id}")
                 # Update node statuses for frontend display before raising error
-                await self._update_failed_nodes_for_moderation(
+                await self.update_failed_nodes_for_moderation(
                     db_client, graph_exec_id, "output", content_id
                 )
 
@@ -213,11 +208,6 @@ class AutoModManager:
 
             return None
 
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Output moderation timed out for graph execution {graph_exec_id}, bypassing moderation"
-            )
-            return None  # Bypass moderation on timeout
         except Exception as e:
             logger.warning(f"Output moderation execution failed: {e}")
             return ModerationError(
@@ -227,7 +217,7 @@ class AutoModManager:
                 moderation_type="output",
             )
 
-    async def _update_failed_nodes_for_moderation(
+    async def update_failed_nodes_for_moderation(
         self,
         db_client: "DatabaseManagerAsyncClient",
         graph_exec_id: str,
@@ -308,11 +298,10 @@ class AutoModManager:
 
         Returns:
             Tuple of (approval_status, content_id)
-            - approval_status: True if approved or timeout occurred, False if rejected
+            - approval_status: True if approved, False if rejected. When AutoMod
+              fails or times out, ``automod_fail_open`` decides: True lets the
+              content through, False treats it as rejected.
             - content_id: Reference ID from moderation API, or None if not available
-
-        Raises:
-            asyncio.TimeoutError: When moderation times out (should be bypassed)
         """
         try:
             request_data = AutoModRequest(
@@ -335,11 +324,12 @@ class AutoModManager:
                 return False, response.content_id
 
         except asyncio.TimeoutError:
-            # Re-raise timeout to be handled by calling methods
+            # A timeout is AutoMod failing like any other error: an operator
+            # who wants runs to go on without it sets automod_fail_open.
             logger.warning(
                 f"AutoMod API timeout for {metadata.get('graph_exec_id', 'unknown')}"
             )
-            raise
+            return self.config.fail_open, None
         except Exception as e:
             logger.error(f"AutoMod moderation error: {e}")
             return self.config.fail_open, None

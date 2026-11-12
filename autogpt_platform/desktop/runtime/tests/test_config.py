@@ -284,45 +284,56 @@ def test_secrets_are_generated_once(bundle: Bundle, data: DataDir):
     assert {"POSTGRES_PASSWORD", "ENCRYPTION_KEY", "BETTER_AUTH_SECRET"} <= set(first)
 
 
-def test_backend_uses_persisted_internal_key_without_exposing_it_to_frontend(
-    bundle: Bundle, data: DataDir
+@pytest.mark.parametrize("key", ["INTERNAL_API_KEY", "BAN_RECORD_HASH_KEY"])
+def test_backend_uses_persisted_key_without_exposing_it_to_frontend(
+    bundle: Bundle, data: DataDir, key: str
 ):
     secret = settings.ensure_secrets(bundle, data)
     port = ports.allocate(data.ports_file)
     backend = settings.backend_environment(
-        bundle, data, port, secret, {"INTERNAL_API_KEY": "user-setting-must-not-win"}
+        bundle, data, port, secret, {key: "user-setting-must-not-win"}
     )
     frontend = settings.frontend_environment(backend, port, secret, data)
 
-    assert backend["INTERNAL_API_KEY"] == secret["INTERNAL_API_KEY"]
-    assert len(backend["INTERNAL_API_KEY"]) >= 32
-    assert "INTERNAL_API_KEY" not in frontend
+    assert backend[key] == secret[key]
+    assert len(backend[key]) >= 32
+    assert key not in frontend
 
 
-def test_v1_profile_upgrade_preserves_existing_secrets_and_internal_key_on_restart(
-    bundle: Bundle, data: DataDir
+@pytest.mark.parametrize(
+    "version, missing",
+    [
+        ("1", {"INTERNAL_API_KEY", "BAN_RECORD_HASH_KEY"}),
+        ("2", {"BAN_RECORD_HASH_KEY"}),
+    ],
+)
+def test_profile_upgrade_preserves_existing_secrets_and_new_keys_on_restart(
+    bundle: Bundle, data: DataDir, version: str, missing: set[str]
 ):
     before = settings.ensure_secrets(bundle, data)
     legacy = "\n".join(
         line.replace(
-            "AUTOGPT_RUNTIME_CONFIG_VERSION=2", "AUTOGPT_RUNTIME_CONFIG_VERSION=1"
+            f"AUTOGPT_RUNTIME_CONFIG_VERSION={before['AUTOGPT_RUNTIME_CONFIG_VERSION']}",
+            f"AUTOGPT_RUNTIME_CONFIG_VERSION={version}",
         )
         for line in data.runtime_env.read_text().splitlines()
-        if not line.startswith("INTERNAL_API_KEY=")
+        if line.partition("=")[0] not in missing
     )
     data.runtime_env.write_text(legacy + "\n")
 
     upgraded = settings.ensure_secrets(bundle, data)
     restarted = settings.ensure_secrets(bundle, data)
     assert upgraded == restarted
-    assert upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"] == "2"
-    assert {k: v for k, v in before.items() if k != "INTERNAL_API_KEY"} == {
-        k: v for k, v in upgraded.items() if k != "INTERNAL_API_KEY"
+    assert upgraded["AUTOGPT_RUNTIME_CONFIG_VERSION"] == "3"
+    assert {k: v for k, v in before.items() if k not in missing} == {
+        k: v for k, v in upgraded.items() if k not in missing
     }
     backend = settings.backend_environment(
         bundle, data, ports.allocate(data.ports_file), restarted, {}
     )
-    assert backend["INTERNAL_API_KEY"] == upgraded["INTERNAL_API_KEY"]
+    for key in missing:
+        assert backend[key] == upgraded[key]
+        assert len(backend[key]) >= 32
 
 
 def test_environment_is_wired_to_the_allocated_ports(bundle: Bundle, data: DataDir):
