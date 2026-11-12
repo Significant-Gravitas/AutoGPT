@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   act,
   render,
@@ -9,6 +9,9 @@ import {
 } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
+import AutoGPTServerAPI from "@/lib/autogpt-server-api";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 
 import { TopUpForm } from "../TopUpForm";
 
@@ -34,11 +37,16 @@ function captureTopUpRequest() {
   return { getBody: () => body };
 }
 
-describe("TopUpForm", () => {
-  beforeEach(() => {
-    routerPush.mockClear();
-  });
+beforeEach(() => {
+  routerPush.mockClear();
+  useAuthStore.setState({ user: { id: "user-a" } as User });
+});
 
+afterEach(() => {
+  useAuthStore.setState({ user: null });
+});
+
+describe("TopUpForm", () => {
   test("submits the entered amount converted to cents", async () => {
     const { getBody } = captureTopUpRequest();
 
@@ -148,5 +156,63 @@ describe("TopUpForm", () => {
     const topUp = await screen.findByRole("button", { name: /top up/i });
     expect(topUp.hasAttribute("disabled")).toBe(false);
     expect(routerPush).not.toHaveBeenCalledWith("");
+  });
+
+  test("ignores a checkout started by the previous identity and leaves the page usable", async () => {
+    const oldCheckoutURL = "https://checkout.example/old-user";
+    const newCheckoutURL = "https://checkout.example/new-user";
+    let topUps = 0;
+    let releaseOldRequest: (() => void) | undefined;
+    server.use(
+      http.post("*/api/internal/credits", async () => {
+        topUps += 1;
+        if (topUps > 1) {
+          return HttpResponse.json({ checkout_url: newCheckoutURL });
+        }
+        await new Promise<void>((resolve) => {
+          releaseOldRequest = resolve;
+        });
+        return HttpResponse.json({ checkout_url: oldCheckoutURL });
+      }),
+    );
+    const requestTopUp = vi.spyOn(AutoGPTServerAPI.prototype, "requestTopUp");
+
+    try {
+      render(<TopUpForm />);
+      fireEvent.change(screen.getByLabelText("Amount"), {
+        target: { value: "15" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /top up/i }));
+      await screen.findByRole("button", { name: /redirecting/i });
+      await waitFor(() => expect(releaseOldRequest).toBeDefined());
+      const oldCheckout = requestTopUp.mock.results[0]?.value;
+
+      act(() => {
+        useAuthStore.setState({ user: { id: "user-b" } as User });
+      });
+      releaseOldRequest?.();
+      await act(async () => {
+        await oldCheckout;
+      });
+      await act(async () => {});
+
+      expect(routerPush).not.toHaveBeenCalled();
+      // A stale answer must not mark the page as leaving for Stripe, or every
+      // checkout button would stay busy for the next account.
+      const topUp = screen.getByRole("button", { name: /top up/i });
+      expect(topUp.hasAttribute("disabled")).toBe(false);
+
+      fireEvent.change(screen.getByLabelText("Amount"), {
+        target: { value: "20" },
+      });
+      fireEvent.click(topUp);
+      await waitFor(() =>
+        expect(routerPush).toHaveBeenCalledWith(newCheckoutURL),
+      );
+      expect(routerPush).not.toHaveBeenCalledWith(oldCheckoutURL);
+      await act(async () => {});
+    } finally {
+      requestTopUp.mockRestore();
+    }
   });
 });

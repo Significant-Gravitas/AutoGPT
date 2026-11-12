@@ -441,15 +441,14 @@ class BaseGraph(GraphBaseMeta):
                             if k not in ["description", "default", "secret"]
                         },
                         "secret": False,
-                        # Default value has to be set for advanced fields.
-                        "advanced": p.advanced and p.value is not None,
+                        "advanced": p.advanced and p.is_optional(),
                         "title": p.title or p.name,
                         **({"description": p.description} if p.description else {}),
                         **({"default": p.value} if p.value is not None else {}),
                     }
                     for p in schema_fields
                 },
-                "required": [p.name for p in schema_fields if p.value is None],
+                "required": [p.name for p in schema_fields if not p.is_optional()],
             }
         except AttributeError as e:
             raise ValueError(str(e)) from e
