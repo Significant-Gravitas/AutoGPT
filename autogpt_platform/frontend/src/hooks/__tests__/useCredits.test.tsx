@@ -570,3 +570,39 @@ describe("useCredits identity scope", () => {
     ).toBeNull();
   });
 });
+
+describe("useCredits balance reads", () => {
+  test("keeps the newer balance when an older read answers after it", async () => {
+    let reads = 0;
+    let answerOlderRead: ((value: { credits: number }) => void) | undefined;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        reads += 1;
+        if (reads === 1) {
+          return new Promise<{ credits: number }>((resolve) => {
+            answerOlderRead = resolve;
+          });
+        }
+        return { credits: 929 };
+      }),
+    );
+    const view = renderHook(() => useCredits({ identityKey: "user-a" }));
+
+    let olderRead: Promise<void> | undefined;
+    act(() => {
+      olderRead = Promise.resolve(view.result.current.fetchCredits());
+    });
+    await waitFor(() => expect(reads).toBe(1));
+    await act(async () => {
+      await Promise.resolve(view.result.current.fetchCredits());
+    });
+    expect(view.result.current.credits).toBe(929);
+
+    await act(async () => {
+      answerOlderRead?.({ credits: 979 });
+      await olderRead;
+    });
+
+    expect(view.result.current.credits).toBe(929);
+  });
+});
