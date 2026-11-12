@@ -7,6 +7,7 @@ import {
 } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
+import { nativeSessionBearer } from "./native-session-bearer";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
@@ -458,6 +459,7 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    nativeSessionBearer(),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
@@ -474,7 +476,8 @@ export const auth = betterAuth({
         // interchangeable during the migration window.
         audience: "authenticated",
         expirationTime: "1h",
-        definePayload: ({ user }) => ({
+        definePayload: ({ user, session }) => ({
+          sid: session.id,
           email: user.email,
           role: user.role === "admin" ? "admin" : "authenticated",
           user_metadata: { name: user.name },
