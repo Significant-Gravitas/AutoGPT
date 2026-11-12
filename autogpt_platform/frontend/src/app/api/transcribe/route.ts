@@ -11,6 +11,12 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB - Whisper's limit
 // same way in the transcript. Whisper only reads the last ~224 tokens of a
 // prompt, so a long draft is trimmed from the front rather than sent whole.
 const MAX_CONTEXT_CHARS = 800;
+// The upstream answers 400 when it cannot decode the audio. The same bytes
+// fail the same way every time, so the client offers a new recording, not a
+// retry. Its own wording ("Invalid file format…") means nothing to the user.
+const UNREADABLE_RECORDING_CODE = "unreadable_recording";
+const UNREADABLE_RECORDING_MESSAGE =
+  "We couldn't read that recording. Try recording again.";
 
 function getTranscriptionApiBaseUrl(): string {
   return (
@@ -118,6 +124,15 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error("Transcription API error:", errorData);
+      if (response.status === 400) {
+        return NextResponse.json(
+          {
+            error: UNREADABLE_RECORDING_MESSAGE,
+            code: UNREADABLE_RECORDING_CODE,
+          },
+          { status: 400 },
+        );
+      }
       return NextResponse.json(
         { error: errorData.error?.message || "Transcription failed" },
         { status: response.status },

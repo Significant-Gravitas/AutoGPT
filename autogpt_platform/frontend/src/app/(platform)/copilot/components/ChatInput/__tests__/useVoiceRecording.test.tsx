@@ -6,6 +6,11 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+const trackDictation = vi.fn();
+vi.mock("@/services/copilot/dictation-analytics", () => ({
+  trackDictation: (event: string) => trackDictation(event),
+}));
+
 const downloaded: Blob[] = [];
 vi.mock("../../../voice/downloadRecording", () => ({
   downloadRecording: (blob: Blob) => downloaded.push(blob),
@@ -337,8 +342,50 @@ describe("useVoiceRecording transcription failures", () => {
     expect(result.current.transcriptionError).toBeNull();
   });
 
-  function failTranscription(error: string) {
-    fetchMock.mockResolvedValue({ ok: false, json: async () => ({ error }) });
+  it("offers a new recording, not a retry, when the API cannot read the audio", async () => {
+    // The same bytes fail the same way every time: a retry only wastes a
+    // round trip and opens a second error.
+    failTranscription(
+      "We couldn't read that recording. Try recording again.",
+      "unreadable_recording",
+    );
+    const result = await recordAndStop();
+    await waitFor(() =>
+      expect(result.current.isRecordingUnreadable).toBe(true),
+    );
+    expect(trackDictation).toHaveBeenCalledWith("dictation_rejected");
+
+    await act(async () => result.current.retryTranscription());
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The audio is still there to download.
+    expect(result.current.hasFailedRecording).toBe(true);
+
+    await act(async () => result.current.startRecording());
+
+    expect(trackDictation).toHaveBeenCalledWith("dictation_rerecorded");
+    expect(result.current.isRecordingUnreadable).toBe(false);
+    expect(result.current.transcriptionError).toBeNull();
+  });
+
+  it("keeps Retry for a failure a second attempt can fix", async () => {
+    failTranscription("Transcription failed");
+    const result = await recordAndStop();
+    await waitFor(() => expect(result.current.hasFailedRecording).toBe(true));
+
+    expect(result.current.isRecordingUnreadable).toBe(false);
+    expect(trackDictation).not.toHaveBeenCalled();
+
+    await act(async () => result.current.startRecording());
+
+    expect(trackDictation).not.toHaveBeenCalled();
+  });
+
+  function failTranscription(error: string, code?: string) {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error, code }),
+    });
   }
 
   async function recordAndStop() {

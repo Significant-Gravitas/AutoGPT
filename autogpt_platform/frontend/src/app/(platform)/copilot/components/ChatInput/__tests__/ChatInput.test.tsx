@@ -116,10 +116,12 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const voiceRetry = vi.fn();
+const voiceStartRecording = vi.fn();
 const voiceDownload = vi.fn();
 const voiceDismiss = vi.fn();
 let mockTranscriptionError: string | null = null;
 let mockHasFailedRecording = false;
+let mockIsRecordingUnreadable = false;
 let mockIsTranscribing = false;
 // Real for the focus tests: the hook focuses the composer too.
 let mockRealVoiceRecording = false;
@@ -131,10 +133,12 @@ vi.mock("../useVoiceRecording", async (importOriginal) => {
     isTranscribing: mockIsTranscribing,
     transcriptionError: mockTranscriptionError,
     hasFailedRecording: mockHasFailedRecording,
+    isRecordingUnreadable: mockIsRecordingUnreadable,
     retryTranscription: voiceRetry,
     downloadFailedRecording: voiceDownload,
     dismissTranscriptionError: voiceDismiss,
     elapsedTime: 0,
+    startRecording: voiceStartRecording,
     toggleRecording: vi.fn(),
     handleKeyDown: vi.fn(),
     showMicButton: false,
@@ -279,6 +283,7 @@ afterEach(() => {
   mockInitialPrompt = null;
   mockTranscriptionError = null;
   mockHasFailedRecording = false;
+  mockIsRecordingUnreadable = false;
   mockIsTranscribing = false;
   mockRealVoiceRecording = false;
 });
@@ -1616,6 +1621,23 @@ describe("ChatInput transcription failure", () => {
     expect(voiceRetry).toHaveBeenCalledTimes(1);
     expect(voiceDownload).toHaveBeenCalledTimes(1);
     expect(voiceDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Record again instead of Retry when the recording is unreadable", () => {
+    mockTranscriptionError =
+      "We couldn't read that recording. Try recording again.";
+    mockHasFailedRecording = true;
+    mockIsRecordingUnreadable = true;
+    render(<ChatInput onSend={mockOnSend} />);
+
+    expect(screen.queryByRole("button", { name: /^Retry$/ })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Download recording/ }),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Record again$/ }));
+
+    expect(voiceStartRecording).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the row up while the retry is in flight", () => {

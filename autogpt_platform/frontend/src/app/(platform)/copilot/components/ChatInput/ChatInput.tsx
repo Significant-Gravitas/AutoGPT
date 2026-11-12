@@ -306,10 +306,12 @@ export const ChatInput = memo(function ChatInput({
     isTranscribing,
     transcriptionError,
     hasFailedRecording,
+    isRecordingUnreadable,
     retryTranscription,
     downloadFailedRecording,
     dismissTranscriptionError,
     elapsedTime,
+    startRecording,
     toggleRecording,
     handleKeyDown: voiceHandleKeyDown,
     showMicButton,
@@ -485,7 +487,8 @@ export const ChatInput = memo(function ChatInput({
           <TranscriptionErrorBar
             message={transcriptionError}
             isRetrying={isTranscribing}
-            onRetry={retryTranscription}
+            onRetry={isRecordingUnreadable ? undefined : retryTranscription}
+            onRecordAgain={isRecordingUnreadable ? startRecording : undefined}
             onDownload={downloadFailedRecording}
             onDismiss={dismissTranscriptionError}
             className={stacked ? undefined : "mt-1.5"}
