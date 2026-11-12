@@ -67,6 +67,13 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
    poetry run cli erase-account sam@example.com --close --now --apply
    ```
 
+   **Without the email**, when nobody should hear from us about it (`--no-email`, only with `--close --now`): closing sends no confirmation and records that on the request (`confirmationSkipped`), so the erasure sends none late either. On an account closed already whose confirmation has not gone out, it marks the request the same way. Everything else runs as above:
+
+   ```sh
+   poetry run cli erase-account sam@example.com --close --now --no-email
+   poetry run cli erase-account sam@example.com --close --now --no-email --apply
+   ```
+
    The owner can no longer keep the account after that. Then go on to step 5.
 4. **Erase**, after the 14 days. The job does it within the hour. To run it by hand:
 

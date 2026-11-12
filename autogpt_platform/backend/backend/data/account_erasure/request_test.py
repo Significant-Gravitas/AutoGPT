@@ -266,7 +266,9 @@ async def test_an_email_request_is_closed_the_way_settings_closes_one(monkeypatc
 
     erase_after = await request.close_for_email_request(USER_ID)
 
-    close.assert_awaited_once_with(USER_ID, EMAIL, AccountDeletionSource.EMAIL)
+    close.assert_awaited_once_with(
+        USER_ID, EMAIL, AccountDeletionSource.EMAIL, send_confirmation=True
+    )
     assert erase_after == NOW + timedelta(days=14)
 
 
@@ -281,8 +283,65 @@ async def test_an_email_request_to_be_erased_at_once_has_no_14_days(monkeypatch)
     await request.close_for_email_request(USER_ID, erase_now=True)
 
     close.assert_awaited_once_with(
-        USER_ID, EMAIL, AccountDeletionSource.EMAIL, grace=timedelta(0)
+        USER_ID,
+        EMAIL,
+        AccountDeletionSource.EMAIL,
+        grace=timedelta(0),
+        send_confirmation=True,
     )
+
+
+@pytest.mark.asyncio
+async def test_an_email_request_closed_without_the_email_sends_none(monkeypatch):
+    """--no-email: closing sends no confirmation and records that on the
+    request, so the erasure sends none either."""
+    monkeypatch.setattr(
+        request, "get_user_by_id", AsyncMock(return_value=SimpleNamespace(email=EMAIL))
+    )
+    close = AsyncMock(return_value=NOW)
+    monkeypatch.setattr(request, "delete_account", close)
+
+    await request.close_for_email_request(USER_ID, erase_now=True, send_email=False)
+
+    assert close.await_args.kwargs["send_confirmation"] is False
+
+
+@pytest.mark.asyncio
+async def test_an_account_closed_already_can_skip_the_late_confirmation(
+    requests_table,
+):
+    """Only a request whose email did not go out and that is not erased."""
+    assert await request.skip_confirmation(USER_ID) is True
+
+    kwargs = requests_table.update_many.await_args.kwargs
+    assert kwargs["where"] == {
+        "userId": USER_ID,
+        "confirmationSentAt": None,
+        "completedAt": None,
+    }
+    assert kwargs["data"] == {"confirmationSkipped": True}
+
+    requests_table.update_many.return_value = 0
+    assert await request.skip_confirmation(USER_ID) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dry_run", [True, False])
+async def test_a_request_closed_without_the_email_gets_no_late_one(
+    monkeypatch, dry_run
+):
+    sent = AsyncMock()
+    monkeypatch.setattr(request, "send_account_deleted_email", sent)
+    marked = AsyncMock()
+    monkeypatch.setattr(request, "mark_confirmation_sent", marked)
+    subject = PENDING.model_copy(update={"confirmation_skipped": True})
+
+    report = await request.send_confirmation(subject, dry_run=dry_run)
+
+    assert report.counts == {"emails": 0}
+    assert "--no-email" in report.note
+    sent.assert_not_awaited()
+    marked.assert_not_awaited()
 
 
 @pytest.mark.asyncio

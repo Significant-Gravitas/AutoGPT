@@ -77,22 +77,47 @@ async def claim_request(user_id: str) -> str | None:
     return rows[0]["id"] if rows else None
 
 
-async def close_for_email_request(user_id: str, *, erase_now: bool = False) -> datetime:
+async def close_for_email_request(
+    user_id: str, *, erase_now: bool = False, send_email: bool = True
+) -> datetime:
     """Close the account for a request made by email, exactly as the Settings
     button does (`delete_account`): Stripe cancelled, apps disconnected, work
     stopped, email switched off, sessions ended, listings taken down, the
     request row written and the confirmation sent. Returns when the 14 days
     to keep the account end; the erasure follows after that. With
     `erase_now`, for an owner who asked to be erased at once, there are no
-    14 days, and the confirmation says the account is being erased. A no-op
-    for an account already closed. Raises `PlanCancellationError`, with the
-    account still open, when Stripe refuses the cancel."""
+    14 days, and the confirmation says the account is being erased. Without
+    `send_email` (`--no-email`) no confirmation is sent, and the request
+    records that, so the erasure sends none either. A no-op for an account
+    already closed. Raises `PlanCancellationError`, with the account still
+    open, when Stripe refuses the cancel."""
     user = await get_user_by_id(user_id)
     if not erase_now:
-        return await delete_account(user_id, user.email, AccountDeletionSource.EMAIL)
+        return await delete_account(
+            user_id,
+            user.email,
+            AccountDeletionSource.EMAIL,
+            send_confirmation=send_email,
+        )
     return await delete_account(
-        user_id, user.email, AccountDeletionSource.EMAIL, grace=timedelta(0)
+        user_id,
+        user.email,
+        AccountDeletionSource.EMAIL,
+        grace=timedelta(0),
+        send_confirmation=send_email,
     )
+
+
+async def skip_confirmation(user_id: str) -> bool:
+    """For an account closed already, record that the erasure must not send
+    the confirmation closing could not (`--no-email`). False when there is
+    nothing to skip: no request, the email went out already, or the erasure
+    finished."""
+    count = await AccountDeletionRequest.prisma().update_many(
+        where={"userId": user_id, "confirmationSentAt": None, "completedAt": None},
+        data={"confirmationSkipped": True},
+    )
+    return count > 0
 
 
 async def end_grace_now(user_id: str) -> bool:
@@ -132,6 +157,13 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
                 if subject.confirmation_sent
                 else "closing the account sends it"
             ),
+        )
+    if subject.confirmation_skipped:
+        return StepReport(
+            name="confirmation",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"emails": 0},
+            note="closed without the email (--no-email)",
         )
     if not subject.email or subject.erase_after is None:
         # Not a skip: the address goes only with the rows, which an earlier
