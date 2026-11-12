@@ -13,9 +13,13 @@ import { useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+import { applyAppearance, readAppearance } from "@/lib/appearance";
 import { authClient } from "@/lib/auth/client";
 import { queryClient } from "@/lib/session";
 import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
+
+// Before the first render, so the app opens in the scheme picked last time.
+applyAppearance(readAppearance());
 
 function navigationTheme(scheme: Scheme, colors: Colors): Theme {
   const base = scheme === "light" ? DefaultTheme : DarkTheme;

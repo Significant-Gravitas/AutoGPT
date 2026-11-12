@@ -19,6 +19,7 @@ import { avatarSource } from "@/features/team/helpers";
 import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 
 import { DrawerRow } from "../DrawerRow";
+import { AppearancePicker } from "./AppearancePicker";
 
 const AVATAR_SIZE = 36;
 
@@ -108,6 +109,8 @@ export function UserMenu({ name, email, image, onOpenSettings, onSignOut }: Prop
         />
         {anchor ? (
           <View accessibilityRole="menu" style={[styles.menu, anchor]}>
+            <AppearancePicker />
+            <View style={styles.divider} />
             <DrawerRow
               icon={Settings01Icon}
               label="Settings"
@@ -138,6 +141,11 @@ const useStyles = createStyles((colors) => ({
   text: { flex: 1, minWidth: 0 },
   title: { ...type.label, color: colors.text },
   detail: { ...type.small, color: colors.textTertiary },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: spacing.xs,
+    backgroundColor: colors.border,
+  },
   menu: {
     position: "absolute",
     padding: spacing.xs,
