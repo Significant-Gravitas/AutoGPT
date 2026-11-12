@@ -110,10 +110,12 @@ async def _create_once(
         kept = await AccountBanRecord.prisma().find_first(
             where={"emailHash": digest, "deleteAfter": {"gt": now}}
         )
-        if kept is not None:
+        if kept is not None and (
             await _outlast(digest, kept.recordedAt, ban_expires)
+            or await _in_force(digest, now)
+        ):
             return
-        # The purge took the expired record in between: create it again, and
+        # The purge took the record in between: create it again, and
         # a second conflict fails the step rather than report a record that
         # is not there.
         await _create(digest, now, _delete_after(ban_expires, now))
@@ -121,16 +123,24 @@ async def _create_once(
 
 async def _outlast(
     digest: str, recorded_at: datetime, ban_expires: datetime | None
-) -> None:
+) -> bool:
     """Move the kept record's end out to this ban's, counted from when the
     record was first kept, so a longer ban on another spelling is not lost
     and a rerun of the same ban, which ends where the record does, changes
-    nothing. Never moves an end in."""
+    nothing. Never moves an end in. Whether it moved the end."""
     delete_after = _delete_after(ban_expires, recorded_at)
-    await AccountBanRecord.prisma().update_many(
+    moved = await AccountBanRecord.prisma().update_many(
         where={"emailHash": digest, "deleteAfter": {"lt": delete_after}},
         data={"deleteAfter": delete_after},
     )
+    return moved > 0
+
+
+async def _in_force(digest: str, now: datetime) -> bool:
+    record = await AccountBanRecord.prisma().find_first(
+        where={"emailHash": digest, "deleteAfter": {"gt": now}}
+    )
+    return record is not None
 
 
 async def _create(digest: str, now: datetime, delete_after: datetime) -> None:

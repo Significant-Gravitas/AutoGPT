@@ -247,6 +247,20 @@ async def test_a_shorter_ban_on_another_spelling_never_moves_the_end_in(records)
     assert outlast["where"]["deleteAfter"] == {"lt": ends}
 
 
+@pytest.mark.asyncio
+async def test_a_record_purged_before_its_end_moved_is_created_again(records):
+    """It ran out and went between the read and the update: nothing is
+    kept, so the record is created again."""
+    now = datetime.now(UTC)
+    records.create.side_effect = [_conflict(), None]
+    records.find_first.side_effect = [_record(now, now + timedelta(seconds=1)), None]
+
+    report = await ban_record.keep_ban_record(BANNED, dry_run=False)
+
+    assert report.status == StepStatus.DONE
+    assert records.create.await_count == 2
+
+
 def _record(recorded_at: datetime, delete_after: datetime) -> MagicMock:
     return MagicMock(recordedAt=recorded_at, deleteAfter=delete_after)
 
