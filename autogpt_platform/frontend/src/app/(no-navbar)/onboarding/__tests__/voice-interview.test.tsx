@@ -654,6 +654,13 @@ async function liveCall() {
   return (await liveRoomCall()).socket;
 }
 
+// Whether *first* comes before *second* in the page.
+function precedes(first: Node, second: Node) {
+  return Boolean(
+    first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+}
+
 function endCall(socket: FakeWebSocket, reason: string) {
   act(() => {
     socket.relay({ type: "ended", reason, elapsed_s: 92.4 });
@@ -1392,6 +1399,27 @@ describe("onboarding interview by voice: the call", () => {
     expect(mints).toBe(2);
     expect(screen.queryByText(/couldn't/)).toBeNull();
     expect(tracked("voice_interview_start_failed")).toEqual([]);
+  });
+
+  it("puts the call's ending above its words once the call has ended, and the words above the call's buttons before", async () => {
+    callStates[CALL_ID] = [callRecord({ interview: "taken" })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    act(() => {
+      socket.relay({ type: "agent_text", text: "Hi, I'm Otto." });
+      socket.relay({ type: "turn_complete", turn: 0, turns_left: 15 });
+    });
+    const caption = await screen.findByText("Hi, I'm Otto.");
+    expect(
+      precedes(caption, screen.getByRole("button", { name: "Hang up" })),
+    ).toBe(true);
+
+    endCall(socket, "finished");
+
+    const meetTeam = await screen.findByRole("button", {
+      name: "Meet your team",
+    });
+    expect(precedes(meetTeam, screen.getByText("Hi, I'm Otto."))).toBe(true);
   });
 
   it("captions what Otto and the person say", async () => {

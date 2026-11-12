@@ -80,8 +80,7 @@ export function VoiceCall({ call }: Props) {
         </div>
       )}
 
-      <CallCaptions lines={call.captions} />
-
+      {/* Once the call has ended, what comes next leads, above the words. */}
       {call.phase === "ended" && call.ending && (
         <CallEnded
           ending={call.ending}
@@ -95,6 +94,8 @@ export function VoiceCall({ call }: Props) {
           onSkip={() => void call.skip()}
         />
       )}
+
+      <CallCaptions lines={call.captions} />
 
       {isOnCall && (
         <div className="flex flex-wrap items-center justify-center gap-3">
