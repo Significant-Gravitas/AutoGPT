@@ -1,7 +1,7 @@
 """A graphiti BFS read whose origins repeat (``falkordb_origins.py``) against a
-live FalkorDB: walking each origin once empirically returns the same facts in
-the same order as walking every repeat, under a limit that cuts the walk short
-too. Cypher does not guarantee that order without ``ORDER BY``.
+live FalkorDB: walking each origin once returns the same facts as walking every
+repeat, under a limit that cuts the walk short too. Compare complete records by
+UUID because Cypher does not guarantee row order without ``ORDER BY``.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -95,7 +95,7 @@ async def test_changed_edge_bfs_aggregate_keeps_duplicate_origins(
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize("limit", [10, 2])
-async def test_walking_each_origin_once_returns_the_same_facts_in_order(
+async def test_walking_each_origin_once_returns_the_same_facts(
     scope_graph, stub_graphiti_client, mocker, limit: int
 ) -> None:
     driver, scope = scope_graph
@@ -112,7 +112,9 @@ async def test_walking_each_origin_once_returns_the_same_facts_in_order(
     )
     every_repeat = await _walk(driver, scope.group_id, origins, limit)
 
-    assert once == every_repeat
+    assert sorted(once, key=lambda edge: edge["uuid"]) == sorted(
+        every_repeat, key=lambda edge: edge["uuid"]
+    )
     assert len(once) == min(limit, 4)
 
 
