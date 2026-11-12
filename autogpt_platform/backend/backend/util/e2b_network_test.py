@@ -859,7 +859,23 @@ class TestProxyCA:
         ):
             await create_sandbox(cls, _BLOCK_OWNER, template="t", api_key="own")
             await connect_sandbox(cls, "sb-1", _BLOCK_OWNER, api_key="own")
-        assert [c.args for c in trust.await_args_list] == [(box,), (box,)]
+        assert [(c.args, c.kwargs) for c in trust.await_args_list] == [
+            ((box,), {"fresh": True}),
+            ((box,), {"chat": False}),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_chats_box_reconnects_as_a_chats(self):
+        box, redis = _box("sb-1"), _redis()
+        trust = AsyncMock(return_value={})
+        with (
+            _configured(_PROXY),
+            patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
+            patch(f"{_M}.trust_proxy_ca", trust),
+            patch(f"{_M}._on_platform_key", return_value=False),
+        ):
+            await connect_sandbox(_sdk(box), "sb-1", _OWNER, api_key="k")
+        trust.assert_awaited_once_with(box, chat=True)
 
     @pytest.mark.asyncio
     async def test_nothing_is_installed_without_a_proxy_or_without_a_pin(self):
@@ -873,7 +889,7 @@ class TestProxyCA:
             with _configured(None):
                 await create_sandbox(cls, _BLOCK_OWNER, template="t", api_key="own")
                 await connect_sandbox(cls, "sb-1", _BLOCK_OWNER, api_key="own")
-                assert await proxy_trust_envs(box) == {}
+                assert await proxy_trust_envs(box, _BLOCK_OWNER) == {}
             with _configured(_PROXY):
                 # A connect that only pauses or kills the box pins nothing.
                 await connect_sandbox(
@@ -931,4 +947,4 @@ class TestProxyCA:
             _configured(_PROXY),
             patch(f"{_M}.trust_proxy_ca", AsyncMock(return_value=installed)),
         ):
-            assert await proxy_trust_envs(_box()) == envs
+            assert await proxy_trust_envs(_box(), _BLOCK_OWNER) == envs

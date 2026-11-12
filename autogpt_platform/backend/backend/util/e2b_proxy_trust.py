@@ -30,11 +30,25 @@ installs again on the box's next reconnect; so does an install that only
 partly worked.
 
 The install is a command the platform runs, so it goes through the same
-door as the others: a chat's box, which has a login baseline, through
-``sandbox_login.run_internal`` (it refuses to run when ``/etc``'s login files
-were edited, and skips the user's), and the profile script it writes is
-taken into that baseline; any other box, through the output limit with no
-home directory.  A box being created has run nothing yet.
+door as the others.  A box being created has run nothing yet, so it runs
+there through the output limit with no home directory.  A reconnect of a
+chat's box goes through ``sandbox_login.run_internal``, which refuses to run
+when ``/etc``'s login files were edited (or have no baseline) and skips the
+user's; the profile script the install writes is taken into that baseline.
+A block's box reconnects the way it was created, unless it has a baseline
+(a desktop block's), which is then checked too.
+
+Known limits:
+
+- A JavaScript code interpreter kernel is already running when the CA is
+  installed, and Node reads ``NODE_EXTRA_CA_CERTS`` only at startup, so
+  JavaScript in a code-runner block does not trust the CA.  Python does:
+  ``requests`` reads ``REQUESTS_CA_BUNDLE`` per request.
+- Firefox keeps a certificate it installed through policy in each profile
+  after the policy drops it, and removing it needs ``certutil``, which the
+  desktop image lacks.  After a rotation a box's Firefox may still trust the
+  retired CA; the box egresses only through the proxy, so nothing else is
+  placed to present a certificate it signed.
 """
 
 import base64
@@ -48,7 +62,13 @@ from cryptography import x509
 from e2b import AsyncSandbox
 
 from backend.data.redis_client import get_redis_async
-from backend.util.sandbox_login import accept_platform_file, has_baseline, run_internal
+from backend.util.e2b_proxy_trust_script import INSTALL_SCRIPT
+from backend.util.sandbox_login import (
+    accept_platform_file,
+    has_baseline,
+    read_capped,
+    run_internal,
+)
 from backend.util.sandbox_output import run_sandbox_command
 from backend.util.settings import Settings
 
@@ -128,15 +148,49 @@ def _envs(bundle: bool) -> dict[str, str]:
     return envs
 
 
-async def trust_proxy_ca(sandbox: AsyncSandbox) -> Optional[dict[str, str]]:
+async def trust_proxy_ca(
+    sandbox: AsyncSandbox, *, fresh: bool = False, chat: bool = False
+) -> Optional[dict[str, str]]:
     """Install the proxy's CA in *sandbox* unless it already trusts this set.
 
+    *fresh* is a box just created, which has run nothing yet; *chat* is a
+    chat's box, whose reconnects always go through the login chain check.
     Returns the environment a process outside a login shell needs to trust
-    it, or ``None`` when the box does not.  Best effort: a box that cannot be
-    made to trust it still works everywhere but on bound hosts, where TLS
-    fails loudly, so a failure is logged and not raised.  Cancellation is the
-    caller's to clean up after.
+    the CA, or ``None`` when the box does not.  Best effort: a box that
+    cannot be made to trust it still works everywhere but on bound hosts,
+    where TLS fails loudly, so a failure is logged and not raised.
+    Cancellation is the caller's to clean up after.
     """
+    certs = _configured_certs(sandbox.sandbox_id)
+    if certs is None:
+        return None
+    want = fingerprint(certs)
+    recorded = await _recorded(sandbox.sandbox_id)
+    if recorded and recorded[0] == want:
+        return _envs(recorded[1:] == ["bundle"])
+    out = await _install(
+        sandbox, certs, want, guarded=await _guarded(sandbox, fresh, chat)
+    )
+    if out is None:
+        return None
+    accepted = await _accept_profile(sandbox)
+    bundle = "bundle: ok" in out
+    if "install: complete" in out and accepted:
+        await _record(sandbox.sandbox_id, want, bundle)
+    else:
+        # Not recorded, so the next reconnect tries again.
+        logger.warning(
+            "[E2B] The swap proxy's CA was only partly installed in %.12s: %s%s",
+            sandbox.sandbox_id,
+            " ".join(line for line in out.splitlines() if line.startswith("install:")),
+            "" if accepted else " (profile not taken into the login baseline)",
+        )
+    return _envs(bundle)
+
+
+def _configured_certs(sandbox_id: str) -> Optional[list[str]]:
+    """The setting's certificates, or ``None`` (logged) when there are none
+    to install."""
     try:
         certs = ca_certs()
     except ValueError as error:
@@ -144,31 +198,61 @@ async def trust_proxy_ca(sandbox: AsyncSandbox) -> Optional[dict[str, str]]:
             "[E2B] E2B_EGRESS_PROXY_CA_CERT is not a list of CA certificates "
             "(%s): %.12s gets no CA, and TLS to bound hosts will fail",
             error,
-            sandbox.sandbox_id,
+            sandbox_id,
         )
         return None
     if not certs:
         logger.warning(
             "[E2B] %.12s egresses through the swap proxy but "
             "E2B_EGRESS_PROXY_CA_CERT is empty: TLS to bound hosts will fail",
-            sandbox.sandbox_id,
+            sandbox_id,
         )
         return None
-    want = fingerprint(certs)
-    key = _TRUSTED_KEY_PREFIX + sandbox.sandbox_id
+    return certs
+
+
+async def _recorded(sandbox_id: str) -> list[str]:
+    """The box's record, ``[fingerprint, "bundle" | "nobundle"]``, or empty."""
     try:
         redis = await get_redis_async()
-        recorded = _text(await redis.get(key)).split()
-        if recorded[:1] == [want]:
-            return _envs(recorded[1:] == ["bundle"])
+        return _text(await redis.get(_TRUSTED_KEY_PREFIX + sandbox_id)).split()
     except Exception:
-        redis = None
         logger.warning("[E2B] Could not read the CA record", exc_info=True)
+        return []
+
+
+async def _record(sandbox_id: str, want: str, bundle: bool) -> None:
     try:
-        # Unknown counts as guarded: a chat's box is never run unchecked.
-        guarded = await has_baseline(sandbox)
+        redis = await get_redis_async()
+        await redis.set(
+            _TRUSTED_KEY_PREFIX + sandbox_id,
+            f"{want} {'bundle' if bundle else 'nobundle'}",
+            ex=_TRUSTED_TTL,
+        )
     except Exception:
-        guarded = True
+        logger.warning("[E2B] Could not record the CA install", exc_info=True)
+
+
+async def _guarded(sandbox: AsyncSandbox, fresh: bool, chat: bool) -> bool:
+    """Whether the install must pass the login chain check.  A new box has run
+    nothing; a chat's box always must, and with no baseline the check
+    refuses; any other box must when it has a baseline (a desktop block's),
+    or when that cannot be told."""
+    if fresh:
+        return False
+    if chat:
+        return True
+    try:
+        return await has_baseline(sandbox)
+    except Exception:
+        return True
+
+
+async def _install(
+    sandbox: AsyncSandbox, certs: list[str], want: str, *, guarded: bool
+) -> Optional[str]:
+    """Run the install script through the door *guarded* calls for; its
+    output, or ``None`` when it could not run."""
     envs = {
         "AGPT_CA_PEM": "\n".join(certs),
         "AGPT_CA_SHA": want,
@@ -179,9 +263,10 @@ async def trust_proxy_ca(sandbox: AsyncSandbox) -> Optional[dict[str, str]]:
     }
     try:
         if guarded:
+            await _repair_profile(sandbox)
             result = await run_internal(
                 sandbox,
-                _INSTALL_SCRIPT,
+                INSTALL_SCRIPT,
                 user="root",
                 envs=envs,
                 timeout=_INSTALL_TIMEOUT_SECONDS,
@@ -189,7 +274,7 @@ async def trust_proxy_ca(sandbox: AsyncSandbox) -> Optional[dict[str, str]]:
         else:
             result = await run_sandbox_command(
                 sandbox,
-                _INSTALL_SCRIPT,
+                INSTALL_SCRIPT,
                 user="root",
                 envs={**envs, "HOME": "/nonexistent"},
                 timeout=_INSTALL_TIMEOUT_SECONDS,
@@ -201,138 +286,30 @@ async def trust_proxy_ca(sandbox: AsyncSandbox) -> Optional[dict[str, str]]:
             exc_info=True,
         )
         return None
-    out = result.stdout or ""
+    return result.stdout or ""
+
+
+async def _repair_profile(sandbox: AsyncSandbox) -> None:
+    """An earlier install that wrote the profile but could not take it into
+    the baseline leaves the login chain check refusing every platform
+    command.  The profile is taken in here only if it is byte for byte ours."""
+    try:
+        if await read_capped(sandbox, PROFILE_FILE) == PROFILE.encode():
+            await accept_platform_file(sandbox, PROFILE_FILE, PROFILE.encode())
+    except Exception:
+        logger.warning("[E2B] Could not check the CA's profile", exc_info=True)
+
+
+async def _accept_profile(sandbox: AsyncSandbox) -> bool:
     try:
         await accept_platform_file(sandbox, PROFILE_FILE, PROFILE.encode())
+        return True
     except Exception:
         logger.warning("[E2B] Could not take in the CA's profile", exc_info=True)
-    bundle = "bundle: ok" in out
-    if "install: complete" not in out:
-        # Not recorded, so the next reconnect tries again.
-        logger.warning(
-            "[E2B] The swap proxy's CA was only partly installed in %.12s: %s",
-            sandbox.sandbox_id,
-            " ".join(line for line in out.splitlines() if line.startswith("install:")),
-        )
-    elif redis is not None:
-        try:
-            await redis.set(
-                key,
-                f"{want} {'bundle' if bundle else 'nobundle'}",
-                ex=_TRUSTED_TTL,
-            )
-        except Exception:
-            logger.warning("[E2B] Could not record the CA install", exc_info=True)
-    return _envs(bundle)
+        return False
 
 
 def _text(value: object) -> str:
     if value is None:
         return ""
     return value.decode() if isinstance(value, bytes) else str(value)
-
-
-# Runs as root in a box of any image: every step but writing the CA itself
-# is skipped where its tool or browser is missing, and one that fails is
-# reported, which leaves the box to be installed again.  Each certificate
-# also goes in a file of its own (``ca-N.crt``): update-ca-certificates,
-# certutil and Firefox read only a file's first.
-_INSTALL_SCRIPT = r"""
-set -u
-dir=/usr/local/share/agpt-egress-proxy
-if [ "$(cat "$dir/sha256" 2>/dev/null)" = "$AGPT_CA_SHA" ]; then
-  [ -s "$dir/bundle.pem" ] && echo "bundle: ok"
-  echo "install: complete"
-  exit 0
-fi
-mkdir -p "$dir" && printf '%s\n' "$AGPT_CA_PEM" > "$dir/ca.pem" || exit 1
-rm -f "$dir/sha256" "$dir"/ca-*.crt
-awk -v out="$dir/ca" '/BEGIN CERTIFICATE/ { f = sprintf("%s-%d.crt", out, n++) }
-  f { print > f } /END CERTIFICATE/ { close(f); f = "" }' "$dir/ca.pem" || exit 1
-failed=""
-fail() { failed="$failed $1"; }
-
-if command -v update-ca-certificates >/dev/null 2>&1; then
-  mkdir -p /usr/local/share/ca-certificates
-  rm -f /usr/local/share/ca-certificates/agpt-egress-proxy-*.crt
-  for f in "$dir"/ca-*.crt; do
-    cp "$f" "/usr/local/share/ca-certificates/agpt-egress-proxy-${f##*/}"
-  done
-  update-ca-certificates >/dev/null 2>&1 || fail system-store
-fi
-if command -v update-ca-trust >/dev/null 2>&1; then
-  rm -f /etc/pki/ca-trust/source/anchors/agpt-egress-proxy-*.crt
-  for f in "$dir"/ca-*.crt; do
-    cp "$f" "/etc/pki/ca-trust/source/anchors/agpt-egress-proxy-${f##*/}"
-  done
-  update-ca-trust extract >/dev/null 2>&1 || fail system-store
-fi
-
-# The public roots plus every configured CA, for clients that do not read the
-# system store.  With no public roots to start from, no bundle at all: one
-# with only the CA would fail every other site.
-roots=""
-for f in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt \
-         /etc/ssl/cert.pem; do
-  [ -s "$f" ] && roots="$f" && break
-done
-[ -n "$roots" ] || roots=$(python3 -c 'import certifi; print(certifi.where())' 2>/dev/null)
-if [ -n "$roots" ] && [ -s "$roots" ]; then
-  cat "$roots" "$dir/ca.pem" > "$dir/bundle.pem.new" &&
-    mv "$dir/bundle.pem.new" "$dir/bundle.pem" && echo "bundle: ok" || fail bundle
-else
-  rm -f "$dir/bundle.pem"
-fi
-
-printf '%s' "$AGPT_PROFILE" > /etc/profile.d/agpt-egress-proxy-ca.sh || fail profile
-
-for d in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do
-  mkdir -p "$d" && printf '%s\n' "$AGPT_CHROME_POLICY" > "$d/agpt-egress-proxy.json" ||
-    fail chrome-policy
-done
-# The user's NSS database holds what it was given until told otherwise: a
-# retired certificate is deleted, not just left out.
-if command -v certutil >/dev/null 2>&1 && id user >/dev/null 2>&1; then
-  db="$(getent passwd user | cut -d: -f6)/.pki/nssdb"
-  su user -s /bin/sh -c "mkdir -p '$db' &&
-    { [ -f '$db/cert9.db' ] || certutil -N -d 'sql:$db' --empty-password; } &&
-    certutil -L -d 'sql:$db' | awk '/^agpt-egress-proxy-/ { print \$1 }' |
-      while read -r n; do certutil -D -d 'sql:$db' -n \"\$n\"; done &&
-    for f in '$dir'/ca-*.crt; do
-      n=\${f##*/}
-      certutil -A -d 'sql:$db' -t C,, -n agpt-egress-proxy-\${n%.crt} -i \"\$f\" || exit 1
-    done" >/dev/null 2>&1 || fail nss
-fi
-
-# Firefox reads one policies.json: merged into whichever it has, never replaced.
-if command -v python3 >/dev/null 2>&1; then
-  python3 - "$dir" <<'PY' >/dev/null 2>&1 || fail firefox
-import glob, json, os, sys
-ours = sys.argv[1] + "/"
-targets = ["/etc/firefox/policies/policies.json"] + [
-    os.path.join(d, "policies.json")
-    for d in ("/usr/lib/firefox/distribution", "/usr/lib/firefox-esr/distribution",
-              "/opt/firefox/distribution")
-    if os.path.isdir(d)
-]
-for path in targets:
-    try:
-        with open(path) as f:
-            doc = json.load(f)
-    except FileNotFoundError:
-        doc = {}
-    certs = doc.setdefault("policies", {}).setdefault("Certificates", {})
-    kept = [p for p in certs.get("Install", []) if not p.startswith(ours)]
-    certs["Install"] = kept + sorted(glob.glob(ours + "ca-*.crt"))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(doc, f, indent=2)
-PY
-fi
-
-if [ -z "$failed" ]; then
-  printf '%s\n' "$AGPT_CA_SHA" > "$dir/sha256" && echo "install: complete"
-else
-  echo "install: incomplete:$failed"
-fi
-"""

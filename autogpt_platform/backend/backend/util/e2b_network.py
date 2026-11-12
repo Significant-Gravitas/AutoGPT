@@ -249,7 +249,7 @@ async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         await _bind(sandbox.sandbox_id, credential.username, owner)
         # Inside the cleanup: a create cancelled during the install (a
         # caller's timeout) would otherwise leave the box running unowned.
-        await trust_proxy_ca(sandbox)
+        await trust_proxy_ca(sandbox, fresh=True)
     except BaseException:
         # The box is on the meter and its handle is about to be lost: kill
         # it rather than leak it, and take its credential with it.
@@ -320,17 +320,17 @@ async def _connect_pinned(
     )
     _audit_pin("reconnected", sandbox_id, owner)
     # A box from before the proxy, or from before a rotation, gets the CA now.
-    await trust_proxy_ca(sandbox)
+    await trust_proxy_ca(sandbox, chat=owner.kind != "block")
     return sandbox
 
 
-async def proxy_trust_envs(sandbox: AsyncSandbox) -> dict[str, str]:
-    """Environment for a process in *sandbox* that does not read
+async def proxy_trust_envs(sandbox: AsyncSandbox, owner: EgressOwner) -> dict[str, str]:
+    """Environment for a process in *owner*'s *sandbox* that does not read
     ``/etc/profile.d`` (a code interpreter's kernel) to trust the proxy's CA.
     Empty with no proxy configured, or when the box could not be made to."""
     if proxy_address() is None:
         return {}
-    return await trust_proxy_ca(sandbox) or {}
+    return await trust_proxy_ca(sandbox, chat=owner.kind != "block") or {}
 
 
 async def reattach_command(

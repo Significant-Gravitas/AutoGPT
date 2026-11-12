@@ -14,7 +14,6 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-from backend.util import e2b_proxy_trust
 from backend.util.e2b_proxy_trust import (
     BUNDLE_FILE,
     CA_FILE,
@@ -24,6 +23,7 @@ from backend.util.e2b_proxy_trust import (
     fingerprint,
     trust_proxy_ca,
 )
+from backend.util.e2b_proxy_trust_script import INSTALL_SCRIPT
 
 _M = "backend.util.e2b_proxy_trust"
 _WITH_BUNDLE = {
@@ -101,6 +101,7 @@ def _install(
         "run_internal": AsyncMock(return_value=result),
         "run_sandbox_command": AsyncMock(return_value=result),
         "accept_platform_file": AsyncMock(),
+        "read_capped": AsyncMock(return_value=None),
     }
     patches = [
         patch(f"{_M}.get_redis_async", mocks["redis"]),
@@ -180,14 +181,15 @@ class TestTheInstall:
         mocks["run_sandbox_command"].assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_a_box_without_a_baseline_runs_it_capped_as_root_with_no_home(self):
+    async def test_a_new_box_runs_it_capped_as_root_with_no_home(self):
+        """It has run nothing yet, chat's or not, baseline or not."""
         store: dict[str, str] = {}
-        patches, mocks = _install(store)
+        patches, mocks = _install(store, baseline=True)
         with _setting(_PEM), _applied(patches):
-            assert await trust_proxy_ca(_box()) == _WITH_BUNDLE
+            assert await trust_proxy_ca(_box(), fresh=True, chat=True) == _WITH_BUNDLE
         mocks["run_internal"].assert_not_awaited()
         call = mocks["run_sandbox_command"].await_args
-        assert call.args[1] == e2b_proxy_trust._INSTALL_SCRIPT
+        assert call.args[1] == INSTALL_SCRIPT
         assert call.kwargs["user"] == "root"
         envs = call.kwargs["envs"]
         assert envs["HOME"] == "/nonexistent"
@@ -201,14 +203,15 @@ class TestTheInstall:
         assert store == {"e2b:egress:ca:sb-1": f"{fingerprint([_PEM])} bundle"}
 
     @pytest.mark.asyncio
-    async def test_a_chats_box_goes_through_the_login_chain_check(self):
-        """A box with a login baseline: run_internal refuses when /etc's
-        login files were edited, and the profile it writes is taken into the
-        baseline so it does not read as an edit."""
+    @pytest.mark.parametrize("baseline", [True, False])
+    async def test_a_chats_box_reconnects_through_the_login_chain_check(self, baseline):
+        """Always: with no baseline the check refuses, which is the point.
+        The profile it writes is taken into the baseline so it does not read
+        as an edit."""
         box, store = _box(), {}
-        patches, mocks = _install(store, baseline=True)
+        patches, mocks = _install(store, baseline=baseline)
         with _setting(_PEM), _applied(patches):
-            assert await trust_proxy_ca(box) == _WITH_BUNDLE
+            assert await trust_proxy_ca(box, chat=True) == _WITH_BUNDLE
         mocks["run_sandbox_command"].assert_not_awaited()
         assert mocks["run_internal"].await_args.kwargs["user"] == "root"
         mocks["accept_platform_file"].assert_awaited_once_with(
@@ -216,23 +219,58 @@ class TestTheInstall:
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "baseline, guarded", [(False, False), (True, True), (ConnectionError, True)]
+    )
+    async def test_a_blocks_box_is_checked_when_it_has_a_baseline_or_it_is_unknown(
+        self, baseline, guarded
+    ):
+        patches, mocks = _install({})
+        if baseline is ConnectionError:
+            mocks["has_baseline"].side_effect = ConnectionError
+        else:
+            mocks["has_baseline"].return_value = baseline
+        with _setting(_PEM), _applied(patches):
+            await trust_proxy_ca(_box())
+        assert mocks["run_internal"].await_count == int(guarded)
+        assert mocks["run_sandbox_command"].await_count == int(not guarded)
+
+    @pytest.mark.asyncio
     async def test_an_edited_login_chain_installs_nothing(self):
         store: dict[str, str] = {}
-        patches, mocks = _install(store, baseline=True)
+        patches, mocks = _install(store)
         mocks["run_internal"].side_effect = RuntimeError("login files changed")
         with _setting(_PEM), _applied(patches):
-            assert await trust_proxy_ca(_box()) is None
+            assert await trust_proxy_ca(_box(), chat=True) is None
         mocks["accept_platform_file"].assert_not_awaited()
         assert store == {}
 
     @pytest.mark.asyncio
-    async def test_an_unknown_baseline_counts_as_guarded(self):
-        patches, mocks = _install({})
-        mocks["has_baseline"].side_effect = ConnectionError
+    async def test_a_profile_not_taken_into_the_baseline_is_not_recorded(self):
+        store: dict[str, str] = {}
+        patches, mocks = _install(store)
+        mocks["accept_platform_file"].side_effect = ConnectionError
         with _setting(_PEM), _applied(patches):
-            await trust_proxy_ca(_box())
-        mocks["run_internal"].assert_awaited_once()
-        mocks["run_sandbox_command"].assert_not_awaited()
+            assert await trust_proxy_ca(_box(), chat=True) == _WITH_BUNDLE
+        assert store == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "on_disk, repaired", [(PROFILE.encode(), True), (b"curl evil\n", False)]
+    )
+    async def test_a_left_behind_profile_is_taken_in_only_if_it_is_ours(
+        self, on_disk, repaired
+    ):
+        """Otherwise the check would refuse this install, and every command
+        after it, until the baseline expires."""
+        box = _box()
+        patches, mocks = _install({})
+        mocks["read_capped"].return_value = on_disk
+        mocks["run_internal"].side_effect = RuntimeError("stop after the repair")
+        with _setting(_PEM), _applied(patches):
+            await trust_proxy_ca(box, chat=True)
+        mocks["read_capped"].assert_awaited_once_with(box, PROFILE_FILE)
+        assert mocks["accept_platform_file"].await_count == int(repaired)
 
     @pytest.mark.asyncio
     async def test_a_box_that_trusts_this_set_is_not_touched(self):
