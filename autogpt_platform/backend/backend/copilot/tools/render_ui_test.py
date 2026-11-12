@@ -319,7 +319,9 @@ def test_text_only_turns_refuse_render_ui(permissions: CopilotPermissions | None
 
 @pytest.mark.asyncio
 async def test_only_cards_count_as_shown(tool: RenderUITool, session: ChatSession):
-    shown = await tool._execute(user_id=None, session=session, blocks=ALL_BLOCKS)
+    shown = await tool._execute(
+        user_id=None, session=session, blocks=ALL_BLOCKS[:MAX_BLOCKS]
+    )
     refused = await tool._execute(user_id=None, session=session, blocks=[])
 
     assert shows_cards(shown.model_dump_json(exclude_none=True))
