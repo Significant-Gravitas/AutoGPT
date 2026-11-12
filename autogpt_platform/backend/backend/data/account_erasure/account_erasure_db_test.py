@@ -794,6 +794,7 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
         assert (await routine.erase_account(user_id, dry_run=False)).complete
 
     assert await ban_record.is_banned_address(banned_email.upper())
+    assert await ban_record.is_banned_address(banned_email.replace("@", "+again@"))
     assert not await ban_record.is_banned_address(not_banned_email)
     record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
         where={"emailHash": ban_record.email_hash(banned_email) or ""}

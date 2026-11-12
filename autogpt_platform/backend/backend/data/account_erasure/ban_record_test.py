@@ -177,19 +177,78 @@ async def test_without_a_key_the_step_fails_so_the_ban_is_not_lost(
 
 
 @pytest.mark.asyncio
-async def test_a_rerun_keeps_the_first_record_and_its_end(records):
+@pytest.mark.parametrize(
+    "ban_expires",
+    [None, datetime.now(UTC) + timedelta(days=30)],
+    ids=["for-good", "temporary"],
+)
+async def test_a_rerun_keeps_the_first_record_and_its_end(records, ban_expires):
     """A retry must not push the record's end out; only a record that ran out
     and was not purged yet starts over."""
+    recorded_at = datetime.now(UTC) - timedelta(hours=2)
+    ends = ban_expires or recorded_at + ban_record.BAN_RECORD_RETENTION
     records.create.side_effect = _conflict()
-    records.find_first.return_value = MagicMock()
+    records.find_first.return_value = _record(recorded_at, ends)
+    subject = BANNED.model_copy(update={"ban_expires": ban_expires})
 
-    report = await ban_record.keep_ban_record(BANNED, dry_run=False)
+    report = await ban_record.keep_ban_record(subject, dry_run=False)
 
     assert report.status == StepStatus.DONE
-    where = records.update_many.await_args.kwargs["where"]
-    assert where["emailHash"] == ban_record.email_hash(EMAIL)
-    assert "lte" in where["deleteAfter"]
+    restart, outlast = records.update_many.await_args_list
+    assert restart.kwargs["where"]["emailHash"] == ban_record.email_hash(EMAIL)
+    assert "lte" in restart.kwargs["where"]["deleteAfter"]
+    assert outlast.kwargs["where"]["deleteAfter"] == {"lt": ends}
+    assert outlast.kwargs["data"] == {"deleteAfter": ends}
     records.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_longer_ban_on_another_spelling_moves_the_record_s_end_out(
+    records,
+):
+    """Two accounts on one mailbox share a record. The second, banned for
+    good, must not be held to the first's 30 days: the end moves out to
+    3 years from when the record was first kept."""
+    recorded_at = datetime.now(UTC) - timedelta(days=2)
+    records.create.side_effect = _conflict()
+    records.find_first.return_value = _record(
+        recorded_at, recorded_at + timedelta(days=30)
+    )
+    for_good = BANNED.model_copy(update={"email": "sam+two@example.com"})
+
+    report = await ban_record.keep_ban_record(for_good, dry_run=False)
+
+    assert report.status == StepStatus.DONE
+    longest = recorded_at + ban_record.BAN_RECORD_RETENTION
+    outlast = records.update_many.await_args_list[-1].kwargs
+    assert outlast["where"] == {
+        "emailHash": ban_record.email_hash(EMAIL),
+        "deleteAfter": {"lt": longest},
+    }
+    assert outlast["data"] == {"deleteAfter": longest}
+
+
+@pytest.mark.asyncio
+async def test_a_shorter_ban_on_another_spelling_never_moves_the_end_in(records):
+    """The update only reaches a record that ends before this ban does."""
+    recorded_at = datetime.now(UTC) - timedelta(days=2)
+    records.create.side_effect = _conflict()
+    records.find_first.return_value = _record(
+        recorded_at, recorded_at + ban_record.BAN_RECORD_RETENTION
+    )
+    ends = datetime.now(UTC) + timedelta(days=30)
+    shorter = BANNED.model_copy(
+        update={"email": "sam+two@example.com", "ban_expires": ends}
+    )
+
+    await ban_record.keep_ban_record(shorter, dry_run=False)
+
+    outlast = records.update_many.await_args_list[-1].kwargs
+    assert outlast["where"]["deleteAfter"] == {"lt": ends}
+
+
+def _record(recorded_at: datetime, delete_after: datetime) -> MagicMock:
+    return MagicMock(recordedAt=recorded_at, deleteAfter=delete_after)
 
 
 @pytest.mark.asyncio
