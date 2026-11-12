@@ -935,14 +935,12 @@ MAX_RELATIVE_PATH = 130
 # part of it files only Windows has: Linux would be about 1.9 to 2.0 GB.
 # Their budgets leave room over that until a build has printed their numbers
 # (the `[seal]` line), and are then to be set from them.
-# Windows' old basis was 23,616 expected files after restoring loose stdlib
-# (10b834df3a, 2026-10-03). Current-source CI run 40352729690/job 121679690040,
-# merge 7f93531574, measured 25,539, including 839 seeded pip files. Removing
-# pip projects at most 24,700; this is not a rebuilt measurement. Application
-# modules, migrations and docs have grown since the old basis. 25,000 leaves
-# 300 files over that projection and still rejects the unpruned tree. Confirm
-# the count at the next hosted seal; keep the byte and path budgets unchanged.
-MAX_FILES = 25_000 if WINDOWS else 30_000
+# Windows CI job 130977584974 (merge 01e0f2b for 948d0a6, 2026-11-12)
+# measured 25,088 files, up from 24,933 in passing job 128162334300. The
+# increase is backend +130, docs +6, frontend +9 and site +10. Both pruned
+# 479 seeded pip files. 25,500 leaves 412 files of headroom and still rejects retaining
+# that pip payload (25,567). The byte, path and import gates stay unchanged.
+MAX_FILES = 25_500 if WINDOWS else 30_000
 MAX_BYTES = 1_600_000_000 if WINDOWS else 2_300_000_000
 
 # OTP applications RabbitMQ and its Elixir-based CLI load.

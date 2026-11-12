@@ -1503,24 +1503,35 @@ def test_the_budgets_are_the_ones_the_size_work_was_held_to():
     """Loosening one is a decision, made here."""
     assert build_runtime.MAX_RELATIVE_PATH == 130
     if sys.platform == "win32":
-        assert build_runtime.MAX_FILES == 25_000
+        assert build_runtime.MAX_FILES == 25_500
         assert build_runtime.MAX_BYTES == 1_600_000_000
     else:
         assert build_runtime.MAX_FILES == 30_000
         assert build_runtime.MAX_BYTES == 2_300_000_000
 
 
-def test_current_source_count_fits_only_after_seeded_pip_is_removed(
-    tmp_path: Path, monkeypatch
+@pytest.mark.parametrize(
+    "files,seeded_pip,size",
+    [
+        (25_539 - 839, 839, 1_547_000_000),
+        (25_088, 479, 1_533_000_000),
+    ],
+)
+def test_measured_counts_fit_only_after_seeded_pip_is_removed(
+    tmp_path: Path, monkeypatch, files: int, seeded_pip: int, size: int
 ):
-    """CI run 40352729690/job 121679690040, not a rebuilt bundle fixture."""
+    """Job 121679690040's pip-removed projection and 130977584974's measured count."""
     monkeypatch.setattr(site_zip, "longest_path", lambda _: (130, "x" * 130))
     monkeypatch.setattr(build_runtime, "where_it_is", lambda _: [])
-    monkeypatch.setattr(site_zip, "count", lambda _: (25_539 - 839, 1_547_000_000))
+    monkeypatch.setattr(site_zip, "count", lambda _: (files, size))
     assert build_runtime.over_budget(tmp_path) == []
 
-    monkeypatch.setattr(site_zip, "count", lambda _: (25_539, 1_547_000_000))
-    expected = ["25539 files, and the budget is 25000"] if build_runtime.WINDOWS else []
+    monkeypatch.setattr(site_zip, "count", lambda _: (files + seeded_pip, size))
+    expected = (
+        [f"{files + seeded_pip} files, and the budget is {build_runtime.MAX_FILES}"]
+        if build_runtime.WINDOWS
+        else []
+    )
     assert build_runtime.over_budget(tmp_path) == expected
 
 

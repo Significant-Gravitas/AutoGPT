@@ -700,13 +700,24 @@ moves the old version away first. The build therefore leaves out what the
 app never loads and packs what it can into a few files, and its last step
 refuses a bundle that is over budget:
 
-| | Budget (`build_runtime.py`, `seal`) | Windows x64 bundle |
+| | Budget (`build_runtime.py`, `seal`) | Windows x64 runtime (2026-11-12) |
 | --- | --- | --- |
-| Files | 23,000 | 22,530 |
-| Longest path inside the bundle | 130 characters | 124 |
-| Size | 1.6 GB | 1.51 GB |
+| Files | 25,500 | 25,088 |
+| Longest path inside the bundle | 130 characters | 130 |
+| Size | 1.6 GB | 1.533 GB |
 
-The Windows installer made from it is 555 MB.
+The counts come from [Windows CI job 130977584974](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/43155855304/job/130977584974)
+on merge revision `01e0f2b` for PR head `948d0a6` (identical source trees).
+Its import and data gates passed, but sealing stopped at the old
+25,000-file limit, before an installer was produced. The last passing
+[Windows job 128162334300](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/42295408410/job/128162334300)
+had 24,933 files. The increase is 130 backend files (62 modules with bytecode
+and six migrations), six docs, nine frontend files and ten files in `site/`.
+The `site/` increase is consistent with five added shared-library modules
+and their bytecode; four of those modules are tests. Both builds removed
+479 seeded pip files. The new limit leaves 412 files of headroom and still
+rejects retaining that pip
+payload. Installer size and installed behavior need a new passing build.
 
 The macOS and Linux bundles keep the standard library as files and have not
 been measured; their budgets are 30,000 files and 2.3 GB until a build has
