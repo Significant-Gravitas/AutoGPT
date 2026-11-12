@@ -3,7 +3,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 
 from ._base import DrexBlockBase
-from ._client import ScoreQuestion
+from ._client import MAX_IMAGES, ScoreQuestion
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, NaceCredentials
 from ._schemas import CALIBRATION, DrexInput, DrexOutput
 from ._test import SCORE_ANSWER, TEST_LEVELS, TEST_TRANSPARENCY, mock_result
@@ -40,7 +40,7 @@ class NaceScoreBlock(DrexBlockBase):
     def __init__(self):
         super().__init__(
             id="b13a8511-c600-4e4b-9af3-0b1669947632",
-            description=f"Score text and up to 8 images with Drex Max using an explicit ordered scale. {CALIBRATION}",
+            description=f"Score text and up to {MAX_IMAGES} images with Drex Max using an explicit ordered scale. {CALIBRATION}",
             categories={BlockCategory.AI},
             input_schema=self.Input,
             output_schema=self.Output,

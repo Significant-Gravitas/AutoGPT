@@ -3,7 +3,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 
 from ._base import DrexBlockBase
-from ._client import ChoiceQuestion
+from ._client import MAX_IMAGES, ChoiceQuestion
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, NaceCredentials
 from ._schemas import DrexInput, DrexOutput
 from ._test import CHOICE_ANSWER, TEST_OPTIONS, TEST_TRANSPARENCY, mock_result
@@ -34,7 +34,7 @@ class NaceChoiceBlock(DrexBlockBase):
     def __init__(self):
         super().__init__(
             id="8e7f2171-cd91-4f9c-9c18-dd328be74e76",
-            description="Make a typed choice with Drex Max about text and up to 8 images. Describe what qualifies for each option in plain language.",
+            description=f"Make a typed choice with Drex Max about text and up to {MAX_IMAGES} images. Describe what qualifies for each option in plain language.",
             categories={BlockCategory.AI},
             input_schema=self.Input,
             output_schema=self.Output,

@@ -5,7 +5,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 
 from ._base import DrexBlockBase
-from ._client import NoulQuestion
+from ._client import MAX_IMAGES, NoulQuestion
 from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, NaceCredentials
 from ._schemas import DrexInput, DrexOutput
 from ._test import NOUL_ANSWER, TEST_TRANSPARENCY, mock_result
@@ -48,7 +48,7 @@ class NaceYesNoBlock(DrexBlockBase):
     def __init__(self):
         super().__init__(
             id="e21c7102-4ba8-43c5-8a88-7bc84b884ece",
-            description="Ask Drex Max a plain-language yes/no question about text and up to 8 images, and forward data to the chosen pin, or unsure below your confidence threshold.",
+            description=f"Ask Drex Max a plain-language yes/no question about text and up to {MAX_IMAGES} images, and forward data to the chosen pin, or unsure below your confidence threshold.",
             categories={BlockCategory.AI, BlockCategory.LOGIC},
             input_schema=self.Input,
             output_schema=self.Output,

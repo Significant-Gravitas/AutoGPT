@@ -16,7 +16,9 @@ bills your account per input token (the API reports token usage, not a price).
 The blocks mirror the TypeSafe Jev blocks' inputs and outputs, so a graph can
 swap one for the other. The differences are the `images` input, the yes/no
 block's extra `probability` output, and the model: calls go to `drex-max`
-(`drex-latest` is a text-only sibling that rejects images).
+(`drex-latest` is a text-only sibling that rejects images). Unlike Jev, nace
+accepts a 200 response with no token usage or request id and emits null
+`input_tokens`/`output_tokens` and an empty `request_id`.
 
 ## State, images and transparency
 
@@ -83,9 +85,25 @@ field-leading contributions.
 
 ## Tests
 
-All automated tests mock the HTTP boundary; none call nace. From
-`autogpt_platform/backend`:
+All automated tests mock the HTTP boundary; none call nace (the opt-in live
+check below is the only script that does). From `autogpt_platform/backend`:
 
 ```text
 poetry run pytest backend/blocks/nace
 ```
+
+## Optional live check
+
+Tests and CI never run this. To explicitly make four billable requests on your
+own nace key (one per block, plus one image request through the client), run
+from `autogpt_platform/backend`:
+
+```powershell
+poetry run python -m backend.blocks.nace._integration --env-file "C:\path\to\.env" --output "nace-integration.json"
+```
+
+Alternatively, set `NACE_API_KEY` and omit `--env-file`; only that variable is
+read from the file. The script runs each block once with synthetic text, sends
+one generated solid-colour PNG, prints every output pin and the image
+request, response and usage, and optionally saves the block pins as JSON. It
+never prints the key and stops on the first error.
