@@ -92,6 +92,18 @@ function inLayout(key: WizardStepKey | undefined, steps: StepLayout) {
   return twin && steps[twin] !== undefined ? twin : undefined;
 }
 
+// The progress to save from a layout built without its flags' answers: a
+// place on a step standing in for its one-slot twin is saved as the twin's,
+// so the next load puts the person on whichever of the two its layout holds.
+export function placeToSave(
+  progress: OnboardingWizardProgress,
+  steps: StepLayout,
+): OnboardingWizardProgress {
+  const twin = ONE_SLOT.find(([one]) => one === progress.currentStep)?.[1];
+  if (!twin || steps[twin] !== undefined) return progress;
+  return { ...progress, currentStep: twin };
+}
+
 export function resumeStep({
   progress,
   steps,

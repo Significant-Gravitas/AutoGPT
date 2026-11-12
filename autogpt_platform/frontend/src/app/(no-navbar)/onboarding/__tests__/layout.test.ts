@@ -1,18 +1,21 @@
-import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useOnboardingLayout } from "../useOnboardingLayout";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  INTERVIEW_FLAG_WAIT_MS,
+  useOnboardingLayout,
+} from "../useOnboardingLayout";
 const source = vi.hoisted(() => ({
   payment: { isPaymentEnabled: true, isResolved: true, isError: false },
   local: false,
   paid: false,
-  interview: { enabled: false, ready: true },
+  interview: { enabled: false, ready: true, answered: true },
 }));
 vi.mock("@/hooks/usePlatformPayment", () => ({
   usePlatformPayment: () => source.payment,
 }));
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: { ONBOARDING_INTERVIEW: "onboarding-interview" },
-  useFlagStatus: () => ({ ...source.interview, answered: true }),
+  useFlagStatus: () => source.interview,
 }));
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
@@ -39,11 +42,14 @@ beforeEach(() => {
   source.payment = { isPaymentEnabled: true, isResolved: true, isError: false };
   source.local = false;
   source.paid = false;
-  source.interview = { enabled: false, ready: true };
+  source.interview = { enabled: false, ready: true, answered: true };
+});
+afterEach(() => {
+  vi.useRealTimers();
 });
 describe("onboarding layout", () => {
   it("lays the interview out in the brain dump's place when its flag is on", () => {
-    source.interview = { enabled: true, ready: true };
+    source.interview = { enabled: true, ready: true, answered: true };
 
     const { result } = renderHook(useOnboardingLayout, { initialProps });
 
@@ -58,18 +64,55 @@ describe("onboarding layout", () => {
   });
 
   it("waits for the interview flag before freezing the layout", () => {
-    source.interview = { enabled: false, ready: false };
+    source.interview = { enabled: false, ready: false, answered: false };
     const { result, rerender } = renderHook(useOnboardingLayout, {
       initialProps,
     });
     expect(result.current.isReady).toBe(false);
 
-    source.interview = { enabled: true, ready: true };
+    source.interview = { enabled: true, ready: true, answered: true };
     rerender(initialProps);
 
     expect(result.current.isReady).toBe(true);
     expect(result.current.steps.interview).toBe(4);
     expect(result.current.steps.painPoints).toBeUndefined();
+  });
+
+  it("waits past the flag's own timeout for its answer, and lays out the interview it gives", () => {
+    source.interview = { enabled: false, ready: true, answered: false };
+    const { result, rerender } = renderHook(useOnboardingLayout, {
+      initialProps,
+    });
+    expect(result.current.isReady).toBe(false);
+
+    source.interview = { enabled: true, ready: true, answered: true };
+    rerender(initialProps);
+
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.steps.interview).toBe(4);
+    expect(result.current.isLayoutAnswered).toBe(true);
+  });
+
+  it("lays the wizard out without the interview for this visit once its flag has not answered in time", () => {
+    vi.useFakeTimers();
+    source.interview = { enabled: false, ready: true, answered: false };
+    const { result, rerender } = renderHook(useOnboardingLayout, {
+      initialProps,
+    });
+    act(() => vi.advanceTimersByTime(INTERVIEW_FLAG_WAIT_MS - 1));
+    expect(result.current.isReady).toBe(false);
+
+    act(() => vi.advanceTimersByTime(1));
+
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.steps.painPoints).toBe(4);
+    expect(result.current.steps.interview).toBeUndefined();
+    expect(result.current.isLayoutAnswered).toBe(false);
+    // An answer after the wait does not reorder the wizard under the person.
+    source.interview = { enabled: true, ready: true, answered: true };
+    rerender(initialProps);
+    expect(result.current.steps.interview).toBeUndefined();
+    expect(result.current.isLayoutAnswered).toBe(false);
   });
 
   it("includes team introductions, brain dump, and the plan + trial step without rollout flags", () => {
