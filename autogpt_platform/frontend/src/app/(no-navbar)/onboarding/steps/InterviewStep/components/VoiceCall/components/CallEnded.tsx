@@ -2,9 +2,9 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { InsufficientState } from "../../../../BrainDumpStep/components/InsufficientState";
 import { finishFailureCopy, type StartFailure } from "../../../helpers";
 import { type CallEnding, endedCopy } from "../helpers";
+import { CallInsufficient } from "./CallInsufficient";
 
 interface Props {
   ending: CallEnding;
@@ -33,11 +33,8 @@ export function CallEnded({
 }: Props) {
   if (ending.kind === "insufficient") {
     return (
-      <InsufficientState
-        mode="voice"
-        canRecord
-        recordLabel="Call again"
-        onRecordAgain={onCallAgain}
+      <CallInsufficient
+        onCallAgain={onCallAgain}
         onTypeInstead={onTypeInstead}
         onSkip={onSkip}
       />
