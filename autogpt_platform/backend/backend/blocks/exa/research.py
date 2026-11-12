@@ -141,7 +141,7 @@ class ExaCreateResearchBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaCreateResearchBlock.Input,
             output_schema=ExaCreateResearchBlock.Output,
-            effect=BlockEffect.READ,
+            effect=BlockEffect.EXTERNAL_JUDGED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "instructions": "Find the top 3 AI coding assistants and their pricing",

@@ -4,6 +4,8 @@ import BackendAPI, {
   type UserOnboarding,
   type WebSocketNotification,
 } from "@/lib/autogpt-server-api";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { server } from "@/mocks/mock-server";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -72,6 +74,7 @@ vi.mock("@/hooks/usePlatformPayment", () => ({
 let balance = 979;
 
 beforeEach(() => {
+  useAuthStore.setState({ user: { id: "user-a" } as User });
   socketHandlers.clear();
   balance = 979;
   server.use(
@@ -80,6 +83,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useAuthStore.setState({ user: null });
   vi.restoreAllMocks();
   if (vi.isFakeTimers()) vi.useRealTimers();
 });
