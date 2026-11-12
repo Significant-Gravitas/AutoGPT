@@ -919,21 +919,31 @@ describe("onboarding interview, with a slow flag service", () => {
     vi.useRealTimers();
   });
 
-  it("waits past the flag's own timeout for its answer, and opens the interview the person saved", async () => {
-    const answer = holdFlagService();
-    render(<OnboardingPage />);
+  it.each([
+    // Past the flag's own 5 s timeout.
+    [5_500],
+    // Just under onboarding's own wait.
+    [9_500],
+  ])(
+    "waits for the flag's answer at %d ms, and opens the interview the person saved",
+    async (answeredAtMs) => {
+      expect(answeredAtMs).toBeLessThan(INTERVIEW_FLAG_WAIT_MS);
+      const answer = holdFlagService();
+      render(<OnboardingPage />);
 
-    // Past the flag's own 5 s timeout, still under onboarding's wait.
-    await act(() => vi.advanceTimersByTimeAsync(5_500));
-    expect(screen.queryByText("Talk to me about your work")).toBeNull();
-    expect(screen.queryByText("Tell Otto about your work")).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(answeredAtMs));
+      expect(screen.queryByText("Talk to me about your work")).toBeNull();
+      expect(screen.queryByText("Tell Otto about your work")).toBeNull();
 
-    act(() => answer());
+      act(() => answer());
 
-    expect(await screen.findByText("Tell Otto about your work")).toBeDefined();
-    await act(() => vi.advanceTimersByTimeAsync(1_000));
-    expect(savedSteps).not.toContain("painPoints");
-  });
+      expect(
+        await screen.findByText("Tell Otto about your work"),
+      ).toBeDefined();
+      await act(() => vi.advanceTimersByTimeAsync(1_000));
+      expect(savedSteps).not.toContain("painPoints");
+    },
+  );
 
   it("goes on without the interview for this visit once the flag has not answered in time, saving none of the brain dump's place", async () => {
     const answer = holdFlagService();

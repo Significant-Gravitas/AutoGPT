@@ -11,7 +11,7 @@ import { usePaidCheckoutStatus } from "./usePaidCheckoutStatus";
 // How long onboarding waits for the interview flag's answer, past the flag's
 // own timeout (which serves its default, not an answer), before it lays the
 // wizard out without the interview for this visit.
-export const INTERVIEW_FLAG_WAIT_MS = 6_000;
+export const INTERVIEW_FLAG_WAIT_MS = 10_000;
 
 export function useOnboardingLayout({
   userID,
