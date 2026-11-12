@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   clearLocalProgress,
+  placeToSave,
   readProgress,
   resumeStep,
   sameProgress,
@@ -24,18 +25,29 @@ export function useWizardProgress({
   ready,
   steps,
   hasPaywall = true,
+  isLayoutAnswered = true,
 }: {
   userID: string | null;
   ready: boolean;
   steps: StepLayout;
   hasPaywall?: boolean;
+  /** False when the layout was built without the interview flag's answer:
+   *  then a place on a step standing in for one it left out is saved as
+   *  that step's (`placeToSave`). */
+  isLayoutAnswered?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const currentUserID = useRef(userID);
   currentUserID.current = userID;
-  const latest = useRef({ steps, params, router, hasPaywall });
-  latest.current = { steps, params, router, hasPaywall };
+  const latest = useRef({
+    steps,
+    params,
+    router,
+    hasPaywall,
+    isLayoutAnswered,
+  });
+  latest.current = { steps, params, router, hasPaywall, isLayoutAnswered };
   const layout = JSON.stringify(steps);
   const reloadLatest = useRef(false);
   const accountChanged = useRef(false);
@@ -181,12 +193,17 @@ export function useWizardProgress({
           ? "Your saved progress is available on this device. Changes will sync when the connection returns."
           : null,
       });
-      let previous = snapshotProgress();
+      const { isLayoutAnswered } = latest.current;
+      function progressToSave() {
+        const snapshot = snapshotProgress();
+        return isLayoutAnswered ? snapshot : placeToSave(snapshot, steps);
+      }
+      let previous = progressToSave();
       if (needsSync || (progress && !sameProgress(previous, progress)))
         controller.enqueue(previous);
       unsubscribe = useOnboardingWizardStore.subscribe((state) => {
         if (!isCurrent() || state.userID !== userID) return;
-        const snapshot = snapshotProgress();
+        const snapshot = progressToSave();
         if (sameProgress(snapshot, previous)) return;
         previous = snapshot;
         controller.enqueue(snapshot);

@@ -31,8 +31,10 @@ import { http, HttpResponse, type JsonBodyType, ws } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
+import { readLocalProgress } from "../progress";
 import { useInterviewStep } from "../steps/InterviewStep/useInterviewStep";
 import { useOnboardingWizardStore } from "../store";
+import { INTERVIEW_FLAG_WAIT_MS } from "../useOnboardingLayout";
 import { makeProgress } from "./progress-fixture";
 
 const BACKEND = "http://localhost:18006";
@@ -127,6 +129,9 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
   }),
 }));
 
+// The step each save of the wizard's progress put the person on.
+const savedSteps = vi.hoisted(() => [] as string[]);
+
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1OnboardingState: () =>
     Promise.resolve({
@@ -143,11 +148,15 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
     }),
   getV1CheckIfOnboardingIsCompleted: () =>
     Promise.resolve({ status: 200, data: false }),
-  patchV1UpdateOnboardingState: () =>
-    Promise.resolve({
+  patchV1UpdateOnboardingState: (body: {
+    wizardProgress: { currentStep: string };
+  }) => {
+    savedSteps.push(body.wizardProgress.currentStep);
+    return Promise.resolve({
       status: 200,
       data: { userId: USER_ID, wizardRevision: 1 },
-    }),
+    });
+  },
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
   postV1SubmitOnboardingProfile: () => Promise.resolve({ status: 200 }),
 }));
@@ -168,17 +177,25 @@ vi.mock("@/app/api/helpers", async (importOriginal) => ({
 }));
 
 let flags: Record<string, boolean> = {};
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@/services/feature-flags/use-get-flag")
-  >()),
-  useGetFlag: (flag: string) => flags[flag] ?? false,
-  useFlagStatus: (flag: string) => ({
-    enabled: flags[flag] ?? false,
-    ready: true,
-    answered: true,
-  }),
-}));
+// While set, the page reads the interview flag's status from the flag service
+// as it does in the app, so a test can hold the service's answer.
+let readsFlagService = false;
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  function servedFlagStatus(flag: string) {
+    return { enabled: flags[flag] ?? false, ready: true, answered: true };
+  }
+  return {
+    ...actual,
+    useGetFlag: (flag: string) => flags[flag] ?? false,
+    get useFlagStatus() {
+      return readsFlagService ? actual.useFlagStatus : servedFlagStatus;
+    },
+  };
+});
 
 type SessionMessages = NonNullable<SessionDetailResponse["messages"]>;
 
@@ -398,6 +415,8 @@ const backendSocket = ws.link("ws://localhost:8001/ws");
 
 beforeEach(() => {
   flags = { [FrontendFlag.ONBOARDING_INTERVIEW]: true };
+  readsFlagService = false;
+  savedSteps.length = 0;
   serverInterview = {
     messages: [KICKOFF_ROW, GREETING_ROW],
     stage: null,
@@ -867,5 +886,67 @@ describe("onboarding interview", () => {
     expect(await screen.findByText("Talk to me about your work")).toBeDefined();
     expect(screen.queryByText("Tell Otto about your work")).toBeNull();
     expect(starts).toBe(0);
+  });
+});
+
+describe("onboarding interview, with a slow flag service", () => {
+  // The flag service answers the interview flag on, once the test lets it.
+  function holdFlagService() {
+    let answer = () => undefined as void;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    server.use(
+      http.get("*/api/feature-flags", async () => {
+        await answered;
+        return HttpResponse.json({
+          configured: true,
+          flags: { [FrontendFlag.ONBOARDING_INTERVIEW]: true },
+        });
+      }),
+    );
+    return answer;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    readsFlagService = true;
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(...interviewHandlers());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("waits past the flag's own timeout for its answer, and opens the interview the person saved", async () => {
+    const answer = holdFlagService();
+    render(<OnboardingPage />);
+
+    // Past the flag's own 5 s timeout, still under onboarding's wait.
+    await act(() => vi.advanceTimersByTimeAsync(5_500));
+    expect(screen.queryByText("Talk to me about your work")).toBeNull();
+    expect(screen.queryByText("Tell Otto about your work")).toBeNull();
+
+    act(() => answer());
+
+    expect(await screen.findByText("Tell Otto about your work")).toBeDefined();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(savedSteps).not.toContain("painPoints");
+  });
+
+  it("goes on without the interview for this visit once the flag has not answered in time, saving none of the brain dump's place", async () => {
+    const answer = holdFlagService();
+    render(<OnboardingPage />);
+
+    await act(() => vi.advanceTimersByTimeAsync(INTERVIEW_FLAG_WAIT_MS + 500));
+
+    expect(await screen.findByText("Talk to me about your work")).toBeDefined();
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(savedSteps).not.toContain("painPoints");
+    expect(readLocalProgress(USER_ID)?.progress.currentStep).not.toBe(
+      "painPoints",
+    );
+    act(() => answer());
   });
 });

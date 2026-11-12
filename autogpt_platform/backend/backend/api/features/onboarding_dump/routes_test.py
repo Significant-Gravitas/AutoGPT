@@ -783,6 +783,7 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
         "status": BrainDumpStatus.completed,
         "input_mode": BrainDumpInputMode.skipped,
         "transcript_preview": None,
+        "otto_reply_kind": None,
         "error_code": None,
         "error_reason": None,
         "transcript_words": None,

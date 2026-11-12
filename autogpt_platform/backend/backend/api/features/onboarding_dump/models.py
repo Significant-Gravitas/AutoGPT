@@ -36,6 +36,25 @@ RecordingId = Annotated[
 # client that tries to stream a movie through the endpoint.
 MAX_PART_BYTES = 2 * 1024 * 1024
 
+# The kinds of too-short take Otto has a fixed first line for on the
+# not-enough screen (``otto_reply`` picks one; the lines are in the
+# frontend's ``insufficient-copy.ts``).
+OttoReplyKind = Literal[
+    "mic_check",
+    "greeting",
+    "unsure",
+    "reluctant",
+    "what_to_say",
+    "wants_to_skip",
+    "about_otto",
+    "busy",
+    "annoyed",
+    "some_work",
+    "garbled",
+    "test",
+    "other",
+]
+
 # ~30 min of webm/opus voice is ~6 MB. 50 MB is the cumulative ceiling for
 # one recording — generous enough that no honest dump ever hits it.
 MAX_RECORDING_BYTES = 50 * 1024 * 1024
@@ -110,11 +129,16 @@ class FinalizeResponse(BaseModel):
     status: BrainDumpStatus
     input_mode: BrainDumpInputMode
     transcript_preview: str | None = None
+    """The transcript's start, on success and on an ``insufficient_content``
+    reject; never on ``no_usable_speech``."""
+    otto_reply_kind: OttoReplyKind | None = None
+    """Which of Otto's fixed first lines fits what was said, on an
+    ``insufficient_content`` reject. ``None`` and ``"other"`` get the default."""
     error_code: str | None = None
     error_reason: str | None = None
     """What decided a quality-gate rejection (``quality.QualityRejection``)."""
     transcript_words: int | None = None
-    """A rejected transcript's length as the gate counts words; the text is not sent."""
+    """A rejected transcript's length as the gate counts words."""
 
 
 class DumpStatusResponse(BaseModel):
