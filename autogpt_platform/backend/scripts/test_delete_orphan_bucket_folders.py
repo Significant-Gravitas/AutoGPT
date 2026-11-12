@@ -13,6 +13,8 @@ GONE = "22222222-bbbb-4bbb-8bbb-222222222222"
 SHOWN = "33333333-cccc-4ccc-8ccc-333333333333"
 RECENT = "44444444-dddd-4ddd-8ddd-444444444444"
 BACK = "55555555-eeee-4eee-8eee-555555555555"
+LATE_SHOWN = "66666666-ffff-4fff-8fff-666666666666"
+OTHER = "77777777-aaaa-4aaa-8aaa-777777777777"
 
 
 class FakeBucket:
@@ -62,10 +64,19 @@ def _rows(*live: str, appear_on_recheck: frozenset[str] = frozenset()):
     return existing
 
 
-async def _sweep(bucket, prefix, table, *, apply, shown: set[str] | None = None):
-    return await tool.sweep_prefix(
-        bucket, BUCKET, prefix, table, shown=shown or set(), apply=apply, now=NOW
-    )
+def _shown(first: set[str], on_recheck: set[str] | None = None):
+    calls = 0
+
+    async def shown_media_owners() -> set[str]:
+        nonlocal calls
+        calls += 1
+        return first if calls == 1 or on_recheck is None else first | on_recheck
+
+    return shown_media_owners
+
+
+async def _sweep(bucket, prefix, table, *, apply):
+    return await tool.sweep_prefix(bucket, BUCKET, prefix, table, apply=apply, now=NOW)
 
 
 async def test_dry_run_counts_orphans_and_deletes_nothing_nor_other_prefixes(
@@ -99,29 +110,32 @@ async def test_apply_deletes_only_orphans_nobody_still_needs(monkeypatch):
             f"users/{RECENT}/images/old.png": (1, OLD),
             f"users/{RECENT}/images/new.png": (1, FRESH),
             f"users/{BACK}/images/d.png": (1, OLD),
+            f"users/{LATE_SHOWN}/images/e.png": (1, OLD),
             "users/not-an-id/x.png": (1, OLD),
         }
     )
     monkeypatch.setattr(
         tool, "existing", _rows(LIVE, appear_on_recheck=frozenset({BACK}))
     )
+    monkeypatch.setattr(tool, "shown_media_owners", _shown({SHOWN}, {LATE_SHOWN}))
 
-    report = await _sweep(bucket, "users/", "User", apply=True, shown={SHOWN})
+    report = await _sweep(bucket, "users/", "User", apply=True)
 
     assert sorted(bucket.deleted) == [
         f"users/{GONE}/images/a.png",
         f"users/{GONE}/videos/b.mp4",
     ]
-    assert (report.orphans, report.deleted, report.files) == (4, 1, 2)
-    assert (report.kept_shown, report.kept_recent, report.kept_back) == (1, 1, 1)
-    assert report.failed == 0
+    assert (report.orphans, report.deleted, report.files) == (5, 1, 2)
+    assert (report.kept_shown, report.kept_recent, report.kept_back) == (2, 1, 1)
+    assert not report.failed
 
 
-async def test_a_failed_delete_is_counted_and_a_missing_object_is_not(monkeypatch):
+async def test_a_folder_with_a_failed_delete_is_not_counted_as_deleted(monkeypatch):
     bucket = FakeBucket(
         {
             f"uploads/users/{GONE}/1/a.bin": (1, OLD),
             f"uploads/users/{GONE}/2/b.bin": (1, OLD),
+            f"uploads/users/{OTHER}/1/c.bin": (1, OLD),
         }
     )
     bucket.fail.add(f"uploads/users/{GONE}/1/a.bin")
@@ -129,8 +143,11 @@ async def test_a_failed_delete_is_counted_and_a_missing_object_is_not(monkeypatc
 
     report = await _sweep(bucket, "uploads/users/", "User", apply=True)
 
-    assert report.failed == 1
-    assert await tool.delete_objects(bucket, BUCKET, ["already-gone"]) == 0
+    assert report.failed == {"ClientResponseError 503": 1}
+    assert (report.deleted, report.files) == (1, 1)
+    line = report.line("uploads/users/", "User", True)
+    assert "1 files failed to delete" in line and GONE not in line
+    assert not await tool.delete_objects(bucket, BUCKET, ["already-gone"])
 
 
 async def test_report_line_names_no_folder(monkeypatch):
@@ -155,3 +172,37 @@ def test_media_owner_matches_every_stored_url_form():
     ]:
         match = owner.search(url)
         assert match and match[1] == SHOWN, url
+
+
+async def test_a_failing_prefix_prints_no_folder_and_fails_the_run(monkeypatch, capsys):
+    class Storage:
+        async def __aenter__(self):
+            return FakeBucket({})
+
+        async def __aexit__(self, *exc):
+            return None
+
+    async def sweep(client, bucket, prefix, table, **kwargs):
+        if prefix == "users/":
+            raise aiohttp.ClientResponseError(
+                None,  # type: ignore[arg-type]
+                (),
+                status=403,
+                message=f"Forbidden: {bucket}/o?prefix=users/{GONE}/",
+            )
+        return tool.PrefixReport()
+
+    async def nothing():
+        return None
+
+    monkeypatch.setattr(tool, "buckets", lambda: {"private": BUCKET})
+    monkeypatch.setattr(tool.db, "connect", nothing)
+    monkeypatch.setattr(tool.db, "disconnect", nothing)
+    monkeypatch.setattr(tool.gcs, "Storage", Storage)
+    monkeypatch.setattr(tool, "sweep_prefix", sweep)
+
+    assert await tool.run(apply=True) == 1
+    out = capsys.readouterr().out
+    assert "users/: stopped by ClientResponseError 403" in out
+    assert GONE not in out
+    assert "oauth-apps/<OAuthApplication id>/: 0 folders" in out

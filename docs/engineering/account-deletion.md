@@ -163,7 +163,7 @@ The agent's content stays as the creator last saved it, node inputs included. Cr
 
 Accounts deleted by hand before the erasure existed left their files in the buckets. `autogpt_platform/backend/scripts/delete_orphan_bucket_folders.py` finds every folder under an account's prefixes (the ones in step 6 above, and `workspaces/chat-transcripts/{user id}/`, where Otto kept transcripts until April 2026) whose user, workspace or OAuth app row is gone, in every configured bucket, and deletes it. It keeps:
 
-- a `users/{user id}/` folder whose media a listing or library entry still shows, as the erasure does;
+- a `users/{user id}/` folder whose media a listing, a library entry, or an org, org profile, expert or profile avatar still shows, checked again just before deleting;
 - a folder with a file from the last 7 days, which may belong to a row created after the check;
 - a folder whose row exists again when it checks once more, just before deleting;
 - a folder not named by a UUID, such as `workspaces/cli-sessions/` and `workspaces/chat-transcripts/` themselves.
@@ -172,11 +172,11 @@ It is a dry run unless `--apply`, and prints counts per bucket and prefix (folde
 
 ```sh
 kubectl --context gke_agpt-prod_us-central1-a_prod-gke-cluster -n prod-agpt exec -i deploy/autogpt-database-manager -- \
-  poetry run python - < scripts/delete_orphan_bucket_folders.py
+  poetry run python -u - < scripts/delete_orphan_bucket_folders.py
 kubectl --context gke_agpt-prod_us-central1-a_prod-gke-cluster -n prod-agpt exec -i deploy/autogpt-database-manager -- \
-  poetry run python - --apply < scripts/delete_orphan_bucket_folders.py
+  poetry run python -u - --apply < scripts/delete_orphan_bucket_folders.py
 ```
 
-Then run the dry run again: every prefix should show 0 orphans, apart from the folders kept. The apply exits non-zero when a file failed to delete; run it again. It starts a second backend process in the pod (about 1 GB), so run it only in the dev or prod database manager, which have room for it: a preview's database manager runs out of memory.
+Then run the dry run again: every prefix should show 0 orphans, apart from the folders kept. The apply exits non-zero when a file failed to delete or a prefix stopped on an error (it prints the error's type and status, never the folder); run it again. It starts a second backend process in the pod (about 1 GB) beside the database manager, whose limit is 3 GiB: first check that every database manager pod has the room, using less than about 2 GiB (`kubectl --context gke_agpt-prod_us-central1-a_prod-gke-cluster -n prod-agpt top pod | grep database-manager`), since `exec deploy/...` picks one of them. If the pod runs out of memory, Kubernetes restarts the database manager. A preview's database manager (2 GiB) has no room for it.
 
 On dev, the counts include folders of preview accounts: a preview (`!deploy`) writes to dev's private bucket but has a database of its own, which goes with the preview, so its accounts' folders look orphaned here. The 7-day rule keeps those of a live preview, which lasts 3 days at most.

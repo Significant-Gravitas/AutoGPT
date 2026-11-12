@@ -17,9 +17,9 @@ Runs from a checkout on any backend image, inside a database manager pod
 `docs/engineering/account-deletion.md`::
 
     kubectl exec -i deploy/autogpt-database-manager -- \\
-        poetry run python - < scripts/delete_orphan_bucket_folders.py
+        poetry run python -u - < scripts/delete_orphan_bucket_folders.py
     kubectl exec -i deploy/autogpt-database-manager -- \\
-        poetry run python - --apply < scripts/delete_orphan_bucket_folders.py
+        poetry run python -u - --apply < scripts/delete_orphan_bucket_folders.py
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ import argparse
 import asyncio
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -55,7 +56,9 @@ ID = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}")
 RECENT = timedelta(days=7)
 CHUNK = 5000
 CONCURRENT_DELETES = 16
-# A user's media in any form a listing stores: a bucket URL, the media routes,
+# Media an account uploaded can be shown by listings, library entries and the
+# avatars of orgs, org profiles, experts and profiles. A user's media in any
+# form these store: a bucket URL, the media routes,
 # or either URL-encoded inside Next.js's image optimizer.
 _SEP = "(?:/|%2[fF])"
 MEDIA_OWNER = (
@@ -68,6 +71,14 @@ SHOWN_MEDIA_OWNERS = """
           FROM {schema_prefix}"StoreListingVersion" v
         UNION ALL
         SELECT la."imageUrl" FROM {schema_prefix}"LibraryAgent" la
+        UNION ALL
+        SELECT "avatarUrl" FROM {schema_prefix}"Organization"
+        UNION ALL
+        SELECT "avatarUrl" FROM {schema_prefix}"OrganizationProfile"
+        UNION ALL
+        SELECT "avatarUrl" FROM {schema_prefix}"Expert"
+        UNION ALL
+        SELECT "avatarUrl" FROM {schema_prefix}"Profile"
     ) urls
     WHERE url ~ $1
 """
@@ -93,7 +104,7 @@ class PrefixReport:
     deleted: int = 0
     files: int = 0
     size: int = 0
-    failed: int = 0
+    failed: Counter = field(default_factory=Counter)
 
     def line(self, prefix: str, table: str, apply: bool) -> str:
         verb = "deleted" if apply else "would delete"
@@ -102,13 +113,16 @@ class PrefixReport:
             f" {verb} {self.deleted} ({self.files} files, {self.size / 1e6:.1f} MB)"
         )
         kept = [
-            f"{self.kept_shown} shown by a listing or library entry",
+            f"{self.kept_shown} shown by a listing, library entry or avatar",
             f"{self.kept_recent} with a file from the last {RECENT.days} days",
             f"{self.kept_back} whose row exists again",
         ]
         line += "; kept: " + ", ".join(kept)
         if self.failed:
-            line += f"; {self.failed} files failed to delete"
+            line += (
+                f"; {self.failed.total()} files failed to delete"
+                f" ({dict(self.failed)}), so their folders stay"
+            )
         return line
 
 
@@ -179,19 +193,25 @@ async def shown_media_owners() -> set[str]:
     return {r["owner"] for r in rows if r["owner"]}
 
 
-async def delete_objects(client: Client, bucket: str, names: list[str]) -> int:
-    """Delete the objects; return how many failed. One gone already is fine."""
+def error_kind(error: Exception) -> str:
+    """An error's type and HTTP status, never its message: a storage error's
+    message carries the request URL, which names the folder."""
+    status = getattr(error, "status", None)
+    return f"{type(error).__name__} {status}" if status else type(error).__name__
+
+
+async def delete_objects(client: Client, bucket: str, names: list[str]) -> Counter:
+    """Delete the objects; count the failures by kind. One gone already is fine."""
     sem = asyncio.Semaphore(CONCURRENT_DELETES)
-    failed = 0
+    failed: Counter = Counter()
 
     async def delete(name: str) -> None:
-        nonlocal failed
         async with sem:
             try:
                 await client.delete(bucket, name)
             except Exception as e:
                 if not is_not_found_error(e):
-                    failed += 1
+                    failed[error_kind(e)] += 1
 
     await asyncio.gather(*(delete(n) for n in names))
     return failed
@@ -203,7 +223,6 @@ async def sweep_prefix(
     prefix: str,
     table: str,
     *,
-    shown: set[str],
     apply: bool,
     now: datetime,
 ) -> PrefixReport:
@@ -214,10 +233,12 @@ async def sweep_prefix(
         return report
     orphans = sorted(set(folders) - await existing(table, folders))
     report.orphans = len(orphans)
+    has_media = prefix == "users/"
+    shown = await shown_media_owners() if has_media and orphans else set()
 
     doomed: list[Folder] = []
     for name in orphans:
-        if prefix == "users/" and name in shown:
+        if name in shown:
             report.kept_shown += 1
             continue
         folder = Folder(name, await list_objects(client, bucket, f"{prefix}{name}/"))
@@ -225,18 +246,28 @@ async def sweep_prefix(
             report.kept_recent += 1
             continue
         doomed.append(folder)
+    if not doomed:
+        return report
 
-    # A row created since the first check takes its folder back.
-    back = await existing(table, [f.name for f in doomed]) if doomed else set()
-    report.kept_back = len(back)
-    doomed = [f for f in doomed if f.name not in back]
-
-    report.deleted = len(doomed)
-    report.files = sum(len(f.objects) for f in doomed)
-    report.size = sum(f.size for f in doomed)
-    if apply and doomed:
-        names = [o["name"] for f in doomed for o in f.objects]
-        report.failed = await delete_objects(client, bucket, names)
+    # Just before deleting, check again: a row created since the first check
+    # takes its folder back, and so does a listing that now shows its media.
+    back = await existing(table, [f.name for f in doomed])
+    shown = await shown_media_owners() if has_media else set()
+    for folder in doomed:
+        if folder.name in back:
+            report.kept_back += 1
+            continue
+        if folder.name in shown:
+            report.kept_shown += 1
+            continue
+        names = [o["name"] for o in folder.objects]
+        failed = await delete_objects(client, bucket, names) if apply else Counter()
+        if failed:
+            report.failed.update(failed)
+            continue
+        report.deleted += 1
+        report.files += len(folder.objects)
+        report.size += folder.size
     return report
 
 
@@ -261,28 +292,33 @@ async def run(apply: bool) -> int:
     print(
         "APPLY: deleting orphan folders."
         if apply
-        else "DRY RUN: nothing is deleted. Run again with --apply to delete."
+        else "DRY RUN: nothing is deleted. Run again with --apply to delete.",
+        flush=True,
     )
     now = datetime.now(timezone.utc)
-    failed = 0
+    failed = errors = 0
     await db.connect()
     try:
-        shown = await shown_media_owners()
         async with gcs.Storage() as client:
             for label, bucket in configured.items():
-                print(f"\n== {label} bucket {bucket}")
+                print(f"\n== {label} bucket {bucket}", flush=True)
                 for prefix, table in PREFIXES:
-                    report = await sweep_prefix(
-                        client, bucket, prefix, table, shown=shown, apply=apply, now=now
-                    )
-                    if report.folders:
-                        print(report.line(prefix, table, apply))
-                    failed += report.failed
+                    try:
+                        report = await sweep_prefix(
+                            client, bucket, prefix, table, apply=apply, now=now
+                        )
+                    except Exception as e:
+                        # Never the traceback: its request URL names a folder.
+                        print(f"{prefix}: stopped by {error_kind(e)}", flush=True)
+                        errors += 1
+                        continue
+                    print(report.line(prefix, table, apply), flush=True)
+                    failed += report.failed.total()
     finally:
         await db.disconnect()
-    if failed:
-        print(f"\n{failed} files failed to delete; run --apply again.")
-    return 1 if failed else 0
+    if failed or errors:
+        print(f"\n{failed} files failed and {errors} prefixes stopped; run it again.")
+    return 1 if failed or errors else 0
 
 
 def main(argv: list[str] | None = None) -> int:
