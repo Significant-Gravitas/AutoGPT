@@ -607,4 +607,46 @@ describe("useCredits balance reads", () => {
 
     expect(view.result.current.credits).toBe(929);
   });
+
+  test("keeps an older read's answer when the newer read fails", async () => {
+    let reads = 0;
+    let answerOlderRead: ((balance: number) => void) | undefined;
+    server.use(
+      http.get("*/api/credits", async () => {
+        reads += 1;
+        if (reads === 1) return HttpResponse.json({ credits: 979 });
+        if (reads === 2) {
+          const balance = await new Promise<number>((resolve) => {
+            answerOlderRead = resolve;
+          });
+          return HttpResponse.json({ credits: balance });
+        }
+        return HttpResponse.json({ detail: "failed" }, { status: 500 });
+      }),
+    );
+    const view = renderHook(() =>
+      useCredits({ identityKey: "user-a", fetchInitialCredits: true }),
+    );
+    await waitFor(() => expect(view.result.current.credits).toBe(979));
+
+    let olderRead: Promise<void> | undefined;
+    act(() => {
+      olderRead = Promise.resolve(view.result.current.fetchCredits());
+    });
+    try {
+      await waitFor(() => expect(reads).toBe(2));
+      await act(async () => {
+        await Promise.resolve(view.result.current.fetchCredits());
+      });
+      expect(reads).toBe(3);
+      expect(view.result.current.credits).toBe(979);
+    } finally {
+      await act(async () => {
+        answerOlderRead?.(929);
+        await olderRead;
+      });
+    }
+
+    expect(view.result.current.credits).toBe(929);
+  });
 });
