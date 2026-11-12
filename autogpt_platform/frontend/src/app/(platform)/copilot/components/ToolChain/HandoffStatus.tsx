@@ -8,6 +8,8 @@ import {
   type HandoffOutcome,
   type HandoffState,
   handoffStateOf,
+  NEW_EXPERT_COPY,
+  type NewExpertKind,
   possessive,
 } from "./expertHandoff";
 import { HandoffRetry } from "./HandoffRetry";
@@ -16,6 +18,8 @@ import { useSubSessionEffectiveStatus } from "./SubSessionLive";
 
 interface Props {
   outcome: HandoffOutcome;
+  /** Whether the expert was hired or created, for the failed line. */
+  kind: NewExpertKind;
   name: string;
   /** The hire; absent on outputs that don't carry it. */
   expertId: string | null;
@@ -32,6 +36,7 @@ interface Props {
  *  records it. */
 export function HandoffStatus({
   outcome,
+  kind,
   name,
   expertId,
   avatarUrl,
@@ -60,7 +65,12 @@ export function HandoffStatus({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
           {avatar(32)}
           <p className="min-w-[min(100%,14rem)] flex-1 text-body [overflow-wrap:anywhere] text-foreground-secondary">
-            <HandoffSentence outcome={outcome} name={name} state={state} />
+            <HandoffSentence
+              outcome={outcome}
+              kind={kind}
+              name={name}
+              state={state}
+            />
           </p>
           {unknown && (
             <span className="inline-flex shrink-0 items-center rounded-full bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit font-medium text-foreground-tertiary">
@@ -94,7 +104,12 @@ export function HandoffStatus({
           role={state === "failed" ? "status" : undefined}
           className="min-w-0 text-body [overflow-wrap:anywhere] text-foreground-secondary"
         >
-          <HandoffSentence outcome={outcome} name={name} state={state} />
+          <HandoffSentence
+            outcome={outcome}
+            kind={kind}
+            name={name}
+            state={state}
+          />
         </p>
         {state === "failed"
           ? outcome.retry &&
@@ -128,11 +143,12 @@ export function HandoffStatus({
 
 interface SentenceProps {
   outcome: HandoffOutcome;
+  kind: NewExpertKind;
   name: string;
   state: HandoffState;
 }
 
-function HandoffSentence({ outcome, name, state }: SentenceProps) {
+function HandoffSentence({ outcome, kind, name, state }: SentenceProps) {
   const who = (
     <span className="font-medium text-foreground-emphasis">{name}</span>
   );
@@ -140,7 +156,8 @@ function HandoffSentence({ outcome, name, state }: SentenceProps) {
     case "failed":
       return (
         <>
-          {who} is hired, but {outcome.title} didn&apos;t start.
+          {who} is {NEW_EXPERT_COPY[kind].done}, but {outcome.title} didn&apos;t
+          start.
         </>
       );
     case "unconfirmed":

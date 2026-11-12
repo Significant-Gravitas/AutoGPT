@@ -1,8 +1,11 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -40,6 +43,7 @@ vi.mock("next/navigation", async (importOriginal) => {
 });
 
 afterEach(() => {
+  useAuthStore.setState({ user: null });
   mockSearchParams.current = new URLSearchParams();
   mockRouterReplace.mockReset();
 });
@@ -137,6 +141,7 @@ describe("Settings billing page (integration)", () => {
       ),
     );
     mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    useAuthStore.setState({ user: { id: "user-a" } as User });
 
     render(<SettingsBillingPage />);
 
@@ -149,7 +154,7 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     let fulfillCalled = false;
     server.use(
-      http.patch("*/api/credits/fulfill_checkout", () => {
+      http.patch("*/api/credits", () => {
         fulfillCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
@@ -164,6 +169,43 @@ describe("Settings billing page (integration)", () => {
     // Cancel branch must NOT fulfill — webhook is the source of truth and
     // the user explicitly aborted the checkout.
     expect(fulfillCalled).toBe(false);
+  });
+
+  it("waits for the first authenticated identity before fulfilling a topup", async () => {
+    useDefaultBillingHandlers();
+    let fulfillCalls = 0;
+    server.use(
+      http.patch("*/api/credits", () => {
+        fulfillCalls += 1;
+        return HttpResponse.json({}, { status: 200 });
+      }),
+    );
+    mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    // The redirect handler clears the query string as its last step, so its
+    // calls show whether it ran. (Onboarding may also replace the route once
+    // someone signs in, so only these count.)
+    function topupRedirectsHandled() {
+      return mockRouterReplace.mock.calls.filter(
+        ([path]) => path === "/settings/billing",
+      ).length;
+    }
+
+    render(<SettingsBillingPage />);
+    expect(topupRedirectsHandled()).toBe(0);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-a" } as User });
+    });
+    await waitFor(() => expect(fulfillCalls).toBe(1));
+    expect(topupRedirectsHandled()).toBe(1);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-b" } as User });
+    });
+    await act(async () => {});
+
+    expect(topupRedirectsHandled()).toBe(1);
+    expect(fulfillCalls).toBe(1);
   });
 
   it("clears the ?subscription=success query after a Stripe redirect", async () => {

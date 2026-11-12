@@ -7,10 +7,9 @@ community. The audit's default recommendation was to leave communities
 off in P0 and revisit only if retrieval relevance plateaued.
 
 The user direction for P-1 overrides that default: enable communities
-now, and run rebuilds as a weekly memory-maintenance job at an off-peak
-hour (owner-local 04:00, see ``dream/scheduling.py``) to bound cost. No
-feature flag gates them. The scheduler hook in ``backend/executor/scheduler.py``
-calls into this module.
+now, and run rebuilds as a weekly memory-maintenance job to bound cost:
+the scheduler's hourly sweep (``dream/community_sweep.py``) rebuilds each
+scope a week after its last rebuild. No feature flag gates them.
 
 Operational notes:
 
@@ -32,6 +31,7 @@ Operational notes:
 
 import logging
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -47,6 +47,9 @@ from .config import graphiti_config
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
+
+# The ``skip_reason`` of a rebuild its ``may_rebuild`` check refused.
+REBUILD_REFUSED = "refused"
 
 
 # Upstream graphiti-core's ``label_propagation`` has an unbounded
@@ -270,6 +273,7 @@ async def rebuild_communities_for_user(
     *,
     expert_id: str | None = None,
     force: bool = False,
+    may_rebuild: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Destroy and rebuild ``:Community`` nodes for one user's graph.
 
@@ -281,6 +285,8 @@ async def rebuild_communities_for_user(
     on essentially-unchanged graphs.
 
     Set ``force=True`` to bypass the gate (admin override / debugging).
+    ``may_rebuild`` is asked only once the gate lets the rebuild go; False
+    skips it with ``REBUILD_REFUSED``, so an unchanged graph costs no check.
 
     Returns a result dict with ``user_id``, ``communities_built``,
     ``elapsed_seconds``, ``error`` (if any), ``skipped`` (bool), and
@@ -378,6 +384,11 @@ async def rebuild_communities_for_user(
                     stats,
                 )
                 return result
+
+        if may_rebuild is not None and not await may_rebuild():
+            result["skipped"] = True
+            result["skip_reason"] = REBUILD_REFUSED
+            return result
 
         # Defensive: clean up any orphan :Community nodes regardless of
         # upstream version. Per multi-episode research, modern Graphiti
