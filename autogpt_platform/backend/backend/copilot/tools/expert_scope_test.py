@@ -6,12 +6,14 @@ from pydantic import SecretStr
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.expert_scope import (
     ExpertWorkflowScope,
+    annotate_expert_grants,
     install_saved_agent,
     require_installed_workflow,
     resolve_target_expert,
     ungranted_credential_hint,
 )
 from backend.copilot.tools.models import AgentSavedResponse, ErrorResponse
+from backend.data.model import OAuth2Credentials
 
 _PATH = "backend.copilot.tools.expert_scope"
 
@@ -187,8 +189,6 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
 
 
 async def test_missing_credentials_are_annotated_with_expert_grants(experts):
-    from backend.copilot.tools.expert_scope import annotate_expert_grants
-
     def cred(id: str, type: str, scopes: list[str]):
         return MagicMock(id=id, provider="github", title=id, type=type, scopes=scopes)
 
@@ -253,9 +253,6 @@ async def test_platform_key_is_usable_and_never_offered_as_a_grant(experts):
 
 
 async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
-    from backend.copilot.tools.expert_scope import annotate_expert_grants
-    from backend.data.model import OAuth2Credentials
-
     def mcp_cred(id: str, server_url: str):
         return OAuth2Credentials(
             id=id,
@@ -292,8 +289,6 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
 async def test_untitled_grant_candidates_are_named_by_their_email(experts):
     """A Google sign-in stores no title, so naming candidates by provider
     listed every account as "google" in the grant dialog."""
-    from backend.copilot.tools.expert_scope import annotate_expert_grants
-    from backend.data.model import OAuth2Credentials
 
     def google(id: str, email: str):
         return OAuth2Credentials(

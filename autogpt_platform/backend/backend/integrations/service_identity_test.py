@@ -5,7 +5,11 @@ import logging
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.model import (
+    APIKeyCredentials,
+    OAuth2Credentials,
+    UserPasswordCredentials,
+)
 from backend.integrations.mcp_catalog import MCPCatalogEntry, get_mcp_catalog
 from backend.integrations.service_identity import (
     credential_display_name,
@@ -140,3 +144,14 @@ def test_a_credential_with_neither_falls_back_to_its_provider():
         id="c", provider="notion", title=None, api_key=SecretStr("k")
     )
     assert credential_display_name(credential) == "notion"
+
+
+def test_a_login_username_is_never_shown_because_it_is_a_secret():
+    credential = UserPasswordCredentials(
+        id="c",
+        provider="smtp",
+        title=None,
+        username=SecretStr("me@example.com"),
+        password=SecretStr("p"),
+    )
+    assert credential_display_name(credential) == "smtp"
