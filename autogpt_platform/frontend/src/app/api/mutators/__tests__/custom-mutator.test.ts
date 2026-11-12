@@ -9,6 +9,7 @@ vi.mock("@/services/environment", () => ({
     isClientSide: vi.fn(),
     isServerSide: vi.fn(),
     getAGPTServerBaseUrl: vi.fn(() => "http://localhost:8006"),
+    getCookiebotCBID: vi.fn(() => ""),
   },
 }));
 
@@ -26,6 +27,10 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
   getServerAuthToken: vi.fn(),
 }));
 
+vi.mock("@/services/analytics/posthog-request-context", () => ({
+  getPostHogSessionHeader: vi.fn(() => ({})),
+}));
+
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
   captureMessage: vi.fn(),
@@ -37,6 +42,7 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import * as Sentry from "@sentry/nextjs";
+import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 
 const mockIsClientSide = vi.mocked(environment.isClientSide);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
@@ -68,6 +74,20 @@ describe("customMutator — impersonation header", () => {
     const fetchCall = vi.mocked(fetch).mock.calls[0];
     const headers = fetchCall[1]?.headers as Record<string, string>;
     expect(headers[IMPERSONATION_HEADER_NAME]).toBe("impersonated-user-abc");
+  });
+
+  it("names the browser's PostHog session", async () => {
+    vi.mocked(getPostHogSessionHeader).mockReturnValueOnce({
+      "X-PostHog-Session-Id": "posthog-session-1",
+    });
+
+    await customMutator("/test", { method: "GET" });
+
+    const headers = vi.mocked(fetch).mock.calls[0][1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(headers["X-PostHog-Session-Id"]).toBe("posthog-session-1");
   });
 
   it("does not add impersonation header when no impersonation active", async () => {
@@ -447,12 +467,27 @@ describe("customMutator — banned account", () => {
     expect(replace).toHaveBeenCalledWith("/logout?reason=banned");
   });
 
+  it("shows a closed account when it will be erased, with Keep my account", async () => {
+    respondWith(401, { detail: "This account is closed." });
+
+    await expect(customMutator("/api/foo", { method: "GET" })).rejects.toThrow(
+      "This account is closed.",
+    );
+    expect(replace).toHaveBeenCalledWith("/account-closed");
+  });
+
   it.each([
     ["another 403", 403, { detail: "Admin access required" }],
     [
       "the banned code on another status",
       401,
       { detail: { code: "account_banned" } },
+    ],
+    ["another 401", 401, { detail: "Not authenticated" }],
+    [
+      "the closed detail on another status",
+      403,
+      { detail: "This account is closed." },
     ],
   ])("leaves the user signed in on %s", async (_, status, body) => {
     respondWith(status, body);

@@ -157,6 +157,27 @@ def test_kimi_k3_bills_at_authored_rates():
     }
 
 
+def test_kimi_k3_1_pro_bills_at_authored_rates():
+    """Kimi K3.1 Pro (OpenRouter, $2/$10 per 1M, $0.20/1M cached input) —
+    flat tier and per-1M projections must match the authored entry."""
+    k31 = LLMModel("moonshotai/kimi-k3.1-pro")
+    assert k31 is LLMModel.KIMI_K3_1_PRO
+    assert MODEL_COST[k31] == 9
+    assert TOKEN_COST[k31].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 30.0,
+        "cache_creation": 0.0,
+    }
+    entry = next(m for m in CATALOG.models if m.slug == "moonshotai/kimi-k3.1-pro")
+    assert entry.cost.provider_cache_read_usd_per_1m == 0.20
+    assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.max_output_tokens == 943718
+    assert entry.supports_tools is True
+    assert entry.supports_reasoning is True
+
+
 def test_deepseek_chat_display_rate_tracks_openrouter():
     """SECRT-2701 regression pin: deepseek-chat's shown price had drifted to
     ~3x understated ($0.14/$0.28 displayed against a live $0.32/$0.89) and
@@ -318,6 +339,25 @@ def test_gpt6_1_sol_bills_at_authored_rates():
     assert sol_entry.context_window == 1050000
 
 
+def test_gpt6_1_terra_bills_at_authored_rates():
+    """GPT-6.1 Terra (OpenAI list price $1/$5 per 1M, $0.05/1M cached
+    input) — flat tier and per-1M projections must match the authored
+    catalog entry."""
+    terra = LLMModel("gpt-6.1-terra")
+    assert terra is LLMModel.GPT6_1_TERRA
+    assert MODEL_COST[terra] == 2
+    assert TOKEN_COST[terra].model_dump() == {
+        "input": 150.0,
+        "output": 750.0,
+        "cache_read": 7.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[terra].max_output_tokens == 128000
+    terra_entry = next(m for m in CATALOG.models if m.slug == "gpt-6.1-terra")
+    assert terra_entry.price_tier == 2
+    assert terra_entry.context_window == 1050000
+
+
 def test_gpt6_luna_bills_at_authored_rates():
     """GPT-6 Luna (OpenAI list price $0.10/$0.50 per 1M, the fast/cheapest
     GPT-6 tier) — flat tier and per-1M projections must match the
@@ -352,6 +392,25 @@ def test_claude_fable_5_1_bills_at_authored_rates():
     fable_entry = next(m for m in CATALOG.models if m.slug == "claude-fable-5-1")
     assert fable_entry.price_tier == 3
     assert fable_entry.context_window == 200000
+
+
+def test_claude_fable_5_2_bills_at_authored_rates():
+    """Claude Fable 5.2 (Anthropic list price $8/$40 per 1M, cache reads
+    $0.20/1M, 5m cache writes $10/1M) — flat tier and per-1M projections
+    must match the authored catalog entry."""
+    fable = LLMModel("claude-fable-5-2")
+    assert MODEL_COST[fable] == 16
+    assert TOKEN_COST[fable].model_dump() == {
+        "input": 1200.0,
+        "output": 6000.0,
+        "cache_read": 30.0,
+        "cache_creation": 1500.0,
+    }
+    assert MODEL_METADATA[fable].max_output_tokens == 128000
+    fable_entry = next(m for m in CATALOG.models if m.slug == "claude-fable-5-2")
+    assert fable_entry.price_tier == 3
+    assert fable_entry.context_window == 200000
+    assert fable_entry.supports_tools and fable_entry.supports_reasoning
 
 
 def test_gemini_4_argon_bills_at_authored_rates():
@@ -392,6 +451,67 @@ def test_gemini_3_8_flash_bills_at_authored_rates():
     flash_entry = next(m for m in CATALOG.models if m.slug == "google/gemini-3.8-flash")
     assert flash_entry.price_tier == 1
     assert flash_entry.context_window == 1048576
+
+
+def test_gemini_3_5_flash_bills_at_authored_rates():
+    """Gemini 3.5 Flash (OpenRouter list price $1.50/$9.00 per 1M,
+    $0.15/1M cached input as of 2026-09-30) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    flash = LLMModel("google/gemini-3.5-flash")
+    assert MODEL_COST[flash] == 4
+    assert TOKEN_COST[flash].model_dump() == {
+        "input": 225.0,
+        "output": 1350.0,
+        "cache_read": 22.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[flash].max_output_tokens == 65536
+    flash_entry = next(m for m in CATALOG.models if m.slug == "google/gemini-3.5-flash")
+    assert flash_entry.price_tier == 2
+    assert flash_entry.context_window == 1048576
+    assert flash_entry.supports_tools is True
+
+
+def test_gemini_3_5_flash_lite_bills_at_authored_rates():
+    """Gemini 3.5 Flash Lite (OpenRouter list price $0.30/$2.50 per 1M,
+    $0.03/1M cached input as of 2026-09-30) — flat tier and per-1M
+    projections must match the authored catalog entry."""
+    lite = LLMModel("google/gemini-3.5-flash-lite")
+    assert MODEL_COST[lite] == 1
+    assert TOKEN_COST[lite].model_dump() == {
+        "input": 45.0,
+        "output": 375.0,
+        "cache_read": 4.5,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[lite].max_output_tokens == 65536
+    lite_entry = next(
+        m for m in CATALOG.models if m.slug == "google/gemini-3.5-flash-lite"
+    )
+    assert lite_entry.price_tier == 1
+    assert lite_entry.context_window == 1048576
+    assert lite_entry.supports_tools is True
+
+
+def test_gemini_3_1_flash_lite_bills_at_authored_rates():
+    """Gemini 3.1 Flash Lite GA (OpenRouter list price $0.25/$1.50 per 1M,
+    $0.025/1M cached input as of 2026-09-30, same as the preview) — flat
+    tier and per-1M projections must match the authored catalog entry."""
+    lite = LLMModel("google/gemini-3.1-flash-lite")
+    assert MODEL_COST[lite] == 1
+    assert TOKEN_COST[lite].model_dump() == {
+        "input": 37.5,
+        "output": 225.0,
+        "cache_read": 3.75,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[lite].max_output_tokens == 65536
+    lite_entry = next(
+        m for m in CATALOG.models if m.slug == "google/gemini-3.1-flash-lite"
+    )
+    assert lite_entry.price_tier == 1
+    assert lite_entry.context_window == 1048576
+    assert lite_entry.supports_tools is True
 
 
 def test_muse_spark_1_3_bills_at_authored_rates():
@@ -479,6 +599,28 @@ def test_muse_wonder_bills_at_authored_rates():
     assert MODEL_METADATA[wonder].max_output_tokens == 943718
     entry = next(m for m in CATALOG.models if m.slug == "meta/muse-wonder")
     assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
+def test_muse_ember_bills_at_authored_rates():
+    """Muse Ember (OpenRouter, Meta list price $0.10/$0.50 per 1M, cache
+    read $0.004/1M) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    ember = LLMModel("meta/muse-ember")
+    assert ember is LLMModel.META_MUSE_EMBER
+    assert MODEL_COST[ember] == 1
+    assert TOKEN_COST[ember].model_dump() == {
+        "input": 15.0,
+        "output": 75.0,
+        "cache_read": 0.6,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[ember].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-ember")
+    assert entry.price_tier == 1
     assert entry.context_window == 1048576
     assert entry.supports_tools is True
     assert entry.supports_json_output is True
@@ -588,6 +730,26 @@ def test_mercury_2_5_bills_at_authored_rates():
     assert mercury_entry.supports_json_output is True
     assert mercury_entry.supports_reasoning is True
     assert mercury_entry.supports_parallel_tool_calls is True
+
+
+def test_hy4_bills_at_authored_rates():
+    """Tencent Hy4 (OpenRouter, live list price $0.417/$1.2505 per 1M,
+    $0.021/1M cached input): flat tier and per-1M projections must match
+    the authored catalog entry."""
+    hy4 = LLMModel("tencent/hy4")
+    assert MODEL_COST[hy4] == 2
+    assert TOKEN_COST[hy4].model_dump() == {
+        "input": 62.55,
+        "output": 187.575,
+        "cache_read": 3.15,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[hy4].max_output_tokens == 65536
+    hy4_entry = next(m for m in CATALOG.models if m.slug == "tencent/hy4")
+    assert hy4_entry.price_tier == 2
+    assert hy4_entry.context_window == 1048576
+    assert hy4_entry.supports_tools is True
+    assert hy4_entry.supports_reasoning is True
 
 
 def test_hy4_preview_bills_at_authored_rates():
@@ -746,14 +908,14 @@ def test_routing_cells_use_transport_ready_spellings():
 
 
 def test_mistral_large_4_bills_at_authored_rates():
-    """Mistral Large 4 (OpenRouter live rate $0.68/$2.09 per 1M, $0.07/1M
-    cached input as of 2026-10-06) — flat tier and per-1M projections must
+    """Mistral Large 4 (OpenRouter live rate $0.70/$2.10 per 1M, $0.07/1M
+    cached input as of 2026-10-29) — flat tier and per-1M projections must
     match the authored catalog entry."""
     large = LLMModel("mistralai/mistral-large-4-0")
     assert MODEL_COST[large] == 2
     assert TOKEN_COST[large].model_dump() == {
-        "input": 102.0,
-        "output": 313.5,
+        "input": 105.0,
+        "output": 315.0,
         "cache_read": 10.5,
         "cache_creation": 0.0,
     }

@@ -1,5 +1,8 @@
 "use client";
 
+// Node and edge colours stay hex: the canvas renderer draws them, where CSS
+// variables do not resolve (ds-colour-exempt.json).
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { GraphNode } from "@/app/api/__generated__/models/graphNode";
@@ -10,7 +13,7 @@ import type { GraphEdge } from "@/app/api/__generated__/models/graphEdge";
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full items-center justify-center text-sm text-gray-500">
+    <div className="flex h-full items-center justify-center text-body text-foreground-tertiary">
       Loading graph engine…
     </div>
   ),

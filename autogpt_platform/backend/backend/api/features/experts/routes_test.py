@@ -6,7 +6,7 @@ with AsyncMock at the route module's import site.
 """
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -44,7 +44,7 @@ from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
 from backend.copilot.tools.skills import SkillWriteLockError
 from backend.util.exceptions import ConflictError, NotFoundError
-from backend.util.feature_flag import Flag
+from backend.util.sandbox_limits import SandboxLimitError
 
 app = fastapi.FastAPI()
 app.include_router(public_router)
@@ -191,14 +191,12 @@ def test_list_expert_templates_forwards_search_and_category(
     mock_list.assert_awaited_once_with(search_query="Maria", category="marketing")
 
 
-@pytest.mark.parametrize(
-    ("user_id", "flag_key"), [(None, "anonymous"), ("user-1", "user-1")]
-)
+@pytest.mark.parametrize("user_id", [None, "user-1"])
 def test_list_expert_templates_links_live_hub_skills(
-    mocker: pytest_mock.MockerFixture, user_id: str | None, flag_key: str
+    mocker: pytest_mock.MockerFixture, user_id: str | None
 ) -> None:
     app.dependency_overrides[get_optional_user_id] = lambda: user_id
-    flag, _ = _mock_templates_with_hub_skill(mocker, hub_on=True)
+    rows_query = _mock_templates_with_hub_skill(mocker)
 
     response = client.get("/experts/templates")
 
@@ -211,24 +209,10 @@ def test_list_expert_templates_links_live_hub_skills(
             "description": "Keeps every draft on-brand.",
         }
     ]
-    flag.assert_awaited_once_with(Flag.SKILLS_HUB, flag_key)
+    rows_query.assert_awaited_once()
 
 
-def test_list_expert_templates_links_nothing_with_the_hub_off(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    _, rows_query = _mock_templates_with_hub_skill(mocker, hub_on=False)
-
-    response = client.get("/experts/templates")
-
-    assert response.status_code == 200
-    assert response.json()[0]["bundled_skills"] == []
-    rows_query.assert_not_awaited()
-
-
-def _mock_templates_with_hub_skill(
-    mocker: pytest_mock.MockerFixture, *, hub_on: bool
-) -> tuple[AsyncMock, AsyncMock]:
+def _mock_templates_with_hub_skill(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     template = _make_expert(
         id="template-1",
         is_template=True,
@@ -264,12 +248,7 @@ def _mock_templates_with_hub_skill(
             )
         },
     )
-    flag = mocker.patch(
-        "backend.api.features.experts.experts_db.is_feature_enabled",
-        new_callable=AsyncMock,
-        return_value=hub_on,
-    )
-    return flag, rows_query
+    return rows_query
 
 
 # ─── Hire ──────────────────────────────────────────────────────────────
@@ -913,6 +892,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             color="orange-500",
             role="Marketing Specialist",
             is_archived=True,
+            created_at=datetime(2026, 11, 2, 9, 30, tzinfo=UTC),
         )
     ]
     mock_list = mocker.patch(
@@ -934,6 +914,7 @@ def test_list_expert_identities_returns_lifetime_roster_projection(
             "job_title": None,
             "is_archived": True,
             "autopilot_mode": None,
+            "created_at": "2026-11-02T09:30:00Z",
         }
     ]
     mock_list.assert_awaited_once_with(test_user_id)
@@ -2147,6 +2128,26 @@ def test_start_expert_desktop_failure_is_a_502_with_a_fixed_message(
     assert response.status_code == 502
     # The provider's words stay in the log, never in the response.
     assert response.json()["detail"] == "Failed to start the desktop."
+
+
+def test_start_expert_desktop_refused_under_a_sandbox_limit_is_a_429_saying_so(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.get_expert",
+        new_callable=AsyncMock,
+        return_value=_make_expert(),
+    )
+    config = mocker.patch("backend.api.features.experts.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    mocker.patch(
+        "backend.api.features.experts.routes.open_desktop",
+        new_callable=AsyncMock,
+        side_effect=SandboxLimitError("Too many sandboxes are running right now."),
+    )
+    response = client.post("/experts/expert-1/computer/desktop")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Too many sandboxes are running right now."
 
 
 def test_start_expert_desktop_without_e2b_is_503(

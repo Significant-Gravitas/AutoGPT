@@ -6,6 +6,7 @@ import pytest
 from backend.sdk import APIKeyCredentials, SecretStr
 
 from ._api import (
+    AirtableWebhookEvent,
     TableFieldType,
     WebhookFilters,
     WebhookSpecification,
@@ -287,7 +288,7 @@ async def test_webhook_management():
     assert table_id is not None
     webhook_specification = WebhookSpecification(
         filters=WebhookFilters(
-            dataTypes=["tableData", "tableFields", "tableMetadata"],
+            dataTypes=list(AirtableWebhookEvent),
             changeTypes=["add", "update", "remove"],
         )
     )

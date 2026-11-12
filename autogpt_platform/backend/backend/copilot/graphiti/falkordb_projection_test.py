@@ -16,8 +16,10 @@ from graphiti_core.search.search_utils import (
     node_fulltext_search,
     node_similarity_search,
 )
+from pytest_mock import MockerFixture
 
-from .falkordb_driver import AutoGPTFalkorDriver
+from . import falkordb_projection
+from .falkordb_driver import AutoGPTFalkorDriver, _strip_cypher_noise
 from .falkordb_projection import without_embeddings
 
 _LEAN_EDGE = "e {.*, fact_embedding: NULL} AS attributes"
@@ -34,6 +36,10 @@ class _EmptyResult:
         self.result_set: list = []
 
 
+def _without_embeddings(query: str) -> str:
+    return without_embeddings(query, _strip_cypher_noise(query))
+
+
 def test_graphiti_edge_projection_loses_the_embedding() -> None:
     projection = get_entity_edge_return_query(GraphProvider.FALKORDB)
 
@@ -41,8 +47,8 @@ def test_graphiti_edge_projection_loses_the_embedding() -> None:
         "graphiti's edge projection changed: check falkordb_projection still"
         " leaves the embedding out"
     )
-    assert _LEAN_EDGE in without_embeddings(projection)
-    assert "properties(e)" not in without_embeddings(projection)
+    assert _LEAN_EDGE in _without_embeddings(projection)
+    assert "properties(e)" not in _without_embeddings(projection)
 
 
 def test_graphiti_node_projection_loses_the_embedding() -> None:
@@ -52,8 +58,55 @@ def test_graphiti_node_projection_loses_the_embedding() -> None:
         "graphiti's node projection changed: check falkordb_projection still"
         " leaves the embedding out"
     )
-    assert _LEAN_NODE in without_embeddings(projection)
-    assert "properties(n)" not in without_embeddings(projection)
+    assert _LEAN_NODE in _without_embeddings(projection)
+    assert "properties(n)" not in _without_embeddings(projection)
+
+
+def test_multiple_record_projections_are_rewritten_by_position() -> None:
+    node = get_entity_node_return_query(GraphProvider.FALKORDB)
+    edge = get_entity_edge_return_query(GraphProvider.FALKORDB)
+    query = node + edge
+    expected = node.replace("properties(n) AS attributes", _LEAN_NODE) + edge.replace(
+        "properties(e) AS attributes", _LEAN_EDGE
+    )
+
+    rewritten = _without_embeddings(query)
+
+    assert rewritten == expected
+    assert _LEAN_NODE in rewritten
+    assert _LEAN_EDGE in rewritten
+    assert "properties(n)" not in rewritten
+    assert "properties(e)" not in rewritten
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_unfamiliar_upstream_projection_is_left_alone(
+    index: int, mocker: MockerFixture
+) -> None:
+    records = list(falkordb_projection._RECORD_PROJECTIONS)
+    record, projection, lean = records[index]
+    changed_record = record.replace(projection, "NULL AS attributes")
+    records[index] = (changed_record, projection, lean)
+    mocker.patch.object(falkordb_projection, "_RECORD_PROJECTIONS", tuple(records))
+
+    assert _without_embeddings(changed_record) == changed_record
+
+
+@pytest.mark.parametrize("kind", ["literal", "comment", "identifier"])
+def test_decoy_before_real_records_preserves_offsets(kind: str) -> None:
+    edge = get_entity_edge_return_query(GraphProvider.FALKORDB)
+    node = get_entity_node_return_query(GraphProvider.FALKORDB)
+    decoys = {
+        "literal": f"WITH 'an escaped \\' quote, {edge}' AS marker\n",
+        "comment": f"/* decoy {node} */\n",
+        "identifier": f"WITH 1 AS `{edge}`\n",
+    }
+    prefix = decoys[kind]
+    query = prefix + edge + node
+    expected = prefix + edge.replace("properties(e) AS attributes", _LEAN_EDGE)
+    expected += node.replace("properties(n) AS attributes", _LEAN_NODE)
+
+    assert _without_embeddings(query) == expected
 
 
 @pytest.mark.parametrize(
@@ -66,7 +119,34 @@ def test_graphiti_node_projection_loses_the_embedding() -> None:
     ],
 )
 def test_a_read_that_names_its_columns_is_left_alone(query: str) -> None:
-    assert without_embeddings(query) == query
+    assert _without_embeddings(query) == query
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "RETURN 'properties(e) AS attributes' AS marker",
+        'RETURN "properties(n) AS attributes" AS marker',
+        r"RETURN 'escaped \' properties(e) AS attributes' AS marker",
+        r'RETURN "escaped \" properties(n) AS attributes" AS marker',
+        "RETURN 1 AS `properties(e) AS attributes`",
+        "RETURN 1 AS value // properties(e) AS attributes",
+        "RETURN 1 /* properties(n) AS attributes */ AS value",
+        "MATCH ()-[e]->() RETURN properties(e) AS attributes",
+        "MATCH (n) RETURN properties(n) AS attributes",
+        f"RETURN '{get_entity_edge_return_query(GraphProvider.FALKORDB)}' AS marker",
+        f"/* {get_entity_node_return_query(GraphProvider.FALKORDB)} */ RETURN 1",
+    ],
+)
+@pytest.mark.asyncio
+async def test_driver_leaves_non_record_builder_lookalikes_alone(query: str) -> None:
+    driver = AutoGPTFalkorDriver(falkor_db=MagicMock())
+    ro_query = AsyncMock(return_value=_EmptyResult())
+    driver.client.select_graph.return_value.ro_query = ro_query
+
+    await driver.execute_query(query)
+
+    assert ro_query.await_args.args[0] == query
 
 
 @pytest.mark.asyncio

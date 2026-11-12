@@ -41,13 +41,13 @@ async def test_archive_pauses_and_revive_resumes_the_expert(env):
 
     await registry.sync_expert_scope(USER, "expert-1", active=False)  # archive
     row = env.db.rows[EXPERT.scope_key]
-    assert (row.state, row.community_job_id, row.nightly_job_id) == (PAUSED, None, None)
+    assert (row.state, row.nightly_job_id) == (PAUSED, None)
     assert env.scheduler.jobs == {}
 
     await registry.sync_expert_scope(USER, "expert-1", active=True)  # re-hire
     row = env.db.rows[EXPERT.scope_key]
     assert row.state == ACTIVE
-    assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+    assert {row.nightly_job_id} == job_ids(EXPERT)
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
     assert list(env.db.rows) == [EXPERT.scope_key]
 
@@ -229,7 +229,7 @@ async def test_a_resume_after_a_registration_found_the_scope_paused_keeps_its_cr
     assert {r["reason"] for r in result.values()} == {"scope_changed"}
     row = env.db.rows[EXPERT.scope_key]
     assert row.state == ACTIVE
-    assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+    assert {row.nightly_job_id} == job_ids(EXPERT)
     assert set(env.scheduler.jobs) == job_ids(EXPERT), "the resume's crons stay"
 
     report = await env.reconcile()
@@ -242,22 +242,24 @@ async def test_a_resume_after_a_registration_found_the_scope_paused_keeps_its_cr
 async def test_a_resume_that_cannot_write_the_row_reports_only_enabled_crons_failed(
     env, monkeypatch
 ):
-    """The backfill lists every cron a resume reports unavailable as a
-    failure: a cron the owner's flags turn off is reported as its flag says,
-    as an ensure would, not as a failure."""
-    env.flags[Flag.GRAPHITI_COMMUNITIES_ENABLED] = False
+    """The backfill lists every cron a resume reports unavailable, and the
+    row itself, as a failure: a cron the owner's flags turn off is reported
+    as its flag says, as an ensure would, not as a failure."""
+    env.flags[Flag.DREAM_PASS_ENABLED] = False
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
     monkeypatch.setattr(
         env.db, "set_scope_state", AsyncMock(side_effect=ConnectionError("db down"))
     )
 
-    resumed = await registry.resume_scope(EXPERT)
+    resumed = await registry.resume_scope(ACCOUNT)
 
     assert resumed == {
-        "community_rebuild": {
+        "registry_row": {"skipped": True, "reason": "registry_unavailable"},
+        "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
+        "skill_learning_nightly": {
             "skipped": True,
-            "reason": "graphiti_communities_disabled",
+            "reason": "registry_unavailable",
         },
-        "dream_nightly_batch": {"skipped": True, "reason": "registry_unavailable"},
     }
 
 
@@ -339,18 +341,24 @@ async def test_timezone_change_re_registers_every_active_scope(env):
 
 
 @pytest.mark.asyncio
-async def test_timezone_change_of_a_flag_off_owner_costs_no_database_call(env):
+async def test_timezone_change_with_every_flag_off_registers_nothing(env):
+    """No cron to move: the account reports its flags and nothing is read
+    or registered."""
     env.flags = {}
     env.db.fail = True  # any read would raise
 
     results = await registry.reregister_user(USER)
 
-    assert set(results) == {USER}
-    assert {r["reason"] for r in results[USER].values()} == {
-        "graphiti_communities_disabled",
-        "dream_pass_disabled",
-        "skill_learning_disabled",
+    assert results == {
+        USER: {
+            "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
+            "skill_learning_nightly": {
+                "skipped": True,
+                "reason": "skill_learning_disabled",
+            },
+        }
     }
+    assert env.adds() == 0
 
 
 @pytest.mark.asyncio

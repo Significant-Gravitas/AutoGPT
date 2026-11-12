@@ -12,8 +12,11 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 from typing import Any
 
 import pytest
+from graphiti_core.driver.driver import GraphProvider
 from graphiti_core.edges import EntityEdge
 from graphiti_core.embedder.client import EMBEDDING_DIM
+from graphiti_core.models.edges.edge_db_queries import get_entity_edge_return_query
+from graphiti_core.models.nodes.node_db_queries import get_entity_node_return_query
 from graphiti_core.nodes import EntityNode
 from graphiti_core.search.search_filters import SearchFilters
 from graphiti_core.search.search_utils import (
@@ -46,7 +49,9 @@ async def test_reads_return_the_same_facts_and_entities_without_the_embedding(
     lean = await _read_everything(
         driver, scope.group_id, list(edges.values()), entities
     )
-    mocker.patch.object(falkordb_driver, "without_embeddings", lambda query: query)
+    mocker.patch.object(
+        falkordb_driver, "without_embeddings", lambda query, _code: query
+    )
     full = await _read_everything(
         driver, scope.group_id, list(edges.values()), entities
     )
@@ -66,7 +71,9 @@ async def test_the_embeddings_no_longer_come_back(
     await ingest_facts(driver, scope, stub_graphiti_client, [ALICE, BOB])
 
     lean_edges, lean_nodes = await _stored_embeddings(driver)
-    mocker.patch.object(falkordb_driver, "without_embeddings", lambda query: query)
+    mocker.patch.object(
+        falkordb_driver, "without_embeddings", lambda query, _code: query
+    )
     full_edges, full_nodes = await _stored_embeddings(driver)
 
     assert lean_edges and set(lean_edges) == set(full_edges)
@@ -120,10 +127,12 @@ async def _stored_embeddings(
     """Each fact's and entity's embedding as graphiti's projection returns it
     inside ``attributes``."""
     facts, _, _ = await driver.execute_query(
-        "MATCH ()-[e:RELATES_TO]->() RETURN e.uuid AS uuid, properties(e) AS attributes"
+        "MATCH ()-[e:RELATES_TO]->() RETURN "
+        + get_entity_edge_return_query(GraphProvider.FALKORDB)
     )
     entities, _, _ = await driver.execute_query(
-        "MATCH (n:Entity) RETURN n.uuid AS uuid, properties(n) AS attributes"
+        "MATCH (n:Entity) RETURN "
+        + get_entity_node_return_query(GraphProvider.FALKORDB)
     )
     return (
         {row["uuid"]: row["attributes"].get("fact_embedding") for row in facts},

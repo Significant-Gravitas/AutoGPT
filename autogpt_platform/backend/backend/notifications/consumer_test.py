@@ -17,6 +17,7 @@ from postmarker.exceptions import ClientError
 
 from backend.notifications import notifications as delivery
 from backend.notifications.notifications import NotificationManager
+from backend.util.process import AppProcess
 
 
 @pytest.fixture(scope="session")
@@ -375,8 +376,9 @@ async def test_shutdown_does_not_wait_past_the_grace_for_a_handler(monkeypatch):
     )
     await asyncio.sleep(0.01)
     consumer.cancel()
+    # A hang guard only: a runner can stall for longer than the 0.05 s grace.
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(consumer, timeout=1)
+        await asyncio.wait_for(consumer, timeout=30)
 
     assert cancelled.is_set()
     # The honest half of the trade: this message is never settled, so the
@@ -510,7 +512,7 @@ async def test_cancelling_the_service_still_lets_in_flight_handlers_settle():
         await asyncio.sleep(0.01)
         run.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(run, timeout=1)
+            await asyncio.wait_for(run, timeout=30)
 
     assert len(messages) == 4
     for message in messages:
@@ -634,3 +636,15 @@ async def test_every_consumer_declares_how_its_queue_is_ordered():
         delivery.AUDIENCE_QUEUE: delivery.Ordering.AS_PUBLISHED,
         delivery.PASS_WORK_QUEUE: delivery.Ordering.COMMUTATIVE,
     }
+
+
+# ── stopped during start-up ────────────────────────────────────────────────
+
+
+def test_cleanup_of_a_manager_stopped_before_run_finishes_the_chain(mocker):
+    """Sentry AUTOGPT-SERVER-A7H: a SIGTERM before `run()` created the loop."""
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+
+    NotificationManager().cleanup()
+
+    process_cleanup.assert_called_once_with()

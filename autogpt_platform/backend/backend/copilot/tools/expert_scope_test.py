@@ -171,7 +171,7 @@ async def test_hint_lists_owned_but_ungranted_credentials(experts):
         ]
     )
     with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        f"{_PATH}.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
     ):
         hint = await ungranted_credential_hint("user-1", "expert-a", {"github"})
@@ -209,7 +209,7 @@ async def test_missing_credentials_are_annotated_with_expert_grants(experts):
         }
     }
     with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        f"{_PATH}.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
     ):
         annotated = await annotate_expert_grants("user-1", "expert-a", missing)
@@ -220,6 +220,36 @@ async def test_missing_credentials_are_annotated_with_expert_grants(experts):
     assert grant["credentials"][0]["type"] == "oauth2"
     assert "expert_grant" not in missing["github_credentials"]
     assert untouched is missing
+
+
+async def test_platform_key_is_usable_and_never_offered_as_a_grant(experts):
+    """The platform's Firecrawl key is no one's account to share (SECRT-3207).
+
+    It must count as available to the expert, and never be listed as an
+    account the user could grant, which the grant dialog cannot do.
+    """
+    from backend.copilot.tools.expert_scope import (
+        _ungranted_credentials,
+        resolve_credential_scope,
+    )
+
+    store = MagicMock()
+    store.get_all_creds = AsyncMock(
+        return_value=[
+            MagicMock(id="firecrawl-default", provider="firecrawl", title="Key"),
+            MagicMock(id="own-firecrawl", provider="firecrawl", title="Mine"),
+        ]
+    )
+    with patch(
+        f"{_PATH}.IntegrationCredentialsManager",
+        return_value=MagicMock(store=store),
+    ):
+        scope = await resolve_credential_scope("user-1", "expert-a")
+        offered = await _ungranted_credentials(
+            "user-1", "expert-a", {"firecrawl"}, scope
+        )
+    assert [c.id for c in scope.available] == ["firecrawl-default"]
+    assert [c.id for c in offered] == ["own-firecrawl"]
 
 
 async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
@@ -251,7 +281,7 @@ async def test_grant_candidates_must_match_the_requested_mcp_server(experts):
         }
     }
     with patch(
-        "backend.integrations.creds_manager.IntegrationCredentialsManager",
+        f"{_PATH}.IntegrationCredentialsManager",
         return_value=MagicMock(store=store),
     ):
         annotated = await annotate_expert_grants("user-1", "expert-a", missing)

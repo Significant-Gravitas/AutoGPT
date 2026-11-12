@@ -139,7 +139,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- next/headers exists only on the server, so it is required lazily here
     const headersModule = require("next/headers");
     const nextHeaders = headersModule as typeof import("next/headers");
     const cookieStore = await nextHeaders.cookies();

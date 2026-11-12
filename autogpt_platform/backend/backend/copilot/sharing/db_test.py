@@ -784,6 +784,12 @@ class TestSharedExecutionFileAllowlist:
             )
 
         assert created == 1
+        execution_include = mock_prisma_calls[
+            "execution"
+        ].return_value.find_unique.call_args.kwargs["include"]
+        # No node on the row at all now, so nothing can carry its block:
+        # each node is read once for the run instead.
+        assert "Node" not in execution_include["NodeExecutions"]["include"]
         find_many_call = mock_prisma_calls[
             "workspace_file"
         ].return_value.find_many.call_args.kwargs

@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from redis.exceptions import RedisClusterException, RedisError
 
+from backend.copilot.limit_tracking import LimitReading, track_chat_blocked
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     CHAT_STATUS_RUNNING,
@@ -30,8 +31,8 @@ from backend.copilot.pending_messages import (
     claim_client_message,
     drain_pending_messages,
     finish_despite_cancellation,
-    format_pending_as_user_message,
     peek_pending_count,
+    pending_message_text,
     push_pending_message,
     push_pending_message_if_session_running,
     release_client_message,
@@ -40,6 +41,7 @@ from backend.copilot.response_model import (
     StreamPendingDrained,
     StreamPendingDrainedMessage,
 )
+from backend.copilot.service import EmptyUserMessage, normalise_user_message
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.db_accessors import chat_db
@@ -60,6 +62,7 @@ logger = logging.getLogger(__name__)
 # Call-frequency cap for the pending-message endpoint.  The token-budget
 # check guards against overspend but not rapid-fire pushes from a client
 # with a large budget.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 PENDING_CALL_LIMIT = 30
 PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
@@ -165,9 +168,15 @@ async def queue_user_message(
     ``metadata`` lands on the user row the message is persisted as. It is
     for internal senders only (a session messaging another session); the
     HTTP path never passes it.
+
+    The text gets the same input normalisation as a message that starts a
+    turn: server-only blocks are stripped here, because a queued message
+    reaches the model through the drain, after the engines' own entry
+    sanitising has run. A message with nothing left once normalised raises
+    :class:`~backend.copilot.service.EmptyUserMessage` and queues nothing.
     """
     pending = PendingMessage(
-        content=message,
+        content=normalise_user_message(message),
         file_ids=file_ids or [],
         context=context,
         metadata=metadata or None,
@@ -241,9 +250,10 @@ async def queue_pending_for_http(
     is still being pushed waits for its outcome, and gets a 503 if that
     outlasts the wait.
 
-    Raises :class:`HTTPException` with status 429 if the rate cap is hit or
-    400 if an expert session attaches a file outside its scope; otherwise
-    returns the ``QueuePendingMessageResponse`` the handler can serialise 1:1.
+    Raises :class:`HTTPException` with status 429 if the rate cap is hit,
+    400 if an expert session attaches a file outside its scope, or 422 if the
+    message is empty once normalised; otherwise returns the
+    ``QueuePendingMessageResponse`` the handler can serialise 1:1.
     """
     sanitized_file_ids: list[str] | None = None
     if file_ids:
@@ -256,6 +266,11 @@ async def queue_pending_for_http(
             user_id, folder_ids, expert_id=expert_id
         )
         message += build_files_block([], folders)
+    # Refused before any claim or push, so a refused message changes nothing.
+    try:
+        message = normalise_user_message(message)
+    except EmptyUserMessage as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
     # unknown keys in the loose HTTP-level ``context`` dict are silently
@@ -327,6 +342,13 @@ async def queue_pending_for_http(
     # but report 429 so the client backs off further pushes.
     call_count = await check_pending_call_rate(user_id)
     if call_count > PENDING_CALL_LIMIT:
+        track_chat_blocked(
+            user_id,
+            limit="rate",
+            outcome="refused",
+            surface="chat",
+            reading=LimitReading(used=call_count, cap=PENDING_CALL_LIMIT),
+        )
         raise HTTPException(
             status_code=429,
             detail=(
@@ -447,7 +469,7 @@ def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
     turn-start injection (bundles the pending block into the user prompt)
     and the auto-continue combined-message path.
     """
-    return [format_pending_as_user_message(pm)["content"] for pm in pending]
+    return [pending_message_text(pm) for pm in pending]
 
 
 def combine_pending_with_current(
@@ -593,7 +615,13 @@ async def persist_pending_as_user_rows(
             ChatMessage(role="user", content=content, metadata=pm.metadata or None)
         )
         if transcript_builder is not None:
-            transcript_builder.append_user(content=content)
+            transcript_builder.append_user(
+                content=(
+                    [{"type": "text", "text": content}, pm.model_image.anthropic()]
+                    if pm.model_image
+                    else content
+                )
+            )
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
     # when ``upsert_chat_session`` patches a concurrently-updated title).
@@ -679,6 +707,12 @@ async def persist_unfolded_rows(
     saving = list(pending)
     pending.clear()
     try:
+        if any(message.model_image is not None for message in saving):
+            # No model transcript exists yet to retain the pixels. Requeue the
+            # whole batch so the next turn receives its images and order intact.
+            for message in saving:
+                await push_pending_message(session.session_id, message)
+            return
         await persist_pending_as_user_rows(session, None, saving, log_prefix=log_prefix)
     except Exception:
         logger.warning(

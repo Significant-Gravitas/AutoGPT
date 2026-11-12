@@ -7,6 +7,7 @@ import {
   getCompleteBrainDumpGreetingMockHandler200,
   getGetBrainDumpIntroMockHandler200,
   getGetBrainDumpRecommendedProvidersMockHandler200,
+  getGetBrainDumpSuggestedTasksMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getBriefingsMock } from "@/app/api/__generated__/endpoints/briefings/briefings.msw";
 import {
@@ -17,11 +18,16 @@ import { getCreditsMock } from "@/app/api/__generated__/endpoints/credits/credit
 import { getDefaultMock } from "@/app/api/__generated__/endpoints/default/default.msw";
 import { getEmailMock } from "@/app/api/__generated__/endpoints/email/email.msw";
 import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
+import { getGetPlatformConfigMockHandler } from "@/app/api/__generated__/endpoints/platform-config/platform-config.msw";
 import {
   getExecutionsMock,
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler,
 } from "@/app/api/__generated__/endpoints/executions/executions.msw";
-import { getExpertsMock } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getGetExperimentsGetExperimentAssignmentMockHandler } from "@/app/api/__generated__/endpoints/experiments/experiments.msw";
+import {
+  getExpertsMock,
+  getGetExpertOnboardingMockHandler200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getFilesMock } from "@/app/api/__generated__/endpoints/files/files.msw";
 import { getGraphsMock } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { getHealthMock } from "@/app/api/__generated__/endpoints/health/health.msw";
@@ -29,7 +35,10 @@ import { getIntegrationsMock } from "@/app/api/__generated__/endpoints/integrati
 import { getLibraryMock } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { getMetricsMock } from "@/app/api/__generated__/endpoints/metrics/metrics.msw";
 import { getOauthMock } from "@/app/api/__generated__/endpoints/oauth/oauth.msw";
-import { getOnboardingMock } from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
+import {
+  getGetV1CheckIfOnboardingIsCompletedMockHandler,
+  getOnboardingMock,
+} from "@/app/api/__generated__/endpoints/onboarding/onboarding.msw";
 import { getOttoMock } from "@/app/api/__generated__/endpoints/otto/otto.msw";
 import { getPresetsMock } from "@/app/api/__generated__/endpoints/presets/presets.msw";
 import { getSchedulesMock } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
@@ -45,8 +54,18 @@ export const mockHandlers = [
   http.get("/api/proxy/api/credits/pro-activation/current", () =>
     HttpResponse.json({ detail: "No activation in progress" }, { status: 404 }),
   ),
+  // No published releases unless a test provides some.
+  http.get("/api/changelog", () => HttpResponse.text("")),
+  http.get("/api/changelog/latest", () => HttpResponse.json({ releases: [] })),
   // No flag vendor unless a test provides one, so every flag serves its default.
   getGetFeatureFlagsMockHandler({ flags: {}, configured: false }),
+  // Payment off unless a test turns it on.
+  getGetPlatformConfigMockHandler({ payment_enabled: false }),
+  // Signed up with email unless a test provides a sign-in provider, so
+  // onboarding has no access step.
+  http.get("*/api/auth/sign-in-providers", () =>
+    HttpResponse.json({ providers: ["credential"] }),
+  ),
   ...getAdminMock(),
   ...getAnalyticsMock(),
   ...getApiKeysMock(),
@@ -61,6 +80,8 @@ export const mockHandlers = [
     greeting_done: true,
   }),
   getCompleteBrainDumpGreetingMockHandler200({ greeting_done: true }),
+  // No suggested first tasks unless a test sets some up.
+  getGetBrainDumpSuggestedTasksMockHandler200({ tasks: [], stored: false }),
   // Ready by default so the preparing step's recommendation gate never
   // holds unrelated tests; gate tests override with ready: false.
   getGetBrainDumpRecommendedProvidersMockHandler200({
@@ -79,6 +100,11 @@ export const mockHandlers = [
   // seed receipts into every chat's approval box.
   getGetV2GetAnsweredReviewsWaitingToRunForChatSessionMockHandler([]),
   ...getExecutionsMock(),
+  // Nobody is enrolled by default, so every test sees the control experience.
+  getGetExperimentsGetExperimentAssignmentMockHandler(null),
+  // No setup questions waiting unless a test sets some up; a random chat id
+  // would pull every empty expert chat into that chat.
+  getGetExpertOnboardingMockHandler200(null),
   ...getExpertsMock(),
   ...getFilesMock(),
   ...getGraphsMock(),
@@ -87,6 +113,9 @@ export const mockHandlers = [
   ...getLibraryMock(),
   ...getMetricsMock(),
   ...getOauthMock(),
+  // Onboarded unless a test says otherwise: the paywall and the top-up prompt
+  // wait for this, so a random answer would show or hide them by chance.
+  getGetV1CheckIfOnboardingIsCompletedMockHandler({ is_completed: true }),
   ...getOnboardingMock(),
   ...getOttoMock(),
   ...getPresetsMock(),

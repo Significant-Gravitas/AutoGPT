@@ -2,8 +2,9 @@ from datetime import UTC, datetime, timedelta
 from itertools import permutations
 
 import pytest
+from prisma.enums import SubscriptionTier
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.posthog_lifecycle import (
     LifecycleSnapshot,
     LifecycleUser,
@@ -260,7 +261,9 @@ def test_only_our_own_cancel_comments_mean_we_canceled(comment, expected):
 
 
 def test_every_comment_we_cancel_with_is_recognised_as_ours():
-    ours = [PAYMENT_FAILURE_CANCELLATION_COMMENT] + [
+    # Plans cancelled for non-payment before #15345 still carry
+    # ``autogpt:payment_failed``.
+    ours = ["autogpt:payment_failed", REPLACED_PLAN_CANCELLATION_COMMENT] + [
         reason.stripe_comment for reason in TrialRejectionReason
     ]
     for comment in ours:
@@ -642,13 +645,17 @@ def test_our_trial_subscription_is_not_a_native_trial():
 
 
 @pytest.mark.parametrize("customer", [None, "cus_1"])
-def test_a_tier_without_a_paid_subscription_is_not_subscribed(customer):
-    """The tier is not read at all: an admin-granted ENTERPRISE, BUSINESS or
-    any other plan with no paid Stripe subscription is ``signed``. The tier
+@pytest.mark.parametrize("tier", ["ENTERPRISE", "BUSINESS", "PRO", "MAX"])
+def test_a_tier_without_a_paid_subscription_is_not_subscribed(customer, tier):
+    """The status never reads the tier: an admin-granted ENTERPRISE, BUSINESS
+    or any other plan with no paid Stripe subscription is ``signed``. The tier
     column also defaulted to PRO for signups from 2026-03-26 to 2026-05-01,
-    so a paid tier alone never meant a payment."""
-    assert "subscription_tier" not in LifecycleUser.model_fields
-    assert snapshot(u=user(customer)).subscription_status == "signed"
+    so a paid tier alone never meant a payment. The tier goes on the person
+    as a property of its own (SECRT-3411)."""
+    u = user(customer).model_copy(update={"subscription_tier": tier})
+    result = snapshot(u=u)
+    assert result.subscription_status == "signed"
+    assert result.subscription_tier == tier
 
 
 def test_an_enterprise_user_who_pays_through_stripe_is_subscribed():
@@ -921,3 +928,49 @@ def test_person_update_sets_utc_iso_dates_and_unsets_the_rest():
         "subscription_canceled_at",
         "subscription_ended_at",
     ]
+
+
+# ---- subscription_tier (SECRT-3411) -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tier, subs, status",
+    [
+        # An admin grant pays nothing, so it is ``signed``; the tier still says
+        # which plan the limits apply.
+        (SubscriptionTier.ENTERPRISE, [], "signed"),
+        (SubscriptionTier.NO_TIER, [], "signed"),
+        (SubscriptionTier.PRO, [sub()], "subscribed"),
+        (
+            SubscriptionTier.MAX,
+            [sub(cancel_at_period_end=True)],
+            "subscription_canceled",
+        ),
+    ],
+)
+def test_the_stored_tier_goes_on_the_person_whatever_the_status(
+    tier: SubscriptionTier, subs: list[StripeSubscriptionFacts], status: str
+):
+    u = user().model_copy(update={"subscription_tier": tier})
+    result = snapshot(u=u, subs=subs)
+
+    assert result.subscription_status == status
+    to_set, to_unset = result.person_update()
+    assert to_set["subscription_tier"] == tier.value
+    assert type(to_set["subscription_tier"]) is str
+    assert "subscription_tier" not in to_unset
+
+
+def test_a_running_trial_keeps_trial_as_its_tier():
+    u = user().model_copy(update={"subscription_tier": "TRIAL"})
+    result = snapshot(u=u, t=trial())
+    assert result.subscription_status == "in_trial"
+    assert result.person_update()[0]["subscription_tier"] == "TRIAL"
+
+
+def test_a_tier_nobody_read_is_neither_sent_nor_unset():
+    """MailerLite's backfill builds its users without the tier: that says
+    nothing about the plan, so the person's tier is left alone."""
+    to_set, to_unset = snapshot().person_update()
+    assert "subscription_tier" not in to_set
+    assert "subscription_tier" not in to_unset
