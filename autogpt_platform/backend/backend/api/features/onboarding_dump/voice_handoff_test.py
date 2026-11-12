@@ -650,7 +650,7 @@ async def test_a_long_hand_off_renews_its_claim(rig: Rig, mocker: MockerFixture)
     )
 
 
-async def test_the_sweep_runs_only_where_this_deployment_has_a_relay(
+async def test_the_sweep_runs_only_where_the_relays_public_url_is_not_blank(
     mocker: MockerFixture, monkeypatch
 ):
     sweep = mocker.patch.object(voice_handoff, "sweep_forever", new=AsyncMock())

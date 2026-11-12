@@ -593,8 +593,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     livekit_url: str = Field(
         default="",
-        description="The LiveKit Cloud project's wss:// URL, which carries the "
-        "onboarding voice interview's audio when the edge flag picks LiveKit",
+        description="The LiveKit Cloud project's wss:// URL, whose rooms carry "
+        "the audio of every onboarding voice interview call",
     )
 
     voice_livekit_project_exclusive: bool = Field(

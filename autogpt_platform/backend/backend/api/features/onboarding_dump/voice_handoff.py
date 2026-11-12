@@ -705,9 +705,13 @@ async def sweep_forever(stop: asyncio.Event, sweep_s: float = HANDOFF_SWEEP_S) -
 
 @asynccontextmanager
 async def sweeping() -> AsyncIterator[None]:
-    """Run the hand-off sweep while the REST API serves, where this
-    deployment has a relay (``VOICE_RELAY_PUBLIC_URL``), and settle this
-    replica's hand-offs before the API's services close (:func:`settle`)."""
+    """Run the hand-off sweep while the REST API serves, and settle this
+    replica's hand-offs before the API's services close (:func:`settle`).
+
+    The sweep runs wherever ``VOICE_RELAY_PUBLIC_URL`` is not blank. Its
+    default names a local relay, so only a deployment that sets it blank goes
+    without, and then sweeps neither its calls nor its owed typed interviews
+    (:func:`sweep`)."""
     global _stopping
     _stopping = False
     stop = asyncio.Event()
