@@ -2,12 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Annotated, Optional
 
-from autogpt_libs.auth import (
-    get_request_context,
-    get_user_id,
-    requires_live_session,
-    requires_user,
-)
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Response, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
@@ -238,7 +233,7 @@ async def delete_graph_execution(
 
 @router.post(
     "/graphs/{graph_id}/executions/{graph_exec_id}/share",
-    dependencies=[Security(requires_live_session), Security(requires_user)],
+    dependencies=[Security(requires_user)],
 )
 async def enable_execution_sharing(
     graph_id: Annotated[str, Path],

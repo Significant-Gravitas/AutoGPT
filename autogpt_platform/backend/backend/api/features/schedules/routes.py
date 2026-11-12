@@ -1,12 +1,7 @@
 import logging
 from typing import Annotated, Any
 
-from autogpt_libs.auth import (
-    get_request_context,
-    get_user_id,
-    requires_live_session,
-    requires_user,
-)
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
 from starlette.status import (
@@ -48,7 +43,7 @@ router = APIRouter(dependencies=[Security(requires_user)])
 
 
 @router.post(
-    dependencies=[Security(requires_live_session), Depends(enforce_payment_paywall)],
+    dependencies=[Depends(enforce_payment_paywall)],
     path="/graphs/{graph_id}/schedules",
     summary="Create execution schedule",
 )

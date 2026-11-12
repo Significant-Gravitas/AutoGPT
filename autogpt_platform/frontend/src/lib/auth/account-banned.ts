@@ -5,7 +5,7 @@ import {
 
 // The backend's `ACCOUNT_BANNED_DETAIL` (autogpt_libs/auth/dependencies.py).
 const ACCOUNT_BANNED_CODE = "account_banned";
-// The backend's `SESSION_REVOKED_DETAIL` (autogpt_libs/auth/session.py).
+// The backend's `SESSION_REVOKED_DETAIL` (backend/api/session_auth.py).
 const SESSION_REVOKED_CODE = "session_revoked";
 
 const LOGOUT_REASON_PARAM = "reason";

@@ -25,8 +25,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from autogpt_libs.api_key.keysmith import APIKeySmith
-from autogpt_libs.auth import get_user_id, requires_live_session
-from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth import get_user_id
 from prisma.enums import APIKeyPermission
 from prisma.models import AuthUser as PrismaAuthUser
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
@@ -175,7 +174,6 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
 
     # Set our override
     app.dependency_overrides[get_user_id] = override_get_user_id
-    app.dependency_overrides[requires_live_session] = lambda: {}
 
     try:
         async with httpx.AsyncClient(
@@ -189,7 +187,6 @@ async def client(server, test_user: str) -> AsyncGenerator[httpx.AsyncClient, No
             app.dependency_overrides[get_user_id] = original_override
         else:
             app.dependency_overrides.pop(get_user_id, None)
-        app.dependency_overrides.pop(requires_live_session, None)
 
 
 # ============================================================================
@@ -246,51 +243,6 @@ async def test_authorize_creates_code_in_database(
     assert db_code.usedAt is None  # Not yet consumed
     assert db_code.codeChallenge == challenge
     assert db_code.codeChallengeMethod == "S256"
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_authorize_needs_a_token_from_a_live_session(
-    server,
-    test_user: str,
-    test_oauth_app: dict,
-    pkce_credentials: tuple[str, str],
-    mocker: MockerFixture,
-):
-    _, challenge = pkce_credentials
-    mocker.patch(
-        "autogpt_libs.auth.session._is_session_live",
-        mocker.AsyncMock(return_value=False),
-    )
-    app.dependency_overrides[get_jwt_payload] = lambda: {
-        "sub": test_user,
-        "sid": "ended-session",
-        "role": "authenticated",
-        "email": "oauth-test@example.com",
-    }
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
-        ) as http_client:
-            response = await http_client.post(
-                "/api/oauth/authorize",
-                json={
-                    "client_id": test_oauth_app["client_id"],
-                    "redirect_uri": test_oauth_app["redirect_uri"],
-                    "scopes": ["EXECUTE_GRAPH"],
-                    "state": "s",
-                    "response_type": "code",
-                    "code_challenge": challenge,
-                    "code_challenge_method": "S256",
-                },
-            )
-    finally:
-        app.dependency_overrides.pop(get_jwt_payload, None)
-
-    assert response.status_code == 401
-    assert response.json()["detail"]["code"] == "session_revoked"
-    assert not await PrismaOAuthAuthorizationCode.prisma().find_first(
-        where={"applicationId": test_oauth_app["id"]}
-    )
 
 
 @pytest.mark.asyncio(loop_scope="session")

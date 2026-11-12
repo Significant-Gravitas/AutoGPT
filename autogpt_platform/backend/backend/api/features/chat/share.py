@@ -100,7 +100,6 @@ async def get_chat_share_state(
     responses={
         404: {"description": "Chat session not found for user"},
     },
-    dependencies=[Security(auth.requires_live_session)],
 )
 async def enable_chat_sharing(
     session_id: Annotated[str, Path],

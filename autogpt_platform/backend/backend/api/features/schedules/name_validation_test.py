@@ -13,7 +13,6 @@ def test_blank_schedule_name_is_rejected_before_dispatch(name: str):
     app = FastAPI()
     app.include_router(routes.router)
     app.dependency_overrides[routes.requires_user] = lambda: None
-    app.dependency_overrides[routes.requires_live_session] = lambda: {}
     app.dependency_overrides[routes.get_user_id] = lambda: "user-1"
     app.dependency_overrides[routes.get_request_context] = lambda: Mock(
         org_id=None, team_id=None

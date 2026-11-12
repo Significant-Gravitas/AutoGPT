@@ -205,14 +205,13 @@ class TestAdversarialTokenPath:
     @pytest.fixture
     def client(self):
         import fastapi
-        from autogpt_libs.auth import get_user_id, requires_live_session, requires_user
+        from autogpt_libs.auth import get_user_id, requires_user
         from fastapi.testclient import TestClient
 
         import backend.api.features.platform_linking.routes as routes_mod
 
         app = fastapi.FastAPI()
         app.dependency_overrides[requires_user] = lambda: None
-        app.dependency_overrides[requires_live_session] = lambda: {}
         app.dependency_overrides[get_user_id] = lambda: "caller-user"
         app.include_router(routes_mod.router, prefix="/api/platform-linking")
         return TestClient(app)
@@ -262,43 +261,6 @@ class TestAdversarialTokenPath:
         assert response.status_code == 422
 
 
-class TestConfirmNeedsALiveSession:
-    @pytest.mark.parametrize(
-        "path", ["/tokens/tok-1/confirm", "/user-tokens/tok-1/confirm"]
-    )
-    def test_a_token_from_an_ended_session_is_refused(self, path: str):
-        import fastapi
-        from autogpt_libs.auth.jwt_utils import get_jwt_payload
-        from fastapi.testclient import TestClient
-
-        import backend.api.features.platform_linking.routes as routes_mod
-
-        app = fastapi.FastAPI()
-        app.dependency_overrides[get_jwt_payload] = lambda: {
-            "sub": "caller-user",
-            "sid": "ended-session",
-            "role": "authenticated",
-            "email": "user@example.com",
-        }
-        app.include_router(routes_mod.router, prefix="/api/platform-linking")
-        db = MagicMock()
-        with (
-            patch(
-                "autogpt_libs.auth.session._is_session_live",
-                AsyncMock(return_value=False),
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-        ):
-            response = TestClient(app).post(f"/api/platform-linking{path}")
-
-        assert response.status_code == 401
-        assert response.json()["detail"]["code"] == "session_revoked"
-        assert not db.method_calls
-
-
 class TestAdversarialDeleteLinkId:
     """DELETE link_id has no regex — ensure weird values are handled via
     NotFoundError (no crash, no cross-user leak)."""
@@ -306,14 +268,13 @@ class TestAdversarialDeleteLinkId:
     @pytest.fixture
     def client(self):
         import fastapi
-        from autogpt_libs.auth import get_user_id, requires_live_session, requires_user
+        from autogpt_libs.auth import get_user_id, requires_user
         from fastapi.testclient import TestClient
 
         import backend.api.features.platform_linking.routes as routes_mod
 
         app = fastapi.FastAPI()
         app.dependency_overrides[requires_user] = lambda: None
-        app.dependency_overrides[requires_live_session] = lambda: {}
         app.dependency_overrides[get_user_id] = lambda: "caller-user"
         app.include_router(routes_mod.router, prefix="/api/platform-linking")
         return TestClient(app)

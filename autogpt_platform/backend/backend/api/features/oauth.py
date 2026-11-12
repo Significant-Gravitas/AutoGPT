@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Literal, Optional
 from urllib.parse import unquote, urlencode, urlparse
 
-from autogpt_libs.auth import get_user_id, requires_live_session
+from autogpt_libs.auth import get_user_id
 from fastapi import (
     APIRouter,
     Body,
@@ -184,7 +184,7 @@ class AuthorizeResponse(BaseModel):
     redirect_url: str = Field(description="URL to redirect the user to")
 
 
-@router.post("/authorize", dependencies=[Security(requires_live_session)])
+@router.post("/authorize")
 async def authorize(
     request: AuthorizeRequest = Body(),
     user_id: str = Security(get_user_id),

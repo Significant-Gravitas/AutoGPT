@@ -5,7 +5,6 @@ from typing import Annotated
 from autogpt_libs.auth import (
     get_request_context,
     get_user_id,
-    requires_live_session,
     requires_org_permission,
     requires_user,
 )
@@ -165,7 +164,6 @@ async def list_members(
     "/{org_id}/members/{uid}",
     summary="Update member role",
     tags=["orgs"],
-    dependencies=[Security(requires_live_session)],
 )
 async def update_member(
     org_id: str,
@@ -208,7 +206,6 @@ async def remove_member(
     "/{org_id}/transfer-ownership",
     summary="Transfer organization ownership",
     tags=["orgs"],
-    dependencies=[Security(requires_live_session)],
 )
 async def transfer_ownership(
     org_id: str,

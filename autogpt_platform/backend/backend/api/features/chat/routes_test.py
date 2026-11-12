@@ -3522,34 +3522,6 @@ def test_stream_chat_queues_legacy_inflight_post_but_returns_sse(
     assert '"type":"finish"' in response.text
 
 
-@pytest.mark.parametrize(
-    "path,body",
-    [
-        ("/sessions/sess-1/stream", {"message": "hi", "is_user_message": True}),
-        ("/sessions/sess-1/messages/pending", {"message": "follow-up"}),
-    ],
-)
-def test_sending_a_message_needs_a_token_from_a_live_session(
-    path: str, body: dict, mocker: pytest_mock.MockerFixture
-) -> None:
-    _mock_stream_queue_internals(mocker)
-    mocker.patch(
-        "autogpt_libs.auth.session._is_session_live",
-        AsyncMock(return_value=False),
-    )
-    app.dependency_overrides[get_jwt_payload] = lambda: {
-        "sub": TEST_USER_ID,
-        "sid": "ended-session",
-        "role": "user",
-        "email": "test@example.com",
-    }
-
-    response = client.post(path, json=body)
-
-    assert response.status_code == 401
-    assert response.json()["detail"]["code"] == "session_revoked"
-
-
 # ─── get_pending_messages (GET /sessions/{session_id}/messages/pending) ─────
 
 

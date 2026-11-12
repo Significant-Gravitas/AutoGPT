@@ -13,7 +13,7 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from autogpt_libs.auth import get_user_id, requires_live_session
+from autogpt_libs.auth import get_user_id
 from multidict import CIMultiDict, CIMultiDictProxy
 from pydantic import SecretStr
 
@@ -26,7 +26,6 @@ from backend.util.request import HTTPClientError, HTTPServerError, Response
 app = fastapi.FastAPI()
 app.include_router(router)
 app.dependency_overrides[get_user_id] = lambda: "test-user-id"
-app.dependency_overrides[requires_live_session] = lambda: {}
 
 
 @pytest_asyncio.fixture(scope="module")

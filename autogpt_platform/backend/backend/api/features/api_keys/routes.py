@@ -1,11 +1,6 @@
 from typing import Annotated
 
-from autogpt_libs.auth import (
-    get_request_context,
-    get_user_id,
-    requires_live_session,
-    requires_user,
-)
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, HTTPException, Security
 
@@ -20,11 +15,7 @@ from backend.data.tenancy import get_user_team_ids
 router = APIRouter(dependencies=[Security(requires_user)])
 
 
-@router.post(
-    "",
-    summary="Create new API key",
-    dependencies=[Security(requires_live_session)],
-)
+@router.post("", summary="Create new API key")
 async def create_api_key(
     request: CreateAPIKeyRequest,
     user_id: Annotated[str, Security(get_user_id)],
@@ -101,11 +92,7 @@ async def suspend_key(
     )
 
 
-@router.put(
-    "/{key_id}/permissions",
-    summary="Update key permissions",
-    dependencies=[Security(requires_live_session)],
-)
+@router.put("/{key_id}/permissions", summary="Update key permissions")
 async def update_permissions(
     key_id: str,
     request: UpdatePermissionsRequest,
