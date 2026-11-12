@@ -28,12 +28,11 @@ import argparse
 import asyncio
 import re
 import sys
-from collections import Counter
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from gcloud.aio import storage as gcs
+from pydantic import BaseModel
 
 from backend.data import db
 from backend.util.gcs_utils import is_not_found_error
@@ -56,6 +55,9 @@ ID = re.compile(r"[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}")
 RECENT = timedelta(days=7)
 CHUNK = 5000
 CONCURRENT_DELETES = 16
+# A bucket where nearly every folder has no row is not this database's bucket
+# (a preview's pod reads dev's bucket with a database of its own): no apply.
+MAX_ORPHAN_SHARE = 0.9
 # Media an account uploaded can be shown by listings, library entries and the
 # avatars of orgs, org profiles, experts and profiles. A user's media in any
 # form these store: a bucket URL, the media routes,
@@ -94,8 +96,7 @@ class Client(Protocol):
     async def delete(self, bucket: str, object_name: str) -> Any: ...
 
 
-@dataclass
-class PrefixReport:
+class PrefixReport(BaseModel):
     folders: int = 0
     orphans: int = 0
     kept_shown: int = 0
@@ -104,7 +105,8 @@ class PrefixReport:
     deleted: int = 0
     files: int = 0
     size: int = 0
-    failed: Counter = field(default_factory=Counter)
+    # Files that failed to delete, by error type and status.
+    failed: dict[str, int] = {}
 
     def line(self, prefix: str, table: str, apply: bool) -> str:
         verb = "deleted" if apply else "would delete"
@@ -120,16 +122,15 @@ class PrefixReport:
         line += "; kept: " + ", ".join(kept)
         if self.failed:
             line += (
-                f"; {self.failed.total()} files failed to delete"
+                f"; {sum(self.failed.values())} files failed to delete"
                 f" ({dict(self.failed)}), so their folders stay"
             )
         return line
 
 
-@dataclass
-class Folder:
+class Folder(BaseModel):
     name: str
-    objects: list[dict] = field(default_factory=list)
+    objects: list[dict] = []
 
     @property
     def size(self) -> int:
@@ -200,20 +201,22 @@ def error_kind(error: Exception) -> str:
     return f"{type(error).__name__} {status}" if status else type(error).__name__
 
 
-async def delete_objects(client: Client, bucket: str, names: list[str]) -> Counter:
+async def delete_objects(
+    client: Client, bucket: str, names: list[str]
+) -> dict[str, int]:
     """Delete the objects; count the failures by kind. One gone already is fine."""
-    sem = asyncio.Semaphore(CONCURRENT_DELETES)
-    failed: Counter = Counter()
+    failed: dict[str, int] = {}
 
     async def delete(name: str) -> None:
-        async with sem:
-            try:
-                await client.delete(bucket, name)
-            except Exception as e:
-                if not is_not_found_error(e):
-                    failed[error_kind(e)] += 1
+        try:
+            await client.delete(bucket, name)
+        except Exception as e:
+            if not is_not_found_error(e):
+                kind = error_kind(e)
+                failed[kind] = failed.get(kind, 0) + 1
 
-    await asyncio.gather(*(delete(n) for n in names))
+    for i in range(0, len(names), CONCURRENT_DELETES):
+        await asyncio.gather(*(delete(n) for n in names[i : i + CONCURRENT_DELETES]))
     return failed
 
 
@@ -241,7 +244,8 @@ async def sweep_prefix(
         if name in shown:
             report.kept_shown += 1
             continue
-        folder = Folder(name, await list_objects(client, bucket, f"{prefix}{name}/"))
+        objects = await list_objects(client, bucket, f"{prefix}{name}/")
+        folder = Folder(name=name, objects=objects)
         if folder.is_recent(now):
             report.kept_recent += 1
             continue
@@ -261,14 +265,26 @@ async def sweep_prefix(
             report.kept_shown += 1
             continue
         names = [o["name"] for o in folder.objects]
-        failed = await delete_objects(client, bucket, names) if apply else Counter()
+        failed = await delete_objects(client, bucket, names) if apply else {}
         if failed:
-            report.failed.update(failed)
+            for kind, count in failed.items():
+                report.failed[kind] = report.failed.get(kind, 0) + count
             continue
         report.deleted += 1
         report.files += len(folder.objects)
         report.size += folder.size
     return report
+
+
+async def orphan_share(client: Client, bucket: str) -> float:
+    """The share of the bucket's account folders that have no row here."""
+    folders = orphans = 0
+    for prefix, table in PREFIXES:
+        names = sorted(await list_folders(client, bucket, prefix))
+        if names:
+            folders += len(names)
+            orphans += len(set(names) - await existing(table, names))
+    return orphans / folders if folders else 0.0
 
 
 def buckets() -> dict[str, str]:
@@ -302,6 +318,21 @@ async def run(apply: bool) -> int:
         async with gcs.Storage() as client:
             for label, bucket in configured.items():
                 print(f"\n== {label} bucket {bucket}", flush=True)
+                try:
+                    share = await orphan_share(client, bucket)
+                except Exception as e:
+                    print(f"stopped by {error_kind(e)}", flush=True)
+                    errors += 1
+                    continue
+                if share > MAX_ORPHAN_SHARE:
+                    print(
+                        f"{share:.0%} of this bucket's folders have no row in this"
+                        " database, so it is not this database's bucket (a preview?)."
+                        " Nothing is deleted here.",
+                        flush=True,
+                    )
+                    errors += 1
+                    continue
                 for prefix, table in PREFIXES:
                     try:
                         report = await sweep_prefix(
@@ -313,11 +344,11 @@ async def run(apply: bool) -> int:
                         errors += 1
                         continue
                     print(report.line(prefix, table, apply), flush=True)
-                    failed += report.failed.total()
+                    failed += sum(report.failed.values())
     finally:
         await db.disconnect()
     if failed or errors:
-        print(f"\n{failed} files failed and {errors} prefixes stopped; run it again.")
+        print(f"\n{failed} files failed and {errors} steps stopped; see above.")
     return 1 if failed or errors else 0
 
 

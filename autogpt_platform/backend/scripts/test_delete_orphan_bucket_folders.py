@@ -1,6 +1,9 @@
+import re
 from datetime import datetime, timedelta, timezone
 
 import aiohttp
+from multidict import CIMultiDict, CIMultiDictProxy
+from yarl import URL
 
 import scripts.delete_orphan_bucket_folders as tool
 
@@ -15,6 +18,12 @@ RECENT = "44444444-dddd-4ddd-8ddd-444444444444"
 BACK = "55555555-eeee-4eee-8eee-555555555555"
 LATE_SHOWN = "66666666-ffff-4fff-8fff-666666666666"
 OTHER = "77777777-aaaa-4aaa-8aaa-777777777777"
+
+
+def _gcs_error(status: int, name: str) -> aiohttp.ClientResponseError:
+    url = URL(f"https://storage.test/storage/v1/b/{BUCKET}/o/{name}")
+    info = aiohttp.RequestInfo(url, "DELETE", CIMultiDictProxy(CIMultiDict()), url)
+    return aiohttp.ClientResponseError(info, (), status=status, message=str(url))
 
 
 class FakeBucket:
@@ -45,9 +54,9 @@ class FakeBucket:
 
     async def delete(self, bucket: str, object_name: str) -> None:
         if object_name in self.fail:
-            raise aiohttp.ClientResponseError(None, (), status=503)  # type: ignore[arg-type]
+            raise _gcs_error(503, object_name)
         if object_name not in self.objects:
-            raise aiohttp.ClientResponseError(None, (), status=404)  # type: ignore[arg-type]
+            raise _gcs_error(404, object_name)
         del self.objects[object_name]
         self.deleted.append(object_name)
 
@@ -162,8 +171,6 @@ async def test_report_line_names_no_folder(monkeypatch):
 
 
 def test_media_owner_matches_every_stored_url_form():
-    import re
-
     owner = re.compile(tool.MEDIA_OWNER)
     for url in [
         f"https://storage.googleapis.com/b/users/{SHOWN}/images/a.png",
@@ -184,12 +191,7 @@ async def test_a_failing_prefix_prints_no_folder_and_fails_the_run(monkeypatch, 
 
     async def sweep(client, bucket, prefix, table, **kwargs):
         if prefix == "users/":
-            raise aiohttp.ClientResponseError(
-                None,  # type: ignore[arg-type]
-                (),
-                status=403,
-                message=f"Forbidden: {bucket}/o?prefix=users/{GONE}/",
-            )
+            raise _gcs_error(403, f"users/{GONE}/")
         return tool.PrefixReport()
 
     async def nothing():
@@ -206,3 +208,29 @@ async def test_a_failing_prefix_prints_no_folder_and_fails_the_run(monkeypatch, 
     assert "users/: stopped by ClientResponseError 403" in out
     assert GONE not in out
     assert "oauth-apps/<OAuthApplication id>/: 0 folders" in out
+
+
+async def test_apply_refuses_a_bucket_this_database_does_not_own(monkeypatch, capsys):
+    bucket = FakeBucket(
+        {f"workspaces/{GONE}/f/a.txt": (1, OLD), f"users/{OTHER}/a.png": (1, OLD)}
+    )
+
+    class Storage:
+        async def __aenter__(self):
+            return bucket
+
+        async def __aexit__(self, *exc):
+            return None
+
+    async def nothing():
+        return None
+
+    monkeypatch.setattr(tool, "buckets", lambda: {"private": BUCKET})
+    monkeypatch.setattr(tool.db, "connect", nothing)
+    monkeypatch.setattr(tool.db, "disconnect", nothing)
+    monkeypatch.setattr(tool.gcs, "Storage", Storage)
+    monkeypatch.setattr(tool, "existing", _rows())
+
+    assert await tool.run(apply=True) == 1
+    assert "100% of this bucket's folders have no row" in capsys.readouterr().out
+    assert bucket.deleted == []
