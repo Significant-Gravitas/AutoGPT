@@ -6,7 +6,11 @@ from youtube_transcript_api._errors import NoTranscriptFound
 from youtube_transcript_api._transcripts import FetchedTranscript, Transcript
 from youtube_transcript_api.proxies import WebshareProxyConfig
 
-from backend.blocks.youtube import TEST_CREDENTIALS, TranscribeYoutubeVideoBlock
+from backend.blocks.youtube import (
+    TEST_CREDENTIALS,
+    TranscribeYoutubeVideoBlock,
+    WebshareProxyCredentialsInput,
+)
 from backend.data.model import UserPasswordCredentials
 from backend.integrations.providers import ProviderName
 
@@ -18,6 +22,12 @@ class TestTranscribeYoutubeVideoBlock:
         """Set up test fixtures."""
         self.youtube_block = TranscribeYoutubeVideoBlock()
         self.credentials = TEST_CREDENTIALS
+        self.credentials_input = WebshareProxyCredentialsInput(
+            id=TEST_CREDENTIALS.id,
+            provider=ProviderName.WEBSHARE_PROXY,
+            type="user_password",
+            title=TEST_CREDENTIALS.title,
+        )
 
     @pytest.mark.parametrize(
         "url, video_id",
@@ -40,6 +50,7 @@ class TestTranscribeYoutubeVideoBlock:
         ],
     )
     def test_extract_video_id(self, url, video_id):
+        """Test extracting video IDs from supported YouTube URL formats."""
         assert self.youtube_block.extract_video_id(url) == video_id
 
     @pytest.mark.parametrize(
@@ -61,6 +72,7 @@ class TestTranscribeYoutubeVideoBlock:
         ],
     )
     def test_extract_video_id_invalid_urls(self, invalid_url):
+        """Test that invalid or unsupported YouTube URLs raise ValueError."""
         with pytest.raises(ValueError, match="Invalid YouTube URL"):
             self.youtube_block.extract_video_id(invalid_url)
 
@@ -206,7 +218,7 @@ class TestTranscribeYoutubeVideoBlock:
 
         input_data = TranscribeYoutubeVideoBlock.Input(
             youtube_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            credentials=self.credentials,
+            credentials=self.credentials_input,
         )
 
         outputs = [
@@ -226,7 +238,7 @@ class TestTranscribeYoutubeVideoBlock:
         """Test that invalid URL in run method yields error output."""
         input_data = TranscribeYoutubeVideoBlock.Input(
             youtube_url="https://notyoutube.com/watch?v=123",
-            credentials=self.credentials,
+            credentials=self.credentials_input,
         )
 
         outputs = [
@@ -249,7 +261,7 @@ class TestTranscribeYoutubeVideoBlock:
 
         input_data = TranscribeYoutubeVideoBlock.Input(
             youtube_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-            credentials=self.credentials,
+            credentials=self.credentials_input,
         )
 
         outputs = [
