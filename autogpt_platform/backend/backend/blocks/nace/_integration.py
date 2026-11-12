@@ -15,6 +15,7 @@ from PIL import Image
 from pydantic import SecretStr
 
 from backend.blocks._base import Block
+from backend.data.execution import ExecutionContext
 
 from ._client import NoulQuestion, call_drex
 from ._config import NaceCredentials
@@ -128,7 +129,9 @@ async def _run_cases(credentials: NaceCredentials, output: Path | None) -> None:
         )
         print(f"\n=== {block_type.__name__} ===", flush=True)
         events = []
-        async for pin, value in block.run(input_data, credentials=credentials):
+        async for pin, value in block.run(
+            input_data, credentials=credentials, execution_context=ExecutionContext()
+        ):
             events.append({"pin": pin, "value": value})
             print(f"{pin}:", flush=True)
             if pin in {"request", "response"}:
