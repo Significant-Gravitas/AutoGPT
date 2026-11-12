@@ -7,6 +7,8 @@ An Expo Router app for iOS and Android that talks to the same web app and backen
 - **Login:** email and password, existing accounts only.
 - **Home:** the web's new-chat screen: "Hey, <name>", a sentence with an inline picker for who you are talking to (Otto or one of your experts), and a composer card. Under it, what needs you and what is running or next, when there is anything.
 - **Chats:** the drawer lists one row per expert with their latest chat and has search; "All chats" lists every chat grouped by expert. In a chat you can send, stream, stop, load earlier messages, and pick up a reply that is still running or was dropped.
+- **Chat feel:** a sent message moves to the top of the screen and the reply fills in below it at an even pace, without the view chasing it; an arrow brings you back to the end. The thread moves with the keyboard frame by frame, and dragging it down closes the keyboard. Long-press a message to copy or share it. On iOS 26 the composer is Liquid Glass.
+- **Opening fast:** the app saves the chat list, your experts and your last few chats on the phone, so they open at once and then catch up with the server. A chat also starts loading as your finger lands on its row.
 - **Steps:** what the expert is doing shows as a live list and folds to one line when the reply lands.
 - **Attach and dictate:** in a chat, attach photos and files; anywhere the composer is, dictate into the field.
 - **Chat panel:** in an expert's chat, their profile with Activity (upcoming routines, recent runs, computer state) and Library (files) tabs; in a chat with Otto, the chat's files. Share the chat from its top bar.
@@ -57,6 +59,7 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 
 ## Known limits
 
+- Saved chats sit unencrypted in the app's own storage (SQLite) for up to a day, at most eight of them; signing out deletes them.
 - Dictation uses the web app's `/api/transcribe` route, so the web server needs a transcription key; without one the app says dictation isn't available.
 - The microphone and photo permission texts in `app.json` only apply in a development or store build, not in Expo Go.
 - The drawer shows each expert's latest chat title, not their last message: the session list has no preview field.

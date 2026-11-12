@@ -1,9 +1,14 @@
 import { Add01Icon, ArrowUp02Icon, StopIcon } from "@hugeicons/core-free-icons";
+import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import type { ReactNode } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
+import Animated, { LinearTransition } from "react-native-reanimated";
 
 import { IconButton } from "@/components/IconButton";
-import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors, useScheme } from "@/lib/theme";
+
+// A field that grows a line eases into its new height.
+const grow = LinearTransition.duration(140);
 
 interface Props {
   text: string;
@@ -36,6 +41,7 @@ export function ComposerField({
 }: Props) {
   const styles = useStyles();
   const colors = useColors();
+  const scheme = useScheme();
   const isCard = layout === "card";
 
   const attach = onAttach ? (
@@ -87,13 +93,33 @@ export function ComposerField({
     );
   }
 
-  return (
-    <View style={[styles.field, onAttach && styles.withAttach]}>
+  const row = (
+    <>
       {attach}
       {input}
       {trailing}
       {send}
-    </View>
+    </>
+  );
+  // On iOS 26 the bar is Liquid Glass, so the thread shows through as it scrolls under.
+  if (isLiquidGlassAvailable()) {
+    return (
+      <Animated.View layout={grow}>
+        <GlassView
+          glassEffectStyle="regular"
+          colorScheme={scheme}
+          isInteractive
+          style={[styles.field, styles.glass, onAttach && styles.withAttach]}
+        >
+          {row}
+        </GlassView>
+      </Animated.View>
+    );
+  }
+  return (
+    <Animated.View layout={grow} style={[styles.field, onAttach && styles.withAttach]}>
+      {row}
+    </Animated.View>
   );
 }
 
@@ -110,6 +136,7 @@ const useStyles = createStyles((colors) => ({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
+  glass: { backgroundColor: "transparent", borderWidth: 0 },
   withAttach: { paddingLeft: spacing.xs },
   input: {
     ...type.body,

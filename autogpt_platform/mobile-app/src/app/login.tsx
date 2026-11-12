@@ -1,12 +1,11 @@
 import { Image } from "expo-image";
 import {
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button } from "@/components/Button";
 import { useLoginScreen } from "@/features/auth/useLoginScreen";
@@ -30,7 +29,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
       style={styles.screen}
     >
       <View style={styles.column}>

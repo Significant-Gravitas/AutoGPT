@@ -1,9 +1,12 @@
 import { QueryCache, QueryClient } from "@tanstack/react-query";
 
+import { chatKeys } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
+import { expertKeys } from "@/lib/api/experts";
 import { authClient } from "@/lib/auth/client";
 import { SignedOutError } from "@/lib/auth/errors";
 import { clearAccessToken } from "@/lib/auth/token";
+import { PERSIST_MAX_AGE_MS, queryPersister } from "@/lib/queryPersist";
 
 const SIGN_OUT_TIMEOUT_MS = 8_000;
 
@@ -17,6 +20,11 @@ export const queryClient = new QueryClient({
   }),
   defaultOptions: { queries: { retry: 1 } },
 });
+
+// Saved queries must outlive the save, or they are dropped from it unseen.
+queryClient.setQueryDefaults(chatKeys.sessions, { gcTime: PERSIST_MAX_AGE_MS });
+queryClient.setQueryDefaults(["chat", "session"], { gcTime: PERSIST_MAX_AGE_MS });
+queryClient.setQueryDefaults(expertKeys.list, { gcTime: PERSIST_MAX_AGE_MS });
 
 /** Several failing queries can ask at once; they share one sign-out. */
 export function signOut() {
@@ -45,6 +53,7 @@ async function clearSession() {
   // user's data on screen.
   clearAccessToken();
   queryClient.clear();
+  void queryPersister.removeClient();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SIGN_OUT_TIMEOUT_MS);
   try {
@@ -56,5 +65,6 @@ async function clearSession() {
     // A query in flight during the request can have refilled the cache.
     clearAccessToken();
     queryClient.clear();
+    await queryPersister.removeClient();
   }
 }

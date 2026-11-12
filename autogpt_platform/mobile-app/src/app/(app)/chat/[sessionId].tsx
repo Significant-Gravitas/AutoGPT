@@ -22,6 +22,7 @@ export default function ChatScreen() {
   const {
     sessionID,
     detail,
+    isCached,
     isPending,
     refetch,
     expertID,
@@ -42,7 +43,14 @@ export default function ChatScreen() {
   function renderBody() {
     // Data first: a failed background refetch must not unmount a live thread.
     if (sessionID && detail) {
-      return <ChatThread key={sessionID} sessionID={sessionID} detail={detail} />;
+      return (
+        <ChatThread
+          key={sessionID}
+          sessionID={sessionID}
+          detail={detail}
+          isCached={isCached}
+        />
+      );
     }
     if (isPending) {
       return (

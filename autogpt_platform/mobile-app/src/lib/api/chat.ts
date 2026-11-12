@@ -1,3 +1,5 @@
+import type { QueryClient } from "@tanstack/react-query";
+
 import { apiRequest } from "./client";
 
 export interface SessionSummary {
@@ -42,6 +44,37 @@ export const chatKeys = {
   session: (sessionID: string) => ["chat", "session", sessionID] as const,
   suggestedPrompts: ["chat", "suggested-prompts"] as const,
 };
+
+/**
+ * A chat opens from its cached copy at once; the thread then checks it with
+ * the server itself (it reads the detail once, when it mounts), so the query
+ * never refetches on mount. A copy younger than this is used as it is.
+ */
+export const sessionQueryOptions = {
+  staleTime: 15_000,
+  refetchOnMount: false,
+} as const;
+
+/** Starts loading a chat as a finger lands on its row. */
+export function prefetchSession(queryClient: QueryClient, sessionID: string) {
+  void queryClient.prefetchQuery({
+    queryKey: chatKeys.session(sessionID),
+    queryFn: () => getSession(sessionID),
+    ...sessionQueryOptions,
+  });
+}
+
+/** A chat made just now has no messages, so it can open without a fetch. */
+export function emptySession(sessionID: string, expertID?: string): SessionDetail {
+  return {
+    id: sessionID,
+    messages: [],
+    active_stream: null,
+    expert_id: expertID ?? null,
+    has_more_messages: false,
+    oldest_sequence: null,
+  };
+}
 
 interface ListSessionsOptions {
   expertID?: string;

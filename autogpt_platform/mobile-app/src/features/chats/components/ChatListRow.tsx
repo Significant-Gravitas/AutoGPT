@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { prefetchSession } from "@/lib/api/chat";
+import { queryClient } from "@/lib/session";
 import { chatTitle } from "@/features/drawer/helpers";
 import type { SessionSummary } from "@/lib/api/chat";
 import { createStyles, radius, spacing } from "@/lib/theme";
@@ -14,6 +16,10 @@ interface Props {
 export function ChatListRow({ session, isFirst, onOpenChat }: Props) {
   const styles = useStyles();
 
+  function handlePressIn() {
+    prefetchSession(queryClient, session.id);
+  }
+
   function handlePress() {
     onOpenChat(session.id);
   }
@@ -21,6 +27,7 @@ export function ChatListRow({ session, isFirst, onOpenChat }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
+      onPressIn={handlePressIn}
       onPress={handlePress}
       style={({ pressed }) => [
         styles.row,

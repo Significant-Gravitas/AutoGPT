@@ -1,6 +1,6 @@
 import "@/polyfills";
 
-import { QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import {
   DarkTheme,
   DefaultTheme,
@@ -12,9 +12,16 @@ import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { applyAppearance, readAppearance } from "@/lib/appearance";
 import { authClient } from "@/lib/auth/client";
+import {
+  PERSIST_BUSTER,
+  PERSIST_MAX_AGE_MS,
+  queryPersister,
+  shouldPersistQuery,
+} from "@/lib/queryPersist";
 import { queryClient } from "@/lib/session";
 import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
 
@@ -37,18 +44,27 @@ function navigationTheme(scheme: Scheme, colors: Colors): Theme {
   };
 }
 
+const persistOptions = {
+  persister: queryPersister,
+  maxAge: PERSIST_MAX_AGE_MS,
+  buster: PERSIST_BUSTER,
+  dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+};
+
 export default function RootLayout() {
   const styles = useStyles();
   const scheme = useScheme();
   const colors = useColors();
   return (
     <GestureHandlerRootView style={styles.root}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider value={navigationTheme(scheme, colors)}>
-          <StatusBar style="auto" />
-          <RootStack />
-        </ThemeProvider>
-      </QueryClientProvider>
+      <KeyboardProvider>
+        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+          <ThemeProvider value={navigationTheme(scheme, colors)}>
+            <StatusBar style="auto" />
+            <RootStack />
+          </ThemeProvider>
+        </PersistQueryClientProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

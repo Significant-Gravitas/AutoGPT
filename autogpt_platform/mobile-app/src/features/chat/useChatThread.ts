@@ -32,9 +32,11 @@ const MAX_RECOVERIES = 3;
 interface Args {
   sessionID: string;
   detail: SessionDetail;
+  /** The detail came from the cache: shown at once, then checked with the server. */
+  isCached: boolean;
 }
 
-export function useChatThread({ sessionID, detail }: Args) {
+export function useChatThread({ sessionID, detail, isCached }: Args) {
   const [chat] = useState(
     () =>
       new Chat<UIMessage>({
@@ -59,7 +61,8 @@ export function useChatThread({ sessionID, detail }: Args) {
   );
   const { messages, status, error, setMessages } = useChat({
     chat,
-    throttle: 50,
+    // The transport already paces the text; this only caps the redraws.
+    throttle: 32,
   });
   const isSyncing = useRef(false);
   const isMounted = useRef(true);
@@ -80,7 +83,7 @@ export function useChatThread({ sessionID, detail }: Args) {
 
   // The stream route replays a running turn from its first chunk, so the
   // local copy of that turn goes before resuming or its text shows twice.
-  // Read straight from the API: a cache write would outlive the screen.
+  // Read straight from the API, then keep the copy for the next open.
   // Fetch first: if that fails, the live stream is left as it was.
   async function syncWithServer() {
     if (isSyncing.current) {
@@ -91,6 +94,7 @@ export function useChatThread({ sessionID, detail }: Args) {
     let fresh: SessionDetail;
     try {
       fresh = await getSession(sessionID);
+      queryClient.setQueryData(chatKeys.session(sessionID), fresh);
       if (!isMounted.current) return;
       await chat.stop();
       if (!isMounted.current) return;
@@ -157,6 +161,7 @@ export function useChatThread({ sessionID, detail }: Args) {
     isMounted.current = true;
     const first = takePendingFirstMessage(sessionID);
     if (first) send(first.text, first.files);
+    else if (isCached) void syncWithServer().catch(() => undefined);
     else if (detail.active_stream) void resumeTurn().catch(() => undefined);
 
     let wasBackgrounded = false;
@@ -171,6 +176,11 @@ export function useChatThread({ sessionID, detail }: Args) {
       subscription.remove();
       // Only the local stream: the turn keeps running on the server.
       void chat.stop();
+      // The cached copy misses what happened here, so the next open checks it.
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.session(sessionID),
+        refetchType: "none",
+      });
     };
   });
 

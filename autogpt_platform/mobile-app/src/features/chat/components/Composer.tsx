@@ -3,7 +3,10 @@ import { useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { isLiquidGlassAvailable } from "expo-glass-effect";
+
 import { IconButton } from "@/components/IconButton";
+import { tapSend } from "@/lib/haptics";
 import { createStyles, spacing, type, useScheme } from "@/lib/theme";
 
 import { isUploading, type Attachment } from "../attachmentHelpers";
@@ -65,7 +68,10 @@ export function Composer({
     isSendingRef.current = true;
     setIsSending(true);
     try {
-      if (await onSend(text.trim())) setText("");
+      if (await onSend(text.trim())) {
+        tapSend();
+        setText("");
+      }
     } finally {
       isSendingRef.current = false;
       setIsSending(false);
@@ -121,6 +127,7 @@ export function Composer({
       style={[
         styles.wrap,
         isCard ? styles.cardWrap : { paddingBottom: insets.bottom + spacing.sm },
+        !isCard && isLiquidGlassAvailable() && styles.clearWrap,
       ]}
     >
       {dictation.error ? <Text style={styles.error}>{dictation.error}</Text> : null}
@@ -149,6 +156,7 @@ const useStyles = createStyles((colors) => ({
     backgroundColor: colors.background,
   },
   cardWrap: { paddingHorizontal: 0, paddingTop: 0, backgroundColor: "transparent" },
+  clearWrap: { backgroundColor: "transparent" },
   card: {
     borderRadius: 24,
     borderWidth: 1,

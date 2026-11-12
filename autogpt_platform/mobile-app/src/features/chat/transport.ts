@@ -1,16 +1,35 @@
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type ChatTransport, type UIMessage } from "ai";
 import * as Crypto from "expo-crypto";
 import { fetch as expoFetch } from "expo/fetch";
 
 import { apiUrl, authHeaders } from "@/lib/api/client";
 import { SignedOutError } from "@/lib/auth/errors";
 import { clearAccessToken } from "@/lib/auth/token";
+import { tapReply } from "@/lib/haptics";
 
 import { messageFiles } from "./attachmentHelpers";
 import { OFFLINE_MESSAGE, statusMessage } from "./chatErrors";
+import { paceTextStream } from "./paceStream";
 
-/** Points the AI SDK at the backend's stream route, like the web app does. */
-export function createChatTransport(sessionID: string) {
+/**
+ * Points the AI SDK at the backend's stream route, like the web app does, and
+ * lets the reply's text out at a steady pace.
+ */
+export function createChatTransport(sessionID: string): ChatTransport<UIMessage> {
+  const inner = createStreamTransport(sessionID);
+  return {
+    async sendMessages(options) {
+      const stream = await inner.sendMessages(options);
+      return paceTextStream(stream, { onFirstText: tapReply });
+    },
+    async reconnectToStream(options) {
+      const stream = await inner.reconnectToStream(options);
+      return stream ? paceTextStream(stream) : null;
+    },
+  };
+}
+
+function createStreamTransport(sessionID: string) {
   const api = apiUrl(
     `/api/chat/sessions/${encodeURIComponent(sessionID)}/stream`,
   );

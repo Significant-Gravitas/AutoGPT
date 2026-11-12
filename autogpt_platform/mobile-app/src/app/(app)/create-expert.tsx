@@ -1,12 +1,11 @@
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import {
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { IconButton } from "@/components/IconButton";
@@ -30,7 +29,7 @@ export default function CreateExpertScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
       style={styles.screen}
     >
       <ScreenHeader

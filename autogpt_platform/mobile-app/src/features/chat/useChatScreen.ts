@@ -6,6 +6,7 @@ import {
   chatKeys,
   getSession,
   isSessionID,
+  sessionQueryOptions,
 } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
 import { avatarSource, avatarTint, roleLine } from "@/features/team/helpers";
@@ -18,9 +19,7 @@ export function useChatScreen(routeSessionID: unknown) {
   const detail = useQuery({
     queryKey: chatKeys.session(sessionID ?? ""),
     queryFn: sessionID ? () => getSession(sessionID) : skipToken,
-    // The thread reads this once when it mounts, so a chat opened again must
-    // load fresh rather than start from an old copy.
-    gcTime: 0,
+    ...sessionQueryOptions,
   });
   const expertID = detail.data?.expert_id ?? null;
   const experts = useQuery({
@@ -65,6 +64,7 @@ export function useChatScreen(routeSessionID: unknown) {
   return {
     sessionID,
     detail: detail.data,
+    isCached: detail.isStale,
     isPending: sessionID !== null && detail.isPending,
     refetch: detail.refetch,
     expertID,

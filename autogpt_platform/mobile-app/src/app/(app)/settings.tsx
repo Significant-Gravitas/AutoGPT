@@ -1,4 +1,5 @@
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Text, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { WebView } from "react-native-webview";
 
 import { Button } from "@/components/Button";
@@ -65,13 +66,21 @@ export default function SettingsScreen() {
   return (
     <View style={styles.screen}>
       <ScreenHeader title="Settings" />
-      {renderBody()}
+      {/* iOS scrolls a focused field into view itself; Android needs the room made. */}
+      <KeyboardAvoidingView
+        behavior="padding"
+        enabled={Platform.OS === "android"}
+        style={styles.body}
+      >
+        {renderBody()}
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const useStyles = createStyles((colors) => ({
   screen: { flex: 1, backgroundColor: colors.background },
+  body: { flex: 1 },
   webview: { flex: 1, backgroundColor: colors.background },
   center: {
     flex: 1,

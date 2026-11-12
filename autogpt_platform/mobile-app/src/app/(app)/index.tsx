@@ -1,11 +1,10 @@
 import {
-  KeyboardAvoidingView,
-  Platform,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -39,7 +38,7 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <ScreenHeader />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={styles.body}
       >
         <ScrollView

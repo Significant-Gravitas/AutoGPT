@@ -1,5 +1,7 @@
 import { Pressable, Text, View } from "react-native";
 
+import { prefetchSession } from "@/lib/api/chat";
+import { queryClient } from "@/lib/session";
 import { ExpertAvatar } from "@/components/ExpertAvatar";
 import { chatTitle, type ChatMatch } from "@/features/drawer/helpers";
 import { createStyles, radius, spacing, type } from "@/lib/theme";
@@ -16,6 +18,10 @@ export function SearchResultRow({ match, isActive, onOpenChat }: Props) {
   const { session, group } = match;
   const time = shortTime(session.updated_at);
 
+  function handlePressIn() {
+    prefetchSession(queryClient, session.id);
+  }
+
   function handlePress() {
     onOpenChat(session.id);
   }
@@ -24,6 +30,7 @@ export function SearchResultRow({ match, isActive, onOpenChat }: Props) {
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: isActive }}
+      onPressIn={handlePressIn}
       onPress={handlePress}
       style={({ pressed }) => [
         styles.row,

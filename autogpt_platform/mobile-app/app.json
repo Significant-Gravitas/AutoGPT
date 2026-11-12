@@ -45,7 +45,8 @@
           "microphonePermission": "Dictate your messages.",
           "enableBackgroundPlayback": false
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,
