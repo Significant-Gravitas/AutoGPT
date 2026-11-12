@@ -26792,6 +26792,30 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Transcript Preview"
           },
+          "otto_reply_kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "mic_check",
+                  "greeting",
+                  "unsure",
+                  "reluctant",
+                  "what_to_say",
+                  "wants_to_skip",
+                  "about_otto",
+                  "busy",
+                  "annoyed",
+                  "some_work",
+                  "garbled",
+                  "test",
+                  "other"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Otto Reply Kind"
+          },
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"
