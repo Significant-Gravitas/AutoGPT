@@ -210,16 +210,22 @@ class FakeRedis:
         block: int,
         count: int,
     ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]:
-        key, cursor = next(iter(streams.items()))
+        # Like Redis: every stream with entries after its cursor, up to
+        # ``count`` each. Ids come from one counter, so they order entries
+        # across streams as a server's clock does.
         deadline = asyncio.get_running_loop().time() + block / 1_000
         while True:
-            available = [
-                item
-                for item in self.streams.get(key, [])
-                if int(item[0].split("-", 1)[0]) > int(cursor.split("-", 1)[0])
-            ][:count]
-            if available:
-                return [(key, available)]
+            found = []
+            for key, cursor in streams.items():
+                available = [
+                    item
+                    for item in self.streams.get(key, [])
+                    if int(item[0].split("-", 1)[0]) > int(cursor.split("-", 1)[0])
+                ][:count]
+                if available:
+                    found.append((key, available))
+            if found:
+                return found
             if asyncio.get_running_loop().time() >= deadline:
                 return []
             await asyncio.sleep(0.005)

@@ -435,6 +435,35 @@ class TestLocalPCEditsTakeTurns:
         assert stored["/Users/test/ws/notes.txt"] == b"1 2"
 
 
+class TestLocalPCEditResultSize:
+    @pytest.mark.asyncio
+    async def test_an_edit_over_the_limit_is_refused_before_anything_is_written(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Edit works out how large its result would be before building it, so
+        a ``replace_all`` that would grow the file past the limit Read and Edit
+        hold a file to is refused, and nothing is sent to the machine."""
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(return_value=_contents(b"x-x-x-x"))
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+        monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 14)
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": "x",
+                "new_string": "xyz",
+                "replace_all": True,
+            }
+        )
+
+        assert result["isError"] is True
+        assert "would make notes.txt 15 bytes" in _text(result)
+        assert [call.args[0] for call in shim._rpc.await_args_list] == ["FILE_READ"]
+
+
 class TestLocalPCReadsThroughALimit:
     """Read, Edit and ``@@agptfile:`` references read a Local PC file through
     the caller's limit, as ``read_sandbox_file`` reads an E2B file."""

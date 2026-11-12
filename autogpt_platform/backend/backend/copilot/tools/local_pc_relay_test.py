@@ -2,14 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
+from contextlib import aclosing
 
 import pytest
 
+from backend.copilot.tools import local_pc_machine
 from backend.copilot.tools import local_pc_relay_routing as relay_routing
 from backend.copilot.tools.local_pc_relay import RedisShimRelay
-from backend.copilot.tools.local_pc_relay_protocol import stream_key
+from backend.copilot.tools.local_pc_relay_protocol import (
+    response_stream_key,
+    status_stream_key,
+    stream_key,
+)
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis, FakeWebSocket
-from backend.copilot.tools.local_pc_relay_transport import append_request
+from backend.copilot.tools.local_pc_relay_transport import (
+    RedisRelayTransport,
+    append_request,
+    append_response,
+    append_stream_envelope,
+)
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimConnectionManager,
@@ -415,3 +427,222 @@ async def test_a_request_read_just_before_a_replacement_is_not_sent() -> None:
     ]
     assert sent == ["SESSION_REVOKED"]
     assert websocket.close_code == 4427
+
+
+def _status_frame(message_id: str, capacity: int, *, pad: int = 0) -> str:
+    """A STATUS frame shaped as PROTOCOL.md documents it, ``pad`` bytes longer."""
+    frame = {
+        "type": "STATUS",
+        "id": message_id,
+        "ts": 0,
+        "version": "2.0",
+        "pending_capacity": capacity,
+        "payload": {"in_flight": 4 - capacity, "max_concurrent": 4},
+    }
+    if pad:
+        frame["pad"] = "x" * pad
+    return json.dumps(frame)
+
+
+async def _eventually(check: Callable[[], bool], *, timeout: float = 2.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not check():
+            await asyncio.sleep(0.005)
+
+
+async def _answer_next_command(websocket: FakeWebSocket, stdout: str) -> None:
+    request = json.loads(await asyncio.wait_for(websocket.outbound.get(), 2))
+    assert request["type"] == "EXECUTE_COMMAND"
+    await websocket.inbound.put(
+        json.dumps(
+            {
+                "type": "COMMAND_RESULT",
+                "id": request["id"],
+                "ts": 0,
+                "payload": {
+                    "stdout": stdout,
+                    "stderr": "",
+                    "exit_code": 0,
+                    "timed_out": False,
+                },
+            }
+        )
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "asked_before", [True, False], ids=["after-a-request", "before-any-request"]
+)
+async def test_a_worker_with_nothing_outstanding_hears_the_shims_status(
+    asked_before: bool,
+) -> None:
+    """A worker whose last reading was 0 holds its next request back until a
+    response or a STATUS reports a free slot, with nothing outstanding while
+    it waits. The connection's STATUS reaches it all the same: first the full
+    signal, then the one that lets the held request go."""
+    redis = FakeRedis()
+    server = ShimConnectionManager(relay=RedisShimRelay(redis))
+    worker = ShimConnectionManager(relay=RedisShimRelay(redis))
+    websocket = FakeWebSocket()
+    serve = asyncio.create_task(
+        server.serve_websocket(
+            "session-1",
+            websocket,
+            _hello(),
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+    )
+    shim = await LocalPCShim.for_session("session-1", manager=worker, connect_timeout=1)
+    if asked_before:
+        earlier = asyncio.create_task(shim.commands.run("echo earlier"))
+        await _answer_next_command(websocket, "earlier\n")
+        assert (await asyncio.wait_for(earlier, 1)).stdout == "earlier\n"
+
+    await websocket.inbound.put(_status_frame("status-full", 0))
+    await _eventually(lambda: shim.pending_capacity == 0)
+    held = asyncio.create_task(shim.commands.run("echo held"))
+    await asyncio.sleep(0.2)
+    assert websocket.outbound.empty()
+
+    await websocket.inbound.put(_status_frame("status-free", 1))
+    await _answer_next_command(websocket, "held\n")
+    assert (await asyncio.wait_for(held, 1)).stdout == "held\n"
+
+    await websocket.close()
+    await asyncio.wait_for(serve, 1)
+    await shim.kill()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status_first", [True, False], ids=["status-first", "response-first"]
+)
+async def test_a_transport_reads_status_and_responses_in_the_order_they_were_stored(
+    status_first: bool,
+) -> None:
+    """STATUS has a stream of its own, so one read can return a STATUS and a
+    response together. Each says how many slots the shim has free, so the
+    later one must be read last. The response is this transport's own and is
+    acknowledged; the STATUS stays for the connection's other transports."""
+    redis = FakeRedis()
+    relay = RedisShimRelay(redis)
+    presence, _ = await relay._register_presence(
+        "session-1", hello={}, user_id="user-1", client_id="autogpt-local-executor"
+    )
+    reply_id = "a" * 32
+    reply_key = response_stream_key("session-1", presence.connection_id, reply_id)
+    status_key = status_stream_key("session-1", presence.connection_id)
+    response = json.dumps(
+        {"type": "FILE_CONTENTS", "id": "request-1", "ts": 0, "payload": {}}
+    )
+
+    async def store_status() -> None:
+        await append_stream_envelope(
+            redis, status_key, _status_frame("status-1", 1), maxlen=1
+        )
+
+    async def store_response() -> None:
+        await append_response(redis, reply_key, response)
+
+    for store in (
+        (store_status, store_response)
+        if status_first
+        else (store_response, store_status)
+    ):
+        await store()
+
+    read: list[str] = []
+    transport = RedisRelayTransport(relay, presence, reply_id)
+    async with asyncio.timeout(2), aclosing(transport.iter_text()) as frames:
+        async for raw in frames:
+            read.append(json.loads(raw)["type"])
+            if len(read) == 2:
+                break
+
+    assert read == (
+        ["STATUS", "FILE_CONTENTS"] if status_first else ["FILE_CONTENTS", "STATUS"]
+    )
+    assert redis.streams[reply_key] == []
+    assert len(redis.streams[status_key]) == 1
+
+
+def _status_bytes_held(redis: FakeRedis) -> int:
+    """The bytes of every STATUS frame in any of the fake's streams."""
+    return sum(
+        len(fields["envelope"].encode())
+        for entries in redis.streams.values()
+        for _, fields in entries
+        if json.loads(fields["envelope"]).get("type") == "STATUS"
+    )
+
+
+async def _answer_directory_listings(websocket: FakeWebSocket) -> None:
+    """The shim's side of the folder browser: every folder is empty."""
+    while True:
+        request = json.loads(await websocket.outbound.get())
+        if request["type"] == "DIRECTORY_LIST_REQUEST":
+            await websocket.inbound.put(
+                json.dumps(
+                    {
+                        "type": "DIRECTORY_LIST_RESPONSE",
+                        "id": request["id"],
+                        "ts": 0,
+                        "payload": {"entries": []},
+                    }
+                )
+            )
+
+
+@pytest.mark.asyncio
+async def test_status_after_many_answered_machine_requests_is_held_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Local PC routes' machine requests each open a reply stream, read
+    their answer and stop reading. STATUS frames the shim sends after twenty
+    of them must hold one frame's bytes in Redis, not a copy per answered
+    request, and a worker on the connection still reads the latest one."""
+    redis = FakeRedis()
+    relay = RedisShimRelay(redis)
+    monkeypatch.setattr(local_pc_machine, "get_local_pc_relay", lambda: relay)
+    websocket = FakeWebSocket()
+    serve = asyncio.create_task(
+        relay.serve_websocket(
+            "machine-scope",
+            websocket,
+            hello={"connection_kind": "machine", "machine_id": "machine-1"},
+            user_id="user-1",
+            client_id="autogpt-local-executor",
+        )
+    )
+    presence = await relay.wait_for_presence("machine-scope", timeout=1)
+    shim_side = asyncio.create_task(_answer_directory_listings(websocket))
+
+    async def list_folder() -> None:
+        answer = await local_pc_machine.machine_rpc(
+            presence, "DIRECTORY_LIST_REQUEST", {"path": "/"}, timeout=2
+        )
+        assert answer["type"] == "DIRECTORY_LIST_RESPONSE"
+
+    try:
+        for _ in range(20):
+            await list_folder()
+        frames = [_status_frame(f"status-{n}", 2, pad=8192) for n in range(3)]
+        for raw in frames:
+            await websocket.inbound.put(raw)
+        # The relay handles the shim's frames in order, so once a request
+        # sent after them is answered, the frames have been handled.
+        await list_folder()
+
+        assert _status_bytes_held(redis) == len(frames[-1].encode())
+
+        worker = await relay.open_transport(presence)
+        async with asyncio.timeout(2), aclosing(worker.iter_text()) as read:
+            first = json.loads(await anext(read))
+        assert first["id"] == "status-2"
+    finally:
+        shim_side.cancel()
+        await asyncio.gather(shim_side, return_exceptions=True)
+        await websocket.close()
+        await asyncio.wait_for(serve, 1)

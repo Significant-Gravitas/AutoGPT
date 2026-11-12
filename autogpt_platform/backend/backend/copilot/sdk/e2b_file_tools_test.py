@@ -1489,6 +1489,225 @@ class TestLocalFileOverTheReadLimit:
         assert sum(consumed) == 5 * 10
 
 
+class _TextThatMustNotBeEdited(str):
+    """A file's text whose edit must be refused before the result exists."""
+
+    def replace(self, *args, **kwargs):
+        raise AssertionError("Edit built its result before checking its size")
+
+
+# With the limit at 14 bytes. Each is (file, old_string, new_string,
+# replace_all, the size the edit would give the file).
+_EDITS_OVER_THE_LIMIT = pytest.mark.parametrize(
+    ("content", "old_string", "new_string", "replace_all", "size"),
+    [
+        ("x-x-x-x", "x", "xyz", True, 15),
+        ("header", "header", "fifteen-letters", False, 15),
+        # 11 characters, 17 bytes.
+        ("x-x-x-x-x-x", "x", "ü", True, 17),
+        # 11 characters, 15 bytes: the file's own characters count as bytes.
+        ("ää-ää", "-", "-------", True, 15),
+    ],
+    ids=["replace-all", "one-replacement", "longer-in-bytes", "file-in-bytes"],
+)
+
+# Each is (file, old_string, new_string, replace_all, the file after it).
+_EDITS_WITHIN_THE_LIMIT = pytest.mark.parametrize(
+    ("content", "old_string", "new_string", "replace_all", "written"),
+    [
+        ("x-x-x-x-x", "x", "ü", True, "ü-ü-ü-ü-ü"),
+        ("1-2-3-4-5-6-7", "7", "77", False, "1-2-3-4-5-6-77"),
+        ("x" * 14, "xx", "x", True, "x" * 7),
+    ],
+    ids=["at-the-limit", "one-replacement-at-the-limit", "shrinking-a-full-file"],
+)
+
+
+class TestHostEditResultSize:
+    """The host Edit works out how large its result would be before building
+    it, and refuses one over the limit Read and Edit hold a file to."""
+
+    @pytest.fixture(autouse=True)
+    def limit(self, monkeypatch):
+        monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 14)
+
+    @pytest.mark.asyncio
+    @_EDITS_OVER_THE_LIMIT
+    async def test_an_edit_over_the_limit_is_refused_and_changes_nothing(
+        self, sdk_cwd, content, old_string, new_string, replace_all, size
+    ):
+        path = Path(sdk_cwd, "notes.txt")
+        path.write_bytes(content.encode())
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": old_string,
+                "new_string": new_string,
+                "replace_all": replace_all,
+            }
+        )
+
+        assert result["isError"]
+        assert (
+            f"would make notes.txt {size} bytes, over the 14-byte limit"
+            in result["content"][0]["text"]
+        )
+        assert path.read_bytes() == content.encode()
+
+    @pytest.mark.asyncio
+    async def test_the_result_is_not_built(self, sdk_cwd, monkeypatch):
+        Path(sdk_cwd, "notes.txt").write_text("x-x-x-x")
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._read_capped_text",
+            lambda _path: _TextThatMustNotBeEdited("x-x-x-x"),
+        )
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": "x",
+                "new_string": "xyz",
+                "replace_all": True,
+            }
+        )
+
+        assert result["isError"]
+        assert "would make notes.txt 15 bytes" in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    @_EDITS_WITHIN_THE_LIMIT
+    async def test_an_edit_within_the_limit_is_written(
+        self, sdk_cwd, content, old_string, new_string, replace_all, written
+    ):
+        path = Path(sdk_cwd, "notes.txt")
+        path.write_bytes(content.encode())
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": old_string,
+                "new_string": new_string,
+                "replace_all": replace_all,
+            }
+        )
+
+        assert not result["isError"], result["content"][0]["text"]
+        assert path.read_bytes() == written.encode()
+
+
+class TestSandboxEditResultSize:
+    """The sandbox Edit works out how large its result would be before
+    building it, and writes nothing back when it is over the limit."""
+
+    @pytest.fixture
+    def sandbox(self, monkeypatch):
+        sandbox = SimpleNamespace(
+            sandbox_id="sandbox-1",
+            files=SimpleNamespace(read=AsyncMock(), write=AsyncMock()),
+            commands=SimpleNamespace(run=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: sandbox
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._check_sandbox_symlink_escape",
+            AsyncMock(side_effect=lambda _sandbox, parent: parent),
+        )
+        monkeypatch.setattr("backend.copilot.sdk.e2b_file_tools._MAX_READ_BYTES", 14)
+        return sandbox
+
+    @pytest.mark.asyncio
+    @_EDITS_OVER_THE_LIMIT
+    async def test_an_edit_over_the_limit_is_refused_and_writes_nothing(
+        self, sandbox, content, old_string, new_string, replace_all, size
+    ):
+        sandbox.files.read.return_value = _FileStream(content.encode())
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": old_string,
+                "new_string": new_string,
+                "replace_all": replace_all,
+            }
+        )
+
+        assert result["isError"]
+        assert (
+            f"would make notes.txt {size} bytes, over the 14-byte limit"
+            in result["content"][0]["text"]
+        )
+        sandbox.files.write.assert_not_awaited()
+        sandbox.commands.run.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_bytes_that_are_not_utf8_count_as_they_are_written_back(
+        self, sandbox
+    ):
+        # Seven bytes, read as seven characters, four of them U+FFFD, which
+        # go back as three bytes each: fifteen.
+        sandbox.files.read.return_value = _FileStream(b"x\xff\xff-x\xff\xff")
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": "x",
+                "new_string": "y",
+                "replace_all": True,
+            }
+        )
+
+        assert result["isError"]
+        assert "would make notes.txt 15 bytes" in result["content"][0]["text"]
+        sandbox.files.write.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_result_is_not_built(self, sandbox, monkeypatch):
+        class _Bytes(bytes):
+            def decode(self, *args, **kwargs):
+                return _TextThatMustNotBeEdited(super().decode(*args, **kwargs))
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._read_remote",
+            AsyncMock(return_value=_Bytes(b"x-x-x-x")),
+        )
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": "x",
+                "new_string": "xyz",
+                "replace_all": True,
+            }
+        )
+
+        assert result["isError"]
+        assert "would make notes.txt 15 bytes" in result["content"][0]["text"]
+        sandbox.files.write.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @_EDITS_WITHIN_THE_LIMIT
+    async def test_an_edit_within_the_limit_is_written(
+        self, sandbox, content, old_string, new_string, replace_all, written
+    ):
+        sandbox.files.read.return_value = _FileStream(content.encode())
+
+        result = await _handle_edit_file(
+            {
+                "file_path": "notes.txt",
+                "old_string": old_string,
+                "new_string": new_string,
+                "replace_all": replace_all,
+            }
+        )
+
+        assert not result["isError"], result["content"][0]["text"]
+        sandbox.files.write.assert_awaited_once_with(
+            f"{E2B_WORKDIR}/notes.txt", written
+        )
+
+
 class TestReadFileE2BRouting:
     """Verify that _handle_read_file routes correctly in E2B mode.
 

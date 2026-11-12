@@ -11,6 +11,9 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 MAX_ENVELOPE_BYTES = 16 * 1024 * 1024
+# A STATUS frame is a handful of numbers (PROTOCOL.md, Backpressure) and only
+# advisory, so the relay drops one past this rather than storing it.
+MAX_STATUS_BYTES = 16 * 1024
 PLATFORM_REQUEST_TYPES = frozenset(
     {
         "EXECUTE_COMMAND",
@@ -191,17 +194,33 @@ def response_stream_key(session_id: str, connection_id: str, reply_id: str) -> s
     return stream_key(session_id, connection_id, f"responses:{reply_id}")
 
 
+def status_stream_key(session_id: str, connection_id: str) -> str:
+    """The connection's latest STATUS, read by every transport on it."""
+    return stream_key(session_id, connection_id, "status")
+
+
 def as_text(value: Any) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 
 
 def decode_stream_entries(result: Any) -> list[tuple[str, dict[str, str]]]:
     return [
+        (message_id, fields)
+        for _stream, message_id, fields in decode_keyed_stream_entries(result)
+    ]
+
+
+def decode_keyed_stream_entries(
+    result: Any,
+) -> list[tuple[str, str, dict[str, str]]]:
+    """An XREAD result as (stream, entry id, fields), stream by stream."""
+    return [
         (
+            as_text(stream),
             as_text(message_id),
             {as_text(key): as_text(value) for key, value in fields.items()},
         )
-        for _stream, messages in result or []
+        for stream, messages in result or []
         for message_id, fields in messages
     ]
 
