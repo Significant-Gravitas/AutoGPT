@@ -67,6 +67,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # ``run_capability``, so a deferred end signal could never be called;
         # every other chat has it hidden (``interview_disabled_tools``).
         "end_interview",
+        # Both open a chat card, and a deferred tool renders as a generic
+        # tool row instead of its card.
+        "request_work_check",
+        "flag_mistake",
     }
 )
 

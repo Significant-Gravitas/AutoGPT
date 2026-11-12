@@ -20,6 +20,7 @@ from backend.util.settings import BehaveAs, Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 HOURLY_ATTEMPTS = 10
 DAILY_ATTEMPTS = 30
 REDIS_TIMEOUT_SECONDS = 0.25

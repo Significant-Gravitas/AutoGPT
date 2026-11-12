@@ -1,4 +1,5 @@
-"""One user's top-level runs hold at most their share of an executor's workers."""
+"""One user's runs hold at most their share of an executor's workers, plus one
+more for each level of sub-workflows below their top-level runs."""
 
 from concurrent.futures import Future
 from unittest.mock import MagicMock, patch
@@ -8,6 +9,7 @@ import pytest
 from backend.data.execution import ExecutionContext, GraphExecutionEntry
 from backend.executor import manager as manager_module
 from backend.executor.manager import ExecutionManager
+from backend.executor.nesting import MAX_SUB_WORKFLOW_DEPTH
 from backend.executor.utils import (
     GRAPH_EXECUTION_DELAY_ROUTING_KEY,
     GRAPH_EXECUTION_EXCHANGE,
@@ -25,6 +27,12 @@ def manager(monkeypatch: pytest.MonkeyPatch):
 def small_manager(monkeypatch: pytest.MonkeyPatch):
     """A three-worker executor whose configured share exceeds its pool."""
     yield from _manager(monkeypatch, workers=3, share=5)
+
+
+@pytest.fixture
+def large_manager(monkeypatch: pytest.MonkeyPatch):
+    """A ten-worker executor whose users may each hold two top-level runs."""
+    yield from _manager(monkeypatch, workers=10, share=2)
 
 
 def _manager(monkeypatch: pytest.MonkeyPatch, *, workers: int, share: int):
@@ -63,9 +71,54 @@ def test_a_users_runs_past_their_share_wait_while_others_still_start(manager):
 def test_a_sub_run_starts_while_its_parent_holds_a_worker(manager):
     for run in ("a1", "a2"):
         _deliver(manager, user="alice", run=run)
+    _deliver(manager, user="alice", run="a1-child", root="a1", ancestors=["g"])
+
+    assert "a1-child" in manager.active_graph_runs
+
+
+def test_a_sub_run_queued_without_its_chain_still_starts(manager):
+    # As one queued before runs carried their chain is
+    for run in ("a1", "a2"):
+        _deliver(manager, user="alice", run=run)
     _deliver(manager, user="alice", run="a1-child", root="a1")
 
     assert "a1-child" in manager.active_graph_runs
+
+
+def test_a_sub_run_queued_without_its_chain_takes_nothing_from_the_share(manager):
+    # Its depth isn't known, so it is held outside the share, as all sub-runs
+    # were before they carried their chain
+    for run in ("a1", "a2"):
+        _deliver(manager, user="alice", run=run)
+    _deliver(manager, user="alice", run="a1-earlier-child", root="a1")
+    _deliver(manager, user="alice", run="a2-child", root="a2", ancestors=["g"])
+
+    assert {"a1-earlier-child", "a2-child"} <= set(manager.active_graph_runs)
+
+
+def test_a_users_sub_runs_count_toward_their_share(manager):
+    for run in ("a1", "a2"):
+        _deliver(manager, user="alice", run=run)
+    for child in ("a1-c1", "a1-c2", "a1-c3"):
+        _deliver(manager, user="alice", run=child, root="a1", ancestors=["g"])
+    _deliver(manager, user="bob", run="b1")
+
+    assert set(manager.active_graph_runs) == {"a1", "a2", "a1-c1", "b1"}
+
+
+def test_each_level_of_sub_runs_may_hold_one_more_worker(large_manager):
+    for run in ("a1", "a2"):
+        _deliver(large_manager, user="alice", run=run)
+    for depth in range(1, MAX_SUB_WORKFLOW_DEPTH + 1):
+        chain = [f"g{level}" for level in range(depth)]
+        for sibling in ("x", "y"):
+            run = f"depth-{depth}-{sibling}"
+            _deliver(large_manager, user="alice", run=run, root="a1", ancestors=chain)
+
+    # The second run at each depth found that depth's workers taken
+    assert set(large_manager.active_graph_runs) == {"a1", "a2"} | {
+        f"depth-{depth}-x" for depth in range(1, MAX_SUB_WORKFLOW_DEPTH + 1)
+    }
 
 
 def test_a_finished_run_frees_its_users_share(manager):
@@ -117,7 +170,7 @@ def test_a_run_finishing_while_the_share_is_counted_leaves_admission_working(
 ):
     for run in ("a1", "a2"):
         _deliver(manager, user="alice", run=run)
-    manager._root_run_owners["a2"] = _OwnerWhoseRunFinishesMidCount(manager, "a1")
+    manager._run_owners["a2"] = _OwnerWhoseRunFinishesMidCount(manager, "a1")
 
     _deliver(manager, user="bob", run="b1")
 
@@ -125,7 +178,12 @@ def test_a_run_finishing_while_the_share_is_counted_leaves_admission_working(
 
 
 def _deliver(
-    manager: ExecutionManager, *, user: str, run: str, root: str | None = None
+    manager: ExecutionManager,
+    *,
+    user: str,
+    run: str,
+    root: str | None = None,
+    ancestors: list[str] | None = None,
 ) -> None:
     entry = GraphExecutionEntry(
         user_id=user,
@@ -133,7 +191,9 @@ def _deliver(
         graph_id=f"graph-{run}",
         graph_version=1,
         execution_context=ExecutionContext(
-            root_execution_id=root or run, parent_execution_id=root
+            root_execution_id=root or run,
+            parent_execution_id=root,
+            ancestor_graph_ids=ancestors or [],
         ),
     )
     manager._handle_run_message(
@@ -152,7 +212,7 @@ class _OwnerWhoseRunFinishesMidCount(str):
         return owner
 
     def __eq__(self, other):
-        self.manager._root_run_owners.pop(self.finishing_run, None)
+        self.manager._run_owners.pop(self.finishing_run, None)
         return str.__eq__(self, other)
 
     __hash__ = str.__hash__

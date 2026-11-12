@@ -62,6 +62,10 @@ class FrontendFlag(str, Enum):
     # The interview offers a voice call with Otto. Needs ONBOARDING_INTERVIEW:
     # the typed interview is where a call's endings point.
     ONBOARDING_INTERVIEW_VOICE = Flag.ONBOARDING_INTERVIEW_VOICE.value
+    # The onboarding steps in the order an experiment wants them: the named
+    # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
+    ONBOARDING_STEP_ORDER = "onboarding-step-order"
+    SELF_SERVE_ACCOUNT_DELETION = Flag.SELF_SERVE_ACCOUNT_DELETION.value
 
     @classmethod
     def __get_pydantic_json_schema__(
@@ -79,6 +83,7 @@ PAYLOAD_FLAGS = frozenset(
         FrontendFlag.MARKETPLACE_SEARCH_TERMS,
         FrontendFlag.COPILOT_BOT_PLATFORMS,
         FrontendFlag.COPILOT_STREAM_SHADOW,
+        FrontendFlag.ONBOARDING_STEP_ORDER,
     }
 )
 

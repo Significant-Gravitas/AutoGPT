@@ -28,6 +28,7 @@ from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLLMModel
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.executor.utils import schedule_chat_turn
+from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.onboarding_interview import is_onboarding_interview
 from backend.copilot.pending_message_helpers import (
@@ -104,6 +105,7 @@ async def continue_session(
             permissions=resolve_session_permissions(session),
         )
     except ConcurrentTurnLimitError as exc:
+        track_turn_cap(user_id, exc, surface="chat", outcome="refused")
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     if turn_id is None:
         # Another turn took the chat after the busy check above: a message

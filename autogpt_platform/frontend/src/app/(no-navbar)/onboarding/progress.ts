@@ -5,6 +5,7 @@ import { normalizeOnboardingProfile } from "./helpers";
 
 export type WizardStepKey = keyof StepLayout;
 const STEP_KEYS: WizardStepKey[] = [
+  "access",
   "team",
   "autopilot",
   "role",
@@ -27,6 +28,7 @@ export function orderedSteps(steps: StepLayout) {
 }
 
 const stepSchema = z.enum([
+  "access",
   "team",
   "autopilot",
   "role",
