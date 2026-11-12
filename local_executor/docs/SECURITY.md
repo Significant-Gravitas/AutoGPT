@@ -139,8 +139,15 @@ algorithm, and the `autogpt-shim audit` CLI are spec'd in
 [AUDIT_LOG.md](AUDIT_LOG.md). The audit key never leaves the machine;
 the user provides it out-of-band when uploading a log for support.
 Audit initialization is mandatory: if the key or writer cannot be created,
-daemon construction fails and the CLI exits with `EX_CONFIG` rather than
-running in an unaudited degraded mode.
+the daemon doesn't start rather than running in an unaudited degraded mode.
+A failure that can clear on its own (a keychain still locked or not up yet,
+audit storage full or not mounted) exits 75 (`EX_TEMPFAIL`), which the
+supplied systemd unit and LaunchAgent restart; one that can't (a malformed
+key, a keyring backend `PYTHON_KEYRING_BACKEND` names that can't be loaded,
+a log that fails verification, storage the shim may not write) exits
+78 (`EX_CONFIG`), or 0 under the LaunchAgent, which would otherwise restart
+it every few seconds. See
+[CROSS_PLATFORM.md → Autostart](CROSS_PLATFORM.md#autostart--background-daemon).
 An existing log must verify before appending; malformed stored keys or corrupt
 logs fail closed without being silently replaced. Runtime audit writes remain
 best-effort for most data operations: disk/writer failures can leave completed
@@ -224,8 +231,14 @@ normal network access. OS isolation and destination approval are future work.
 `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE` and `audit-key.enc` under
 `AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`). Its format is
 HMAC-derived XOR obfuscation, not authenticated encryption or a slow password
-KDF. It does not make headless pairing work. Malformed stored keys fail closed;
-an existing log detects a wrong decoded key before appending. Without an
+KDF. It does not make headless pairing work. It starts a new key only while
+there is no audit log: one the keychain's key signed would never verify with
+it, so a keychain missing at start is waited for instead. Only the daemon
+starts a key: the `audit` commands (`verify`, `verify-all`, `rotate`,
+`export`) read the stored one and stop when there is none, whatever the
+keychain's state or the passphrase. Malformed stored
+keys fail closed; an existing log detects a wrong decoded key before
+appending. Without an
 existing log, the fallback cannot authenticate a passphrase or detect
 valid-length ciphertext corruption. Prefer a supported OS keyring.
 

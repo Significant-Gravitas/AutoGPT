@@ -140,11 +140,18 @@ async def test_handshake_negotiates_minor_floor(daemon: ShimDaemon) -> None:
     assert daemon._negotiated_version == expected
 
 
-async def test_handshake_negotiates_when_shim_higher_minor(daemon: ShimDaemon) -> None:
-    """Platform reports an older minor; negotiation floors to platform's."""
+async def test_handshake_negotiates_when_shim_higher_minor(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Platform reports an older minor; negotiation floors to platform's.
+    With both on 2.0, a handshake that took the shim's own minor would pass
+    as well, so the shim speaks 2.1 here."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "PROTOCOL_VERSION", "2.1")
     ws = _FakeWebSocket(inbound=[_make_hello_ack(protocol_version="2.0")])
     await daemon._handshake(ws)
-    # A shim on 2.x and a platform on 2.0 meet at 2.0.
+
     assert daemon._negotiated_version == "2.0"
 
 

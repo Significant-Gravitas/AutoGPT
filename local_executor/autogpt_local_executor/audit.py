@@ -121,16 +121,33 @@ def _utf8_safe(value: Any) -> Any:
     that raised was dropped while the operation went ahead; those code points
     are kept as `\\udcXX` escapes."""
     if isinstance(value, str):
-        try:
-            value.encode("utf-8")
-        except UnicodeEncodeError:
-            return value.encode("utf-8", "backslashreplace").decode("utf-8")
-        return value
+        if _encodes(value):
+            return value
+        return value.encode("utf-8", "backslashreplace").decode("utf-8")
     if isinstance(value, dict):
-        return {_utf8_safe(key): _utf8_safe(item) for key, item in value.items()}
+        # An escaped key can spell another key of the same object, which
+        # would drop one of the two values. In an object with a key to
+        # escape, every key's backslashes are doubled first, so an escape's
+        # single backslash can't match a key's own. Others stay as they are.
+        double = any(isinstance(key, str) and not _encodes(key) for key in value)
+        return {_utf8_safe_key(key, double): _utf8_safe(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_utf8_safe(item) for item in value]
     return value
+
+
+def _utf8_safe_key(key: Any, double: bool) -> Any:
+    if double and isinstance(key, str):
+        key = key.replace("\\", "\\\\")
+    return _utf8_safe(key)
+
+
+def _encodes(text: str) -> bool:
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def canonical_bytes(record: dict[str, Any]) -> bytes:
@@ -553,10 +570,11 @@ class AuditKeyError(RuntimeError):
 
 
 class AuditKeyUnavailableError(RuntimeError):
-    """The OS keychain holding the audit key couldn't be used just now (still
-    locked at login, say). Unlike a missing keychain this can clear on its
-    own, so the file fallback doesn't stand in: its key is a different one,
-    and the log signed with the keychain's would no longer verify."""
+    """The OS keychain holding the audit key couldn't be used just now:
+    still locked at login, or not started yet. Either can clear on its own,
+    so the file fallback doesn't stand in for a keychain that may hold the
+    key: its key is a different one, and the log signed with the keychain's
+    would no longer verify."""
 
 
 class AuditLogCorruptError(RuntimeError):
@@ -564,18 +582,36 @@ class AuditLogCorruptError(RuntimeError):
     it. A restart can't fix this: someone has to look at the log."""
 
 
-def get_or_create_audit_key() -> bytes:
+def load_audit_key() -> bytes:
+    """The stored audit key, for the audit commands, which read and check
+    logs: they never make one, since a new key couldn't check a log another
+    key signed, and the daemon would then find its log signed with neither.
+    AuditKeyError, or AuditKeyUnavailableError, when none can be read."""
+    return get_or_create_audit_key(create=False)
+
+
+def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = True) -> bytes:
     """Return the persisted audit key, generating + storing one on first use.
 
     Prefers the OS keychain. The legacy audit-only fallback requires
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
+    With no keychain, the fallback's key is used once it exists, and so it
+    is when a keychain that turns up later holds none: that key signed the
+    log. A new one is made only while `audit_log` (the log the key is for)
+    doesn't exist yet, since a log another key signed would never verify
+    with it. With `create` false no key is made at all (load_audit_key).
     """
     try:
         import keyring
         import keyring.errors
     except ImportError:
+        if not _fallback_path().exists():
+            _refuse_a_new_key(
+                audit_log, create, "No keyring package is installed, and the file fallback"
+            )
         return _fallback_audit_key()
     try:
+        _load_keyring_backend(keyring)
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
         if stored is not None:
             try:
@@ -589,18 +625,92 @@ def get_or_create_audit_key() -> bytes:
                     "Stored audit key has an invalid length; refusing to replace it"
                 )
             return key
+        if _fallback_path().exists() and os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            # The file fallback made the key while there was no keychain, so
+            # it signed the log; a new keychain key couldn't verify it.
+            logger.info("The keychain holds no audit key; using the file fallback's.")
+            return _fallback_audit_key()
+        _refuse_a_new_key(audit_log, create, "The OS keychain")
         key = secrets.token_bytes(32)
         keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
         return key
     except AuditKeyError:
         raise
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
+        if not _fallback_path().exists():
+            _no_keychain_yet(exc, audit_log, create=create)
         logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
         return _fallback_audit_key()
     except Exception as exc:
         raise AuditKeyUnavailableError(
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
             "it may still be locked"
+        ) from exc
+
+
+def _load_keyring_backend(keyring: Any) -> None:
+    """Have keyring pick its backend. One that PYTHON_KEYRING_BACKEND or
+    keyring's configuration file names but that can't be loaded (a module
+    or class that isn't there, a name without its module) raises
+    AuditKeyError: no restart fixes a setting. A backend that loads but
+    isn't running yet raises something else, and is waited for as a
+    keychain still locked is."""
+    try:
+        keyring.get_keyring()
+    except (ImportError, AttributeError, ValueError) as exc:
+        raise AuditKeyError(
+            "The keyring backend named by PYTHON_KEYRING_BACKEND or keyring's configuration "
+            f"file can't be loaded ({type(exc).__name__}: {exc}). Fix or remove that setting"
+        ) from exc
+
+
+def _refuse_a_new_key(audit_log: Path | None, create: bool, holder: str) -> None:
+    """Raise AuditKeyError unless a new audit key may be made: never for the
+    audit commands (`create` false), and never while `audit_log`, the log
+    the key is for, exists, since a new key couldn't verify a log another
+    key signed. `holder` names where no key was found."""
+    if not create:
+        raise AuditKeyError(f"{holder} holds no audit key, so there is none to read")
+    if audit_log is not None and os.path.lexists(audit_log):
+        hint = (
+            " (the file fallback has one: set AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE to read it)"
+            if _fallback_path().exists()
+            else ""
+        )
+        raise AuditKeyError(
+            f"{holder} holds no audit key, but the audit log at {audit_log} was signed "
+            f"with one{hint}, which a new key couldn't verify. Restore that key, or move "
+            "the log aside to start a new log with a new key"
+        )
+
+
+def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = True) -> None:
+    """With no keychain and no file key yet, raise AuditKeyUnavailableError
+    unless the file fallback may start a new key.
+
+    The shim can't run without a keychain, which holds its sign-in, so one
+    missing at start is most often one that hasn't started yet: a Secret
+    Service the desktop session starts after the autostart service, say. It
+    is waited for (the daemon exits to be restarted) rather than taken as
+    gone, unless the person set the passphrase and no log exists for the
+    keychain's key to have signed. Without `create` there is no key to read."""
+    if not create:
+        raise AuditKeyUnavailableError(
+            f"No OS keychain is available ({type(exc).__name__}), and the file fallback "
+            "holds no audit key, so there is none to read"
+        ) from exc
+    if not os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+        raise AuditKeyUnavailableError(
+            f"No OS keychain is available ({type(exc).__name__}) and "
+            "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE is not set for the file fallback. A keychain "
+            "that starts later is picked up on the next try; otherwise set one up"
+        ) from exc
+    if audit_log is not None and os.path.lexists(audit_log):
+        raise AuditKeyUnavailableError(
+            f"No OS keychain is available ({type(exc).__name__}), and the audit log at "
+            f"{audit_log} was signed with the key it holds, which a new file key couldn't "
+            "verify. A keychain that starts later is picked up on the next try; to start a "
+            "new log with a file key instead, move it aside"
         ) from exc
 
 
@@ -769,8 +879,6 @@ def _detect_shim_version() -> str:
 def _now_ts() -> float:
     # Plain wall clock; the spec calls for unix epoch seconds. Tests can
     # monkeypatch this if they need determinism.
-    import time
-
     return time.time()
 
 
@@ -950,6 +1058,7 @@ __all__ = [
     "SessionAuditWriter",
     "canonical_bytes",
     "get_or_create_audit_key",
+    "load_audit_key",
     "holding_log_lock",
     "list_rotated_files",
 ]

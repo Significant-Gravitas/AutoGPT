@@ -221,6 +221,36 @@ async def test_session_revoked_audits_closes_disables_reconnect(
     assert details["new_shim_machine_id"] == "other-machine-1"
 
 
+async def test_a_revoked_session_closes_while_its_audit_record_waits(
+    daemon: ShimDaemon, audit: _RecordingAudit, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The close waited for the SESSION_REVOKED record, so an audit writer
+    held up (its lock taken by `audit verify` on a large log, say) kept the
+    revoked connection open until it was done."""
+    ws = _FakeWebSocket([_session_revoked_frame()])
+    daemon._semaphore = asyncio.Semaphore(4)
+    writer_free = asyncio.Event()
+    real_write = audit.write
+
+    async def held_write(op: str, **kwargs: Any) -> None:
+        await writer_free.wait()
+        await real_write(op, **kwargs)
+
+    monkeypatch.setattr(audit, "write", held_write)
+    handling = asyncio.ensure_future(daemon._on_frame(ws, await ws.__anext__()))
+    try:
+        async with asyncio.timeout(10):
+            while not ws.close_calls:
+                await asyncio.sleep(0.01)
+        assert ws.close_calls[0]["code"] == WS_CLOSE_SESSION_REVOKED
+        assert not handling.done()
+    finally:
+        writer_free.set()
+    await asyncio.wait_for(handling, timeout=10)
+
+    assert [op for op, _ in audit.events] == ["SESSION_REVOKED"]
+
+
 @pytest.mark.parametrize("reason", SESSION_REVOKED_REASONS)
 async def test_session_revoked_accepts_each_spec_reason(
     daemon: ShimDaemon, audit: _RecordingAudit, reason: str
@@ -426,6 +456,9 @@ async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
 ) -> None:
     """A session that ran and then dropped must reconnect promptly, not at
     the delay built up by the failures before it."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "STABLE_SESSION_SECONDS", 0.0)
     attempts: list[int] = []
     calls = 0
 
@@ -453,6 +486,39 @@ async def test_a_session_that_was_up_starts_the_reconnect_backoff_over(
     await asyncio.wait_for(daemon.run(), timeout=30)
 
     assert attempts == [0, 1, 2, 0]
+
+
+async def test_sessions_the_platform_ends_right_away_keep_the_backoff_growing(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A platform that answered HELLO_ACK and then closed with 1011 (while
+    overloaded, say) had every shim reconnect after the base delay, again
+    and again, since any session that came up started the backoff over."""
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            dropped = _FakeWebSocket([_make_connection_closed(code=1011, reason="")])
+            await daemon._run_session(dropped)
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == [0, 1, 2]
 
 
 def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) -> None:
@@ -553,6 +619,50 @@ async def test_work_queued_by_a_revoked_session_never_starts(
     assert ws.sent == []
 
 
+async def test_a_change_queued_for_a_thread_never_starts_once_its_session_is_revoked(
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancel reaches a task only when it next runs. A worker thread that
+    freed up between SESSION_REVOKED cancelling a request and the request's
+    task taking in the cancel started its queued change anyway: a write,
+    move or delete after revocation."""
+    import autogpt_local_executor.handlers as handlers_module
+
+    ws = _FakeWebSocket([])
+    daemon._semaphore = asyncio.Semaphore(4)
+    loop = asyncio.get_running_loop()
+    a_thread_frees_up: asyncio.Future[None] = loop.create_future()
+    queued: list[Any] = []
+    ran: list[str] = []
+
+    async def busy_pool(func, /, *args, **kwargs):
+        queued.append(func)
+        await a_thread_frees_up
+        return func(*args, **kwargs)
+
+    async def handle(msg, *, send):
+        await handlers_module._run_to_completion(lambda: ran.append("write"))
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(handlers_module.asyncio, "to_thread", busy_pool)
+    monkeypatch.setattr(daemon, "_handle", handle)
+    request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
+    await daemon._on_frame(ws, dump_message(request))
+    async with asyncio.timeout(10):
+        while not queued:
+            await asyncio.sleep(0)
+    work = tuple(daemon._dispatch_tasks)
+
+    # A thread frees up, and the revocation cancels the request, before the
+    # request's task runs again: the thread takes the change first.
+    a_thread_frees_up.set_result(None)
+    daemon._cancel_dispatch_requests()
+    await asyncio.wait(work, timeout=10)
+
+    assert ran == []
+    assert ws.sent == []
+
+
 async def test_an_unsupported_architecture_stops_at_preflight(
     daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -607,13 +717,35 @@ async def test_a_handler_that_finishes_after_revocation_sends_nothing(
     request = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path="/tmp/x"))
     await daemon._on_frame(ws, dump_message(request))
     assert await asyncio.to_thread(running.wait, 30)
+    work = tuple(daemon._dispatch_tasks)
 
-    # The revocation waits for the running thread, so it's freed from outside.
-    threading.Timer(0.2, release.set).start()
-    await asyncio.wait_for(daemon._on_frame(ws, _session_revoked_frame()), timeout=30)
+    # The revocation's close is still under way (its handshake) until the
+    # handler has finished, so the socket is open when the handler tries to
+    # reply: only the guard can stop that reply. (A timer that freed the
+    # thread after the close let a closed socket refuse it instead.)
+    closing = asyncio.Event()
+    closed = asyncio.Event()
+    real_close = ws.close
 
+    async def slow_close(**kwargs: Any) -> None:
+        closing.set()
+        await closed.wait()
+        await real_close(**kwargs)
+
+    monkeypatch.setattr(ws, "close", slow_close)
+    revocation = asyncio.create_task(daemon._on_frame(ws, _session_revoked_frame()))
+    await asyncio.wait_for(closing.wait(), timeout=30)
+    release.set()
+    await asyncio.wait(work, timeout=30)
+
+    assert all(task.done() for task in work)
+    assert ws.close_calls == []
     assert ws.sent == []
+
+    closed.set()
+    await asyncio.wait_for(revocation, timeout=30)
     assert ws.close_calls
+    assert ws.sent == []
 
 
 async def test_revocation_audits_and_closes_while_a_side_effect_hangs(

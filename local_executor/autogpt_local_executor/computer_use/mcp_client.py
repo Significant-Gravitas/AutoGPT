@@ -122,17 +122,25 @@ class StdioMcpClient:
                 },
                 timeout=timeout,
             )
+            # Checked before the process is handed over: an error past this
+            # block would leave it running, unheld.
+            server = result.get("serverInfo") or {}
+            capabilities = result.get("capabilities") or {}
+            if not isinstance(server, dict) or not isinstance(capabilities, dict):
+                raise McpError(
+                    INTERNAL_ERROR,
+                    "initialize answered with a serverInfo or capabilities that isn't an object",
+                )
             await self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         except BaseException:
             await self.close()
             raise
-        server = result.get("serverInfo") or {}
         self.initialize_result = InitializeResult(
             protocol_version=str(result.get("protocolVersion") or ""),
             server_name=str(server.get("name") or ""),
             server_version=str(server.get("version") or ""),
             instructions=str(result.get("instructions") or ""),
-            capabilities=dict(result.get("capabilities") or {}),
+            capabilities=dict(capabilities),
         )
         return self.initialize_result
 
@@ -187,8 +195,9 @@ class StdioMcpClient:
     async def request(
         self, method: str, params: dict[str, Any] | None, *, timeout: float
     ) -> dict[str, Any]:
-        """Send one request and wait up to `timeout` seconds for its result.
-        A request that times out or is cancelled is cancelled at the server
+        """Send one request and wait for its result, both within `timeout`
+        seconds: a driver that stops reading its input holds the write. A
+        request that times out or is cancelled is cancelled at the server
         too, as MCP has it. cua-driver 0.38 runs one request at a time and
         drops that notice, so CuaDriverBridge stops the driver as well."""
         if self._closed_error is not None:
@@ -201,11 +210,12 @@ class StdioMcpClient:
         if params is not None:
             message["params"] = params
         try:
-            await self._send(message)
-            return await asyncio.wait_for(future, timeout)
+            async with asyncio.timeout(timeout):
+                await self._send(message)
+                return await future
         except (TimeoutError, asyncio.CancelledError) as exc:
             reason = "timed out" if isinstance(exc, TimeoutError) else "cancelled"
-            await self._notify_cancelled(request_id, reason)
+            self._notify_cancelled(request_id, reason)
             raise
         finally:
             self._pending.pop(request_id, None)
@@ -259,19 +269,20 @@ class StdioMcpClient:
             except (BrokenPipeError, ConnectionResetError) as exc:
                 raise self._closed(f"the driver closed its input: {exc}") from exc
 
-    async def _notify_cancelled(self, request_id: int, reason: str) -> None:
-        if not self.alive:
+    def _notify_cancelled(self, request_id: int, reason: str) -> None:
+        """Queue the cancel notice without waiting for the driver to read it:
+        one that has stopped reading would hold the caller, and the bridge
+        then stops it anyway. A line is queued whole, after any other."""
+        process = self._process
+        if not self.alive or process is None or process.stdin is None:
             return
+        notice = {
+            "jsonrpc": "2.0",
+            "method": "notifications/cancelled",
+            "params": {"requestId": request_id, "reason": reason},
+        }
         with contextlib.suppress(Exception):
-            await asyncio.shield(
-                self._send(
-                    {
-                        "jsonrpc": "2.0",
-                        "method": "notifications/cancelled",
-                        "params": {"requestId": request_id, "reason": reason},
-                    }
-                )
-            )
+            process.stdin.write((json.dumps(notice, separators=(",", ":")) + "\n").encode())
 
     async def _read_stdout(self) -> None:
         process = self._process

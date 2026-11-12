@@ -29,6 +29,10 @@ RestartPreventExitStatus=77 78
 StandardOutput=append:{stdout_log}
 StandardError=append:{stderr_log}
 Environment=PYTHONUNBUFFERED=1
+# The service starts at login, before the desktop exports its display to the
+# user manager; with this marker the shim reads DISPLAY and the rest from the
+# manager once they're there (docs/COMPUTER_USE.md, Linux).
+Environment=AUTOGPT_SHIM_SUPERVISOR=systemd
 
 [Install]
 WantedBy=default.target

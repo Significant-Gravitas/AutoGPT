@@ -259,6 +259,55 @@ def test_callback_validates_state_without_logging_code(
     assert "the-code" not in captured.err
 
 
+def _ipv6_loopback() -> bool:
+    try:
+        with socket.socket(socket.AF_INET6) as probe:
+            probe.bind(("::1", 0))
+    except OSError:
+        return False
+    return True
+
+
+_needs_ipv6 = pytest.mark.skipif(not _ipv6_loopback(), reason="no IPv6 loopback")
+
+
+@_needs_ipv6
+def test_a_redirect_the_browser_sends_to_ipv6_loopback_reaches_the_shim(tmp_path: Path) -> None:
+    """The redirect URI names localhost, which a browser may try as ::1
+    before 127.0.0.1, but the callback server listened on 127.0.0.1 only."""
+    flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
+    server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
+
+    def send_callback() -> None:
+        with urllib.request.urlopen(
+            f"http://[::1]:{port}/callback?code=the-code&state=right-state", timeout=30
+        ):
+            pass
+
+    thread = threading.Thread(target=send_callback)
+    thread.start()
+    try:
+        assert flow._wait_for_callback(server, codes, errors, timeout=60) == "the-code"
+    finally:
+        thread.join(timeout=30)
+
+
+@_needs_ipv6
+def test_a_port_another_program_listens_on_at_ipv6_loopback_is_not_taken(tmp_path: Path) -> None:
+    """Another program listening on ::1, or on every address through a
+    dual-stack socket (which macOS lets the same user share), left
+    127.0.0.1 free, so the shim took the port, the browser's ::1 connection
+    took the code to that program, and the sign-in timed out."""
+    port = _free_port()
+    with socket.socket(socket.AF_INET6) as other:
+        other.bind(("::1", port))
+        other.listen()
+        flow = OAuthFlow(_config(tmp_path, callback_port=port), token_store=object())
+
+        with pytest.raises(RuntimeError, match="Could not bind"):
+            flow._bind_callback_server(expected_state="state")
+
+
 def test_callback_wait_outlasts_requests_for_other_paths(tmp_path: Path) -> None:
     """A browser asks for /favicon.ico; that must not end the wait."""
     flow = OAuthFlow(_config(tmp_path, callback_port=_free_port()), token_store=object())
@@ -412,16 +461,76 @@ def test_the_callback_takes_its_port_exclusively_on_windows(
     assert (socket.SO_REUSEADDR in options) is not exclusive
 
 
+def test_the_callback_never_shares_its_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Python 3.14's first betas had HTTPServer set SO_REUSEPORT, with which
+    another program of the same user can listen on the callback's port too
+    and take the redirect, leaving sign-in to wait out its time. The
+    callback server keeps it off whatever HTTPServer's default is."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    import autogpt_local_executor.auth as auth_module
+
+    monkeypatch.setattr(HTTPServer, "allow_reuse_port", True, raising=False)
+    monkeypatch.setattr(socket, "SO_REUSEPORT", -8, raising=False)
+    server = auth_module._CallbackServer(
+        ("127.0.0.1", 0), BaseHTTPRequestHandler, bind_and_activate=False
+    )
+    real_socket = server.socket
+    fake_socket = MagicMock()
+    fake_socket.getsockname.return_value = ("127.0.0.1", 41899)
+    server.socket = fake_socket
+    try:
+        server.server_bind()
+    finally:
+        real_socket.close()
+
+    options = [option.args[1] for option in fake_socket.setsockopt.call_args_list]
+    assert -8 not in options
+
+
+def _callback_could_bind(port: int) -> bool:
+    """Whether the callback server could take `port` now: free on 127.0.0.1,
+    and on ::1 where the machine has it, as _bind_callback_server needs."""
+    import autogpt_local_executor.auth as auth_module
+
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    try:
+        probe6 = socket.socket(socket.AF_INET6)
+    except OSError:
+        return True
+    with probe6:
+        try:
+            probe6.bind(("::1", port))
+        except OSError as exc:
+            return exc.errno in auth_module._NO_IPV6_LOOPBACK
+    return True
+
+
 def test_callback_uses_next_port_when_first_is_busy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import autogpt_local_executor.auth as auth_module
 
-    blocker = socket.socket()
-    blocker.bind(("127.0.0.1", 0))
-    first_port = blocker.getsockname()[1]
     # A free port is rarely in the registered 41899-41910, so the range is
-    # moved to start at it.
+    # moved to start at it. macOS and Windows hand out ports up to 65535, and
+    # a range running past it would bind an invalid port (OverflowError).
+    # The ports after it can all be taken, or reserved (Windows keeps blocks
+    # of them for Hyper-V), so one with a usable port after it is picked.
+    for _ in range(100):
+        blocker = socket.socket()
+        blocker.bind(("127.0.0.1", 0))
+        first_port = blocker.getsockname()[1]
+        if first_port + 11 <= 65535 and any(
+            _callback_could_bind(port) for port in range(first_port + 1, first_port + 12)
+        ):
+            break
+        blocker.close()
+    else:
+        pytest.skip("no free port with a usable one in the eleven after it")
     monkeypatch.setattr(auth_module, "CALLBACK_FIRST_PORT", first_port)
     monkeypatch.setattr(auth_module, "CALLBACK_LAST_PORT", first_port + 11)
     flow = OAuthFlow(_config(tmp_path, callback_port=first_port), token_store=object())

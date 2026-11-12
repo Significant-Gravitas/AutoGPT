@@ -17,6 +17,11 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
   FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
   FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
+  FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
+  FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
+  FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
+  FAKE_CUA_APPS          JSON list of installed app names list_apps returns
+  FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
 """
 
 from __future__ import annotations
@@ -102,7 +107,46 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
             {"code": "permission_denied"},
             error=True,
         )
+    session = arguments.get("session")
+    if session in os.environ.get("FAKE_CUA_ENDED_SESSIONS", "").split(","):
+        # cua-driver 0.38.0's refusal of a named session it ended for idling.
+        message = (
+            f"session '{session}' has ended; call start_session with session "
+            f"'{session}' to start it again, or use a new session label"
+        )
+        return text_result(
+            message,
+            {
+                "hint": "That session has ended. Start it again with start_session "
+                "(same label), or use a new session label.",
+                "next_call": {"arguments": {"session": session}, "tool": "start_session"},
+                "refusal": {"code": "session_ended", "message": message},
+                "status": "refused",
+            },
+            error=True,
+        )
+    if name == "list_apps" and (
+        os.environ.get("FAKE_CUA_APPS") or os.environ.get("FAKE_CUA_LIST_APPS_ERROR")
+    ):
+        if os.environ.get("FAKE_CUA_LIST_APPS_ERROR"):
+            return text_result(os.environ["FAKE_CUA_LIST_APPS_ERROR"], error=True)
+        names = json.loads(os.environ["FAKE_CUA_APPS"])
+        # cua-driver 0.38 on Windows: installed apps carry their launch_path;
+        # a running process no installed app matched has none.
+        apps = [
+            {
+                "pid": 0,
+                "name": app,
+                "running": False,
+                "kind": "desktop",
+                "launch_path": f"C:\\Apps\\{app}.exe",
+            }
+            for app in names
+        ] + [{"pid": 77, "name": "logoff", "running": True, "kind": "desktop", "launch_path": None}]
+        return text_result(f"Found {len(apps)} app(s).", {"apps": apps, "processes": []})
     if name == "get_screen_size":
+        if os.environ.get("FAKE_CUA_SCREEN_ERROR"):
+            return text_result(os.environ["FAKE_CUA_SCREEN_ERROR"], error=True)
         size = json.loads(
             os.environ.get("FAKE_CUA_SCREEN")
             or '{"width": 1920, "height": 1080, "scale_factor": 1.0}'
@@ -175,25 +219,23 @@ def handle(message: dict) -> None:
                     "CUA_DRIVER_RS_UPDATE_CHECK",
                     "CUA_DRIVER_DANGEROUSLY_BYPASS_APPROVALS",
                     "CUA_DRIVER_CAPABILITY_MANIFEST_FILE",
+                    "DISPLAY",
+                    "XAUTHORITY",
                 )
             },
             policy=sorted(allowed_tools() or []),
         )
-        send(
-            {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "result": {
-                    "protocolVersion": message["params"]["protocolVersion"],
-                    "serverInfo": {
-                        "name": "cua-driver",
-                        "version": os.environ.get("FAKE_CUA_VERSION", "0.38.0"),
-                    },
-                    "capabilities": {"tools": {}},
-                    "instructions": "Fake cua-driver guidance.",
-                },
-            }
-        )
+        initialized = {
+            "protocolVersion": message["params"]["protocolVersion"],
+            "serverInfo": {
+                "name": "cua-driver",
+                "version": os.environ.get("FAKE_CUA_VERSION", "0.38.0"),
+            },
+            "capabilities": {"tools": {}},
+            "instructions": "Fake cua-driver guidance.",
+        }
+        initialized.update(json.loads(os.environ.get("FAKE_CUA_INITIALIZE") or "{}"))
+        send({"jsonrpc": "2.0", "id": request_id, "result": initialized})
     elif method == "tools/list":
         result: dict = {"tools": tool_list()}
         paging = os.environ.get("FAKE_CUA_NEXT_CURSOR")

@@ -59,11 +59,15 @@ jobs:
       - name: Install the computer-use extra
         run: python -m pip install -e ".[computer-use]"
 
-      # Other extras' wheels are OS-specific (pyusb needs libusb, for one),
-      # and the unit tests don't need them; the core install must always work.
-      - name: Install optional extras (best-effort)
-        continue-on-error: true
-        run: python -m pip install -e ".[hardware,local-llm]"
+      # The other extras are pure Python on every OS (pyusb looks for libusb
+      # only when it runs), so each must install too, though the tests don't
+      # need them; one step each says which broke. The coverage job tests the
+      # core install alone.
+      - name: Install the hardware extra
+        run: python -m pip install -e ".[hardware]"
+
+      - name: Install the local-llm extra
+        run: python -m pip install -e ".[local-llm]"
 
       - name: Install test dependencies
         run: python -m pip install pytest pytest-asyncio pytest-mock

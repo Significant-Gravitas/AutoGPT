@@ -180,3 +180,63 @@ def test_only_reparse_points_that_redirect_are_refused(tag: int, redirects: bool
     from autogpt_local_executor.directory_browser import _reparse_tag_redirects
 
     assert _reparse_tag_redirects(tag) is redirects
+
+
+def test_browsing_shows_a_cloud_folder_and_hides_a_junction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The test above checks the tag rule alone, so browsing would still
+    pass it if every reparse point were refused and OneDrive's folders were
+    hidden again. Here the listing itself runs as on Windows."""
+    import os
+    from types import SimpleNamespace
+
+    from autogpt_local_executor import directory_browser
+
+    tags = {"cloud": 0x9000601A, "junction": 0xA0000003}  # CLOUD_6, MOUNT_POINT
+
+    class WindowsOs:
+        """os as the browser sees it on Windows, with those reparse tags."""
+
+        name = "nt"
+
+        def __getattr__(self, attribute: str) -> object:
+            return getattr(os, attribute)
+
+        def lstat(self, path: str | os.PathLike[str]) -> object:
+            real = os.lstat(path)
+            tag = tags.get(Path(path).name, 0)
+            return SimpleNamespace(
+                st_mode=real.st_mode,
+                st_file_attributes=0x400 if tag else 0,
+                st_reparse_tag=tag,
+            )
+
+    for name in ("cloud", "junction", "plain"):
+        (tmp_path / name).mkdir()
+    monkeypatch.setattr(directory_browser, "os", WindowsOs())
+    browser = DirectoryBrowser(platform_name="linux", home=tmp_path)
+
+    roots, home = _root_listing(browser)
+    listing = browser.list_directories(roots.browse_id, home.directory_ref)
+
+    assert [entry.name for entry in listing.entries] == ["cloud", "plain"]
+
+
+def test_sibling_directories_that_differ_only_in_case_get_their_own_refs() -> None:
+    """A Windows path compares without case, and refs were reused by path,
+    so in a case-sensitive folder (one WSL uses, say) `foo` got the ref
+    already minted for its sibling `Foo`, and choosing it attached the
+    chat to `Foo`."""
+    from pathlib import PureWindowsPath
+
+    from autogpt_local_executor.directory_browser import _BrowseSession
+
+    session = _BrowseSession(expires_at=0.0)
+    upper = DirectoryBrowser._add_ref(session, PureWindowsPath(r"C:\Work\Foo"), "parent")  # type: ignore[arg-type]
+    lower = DirectoryBrowser._add_ref(session, PureWindowsPath(r"C:\Work\foo"), "parent")  # type: ignore[arg-type]
+    again = DirectoryBrowser._add_ref(session, PureWindowsPath(r"C:\Work\foo"), "parent")  # type: ignore[arg-type]
+
+    assert upper != lower
+    assert again == lower
+    assert str(session.refs[lower].path) == r"C:\Work\foo"

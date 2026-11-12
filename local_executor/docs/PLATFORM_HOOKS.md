@@ -422,12 +422,17 @@ How the four sketched pieces land there:
    changed. **The backend gate is the security boundary; the dialog makes
    it visible.**
 
-   A call that uses one of a tool's `approval_arguments` (disk paths, or a
-   `run_script` script) goes
-   through the chat's approval gate on its own subject: the person approves
-   it on a card that shows the path, and only then does the platform send it
-   with `approved_arguments`. Where the gate can't ask, the platform refuses
-   the call; the shim refuses one without the approval either way.
+   A call that uses one of a tool's `approval_arguments` (disk paths, a
+   `run_script` script, or what `launch_app` would run) goes through the
+   chat's approval gate on its own subject, and only once the gate approves
+   it does the platform send it with `approved_arguments`. Usually the
+   person approves it on a card that shows the path, script or program.
+   Two cases approve it without a card for that call: a chat that runs
+   Unsupervised approves these calls itself, and a standing rule the person
+   set on an earlier card ("from now on") approves later calls of that kind
+   whatever their arguments. Where the gate can't ask and neither applies,
+   the platform refuses the call. The shim can't tell how a call was
+   approved: it trusts `approved_arguments`, and refuses a call without it.
 
 4. **Tests.** `env_test.py` covers the OpenRouter compatibility
    regression. `local_pc_shim_test.py::TestComputerProxy` covers the two

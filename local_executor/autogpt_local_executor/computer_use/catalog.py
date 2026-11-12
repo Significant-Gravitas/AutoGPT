@@ -325,17 +325,53 @@ def _check_app_identity(
             )
     # On Linux the driver runs `name` as a command line first, split at
     # spaces, and matches it against the installed apps only if no program
-    # has its first word. A display name such as "Google Chrome" starts with
-    # no program's name and so reaches the match.
+    # has its first word. A program's own name ("reboot") would run it, in
+    # the background. An app's display name, as list_apps gives it ("Google
+    # Chrome", "Firefox"), starts with no program's name (PATH lookups are
+    # case-sensitive) and so reaches the match.
+    # On Windows the driver launches a bundle_id that is an AUMID as a
+    # packaged app and hands any other to ShellExecuteEx as a program name,
+    # without looking for an installed app first: `logoff` signs the person
+    # out. (A launch by `name` is checked against the installed apps, which
+    # takes the driver: ComputerUseHandler._check_windows_launch_name.)
+    bundle_id = arguments.get("bundle_id")
+    if platform == "win32" and isinstance(bundle_id, str) and not is_aumid(bundle_id):
+        raise ArgumentRefused(
+            "launch_app",
+            "bundle_id",
+            "on Windows a bundle_id is a packaged app's AUMID (`Package!App`); name the "
+            "app in name, as list_apps shows it, or pass its AUMID as aumid",
+        )
     name = arguments.get("name")
     words = name.split() if platform.startswith("linux") and isinstance(name, str) else []
-    if len(words) > 1 and on_path(words[0]):
+    if words and on_path(words[0]):
+        rest = " with the rest as its arguments" if len(words) > 1 else ""
         raise ArgumentRefused(
             "launch_app",
             "name",
-            f"the driver would run {words[0]!r} with the rest as its arguments; pass a "
-            "command line as launch_path, which the person approves",
+            f"the driver would run the program {words[0]!r}{rest}; name the app as "
+            "list_apps shows it, or pass a command line as launch_path, which the "
+            "person approves",
         )
+
+
+def is_aumid(value: str) -> bool:
+    """Whether cua-driver 0.38 takes `value` for a packaged app's AUMID
+    (`{PackageFamilyName}!{ApplicationId}`): one `!`, text on both sides."""
+    family, separator, app = value.partition("!")
+    return bool(separator and family and app) and "!" not in app
+
+
+def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:
+    """Whether cua-driver 0.38's `shell:AppsFolder` lookup on Windows would
+    find an installed app for a launch_app `name`: the exact name, ignoring
+    case and a trailing `.exe`, or else one that starts with it. Without a
+    match the driver hands the name to ShellExecuteEx, which runs a program
+    of that name from PATH."""
+    query = name.strip().lower().removesuffix(".exe")
+    if not query:
+        return False
+    return any(app.strip().lower().startswith(query) for app in app_names)
 
 
 def takes_session(schema: Mapping[str, Any]) -> bool:

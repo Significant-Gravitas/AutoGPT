@@ -155,12 +155,18 @@ The shim executes these using `pyautogui` (cross-platform) or `xdotool` (Linux X
 - `e2b_file_tools.py` / `_handle_read_file`: New "privacy mode" path — instead of returning file content, return a `FileStub` with `{path, size, mime_type, stub_id}` (the content hash stays on the shim; `LOCAL_LLM_TURN` names the file by its `stub_id`, never its path again) and send the full content *only* to a local LLM running on the shim
 - New `PrivacyRouter` in `service.py`: for privacy-flagged sessions, file tool results are stubs; a second local-LLM turn runs on the shim to process the actual content and returns only the *answer*, not the content
 - `ChatConfig`: `privacy_mode: bool = False` — enables content-blind routing
-- New message type `LOCAL_LLM_TURN`: platform sends a prompt fragment + file stub; shim resolves the file locally, calls local LLM, returns the response
+- New message type `LOCAL_LLM_TURN`: platform sends a prompt fragment + the file's `stub_id` (never the stub's path); shim resolves the file locally, calls local LLM, returns the response
 
 **Shim changes needed**:
 - `ShimLocalLLM`: wraps Ollama HTTP API (`POST http://localhost:11434/api/chat`)
 - File content never serialized into WebSocket messages in privacy mode
 - Local inference result summary sent back instead
+
+**Limit**: this keeps the file from being uploaded, not its contents out of
+the cloud. The local model's answer goes back unfiltered, and a task such as
+"quote the second paragraph" returns file text by design; one that asks for
+the whole file gets it. Until an enforced output control exists, the dream
+above is not met. See [PRIVACY_MODE.md](PRIVACY_MODE.md).
 
 ---
 

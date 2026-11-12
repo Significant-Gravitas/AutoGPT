@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -93,7 +94,9 @@ def driver_commands(monkeypatch: pytest.MonkeyPatch) -> _Commands:
 
 @pytest.fixture
 def a_fake_driver(monkeypatch: pytest.MonkeyPatch, fake_log: Path):
-    """doctor's driver probes run the fake, as if on `platform`."""
+    """doctor's driver probes run the fake, as if on `platform`, in a
+    desktop session."""
+    monkeypatch.setenv("DISPLAY", ":0")
     settings: dict[str, Any] = {"platform": "linux"}
 
     def bridge(*, tools, binary):
@@ -117,6 +120,30 @@ def _with_driver(tmp_path: Path, plat: str = "linux", **overrides) -> ShimConfig
     return _config(tmp_path, enable_computer_use=True, cua_driver_path=str(FAKE), **overrides)
 
 
+def test_doctor_prints_what_stdout_cannot_encode_as_escapes(monkeypatch) -> None:
+    """A Windows console code page such as CP437 has no em dash, which the
+    UAC lines carry, nor most characters a path or a driver message can
+    hold: doctor raised UnicodeEncodeError before it reported anything."""
+    import io
+    import sys
+
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp437", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    doctor._print_checks(
+        [
+            doctor.CheckResult("INFO", "UAC", "not elevated — can't drive admin windows"),
+            doctor.CheckResult("OK", "folder_browser", "C:\\Users\\Jürgen\\文档"),
+        ]
+    )
+    stdout.flush()
+
+    out = raw.getvalue().decode("cp437")
+    assert r"not elevated \u2014 can't drive admin windows" in out
+    assert r"C:\Users\Jürgen\\u6587\u6863" in out
+
+
 def test_doctor_fails_without_cua_driver(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
     monkeypatch.setattr(doctor, "find_driver_binary", lambda _path=None: None)
@@ -135,7 +162,9 @@ def test_the_install_hint_replaces_a_shim_installed_from_git(tmp_path, monkeypat
     doctor.run_doctor(_config(tmp_path, enable_computer_use=True))
 
     out = capsys.readouterr().out
-    assert "pipx install --force 'autogpt-local-executor[computer-use] @ git+https://" in out
+    # Double quotes: cmd.exe splits single-quoted text at its spaces.
+    assert 'pipx install --force "autogpt-local-executor[computer-use] @ git+https://' in out
+    assert "'" not in doctor.COMPUTER_USE_INSTALL
 
 
 def test_computer_use_md_gives_the_install_command_the_shim_does() -> None:
@@ -175,6 +204,29 @@ def test_doctor_runs_the_drivers_own_probes_and_starts_it(
     assert "cua-driver binary" not in lines
     assert lines["cua-driver start"] == ("OK", "0.38.0, 38 tools offered")
     assert lines["display"] == ("OK", "1920x1080 (scale 1)")
+
+
+@pytest.mark.parametrize(
+    "env", [{}, {"WAYLAND_DISPLAY": "wayland-0"}], ids=["no-display", "wayland-only"]
+)
+def test_doctor_fails_on_linux_without_a_display_the_driver_can_drive(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, env
+) -> None:
+    """The daemon leaves computer_use out of HELLO without a display
+    cua-driver can drive, but doctor took the driver's own warning about it
+    and exited 0."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert rc == doctor.EX_CONFIG
+    assert lines["display"][0] == "FAIL"
+    assert lines["display"][1] == doctor.platform_info.linux_display_problem()
 
 
 def test_doctor_fails_on_a_driver_probe_error(
@@ -236,6 +288,35 @@ def test_doctor_fails_on_a_driver_report_it_cannot_read(
     assert any(check.marker == "FAIL" and check.blocking for check in checks)
 
 
+def test_doctor_reads_the_driver_report_as_utf8(monkeypatch) -> None:
+    """cua-driver prints its report in UTF-8, and on Windows `text=True`
+    decodes with the ANSI code page: a path naming C:\\Users\\Álvaro
+    (UTF-8 0xC3 0x81, and 0x81 isn't cp1252) failed doctor."""
+    report = json.dumps(
+        {
+            "build": {"version": "0.38.0"},
+            "probes": [
+                {"label": "AT-SPI", "status": "ok", "message": "C:\\Users\\Álvaro reachable"}
+            ],
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    def run(argv, **kwargs):
+        # Windows: without an encoding, text=True reads the ANSI code page.
+        decoded = report.decode(
+            kwargs.get("encoding") or "cp1252", kwargs.get("errors") or "strict"
+        )
+        return subprocess.CompletedProcess(argv, 0, decoded, "")
+
+    monkeypatch.setattr(doctor.subprocess, "run", run)
+
+    checks = {check.label: check for check in doctor._driver_doctor(FAKE)}
+
+    assert checks["cua-driver AT-SPI"].marker == "OK"
+    assert "Álvaro" in checks["cua-driver AT-SPI"].detail
+
+
 def test_doctor_keeps_the_probes_it_can_read(tmp_path, driver_commands) -> None:
     driver_commands.state["report"] = json.dumps(
         {
@@ -294,6 +375,69 @@ async def test_doctor_warns_on_a_screen_size_it_cannot_read(
     assert (check.marker, check.label) == ("WARN", "display")
 
 
+@pytest.mark.parametrize(
+    ("env", "marker"),
+    [
+        ({"DISPLAY": ":0"}, "FAIL"),
+        ({"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"}, "FAIL"),
+        # The native Wayland backend still sizes the screen through X11 on
+        # most compositors, so there a refusal doesn't mean it can't work.
+        ({"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "1"}, "WARN"),
+    ],
+    ids=["x11", "xwayland", "native-wayland"],
+)
+def test_doctor_fails_when_the_driver_cannot_read_an_x_display(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, env: dict[str, str], marker: str
+) -> None:
+    """An X display the driver can't reach (refused, or a server gone) made
+    doctor warn and exit 0, though the daemon offers computer use there and
+    every call then fails."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_ERROR", "cannot open display :0")
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert lines["display"] == (
+        marker,
+        "cua-driver could not read the screen: cannot open display :0",
+    )
+    assert rc == (doctor.EX_CONFIG if marker == "FAIL" else 0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("env", "marker"),
+    [
+        ({"DISPLAY": ":0"}, "FAIL"),
+        ({"WAYLAND_DISPLAY": "wayland-0", "CUA_DRIVER_RS_ENABLE_WAYLAND": "1"}, "WARN"),
+    ],
+    ids=["x11", "native-wayland"],
+)
+async def test_an_x_display_that_stops_answering_fails_doctor(
+    monkeypatch, env: dict[str, str], marker: str
+) -> None:
+    """An X server that stopped answering left the screen probe to time out,
+    and doctor warned and exited 0, though every call would wait on it."""
+    for name in ("DISPLAY", "WAYLAND_DISPLAY", "CUA_DRIVER_RS_ENABLE_WAYLAND"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    class Unanswered:
+        async def call_tool(self, *_args, **_kwargs):
+            raise TimeoutError
+
+    check = await doctor._check_screen(Unanswered(), "linux")  # type: ignore[arg-type]
+
+    assert (check.marker, check.blocking) == (marker, marker == "FAIL")
+    assert "no answer" in check.detail
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 
@@ -339,12 +483,40 @@ def test_doctor_checks_the_tool_foreign_clipboard_reads_need(
     monkeypatch, present: bool, marker: str
 ) -> None:
     monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: name if present else None)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(shutil, "which", lambda name: name if present else None)
 
     result = doctor._check_linux_clipboard_types()
 
     assert result.marker == marker
     assert "xclip" in result.detail
+
+
+@pytest.mark.parametrize(
+    ("env", "installed", "marker", "tool"),
+    [
+        ({"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}, {"xclip"}, "OK", "xclip"),
+        ({"WAYLAND_DISPLAY": "wayland-0"}, {"wl-paste"}, "OK", "wl-paste"),
+        ({}, {"xclip", "wl-paste"}, "WARN", "xclip"),
+    ],
+    ids=["mixed-session-xclip-only", "wayland", "no-display"],
+)
+def test_doctor_picks_the_clipboard_tool_the_check_uses(
+    monkeypatch, env: dict[str, str], installed: set[str], marker: str, tool: str
+) -> None:
+    """doctor asked for wl-paste whenever WAYLAND_DISPLAY was set, where the
+    check itself goes on to xclip with an X display, and took xclip without
+    any display, where the check counts the clipboard as unreadable."""
+    for name in ("WAYLAND_DISPLAY", "DISPLAY"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(shutil, "which", lambda name: name if name in installed else None)
+
+    result = doctor._check_linux_clipboard_types()
+
+    assert result.marker == marker
+    assert tool in result.detail
 
 
 # ── Daemon preflight ─────────────────────────────────────────────────────
@@ -436,12 +608,23 @@ async def test_run_stops_the_driver_a_failed_preflight_started(
         return policies[-1]
 
     monkeypatch.setattr(bridge, "_write_policy", write_policy)
+    clients: list = []
+    real_factory = bridge._client_factory
+
+    def client_factory(*args, **kwargs):
+        clients.append(real_factory(*args, **kwargs))
+        return clients[-1]
+
+    monkeypatch.setattr(bridge, "_client_factory", client_factory)
 
     with pytest.raises(DaemonPreflightError):
         await daemon.run()
 
     assert policies and not policies[0].parent.exists()
     assert bridge._client is None
+    # Not just let go: the driver the preflight started has exited.
+    [client] = clients
+    assert client._process is not None and client._process.returncode is not None
 
 
 async def test_daemon_preflight_on_macos_fails_cleanly_on_a_driver_error(
@@ -536,6 +719,33 @@ def test_doctor_round_trips_a_probe_through_the_keychain(monkeypatch, keeps, mar
     result = doctor._check_keychain()
 
     assert result.marker == marker
+    assert backend.stored == {}
+
+
+def test_a_probe_left_in_the_keychain_is_cleared_by_the_next_doctor(monkeypatch) -> None:
+    """A probe the keychain stored after doctor stopped waiting for it, with
+    doctor gone before its thread deleted it, stayed under the token
+    service for good: each run probed a new name, so none touched it."""
+    import sys
+
+    class GoneBeforeTheDelete(_MemoryKeyring):
+        def __init__(self) -> None:
+            super().__init__()
+            self.first = True
+
+        def delete_password(self, service: str, name: str) -> None:
+            if self.first:
+                self.first = False
+                return
+            super().delete_password(service, name)
+
+    backend = GoneBeforeTheDelete()
+    monkeypatch.setitem(sys.modules, "keyring", _keyring_module(backend))
+
+    doctor._check_keychain()
+    assert len(backend.stored) == 1
+    doctor._check_keychain()
+
     assert backend.stored == {}
 
 

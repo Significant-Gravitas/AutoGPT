@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import errno
 import hashlib
 import io
 import json
 import secrets
+import selectors
 import socket
 import sys
 import time
@@ -74,7 +76,17 @@ class _CallbackServer(HTTPServer):
     another socket is already listening on, so the fallback to the next
     port never ran and the redirect could reach the other listener.
     Elsewhere SO_REUSEADDR stays; it only lets a new sign-in bind over the
-    last one's closed connections."""
+    last one's closed connections.
+
+    The redirect URI says `localhost`, which a browser may try as ::1 before
+    127.0.0.1, so where the machine has IPv6 the server has a companion on
+    ::1 and the same port, closed with it."""
+
+    companion: _CallbackServer | None = None
+    # Never SO_REUSEPORT, which Python 3.14's first betas had HTTPServer set:
+    # another program of the same user could listen on the port too and take
+    # the redirect.
+    allow_reuse_port = False
 
     def server_bind(self) -> None:
         if sys.platform == "win32":
@@ -82,9 +94,30 @@ class _CallbackServer(HTTPServer):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
 
+    def server_close(self) -> None:
+        super().server_close()
+        if self.companion is not None:
+            self.companion.server_close()
+
+
+class _CallbackServer6(_CallbackServer):
+    address_family = socket.AF_INET6
+
+
+# What binding ::1 fails with on a machine without IPv6 loopback.
+_NO_IPV6_LOOPBACK = frozenset(
+    {errno.EADDRNOTAVAIL, errno.EAFNOSUPPORT, getattr(errno, "EPROTONOSUPPORT", errno.EAFNOSUPPORT)}
+)
+
 
 class CredentialScopeError(ValueError):
     """Stored credentials cannot be used with the configured destinations."""
+
+
+class OAuthDenied(ValueError):
+    """The sign-in redirect came back with an error instead of a code. Its
+    text is the provider's error and reason, kept to printable text: safe to
+    show, unlike other failures, whose text can hold a token."""
 
 
 def _canonical_endpoint(value: str) -> str:
@@ -409,9 +442,18 @@ class OAuthFlow:
         for port in range(first_port, last_port + 1):
             try:
                 server = _CallbackServer(("127.0.0.1", port), CallbackHandler)
-                return server, auth_code, oauth_error, port
             except OSError:
                 continue
+            try:
+                server.companion = _CallbackServer6(("::1", port), CallbackHandler)
+            except OSError as exc:
+                if exc.errno not in _NO_IPV6_LOOPBACK:
+                    # Another program listens on ::1 there (or on every
+                    # address, dual-stack): a browser trying ::1 first
+                    # would take it the code.
+                    server.server_close()
+                    continue
+            return server, auth_code, oauth_error, port
         raise RuntimeError(f"Could not bind OAuth callback on ports {first_port}-{last_port}")
 
     @staticmethod
@@ -426,19 +468,30 @@ class OAuthFlow:
         passes. A request for another path, such as a browser fetching
         /favicon.ico, does not end the wait."""
         deadline = time.monotonic() + timeout
+        servers = [server] if server.companion is None else [server, server.companion]
         try:
-            while not auth_code and not oauth_error:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    break
-                server.timeout = remaining
-                server.handle_request()
+            with selectors.DefaultSelector() as selector:
+                for each in servers:
+                    selector.register(each, selectors.EVENT_READ)
+                while not auth_code and not oauth_error:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    for key, _events in selector.select(remaining):
+                        ready = key.fileobj
+                        assert isinstance(ready, _CallbackServer)
+                        # It has a connection waiting: take it without waiting.
+                        ready.timeout = 0
+                        ready.handle_request()
+                        if auth_code or oauth_error:
+                            break
         finally:
             server.server_close()
 
         if not auth_code:
-            detail = oauth_error[0] if oauth_error else "OAuth callback timed out"
-            raise ValueError(detail)
+            if oauth_error:
+                raise OAuthDenied(oauth_error[0])
+            raise ValueError("OAuth callback timed out")
         return auth_code[0]
 
     async def _exchange_code(

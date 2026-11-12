@@ -8,6 +8,7 @@ import contextlib
 import errno
 import os
 import signal
+import stat
 import sys
 import textwrap
 import time
@@ -412,6 +413,33 @@ async def test_stat_without_following_describes_the_symlink_itself(tmp_path: Pat
     assert unfollowed.payload.path == os.path.join(os.path.realpath(tmp_path), "latest.csv")
     assert isinstance(followed, FileStatResponseMessage)
     assert followed.payload.is_file is True
+    assert followed.payload.path == os.path.realpath(target)
+
+
+@pytest.mark.asyncio
+async def test_stat_of_a_relative_path_describes_the_roots_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative path named a place in the shim's working directory, and a
+    followed one was checked for a symlink there too, not in the root."""
+    target = tmp_path / "data.csv"
+    target.write_text("a,b\n")
+    _symlink_or_skip(tmp_path / "latest.csv", target)
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path / "sub")
+    handler = FileHandler(make_config(tmp_path))
+
+    followed = await handler.handle_stat(
+        FileStatMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=FileStatPayload(path="latest.csv", follow_symlinks=True),
+        )
+    )
+
+    assert isinstance(followed, FileStatResponseMessage)
+    assert followed.payload.exists is True
+    assert followed.payload.is_symlink is True
     assert followed.payload.path == os.path.realpath(target)
 
 
@@ -1353,12 +1381,15 @@ async def test_recursive_list_without_hidden_skips_what_is_inside_hidden_dirs(
 
 
 class _FullDisk:
-    """A file object whose writes fail the way a full disk does."""
+    """A file object whose writes fail the way a full disk does: part of the
+    data lands, then the disk is full."""
 
     def __init__(self, file) -> None:
         self._file = file
 
-    def write(self, _data: bytes) -> int:
+    def write(self, data: bytes) -> int:
+        self._file.write(data[:1])
+        self._file.flush()
         raise OSError(errno.ENOSPC, "No space left on device")
 
     def __getattr__(self, name: str):
@@ -1426,6 +1457,106 @@ async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path:
     assert existing.read_text() == "new"
     assert existing.stat().st_mode & 0o777 == 0o640
     assert created.stat().st_mode & 0o777 == 0o644
+
+
+def _another_group(directory: Path) -> int | None:
+    """A group this process is in that a new file in `directory` wouldn't
+    get: not the effective group (Linux) nor the directory's (BSD, macOS)."""
+    if not hasattr(os, "getgroups"):
+        return None
+    taken = {os.getegid(), directory.stat().st_gid}
+    return next((gid for gid in os.getgroups() if gid not in taken), None)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership")
+@pytest.mark.asyncio
+async def test_a_write_keeps_the_files_group(tmp_path: Path) -> None:
+    """The replacement was the shim's new file, in the shim's group (or the
+    directory's), with the old mode: a file shared through a group lost it,
+    and its group bits then applied to another group."""
+    group = _another_group(tmp_path)
+    if group is None:
+        pytest.skip("needs a supplementary group")
+    shared = tmp_path / "shared.txt"
+    shared.write_text("old")
+    os.chown(shared, -1, group)
+    shared.chmod(0o640)
+
+    await FileHandler(make_config(tmp_path)).handle_write(_write_msg(shared, "new"))
+
+    assert shared.read_text() == "new"
+    assert shared.stat().st_gid == group
+    assert shared.stat().st_uid == os.geteuid()
+    assert shared.stat().st_mode & 0o777 == 0o640
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership")
+@pytest.mark.asyncio
+async def test_a_write_the_shim_cant_give_the_owner_back_goes_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file another account owns, or in a group the shim isn't in, can't be
+    handed back after a replace, so it is written in place, which keeps its
+    owner and group."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    group = _another_group(tmp_path)
+    if group is None:
+        pytest.skip("needs a supplementary group")
+    shared = tmp_path / "shared.txt"
+    shared.write_text("old")
+    os.chown(shared, -1, group)
+    inode = shared.stat().st_ino
+
+    def refuse(*_args: object) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(path_jail.os, "fchown", refuse)
+
+    await FileHandler(make_config(tmp_path)).handle_write(_write_msg(shared, "new"))
+
+    assert shared.read_text() == "new"
+    assert shared.stat().st_ino == inode
+    assert shared.stat().st_gid == group
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.asyncio
+async def test_a_replacement_is_owner_only_until_it_takes_the_old_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file that replaces a private one was created under the umask's
+    mode (0o644, say) and given the old mode only after: another account
+    that opened it meanwhile, watching the directory, could read the new
+    contents through that descriptor once they were written."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    private = tmp_path / "private.txt"
+    private.write_text("old")
+    private.chmod(0o600)
+    before_mode: list[int] = []
+    real_fchmod = os.fchmod
+
+    def fchmod(fd: int, mode: int) -> None:
+        before_mode.append(stat.S_IMODE(os.fstat(fd).st_mode))
+        real_fchmod(fd, mode)
+
+    monkeypatch.setattr(path_jail.os, "fchmod", fchmod)
+    previous = os.umask(0o022)
+    try:
+        await FileHandler(make_config(tmp_path)).handle_write(_write_msg(private, "new"))
+        created = tmp_path / "created.txt"
+        await FileHandler(make_config(tmp_path)).handle_write(_write_msg(created, "x"))
+    finally:
+        os.umask(previous)
+
+    assert private.read_text() == "new"
+    assert before_mode and all(mode & 0o077 == 0 for mode in before_mode)
+    assert stat.S_IMODE(private.stat().st_mode) == 0o600
+    # A new file still gets 0o666 less the umask.
+    assert stat.S_IMODE(created.stat().st_mode) == 0o644
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
@@ -1523,6 +1654,62 @@ def test_an_in_place_write_drops_set_id_bits_before_the_contents_change(
 
     assert [mode & 0o6000 for mode in modes_at_truncate] == [0]
     assert program.stat().st_mode & 0o7777 == 0o755
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+@pytest.mark.parametrize("privilege", [0o4000, 0o2000], ids=["setuid", "setgid"])
+def test_an_in_place_write_that_cannot_drop_set_id_bits_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, privilege: int
+) -> None:
+    """The in-place fallback dropped the set-ID bits best effort and wrote
+    anyway. A shim the kernel doesn't strip them for (CAP_FSETID) but that
+    may not chmod the file (someone else's) left the new contents running
+    with the owner's privileges."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    program = tmp_path / "tool"
+    program.write_text("old")
+    program.chmod(0o755 | privilege)
+
+    def no_new_entries(*_args, **_kwargs):
+        raise PermissionError("the directory takes no new entries")
+
+    def not_the_owner(*_args) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(path_jail, "_replace_with", no_new_entries)
+    monkeypatch.setattr(path_jail.os, "fchmod", not_the_owner)
+
+    with pytest.raises(PermissionError):
+        path_jail.write_jail_file(program, tmp_path, b"new")
+    monkeypatch.undo()
+
+    assert program.read_text() == "old"
+    assert program.stat().st_mode & 0o7777 == 0o755 | privilege
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_an_in_place_write_goes_ahead_when_only_the_mode_cannot_be_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import autogpt_local_executor.path_jail as path_jail
+
+    notes = tmp_path / "notes.txt"
+    notes.write_text("old")
+
+    def no_new_entries(*_args, **_kwargs):
+        raise PermissionError("the directory takes no new entries")
+
+    def not_the_owner(*_args) -> None:
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setattr(path_jail, "_replace_with", no_new_entries)
+    monkeypatch.setattr(path_jail.os, "fchmod", not_the_owner)
+
+    path_jail.write_jail_file(notes, tmp_path, b"new")
+    monkeypatch.undo()
+
+    assert notes.read_text() == "new"
 
 
 @pytest.mark.parametrize("char", ["\u6587", "\U0001f600"], ids=["cjk", "emoji"])

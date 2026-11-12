@@ -22,11 +22,12 @@ setup card or the README doesn't have it, and pipx leaves an installed
 package as it is, so reinstall it with the extra from the same Git source:
 
 ```bash
-pipx install --force 'autogpt-local-executor[computer-use] @ git+https://github.com/Significant-Gravitas/autogpt-local-executor.git'
+pipx install --force "autogpt-local-executor[computer-use] @ git+https://github.com/Significant-Gravitas/autogpt-local-executor.git"
 ```
 
 If your install command named a revision (`...autogpt-local-executor.git@<revision>`),
-add the same `@<revision>` at the end of the URL here.
+add the same `@<revision>` at the end of the URL here. The command works as
+it is in Windows `cmd.exe` and PowerShell too: both take the double quotes.
 
 Then start the shim with `--enable-computer-use` (or set
 `enable_computer_use = true` in the config), and run `autogpt-shim doctor`.
@@ -54,8 +55,9 @@ installed for other tools (see [CUA_DRIVER.md](CUA_DRIVER.md#how-the-driver-runs
 `autogpt-shim doctor` reports both permissions and asks macOS to show the
 prompts for any that are missing. If computer use is on and a
 permission is missing when the shim starts, it exits with code 78 and
-launchd starts it again later; grant the permission in System Settings →
-Privacy & Security and it connects on the next try.
+launchd starts it again, every ten seconds or so, each time checking again;
+grant the permission in System Settings → Privacy & Security and it
+connects on the next try.
 
 ## Windows
 
@@ -70,10 +72,30 @@ Computer use needs a desktop session: an X11 display, or Wayland. On Wayland
 cua-driver uses XWayland unless you set `CUA_DRIVER_RS_ENABLE_WAYLAND=1` in
 the shim's environment for its native backend, whose support varies by
 compositor (see cua-driver's Linux notes). The accessibility tree comes from
-AT-SPI over the session bus: a shim started as a systemd user service needs
-`DISPLAY` (or `WAYLAND_DISPLAY`) and `DBUS_SESSION_BUS_ADDRESS` in its
-environment, which desktop sessions usually import into the user manager.
-`doctor` runs cua-driver's own checks for the display server and AT-SPI.
+AT-SPI over the session bus, which a systemd user service already has.
+`WAYLAND_DISPLAY` stands in for `DISPLAY` only with
+`CUA_DRIVER_RS_ENABLE_WAYLAND=1`; without either, the shim doesn't offer
+computer use. `doctor` runs cua-driver's own checks for the display server
+and AT-SPI.
+
+The systemd user service starts at login, before the desktop has exported
+its display to the user manager, and a service keeps the environment it
+started with. So when the service starts without `DISPLAY` or
+`WAYLAND_DISPLAY`, the shim reads them from the manager
+(`systemctl --user show-environment`, at most every 10 seconds) when it
+decides whether to offer computer use and before each call, together with
+`XAUTHORITY` and the other variables cua-driver reads (`XDG_SESSION_TYPE`,
+`XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `DESKTOP_SESSION`, `SWAYSOCK`,
+`HYPRLAND_INSTANCE_SIGNATURE`). It follows them when a new login brings a
+new display (on GNOME, a new `XAUTHORITY` too) and restarts cua-driver with
+them, and lets them go when the session ends. GNOME and KDE export them, as
+do the Xsession and xinit scripts of most distributions. A session that
+doesn't, such as some standalone window managers, needs
+`dbus-update-activation-environment --systemd DISPLAY XAUTHORITY` (or
+`WAYLAND_DISPLAY`) in its startup. A shim started by hand, or a service that
+started with a display, keeps its own. The service has
+`AUTOGPT_SHIM_SUPERVISOR=systemd` in its unit; an install from before
+2026-11-09 picks it up with `autogpt-shim install`.
 
 WSL2 can't drive Windows apps; run the shim on Windows itself.
 
@@ -93,20 +115,21 @@ read returns depends on a second setting:
   `CLIPBOARD_CONCEALED`. On Linux the shim checks with `xclip` (X11) or
   `wl-paste` (Wayland); without the tool it refuses rather than guess.
 
-The agent can put a file or an image file on the clipboard only after you
-approve that call (see [Files on the disk](#files-on-the-disk)).
+The agent can put a file or an image file on the clipboard only once that
+call is approved: by you on its card, by a standing rule you set on one, or
+by the platform in an Unsupervised chat (see
+[Files on the disk](#files-on-the-disk)).
 
 ## Files on the disk
 
 Three of cua-driver's tool arguments reach this computer's disk themselves:
 saving a screenshot to a file, putting a file or image file on the
 clipboard, and handing files to a web page's upload field. Otto asks you
-first, every time, on an approval card in the chat that shows the path; the
-shim runs the call only once you approve it (an Unsupervised chat doesn't
-ask). Without an approval the shim answers `APPROVAL_REQUIRED` and nothing
-happens.
+first, on an approval card in the chat that shows the path; the shim runs
+the call only once it's approved. Without an approval the shim answers
+`APPROVAL_REQUIRED` and nothing happens.
 
-A script (`run_script`) asks too, every time, on a card that shows it: the
+A script (`run_script`) asks too, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
 them can save a screenshot to a file.
 
@@ -115,6 +138,14 @@ command line or a program's path, extra command-line arguments, links or
 files to open, or an inspector port. cua-driver starts those out of sight,
 with no window of their own, and opens a link in your own browser. Opening
 an app by its name or id asks nothing.
+
+Two things approve these calls without a card. In an Unsupervised chat none
+of them ask. And an approval card can also set a standing rule ("from now
+on", in the scope the card names): later calls of that kind then go ahead
+without a card, whatever path, file or script they name, not just the one
+the card showed. Either way the platform approves the call and tells the
+shim so, and the shim, which can't tell that from your approval of that one
+call, runs it.
 
 These approvals cover those arguments, not the apps. An app Otto drives
 reads and writes files with your access, outside the shared folders too: a
@@ -140,9 +171,9 @@ Start with `autogpt-shim doctor`. Then:
 | Symptom | Cause |
 |---|---|
 | The platform doesn't offer computer use for this computer | The shim wasn't started with `--enable-computer-use`, cua-driver isn't installed, or it didn't start; the shim log says which (`Not advertising computer_use: ...`). On Linux, no display in the shim's environment. |
-| The shim exits with code 78 at start | macOS permission missing, or no usable cua-driver. `doctor` says which. |
+| The shim exits with code 78 at start | A macOS permission is missing, or there is no usable cua-driver: none installed, or on macOS one of another release. `doctor` says which. For a permission, launchd starts the shim again on its own. A missing or incompatible driver isn't retried: the LaunchAgent exits 0 instead, and the systemd unit doesn't restart on 78, so restart the service once the driver is fixed (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or `systemctl --user restart autogpt-shim`). |
 | `DEPENDENCY_MISSING` | No cua-driver, or one of another release. Reinstall with the computer-use extra. |
 | Windows look empty to the agent (`degraded: true`) on Linux | AT-SPI unreachable: the session bus isn't in the shim's environment, or the app doesn't expose accessibility. |
 | Results arrive without screenshots | The per-minute screenshot budget is spent; the result says so. |
 | `FEATURE_NOT_SUPPORTED` | The agent asked for a tool this computer doesn't offer, or an argument it never accepts, such as `check_permissions` with `prompt: true`. |
-| `APPROVAL_REQUIRED` | The call reaches the disk and you haven't approved it. |
+| `APPROVAL_REQUIRED` | The call reaches the disk, or starts a program out of sight, and you haven't approved it. |

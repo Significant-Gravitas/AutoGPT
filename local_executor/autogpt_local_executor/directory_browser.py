@@ -78,8 +78,10 @@ class _BrowseSession:
     refs: dict[str, _ReferenceTarget] = field(default_factory=dict)
     # The ref already minted for each (path, parent_ref), so listing a
     # directory again reuses its children's refs instead of spending the
-    # MAX_REFS_PER_BROWSE budget on duplicates.
-    ref_by_target: dict[tuple[Path, str | None], str] = field(default_factory=dict)
+    # MAX_REFS_PER_BROWSE budget on duplicates. Keyed by the path's text: a
+    # Windows path compares without case, but a folder can hold both `Foo`
+    # and `foo` (case-sensitive folders, as WSL uses).
+    ref_by_target: dict[tuple[str, str | None], str] = field(default_factory=dict)
     cursors: OrderedDict[str, _PageCursor] = field(default_factory=OrderedDict)
 
 
@@ -272,7 +274,7 @@ class DirectoryBrowser:
         )
         entries: list[DirectoryReference] = []
         for child in page:
-            known = (child, current_ref) in session.ref_by_target
+            known = (str(child), current_ref) in session.ref_by_target
             if not known and len(session.refs) >= MAX_REFS_PER_BROWSE:
                 hard_truncated = True
                 next_offset = None
@@ -415,12 +417,13 @@ class DirectoryBrowser:
     def _add_ref(session: _BrowseSession, path: Path, parent_ref: str | None) -> str:
         """The ref for `path` under `parent_ref`: the one this browse already
         minted, or a new one."""
-        existing = session.ref_by_target.get((path, parent_ref))
+        key = (str(path), parent_ref)
+        existing = session.ref_by_target.get(key)
         if existing is not None:
             return existing
         ref = secrets.token_urlsafe(24)
         session.refs[ref] = _ReferenceTarget(path=path, parent_ref=parent_ref)
-        session.ref_by_target[(path, parent_ref)] = ref
+        session.ref_by_target[key] = ref
         return ref
 
     @staticmethod

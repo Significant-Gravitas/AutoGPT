@@ -322,9 +322,18 @@ async def test_cancel_dispatch_tasks_resets_capacity_and_cancels_handlers(
     assert daemon._available_capacity() == 1
 
 
+# The arguments' depth that puts a frame one level past MAX_FRAME_NESTING:
+# the envelope and the payload add two.
+_ONE_PAST_THE_LIMIT = 63
+
+
+@pytest.mark.parametrize("depth", [_ONE_PAST_THE_LIMIT, 600], ids=["one-past", "deep"])
 async def test_a_frame_nested_too_deeply_is_dropped_before_any_handler(
-    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch
+    daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch, depth: int
 ) -> None:
+    from autogpt_local_executor.protocol import MAX_FRAME_NESTING
+
+    assert _ONE_PAST_THE_LIMIT + 2 == MAX_FRAME_NESTING + 1
     handled: list[Any] = []
 
     async def fake_handle(msg: Any, *, send: Any = None) -> AckMessage:
@@ -333,7 +342,7 @@ async def test_a_frame_nested_too_deeply_is_dropped_before_any_handler(
 
     monkeypatch.setattr(daemon, "_handle", fake_handle)
     daemon._semaphore = asyncio.Semaphore(daemon.config.max_concurrent)
-    arguments = '{"a":' * 600 + "1" + "}" * 600
+    arguments = '{"a":' * depth + "1" + "}" * depth
     frame = (
         '{"type":"COMPUTER_TOOL_CALL","id":"req","ts":1.0,'
         '"payload":{"tool":"click","arguments":' + arguments + "}}"
@@ -387,6 +396,84 @@ async def test_a_request_that_finds_every_machine_slot_held_is_refused(
     assert handled == []
     assert (child._pending_requests, child._queue_depth, child._in_flight) == (0, 0, 0)
     assert machine.locked()  # the held slot stays held
+
+
+async def test_a_computer_call_takes_no_machine_slot(
+    shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A computer tool call took one of the machine's request slots, then
+    waited for its turn at the computer holding it. With one long call
+    running, three waiting held every slot, and other chats' file and shell
+    requests got machine_busy until it ended. The computer's calls take
+    turns at it instead, each within its own deadline, and take no slot."""
+    from autogpt_local_executor.protocol import ComputerToolCallMessage, ComputerToolCallPayload
+
+    machine = asyncio.Semaphore(1)
+    await machine.acquire()  # held by another chat's work
+    shim_config.enable_computer_use = True
+    child = _child(shim_config, machine)
+    child._granted_capabilities = frozenset({"computer_use"})
+    handled: list[str] = []
+
+    async def handle(msg: Any, *, received_at: float | None = None) -> AckMessage:
+        handled.append(msg.id)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(child._computer_handler, "handle", handle)
+    call = ComputerToolCallMessage(
+        id="req",
+        ts=now_ts(),
+        payload=ComputerToolCallPayload(tool="click", arguments={"pid": 7}, timeout_seconds=1),
+    )
+    task = asyncio.ensure_future(child._dispatch(_FakeWS(), call))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+    finally:
+        task.cancel()
+
+    assert handled == ["req"]
+    assert machine.locked()  # the other chat's slot, untouched
+
+
+async def test_a_computer_calls_deadline_counts_from_its_frames_arrival(
+    shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deadline counted from when the call's task first ran. Work that
+    kept the event loop busy in between (a filesystem check, say) pushed
+    it back, so a short call could reach the driver after its time, on a
+    window that had changed."""
+    import time
+
+    from autogpt_local_executor.protocol import (
+        ComputerToolCallMessage,
+        ComputerToolCallPayload,
+        dump_message,
+    )
+
+    shim_config.enable_computer_use = True
+    child = _child(shim_config, asyncio.Semaphore(1))
+    child._granted_capabilities = frozenset({"computer_use"})
+    seen: list[float | None] = []
+
+    async def handle(msg: Any, *, received_at: float | None = None) -> AckMessage:
+        seen.append(received_at)
+        return make_ack(msg.id)
+
+    monkeypatch.setattr(child._computer_handler, "handle", handle)
+    call = ComputerToolCallMessage(
+        id="req",
+        ts=now_ts(),
+        payload=ComputerToolCallPayload(tool="click", arguments={"pid": 7}, timeout_seconds=1),
+    )
+    loop = asyncio.get_running_loop()
+    arrived = loop.time()
+    await child._on_frame(_FakeWS(), dump_message(call))
+    time.sleep(1.0)  # the event loop kept busy before the call's task runs
+    await asyncio.wait(child._dispatch_tasks, timeout=10)
+
+    assert len(seen) == 1 and seen[0] is not None
+    assert seen[0] - arrived < 0.5
 
 
 async def test_a_request_takes_a_machine_slot_freed_while_it_waits(

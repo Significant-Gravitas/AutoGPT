@@ -150,7 +150,7 @@ async def test_recording_preview_fails_startup_closed(
 ) -> None:
     import autogpt_local_executor.daemon as daemon_module
 
-    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"a" * 32)
+    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"a" * 32)
     config = ShimConfig(
         session_id="session-1",
         enable_recording=True,
@@ -307,6 +307,57 @@ async def test_revoke_failure_does_not_log_token_bearing_error(
     assert "refresh-secret" not in output
 
 
+def test_auth_says_why_the_platform_denied_sign_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The platform's reason for a denial ("Local PC isn't available for
+    this account yet.") came back with the redirect and was kept to
+    printable text for the terminal, but `auth` printed only its generic
+    advice."""
+    import socket
+
+    from autogpt_local_executor.auth import OAuthFlow
+
+    def deny(flow: OAuthFlow) -> None:
+        server, codes, errors, _port = flow._bind_callback_server(expected_state="state")
+        errors.append("access_denied: Local PC isn't available for this account yet.")
+        flow._wait_for_callback(server, codes, errors)
+
+    monkeypatch.setattr(OAuthFlow, "run", deny)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+
+    assert cli._cmd_auth(ShimConfig(allowed_root=tmp_path, oauth_redirect_port=port)) == 1
+    output = capsys.readouterr().out
+    assert "access_denied: Local PC isn't available for this account yet." in output
+
+
+def test_a_refused_sign_in_prints_its_reason_whatever_stdouts_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The platform's reason for a refused sign-in can hold any character.
+    Under a legacy code page (stdout redirected on Windows, say), printing
+    one it lacks raised UnicodeEncodeError instead of showing the reason."""
+    import io
+
+    from autogpt_local_executor.auth import OAuthDenied, OAuthFlow
+
+    def refuse(_flow):
+        raise OAuthDenied("access_denied: Local PC isn\u2019t available \u2014 \u672a\u6765")
+
+    monkeypatch.setattr(OAuthFlow, "run", refuse)
+    raw = io.BytesIO()
+    stdout = io.TextIOWrapper(raw, encoding="cp437", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    assert cli._cmd_auth(ShimConfig(allowed_root=tmp_path)) == 1
+    stdout.flush()
+    shown = raw.getvalue().decode("cp437")
+    assert "Sign-in was refused: access_denied: Local PC isn" in shown
+    assert "\\u672a" in shown
+
+
 def test_auth_failure_does_not_print_token_bearing_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -418,7 +469,7 @@ AUDIT_KEY = b"\x01" * 32
 
 @pytest.fixture
 def audit_key(monkeypatch: pytest.MonkeyPatch) -> bytes:
-    monkeypatch.setattr("autogpt_local_executor.audit.get_or_create_audit_key", lambda: AUDIT_KEY)
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: AUDIT_KEY)
     return AUDIT_KEY
 
 
@@ -693,6 +744,8 @@ def test_install_carries_the_deployment_flags_into_the_service(
         "argv",
         [
             "autogpt-shim",
+            "--config",
+            str(_empty_config(tmp_path)),
             "--platform-url",
             "https://platform.example.com",
             "--platform-oauth-url",
@@ -755,6 +808,36 @@ def test_install_carries_the_deployment_from_the_environment_into_the_service(
         "https://login.example.com/auth",
         "--allowed-root",
         str(tmp_path / "files"),
+    )
+
+
+@pytest.mark.parametrize("given_as", ["flag", "environment"])
+def test_install_gives_the_service_a_home_relative_root_expanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, given_as: str
+) -> None:
+    """A `~` the shell left alone (quoted, after `--allowed-root=`, or in the
+    environment) was made absolute against this shell's working directory,
+    so the service got `<cwd>/~/ws` and was jailed to a folder named `~`,
+    or made one, while the config this run checked had read it as the
+    home directory's `ws`."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.chdir(tmp_path)
+    argv = ["autogpt-shim", "--config", str(_empty_config(tmp_path))]
+    if given_as == "flag":
+        argv.append("--allowed-root=~/ws")
+    else:
+        monkeypatch.setenv("AUTOGPT_SHIM_ALLOWED_ROOT", "~/ws")
+    monkeypatch.setattr(sys, "argv", [*argv, "install"])
+
+    cli.main()
+
+    assert install_autostart.call_args.kwargs["global_args"] == (
+        "--allowed-root",
+        str(home / "ws"),
     )
 
 
@@ -901,7 +984,7 @@ async def test_start_exits_by_how_the_audit_storage_failed(
     def refuse(**_kwargs) -> None:
         raise OSError(number, os.strerror(number))
 
-    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda: b"k" * 32)
+    monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"k" * 32)
     monkeypatch.setattr(daemon_module, "AuditWriter", refuse)
     monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
     config = ShimConfig(

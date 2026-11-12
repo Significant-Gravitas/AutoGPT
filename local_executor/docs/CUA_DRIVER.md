@@ -64,6 +64,11 @@ so it shows on Windows and Linux but not on macOS.
 **Environment.** The driver gets the shim's environment (it and the apps it
 launches need `DISPLAY`, the session bus and the rest), with these changes:
 
+- The shim's own settings (`AUTOGPT_SHIM_*`, among them
+  `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`) are dropped: nothing the driver starts
+  needs them, and an app it launches would inherit them. That keeps them
+  out of a terminal's `env`, not out of reach: any program running as the
+  user can read the shim's own environment.
 - Of cua's own settings (`CUA*`), only those cua's SDK hands a driver it
   embeds pass: `CUA_LOG`, `CUA_DRIVER_RS_HOME`, the accessibility and
   Wayland switches (`CUA_DRIVER_RS_ENABLE_WAYLAND`,
@@ -138,7 +143,7 @@ sixteen tools; all of them are in the catalog, which
 **The shim** (`handlers.ComputerUseHandler`):
 
 - Only an offered tool is relayed (`FEATURE_NOT_SUPPORTED` otherwise).
-- Arguments that reach the disk need the person's approval, per call:
+- Arguments that reach the disk need approval, call by call:
   `screenshot_out_file` on `get_window_state` and `get_desktop_state`
   (writes the screenshot to a file), `file_path` and `image_path` on
   `clipboard_write` (puts a file from anywhere on disk on the clipboard),
@@ -150,8 +155,12 @@ sixteen tools; all of them are in the catalog, which
   program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
   asks the person on an approval card that shows the path, and only then
-  sends the call with the argument in `approved_arguments`; without it the
-  shim answers `APPROVAL_REQUIRED` and nothing reaches the driver. A
+  sends the call with the argument in `approved_arguments`; a chat that runs
+  Unsupervised sends it without asking, and so does a standing rule the
+  person set on an earlier card ("from now on"), for later calls of that
+  kind whatever path they name. The shim, which can't tell these apart,
+  trusts the field. Without it the shim answers
+  `APPROVAL_REQUIRED` and nothing reaches the driver. A
   `run_steps` step may not use one at all, and neither may the `observe`
   that ends a batch, which the driver runs as a `get_window_state` call.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
@@ -159,12 +168,20 @@ sixteen tools; all of them are in the catalog, which
 - `session` is set to the shim session's label on every call that takes it,
   overriding the caller's.
 - The clipboard rules, the screenshot budget and the frame limit below.
-- A deadline per call (120 s unless the platform asks for 1-600 s); past it
-  the shim stops the driver, and the next call starts a new one. Its
-  sessions, element tokens and launched browsers' pages start over too.
-- One call at a time per machine.
-- An audit record for every call, refused ones too. An approved call's
-  record names the approved arguments and keeps their paths whole.
+- One call at a time per machine, and one deadline per call (120 s unless
+  the platform asks for 1-600 s), counted from when the shim receives it, so
+  the wait for its turn counts, and so does the wait for the driver to start.
+  A call still waiting at its deadline never reaches the driver (`started:
+  false`); a start it waited for goes on for the calls after it, since
+  stopping one part way would count toward the three restarts. Past the deadline of a running
+  call, the shim stops the driver (`started: true`), and the next call
+  starts a new one; its sessions, element tokens and launched browsers'
+  pages start over too.
+- An audit record, best effort, for every call the computer-use handler
+  takes, refused ones too: a call goes ahead if its record can't be
+  written, and a call refused before the handler (computer use off on this
+  machine, or not granted to the session) gets no record. An approved
+  call's record names the approved arguments and keeps their paths whole.
 
 **Why a policy and not a capability manifest.** cua-driver's capability
 manifest is its strongest control, but it makes every window, app, display
@@ -181,10 +198,10 @@ manifest, is the natural next step.
 Computer use acts with the person's own rights through their GUI. An agent
 that can type can open a terminal. The shim doesn't claim otherwise: the
 capability is off until the person turns it on, the platform must grant it
-to each session, every call is audited, and the agent cursor shows where the
-agent works. The approval arguments keep disk access out of side channels the
-person can't see: each one waits for the person to approve it. They are not a
-sandbox around the GUI.
+to each session, the calls it takes are audited (best effort, see Audit),
+and the agent cursor shows where the agent works. The approval arguments keep disk access out of side channels the
+person can't see: each one waits for the person to approve it, unless the
+chat runs Unsupervised. They are not a sandbox around the GUI.
 
 Known gaps:
 
@@ -203,8 +220,16 @@ Known gaps:
   terminal the agent types into, nobody sees them: each is an approval
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, so the shim refuses a `name` whose first
-  word is a program, and on every OS a `name`, `bundle_id` or `aumid` with a
-  path, a URL scheme or a leading `-`. A plain launch, an app by its name or
+  word is a program, a program's own name included (`reboot` would run it;
+  an app goes by the name `list_apps` shows, such as `Firefox`). On Windows
+  the driver hands a `name` that matches no installed app, and a
+  `bundle_id` that isn't an AUMID (`Package!App`), to ShellExecuteEx, which
+  runs a program of that name from PATH (`logoff` would sign the person
+  out), so the shim refuses such a `bundle_id`, and lets a `name` through
+  only when an installed app, as `list_apps` lists it, would match it the
+  way the driver matches: the exact name, ignoring case and a trailing
+  `.exe`, or one that starts with it. On every OS it refuses a `name`,
+  `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
   `type_text` does the same in the background through the accessibility
@@ -233,8 +258,12 @@ approves the call (see Enforcement), and `clipboard_read` returns:
   (`computer_use/concealed.py`: AppKit, the Win32 API through ctypes, or
   `xclip`/`wl-paste`), checks the types the driver returned with the text,
   and checks the OS again after; a change counter that moved in between
-  (macOS, Windows) refuses the read as `changed`. A clipboard whose types
-  can't be read counts as marked.
+  (macOS, Windows) refuses the read as `changed`. Linux keeps no such
+  counter, and the driver reads the types and then the text, so a copy
+  between the two would pass with another copy's types: there the shim
+  reads through the driver a second time, and anything but the same text
+  with no marker is refused as `changed`. A clipboard whose types can't be
+  read counts as marked.
 
 The text of a refused read never leaves the shim.
 
@@ -250,9 +279,13 @@ content, with a note either way.
 
 ## Audit
 
-Every `COMPUTER_TOOL_CALL` writes a `COMPUTER_TOOL_CALL` record: the tool,
+Every `COMPUTER_TOOL_CALL` the computer-use handler takes writes a
+`COMPUTER_TOOL_CALL` record, best effort: a failed write doesn't stop the
+call, and a call refused before the handler (computer use off, or not
+granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
-`prompt_text`) replaced by its length and other long strings cut short, the
+`prompt_text`, a single character pressed with `press_key` or a shift-only
+`hotkey`) replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
 `CANCELLED`: the shim stopped the driver to end it, but an action it
@@ -261,10 +294,24 @@ already made stays made. See [AUDIT_LOG.md](AUDIT_LOG.md).
 ## Permissions and preflight
 
 With computer use on, the daemon checks before it connects that a usable
-cua-driver is installed (exit 78, permanent, if not). On macOS it starts the
-driver and asks `check_permissions` for Accessibility and Screen Recording
-without prompting; if either is missing it exits 78 and launchd starts it
-again later, as before. `autogpt-shim doctor` runs cua-driver's own
+cua-driver is installed. If not, the failure is permanent: the shim exits 78,
+which the systemd unit doesn't restart, and under the LaunchAgent it exits 0
+so launchd doesn't restart it either. Once the driver is installed, restart
+the service (`launchctl kickstart -k gui/$(id -u)/net.autogpt.shim`, or
+`systemctl --user restart autogpt-shim`). On macOS it starts the driver,
+where one of another release fails the same way, and asks
+`check_permissions` for Accessibility and Screen Recording without
+prompting; if either is missing it exits 78 and launchd starts it again
+later, as before. Each chat's session checks again when it starts,
+through the same driver. The platform gives a new chat's session a few
+seconds to connect, so if another chat's call holds the driver for more
+than two of them, the new session goes ahead unchecked: the grants are the
+app's, checked when the shim started, and a busy driver is a working one.
+Its HELLO waits as briefly for the screen size, and leaves it out instead,
+and as briefly for a driver that is starting again (after another chat's
+call overran, say), and then lists the tools the driver offered when it
+last ran, which its next start offers again.
+`autogpt-shim doctor` runs cua-driver's own
 `doctor`, starts the driver as the daemon does, reads the screen size, and on
 macOS reports both grants and, when one is missing, asks macOS to show its
 prompt for the shim's app (the driver leaves prompting to its host).

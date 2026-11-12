@@ -135,9 +135,14 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Install mechanism | launchd LaunchAgent (`~/Library/LaunchAgents/net.autogpt.shim.plist`) | systemd user unit (`~/.config/systemd/user/autogpt-shim.service`) | Task Scheduler `\AutoGPT\Shim` (XML at `%LOCALAPPDATA%\autogpt-local-executor\autogpt-shim.xml`, registered via `schtasks /Create /XML ...`) | `autogpt-shim install` writes the file; the user registers it with the OS service manager (the CLI prints the exact command). `autogpt-shim uninstall` reverses it. |
-| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. The macOS `SuccessfulExit=false` flag is load-bearing: it powers the TCC re-launch chain (the daemon exits 78 when computer-use is requested but Accessibility / Screen Recording aren't granted; the OS re-spawns the daemon on the next TCC.db change, so granting consent in System Settings auto-recovers without the user touching launchctl). See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
+| Start at login | `RunAtLoad` + `KeepAlive: {SuccessfulExit=false}` keys | `systemctl --user enable --now autogpt-shim.service` + `loginctl enable-linger $USER` for headless boxes | Trigger: `AT_LOGON` (Task Scheduler `<LogonTrigger>`) | All require user opt-in. CLI prints the systemctl / launchctl / schtasks commands but never runs them. The macOS `SuccessfulExit=false` flag is load-bearing: launchd starts the daemon again after every nonzero exit, no more often than every 10 seconds (its default throttle). It doesn't watch TCC.db: while computer use is requested and Accessibility or Screen Recording isn't granted, each start runs the preflight, which starts cua-driver to check the grants, and exits 78 again, so the start after consent is granted in System Settings comes up without the user touching launchctl. See [COMPUTER_USE.md](COMPUTER_USE.md#macos). |
 | Logs | `~/Library/Logs/autogpt-local-executor/*.log` | `journalctl --user -u autogpt-shim` + `$XDG_STATE_HOME/autogpt-local-executor/` | `%LOCALAPPDATA%\autogpt-local-executor\logs\` | Audit log location per row "Audit log" below. |
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
+
+The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
+login, before the desktop exports its display to the user manager, so the
+shim takes `DISPLAY` and the rest from the manager once they are there and
+follows them across logins; see [COMPUTER_USE.md](COMPUTER_USE.md#linux).
 
 An authentication failure (`start` exits 77, `EX_NOPERM`) stops the
 service instead of restarting it, since a restart would only retry the
@@ -150,8 +155,13 @@ retry, such as a protocol mismatch or a revoked session, already exit 0
 and are logged.
 
 A keychain that can't be read yet (still locked at login, say) is not a
-failed sign-in: the shim keeps retrying with its reconnect backoff. Only a
-missing keychain backend stops it. The systemd unit doesn't restart on 78
+failed sign-in: the shim keeps retrying with its reconnect backoff. Nor is
+no keychain at all when it reads its sign-in, as with a Secret Service the
+desktop session starts after the systemd unit (once the audit key came from
+the file fallback, say): the shim couldn't have signed in without one, so it
+waits for it, by exiting 75 (below), since the keyring package picks its
+backend once per process and only a new one finds a keychain that started
+later. The systemd unit doesn't restart on 78
 either (`RestartPreventExitStatus=77 78`): a bad config or a preflight
 failure fails the same way every time, and Linux has no permission prompt
 to wait for. Under launchd, a bad config and a preflight failure no
@@ -162,12 +172,23 @@ the shim once it is granted.
 A failure at start that can clear on its own exits 75 (`EX_TEMPFAIL`),
 which systemd and launchd both restart: audit storage that is full or
 not mounted yet, or a keychain still locked when the audit key is read.
+So does no keychain at all when the audit key or the sign-in is read, as
+with a Secret Service the desktop session starts after the systemd unit:
+the shim can't run without one, so it waits for it. The audit-key file fallback stands
+in only once its key exists, or, with `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`
+set, while there is no audit log yet that the keychain's key signed.
 An audit log that fails verification can't clear that way, so under
 launchd it exits 0 like the other permanent failures; check it with
 `autogpt-shim audit verify` and move it aside to start a new log. Nor can
-audit storage the shim may not write (permission denied, read-only) or
+a keyring backend that `PYTHON_KEYRING_BACKEND` or keyring's configuration
+file names but that can't be loaded (no such module or class): fix or
+remove the setting. Nor can audit storage the shim may not write (permission denied, read-only) or
 whose device failed or is gone (an I/O error): fix it, then start the
-shim again.
+shim again. A legacy session's `allowed_root` that can't be created is
+sorted the same way: a full disk restarts; no permission, a read-only
+disk or a file in its place doesn't. The exception is a folder the app may
+not open yet on macOS (Files and Folders), a missing permission that exits
+78, so launchd relaunches the shim until it is granted.
 
 ### Packaging & install
 
@@ -222,7 +243,7 @@ Shim creates the directory on first run if missing. User can override via
 |---|---|
 | Default port | `41899` |
 | Fallback strategy | If `41899` is in use, scan `41899–41910` and bind the first free port. |
-| Listener address | `127.0.0.1` only — never `0.0.0.0`. |
+| Listener address | Loopback only: `127.0.0.1`, and `::1` on the same port where the machine has IPv6 (the redirect says `localhost`, which a browser may try as either). Never `0.0.0.0` or `::`. A port taken on either address is skipped. |
 | Firewall behavior | Most OSes prompt for inbound localhost binds on first run (macOS Application Firewall, Windows Defender Firewall). User must approve. |
 
 ### Network isolation (future, not v0)
@@ -285,9 +306,11 @@ def is_inside_jail(requested_path: str, allowed_root: str) -> bool:
     # 3. Resolve symlinks, junctions, firmlinks, reparse points.
     #    Use os.path.realpath, NOT pathlib.Path.resolve() — realpath handles
     #    junctions correctly on Windows since Python 3.8; resolve() can hang
-    #    on broken symlinks on some FS.
+    #    on broken symlinks on some FS. A relative path is taken from the
+    #    root, as the platform means one, never from the shim's working
+    #    directory.
     try:
-        resolved = os.path.realpath(p, strict=False)
+        resolved = os.path.realpath(os.path.join(allowed_root, p), strict=False)
     except OSError:
         return False
 

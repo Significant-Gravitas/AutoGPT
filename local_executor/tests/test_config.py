@@ -359,6 +359,57 @@ def test_a_default_config_path_that_is_not_a_file_is_an_error(
         load_config()
 
 
+def test_a_file_where_the_default_configs_directory_belongs_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A config written to the directory's own name (autogpt-local-executor
+    instead of autogpt-local-executor/config.toml) made the default path
+    unreachable, and the shim ran on the defaults without a word, its
+    platform and allowed_root settings ignored."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    (tmp_path / "autogpt-local-executor").write_text('platform_url = "https://example.com"\n')
+    monkeypatch.setattr(
+        config_module,
+        "_default_config_path",
+        lambda: tmp_path / "autogpt-local-executor" / "config.toml",
+    )
+
+    with pytest.raises(ConfigFileError, match="config.toml"):
+        load_config()
+
+
+def test_a_file_in_the_default_configs_way_is_an_error_where_it_reads_as_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows reports a file where one of the path's folders belongs as a
+    missing path (FileNotFoundError), not NotADirectoryError, so there the
+    shim still ran on the defaults without a word."""
+    import errno
+
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    (tmp_path / "autogpt-local-executor").write_text('platform_url = "https://example.com"\n')
+    blocked = tmp_path / "autogpt-local-executor" / "config.toml"
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: blocked)
+    real_stat = Path.stat
+
+    def windows_stat(self: Path, *args, **kwargs):
+        try:
+            return real_stat(self, *args, **kwargs)
+        except NotADirectoryError:
+            raise FileNotFoundError(
+                errno.ENOENT, "The system cannot find the path specified", str(self)
+            ) from None
+
+    monkeypatch.setattr(Path, "stat", windows_stat)
+
+    with pytest.raises(ConfigFileError, match="is a file, not a folder"):
+        load_config()
+
+
 @pytest.mark.parametrize("port", [0, -1, 65536])
 def test_the_oauth_redirect_port_must_be_a_real_port(tmp_path: Path, port: int) -> None:
     """Port 0 bound an ephemeral port while the redirect URI said 0, so
@@ -378,3 +429,62 @@ def test_reconnect_delays_are_at_most_a_day(tmp_path: Path, field: str) -> None:
     with pytest.raises(ValidationError):
         ShimConfig(allowed_root=tmp_path, **{field: 86_401})
     assert getattr(ShimConfig(allowed_root=tmp_path, **{field: 86_400}), field) == 86_400
+
+
+@pytest.mark.parametrize("source", ["file", "environment"])
+def test_a_home_relative_path_setting_is_expanded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """A shell expands `~` on the command line, but from the config file or
+    the environment `~/workspace` went through whole: the shim took a folder
+    named `~` in its working directory (the home directory, under systemd)
+    for the root, and made one."""
+    import autogpt_local_executor.config as config_module
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    settings = {
+        "allowed_root": "~/workspace",
+        "audit_log_path": "~/logs/audit.log",
+        "recording_buffer_dir": "~/buffer",
+    }
+    if source == "file":
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("".join(f'{key} = "{value}"\n' for key, value in settings.items()))
+        config = load_config(config_path=config_file)
+    else:
+        monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent")
+        for key, value in settings.items():
+            monkeypatch.setenv(f"AUTOGPT_SHIM_{key.upper()}", value)
+        config = load_config()
+
+    home = Path.home()
+    assert config.allowed_root == home / "workspace"
+    assert config.audit_log_path == home / "logs" / "audit.log"
+    assert config.recording_buffer_dir == home / "buffer"
+
+
+def test_a_home_that_cant_be_found_is_a_configuration_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`~name` for an account the machine doesn't have made pathlib raise
+    RuntimeError, which pydantic lets through: `start` ended in a traceback
+    and status 1, which launchd and systemd restart, rather than the
+    configuration error's message and status."""
+    from autogpt_local_executor import cli
+
+    monkeypatch.delenv("AUTOGPT_SHIM_SUPERVISOR", raising=False)
+    # Windows guesses another account's home from this one's, unless the
+    # profile folder isn't named after the account.
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setenv("USERNAME", "someone-else")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text('allowed_root = "~no-such-account-for-the-shim/workspace"\n')
+
+    with pytest.raises(ValidationError, match="no home directory"):
+        load_config(config_path=config_file)
+    with pytest.raises(SystemExit) as exited:
+        cli._config_or_exit(lambda: load_config(config_path=config_file))
+
+    assert exited.value.code == 78
+    assert "Configuration error (allowed_root)" in capsys.readouterr().err

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from .. import platform_info
 from ..protocol import ComputerDriverInfo, ErrorCode
 from .catalog import REVIEWED_DRIVER_VERSION, policy_document, same_minor
 from .mcp_client import McpClosedError, McpError, StdioMcpClient
@@ -34,9 +35,12 @@ DRIVER_NAME = "cua-driver"
 # How to add computer use to a shim installed from Git, as the platform's
 # setup card and the README install it. pipx leaves an installed package
 # as it is without --force, extra or not. docs/COMPUTER_USE.md says the same.
+# Double quotes, which cmd.exe, PowerShell and POSIX shells all take (the
+# text has no $, backtick or !); cmd.exe would split single-quoted text at
+# its spaces.
 COMPUTER_USE_INSTALL = (
-    "pipx install --force 'autogpt-local-executor[computer-use] @ "
-    "git+https://github.com/Significant-Gravitas/autogpt-local-executor.git'"
+    'pipx install --force "autogpt-local-executor[computer-use] @ '
+    'git+https://github.com/Significant-Gravitas/autogpt-local-executor.git"'
 )
 START_TIMEOUT_SECONDS = 30.0
 LIST_TIMEOUT_SECONDS = 30.0
@@ -70,7 +74,14 @@ _INHERITED_CUA_SETTINGS = frozenset(
     }
 )
 
+# The shim's own settings, its configuration and the keychain passphrase.
+_SHIM_SETTINGS_PREFIX = "AUTOGPT_SHIM_"
+
 Runtime = Literal["direct", "service"]
+
+
+class CallNotStarted(TimeoutError):
+    """A call's deadline passed before the driver took it: nothing ran."""
 
 
 class DriverUnavailable(Exception):
@@ -174,11 +185,15 @@ def driver_environment(
     """The driver's environment: the shim's own, which the driver and the
     apps it launches need (the display, the session bus, the locale), with
     only the reviewed cua settings, telemetry and update checks off and, for
-    `mcp`, the shim's policy."""
+    `mcp`, the shim's policy. The shim's own settings (`AUTOGPT_SHIM_*`, the
+    keychain passphrase among them) stay out: nothing the driver starts
+    needs them, and an app it launches by name would inherit them, where a
+    terminal shows its environment to anyone who looks."""
     env = {
         name: value
         for name, value in (os.environ if base is None else base).items()
-        if not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS
+        if not name.upper().startswith(_SHIM_SETTINGS_PREFIX)
+        and (not name.upper().startswith("CUA") or name.upper() in _INHERITED_CUA_SETTINGS)
     }
     env.update(
         {
@@ -219,12 +234,21 @@ class CuaDriverBridge:
         self._client: StdioMcpClient | None = None
         self._snapshot: DriverSnapshot | None = None
         self._lock = asyncio.Lock()
+        # A start a call waits for up to its deadline, then leaves running.
+        self._start: asyncio.Task[StdioMcpClient] | None = None
         # Held for each tool call: the driver runs one at a time anyway.
         self._turn = asyncio.Lock()
         self._starts: list[float] = []
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
         self._closed = False
+        # The display variables the running driver started with.
+        self._display: tuple[str | None, ...] | None = None
+
+    @property
+    def platform(self) -> str:
+        """The OS the driver runs on, as sys.platform names it."""
+        return self._platform
 
     @property
     def offered_tools(self) -> frozenset[str]:
@@ -235,16 +259,35 @@ class CuaDriverBridge:
         """The running driver, if one has started."""
         return self._snapshot.info if self._snapshot is not None else None
 
-    async def snapshot(self) -> DriverSnapshot:
-        await self._ensure_client()
+    @property
+    def last_snapshot(self) -> DriverSnapshot | None:
+        """What the driver offered when it last started, if it has: kept
+        while it restarts, since a start lists the same tools."""
+        return self._snapshot
+
+    async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
+        """What the driver offers, starting it if need be. With `deadline`
+        (loop time), a start still running then raises CallNotStarted."""
+        if deadline is None:
+            await self._ensure_client()
+        else:
+            await self._client_by(deadline, "the tool list")
         assert self._snapshot is not None
         return self._snapshot
 
     async def call_tool(
-        self, name: str, arguments: dict[str, Any], *, timeout: float
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        timeout: float,
+        start_within: float | None = None,
     ) -> dict[str, Any]:
-        """One tool call, within `timeout` seconds of waiting for its turn
-        and `timeout` more of running.
+        """One tool call, which waits for its turn and runs within `timeout`
+        seconds in all. Raises CallNotStarted when the deadline passes before
+        the call reaches the driver. `start_within` bounds the wait for the
+        turn and the driver's start alone, for a caller that would rather not
+        run than wait long; the run then has what is left of `timeout`.
 
         cua-driver 0.38 runs one request at a time and drops MCP's cancel
         notice, so a call past its deadline, or one its caller gave up on,
@@ -252,22 +295,46 @@ class CuaDriverBridge:
         sent after it would wait. The bridge sends one call at a time, so the
         one the driver runs is the one that overran, and stops the driver to
         end it; the next call starts a new one."""
-        async with asyncio.timeout(timeout):
-            await self._turn.acquire()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        start_by = deadline if start_within is None else min(deadline, loop.time() + start_within)
         try:
-            client = await self._ensure_client()
+            async with asyncio.timeout_at(start_by):
+                await self._turn.acquire()
+        except TimeoutError as exc:
+            raise CallNotStarted(f"{name} waited as long as it could for the driver") from exc
+        # A stop still under way when the caller gives up: the turn is let go
+        # only once it is done (below).
+        stopping: asyncio.Future[None] | None = None
+        try:
+            client = await self._client_by(start_by, name, call_deadline=deadline)
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise CallNotStarted(f"{name}'s deadline passed while the driver started")
             try:
-                return await client.call_tool(name, arguments, timeout=timeout)
+                return await client.call_tool(name, arguments, timeout=remaining)
             except McpClosedError as exc:
                 self._last_failure = str(exc)
                 raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
             except (TimeoutError, asyncio.CancelledError):
-                await asyncio.shield(self._stop_unfinished(client))
+                stopping = asyncio.ensure_future(self._stop_unfinished(client))
+                await asyncio.shield(stopping)
                 raise
         finally:
-            self._turn.release()
+            if stopping is not None and not stopping.done():
+                # Cancelled again while the driver stops: the next call would
+                # start another driver while this one still acts on the desktop.
+                stopping.add_done_callback(lambda _stopped: self._turn.release())
+            else:
+                self._turn.release()
 
     async def close(self) -> None:
+        start = self._start
+        if start is not None and not start.done():
+            # Shutting down: a start no call waits for any more is stopped.
+            start.cancel()
+            with contextlib.suppress(BaseException):
+                await start
         async with self._lock:
             self._closed = True
             await self._stop_client()
@@ -277,10 +344,59 @@ class CuaDriverBridge:
 
     # ── Starting ─────────────────────────────────────────────────────
 
+    async def _client_by(
+        self, deadline: float, name: str, *, call_deadline: float | None = None
+    ) -> StdioMcpClient:
+        """The running driver, started if need be, by `deadline` (loop time).
+
+        A start still running at the deadline goes on without the caller,
+        who gets CallNotStarted: stopping it part way would count against
+        the restart budget, and the next call finds the driver ready. Every
+        caller in the meantime waits for that one start.
+
+        The look at the desktop's display first (systemctl, under the
+        systemd service) is no wait for anyone else, so it ends at the
+        call's own deadline, `call_deadline` (`deadline` if not given): one
+        that hangs, or waits for a free thread, can't hold the driver's turn
+        past it, and a call whose start window went on waiting for the turn
+        still reaches a driver that is running."""
+        try:
+            async with asyncio.timeout_at(deadline if call_deadline is None else call_deadline):
+                await asyncio.to_thread(platform_info.session_display.follow)
+        except TimeoutError:
+            raise CallNotStarted(
+                f"{name}'s deadline passed while the desktop's display was checked"
+            ) from None
+        client = self._client
+        if client is not None and client.alive and self._same_display():
+            return client
+        start = self._start
+        if start is None or start.done():
+            start = self._start = asyncio.ensure_future(self._ensure_client())
+            start.add_done_callback(_retrieved)
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining > 0:
+            await asyncio.wait({start}, timeout=remaining)
+        if not start.done():
+            raise CallNotStarted(f"{name}'s deadline passed while the driver started")
+        if start.cancelled():
+            raise DriverUnavailable("the local executor is stopping")
+        return start.result()
+
     async def _ensure_client(self) -> StdioMcpClient:
+        await asyncio.to_thread(platform_info.session_display.follow)
         async with self._lock:
             if self._client is not None and self._client.alive:
-                return self._client
+                if self._same_display():
+                    return self._client
+                # A new login brought another display (on GNOME, another
+                # XAUTHORITY too), and a driver keeps the environment it
+                # started with. Stopping it is the shim's own doing, so its
+                # start comes off the restart budget.
+                logger.info("The desktop's display changed; restarting cua-driver")
+                await self._stop_client()
+                if self._starts:
+                    self._starts.pop()
             if self._closed:
                 raise DriverUnavailable("the local executor is stopping")
             if self._client is not None:
@@ -307,6 +423,7 @@ class CuaDriverBridge:
                     f"could not write the cua-driver policy file: {exc}",
                     code=ErrorCode.INTERNAL_ERROR,
                 ) from exc
+            self._display = platform_info.session_display_values()
             client = self._client_factory(
                 driver_argv(binary, runtime, self._platform),
                 env=driver_environment(policy),
@@ -370,6 +487,9 @@ class CuaDriverBridge:
             )
             return client
 
+    def _same_display(self) -> bool:
+        return self._display == platform_info.session_display_values()
+
     def _check_restart_budget(self) -> None:
         now = time.monotonic()
         self._starts = [t for t in self._starts if now - t < START_WINDOW_SECONDS]
@@ -412,9 +532,17 @@ class CuaDriverBridge:
             await client.close(now=True)
 
 
+def _retrieved(task: asyncio.Task[StdioMcpClient]) -> None:
+    """Mark a start's failure seen: the callers that waited for it may all
+    have given up, and the next call starts the driver again."""
+    if not task.cancelled():
+        task.exception()
+
+
 __all__ = [
     "COMPUTER_USE_INSTALL",
     "DRIVER_NAME",
+    "CallNotStarted",
     "CuaDriverBridge",
     "DriverSnapshot",
     "DriverUnavailable",

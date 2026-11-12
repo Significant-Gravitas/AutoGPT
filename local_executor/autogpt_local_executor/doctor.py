@@ -10,7 +10,9 @@ prompts when they are missing. See docs/CUA_DRIVER.md.
 Returns exit 0 when everything required is healthy, 78 (EX_CONFIG) when
 computer use is requested but a prerequisite is missing.
 
-Output is plain ASCII (no emoji) — the markers are:
+Output has no emoji. A character stdout's encoding can't carry (a legacy
+Windows code page has no em dash, nor most of a path's characters) prints
+as an escape. The markers are:
   OK    everything good
   WARN  degraded but won't block (e.g. computer-use not requested)
   FAIL  required and missing
@@ -23,9 +25,8 @@ import asyncio
 import contextlib
 import json
 import os
-import secrets
-import shutil
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -73,7 +74,17 @@ def run_doctor(config: ShimConfig) -> int:
 def _print_checks(checks: list[CheckResult]) -> None:
     width = max(len(c.label) for c in checks) if checks else 0
     for c in checks:
-        print(f"[{c.marker:<4}] {c.label.ljust(width)}  {c.detail}")
+        print(_printable(f"[{c.marker:<4}] {c.label.ljust(width)}  {c.detail}"))
+
+
+def _printable(text: str) -> str:
+    """`text` with what stdout's encoding can't carry written as escapes, so
+    a path or a driver message can't stop doctor before it reports."""
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        return text.encode(encoding, "backslashreplace").decode(encoding)
+    except LookupError:
+        return text
 
 
 def _check_allowed_root(config: ShimConfig) -> CheckResult:
@@ -115,6 +126,11 @@ def _check_directory_browser() -> CheckResult:
 
 # A locked keychain can block on an unlock prompt; doctor must not hang on it.
 KEYCHAIN_PROBE_SECONDS = 10.0
+# The probe's name in the keychain. One name, not one per run: a probe the
+# keychain stores after doctor stopped waiting may outlive doctor, which
+# doesn't wait for its thread to delete it, and the next run's probe then
+# overwrites and deletes it rather than leaving it there for good.
+KEYCHAIN_PROBE_NAME = "doctor-probe"
 
 
 def _check_keychain() -> CheckResult:
@@ -163,14 +179,13 @@ def _probe_keychain() -> CheckResult:
 def _round_trip(keyring, name: str) -> CheckResult:
     from .auth import KEYCHAIN_SERVICE
 
-    key = f"doctor-probe-{secrets.token_hex(4)}"
     try:
-        keyring.set_password(KEYCHAIN_SERVICE, key, "ok")
+        keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME, "ok")
         try:
-            stored = keyring.get_password(KEYCHAIN_SERVICE, key)
+            stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME)
         finally:
             try:
-                keyring.delete_password(KEYCHAIN_SERVICE, key)
+                keyring.delete_password(KEYCHAIN_SERVICE, KEYCHAIN_PROBE_NAME)
             except Exception:
                 pass
     except Exception as exc:
@@ -212,6 +227,13 @@ def _check_computer_use(config: ShimConfig, plat: str) -> list[CheckResult]:
     out = _driver_doctor(binary)
     if any(check.blocking for check in out):
         return out
+    if plat == "linux":
+        # The daemon's own test (can_do_computer_use): without it, HELLO
+        # leaves computer use out, whatever cua-driver's doctor said.
+        problem = platform_info.linux_display_problem()
+        if problem is not None:
+            out.append(CheckResult("FAIL", "display", problem, blocking=True))
+            return out
     out.extend(asyncio.run(_probe_driver(config, plat)))
     if plat == "linux" and config.enable_clipboard and config.enable_clipboard_read_foreign:
         out.append(_check_linux_clipboard_types())
@@ -228,7 +250,9 @@ def _driver_doctor(binary: Path) -> list[CheckResult]:
         completed = subprocess.run(
             [str(binary), "doctor", "--json"],
             capture_output=True,
-            text=True,
+            # The report is UTF-8; Windows would decode the ANSI code page.
+            encoding="utf-8",
+            errors="replace",
             timeout=DRIVER_COMMAND_SECONDS,
             env=driver_environment(None),
             check=False,
@@ -298,7 +322,7 @@ async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
                 f"{snapshot.info.version}, {len(snapshot.tools)} tools offered",
             )
         )
-        out.append(await _check_screen(bridge))
+        out.append(await _check_screen(bridge, plat))
         if plat == "darwin":
             out.extend(await _check_macos_permissions(bridge))
     finally:
@@ -306,11 +330,25 @@ async def _probe_driver(config: ShimConfig, plat: str) -> list[CheckResult]:
     return out
 
 
-async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
+async def _check_screen(bridge: CuaDriverBridge, plat: str | None = None) -> CheckResult:
     try:
         raw = await bridge.call_tool("get_screen_size", {}, timeout=PROBE_SECONDS)
     except (DriverUnavailable, McpError, TimeoutError) as exc:
-        return CheckResult("WARN", "display", f"cua-driver could not read the screen: {exc}")
+        # On Linux without its Wayland backend a probe that goes unanswered
+        # is an X server that stopped answering, which every call would wait
+        # on, as unusable as one that refuses (below).
+        hung = (
+            isinstance(exc, TimeoutError)
+            and plat == "linux"
+            and not platform_info.linux_native_wayland()
+        )
+        detail = str(exc) or f"no answer in {PROBE_SECONDS:g} s"
+        return CheckResult(
+            "FAIL" if hung else "WARN",
+            "display",
+            f"cua-driver could not read the screen: {detail}",
+            blocking=hung,
+        )
     structured = raw.get("structuredContent")
     size = structured if isinstance(structured, dict) else {}
     width, height, scale = size.get("width"), size.get("height"), size.get("scale_factor", 1)
@@ -321,7 +359,17 @@ async def _check_screen(bridge: CuaDriverBridge) -> CheckResult:
             for block in (content if isinstance(content, list) else [])
             if isinstance(block, dict)
         )
-        return CheckResult("WARN", "display", f"cua-driver could not read the screen: {text}")
+        # On Linux without its Wayland backend the driver drives X11 alone,
+        # so its refusal means the display can't be reached, and every call
+        # would fail although the daemon offers computer use. (That backend
+        # sizes the screen through X11 on most compositors too.)
+        failed = raw.get("isError") and plat == "linux" and not platform_info.linux_native_wayland()
+        return CheckResult(
+            "FAIL" if failed else "WARN",
+            "display",
+            f"cua-driver could not read the screen: {text}",
+            blocking=bool(failed),
+        )
     return CheckResult("OK", "display", f"{width:g}x{height:g} (scale {scale:g})")
 
 
@@ -403,16 +451,19 @@ async def _macos_grants(bridge: CuaDriverBridge) -> dict[str, bool] | None:
 
 def _check_linux_clipboard_types() -> CheckResult:
     """Reading clipboard content the shim didn't write first checks it for
-    a password manager's marker, with wl-paste or xclip."""
-    wayland = bool(os.environ.get("WAYLAND_DISPLAY"))
-    tool = "wl-paste" if wayland else "xclip"
-    if shutil.which(tool):
-        return CheckResult("OK", "clipboard types", f"{tool} present")
+    a password manager's marker, with wl-paste or xclip, picked as the
+    check itself picks them."""
+    from .computer_use.concealed import linux_clipboard_types_command
+
+    argv = linux_clipboard_types_command()
+    if argv is not None:
+        return CheckResult("OK", "clipboard types", f"{argv[0]} present")
     return CheckResult(
         "WARN",
         "clipboard types",
-        f"{tool} not on PATH — clipboard_read refuses content the shim didn't write, "
-        "since it can't check it for a password manager's marker",
+        "neither wl-paste (with WAYLAND_DISPLAY) nor xclip (with DISPLAY) is usable — "
+        "clipboard_read refuses content the shim didn't write, since it can't check it "
+        "for a password manager's marker",
     )
 
 

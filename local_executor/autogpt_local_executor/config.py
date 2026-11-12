@@ -127,6 +127,23 @@ class ShimConfig(BaseSettings):
         "<platform_url>/auth (with http/https adjusted).",
     )
 
+    @field_validator("allowed_root", "audit_log_path", "recording_buffer_dir")
+    @classmethod
+    def expand_home(cls, value: Path | None) -> Path | None:
+        """`~` is the user's home, as on the command line, where the shell
+        expands it. From the config file or the environment it went through
+        whole, so the shim took a folder named `~` in its working directory
+        (the home directory, under systemd) for the root, or made one."""
+        if value is None:
+            return None
+        try:
+            return value.expanduser()
+        except RuntimeError:
+            # pathlib's error for `~name` naming no account. Pydantic reports
+            # only a ValueError as a bad setting; this one ended `start` in a
+            # traceback, which a service manager restarts.
+            raise ValueError(f"no home directory found for {value.parts[0]}") from None
+
     @field_validator("platform_url", "platform_ws_url", "platform_oauth_url")
     @classmethod
     def validate_platform_endpoint(cls, value: str | None, info: ValidationInfo) -> str | None:
@@ -318,6 +335,19 @@ class ConfigFileError(ValueError):
     AUTOGPT_SHIM_* environment variable can't be read."""
 
 
+def _non_directory_ancestor(path: Path) -> Path | None:
+    """The nearest of `path`'s ancestors that exists, if it isn't a folder."""
+    for parent in path.parents:
+        try:
+            info = parent.stat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        return None if stat.S_ISDIR(info.st_mode) else parent
+    return None
+
+
 def load_config(
     config_path: Path | None = None,
     overrides: dict[str, Any] | None = None,
@@ -333,14 +363,22 @@ def load_config(
     # reach crashed it, or was skipped for the defaults.
     try:
         is_file = stat.S_ISREG(path.stat().st_mode)
-    except (FileNotFoundError, NotADirectoryError):
+    except FileNotFoundError:
         is_file = False
         if config_path is not None:
             # A --config that names nothing ran the shim on the defaults
             # without a word. (Without --config, a missing default file
             # means defaults.)
             raise ConfigFileError(f"{path}: no such config file") from None
+        # Windows reports a file where one of the path's folders belongs as a
+        # missing path, where POSIX raises NotADirectoryError (below).
+        blocker = _non_directory_ancestor(path)
+        if blocker is not None:
+            raise ConfigFileError(f"{path}: {blocker} is a file, not a folder") from None
     except OSError as exc:
+        # NotADirectoryError among them: a file where one of the path's
+        # directories belongs, such as the config written to the directory's
+        # own name, which the shim would otherwise skip for the defaults.
         raise ConfigFileError(f"{path}: {exc}") from exc
     else:
         if not is_file:

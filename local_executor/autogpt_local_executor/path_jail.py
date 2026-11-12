@@ -170,7 +170,7 @@ def assert_inside_jail(
     #    Use os.path.realpath (Python 3.8+ handles Windows junctions) —
     #    pathlib's resolve() can hang on broken symlinks on some FS.
     try:
-        resolved = os.path.realpath(str(lex), strict=False)
+        resolved = os.path.realpath(from_root(lex, allowed_root), strict=False)
     except (OSError, ValueError) as exc:
         raise PathJailError(
             "PATH_INVALID_CHARS",
@@ -205,6 +205,14 @@ def assert_inside_jail(
         "PATH_OUTSIDE_ALLOWED_ROOT",
         f"Path {raw!r} (resolved to {resolved!r}) is outside allowed_root {root_resolved!r}",
     )
+
+
+def from_root(requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]) -> str:
+    """The path a request names, before symlinks are resolved: `~` expanded,
+    and a relative path taken from the root, as the platform means one (it
+    joins a relative path to allowed_root itself), not from whatever
+    directory the shim was started in."""
+    return os.path.join(os.fspath(allowed_root), Path(os.fspath(requested_path)).expanduser())
 
 
 def _has_prefix(path: str, root: str) -> bool:
@@ -313,16 +321,22 @@ def write_jail_file(
     The data goes to a new file beside the target, which is then renamed over
     it, so a write that fails part way (a full disk, say) leaves the old
     contents whole. An existing file keeps its mode, less set-user-ID and
-    set-group-ID; a new one gets 0o666 less the umask. Where the directory
-    takes no new entries, or (on Windows) another program has the file open,
-    the file is overwritten in place.
+    set-group-ID, and its owner and group; a new one gets 0o666 less the
+    umask. Where the directory takes no new entries, (on Windows) another
+    program has the file open, or the shim may not give the new file the old
+    one's owner and group (a file another account owns, a group the shim
+    isn't in), the file is overwritten in place.
     """
     path = assert_inside_jail(requested_path, allowed_root)
+    owner: tuple[int, int] | None = None
+    set_id = False
     try:
         existing = path.stat()
     except FileNotFoundError:
         mode = None
     else:
+        owner = (existing.st_uid, existing.st_gid)
+        set_id = bool(existing.st_mode & (stat.S_ISUID | stat.S_ISGID))
         _assert_safe_content_stat(existing)
         # A rename ignores the target's mode, so a file the person made
         # read-only would be replaced whole; refuse it, as writing it in
@@ -334,27 +348,46 @@ def write_jail_file(
         # drops them itself, so a privileged one (root, say) does too.
         mode = stat.S_IMODE(existing.st_mode) & ~(stat.S_ISUID | stat.S_ISGID)
     try:
-        _replace_with(path, data, mode)
+        _replace_with(path, data, mode, owner)
     except PermissionError:
         with open_jail_file(path, allowed_root, write=True) as file:
             if mode is not None and hasattr(os, "fchmod"):
                 # Before the contents change, so they never carry the bits,
-                # even when the write fails part way. Best-effort: the write
-                # still goes ahead if this fails (a file someone else owns).
-                with contextlib.suppress(OSError):
+                # even when the write fails part way. Best effort for the
+                # rest of the mode (a file someone else owns), but a file
+                # whose set-ID bits stay isn't written: the kernel doesn't
+                # drop them for a shim with CAP_FSETID.
+                try:
                     os.fchmod(file.fileno(), mode)
+                except OSError:
+                    if set_id:
+                        raise
             file.truncate(0)
             file.write(data)
 
 
-def _replace_with(path: Path, data: bytes, mode: int | None) -> None:
+def _replace_with(
+    path: Path, data: bytes, mode: int | None, owner: tuple[int, int] | None = None
+) -> None:
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    # Opened with 0o666 so the umask applies, as it does to a plain create.
+    # A new file is opened with 0o666 so the umask applies, as it does to a
+    # plain create. One that replaces a file starts owner-only and gets the
+    # old mode below: another account that opened it under the umask's mode
+    # (watching the directory, say) could read the new contents through that
+    # descriptor once they were written, however private the old file was.
     temp = temporary_sibling(path)
-    descriptor = os.open(temp, flags, 0o666)
+    descriptor = os.open(temp, flags, 0o666 if mode is None else 0o600)
     try:
         with os.fdopen(descriptor, "wb") as file:
+            if owner is not None and hasattr(os, "fchown"):
+                created = os.fstat(file.fileno())
+                if (created.st_uid, created.st_gid) != owner:
+                    # The new file is the shim's, in its group or the
+                    # directory's, and the old mode would then apply to them.
+                    # A PermissionError here (an owner or group the shim may
+                    # not give) sends the write in place, which keeps both.
+                    os.fchown(file.fileno(), *owner)
             if mode is not None and hasattr(os, "fchmod"):
                 os.fchmod(file.fileno(), mode)
             file.write(data)
@@ -373,6 +406,7 @@ __all__ = [
     "PathJailError",
     "assert_entry_inside_jail",
     "assert_inside_jail",
+    "from_root",
     "is_inside_jail",
     "open_jail_file",
     "write_jail_file",

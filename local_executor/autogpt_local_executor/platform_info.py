@@ -15,15 +15,22 @@ Everything in this module is sync — the daemon calls it once at startup.
 from __future__ import annotations
 
 import importlib.util
+import logging
 import os
 import platform as _platform
 import shutil
 import socket
 import subprocess
 import sys
+import threading
+import time
 import uuid
+from collections.abc import Callable, Mapping, MutableMapping
 from functools import lru_cache
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
 
 # ── Platform / arch ──────────────────────────────────────────────────────────
 
@@ -111,8 +118,7 @@ def available_recording_channels() -> list[str]:
 
 def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
     """Whether computer use can be offered: cua-driver is installed and, on
-    Linux, has a display to drive, an X server or a Wayland compositor (it
-    uses XWayland unless CUA_DRIVER_RS_ENABLE_WAYLAND=1). WSL2 has neither
+    Linux, has a display it can drive (linux_display_problem). WSL2 has none
     for Windows apps. The daemon advertises it only once the driver starts."""
     from .computer_use.driver import find_driver_binary
 
@@ -122,8 +128,179 @@ def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
     if find_driver_binary(cua_driver_path) is None:
         return False
     if plat == "linux":
-        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        session_display.follow()
+        return linux_display_problem() is None
     return True
+
+
+def linux_display_problem(environ: Mapping[str, str] | None = None) -> str | None:
+    """Why cua-driver can't drive this Linux session's display, or None.
+
+    cua-driver 0.38 drives X11 through DISPLAY, which XWayland provides on a
+    Wayland desktop. It uses its own Wayland backend only when
+    CUA_DRIVER_RS_ENABLE_WAYLAND is set to anything but empty, 0 or false
+    (the driver inherits it), so WAYLAND_DISPLAY alone is not enough."""
+    env = os.environ if environ is None else environ
+    if env.get("DISPLAY") or linux_native_wayland(env):
+        return None
+    if not env.get("WAYLAND_DISPLAY"):
+        return "neither DISPLAY nor WAYLAND_DISPLAY is set in the shim's environment"
+    return (
+        "WAYLAND_DISPLAY is set but DISPLAY isn't: cua-driver needs XWayland's DISPLAY, "
+        "or CUA_DRIVER_RS_ENABLE_WAYLAND=1 for its experimental Wayland backend"
+    )
+
+
+def linux_native_wayland(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether cua-driver uses its own Wayland backend: a Wayland session
+    with CUA_DRIVER_RS_ENABLE_WAYLAND set to anything but empty, 0 or false.
+    Otherwise it drives X11 alone, through DISPLAY."""
+    env = os.environ if environ is None else environ
+    opt_in = env.get("CUA_DRIVER_RS_ENABLE_WAYLAND", "").strip()
+    return (
+        bool(env.get("WAYLAND_DISPLAY"))
+        and bool(opt_in)
+        and opt_in != "0"
+        and opt_in.lower() != "false"
+    )
+
+
+# ── The desktop's display, for the systemd service ──────────────────────────
+
+# What a desktop session exports to the systemd user manager once it is up
+# (GNOME and KDE do, and so do Xsession and xinit on most distributions), and
+# what cua-driver reads to find and drive the display.
+SESSION_DISPLAY_VARIABLES = (
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XAUTHORITY",
+    "XDG_SESSION_TYPE",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_DESKTOP",
+    "DESKTOP_SESSION",
+    "SWAYSOCK",
+    "HYPRLAND_INSTANCE_SIGNATURE",
+)
+_MANAGER_READ_EVERY_SECONDS = 10.0
+_MANAGER_TIMEOUT_SECONDS = 2.0
+
+
+class SessionDisplay:
+    """The desktop's display for the shim's systemd service.
+
+    The user manager starts the service at login, before the desktop has
+    exported its display to the manager, and a service's environment is
+    fixed when it starts: the shim had no DISPLAY or WAYLAND_DISPLAY for as
+    long as it ran, so computer use stayed off. When the service started
+    without either, `follow` takes them, and the session variables that go
+    with them, from the manager's environment as it is now, and follows them
+    after that: a new login brings a new display and, on GNOME, a new
+    XAUTHORITY; a session that ended takes them away. A shim run by hand, or
+    one that started with a display, keeps its own environment."""
+
+    def __init__(
+        self,
+        environ: MutableMapping[str, str] | None = None,
+        *,
+        read: Callable[[], Mapping[str, str] | None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._env = os.environ if environ is None else environ
+        self._read = read or _manager_environment
+        self._clock = clock
+        self._lock = threading.Lock()
+        # The session variables this process started with, and those it took.
+        self._own: frozenset[str] | None = None
+        self._taken: set[str] = set()
+        self._read_at: float | None = None
+
+    def follow(self) -> bool:
+        """Bring this process's display variables in line with the
+        manager's, reading them at most every 10 s. Returns whether any
+        changed."""
+        with self._lock:
+            if self._env.get("AUTOGPT_SHIM_SUPERVISOR") != "systemd":
+                return False
+            if self._own is None:
+                self._own = frozenset(k for k in SESSION_DISPLAY_VARIABLES if self._env.get(k))
+            if {"DISPLAY", "WAYLAND_DISPLAY"} & self._own:
+                return False
+            now = self._clock()
+            if self._read_at is not None and now - self._read_at < _MANAGER_READ_EVERY_SECONDS:
+                return False
+            self._read_at = now
+            manager = self._read()
+            if manager is None:
+                return False
+            usable = {
+                key: value
+                for key in SESSION_DISPLAY_VARIABLES
+                if key not in self._own and _usable(value := manager.get(key))
+            }
+            if "DISPLAY" not in usable and "WAYLAND_DISPLAY" not in usable:
+                usable = {}
+            changed = False
+            for key in SESSION_DISPLAY_VARIABLES:
+                if key in self._own:
+                    continue
+                value = usable.get(key)
+                if value is None:
+                    if key in self._taken:
+                        self._env.pop(key, None)
+                        self._taken.discard(key)
+                        changed = True
+                elif self._env.get(key) != value:
+                    self._env[key] = value
+                    self._taken.add(key)
+                    changed = True
+            if changed:
+                logger.info(
+                    "Display from the systemd user manager: DISPLAY=%s WAYLAND_DISPLAY=%s",
+                    self._env.get("DISPLAY"),
+                    self._env.get("WAYLAND_DISPLAY"),
+                )
+            return changed
+
+
+def session_display_values(environ: Mapping[str, str] | None = None) -> tuple[str | None, ...]:
+    """This process's display variables, to tell when they have changed."""
+    env = os.environ if environ is None else environ
+    return tuple(env.get(key) for key in SESSION_DISPLAY_VARIABLES)
+
+
+def _usable(value: str | None) -> bool:
+    if not value:
+        return False
+    return len(value) <= 4096 and "\x00" not in value and "\n" not in value
+
+
+def _manager_environment() -> dict[str, str] | None:
+    """The systemd user manager's environment, or None."""
+    systemctl = shutil.which("systemctl")
+    if systemctl is None:
+        return None
+    try:
+        completed = subprocess.run(
+            [systemctl, "--user", "show-environment"],
+            capture_output=True,
+            timeout=_MANAGER_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    env: dict[str, str] = {}
+    for line in completed.stdout.decode("utf-8", "replace").splitlines():
+        key, sep, value = line.partition("=")
+        # systemctl writes a value holding spaces or shell characters as
+        # $'...'; no display variable needs that, so those are skipped.
+        if sep and key and not value.startswith("$'"):
+            env[key] = value
+    return env
+
+
+session_display = SessionDisplay()
 
 
 # ── Machine ID ───────────────────────────────────────────────────────────────
@@ -319,6 +496,8 @@ def resolve_shell(shell: str) -> tuple[str, list[str]] | None:
 
 
 __all__ = [
+    "SESSION_DISPLAY_VARIABLES",
+    "SessionDisplay",
     "can_do_computer_use",
     "available_recording_channels",
     "default_allowed_root",
@@ -328,5 +507,9 @@ __all__ = [
     "detect_machine_id",
     "detect_platform",
     "is_case_insensitive_fs",
+    "linux_display_problem",
+    "session_display",
+    "session_display_values",
+    "linux_native_wayland",
     "resolve_shell",
 ]
