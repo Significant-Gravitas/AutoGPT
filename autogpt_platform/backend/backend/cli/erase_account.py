@@ -57,8 +57,8 @@ def erase_account_command(
 
     Dry run by default, with counts only. Idempotent: a failed --apply stops
     and running it again resumes. On an account erased already, --apply
-    repeats only the PostHog (and, given an email, MailerLite) delete. The
-    runbook is docs/engineering/account-deletion.md.
+    repeats only the PostHog delete. The runbook is
+    docs/engineering/account-deletion.md.
     """
     if pending == bool(account):
         raise click.UsageError("Pass an ACCOUNT or --pending, not both.")
@@ -293,7 +293,7 @@ def _report(report: "ErasureReport") -> None:
     if not report.account_found:
         click.echo("  no platform account or auth identity (already erased?)")
     if report.not_claimed and report.steps:
-        click.echo(f"  {report.not_claimed}: ran only the outside services again")
+        click.echo(f"  {report.not_claimed}: ran only the PostHog delete again")
     elif report.not_claimed:
         click.echo(f"  nothing ran: {report.not_claimed}")
     for blocker in report.blockers:
@@ -316,8 +316,8 @@ def _finish(reports: list["ErasureReport"]) -> None:
             "At least one account was not erased: its owner kept it, or another "
             "run is erasing it (see above)."
         )
-    # A finished erasure still fails the command when its repeated outside
-    # deletes (PostHog, MailerLite) failed.
+    # A finished erasure still fails the command when its repeated PostHog
+    # delete failed.
     unfinished = [
         report.user_id
         for report in reports

@@ -561,8 +561,7 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     )
 
     # A rerun finds nothing, can't claim the finished request and sends
-    # nothing: it only repeats the PostHog delete (no email is left for
-    # MailerLite).
+    # nothing: it only repeats the PostHog delete.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
     assert await plan_transfer(user_id) == type(plan)()

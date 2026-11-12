@@ -1,6 +1,6 @@
 """The routine claims the request before any step, then runs every step in
 order; it deletes nothing on a dry run, when something is blocked or when the
-request can't be claimed (kept or not due), only repeats the outside deletes
+request can't be claimed (kept or not due), only repeats the PostHog delete
 when it is erased already, and stops at the first failed step so a rerun can
 resume."""
 
@@ -246,12 +246,9 @@ async def test_a_request_that_cannot_be_claimed_runs_no_step(monkeypatch, accoun
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "email, repeated",
-    [(None, ["posthog"]), ("sam@example.com", ["posthog", "mailerlite"])],
-)
-async def test_a_rerun_of_a_finished_erasure_repeats_only_the_outside_deletes(
-    monkeypatch, account, lease, email, repeated
+@pytest.mark.parametrize("email", [None, "sam@example.com"])
+async def test_a_rerun_of_a_finished_erasure_repeats_only_the_posthog_delete(
+    monkeypatch, account, lease, email
 ):
     """An event captured just before the rows went can bring the PostHog
     person back after the erasure: a rerun removes it again, under the lease,
@@ -264,11 +261,11 @@ async def test_a_rerun_of_a_finished_erasure_repeats_only_the_outside_deletes(
 
     report = await routine.erase_account(USER_ID, dry_run=False)
 
-    assert steps.calls == [(name, False) for name in repeated]
-    assert [s.status for s in report.steps] == [StepStatus.DONE] * len(repeated)
+    assert steps.calls == [("posthog", False)]
+    assert [s.status for s in report.steps] == [StepStatus.DONE]
     assert report.not_claimed == routine.ERASED_ALREADY
     assert not report.failed
-    assert lease.keep.await_count == len(repeated)
+    assert lease.keep.await_count == 1
     lease.release.assert_awaited_once()
 
 

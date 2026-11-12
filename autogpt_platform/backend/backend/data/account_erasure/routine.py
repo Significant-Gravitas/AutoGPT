@@ -20,8 +20,8 @@ step that fails leaves the account in place for a rerun to finish. PostHog
 needs only the user ID, so it goes after the rows: until they are gone, an
 email webhook or a Stripe event can still capture an event for the account
 and bring the person back. One captured just before the rows went can still
-land after the delete, so a rerun of a finished erasure repeats the deletes
-outside our rows (`_repair_steps`) and changes nothing else.
+land after the delete, so a rerun of a finished erasure repeats the PostHog
+delete (`_repair_steps`) and changes nothing else.
 """
 
 import logging
@@ -125,7 +125,7 @@ async def erase_account(
     needs a decision; a dry run reports blockers instead. An apply whose
     request can't be claimed, or that another run is erasing, runs no step
     (`report.not_claimed`), except on a finished erasure, where it repeats
-    the deletes outside our rows (`_repair_steps`). Returns the report;
+    the PostHog delete (`_repair_steps`). Returns the report;
     `report.complete` says whether everything is gone."""
     if dry_run:
         return await _erase(user_id, email, dry_run=True)
@@ -179,7 +179,7 @@ async def _run(
     if not dry_run and not await _claim(subject, report):
         if not subject.request_completed:
             return report
-        steps = _repair_steps(subject)
+        steps = _repair_steps()
     for name, step in steps:
         if keepalive is not None and not await keepalive():
             # Another run may be on this account now: leave it to that one.
@@ -200,7 +200,8 @@ async def _run(
             break
     logger.info(
         f"Account erasure of {subject.user_id}: dry_run={dry_run}, "
-        f"complete={report.complete}"
+        f"complete={report.complete}, not_claimed={report.not_claimed}, "
+        f"failed={report.failed}"
     )
     return report
 
@@ -264,15 +265,13 @@ def _erasure_steps() -> list[tuple[str, Step]]:
     ]
 
 
-def _repair_steps(subject: Subject) -> list[tuple[str, Step]]:
-    """What a rerun of a finished erasure repeats: the deletes outside our
-    rows that need none of them, since an event can bring that data back
-    after the erasure. MailerLite only with an email to look it up by; files
-    and memory are found through the rows, and are not repeated."""
-    steps: list[tuple[str, Step]] = [("posthog", delete_posthog_person)]
-    if subject.email:
-        steps.append(("mailerlite", forget_mailerlite_subscriber))
-    return steps
+def _repair_steps() -> list[tuple[str, Step]]:
+    """What a rerun of a finished erasure repeats: the PostHog delete, which
+    needs only the user ID, since an event already on its way when the rows
+    went can bring the person back. The other outside steps find their data
+    through the rows (or the address they held), and nothing re-creates it
+    once the rows are gone."""
+    return [("posthog", delete_posthog_person)]
 
 
 async def _run_step(

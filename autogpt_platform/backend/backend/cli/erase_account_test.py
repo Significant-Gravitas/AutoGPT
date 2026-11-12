@@ -371,7 +371,7 @@ def test_a_rerun_of_a_finished_erasure_reports_its_repeated_deletes(
     result = run.invoke(EMAIL, "--apply", "--yes")
 
     assert result.exit_code == exit_code, result.output
-    assert "erased already: ran only the outside services again" in result.output
+    assert "erased already: ran only the PostHog delete again" in result.output
     assert f"posthog           {status.value}" in result.output
 
 
