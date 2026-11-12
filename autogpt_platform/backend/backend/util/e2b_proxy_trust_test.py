@@ -24,6 +24,7 @@ from backend.util.e2b_proxy_trust import (
     trust_proxy_ca,
 )
 from backend.util.e2b_proxy_trust_script import INSTALL_SCRIPT
+from backend.util.sandbox_login import LoginChainChanged
 
 _M = "backend.util.e2b_proxy_trust"
 _WITH_BUNDLE = {
@@ -195,7 +196,8 @@ class TestTheInstall:
         assert envs["HOME"] == "/nonexistent"
         assert envs["AGPT_CA_PEM"] == _PEM
         assert envs["AGPT_CA_SHA"] == fingerprint([_PEM])
-        assert envs["AGPT_PROFILE"] == PROFILE
+        # The script adds the final newline back: the file is PROFILE exactly.
+        assert envs["AGPT_PROFILE"] + "\n" == PROFILE
         # Chrome's policy takes the certificate as base64 DER.
         assert json.loads(envs["AGPT_CHROME_POLICY"]) == {
             "CACertificates": [_der_b64(_PEM)]
@@ -203,13 +205,11 @@ class TestTheInstall:
         assert store == {"e2b:egress:ca:sb-1": f"{fingerprint([_PEM])} bundle"}
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("baseline", [True, False])
-    async def test_a_chats_box_reconnects_through_the_login_chain_check(self, baseline):
-        """Always: with no baseline the check refuses, which is the point.
-        The profile it writes is taken into the baseline so it does not read
-        as an edit."""
+    async def test_a_chats_box_reconnects_through_the_login_chain_check(self):
+        """The profile it writes is taken into the baseline so it does not
+        read as an edit."""
         box, store = _box(), {}
-        patches, mocks = _install(store, baseline=baseline)
+        patches, mocks = _install(store, baseline=True)
         with _setting(_PEM), _applied(patches):
             assert await trust_proxy_ca(box, chat=True) == _WITH_BUNDLE
         mocks["run_sandbox_command"].assert_not_awaited()
@@ -217,6 +217,18 @@ class TestTheInstall:
         mocks["accept_platform_file"].assert_awaited_once_with(
             box, PROFILE_FILE, PROFILE.encode()
         )
+
+    @pytest.mark.asyncio
+    async def test_a_chats_box_without_a_baseline_is_refused_not_run_unchecked(self):
+        """With no baseline every login file reads as changed, so the check
+        refuses: nothing runs unchecked, and nothing is recorded."""
+        store: dict[str, str] = {}
+        patches, mocks = _install(store, baseline=False)
+        mocks["run_internal"].side_effect = LoginChainChanged("no baseline")
+        with _setting(_PEM), _applied(patches):
+            assert await trust_proxy_ca(_box(), chat=True) is None
+        mocks["run_sandbox_command"].assert_not_awaited()
+        assert store == {}
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

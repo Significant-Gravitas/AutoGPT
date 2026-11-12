@@ -64,7 +64,9 @@ else
   rm -f "$dir/bundle.pem"
 fi
 
-printf '%s' "$AGPT_PROFILE" > /etc/profile.d/agpt-egress-proxy-ca.sh || fail profile
+# The final newline is written here, so the file is byte for byte the profile
+# the baseline takes in however the variable arrived.
+printf '%s\n' "$AGPT_PROFILE" > /etc/profile.d/agpt-egress-proxy-ca.sh || fail profile
 
 for d in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do
   mkdir -p "$d" && printf '%s\n' "$AGPT_CHROME_POLICY" > "$d/agpt-egress-proxy.json" ||
@@ -76,8 +78,10 @@ if command -v certutil >/dev/null 2>&1 && id user >/dev/null 2>&1; then
   db="$(getent passwd user | cut -d: -f6)/.pki/nssdb"
   su user -s /bin/sh -c "mkdir -p '$db' &&
     { [ -f '$db/cert9.db' ] || certutil -N -d 'sql:$db' --empty-password; } &&
-    certutil -L -d 'sql:$db' | awk '/^agpt-egress-proxy-/ { print \$1 }' |
-      while read -r n; do certutil -D -d 'sql:$db' -n \"\$n\"; done &&
+    listed=\$(certutil -L -d 'sql:$db') &&
+    for n in \$(printf '%s\\n' \"\$listed\" | awk '/^agpt-egress-proxy-/ { print \$1 }'); do
+      certutil -D -d 'sql:$db' -n \"\$n\" || exit 1
+    done &&
     for f in '$dir'/ca-*.crt; do
       n=\${f##*/}
       certutil -A -d 'sql:$db' -t C,, -n agpt-egress-proxy-\${n%.crt} -i \"\$f\" || exit 1
@@ -105,8 +109,11 @@ for path in targets:
     kept = [p for p in certs.get("Install", []) if not p.startswith(ours)]
     certs["Install"] = kept + sorted(glob.glob(ours + "ca-*.crt"))
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    # Replaced whole or not at all: a half-written file would not parse on
+    # the next try, and Firefox would lose every policy in it.
+    with open(path + ".agpt-new", "w") as f:
         json.dump(doc, f, indent=2)
+    os.replace(path + ".agpt-new", path)
 PY
 fi
 

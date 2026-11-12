@@ -256,7 +256,7 @@ async def _install(
     envs = {
         "AGPT_CA_PEM": "\n".join(certs),
         "AGPT_CA_SHA": want,
-        "AGPT_PROFILE": PROFILE,
+        "AGPT_PROFILE": PROFILE.rstrip("\n"),
         "AGPT_CHROME_POLICY": json.dumps(
             {"CACertificates": [base64.b64encode(_ca_der(c)).decode() for c in certs]}
         ),
