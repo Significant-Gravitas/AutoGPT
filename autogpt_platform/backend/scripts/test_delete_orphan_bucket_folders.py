@@ -254,3 +254,42 @@ async def test_apply_refuses_a_bucket_this_database_does_not_own(monkeypatch, ca
     assert await tool.run(apply=True) == 1
     assert "100% of this bucket's folders have no row" in capsys.readouterr().out
     assert bucket.deleted == []
+
+
+async def test_chat_transcripts_are_left_alone_unless_asked(monkeypatch, capsys):
+    transcript = f"workspaces/chat-transcripts/{GONE}/s.jsonl"
+    bucket = FakeBucket(
+        {
+            f"workspaces/{LIVE}/f/a.txt": (1, OLD),
+            f"users/{LIVE}/images/a.png": (1, OLD),
+            transcript: (1, OLD),
+        }
+    )
+
+    class Storage:
+        async def __aenter__(self):
+            return bucket
+
+        async def __aexit__(self, *exc):
+            return None
+
+    async def nothing():
+        return None
+
+    monkeypatch.setattr(tool, "buckets", lambda: {"private": BUCKET})
+    monkeypatch.setattr(tool.db, "connect", nothing)
+    monkeypatch.setattr(tool.db, "disconnect", nothing)
+    monkeypatch.setattr(tool.gcs, "Storage", Storage)
+    monkeypatch.setattr(tool, "existing", _rows(LIVE))
+
+    assert await tool.run(apply=True) == 0
+    out = capsys.readouterr().out
+    assert "workspaces/chat-transcripts/: skipped" in out
+    assert "--include-chat-transcripts" in out
+    assert bucket.deleted == []
+
+    assert await tool.run(apply=True, include_chat_transcripts=True) == 0
+    out = capsys.readouterr().out
+    assert "workspaces/chat-transcripts/<User id>/: 1 folders, 1 orphans" in out
+    assert "skipped" not in out
+    assert bucket.deleted == [transcript]

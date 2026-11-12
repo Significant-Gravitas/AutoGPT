@@ -161,7 +161,7 @@ The agent's content stays as the creator last saved it, node inputs included. Cr
 
 ## One-off: files of accounts deleted before the erasure
 
-Accounts deleted by hand before the erasure existed left their files in the buckets. `autogpt_platform/backend/scripts/delete_orphan_bucket_folders.py` finds every folder under an account's prefixes (the ones in step 6 above, and `workspaces/chat-transcripts/{user id}/`, where Otto kept transcripts until April 2026) whose user, workspace or OAuth app row is gone, in every configured bucket, and deletes it. It keeps:
+Accounts deleted by hand before the erasure existed left their files in the buckets. `autogpt_platform/backend/scripts/delete_orphan_bucket_folders.py` finds every folder under an account's prefixes (the ones in step 6 above) whose user, workspace or OAuth app row is gone, in every configured bucket, and deletes it. It leaves `workspaces/chat-transcripts/`, where Otto kept transcripts until April 2026, entirely alone and prints that it skipped it; whether to delete the transcript folders of gone accounts is still open. `--include-chat-transcripts` adds `workspaces/chat-transcripts/{user id}/` to the sweep, for a dry run or the apply. It keeps:
 
 - a `users/{user id}/` folder whose media a listing, a library entry, or an org, org profile, expert or profile avatar still shows, checked again just before deleting;
 - a folder with a file from the last 7 days, which may belong to a row created after the check;

@@ -2,9 +2,10 @@
 
 Accounts deleted before the erasure routine (`backend/data/account_erasure/`)
 left their files behind. This finds every folder under an account's prefixes
-(the ones `account_erasure/storage.py` sweeps, and the old transcript folder)
-whose user, workspace or OAuth app row is gone, in every configured bucket,
-and deletes it. Only folders named by a UUID count. It keeps a
+(the ones `account_erasure/storage.py` sweeps) whose user, workspace or OAuth
+app row is gone, in every configured bucket, and deletes it. The old
+transcript folder, `workspaces/chat-transcripts/`, is left alone unless
+``--include-chat-transcripts``. Only folders named by a UUID count. It keeps a
 `users/{id}/` folder whose media a listing or library entry still shows, and
 any folder with a file from the last few days, which may belong to a row
 created after the check.
@@ -43,12 +44,13 @@ from backend.util.settings import Settings
 PREFIXES = [
     ("workspaces/", "UserWorkspace"),
     ("workspaces/cli-sessions/", "User"),
-    # Otto's transcripts until April 2026 (#12804); nothing reads them now.
-    ("workspaces/chat-transcripts/", "User"),
     ("uploads/users/", "User"),
     ("users/", "User"),
     ("oauth-apps/", "OAuthApplication"),
 ]
+# Otto's transcripts until April 2026 (#12804); nothing reads them now. Only
+# with --include-chat-transcripts.
+CHAT_TRANSCRIPTS = ("workspaces/chat-transcripts/", "User")
 # Every ID these folders are named by is a UUID. Anything else (such as
 # `workspaces/cli-sessions/`, a prefix of its own and not a workspace) is left
 # alone.
@@ -311,7 +313,7 @@ def buckets() -> dict[str, str]:
     return out
 
 
-async def run(apply: bool) -> int:
+async def run(apply: bool, include_chat_transcripts: bool = False) -> int:
     configured = buckets()
     if not configured:
         print("No bucket is configured on this pod; nothing to do.")
@@ -324,6 +326,7 @@ async def run(apply: bool) -> int:
         ),
         flush=True,
     )
+    prefixes = PREFIXES + ([CHAT_TRANSCRIPTS] if include_chat_transcripts else [])
     now = datetime.now(timezone.utc)
     failed = errors = 0
     await db.connect()
@@ -350,7 +353,7 @@ async def run(apply: bool) -> int:
                     )
                     errors += 1
                     continue
-                for prefix, table in PREFIXES:
+                for prefix, table in prefixes:
                     try:
                         report = await sweep_prefix(
                             client, bucket, prefix, table, apply=apply, now=now
@@ -367,6 +370,12 @@ async def run(apply: bool) -> int:
                         continue
                     print(report.line(prefix, table, apply), flush=True)
                     failed += sum(report.failed.values())
+                if not include_chat_transcripts:
+                    print(
+                        f"{CHAT_TRANSCRIPTS[0]}: skipped; add"
+                        " --include-chat-transcripts to include it",
+                        flush=True,
+                    )
     finally:
         await db.disconnect()
     if failed or errors:
@@ -381,8 +390,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--apply", action="store_true", help="delete (default: dry run)"
     )
+    parser.add_argument(
+        "--include-chat-transcripts",
+        action="store_true",
+        help=f"also sweep {CHAT_TRANSCRIPTS[0]} (default: left alone)",
+    )
     args = parser.parse_args(argv)
-    return asyncio.run(run(args.apply))
+    return asyncio.run(run(args.apply, args.include_chat_transcripts))
 
 
 if __name__ == "__main__":
