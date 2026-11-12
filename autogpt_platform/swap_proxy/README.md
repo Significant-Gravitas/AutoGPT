@@ -225,10 +225,18 @@ Node, and the browsers' policies. So:
   Whoever holds it can read the traffic of every bound host. It is not in the
   image, the repository or a box.
 - **Rotation is a coordinated change**: boxes must trust the new certificate
-  before the proxy starts signing with the new key. Put both certificates in
-  `E2B_EGRESS_PROXY_CA_CERT` (each box installs the new set on its next
-  create or reconnect), switch the proxy to the new key, then drop the old
-  certificate from the setting.
+  before the proxy starts signing with the new key:
+  1. Put both certificates in `E2B_EGRESS_PROXY_CA_CERT` and release it.
+     Each box installs the new set on its next create or reconnect.
+  2. Wait until every box running before that release has reconnected or
+     stopped. E2B stops a box after 24 hours of running at most, so 24 hours
+     is always enough. A box still running on the old set fails TLS to bound
+     hosts once the key changes. A paused box is fine: it installs the new
+     set when it resumes.
+  3. Switch the proxy to the new key.
+  4. Drop the old certificate from the setting. Each box removes it from its
+     store, bundle and browser policies, and from its NSS database, on its
+     next reconnect.
 
 ### Turning it on
 

@@ -114,6 +114,28 @@ async def ensure_baseline(sandbox: AsyncSandbox) -> None:
     await record_baseline(sandbox)
 
 
+async def has_baseline(sandbox: AsyncSandbox) -> bool:
+    """Whether the sandbox's login files were hashed: a chat's sandbox once
+    created or reconnected, never a block's."""
+    return bool(await (await get_redis_async()).exists(_key(sandbox)))
+
+
+async def accept_platform_file(
+    sandbox: AsyncSandbox, path: str, content: bytes
+) -> None:
+    """Put a login file the platform itself just wrote, with *content*, into
+    the baseline, so it does not read as an edit.  Only that file's entry
+    changes: an edit to any other stays visible.  Without a baseline there is
+    nothing to update; the next one takes the file in."""
+    redis = await get_redis_async()
+    raw = await redis.get(_key(sandbox))
+    if not raw:
+        return
+    baseline = json.loads(raw)
+    baseline[path] = _digest(content)
+    await redis.set(_key(sandbox), json.dumps(baseline), ex=_BASELINE_TTL_SECONDS)
+
+
 async def changed_login_files(
     sandbox: AsyncSandbox, *, system_only: bool = False
 ) -> dict[str, str | None]:

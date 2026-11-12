@@ -644,10 +644,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="PEM certificate of the swap proxy's signing CA (the "
         "certificate only, never the key), installed in every box pinned to "
-        "the proxy (see backend.util.e2b_proxy_trust). Required with "
-        "e2b_egress_proxy_address: without it TLS to bound hosts fails inside "
-        "boxes. Several certificates are trusted together, which is how a "
-        "rotation is rolled out.",
+        "the proxy (see backend.util.e2b_proxy_trust). Set it together with "
+        "e2b_egress_proxy_address: boxes are pinned without it, but TLS to "
+        "bound hosts then fails inside them, and every pin logs that. Several "
+        "certificates are trusted together, which is how a rotation is "
+        "rolled out.",
     )
 
     frontend_base_url: str = Field(

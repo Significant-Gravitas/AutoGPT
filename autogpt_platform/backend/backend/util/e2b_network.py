@@ -58,7 +58,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
-from backend.util.e2b_proxy_trust import trust_envs, trust_proxy_ca
+from backend.util.e2b_proxy_trust import trust_proxy_ca
 from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
 from backend.util.settings import Secrets, Settings
 
@@ -247,6 +247,9 @@ async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     try:
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
         await _bind(sandbox.sandbox_id, credential.username, owner)
+        # Inside the cleanup: a create cancelled during the install (a
+        # caller's timeout) would otherwise leave the box running unowned.
+        await trust_proxy_ca(sandbox)
     except BaseException:
         # The box is on the meter and its handle is about to be lost: kill
         # it rather than leak it, and take its credential with it.
@@ -261,7 +264,6 @@ async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
         owner.label,
     )
     _audit_pin("created", sandbox.sandbox_id, owner)
-    await trust_proxy_ca(sandbox)
     return sandbox
 
 
@@ -328,7 +330,7 @@ async def proxy_trust_envs(sandbox: AsyncSandbox) -> dict[str, str]:
     Empty with no proxy configured, or when the box could not be made to."""
     if proxy_address() is None:
         return {}
-    return trust_envs(await trust_proxy_ca(sandbox))
+    return await trust_proxy_ca(sandbox) or {}
 
 
 async def reattach_command(
