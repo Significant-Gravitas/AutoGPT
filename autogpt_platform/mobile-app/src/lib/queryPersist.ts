@@ -1,7 +1,7 @@
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
-import type { Query, QueryClient } from "@tanstack/react-query";
+import { hydrate, type Query, type QueryClient } from "@tanstack/react-query";
 import {
-  persistQueryClient,
+  persistQueryClientSubscribe,
   type PersistedClient,
   type Persister,
 } from "@tanstack/react-query-persist-client";
@@ -58,19 +58,43 @@ export const queryPersister: Persister = {
 };
 
 /**
- * Restores the signed-in user's saved copy and keeps saving it. The copy is
+ * Restores the signed-in user's saved copy, then keeps saving it. The copy is
  * stamped with the user's id, so another account's copy is thrown away
- * instead of shown. Returns the function that stops saving.
+ * instead of shown. Returns the function that stops saving; a restore that
+ * finishes after it is dropped, so a quick sign-out can't bring the data back.
  */
 export function startCachePersistence(queryClient: QueryClient, userID: string) {
-  const [unsubscribe] = persistQueryClient({
-    queryClient,
-    persister: queryPersister,
-    maxAge: PERSIST_MAX_AGE_MS,
-    buster: `${PERSIST_VERSION}:${userID}`,
-    dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
-  });
-  return unsubscribe;
+  const buster = `${PERSIST_VERSION}:${userID}`;
+  let isStopped = false;
+  let unsubscribe: (() => void) | null = null;
+
+  async function restoreThenSave() {
+    let saved: PersistedClient | undefined;
+    try {
+      saved = await storagePersister.restoreClient();
+    } catch {
+      saved = undefined; // An unreadable copy is replaced by the next save.
+    }
+    if (isStopped) return;
+    if (saved && isUsable(saved, buster)) hydrate(queryClient, saved.clientState);
+    else if (saved) void queryPersister.removeClient();
+    unsubscribe = persistQueryClientSubscribe({
+      queryClient,
+      persister: queryPersister,
+      buster,
+      dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+    });
+  }
+
+  void restoreThenSave();
+  return function stop() {
+    isStopped = true;
+    unsubscribe?.();
+  };
+}
+
+function isUsable(saved: PersistedClient, buster: string) {
+  return saved.buster === buster && Date.now() - saved.timestamp <= PERSIST_MAX_AGE_MS;
 }
 
 function shouldPersistQuery(query: Query) {
