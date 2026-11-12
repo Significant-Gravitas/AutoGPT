@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readProgress, resumeStep } from "../progress";
+import { placeToSave, readProgress, resumeStep } from "../progress";
 import { buildStepLayout } from "../store";
 import { makeProgress } from "./progress-fixture";
 
@@ -116,6 +116,39 @@ describe("semantic progress", () => {
     const steps = buildStepLayout({ hasPaywall: true, hasInterview: true });
 
     expect(resumeStep({ progress, steps })).toBe(steps.interview);
+  });
+
+  it("saves a place on the brain dump as the interview's on a layout that left the interview out", () => {
+    const withoutInterview = buildStepLayout({ hasPaywall: true });
+    const onBrainDump = makeProgress({
+      currentStep: "painPoints",
+      completedSteps: ["team", "autopilot", "role"],
+    });
+
+    expect(placeToSave(onBrainDump, withoutInterview)).toEqual({
+      ...onBrainDump,
+      currentStep: "interview",
+    });
+    // Saved so, the next load lays out either step on that place.
+    const saved = placeToSave(onBrainDump, withoutInterview);
+    const withInterview = buildStepLayout({
+      hasPaywall: true,
+      hasInterview: true,
+    });
+    expect(resumeStep({ progress: saved, steps: withInterview })).toBe(
+      withInterview.interview,
+    );
+    expect(resumeStep({ progress: saved, steps: withoutInterview })).toBe(
+      withoutInterview.painPoints,
+    );
+  });
+
+  it("saves every other place as it is", () => {
+    const steps = buildStepLayout({ hasPaywall: true });
+    for (const currentStep of ["role", "subscription"] as const) {
+      const progress = makeProgress({ currentStep });
+      expect(placeToSave(progress, steps)).toBe(progress);
+    }
   });
 
   it("honors a previous-step URL without allowing an incomplete step to be skipped", () => {
