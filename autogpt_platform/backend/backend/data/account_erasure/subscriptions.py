@@ -3,10 +3,10 @@ it, so nobody is billed for an account or org that no longer exists.
 
 Closing the account (`cancel_all_subscriptions_now`, SECRT-2877) cancelled
 its own customer's subscriptions, and refused to close the account if it
-could not. A Checkout started in the seconds after the close, while another
-worker still let an old token through, can still be paid and subscribe the
-closed account, so its own customer is covered again here, with the
-customers of its sole orgs. The customers and their invoices and payments
+could not, and a Checkout started around the close is expired. One paid all
+the same (a Stripe failure in closing's sweep, say) would bill a closed
+account, so its own customer is covered again here, with the customers of
+its sole orgs. The customers and their invoices and payments
 stay in Stripe: they are the billing records accounting keeps.
 """
 

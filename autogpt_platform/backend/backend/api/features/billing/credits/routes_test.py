@@ -67,6 +67,15 @@ def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     )
 
 
+@pytest.fixture(autouse=True)
+def account_open(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The auto top-up route asks the database whether the account is closed."""
+    return mocker.patch(
+        "backend.api.features.billing.credits.routes.refuse_closed_account",
+        new_callable=AsyncMock,
+    )
+
+
 EXPECTED_OPERATIONS = {
     ("get", "/api/credits"),
     ("post", "/api/credits"),
@@ -331,6 +340,30 @@ def test_configure_auto_top_up(
     # This should succeed with our fix, but would have failed before with the enum casting error
     assert response.status_code == 200
     assert response.json() == "Auto top-up settings updated"
+
+
+def test_a_closed_account_cannot_set_auto_top_up(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """Closing switched it off; for a few seconds after the close another
+    worker's cache can still let an old token through."""
+    account_open.side_effect = fastapi.HTTPException(
+        status_code=401, detail="This account is closed."
+    )
+    saved = mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 401
+    model.top_up_credits.assert_not_called()
+    saved.assert_not_called()
 
 
 def test_configure_auto_top_up_refuses_when_model_has_no_payment_path(
@@ -830,8 +863,8 @@ def test_top_up_at_stripes_ceiling_reaches_stripe(handled_client, mocker):
 
 
 def test_a_closed_account_gets_no_top_up_checkout(handled_client, mocker):
-    """Asked of the database just before Stripe: for a few seconds after the
-    close, another worker's cache can still let an old token through."""
+    """Asked of the database first: for a few seconds after the close,
+    another worker's cache can still let an old token through."""
     stripe_create, add_transaction = _real_top_up_path(mocker)
     mocker.patch(
         "backend.data.account_deletion.is_account_closed",
@@ -845,6 +878,28 @@ def test_a_closed_account_gets_no_top_up_checkout(handled_client, mocker):
         {"detail": "This account is closed."},
     )
     stripe_create.assert_not_called()
+    add_transaction.assert_not_called()
+
+
+def test_a_top_up_checkout_made_as_the_account_closed_is_expired(
+    handled_client, mocker
+):
+    """The account closed while Stripe made the Checkout: closing's sweep may
+    have run already, so the Checkout is expired here and never recorded."""
+    _, add_transaction = _real_top_up_path(mocker)
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(side_effect=[False, True]),
+    )
+    expire = mocker.patch(
+        "backend.data.subscription_checkout.stripe.checkout.Session.expire_async",
+        AsyncMock(),
+    )
+
+    response = handled_client.post("/credits", json={"credit_amount": 500})
+
+    assert response.status_code == 401
+    expire.assert_awaited_once_with("cs_test_topup")
     add_transaction.assert_not_called()
 
 

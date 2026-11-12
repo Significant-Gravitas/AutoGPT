@@ -13,6 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
 from backend.api.features.billing.client_country import ClientCountry
 from backend.api.model import RequestTopUp
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import (
     MAX_TOP_UP_AMOUNT,
@@ -146,6 +147,8 @@ async def configure_user_auto_top_up(
             detail=f"Amount and threshold must be at most ${MAX_TOP_UP_AMOUNT // 100:,}",
         )
 
+    # Past the auth cache, before a charge: closing switched auto top-up off.
+    await refuse_closed_account(user_id)
     credit_model = await get_credit_model(user_id, ctx.org_id)
     current_balance = await credit_model.get_credits(user_id)
 

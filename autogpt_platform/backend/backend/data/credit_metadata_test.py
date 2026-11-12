@@ -194,7 +194,11 @@ async def test_top_up_intent_attaches_datafast_metadata():
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
-        patch("backend.data.credit.refuse_closed_account", new_callable=AsyncMock),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         await credit_system.top_up_intent(
             user_id="user-1",
@@ -275,7 +279,11 @@ async def _create_subscription_checkout(success_url: str, **datafast: str):
             "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
-        patch("backend.data.credit.refuse_closed_account", new_callable=AsyncMock),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         url = await create_subscription_checkout(
             user_id="user-1",

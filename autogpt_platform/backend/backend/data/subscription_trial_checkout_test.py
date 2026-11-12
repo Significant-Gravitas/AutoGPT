@@ -21,8 +21,11 @@ from backend.data.subscription_trial_stripe import (
 
 @pytest.fixture
 def checkout_guard():
-    with patch.object(checkout, "subscription_checkout_lock", return_value=AsyncMock()):
-        yield
+    with (
+        patch.object(checkout, "subscription_checkout_lock", return_value=AsyncMock()),
+        patch.object(checkout, "refuse_closed_account", AsyncMock()) as refuse,
+    ):
+        yield refuse
 
 
 @pytest.fixture
@@ -420,20 +423,43 @@ async def test_a_failed_assignment_still_opens_todays_checkout(
     assert "custom_text" not in stripe_session_create.await_args.kwargs
 
 
-@pytest.mark.parametrize("open_session", [False, True], ids=["new", "resumed"])
-async def test_a_closed_account_gets_no_trial_checkout(
-    mocker, trial, stripe_session_create, open_session
+@pytest.mark.asyncio
+async def test_a_closed_account_gets_no_trial_checkout(trial, checkout_guard):
+    """Asked of the database first, before a seat is reserved or an open
+    Checkout handed out: for a few seconds after the close, another worker's
+    cache can still let an old token through."""
+    checkout_guard.side_effect = HTTPException(401, "This account is closed.")
+    with (
+        patch.object(checkout, "get_trial_offer", AsyncMock()) as offer,
+        patch.object(checkout, "reserve_subscription_trial", AsyncMock()) as reserve,
+        patch.object(checkout, "_resume_checkout", AsyncMock()) as resume,
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await checkout.create_trial_checkout(
+                trial.user_id,
+                trial.offer.token,
+                trial.success_url,
+                trial.cancel_url,
+                {},
+            )
+
+    assert refused.value.status_code == 401
+    checkout_guard.assert_awaited_once_with(trial.user_id)
+    offer.assert_not_awaited()
+    reserve.assert_not_awaited()
+    resume.assert_not_awaited()
+
+
+async def test_a_trial_checkout_made_as_the_account_closed_is_expired(
+    mocker, trial, stripe_session_create
 ):
-    """Neither a new session nor the open one closing expired: for a few
-    seconds after the close, another worker's cache can still let an old
-    token through, so the database is asked just before."""
-    if open_session:
-        session = mocker.Mock(id="cs_0", status="open", url="https://checkout.test/0")
-        mocker.patch.object(checkout, "_find_checkout", AsyncMock(return_value=session))
-    closed = mocker.patch(
+    """The account closed while Stripe made the Checkout: closing's sweep may
+    have run already, so the Checkout is expired here instead."""
+    mocker.patch(
         "backend.data.account_deletion.is_account_closed",
         AsyncMock(return_value=True),
     )
+    expire = mocker.patch("backend.data.subscription_checkout.stripe_call", AsyncMock())
 
     with pytest.raises(HTTPException) as refused:
         await checkout._resume_checkout(trial)
@@ -442,8 +468,8 @@ async def test_a_closed_account_gets_no_trial_checkout(
         401,
         "This account is closed.",
     )
-    closed.assert_awaited_once_with(trial.user_id)
-    stripe_session_create.assert_not_awaited()
+    stripe_session_create.assert_awaited_once()
+    assert expire.await_args.args[1] == "cs_1"
 
 
 @pytest.fixture

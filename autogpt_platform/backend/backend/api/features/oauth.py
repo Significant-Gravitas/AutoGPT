@@ -38,6 +38,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
@@ -272,6 +273,8 @@ async def authorize(
                 f"Allowed: {', '.join(s.value for s in app.scopes)}",
             )
 
+        # Auth's closed-account cache can lag the close by a few seconds.
+        await refuse_closed_account(user_id)
         # Create authorization code
         auth_code = await create_authorization_code(
             application_id=app.id,

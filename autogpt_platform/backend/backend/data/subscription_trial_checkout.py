@@ -20,6 +20,7 @@ from backend.data.subscription_checkout import (
     SubscriptionCheckoutUnavailable as TrialUnavailable,
 )
 from backend.data.subscription_checkout import (
+    expire_if_account_closed,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -84,6 +85,10 @@ async def _create_trial_checkout(
     metadata: dict[str, str],
     country: str | None,
 ) -> str:
+    # Past the auth cache, before a seat is reserved or a Checkout handed
+    # out: closing expires the open Checkouts, and a closed account must get
+    # none.
+    await refuse_closed_account(user_id)
     # The same question the status endpoint answers before showing the offer,
     # asked of the *current* flag: someone who would not be shown the trial
     # now cannot start or resume one, whatever they were shown earlier.
@@ -156,9 +161,6 @@ async def _resume_checkout(trial: TrialState) -> str:
         await _verify_eligibility(
             trial.user_id, trial.customer_id, trial.offer, trial=trial, session=session
         )
-    # Past the auth cache, before an open Checkout is handed out or a new one
-    # started: closing expires them, and a closed account must get none.
-    await refuse_closed_account(trial.user_id)
     if session is None:
         no_charge_copy = await _shows_no_charge_copy(trial.user_id)
         session = await stripe_call(
@@ -170,6 +172,7 @@ async def _resume_checkout(trial: TrialState) -> str:
             where={"id": trial.id, "checkoutAttempt": trial.checkout_attempt},
             data={"stripeCheckoutSessionId": session.id},
         )
+        await expire_if_account_closed(trial.user_id, session.id)
     if session.status == "expired":
         return await _replace_expired_checkout(trial, session)
     if session.status != "open" or not session.url:

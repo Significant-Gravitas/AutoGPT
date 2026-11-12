@@ -45,7 +45,7 @@ CLOSE = [
 ]
 # Once more after the close, for what another worker let through in the
 # seconds before its cache knew the account was closed.
-SWEEP = ["revoke_issued_access", "cancel_all_subscriptions_now"]
+SWEEP = ["revoke_issued_access", "cancel_all_subscriptions_now", "set_auto_top_up"]
 AFTER_CLOSE = [
     "send_account_deleted_email",
     "mark_confirmation_sent",
@@ -85,6 +85,8 @@ def steps(mocker: MockerFixture) -> MagicMock:
     parent.get_deletion_request.return_value = None
     parent.cancel_all_subscriptions_now.return_value = 1
     parent.close_account.return_value = MagicMock(eraseAfter=ERASE_AFTER)
+    # Read before each step of the sweep; not a step itself.
+    mocker.patch(f"{MODULE}.is_account_closed", AsyncMock(return_value=True))
     return parent
 
 
@@ -324,13 +326,16 @@ async def test_neither_email_is_ever_logged(
 
 
 @pytest.mark.asyncio
-async def test_auto_top_up_is_switched_off_before_the_close(steps: MagicMock):
+async def test_auto_top_up_is_switched_off_before_and_after_the_close(steps: MagicMock):
     """Work that outlives the deletion must not charge the saved card; the
     order of the steps is checked with the others above."""
     await _delete()
 
-    steps.set_auto_top_up.assert_awaited_once_with(
-        USER_ID, AutoTopUpConfig(threshold=0, amount=0)
+    # Before the close, and again after it for a setting another worker let
+    # through in the seconds before its cache knew the account was closed.
+    assert (
+        steps.set_auto_top_up.await_args_list
+        == [call(USER_ID, AutoTopUpConfig(threshold=0, amount=0))] * 2
     )
 
 
@@ -383,6 +388,7 @@ async def test_a_close_with_no_days_to_keep_it_says_so_in_the_email(steps: Magic
             "cancel_all_subscriptions_now",
             stripe.APIConnectionError("Stripe is unreachable"),
         ),
+        ("set_auto_top_up", RuntimeError("database down")),
     ],
 )
 async def test_a_failed_sweep_after_the_close_still_succeeds(
@@ -422,3 +428,16 @@ async def test_a_key_made_while_the_close_ran_is_revoked_after_it(steps: MagicMo
     await _delete()
 
     assert active_keys == set()
+
+
+@pytest.mark.asyncio
+async def test_an_account_kept_while_the_sweep_runs_keeps_its_keys_and_plan(
+    steps: MagicMock, mocker: MockerFixture
+):
+    """Keep works the moment the close commits; what the owner makes after
+    keeping it is theirs."""
+    mocker.patch(f"{MODULE}.is_account_closed", AsyncMock(return_value=False))
+
+    assert await _delete() == ERASE_AFTER
+
+    assert _called(steps) == LOAD + BEFORE_CLOSE + CLOSE + AFTER_CLOSE

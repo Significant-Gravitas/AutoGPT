@@ -14,21 +14,19 @@ in, so they can't keep the account.
 
 Closing can't stop what was made in the seconds after it, while the other
 workers' closed-account cache still let a token issued before it through.
-API keys and app grants made then are revoked here, before the account
-opens. Sign-ins are not: closing ended every session, but a token issued
-before the close (on another device, valid for up to an hour) and the
-session cookie cached in the browser (for up to 5 minutes) are only refused
-while the account is closed, and work again once it is kept.
+API keys and app grants made then are revoked as the account opens
+(``reopen_account``). Sign-ins are not: closing ended every session, but a
+token issued before the close (on another device, valid for up to an hour)
+and the session cookie cached in the browser (for up to 5 minutes) are only
+refused while the account is closed, and work again once it is kept.
 """
 
 import logging
 from datetime import datetime, timezone
 
 from autogpt_libs.auth import forget_account_state
-from prisma.models import AccountDeletionRequest
 
 from backend.api.features.account_deletion.analytics import tenure_bucket
-from backend.api.features.account_deletion.issued_access import revoke_issued_access
 from backend.api.features.account_deletion.models import AccountDeletionResponse
 from backend.api.features.store.cache import forget_store_listings
 from backend.data.account_deletion import (
@@ -55,19 +53,16 @@ async def get_deletion_status(user_id: str) -> AccountDeletionResponse:
     if request is None:
         forget_account_state(user_id)
         return AccountDeletionResponse(status="open")
-    return AccountDeletionResponse(
-        status="too_late" if _too_late(request) else "scheduled",
-        erase_after=request.eraseAfter,
-    )
-
-
-def _too_late(request: AccountDeletionRequest) -> bool:
-    """The same test reopen_account makes, so the page never offers a keep
-    the server would refuse, whatever the browser's clock says."""
-    return (
+    # The same test reopen_account makes, so the page never offers a keep
+    # the server would refuse, whatever the browser's clock says.
+    too_late = (
         request.startedAt is not None
         or request.completedAt is not None
         or request.eraseAfter <= datetime.now(timezone.utc)
+    )
+    return AccountDeletionResponse(
+        status="too_late" if too_late else "scheduled",
+        erase_after=request.eraseAfter,
     )
 
 
@@ -75,16 +70,9 @@ async def restore_account(user_id: str) -> None:
     """Cancel the deletion request. A no-op for an account that is open.
 
     Raises TooLateToRestoreError, having changed nothing, once the erasure
-    date has passed. Any other error leaves the account closed, so the owner
-    can try again.
+    date has passed.
     """
     request = await get_deletion_request(user_id)
-    if request is not None and not _too_late(request):
-        # Closing revoked them all, and none can be made while the account
-        # is closed: one still active was made in the seconds after the
-        # close. Revoked before the account opens, so a failure leaves it
-        # closed instead of open with the key working.
-        await revoke_issued_access(user_id)
     outcome = await reopen_account(user_id)
     if outcome is ReopenOutcome.TOO_LATE:
         logger.info(f"Account deletion: user {user_id} asked to keep it too late")
