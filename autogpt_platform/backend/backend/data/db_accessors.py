@@ -1,6 +1,16 @@
 from backend.data import db
 
 
+def auth_session_db():
+    if db.is_connected():
+        from backend.data.auth import session as auth_session_store
+
+        return auth_session_store
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def background_task_db():
     if db.is_connected():
         from backend.copilot import background_task_db as store

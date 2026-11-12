@@ -120,7 +120,7 @@ async def test_a_closed_accounts_requests_are_refused_and_not_counted(
 ):
     if credential == "session":
         mocker.patch(
-            "autogpt_libs.auth.dependencies.parse_jwt_token_async",
+            "autogpt_libs.auth.dependencies.get_jwt_payload",
             return_value={"sub": user_id, "role": "user"},
         )
         headers = {"Authorization": "Bearer token"}
