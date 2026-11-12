@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import random
+import zlib
 from io import BytesIO
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,8 +15,8 @@ from backend.util.file import MediaFileType
 from ._client import MAX_REQUEST_BYTES
 
 CONTEXT = ExecutionContext(user_id="test-user", graph_exec_id="test-exec")
-# The largest raw image whose base64 form fits in an empty request.
-FULL_RAW_CAP = MAX_REQUEST_BYTES // 4 * 3
+# The largest raw image whose data URL, with the longest prefix, fits alone.
+FULL_RAW_CAP = (MAX_REQUEST_BYTES - len("data:image/jpeg;base64,")) // 4 * 3
 
 
 def image_bytes(image_format: str, color: str = "red") -> bytes:
@@ -45,6 +46,17 @@ def noise_png(width: int, height: int, seed: int) -> bytes:
     return buffer.getvalue()
 
 
+def png_of_size(size: int) -> bytes:
+    """A valid PNG of exactly ``size`` bytes, padded with a private chunk."""
+    base = image_bytes("PNG")
+    data = b"\0" * (size - len(base) - 12)
+    chunk = b"prVt" + data
+    padding = (
+        len(data).to_bytes(4, "big") + chunk + zlib.crc32(chunk).to_bytes(4, "big")
+    )
+    return base[:-12] + padding + base[-12:]
+
+
 def corrupt_png() -> bytes:
     data = bytearray(image_bytes("PNG"))
     idat = data.index(b"IDAT")
@@ -56,6 +68,21 @@ def corrupt_png() -> bytes:
 def response(content: bytes, content_type: str | None = None) -> MagicMock:
     headers = {"Content-Type": content_type} if content_type else {}
     return MagicMock(content=content, headers=headers)
+
+
+@pytest.fixture
+def reads(monkeypatch) -> list[int]:
+    """The size of every read the module makes from a stored image."""
+    sizes: list[int] = []
+
+    def counting_open(path, mode):
+        handle = open(path, mode)
+        read = handle.read
+        handle.read = lambda size=-1: sizes.append(len(chunk := read(size))) or chunk
+        return handle
+
+    monkeypatch.setattr(_images, "open", counting_open, raising=False)
+    return sizes
 
 
 @pytest.fixture
@@ -157,23 +184,13 @@ async def test_unsupported_or_broken_images_are_rejected(downloads, content):
 
 
 async def test_an_oversized_image_is_refused_before_it_is_read_whole_or_encoded(
-    downloads, monkeypatch
+    downloads, monkeypatch, reads
 ):
     downloads["https://example.com/big"] = response(b"\0" * (FULL_RAW_CAP + 4096))
     sniff = MagicMock(side_effect=_images.image_mime_type)
     encode = MagicMock(side_effect=_images._data_url)
     monkeypatch.setattr(_images, "image_mime_type", sniff)
     monkeypatch.setattr(_images, "_data_url", encode)
-    reads: list[int] = []
-
-    def counting_open(path, mode):
-        handle = open(path, mode)
-        read = handle.read
-        handle.read = lambda size=-1: reads.append(len(chunk := read(size))) or chunk
-        return handle
-
-    monkeypatch.setattr(_images, "open", counting_open, raising=False)
-
     with pytest.raises(ValueError, match="Image 1 is too large"):
         await _images.resolve_images(
             [MediaFileType("https://example.com/big")], CONTEXT
@@ -182,6 +199,57 @@ async def test_an_oversized_image_is_refused_before_it_is_read_whole_or_encoded(
     assert reads == [FULL_RAW_CAP + 1]
     sniff.assert_not_called()
     encode.assert_not_called()
+
+
+@pytest.mark.parametrize("extra", [0, 1], ids=["at-the-cap", "one-byte-over"])
+async def test_the_data_url_prefix_counts_toward_the_request_size(downloads, extra):
+    downloads["https://example.com/full.png"] = response(
+        png_of_size(FULL_RAW_CAP + extra)
+    )
+    images = [MediaFileType("https://example.com/full.png")]
+
+    if extra:
+        with pytest.raises(ValueError, match="Image 1 is too large"):
+            await _images.resolve_images(images, CONTEXT)
+        return
+    [url] = await _images.resolve_images(images, CONTEXT)
+    assert len(url) <= MAX_REQUEST_BYTES
+
+
+async def test_once_the_request_is_full_the_next_image_is_not_fetched(
+    downloads, monkeypatch, reads
+):
+    """The first image leaves less room than a data-URL prefix: none at all."""
+    downloads["https://example.com/full.png"] = response(png_of_size(FULL_RAW_CAP))
+    downloads["https://example.com/next.png"] = response(image_bytes("PNG"))
+    store = AsyncMock(side_effect=_images.store_media_file)
+    monkeypatch.setattr(_images, "store_media_file", store)
+
+    with pytest.raises(ValueError, match="Image 2 brings the images past 4,194,304"):
+        await _images.resolve_images(
+            [
+                MediaFileType("https://example.com/full.png"),
+                MediaFileType("https://example.com/next.png"),
+            ],
+            CONTEXT,
+        )
+
+    assert store.await_count == 1
+    assert reads == [FULL_RAW_CAP]
+
+
+async def test_an_image_too_large_on_its_own_says_so_after_a_small_one(downloads):
+    downloads["https://example.com/small.png"] = response(image_bytes("PNG"))
+    downloads["https://example.com/huge"] = response(b"\0" * (FULL_RAW_CAP + 4096))
+
+    with pytest.raises(ValueError, match="Image 2 is too large"):
+        await _images.resolve_images(
+            [
+                MediaFileType("https://example.com/small.png"),
+                MediaFileType("https://example.com/huge"),
+            ],
+            CONTEXT,
+        )
 
 
 async def test_images_past_the_request_size_are_refused_and_later_ones_not_fetched(

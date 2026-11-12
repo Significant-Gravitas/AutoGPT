@@ -1,6 +1,7 @@
 """Images for nace: loaded one at a time, typed by content, bounded by size."""
 
 import base64
+import os
 from io import BytesIO
 
 from PIL import Image, UnidentifiedImageError
@@ -19,6 +20,11 @@ MIME_TYPES = {
     "MPO": "image/jpeg",
     "WEBP": "image/webp",
 }
+# Every image reserves room for the longest prefix, "data:image/jpeg;base64,",
+# so the data URLs together never pass MAX_REQUEST_BYTES.
+PREFIX_ROOM = max(len(f"data:{mime};base64,") for mime in MIME_TYPES.values())
+# The largest raw image whose data URL fits in a request on its own.
+FULL_RAW_CAP = (MAX_REQUEST_BYTES - PREFIX_ROOM) // 4 * 3
 
 
 async def resolve_images(
@@ -26,9 +32,11 @@ async def resolve_images(
 ) -> list[str]:
     """PNG, JPEG or WebP data URLs for nace, in input order.
 
-    Images load one at a time. Each is read only up to the room left in the
-    request and refused before it is typed or encoded when it does not fit, so
-    later images are never fetched once the request is full.
+    Images load one at a time against a budget of ``MAX_REQUEST_BYTES``
+    data-URL characters. Each is read only up to the room left and refused
+    before it is typed or encoded when its data URL would not fit; once no room
+    is left, the next image is refused without being fetched. State, questions
+    and JSON syntax are not counted here: ``_encode`` checks the whole body.
     """
     if not images:
         return []
@@ -36,12 +44,16 @@ async def resolve_images(
     resolved: list[str] = []
     used = 0
     for index, image in enumerate(images, start=1):
+        raw_cap = max(0, MAX_REQUEST_BYTES - used - PREFIX_ROOM) // 4 * 3
+        if raw_cap == 0:
+            raise _past_the_budget(index)
         name = await store_media_file(
             file=image,
             execution_context=execution_context,
             return_format="for_local_processing",
         )
-        content = _read_image(get_exec_file_path(graph_exec_id, name), index, used)
+        path = get_exec_file_path(graph_exec_id, name)
+        content = _read_image(path, index, raw_cap)
         url = _data_url(content, index)
         used += len(url)
         resolved.append(url)
@@ -49,7 +61,12 @@ async def resolve_images(
 
 
 def image_mime_type(content: bytes) -> str | None:
-    """The MIME type of a PNG, JPEG or WebP image, or None for anything else."""
+    """The MIME type of a PNG, JPEG or WebP image, or None for anything else.
+
+    Pillow recognises the format from the file header, and ``verify()`` checks
+    PNG chunk checksums. It reads little of a JPEG or WebP, so a truncated one
+    still passes.
+    """
     try:
         with Image.open(BytesIO(content), formats=OPENERS) as image:
             image.verify()
@@ -64,22 +81,26 @@ def image_mime_type(content: bytes) -> str | None:
         return None
 
 
-def _read_image(path: str, index: int, used: int) -> bytes:
-    """The file's bytes, if their base64 form fits beside ``used`` characters."""
-    raw_cap = max(0, MAX_REQUEST_BYTES - used) // 4 * 3
+def _read_image(path: str, index: int, raw_cap: int) -> bytes:
+    """The file's bytes, read no further than one byte past ``raw_cap``."""
     with open(path, "rb") as handle:
         content = handle.read(raw_cap + 1)
+        size = os.fstat(handle.fileno()).st_size
     if len(content) <= raw_cap:
         return content
-    if used == 0:
+    if size > FULL_RAW_CAP:
         raise ValueError(
-            f"Image {index} is too large: nace accepts at most "
-            f"{MAX_REQUEST_BYTES:,} bytes of base64-encoded images per request. "
+            f"Image {index} is too large: its data URL alone would pass "
+            f"{MAX_REQUEST_BYTES:,} bytes, the most nace accepts in one request. "
             "Send fewer or smaller images."
         )
-    raise ValueError(
-        f"Image {index} brings the images past {MAX_REQUEST_BYTES:,} bytes once "
-        "base64-encoded, the most nace accepts in one request. "
+    raise _past_the_budget(index)
+
+
+def _past_the_budget(index: int) -> ValueError:
+    return ValueError(
+        f"Image {index} brings the images past {MAX_REQUEST_BYTES:,} bytes as "
+        "data URLs, the most nace accepts in one request. "
         "Send fewer or smaller images."
     )
 

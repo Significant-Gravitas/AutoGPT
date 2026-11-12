@@ -33,11 +33,14 @@ text prefix and may no longer be complete JSON.
 `images` take up to 8 PNG, JPEG or WebP images, each a data URL, an http(s) URL
 or a workspace file; the blocks convert them to data URLs before the call.
 Refer to them in the question as "Image 1", "Image 2" in list order. Images load
-one at a time, and each image's type is detected from its bytes, not its file
-name or Content-Type. An image that cannot fit in the 4 MiB request, alone or
-with the images before it, is rejected before it is encoded, and later images
-are not loaded. The whole request body is limited to 4 MiB; a larger one is
-rejected before any call.
+one at a time. Each image's type comes from its bytes, not its file name or
+Content-Type: Pillow must recognise a PNG, JPEG or WebP header, and a PNG must
+pass its chunk checksums (a truncated JPEG or WebP is not caught here). The
+images' data URLs together may not pass 4 MiB: an image whose data URL would not
+fit beside the images before it is rejected before it is encoded, and once that
+room is used up later images are not loaded. The whole request body, with state
+and questions, is also limited to 4 MiB; a larger one is rejected before any
+call.
 
 Every call emits `request: str`, the request JSON with inline image data represented
 by its MIME type and size. The verbatim response body is `response: str | None`.
