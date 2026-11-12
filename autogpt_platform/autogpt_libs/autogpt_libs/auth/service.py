@@ -109,7 +109,7 @@ async def frontend_service_claims(token: str, scope: str) -> dict[str, Any] | No
         return None
     try:
         payload = await parse_jwt_token_async(token, audience=SERVICE_TOKEN_AUDIENCE)
-    except ValueError:
+    except (ValueError, fastapi.HTTPException):
         return None
     if payload.get("sub") != FRONTEND_SERVICE_SUBJECT:
         return None
