@@ -1,7 +1,8 @@
-"""A graphiti BFS read whose origins repeat (``falkordb_origins.py``) against a
-live FalkorDB: walking each origin once returns the same facts as walking every
-repeat, under a limit that cuts the walk short too. Compare complete records by
-UUID because Cypher does not guarantee row order without ``ORDER BY``.
+"""Check repeated-origin graphiti BFS reads against a live FalkorDB.
+
+Walking each origin once preserves the complete facts. A truncating limit may
+select different facts because Cypher does not guarantee order without
+``ORDER BY``; each result must contain distinct records from the complete set.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -95,7 +96,7 @@ async def test_changed_edge_bfs_aggregate_keeps_duplicate_origins(
 @pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize("limit", [10, 2])
-async def test_walking_each_origin_once_returns_the_same_facts(
+async def test_walking_each_origin_once_preserves_facts_and_limit(
     scope_graph, stub_graphiti_client, mocker, limit: int
 ) -> None:
     driver, scope = scope_graph
@@ -112,10 +113,17 @@ async def test_walking_each_origin_once_returns_the_same_facts(
     )
     every_repeat = await _walk(driver, scope.group_id, origins, limit)
 
-    assert sorted(once, key=lambda edge: edge["uuid"]) == sorted(
-        every_repeat, key=lambda edge: edge["uuid"]
-    )
-    assert len(once) == min(limit, 4)
+    assert len(once) == len(every_repeat) == min(limit, 4)
+    if limit >= 4:
+        assert sorted(once, key=lambda edge: edge["uuid"]) == sorted(
+            every_repeat, key=lambda edge: edge["uuid"]
+        )
+    else:
+        full = await _walk(driver, scope.group_id, origins, 10)
+        assert len(full) == 4
+        for records in (once, every_repeat):
+            assert len({edge["uuid"] for edge in records}) == limit
+            assert all(edge in full for edge in records)
 
 
 async def _walk(
