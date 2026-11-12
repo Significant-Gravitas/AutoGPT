@@ -5,12 +5,19 @@ stopped, so it does not keep two live runs apart: the hourly job on two
 database manager replicas, or the CLI beside the job. Both would read the
 account once and act on it twice (the confirmation email sent twice, say).
 A Redis lease per account, held from before the account is read until the
-erasure ends, keeps them apart. The erasure renews it before each step
-(`keep_erasure_lease`) and stops if it was lost; after a crash it expires on
-its own (`LEASE_TTL_SECONDS`), so the next run can resume.
+erasure ends, keeps them apart. Its lifetime is short (`LEASE_TTL_SECONDS`),
+so a run that crashed or was killed frees it within minutes and the next run
+can resume. A live run keeps it: a heartbeat renews it in the background
+(`renew_in_background`), since one step (the files sweep of a large account)
+can outlast the lifetime, and the erasure renews it again before each step
+(`keep_erasure_lease`) and stops if it was lost.
 """
 
+import asyncio
+import contextlib
+import logging
 import uuid
+from collections.abc import AsyncIterator
 
 from redis.exceptions import RedisClusterException, RedisError
 
@@ -18,7 +25,13 @@ from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 
 LEASE_KEY_PREFIX = "account_erasure:lease:"
-LEASE_TTL_SECONDS = 60 * 60
+LEASE_TTL_SECONDS = 5 * 60
+# Every minute: five renewals per lifetime, so a beat or two lost to a Redis
+# blip doesn't drop the lease, and above the lock's own rate limit (a tenth of
+# the lifetime), under which a renewal only checks the owner.
+HEARTBEAT_SECONDS = 60
+
+logger = logging.getLogger(__name__)
 
 
 class ErasureLeaseUnavailable(RuntimeError):
@@ -53,6 +66,30 @@ async def keep_erasure_lease(lock: AsyncClusterLock) -> bool:
     """Renew the lease; False when it lapsed or another run took it over, and
     the erasure must stop."""
     return await lock.refresh()
+
+
+@contextlib.asynccontextmanager
+async def renew_in_background(lock: AsyncClusterLock) -> AsyncIterator[None]:
+    """Renew the lease every `HEARTBEAT_SECONDS` while the block runs. A
+    renewal that fails is logged and the next beat tries again; the check
+    before each step is what stops an erasure whose lease is gone."""
+    task = asyncio.create_task(_beat(lock))
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+async def _beat(lock: AsyncClusterLock) -> None:
+    while True:
+        await asyncio.sleep(HEARTBEAT_SECONDS)
+        if not await lock.refresh():
+            logger.warning(
+                f"Account erasure lease {lock.key} could not be renewed; the "
+                "erasure stops before its next step if it was lost"
+            )
 
 
 async def release_erasure_lease(lock: AsyncClusterLock) -> None:

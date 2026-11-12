@@ -30,6 +30,7 @@ from backend.data.account_erasure.lease import (
     acquire_erasure_lease,
     keep_erasure_lease,
     release_erasure_lease,
+    renew_in_background,
 )
 from backend.data.account_erasure.marketplace import delete_marketplace
 from backend.data.account_erasure.memory import delete_memory
@@ -128,9 +129,13 @@ async def erase_account(
             user_id=user_id, dry_run=False, not_claimed="another run is erasing it"
         )
     try:
-        return await _erase(
-            user_id, email, dry_run=False, keepalive=partial(keep_erasure_lease, lease)
-        )
+        async with renew_in_background(lease):
+            return await _erase(
+                user_id,
+                email,
+                dry_run=False,
+                keepalive=partial(keep_erasure_lease, lease),
+            )
     finally:
         await release_erasure_lease(lease)
 

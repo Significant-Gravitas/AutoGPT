@@ -15,7 +15,11 @@ Keep and the erasure must never both win. Keep (`reopen_account`) deletes the ro
 
 `startedAt` is **never set back to null**. An erasure that stopped halfway (a failed step, a crashed pod) leaves the row with `startedAt` set and `completedAt` null; the next run selects it again (selection does not filter on `startedAt`), the claim keeps the first date, and the idempotent steps resume. Never clear `startedAt` by hand to "retry": that would let the owner keep an account that is already half erased.
 
-Because a resuming run may claim again, the claim does not keep two runners apart; a Redis lease per account does (`lease.py`). Each `--apply` (the job's or the CLI's) takes it before it reads the account and holds it until the erasure ends, so two database manager replicas, or the CLI beside the job, never erase the same account at once: the second one reports "another run is erasing it" and moves on. The erasure renews the lease before each step and stops if it was lost (a run that took over an hour); after a crash it expires on its own within the hour, so the next run resumes. With Redis down nothing is erased.
+Because a resuming run may claim again, the claim does not keep two runners apart; a Redis lease per account does (`lease.py`). Each `--apply` (the job's or the CLI's) takes it before it reads the account and holds it until the erasure ends, so two database manager replicas, or the CLI beside the job, never erase the same account at once: the second one reports "another run is erasing it" and moves on. The lease lasts 5 minutes. A live run keeps it: a heartbeat renews it every minute, since one step (the files sweep of a large account) can run for minutes, and the erasure checks it again before each step and stops if it was lost. A run that crashed or was killed renews nothing, so its lease runs out within 5 minutes and the next run resumes. Until then a rerun reports "another run is erasing it" and exits non-zero; that is the dead run's lease, not a second erasure, so wait 5 minutes and run it again. With Redis down nothing is erased.
+
+### When an erasure stalls
+
+An erasure that started and did not finish (a step that keeps failing, a service left unset, a CLI run that crashed and was not run again) leaves the account closed, past its 14 days and not erased. The scheduler checks for that every hour (`report_stalled_account_erasures`, `ACCOUNT_ERASURE_STALL_CHECK_INTERVAL_SECS`), whether the job is on or off: a request whose `startedAt` is over 3 hours old (`ACCOUNT_ERASURE_STALL_ALERT_SECS`) with no `completedAt` pages Discord and Sentry with its user ID, at most once a day per account. To clear it, run the dry run with that user ID (`erase-account <user ID>`) to see which step stops it, fix that, and run it again with `--apply`; the next check is quiet once `completedAt` is set.
 
 ## How erasure runs
 
@@ -41,6 +45,13 @@ A step is skipped only when its service is not configured on this stack at all. 
 ## Who runs the CLI, and where
 
 The production operator, from a shell in a production **database manager** pod (`kubectl exec -it deploy/<database manager deployment> -n prod-agpt -- poetry run cli erase-account …`): the CLI needs the production database, Redis, RabbitMQ, the scheduler and notification services, FalkorDB, the buckets, Stripe, PostHog and MailerLite. The database manager is the pod that has the PostHog personal key and the MailerLite token, as the job runs there; other backend pods lack them, so the erasure would stop at those steps. `POSTHOG_APP_HOST` defaults to the EU cloud (`https://eu.posthog.com`); a project in the US cloud sets `https://us.posthog.com`. Each cloud refuses the other's keys, so a wrong host fails the step instead of finding no person.
+
+In production, run it with care, as the pod serves every other service's database calls:
+
+- **Check the pod's memory first**: `kubectl top pod -n prod-agpt` for the database manager pods, and pick one with room. One CLI run beside the idle service fits; a second process beside them got a dev pod killed for memory. A pod killed for memory takes the database manager down for every service using it, and kills the erasure mid-step (the rerun resumes it, above).
+- **One command at a time**: wait for each to end before starting the next, and never run two in the same pod.
+- **Save the terminal output of every production run**, dry runs included, where privacy requests are tracked: under `kubectl exec` the CLI's output, its "Account erasure of <user ID>: ..." log line included, reaches only your terminal, not Cloud Logging. It prints user IDs and counts, never the email.
+- **"another run is erasing it" right after a crash** (the pod was killed, the terminal closed mid-run) is the dead run's lease: wait 5 minutes and run the same command again, which resumes the erasure.
 
 The memory step is skipped only when `GRAPHITI_FALKORDB_HOST` is empty, which is how a stack without FalkorDB says so. Where it is set (production and dev set it in the shared config), a FalkorDB the pod cannot reach fails the step, and the erasure stops before the account's rows go; fix the connection and run it again. A self-hosted stack that does not run FalkorDB sets `GRAPHITI_FALKORDB_HOST=` (empty), since the default points at `localhost`.
 
