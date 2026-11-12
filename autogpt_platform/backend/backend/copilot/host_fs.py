@@ -76,6 +76,8 @@ def save_new_file(directory: str, filename: str, content: bytes) -> str:
     dangling link included, is a collision and is never written.  *directory* is
     used as given: pass the working directory's root or one this process made."""
     safe = _UNSAFE_FILENAME.sub("_", filename)
+    if os.name == "nt":
+        safe = host_fs_windows.normalize_filename(safe)
     if safe in ("", ".", ".."):
         safe = "file"
     stem, ext = os.path.splitext(safe)

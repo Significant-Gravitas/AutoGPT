@@ -26,6 +26,11 @@ _RESERVED = re.compile(
 )
 
 
+def normalize_filename(name: str) -> str:
+    name = name.rstrip(". ")
+    return f"_{name}" if _RESERVED.match(name) else name
+
+
 def components(path: str) -> tuple[str, list[str]]:
     if not ntpath.isabs(path) or ntpath.normpath(path) != path:
         raise ValueError(f"needs an absolute, normalised path: {path!r}")

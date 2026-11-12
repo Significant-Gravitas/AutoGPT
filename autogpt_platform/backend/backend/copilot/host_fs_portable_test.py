@@ -58,6 +58,66 @@ def test_nested_exclusive_delete_and_names(tmp_path):
         unlink_no_follow(str(path.parent))
 
 
+@pytest.mark.parametrize(
+    "name, windows_name",
+    [
+        ("CON", "_CON"),
+        ("prn", "_prn"),
+        ("aux.txt", "_aux.txt"),
+        ("NUL.tar.gz", "_NUL.tar.gz"),
+        ("con.csv", "_con.csv"),
+        ("COM1.txt", "_COM1.txt"),
+        ("com9", "_com9"),
+        ("LPT1.csv", "_LPT1.csv"),
+        ("lpt9", "_lpt9"),
+        ("COM¹.txt", "_COM¹.txt"),
+        ("LPT²", "_LPT²"),
+        ("COM³.tar.gz", "_COM³.tar.gz"),
+        ("report.txt.", "report.txt"),
+        ("AUX.tar.gz..", "_AUX.tar.gz"),
+        ("...", "file"),
+    ],
+)
+def test_save_new_file_platform_names(tmp_path, name, windows_name):
+    saved = Path(save_new_file(str(tmp_path), name, b"attachment"))
+    assert saved.parent == tmp_path.resolve()
+    assert saved.name == (windows_name if os.name == "nt" else name)
+    assert saved.read_bytes() == b"attachment"
+
+
+@pytest.mark.parametrize("name", ["COM10.txt", "auxiliary.txt", ".aux", "résumé.txt"])
+def test_save_new_file_preserves_ordinary_names(tmp_path, name):
+    saved = Path(save_new_file(str(tmp_path), name, b"attachment"))
+    assert saved == tmp_path.resolve() / name
+    assert saved.read_bytes() == b"attachment"
+
+
+@pytest.mark.parametrize(
+    "name, windows_name",
+    [
+        ("aux.txt", "_aux.txt"),
+        ("NUL.tar.gz", "_NUL.tar.gz"),
+        ("report.txt.", "report.txt"),
+    ],
+)
+def test_save_new_file_normalized_collisions(tmp_path, name, windows_name):
+    expected = windows_name if os.name == "nt" else name
+    stem, ext = os.path.splitext(expected)
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"outside")
+    (tmp_path / expected).symlink_to(outside)
+    first_suffix = tmp_path / f"{stem}_1{ext}"
+    first_suffix.write_bytes(b"existing")
+
+    saved = Path(save_new_file(str(tmp_path), name, b"attachment"))
+
+    assert saved == tmp_path.resolve() / f"{stem}_2{ext}"
+    assert saved.read_bytes() == b"attachment"
+    assert outside.read_bytes() == b"outside"
+    assert (tmp_path / expected).is_symlink()
+    assert first_suffix.read_bytes() == b"existing"
+
+
 @pytest.mark.parametrize("path", ["relative", "../file"])
 def test_absolute_required(path):
     with pytest.raises(ValueError):
