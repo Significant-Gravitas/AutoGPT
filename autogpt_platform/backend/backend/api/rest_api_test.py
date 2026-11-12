@@ -10,8 +10,16 @@ import pytest
 from starlette.routing import BaseRoute, Match, Mount, Route, WebSocketRoute
 
 from backend.api import rest_api
+from backend.api.external.fastapi_app import external_api
+from backend.api.external.v1.app import v1_app
 from backend.api.external.v2.app import v2_app
+from backend.api.session_auth import require_active_auth_session
 from backend.api.test_helpers import override_config
+
+
+@pytest.mark.parametrize("application", [rest_api.app, external_api, v1_app, v2_app])
+def test_every_rest_application_enforces_session_authority(application) -> None:
+    assert application.state.jwt_payload_validator is require_active_auth_session
 
 
 @pytest.mark.parametrize("enabled", [True, False])
