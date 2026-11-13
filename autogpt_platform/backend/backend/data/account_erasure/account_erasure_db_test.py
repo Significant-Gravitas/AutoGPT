@@ -43,6 +43,10 @@ import prisma.enums
 import prisma.models
 import pytest
 
+from backend.api.features.search.embeddings import (
+    EMBEDDING_DIM,
+    store_content_embedding,
+)
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data.account_deletion import ReopenOutcome, close_account, reopen_account
 from backend.data.account_erasure import ban_record, request, routine
@@ -379,7 +383,32 @@ async def _left_of(user_id: str) -> dict[str, int]:
         "listings": await prisma.models.StoreListing.prisma().count(
             where={"owningUserId": user_id}
         ),
+        "chats": await prisma.models.ChatSession.prisma().count(
+            where={"userId": user_id}
+        ),
+        "chat_embeddings": await prisma.models.UnifiedContentEmbedding.prisma().count(
+            where={"userId": user_id}
+        ),
     }
+
+
+async def _chat(user_id: str) -> str:
+    """A titled chat with a message, and its title's search embedding."""
+    session = await prisma.models.ChatSession.prisma().create(
+        data={"userId": user_id, "title": "Plans for my startup"}
+    )
+    await prisma.models.ChatMessage.prisma().create(
+        data={"sessionId": session.id, "role": "user", "sequence": 0, "content": "hi"}
+    )
+    await store_content_embedding(
+        content_type=prisma.enums.ContentType.CHAT_SESSION,
+        content_id=session.id,
+        embedding=[0.0] * EMBEDDING_DIM,
+        searchable_text="Plans for my startup",
+        metadata={"title": "Plans for my startup"},
+        user_id=user_id,
+    )
+    return session.id
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -401,6 +430,9 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
     await _review(own_version, other_id)
     await _uses(other_id, published, creator_id=user_id)
     left_behind = await _holdings(user_id)
+    chat_id = await _chat(user_id)
+    seeded = await _left_of(user_id)
+    assert (seeded["chats"], seeded["chat_embeddings"]) == (1, 1)
     email = f"deletion-{user_id[:8]}@example.com"
     kept_verification = await _verifications(user_id, email)
 
@@ -429,6 +461,13 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         prisma.enums.AccountDeletionSource.SETTINGS,
     )
     assert set((await _left_of(user_id)).values()) == {0}
+    # Deleted by the erasure itself, not by the account's cascade: a database
+    # can lack that foreign key, and then only this delete removes the chat.
+    database_step = next(s for s in report.steps if s.name == "database")
+    assert database_step.counts["chat_sessions"] == 1
+    assert not await prisma.models.ChatMessage.prisma().count(
+        where={"sessionId": chat_id}
+    )
     saved_input_id, event_id = left_behind
     assert not await prisma.models.AgentNodeExecutionInputOutput.prisma().count(
         where={"id": saved_input_id}
@@ -521,14 +560,15 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         where={"reviewByUserId": user_id}
     )
 
-    # A rerun finds nothing, can't claim the finished request, changes
-    # nothing and sends nothing.
+    # A rerun finds nothing, can't claim the finished request and sends
+    # nothing: it only repeats the PostHog delete.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
     assert await plan_transfer(user_id) == type(plan)()
     rerun = await routine.erase_account(user_id, dry_run=False)
     assert rerun.not_claimed == "erased already"
-    assert rerun.steps == []
+    assert [step.status for step in rerun.steps] == [StepStatus.DONE]
+    assert not rerun.failed
     outside_services.assert_awaited_once()
     after = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}
@@ -768,3 +808,32 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
     assert not await prisma.models.AccountBanRecord.prisma().count(
         where={"id": record.id}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_closed_without_the_email_is_erased_without_one(
+    server: SpinTestServer, outside_services: AsyncMock
+):
+    """`--close --now --no-email`: three closed accounts whose confirmation
+    did not go out. One was closed with it skipped, one closed earlier and
+    marked before the erasure, one left as it is: only that last one gets the
+    late email."""
+    skipped, marked, emailed = [await _account() for _ in range(3)]
+    source = prisma.enums.AccountDeletionSource.EMAIL
+    assert await close_account(skipped, source, confirmation_skipped=True)
+    assert await close_account(marked, source)
+    assert await close_account(emailed, source)
+    assert await request.skip_confirmation(marked)
+    for user_id in (skipped, marked, emailed):
+        await _past_the_14_days(user_id)
+        assert (await routine.erase_account(user_id, dry_run=False)).complete
+
+    outside_services.assert_awaited_once()
+    assert outside_services.await_args.args[0] == f"deletion-{emailed[:8]}@example.com"
+    rows = await prisma.models.AccountDeletionRequest.prisma().find_many(
+        where={"userId": {"in": [skipped, marked]}}
+    )
+    assert [(row.confirmationSkipped, row.confirmationSentAt) for row in rows] == [
+        (True, None),
+        (True, None),
+    ]

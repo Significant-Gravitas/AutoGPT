@@ -441,15 +441,14 @@ class BaseGraph(GraphBaseMeta):
                             if k not in ["description", "default", "secret"]
                         },
                         "secret": False,
-                        # Default value has to be set for advanced fields.
-                        "advanced": p.advanced and p.value is not None,
+                        "advanced": p.advanced and p.is_optional(),
                         "title": p.title or p.name,
                         **({"description": p.description} if p.description else {}),
                         **({"default": p.value} if p.value is not None else {}),
                     }
                     for p in schema_fields
                 },
-                "required": [p.name for p in schema_fields if p.value is None],
+                "required": [p.name for p in schema_fields if not p.is_optional()],
             }
         except AttributeError as e:
             raise ValueError(str(e)) from e
@@ -1688,6 +1687,17 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
     )
 
 
+async def get_copied_graph_ids(graph_ids: list[str]) -> list[str]:
+    """The ids in ``graph_ids`` with any version copied from another graph."""
+    # A version saved in the builder drops ``forkedFromId``, so the latest
+    # version alone can't tell a copy from an original.
+    copies = await AgentGraph.prisma().find_many(
+        where={"id": {"in": graph_ids}, "forkedFromId": {"not": None}},
+        distinct=["id"],
+    )
+    return [copy.id for copy in copies]
+
+
 async def get_graph(
     graph_id: str,
     version: int | None,
@@ -2515,9 +2525,7 @@ async def fork_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    # Set forked from ID and version as itself as it's about ot be copied
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     graph.name = fork_name(graph.name)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -2559,8 +2567,7 @@ async def copy_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     # Preserve the original graph name (no "Copy of" prefix)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -2577,6 +2584,13 @@ async def copy_graph(
         )
 
     return graph
+
+
+def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:
+    """Make each graph about to be copied the source its copy records."""
+    for graph in graphs:
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
 
 
 async def __create_graph(
