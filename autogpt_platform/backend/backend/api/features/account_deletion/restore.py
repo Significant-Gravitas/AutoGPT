@@ -13,6 +13,14 @@ triggers, share links, Marketplace listings and reviews, and product email
 in, and an access token from before the ban, still valid for up to an hour,
 can't keep the account either: the keep refuses an account whose ban is in
 force.
+
+Closing can't stop what was made in the seconds after it, while the other
+workers' closed-account cache still let a token issued before it through.
+API keys and app grants made then are revoked as the account opens
+(``reopen_account``). Sign-ins are not: closing ended every session, but a
+token issued before the close (on another device, valid for up to an hour)
+and the session cookie cached in the browser (for up to 5 minutes) are only
+refused while the account is closed, and work again once it is kept.
 """
 
 import logging

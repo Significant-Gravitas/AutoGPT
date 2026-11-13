@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
+from fastapi import HTTPException
 from prisma.enums import SubscriptionTier
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
@@ -1174,8 +1175,13 @@ def checkout_guard():
             "backend.data.credit._expire_open_subscription_sessions",
             new_callable=AsyncMock,
         ),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as closed,
     ):
-        yield
+        yield closed
 
 
 @pytest.mark.asyncio
@@ -2549,6 +2555,11 @@ async def test_top_up_intent_uses_inline_product_data_when_flag_unset():
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         await credit_system.top_up_intent(user_id="user-1", amount=500)
 
@@ -2588,6 +2599,11 @@ async def test_top_up_intent_references_product_id_when_flag_set():
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         await credit_system.top_up_intent(user_id="user-1", amount=2500)
 
@@ -5025,3 +5041,75 @@ async def test_build_price_to_tier_map_skips_unconfigured_prices():
         price_to_tier = await build_price_to_tier_map()
 
     assert price_to_tier == {"price_pro_monthly": SubscriptionTier.PRO}
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_checkout_refuses_a_closed_account(checkout_guard):
+    """Asked of the database first, before a Stripe customer is made: for a
+    few seconds after the close, another worker's cache can still let an old
+    token through."""
+    checkout_guard.return_value = True
+    with (
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ) as customer,
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create_async",
+            new_callable=AsyncMock,
+        ) as create,
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await _checkout_pro()
+
+    assert (refused.value.status_code, refused.value.detail) == (
+        401,
+        "This account is closed.",
+    )
+    checkout_guard.assert_awaited_once_with("user-1")
+    customer.assert_not_awaited()
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_made_as_the_account_closed_is_expired(checkout_guard):
+    """The account closed while Stripe made the Checkout: closing's sweep may
+    have run already, so the Checkout is expired here instead."""
+    checkout_guard.side_effect = [False, True]
+    session = MagicMock(id="cs_late", url="https://checkout.stripe.com/c/cs_late")
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create_async",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "backend.data.subscription_checkout.stripe.checkout.Session.expire_async",
+            new_callable=AsyncMock,
+        ) as expire,
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await _checkout_pro()
+
+    assert refused.value.status_code == 401
+    expire.assert_awaited_once_with("cs_late")
+
+
+async def _checkout_pro() -> str:
+    return await create_subscription_checkout(
+        user_id="user-1",
+        tier=SubscriptionTier.PRO,
+        success_url="https://app.example.com/success",
+        cancel_url="https://app.example.com/cancel",
+    )

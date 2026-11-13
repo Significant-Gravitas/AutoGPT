@@ -243,8 +243,13 @@ async def test_the_account_is_closed_and_left_for_erasure(
     assert user.maxEmailsPerDay == 0
     assert user.marketingOptOutSource == "account_deleted"
     assert user.topUpConfig == {"amount": 0, "threshold": 0}
-    edges.checkout_list.assert_awaited_once_with(
-        customer=account.stripe_customer_id, status="open", limit=100
+    # Before the close and once more after it, for a Checkout another worker
+    # started in the seconds before its cache knew the account was closed.
+    listed = [c.kwargs for c in edges.checkout_list.await_args_list]
+    assert (
+        listed
+        == [{"customer": account.stripe_customer_id, "status": "open", "limit": 100}]
+        * 2
     )
 
 
@@ -651,6 +656,28 @@ async def test_keeping_the_account_opens_it_again(
     again = await api.post(DELETE, json=account.confirm())
     assert again.status_code == 200
     assert await _deletion_request(account) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_key_made_after_the_close_is_revoked_when_the_account_is_kept(
+    account: Account, api: httpx.AsyncClient, edges: Edges
+):
+    """Another worker's cache can let an old token make a key in the seconds
+    after the close. It is refused while the account is closed, and must not
+    come back to life when the owner keeps the account."""
+    await api.post(DELETE, json=account.confirm())
+    late_key, _ = await create_api_key(
+        name="made on another worker",
+        user_id=account.user_id,
+        permissions=[APIKeyPermission.IDENTITY],
+    )
+    assert await _key_status(late_key.id) == APIKeyStatus.ACTIVE
+
+    kept = await api.post(RESTORE)
+
+    assert kept.status_code == 200
+    assert await _deletion_request(account) is None
+    assert await _key_status(late_key.id) == APIKeyStatus.REVOKED
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -1065,7 +1092,11 @@ async def _session_count(account: Account) -> int:
 
 
 async def _api_key_status(account: Account) -> APIKeyStatus:
-    key = await APIKey.prisma().find_unique_or_raise(where={"id": account.api_key_id})
+    return await _key_status(account.api_key_id)
+
+
+async def _key_status(key_id: str) -> APIKeyStatus:
+    key = await APIKey.prisma().find_unique_or_raise(where={"id": key_id})
     return key.status
 
 
