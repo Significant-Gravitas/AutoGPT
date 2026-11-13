@@ -7,15 +7,19 @@ its owner's own act. Reading the deletion status does not.
 The deletion, status and keep routes authenticate with
 ``get_user_id_allowing_closed``: they answer a closed account (a repeat call,
 the screen shown at sign-in during the 14 days) and a banned one (deleting
-the account is its owner's right whatever the ban). Every other route rejects
-both. None of them sits behind the payment paywall: an account without a plan
+the account is its owner's right whatever the ban; keeping it is not, so the
+keep refuses a banned account as every other route does). Every other route
+rejects both. None of them sits behind the payment paywall: an account without a plan
 must be able to delete itself.
 """
 
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, get_user_id_allowing_closed
-from autogpt_libs.auth.dependencies import IMPERSONATION_HEADER_NAME
+from autogpt_libs.auth.dependencies import (
+    ACCOUNT_BANNED_DETAIL,
+    IMPERSONATION_HEADER_NAME,
+)
 from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from prisma.enums import AccountDeletionSource
 
@@ -26,6 +30,7 @@ from backend.api.features.account_deletion.models import (
     DeletionFeedbackRequest,
 )
 from backend.api.features.account_deletion.restore import (
+    BannedAccountError,
     TooLateToRestoreError,
     get_deletion_status,
     restore_account,
@@ -120,7 +125,10 @@ async def get_account_deletion_status(
     summary="Keep my account",
     dependencies=[Depends(reject_impersonation)],
     responses={
-        403: {"description": IMPERSONATION_DETAIL},
+        403: {
+            "description": f"{IMPERSONATION_DETAIL} Or the account is banned "
+            "(`account_banned`)."
+        },
         409: {"description": TOO_LATE_DETAIL},
     },
 )
@@ -129,6 +137,8 @@ async def keep_account(
 ) -> AccountDeletionResponse:
     try:
         await restore_account(user_id)
+    except BannedAccountError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, ACCOUNT_BANNED_DETAIL)
     except TooLateToRestoreError:
         raise HTTPException(status.HTTP_409_CONFLICT, TOO_LATE_DETAIL)
     return AccountDeletionResponse(status="open")

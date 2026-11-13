@@ -132,7 +132,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "403": {
-            "description": "Account deletion isn't available while impersonating a user."
+            "description": "Account deletion isn't available while impersonating a user. Or the account is banned (`account_banned`)."
           },
           "409": {
             "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
