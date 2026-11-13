@@ -1570,13 +1570,17 @@ class ComputerUseHandler:
         other._label_renewals = self._label_renewals
 
     async def screen_size(self) -> tuple[int, int] | None:
-        """The main display's logical size, from the driver, for HELLO."""
+        """The main display's logical size, from the driver, for HELLO. The
+        whole call fits in HELLO's wait, its run as well as its start: a
+        driver that takes the call and stalls would otherwise hold HELLO past
+        the point the platform gives up on it, for a size HELLO can leave out."""
+        wait = self._hello_wait
         try:
             raw = await self.call_driver(
                 "get_screen_size",
                 {"session": self.session_label},
-                timeout=SCREEN_SIZE_SECONDS,
-                start_within=self._hello_wait,
+                timeout=SCREEN_SIZE_SECONDS if wait is None else min(SCREEN_SIZE_SECONDS, wait),
+                start_within=wait,
             )
         except (DriverUnavailable, McpError, TimeoutError):
             # HELLO goes out without the size rather than not at all.

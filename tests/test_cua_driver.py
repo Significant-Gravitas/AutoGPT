@@ -2439,6 +2439,34 @@ async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
         await parent._computer_handler.close()
 
 
+async def test_a_child_session_waits_only_briefly_for_a_screen_size_that_stalls(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """HELLO's wait bounded the screen-size probe only until the driver took
+    it. A driver that took it and then stalled held a chat's HELLO for the
+    probe's whole timeout, past the eight seconds the platform waits for a
+    chat's session, for a size HELLO goes out without."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    monkeypatch.setattr(handlers, "SCREEN_SIZE_SECONDS", 60.0)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_SLOW_SECONDS", "60")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    probe: asyncio.Future[tuple[int, int] | None] | None = None
+    try:
+        await parent._computer_handler.driver.snapshot()
+        probe = asyncio.ensure_future(child._computer_handler.screen_size())
+        done, _ = await asyncio.wait({probe}, timeout=10)
+        assert probe in done
+        assert probe.result() is None
+    finally:
+        if probe is not None:
+            probe.cancel()
+        await parent._computer_handler.close()
+
+
 async def test_a_chat_attached_again_after_two_idle_detaches_passes_its_permission_check(
     tmp_path, fake_log, monkeypatch
 ) -> None:
