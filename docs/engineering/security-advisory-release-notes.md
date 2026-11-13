@@ -9,11 +9,12 @@ publish its private advisories.
 
 1. Verify the fix in the release tag, not only on `dev`. Record the first release
    containing the fix. Distinguish a partial mitigation from a complete fix.
-   We don't ship partial mitigations, so a release that carries only one is never
-   an advisory's patched version.
+   We don't ship partial mitigations. A release that carries only one, as an older
+   release may, is never an advisory's patched version.
 2. Add a link to that release in the advisory's description text, for example
    under a Fix or Release references heading. The helper searches the API's
-   `description` field; a link only in `references[].url` is insufficient.
+   `description` field, and the repository advisory API has no references field,
+   so the link goes in the description.
    Use numeric versions in package metadata; explain the corresponding Git tag
    in the description. Do not replace the first fixed version with the latest
    release used for validation.
@@ -181,7 +182,9 @@ not put private report IDs, attachments or discussion into a public advisory.
 ## Name the Platform package
 
 Name the Platform source package `autogpt-platform-beta`, in the `other`
-ecosystem. It matches the release tags, `autogpt-platform-beta-v<VERSION>`.
+ecosystem. It matches the release tags, `autogpt-platform-beta-v<VERSION>`; the
+releases before 0.2.1 are tagged `agpt-platform-beta-v<VERSION>`, and 0.6.44 is
+tagged `v0.6.44`.
 
 ## Identify Docker distributions
 
