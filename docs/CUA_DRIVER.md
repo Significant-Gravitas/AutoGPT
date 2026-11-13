@@ -294,9 +294,12 @@ granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`, a single character pressed with `press_key`, and the character
 of a `hotkey` chord that types one: one that only holds Shift, or on macOS
-also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr; a
-chord written as one string, `press_key` key `shift+a` or `hotkey` keys
-`shift+a`, which the driver splits at `+`, is redacted the same way)
+also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr. Only
+names the driver holds as modifiers count, matched lowercased but not
+trimmed as it matches them, so `[" shift ", "a"]` and `["capslock", "a"]`
+hold none and type their character; a chord written as one string,
+`press_key` key `shift+a` or `hotkey` keys `shift+a`, which the driver
+splits at `+`, is redacted the same way)
 replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
@@ -319,7 +322,8 @@ through the same driver. The platform gives a new chat's session a few
 seconds to connect, so if another chat's call holds the driver for more
 than two of them, the new session goes ahead unchecked: the grants are the
 app's, checked when the shim started, and a busy driver is a working one.
-Its HELLO waits as briefly for the screen size, and leaves it out instead,
+Its HELLO waits as briefly for the screen size, the call's run as well as
+its start, and leaves it out instead,
 and as briefly for a driver that is starting again (after another chat's
 call overran, say), and then lists the tools the driver offered when it
 last ran, which its next start offers again.
