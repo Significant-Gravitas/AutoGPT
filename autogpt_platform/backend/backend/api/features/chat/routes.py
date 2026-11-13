@@ -187,6 +187,7 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.tools.render_ui_models import UIBlocksResponse
 from backend.copilot.transports import (
     ChatTransportsResponse,
     DefaultChatRoute,
@@ -2860,6 +2861,7 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | UIBlocksResponse
     | FeedbackPromptToolResponse
 )
 
