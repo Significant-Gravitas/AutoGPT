@@ -105,6 +105,8 @@ class PrefixReport(BaseModel):
     kept_shown: int = 0
     kept_recent: int = 0
     kept_back: int = 0
+    # Orphans whose files were all gone by the last listing (removed elsewhere).
+    emptied: int = 0
     deleted: int = 0
     files: int = 0
     size: int = 0
@@ -123,6 +125,8 @@ class PrefixReport(BaseModel):
             f"{self.kept_back} whose row exists again",
         ]
         line += "; kept: " + ", ".join(kept)
+        if self.emptied:
+            line += f"; {self.emptied} emptied by something else before the delete"
         if self.failed:
             line += (
                 f"; {sum(self.failed.values())} files failed to delete"
@@ -276,6 +280,9 @@ async def sweep_prefix(
         folder = Folder(name=folder.name, objects=objects)
         if folder.is_recent(now):
             report.kept_recent += 1
+            continue
+        if not folder.objects:
+            report.emptied += 1
             continue
         names = [o["name"] for o in folder.objects]
         failed = await delete_objects(client, bucket, names) if apply else {}

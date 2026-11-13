@@ -179,6 +179,33 @@ async def test_a_file_written_after_the_first_listing_keeps_its_folder(monkeypat
     assert bucket.deleted == []
 
 
+async def test_a_folder_emptied_elsewhere_is_not_counted_as_deleted(monkeypatch):
+    bucket = FakeBucket(
+        {
+            f"workspaces/{GONE}/f/a.txt": (1, OLD),
+            f"workspaces/{OTHER}/f/b.txt": (1, OLD),
+        }
+    )
+    calls = 0
+
+    async def existing(table: str, ids: list[str]) -> set[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            del bucket.objects[f"workspaces/{GONE}/f/a.txt"]
+        return set()
+
+    monkeypatch.setattr(tool, "existing", existing)
+
+    report = await _sweep(bucket, "workspaces/", "UserWorkspace", apply=True)
+
+    assert (report.orphans, report.deleted, report.emptied) == (2, 1, 1)
+    assert bucket.deleted == [f"workspaces/{OTHER}/f/b.txt"]
+    line = report.line("workspaces/", "UserWorkspace", True)
+    assert "deleted 1 (1 files" in line
+    assert "1 emptied by something else before the delete" in line
+
+
 async def test_report_line_names_no_folder(monkeypatch):
     bucket = FakeBucket({f"oauth-apps/{GONE}/logo.png": (2_500_000, OLD)})
     monkeypatch.setattr(tool, "existing", _rows())
