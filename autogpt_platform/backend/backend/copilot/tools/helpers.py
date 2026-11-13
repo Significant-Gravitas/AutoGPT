@@ -6,6 +6,7 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 from pydantic_core import PydanticUndefined
@@ -26,6 +27,7 @@ from backend.copilot.credential_selection import (
     turn_credential_pins,
 )
 from backend.copilot.model import ChatSession, ChatSessionMetadata
+from backend.copilot.pending_messages import finish_despite_cancellation
 from backend.copilot.permissions import denied_block_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
@@ -47,6 +49,7 @@ from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
     acquire_auto_credentials,
 )
+from backend.executor.billing import _block_has_paid_cost_entry, _with_stop_estimate
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.codex.access import enforce_codex_access
@@ -103,6 +106,10 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The least a block priced on its usage is debited before it runs, where the
+# executor has no estimate of its cost (see ``_pre_run_charge``).
+_MIN_USAGE_PRICED_DEBIT = 1
 
 
 def get_inputs_from_schema(
@@ -571,16 +578,9 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pass `use_preflight_estimate=False` because this path bypasses
-            # the executor manager and never runs reconciliation — locking in
-            # the historical-average estimate as the final charge would be
-            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
-            # those types, preserving the pre-#13031 contract.
-            cost, cost_filter = block_usage_cost(
-                block, input_data, use_preflight_estimate=False
-            )
-            # Paid for before it runs, so a timed-out or cancelled run is
-            # already settled.
+            # Debited before it runs, as the graph executor charges a node,
+            # and settled to what the run cost once it ends (below).
+            cost, cost_filter = _pre_run_charge(block, input_data)
             refused = await _debit_block_run(
                 block=block,
                 input_data=input_data,
@@ -597,9 +597,11 @@ async def execute_block(
             # Execute the block under the shared MCP wait cap. A block is
             # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
             # MCP handler would block the stream close to the idle timeout.
-            # wait_for cancels the generator on timeout; the charge stands,
-            # since external side effects may already have landed.
+            # wait_for cancels the generator on timeout; the run is still
+            # settled, since external side effects may already have landed.
             outputs: dict[str, list[Any]] = defaultdict(list)
+            started = perf_counter()
+            refunded = stopped = False
             try:
                 # Every call in the chat shares its execution id, and calls from
                 # one message run at once: each keeps its local media files in
@@ -626,6 +628,7 @@ async def execute_block(
                     and not outputs
                     and _is_setup_card_failure(block, e, matched_credentials)
                 ):
+                    refunded = True
                     await asyncio.shield(
                         _refund_block_run(
                             block=block,
@@ -664,6 +667,31 @@ async def execute_block(
                     ),
                     session_id=session_id,
                 ).from_outside()
+            except asyncio.CancelledError:
+                # The turn was stopped while the block ran.
+                stopped = True
+                raise
+            finally:
+                if not refunded:
+                    # Finishes even if the turn is stopped meanwhile.
+                    settlement = asyncio.ensure_future(
+                        _settle_block_run(
+                            block=block,
+                            input_data=input_data,
+                            debited=cost,
+                            walltime=perf_counter() - started,
+                            stopped=stopped,
+                            user_id=user_id,
+                            session_id=session_id,
+                            node_exec_id=node_exec_id,
+                            expert_id=expert_id,
+                        )
+                    )
+                    try:
+                        await asyncio.shield(settlement)
+                    except asyncio.CancelledError:
+                        await finish_despite_cancellation(settlement)
+                        raise
         finally:
             await _release_credential_leases(credential_leases)
             # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
@@ -726,10 +754,11 @@ async def _debit_block_run(
 
     The debit is the balance check: ``spend_credits`` checks the balance and
     debits it in one atomic step, refusing to overdraw.
-    A run that fails after the debit keeps its charge, as an executor
-    RUN-priced block does, since it may already have called the provider;
-    the one exception is a setup card before any output (see
-    ``_is_setup_card_failure``).
+    Once the run ends, ``_settle_block_run`` charges or gives back the
+    difference to what it cost, failed runs included, as the executor
+    settles a node, since a run may already have called the provider; the
+    one exception is a setup card before any output, which is refunded
+    whole (see ``_is_setup_card_failure``).
     """
     if cost <= 0:
         return None
@@ -762,6 +791,99 @@ async def _debit_block_run(
             session_id=session_id,
         ).from_outside()
     return None
+
+
+def _pre_run_charge(
+    block: AnyBlockSchema, input_data: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """What a block run is debited before it starts: the graph executor's
+    pre-flight charge for it (``billing.charge_usage``). A block priced on
+    its usage (SECOND, ITEMS or COST_USD) is debited its historical
+    estimate, or one credit where it has none, so a balance that can't
+    cover a credit can't start it. The rest is settled once the run ends
+    (``_settle_block_run``)."""
+    cost, cost_filter = block_usage_cost(block, input_data)
+    if cost <= 0 and _block_has_paid_cost_entry(block, input_data):
+        return _MIN_USAGE_PRICED_DEBIT, cost_filter
+    return cost, cost_filter
+
+
+async def _settle_block_run(
+    *,
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    debited: int,
+    walltime: float,
+    stopped: bool,
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    expert_id: str | None,
+) -> None:
+    """Charge, or give back, the difference between a run's debit and what
+    it cost, as the graph executor settles a node
+    (``billing.charge_reconciled_usage``): priced from the stats the block
+    recorded and the run's wall time, plus, for a run stopped during a model
+    call, that request's estimated input. A charge may take the balance
+    below zero, since the provider has already been paid. A failure is
+    logged, never raised, so the run's result still reaches the user."""
+    try:
+        stats = block.execution_stats.model_copy(update={"walltime": walltime})
+        cost, cost_filter = block_usage_cost(block, input_data, stats=stats)
+        if stopped:
+            cost = _with_stop_estimate(block, input_data, stats, cost, debited)
+        delta = cost - debited
+        if delta == 0:
+            return
+        await credit_db().spend_credits(
+            user_id=user_id,
+            cost=delta,
+            metadata=UsageTransactionMetadata(
+                chat_session_id=session_id,
+                node_exec_id=node_exec_id,
+                block_id=block.id,
+                block=block.name,
+                input={**cost_filter, "reconciled_delta": delta},
+                reason="copilot_block_execution_settlement",
+            ),
+            fail_insufficient_credits=False,
+        )
+    except Exception as e:
+        logger.error(
+            "BILLING_LEAK: block run not settled — user_id=%s, block_id=%s, "
+            "node_exec_id=%s, debited=%s: %s",
+            user_id,
+            block.id,
+            node_exec_id,
+            debited,
+            e,
+            extra={"json_fields": {"billing_leak": True, "user_id": user_id}},
+        )
+        return
+    try:
+        # A refund leaves the chat's spend ledger as it was, as
+        # ``_refund_block_run`` does.
+        if delta > 0:
+            await charge_credits(user_id, lambda: delta)
+        if metered := await metered_expert_id(user_id, expert_id):
+            await add_weekly_spend(metered, delta)
+    except Exception as e:
+        logger.error(
+            "SPEND_METERING_MISSED: block run settled but spend metering "
+            "failed — user_id=%s, block_id=%s, node_exec_id=%s, delta=%s: %s",
+            user_id,
+            block.id,
+            node_exec_id,
+            delta,
+            e,
+            extra={
+                "json_fields": {
+                    "spend_metering_missed": True,
+                    "user_id": user_id,
+                    "cost": str(delta),
+                }
+            },
+        )
 
 
 def _is_setup_card_failure(
@@ -1645,11 +1767,10 @@ async def check_spend_approval(
     threshold (SECRT-2599). None means the block may run."""
     if session.expert_id is None:
         return None
-    # Price with the credentials the run will use, not the model's own.
+    # Price with the credentials the run will use, not the model's own. A
+    # block priced on its usage is paid even before its cost is known.
     resolved = {f: m.model_dump() for f, m in prep.matched_credentials.items()}
-    cost, _ = block_usage_cost(
-        prep.block, {**prep.input_data, **resolved}, use_preflight_estimate=False
-    )
+    cost, _ = _pre_run_charge(prep.block, {**prep.input_data, **resolved})
     if cost <= 0:
         return None
     needed = await spend_approval_db().spend_approval_required(

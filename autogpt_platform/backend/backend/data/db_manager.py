@@ -153,6 +153,7 @@ from backend.data.execution import (
 from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
 from backend.data.graph import (
     get_connected_output_nodes,
+    get_copied_graph_ids,
     get_graph,
     get_graph_metadata,
     get_graph_settings,
@@ -423,6 +424,7 @@ class DatabaseManager(AppService):
     get_node = _(get_node)
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
+    get_copied_graph_ids = _(get_copied_graph_ids)
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
     get_store_listed_graphs = _(get_store_listed_graphs)
@@ -1029,6 +1031,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Graphs ============ #
     get_graph = d.get_graph
+    get_copied_graph_ids = d.get_copied_graph_ids
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
     is_graph_version_owner = d.is_graph_version_owner

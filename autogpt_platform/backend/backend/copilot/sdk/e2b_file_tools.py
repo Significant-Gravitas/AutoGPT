@@ -168,6 +168,27 @@ def _too_large(path: str, done: str) -> str:
     )
 
 
+def _utf8_len(text: str) -> int:
+    return len(text.encode("utf-8", errors="surrogatepass"))
+
+
+def _edit_too_large(
+    path: str, content: str, old_string: str, new_string: str, replacements: int
+) -> str | None:
+    """Refusal text when the edited file would pass ``_MAX_READ_BYTES``,
+    worked out before the result is built."""
+    size = _utf8_len(content) + replacements * (
+        _utf8_len(new_string) - _utf8_len(old_string)
+    )
+    if size <= _MAX_READ_BYTES:
+        return None
+    return (
+        f"Editing {os.path.basename(path)} would make it {size:,} bytes, over "
+        f"the {_MAX_READ_BYTES // 2**20} MB limit for files that can be read "
+        "or edited whole. Nothing was changed."
+    )
+
+
 _PARTIAL_TRUNCATION_MSG = (
     "Your Write call was truncated (file_path missing but content "
     "was present). The content was too large for a single tool call. "
@@ -626,6 +647,12 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
                 error=True,
             )
 
+        too_large = _edit_too_large(
+            remote, content, old_string, new_string, count if replace_all else 1
+        )
+        if too_large:
+            return _mcp(too_large, error=True)
+
         updated = (
             content.replace(old_string, new_string)
             if replace_all
@@ -684,6 +711,12 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
                 "Use replace_all=true or provide a more unique string.",
                 error=True,
             )
+
+        too_large = _edit_too_large(
+            resolved, content, old_string, new_string, count if replace_all else 1
+        )
+        if too_large:
+            return _mcp(too_large, error=True)
 
         updated = (
             content.replace(old_string, new_string)
