@@ -760,6 +760,43 @@ async def test_the_account_cannot_be_kept_once_its_erasure_started(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_banned_account_cannot_be_kept_with_a_token_from_before_the_ban(
+    account: Account, api: httpx.AsyncClient, edges: Edges, real_ban_lookup: None
+):
+    """Sign-in is refused, but an access token issued before the ban still
+    reaches the keep; it is refused there, and the account stays closed."""
+    await AuthUser.prisma().update(
+        where={"id": account.user_id}, data={"banned": True, "banReason": "spam"}
+    )
+    await api.post(DELETE, json=account.confirm())
+
+    response = await api.post(RESTORE)
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "account_banned"
+    assert await _deletion_request(account) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_whose_ban_ran_out_can_be_kept(
+    account: Account, api: httpx.AsyncClient, edges: Edges, real_ban_lookup: None
+):
+    await AuthUser.prisma().update(
+        where={"id": account.user_id},
+        data={
+            "banned": True,
+            "banExpires": datetime.now(timezone.utc) - timedelta(minutes=1),
+        },
+    )
+    await api.post(DELETE, json=account.confirm())
+
+    response = await api.post(RESTORE)
+
+    assert response.status_code == 200
+    assert await _deletion_request(account) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_the_account_can_be_kept_with_the_flag_off(
     account: Account, api: httpx.AsyncClient, edges: Edges, flag: AsyncMock
 ):
