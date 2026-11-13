@@ -144,8 +144,10 @@ def _in_stored_order(result: Any) -> list[tuple[str, str, dict[str, str]]]:
     """One XREAD's entries, oldest first across its streams.
 
     A response and a STATUS each carry the shim's free slots, and the later
-    one must be read last. The streams of one connection share a hash slot, so
-    their entry ids come from one server's clock and order them.
+    one should be read last. The streams of one connection share a hash slot,
+    so the milliseconds of their entry ids come from one server's clock and
+    order them. Each stream numbers its own entries within a millisecond, so
+    two written in the same millisecond tie and keep XREAD's order.
     """
     return sorted(
         decode_keyed_stream_entries(result),
