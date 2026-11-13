@@ -19,7 +19,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
-from prisma.errors import UniqueViolationError
+from prisma.enums import APIKeyPermission
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
@@ -28,14 +28,18 @@ from backend.data.db_accessors import chat_db, experts_db, library_db
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
+from backend.util.background import spawn_background_task
 from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
     NotFoundError,
     RedisError,
 )
+from backend.util.feature_flag import Flag, is_feature_enabled
 
+from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
+from .duplicate_message_id import is_duplicate_chat_message_id_error
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -63,7 +67,6 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
-AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
 
 
 # Redis cache key prefix for chat sessions
@@ -114,6 +117,10 @@ class ChatSessionMetadata(BaseModel):
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
     source_platform: str | None = None
+    # Whoever opened this session keeps only the final text, so visual cards
+    # would lose what they show. Not the same as ``origin="automation"``: a
+    # scheduled follow-up is machine-authored, and a person reads it.
+    text_only_result: bool = False
 
     # ``None`` means the row was persisted before this field existed, and is
     # NOT a synonym for either value: session metadata is immutable after
@@ -159,12 +166,6 @@ class ChatSessionMetadata(BaseModel):
     # session, latest wins.
     pending_question: PendingQuestion | None = None
 
-    @property
-    def pauses_irreversible_actions(self) -> bool:
-        """Whether a workflow this chat starts pauses before irreversible blocks."""
-        # A legacy row cannot prove nobody is watching, so it pauses too.
-        return self.origin != "automation"
-
 
 def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     """Origin for a fresh session a tool opens on *parent*'s behalf.
@@ -177,6 +178,42 @@ def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     cannot prove a human drove it, the child must not claim one did.
     """
     return parent.origin or "automation"
+
+
+# Deeper than any delegation chain a session may build: past it, the chat the
+# work started in is treated as unknown.
+MAX_CHAT_OF_ORIGIN_HOPS = 16
+
+
+async def chat_of_origin(
+    metadata: ChatSessionMetadata,
+) -> ChatSessionMetadata | None:
+    """The chat the work in this session started in, or None when it cannot be
+    found (a parent session is gone).
+
+    A session a tool opened for its parent (``run_sub_session`` opens every
+    sub as an automation) takes its approval rules from the chat that
+    delegated to it, so rules that depend on ``origin`` read it here.
+    """
+    for _ in range(MAX_CHAT_OF_ORIGIN_HOPS):
+        if metadata.origin != "automation" or not metadata.delegated_by_session_id:
+            return metadata
+        parent = await chat_db().get_chat_session_metadata(
+            metadata.delegated_by_session_id
+        )
+        if parent is None:
+            return None
+        metadata = parent.metadata
+    return None
+
+
+async def pauses_irreversible_actions(metadata: ChatSessionMetadata) -> bool:
+    """Whether a workflow started from this session pauses before irreversible
+    blocks, decided by the chat the work started in. One that cannot be found
+    cannot prove nobody is watching, so the workflow pauses."""
+    origin = await chat_of_origin(metadata)
+    # A legacy row cannot prove nobody is watching, so it pauses too.
+    return origin is None or origin.origin != "automation"
 
 
 class ChatMessage(BaseModel):
@@ -207,7 +244,7 @@ class ChatMessage(BaseModel):
     # model. None on user/tool rows.
     #
     # routing_source is excluded from serialized payloads: "ld" vs "env"
-    # would let a client infer LaunchDarkly cohort membership. It still
+    # would let a client infer flag cohort membership. It still
     # persists — the DB save path maps fields explicitly (not via
     # model_dump) and the back-fill reads attributes.
     model: str | None = None
@@ -221,10 +258,11 @@ class ChatMessage(BaseModel):
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
 
-    # Langfuse trace of the SDK turn that wrote this assistant or reasoning
-    # row; a rating of the reply is scored against it. Internal, so excluded
-    # from payloads like routing_source, and persisted the same way.
-    langfuse_trace_id: str | None = Field(default=None, exclude=True)
+    # PostHog trace of the turn that wrote this assistant or reasoning row
+    # (``copilot.ai_spans``): the ``$ai_trace_id`` of its generations, which a
+    # rating of the reply carries. Internal, so excluded from payloads like
+    # routing_source, and persisted the same way.
+    trace_id: str | None = Field(default=None, exclude=True)
 
     stamps_pending_save: bool = Field(default=False, exclude=True)
     """True when model/routing_source were stamped after this row was already
@@ -293,7 +331,7 @@ class ChatMessage(BaseModel):
                 "CopilotLlmAuthProvider | None", prisma_message.llmAuthProvider
             ),
             llm_credential_id=prisma_message.llmCredentialId,
-            langfuse_trace_id=prisma_message.langfuseTraceId,
+            trace_id=prisma_message.traceId,
         )
 
 
@@ -404,6 +442,8 @@ class ChatSessionInfo(BaseModel):
     is_pinned: bool = False
     # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
+    # Set when that expert was reset: the chat is kept but closed.
+    archived_at: datetime | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -457,7 +497,18 @@ class ChatSessionInfo(BaseModel):
             team_id=prisma_session.teamId,
             is_pinned=prisma_session.isPinned,
             expert_id=prisma_session.expertId,
+            archived_at=prisma_session.archivedAt,
         )
+
+
+class ChatSessionGroup(BaseModel):
+    """One expert's sessions as the sidebar lists them; Otto's own when
+    ``expert_id`` is None. ``sessions`` holds only the newest few, while
+    ``total`` counts all of them."""
+
+    expert_id: str | None = None
+    total: int
+    sessions: list[ChatSessionInfo]
 
 
 class ChatSession(ChatSessionInfo):
@@ -502,6 +553,21 @@ class ChatSession(ChatSessionInfo):
     persisted — the durable mode signal is the tool call in message
     history."""
 
+    external_caller: bool = Field(default=False, exclude=True)
+    """Runtime flag: True when an External API client calls one tool directly
+    (the v2 MCP server). Each such call gets a fresh session with no history,
+    so the checks that look for an earlier call in this session (the
+    agent-building guide, the library search before creating an agent) could
+    never pass; the client is offered those same tools and decides itself
+    when to call them. Never persisted."""
+
+    external_permissions: frozenset[APIKeyPermission] = Field(
+        default=frozenset(), exclude=True
+    )
+    """Runtime: the permissions of the External API credential behind an
+    external call, for a tool whose effects reach past the permissions it is
+    exposed with. Never persisted."""
+
     @classmethod
     def new(
         cls,
@@ -520,6 +586,8 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
+        text_only_result: bool = False,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -540,6 +608,8 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                autopilot_mode=autopilot_mode,
+                text_only_result=text_only_result,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1167,7 +1237,7 @@ async def _save_session_to_db(
                     "routing_source": msg.routing_source,
                     "llm_auth_provider": msg.llm_auth_provider,
                     "llm_credential_id": msg.llm_credential_id,
-                    "langfuse_trace_id": msg.langfuse_trace_id,
+                    "trace_id": msg.trace_id,
                     "metadata": msg.metadata,
                 }
             )
@@ -1221,7 +1291,7 @@ async def _save_session_to_db(
                 routing_source=msg.routing_source,
                 llm_auth_provider=msg.llm_auth_provider,
                 llm_credential_id=msg.llm_credential_id,
-                langfuse_trace_id=msg.langfuse_trace_id,
+                trace_id=msg.trace_id,
             )
         except Exception as e:
             logger.error(
@@ -1266,13 +1336,18 @@ async def _save_session_to_db(
 
 
 async def append_and_save_message(
-    session_id: str, message: ChatMessage
+    session_id: str, message: ChatMessage, *, dedupe_content: bool = True
 ) -> ChatSession | None:
     """Atomically append a message to a session and persist it.
 
     Returns the updated session, or None if the message was detected as a
     duplicate (idempotency guard). Callers must check for None and skip any
     downstream work (e.g. enqueuing a new LLM turn) when a duplicate is detected.
+
+    ``dedupe_content=False`` skips the trailing same-content collapse (layer 2
+    below) for a message that is the same text every time it is sent, such as
+    a continuation note; that caller has to rule out double sends itself. The
+    id check (layer 1) still applies.
 
     Uses _get_session_lock (Redis NX) to serialise concurrent writers across replicas.
     The idempotency check below provides a last-resort guard when the lock degrades.
@@ -1317,8 +1392,10 @@ async def append_and_save_message(
         # permanently.  The fix is to ensure failed turns always write
         # an error/timeout assistant message so the session always ends
         # on an assistant turn.
-        if message.content is not None and is_message_duplicate(
-            session.messages, message.role, message.content
+        if (
+            dedupe_content
+            and message.content is not None
+            and is_message_duplicate(session.messages, message.role, message.content)
         ):
             return None  # duplicate — caller should skip enqueue
 
@@ -1339,7 +1416,7 @@ async def append_and_save_message(
             # ``(sessionId, sequence)`` race that exhausted the retry
             # loop in ``add_chat_messages_batch``) and unrelated
             # exceptions surface as ``DatabaseError``.
-            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+            if is_duplicate_chat_message_id_error(e):
                 return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
@@ -1372,6 +1449,9 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+    inherited_autopilot_mode: AutopilotMode | None = None,
+    text_only_result: bool = False,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1396,6 +1476,17 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        autopilot_mode: The approval mode the chat starts on. An explicit
+            value wins; otherwise an expert session starts on the expert's
+            own default, and anything else on the platform default. Stored
+            on the session, so a later change to the expert's default never
+            rewrites an open thread. Ignored while the approval-mode flag
+            is off, like the per-thread override.
+        inherited_autopilot_mode: The mode a delegated thread must start on,
+            already decided by the caller from the parent chat and the
+            target expert (``gate.child_autopilot_mode``). Stored
+            as-is: it is a constraint rather than a pick, so the flag does
+            not drop it and the expert is not read a second time.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1406,6 +1497,9 @@ async def create_chat_session(
         organization_id, team_id = await experts_db().resolve_private_expert_tenancy(
             user_id, expert_id
         )
+    autopilot_mode = await _resolve_new_session_autopilot_mode(
+        user_id, expert_id, autopilot_mode, origin, inherited_autopilot_mode
+    )
 
     session = ChatSession.new(
         user_id,
@@ -1422,6 +1516,8 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        autopilot_mode=autopilot_mode,
+        text_only_result=text_only_result,
     )
 
     # Create in database first - fail fast if this fails
@@ -1455,6 +1551,30 @@ async def create_chat_session(
     return session
 
 
+async def _resolve_new_session_autopilot_mode(
+    user_id: str,
+    expert_id: str | None,
+    requested: AutopilotMode | None,
+    origin: ChatSessionOrigin,
+    inherited: AutopilotMode | None = None,
+) -> AutopilotMode | None:
+    """Inherited > explicit request > the expert's default > None (platform default).
+
+    The expert default is for threads a person drives: a routine, a
+    scheduled follow-up or a block-opened session is not gated, so it is
+    not looked up for one.
+    """
+    if inherited is not None:
+        return inherited
+    if requested is None and (expert_id is None or origin != "interactive"):
+        return None
+    if not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return None
+    if requested is not None or expert_id is None:
+        return requested
+    return await experts_db().get_autopilot_mode(user_id, expert_id)
+
+
 def expert_kickoff_session_id(
     user_id: str,
     expert_id: str,
@@ -1478,8 +1598,13 @@ async def get_or_create_expert_kickoff_session(
     team_id: str | None = None,
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
-    """Atomically create or adopt the canonical expert kickoff session."""
+    """Atomically create or adopt the canonical expert kickoff session.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted
+    kickoff keeps the mode it already has.
+    """
     sessions, _ = await get_user_sessions(
         user_id,
         limit=1,
@@ -1494,6 +1619,17 @@ async def get_or_create_expert_kickoff_session(
 
     session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
     existing = await get_chat_session(session_id, user_id)
+    # Resetting the expert archived that thread. The next kickoff gets an id
+    # derived from it and its archive time: still the same id for every
+    # browser racing to start it, and a new one after each reset.
+    while existing is not None and existing.archived_at is not None:
+        session_id = str(
+            uuid.uuid5(
+                _EXPERT_KICKOFF_SESSION_NAMESPACE,
+                f"{session_id}:{existing.archived_at.isoformat()}",
+            )
+        )
+        existing = await get_chat_session(session_id, user_id)
     if existing is not None:
         return existing
 
@@ -1507,6 +1643,7 @@ async def get_or_create_expert_kickoff_session(
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
             expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
         )
     except DatabaseError:
         existing = await get_chat_session(session_id, user_id)
@@ -1515,11 +1652,104 @@ async def get_or_create_expert_kickoff_session(
         raise
 
 
+class SessionIdConflictError(Exception):
+    """A client-named session id is taken by a session the caller cannot adopt."""
+
+
+async def get_or_create_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    dry_run: bool,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    """Create the session the client named, or adopt it on a retry.
+
+    The client mints *session_id* before its first attempt, so a retry after a
+    lost response lands on the session that attempt committed instead of
+    leaving it empty behind a second one. The primary key is the claim, the
+    same way a turn-start send dedupes on its ``ChatMessage`` id.
+
+    ``autopilot_mode`` only shapes a session created here; an adopted one
+    keeps the mode it started on, even if the expert's default changed since.
+
+    Raises:
+        SessionIdConflictError: the id belongs to another user's session, or
+            to one this create could not have made: another expert, another
+            organization or team, or a builder-bound session.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        try:
+            return await create_chat_session(
+                user_id,
+                dry_run=dry_run,
+                session_id=session_id,
+                organization_id=organization_id,
+                team_id=team_id,
+                llm_auth_provider=llm_auth_provider,
+                llm_credential_id=llm_credential_id,
+                expert_id=expert_id,
+                autopilot_mode=autopilot_mode,
+            )
+        except DatabaseError:
+            existing = await get_chat_session(session_id, user_id)
+            if existing is None:
+                if await get_chat_session(session_id) is not None:
+                    raise SessionIdConflictError(session_id)
+                raise
+    if not _client_session_in_scope(
+        existing,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
+    ):
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
+def _client_session_in_scope(
+    session: ChatSession,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+) -> bool:
+    """Whether a create with these arguments could have made *session*.
+
+    This endpoint only makes interactive sessions with no builder binding,
+    external platform, delegation or handoff, so a session that has any of
+    those came from another path and is never adopted. An expert session's
+    tenancy comes from the expert (``create_chat_session`` pins it to the
+    owner's private tenancy), so the expert match covers it.
+    """
+    metadata = session.metadata
+    if (
+        session.expert_id != expert_id
+        or metadata.origin != "interactive"
+        or metadata.builder_graph_id
+        or metadata.source_platform
+        or metadata.delegated_by_session_id
+        or metadata.delegated_by_expert_id
+        or metadata.handed_off_from_expert_id
+    ):
+        return False
+    if expert_id is not None:
+        return True
+    return session.organization_id == organization_id and session.team_id == team_id
+
+
 async def get_or_create_builder_session(
     user_id: str,
     graph_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
@@ -1562,6 +1792,7 @@ async def get_or_create_builder_session(
             builder_graph_id=graph_id,
             organization_id=organization_id,
             team_id=team_id,
+            autopilot_mode=autopilot_mode,
         )
         await library_db().update_library_agent(
             library_agent_id=library_agent.id,
@@ -1579,6 +1810,8 @@ async def get_user_sessions(
     title_contains: str | None = None,
     expert_id: str | None = None,
     pinned_first: bool = True,
+    autopilot_only: bool = False,
+    pinned: bool | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1586,27 +1819,85 @@ async def get_user_sessions(
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
 
-    ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``expert_id`` restricts the listing to sessions scoped to that expert,
+    ``autopilot_only`` to Otto's own sessions (no expert). ``pinned`` keeps
+    only pinned (``True``) or only unpinned (``False``) sessions.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
         number of sessions for the user (not just the current page).
     """
     db = chat_db()
-    sessions = await db.get_user_chat_sessions(
-        user_id,
-        limit,
-        offset,
-        organization_id=organization_id,
-        title_contains=title_contains,
-        expert_id=expert_id,
-        pinned_first=pinned_first,
-    )
-    total_count = await db.get_user_session_count(
-        user_id, organization_id=organization_id, expert_id=expert_id
+    sessions, total_count = await asyncio.gather(
+        db.get_user_chat_sessions(
+            user_id,
+            limit,
+            offset,
+            organization_id=organization_id,
+            title_contains=title_contains,
+            expert_id=expert_id,
+            autopilot_only=autopilot_only,
+            pinned_first=pinned_first,
+            pinned=pinned,
+        ),
+        db.get_user_session_count(
+            user_id,
+            organization_id=organization_id,
+            expert_id=expert_id,
+            autopilot_only=autopilot_only,
+            pinned=pinned,
+        ),
     )
 
     return sessions, total_count
+
+
+# The most pinned sessions the sidebar lists, newest first, so the 10-second
+# poll's read stays bounded. Older pinned sessions aren't listed past it, since
+# the groups leave every pinned session out.
+MAX_PINNED_SESSIONS = 100
+
+
+async def get_user_session_groups(
+    user_id: str,
+    min_per_group: int,
+    fill_to: int,
+    organization_id: str | None = None,
+    pinned_separately: bool = False,
+) -> tuple[list[ChatSessionGroup], list[ChatSessionInfo]]:
+    """The sidebar's sessions: one group per expert, Otto's own included, most
+    recently active first, each with its real total. Every group shows its
+    ``min_per_group`` newest sessions, and the newest of the rest fill the
+    read up to ``fill_to`` in all.
+
+    With ``pinned_separately`` the newest ``MAX_PINNED_SESSIONS`` pinned
+    sessions come back on their own, and every pinned session is left out of
+    the groups and their totals; without it the second list is empty.
+    """
+    db = chat_db()
+    if not pinned_separately:
+        groups = await db.get_user_chat_session_groups(
+            user_id, min_per_group, fill_to, organization_id=organization_id
+        )
+        return groups, []
+    groups, pinned = await asyncio.gather(
+        db.get_user_chat_session_groups(
+            user_id,
+            min_per_group,
+            fill_to,
+            organization_id=organization_id,
+            pinned=False,
+        ),
+        db.get_user_chat_sessions(
+            user_id,
+            MAX_PINNED_SESSIONS,
+            0,
+            organization_id=organization_id,
+            pinned_first=False,
+            pinned=True,
+        ),
+    )
+    return groups, pinned
 
 
 async def delete_chat_session(
@@ -1643,29 +1934,25 @@ async def delete_chat_session(
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
 
-    # Best-effort embedding cleanup so deleted sessions stop appearing in
-    # /search/global hits. Only attempt when we have a user_id since the
-    # embedding row is user-scoped; without it the user-filter would miss
-    # and the orphan row (if any) gets cleaned up by the periodic embedder.
-    if user_id:
-        try:
-            from backend.copilot.chat_session_embeddings import (
-                delete_chat_session_embedding,
-            )
-
-            await delete_chat_session_embedding(session_id, user_id)
-        except Exception as e:
-            logger.warning(f"Failed to delete session embedding for {session_id}: {e}")
-
-    # Shut down any local browser daemon for this session (best-effort).
-    # Inline import required: all tool modules import ChatSession from this
+    # Inline imports required: all tool modules import ChatSession from this
     # module, so any top-level import from tools.* would create a cycle.
-    try:
-        from .tools.agent_browser import close_browser_session
+    from backend.copilot.chat_session_embeddings import delete_chat_session_embedding
 
-        await close_browser_session(session_id, user_id=user_id)
-    except Exception as e:
-        logger.debug(f"Browser cleanup for session {session_id}: {e}")
+    from .tools.agent_browser import close_browser_session
+
+    # The cleanups below are best-effort and log their own failures, so they
+    # run after the caller gets its answer instead of holding it up.
+    # The embedding row is user-scoped; without a user_id the filter would
+    # miss and the periodic embedder sweeps the orphan row instead.
+    if user_id:
+        spawn_background_task(
+            delete_chat_session_embedding(session_id, user_id),
+            name=f"chat-embedding-delete-{session_id[:12]}",
+        )
+    spawn_background_task(
+        close_browser_session(session_id, user_id=user_id),
+        name=f"browser-close-{session_id[:12]}",
+    )
 
     return True
 

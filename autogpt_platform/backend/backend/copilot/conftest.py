@@ -1,0 +1,35 @@
+"""Fixtures shared by every copilot test."""
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_bans(mocker):
+    """No owner is banned or closed unless a test says so. Without this the
+    lookup goes to a DatabaseManager these tests don't run, and waits out its
+    retries."""
+    for module in (
+        "backend.copilot.turn_queue",
+        "backend.copilot.briefing.generate",
+    ):
+        mocker.patch(
+            f"{module}.is_user_refused", new=mocker.AsyncMock(return_value=False)
+        )
+    mocker.patch(
+        "backend.copilot.executor.processor.account_refusal",
+        new=mocker.AsyncMock(return_value=None),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_cli_prelaunch(mocker):
+    """No turn spawns a real CLI ahead of its query unless a test says so: a
+    mocked ``ClaudeSDKClient`` would take the process and never stop it.
+    Tests of the prelaunch patch ``service.CLIPrelaunch`` back themselves."""
+    mocker.patch("backend.copilot.sdk.service.CLIPrelaunch", _NoCLIPrelaunch)
+
+
+class _NoCLIPrelaunch:
+    @staticmethod
+    async def start(options, log_prefix):
+        return None

@@ -1,0 +1,776 @@
+{
+  "$comment": [
+    "The reviewed palette-to-role table scripts/ds/palette-to-role.ts applies (SECRT-3154).",
+    "Each palette step names the role it becomes as text (text, fill, stroke, decoration, caret, placeholder, accent),",
+    "as a fill (bg, from, via, to) and as a line (border, ring, divide, outline, shadow). A use a row leaves out is not rewritten.",
+    "change: none = the same value; slight = a shade shift within the hue; bigger = the hue changes (listed in the PR).",
+    "classes overrides one whole class before the step table."
+  ],
+  "classes": {
+    "text-orange-200": "text-action-foreground/80",
+    "border-l-white": "border-l-action-foreground"
+  },
+  "steps": {
+    "amber-50": {
+      "fill": "warning-surface",
+      "change": "none"
+    },
+    "amber-100": {
+      "fill": "warning-surface",
+      "change": "slight"
+    },
+    "amber-200": {
+      "fill": "warning-border",
+      "line": "warning-border",
+      "change": "none"
+    },
+    "amber-300": {
+      "fill": "warning-border",
+      "line": "warning-border",
+      "change": "slight"
+    },
+    "amber-400": {
+      "text": "warning",
+      "fill": "warning",
+      "line": "warning",
+      "change": "slight"
+    },
+    "amber-500": {
+      "text": "warning",
+      "fill": "warning",
+      "line": "warning",
+      "change": "none"
+    },
+    "amber-600": {
+      "text": "warning-foreground",
+      "change": "slight"
+    },
+    "amber-700": {
+      "text": "warning-foreground",
+      "change": "none"
+    },
+    "amber-800": {
+      "text": "warning-foreground",
+      "change": "slight"
+    },
+    "amber-900": {
+      "text": "warning-foreground",
+      "change": "slight"
+    },
+    "bgLightGrey": {
+      "fill": "surface-hover",
+      "change": "slight",
+      "note": "#F3F4F6 -> #EFEFF0"
+    },
+    "black": {
+      "text": "foreground-base",
+      "fill": "scrim",
+      "line": "scrim",
+      "change": "none",
+      "note": "#141414; as a fill or shadow it is a backdrop, scrim"
+    },
+    "blue-50": {
+      "fill": "info-surface",
+      "change": "none"
+    },
+    "blue-100": {
+      "fill": "info-surface",
+      "change": "slight"
+    },
+    "blue-200": {
+      "fill": "info/30",
+      "line": "info/30",
+      "change": "slight"
+    },
+    "blue-300": {
+      "fill": "info/50",
+      "line": "info/50",
+      "change": "slight"
+    },
+    "blue-500": {
+      "text": "info",
+      "fill": "info",
+      "line": "info",
+      "change": "none"
+    },
+    "blue-600": {
+      "text": "info-foreground",
+      "fill": "info-foreground",
+      "change": "none"
+    },
+    "blue-700": {
+      "text": "info-foreground",
+      "fill": "info-foreground/90",
+      "change": "slight",
+      "note": "as a hover fill over info-foreground, a step lighter"
+    },
+    "blue-800": {
+      "text": "info-foreground",
+      "change": "slight"
+    },
+    "cyan-200": {
+      "fill": "sky/30",
+      "change": "slight",
+      "note": "cyan -> sky, the nearest role"
+    },
+    "emerald-50": {
+      "fill": "success-surface",
+      "change": "slight"
+    },
+    "emerald-500": {
+      "text": "success",
+      "fill": "success",
+      "line": "success",
+      "change": "slight"
+    },
+    "emerald-600": {
+      "text": "success",
+      "fill": "success",
+      "line": "success",
+      "change": "slight"
+    },
+    "emerald-700": {
+      "text": "success-foreground",
+      "change": "slight"
+    },
+    "gray-50": {
+      "fill": "surface-muted",
+      "line": "surface-muted",
+      "change": "slight"
+    },
+    "gray-100": {
+      "fill": "surface-hover",
+      "line": "separator",
+      "change": "slight"
+    },
+    "gray-200": {
+      "fill": "surface-active",
+      "line": "border-base",
+      "change": "slight"
+    },
+    "gray-300": {
+      "fill": "border-strong",
+      "line": "border-strong",
+      "change": "slight"
+    },
+    "gray-400": {
+      "text": "foreground-subtle",
+      "line": "border-strong",
+      "change": "slight"
+    },
+    "gray-500": {
+      "text": "foreground-tertiary",
+      "change": "slight"
+    },
+    "gray-600": {
+      "text": "foreground-secondary",
+      "change": "slight"
+    },
+    "gray-700": {
+      "text": "foreground-body",
+      "change": "slight"
+    },
+    "gray-800": {
+      "text": "foreground-emphasis",
+      "fill": "action",
+      "line": "action",
+      "change": "slight"
+    },
+    "gray-900": {
+      "text": "foreground-base",
+      "fill": "action-hover",
+      "line": "action-hover",
+      "change": "slight"
+    },
+    "green-50": {
+      "fill": "success-surface",
+      "change": "none"
+    },
+    "green-100": {
+      "fill": "success-surface",
+      "line": "success/40",
+      "change": "slight"
+    },
+    "green-200": {
+      "fill": "success/45",
+      "line": "success/40",
+      "change": "slight"
+    },
+    "green-300": {
+      "fill": "success",
+      "line": "success",
+      "change": "slight"
+    },
+    "green-400": {
+      "fill": "success",
+      "line": "success",
+      "change": "slight"
+    },
+    "green-500": {
+      "text": "success",
+      "fill": "success",
+      "line": "success",
+      "change": "slight"
+    },
+    "green-600": {
+      "text": "success",
+      "fill": "success",
+      "line": "success",
+      "change": "none"
+    },
+    "green-700": {
+      "text": "success-foreground",
+      "change": "none"
+    },
+    "indigo-100": {
+      "fill": "indigo/15",
+      "change": "slight"
+    },
+    "indigo-200": {
+      "fill": "indigo/30",
+      "change": "slight"
+    },
+    "indigo-500": {
+      "text": "indigo",
+      "fill": "indigo",
+      "line": "indigo",
+      "change": "none"
+    },
+    "indigo-600": {
+      "text": "indigo",
+      "fill": "indigo",
+      "change": "slight"
+    },
+    "indigo-700": {
+      "text": "accent-strong",
+      "fill": "indigo",
+      "change": "slight",
+      "note": "as text, the darker purple with contrast on a pale chip"
+    },
+    "indigo-800": {
+      "fill": "indigo/90",
+      "change": "slight"
+    },
+    "neutral-50": {
+      "fill": "surface-muted",
+      "line": "surface-muted",
+      "change": "slight"
+    },
+    "neutral-100": {
+      "fill": "surface-hover",
+      "line": "separator",
+      "change": "slight"
+    },
+    "neutral-200": {
+      "fill": "surface-active",
+      "line": "border-base",
+      "change": "slight"
+    },
+    "neutral-300": {
+      "fill": "border-strong",
+      "line": "border-strong",
+      "change": "slight"
+    },
+    "neutral-400": {
+      "text": "foreground-subtle",
+      "line": "border-strong",
+      "change": "slight"
+    },
+    "neutral-500": {
+      "text": "foreground-tertiary",
+      "change": "slight"
+    },
+    "neutral-600": {
+      "text": "foreground-secondary",
+      "change": "slight"
+    },
+    "neutral-700": {
+      "text": "foreground-body",
+      "change": "slight"
+    },
+    "neutral-800": {
+      "text": "foreground-emphasis",
+      "fill": "action",
+      "line": "action",
+      "change": "slight"
+    },
+    "neutral-900": {
+      "text": "foreground-strong",
+      "fill": "action-hover",
+      "line": "action-hover",
+      "change": "slight"
+    },
+    "orange-50": {
+      "fill": "orange/10",
+      "change": "none",
+      "note": "orange at 10% is #FFF3E6, orange-50 itself"
+    },
+    "orange-100": {
+      "fill": "orange/30",
+      "change": "slight"
+    },
+    "orange-200": {
+      "fill": "orange/45",
+      "line": "orange/45",
+      "change": "slight"
+    },
+    "orange-300": {
+      "fill": "orange/70",
+      "line": "orange/70",
+      "change": "slight"
+    },
+    "orange-400": {
+      "line": "orange",
+      "change": "slight"
+    },
+    "orange-500": {
+      "text": "orange",
+      "fill": "orange",
+      "line": "orange",
+      "change": "none"
+    },
+    "orange-600": {
+      "text": "orange-foreground",
+      "fill": "orange-foreground",
+      "line": "orange-foreground",
+      "change": "none"
+    },
+    "orange-700": {
+      "text": "warning-foreground",
+      "fill": "warning-foreground",
+      "change": "slight",
+      "note": "#B46000 -> #B45309"
+    },
+    "orange-800": {
+      "text": "warning-foreground",
+      "change": "slight"
+    },
+    "orange-900": {
+      "text": "warning-foreground",
+      "change": "slight"
+    },
+    "pink-50": {
+      "fill": "pink/10",
+      "change": "none",
+      "note": "pink at 10% is #FDEDF5, pink-50 itself"
+    },
+    "pink-200": {
+      "fill": "pink/45",
+      "line": "pink/45",
+      "change": "slight"
+    },
+    "pink-500": {
+      "text": "pink",
+      "fill": "pink",
+      "line": "pink",
+      "change": "none"
+    },
+    "pink-600": {
+      "text": "pink-foreground",
+      "fill": "pink-foreground",
+      "change": "slight"
+    },
+    "pink-700": {
+      "text": "pink-foreground",
+      "change": "none"
+    },
+    "pink-800": {
+      "text": "pink-foreground",
+      "change": "slight"
+    },
+    "pink-900": {
+      "text": "pink-foreground",
+      "change": "slight"
+    },
+    "purple-50": {
+      "fill": "accent-surface",
+      "change": "slight"
+    },
+    "purple-100": {
+      "fill": "accent-surface",
+      "change": "slight"
+    },
+    "purple-200": {
+      "fill": "brand/30",
+      "line": "brand/30",
+      "change": "slight"
+    },
+    "purple-300": {
+      "text": "brand",
+      "fill": "brand",
+      "line": "brand",
+      "change": "slight"
+    },
+    "purple-400": {
+      "text": "brand",
+      "fill": "brand",
+      "line": "brand",
+      "change": "slight"
+    },
+    "purple-500": {
+      "text": "brand",
+      "fill": "brand",
+      "line": "brand",
+      "change": "none"
+    },
+    "purple-600": {
+      "text": "brand-hover",
+      "fill": "brand-hover",
+      "line": "brand-hover",
+      "change": "none"
+    },
+    "purple-700": {
+      "text": "accent-strong",
+      "fill": "accent-strong",
+      "line": "accent-strong",
+      "change": "slight"
+    },
+    "purple-800": {
+      "text": "accent-strong",
+      "fill": "accent-strong",
+      "line": "accent-strong",
+      "change": "slight"
+    },
+    "red-50": {
+      "fill": "error-surface",
+      "change": "none"
+    },
+    "red-100": {
+      "fill": "error-surface",
+      "change": "slight"
+    },
+    "red-200": {
+      "fill": "error/20",
+      "line": "error/20",
+      "change": "slight"
+    },
+    "red-300": {
+      "fill": "error/40",
+      "line": "error/40",
+      "change": "slight"
+    },
+    "red-400": {
+      "text": "error",
+      "fill": "error",
+      "line": "error",
+      "change": "slight"
+    },
+    "red-500": {
+      "text": "error",
+      "fill": "error",
+      "line": "error",
+      "change": "none"
+    },
+    "red-600": {
+      "text": "error-foreground",
+      "fill": "error-hover",
+      "line": "error-hover",
+      "change": "slight",
+      "note": "as text, the darker red the family reads at"
+    },
+    "red-700": {
+      "text": "error-foreground",
+      "change": "none"
+    },
+    "red-800": {
+      "text": "error-foreground",
+      "change": "slight"
+    },
+    "rose-50": {
+      "fill": "error-surface",
+      "change": "slight",
+      "note": "rose and red share the error family"
+    },
+    "rose-200": {
+      "fill": "error/20",
+      "line": "error/20",
+      "change": "slight"
+    },
+    "rose-500": {
+      "text": "error",
+      "fill": "error",
+      "line": "error",
+      "change": "slight"
+    },
+    "rose-600": {
+      "text": "error-hover",
+      "fill": "error-hover",
+      "line": "error-hover",
+      "change": "slight"
+    },
+    "rose-700": {
+      "text": "error-foreground",
+      "change": "slight"
+    },
+    "rose-800": {
+      "text": "error-foreground",
+      "change": "slight"
+    },
+    "sky-50": {
+      "fill": "info-surface",
+      "change": "slight",
+      "note": "#F0F9FF -> #EFF6FF"
+    },
+    "sky-200": {
+      "fill": "sky/30",
+      "line": "sky/30",
+      "change": "slight"
+    },
+    "sky-400": {
+      "text": "sky",
+      "fill": "sky",
+      "line": "sky",
+      "change": "slight"
+    },
+    "sky-500": {
+      "text": "sky",
+      "fill": "sky",
+      "line": "sky",
+      "change": "none"
+    },
+    "sky-600": {
+      "text": "sky-foreground",
+      "line": "sky-foreground",
+      "change": "slight"
+    },
+    "sky-700": {
+      "text": "sky-foreground",
+      "change": "none"
+    },
+    "sky-800": {
+      "text": "sky-foreground",
+      "change": "slight"
+    },
+    "slate-50": {
+      "fill": "surface-muted",
+      "line": "surface-muted",
+      "change": "slight"
+    },
+    "slate-100": {
+      "fill": "surface-hover",
+      "line": "separator",
+      "change": "slight"
+    },
+    "slate-200": {
+      "fill": "surface-active",
+      "line": "border-base",
+      "change": "slight"
+    },
+    "slate-300": {
+      "fill": "border-strong",
+      "line": "border-strong",
+      "change": "slight"
+    },
+    "slate-400": {
+      "text": "foreground-subtle",
+      "line": "border-strong",
+      "change": "slight"
+    },
+    "slate-500": {
+      "text": "foreground-tertiary",
+      "change": "slight"
+    },
+    "slate-600": {
+      "text": "foreground-secondary",
+      "change": "slight"
+    },
+    "slate-700": {
+      "text": "foreground-body",
+      "change": "slight"
+    },
+    "slate-800": {
+      "text": "foreground-emphasis",
+      "fill": "action",
+      "line": "action",
+      "change": "slight"
+    },
+    "slate-900": {
+      "text": "foreground-strong",
+      "fill": "action-hover",
+      "line": "action-hover",
+      "change": "slight"
+    },
+    "teal-500": {
+      "fill": "sky",
+      "change": "bigger",
+      "note": "teal -> sky, the nearest role"
+    },
+    "teal-600": {
+      "fill": "success",
+      "change": "bigger",
+      "note": "teal -> green"
+    },
+    "teal-700": {
+      "fill": "success-foreground",
+      "change": "bigger",
+      "note": "teal -> green"
+    },
+    "textBlack": {
+      "text": "foreground-base",
+      "change": "slight",
+      "note": "#1F1F20 -> #141414"
+    },
+    "textGrey": {
+      "text": "foreground-body",
+      "change": "none",
+      "note": "#505057, the same value"
+    },
+    "violet-50": {
+      "fill": "accent-surface",
+      "change": "none"
+    },
+    "violet-100": {
+      "fill": "accent-surface",
+      "change": "slight"
+    },
+    "violet-200": {
+      "fill": "brand/20",
+      "line": "brand/20",
+      "change": "slight"
+    },
+    "violet-300": {
+      "text": "brand/40",
+      "fill": "brand/40",
+      "line": "brand/40",
+      "change": "slight"
+    },
+    "violet-500": {
+      "text": "brand",
+      "fill": "brand",
+      "line": "brand",
+      "change": "slight"
+    },
+    "violet-600": {
+      "text": "brand",
+      "fill": "brand",
+      "line": "brand",
+      "change": "slight"
+    },
+    "violet-700": {
+      "text": "accent-strong",
+      "fill": "accent-strong",
+      "line": "accent-strong",
+      "change": "none"
+    },
+    "violet-800": {
+      "text": "accent-strong",
+      "change": "slight"
+    },
+    "violet-900": {
+      "text": "accent-strong",
+      "change": "slight"
+    },
+    "white": {
+      "text": "action-foreground",
+      "fill": "surface",
+      "line": "surface",
+      "change": "none",
+      "note": "#FEFEFE, the app's white"
+    },
+    "yellow-50": {
+      "fill": "warning-surface",
+      "change": "slight",
+      "note": "#FEF9E6 -> #FFFBEB"
+    },
+    "yellow-100": {
+      "fill": "yellow/30",
+      "change": "slight"
+    },
+    "yellow-200": {
+      "fill": "warning-border",
+      "line": "warning-border",
+      "change": "slight",
+      "note": "#FAE28A -> #FDE68A"
+    },
+    "yellow-300": {
+      "fill": "yellow/70",
+      "line": "yellow/70",
+      "change": "slight"
+    },
+    "yellow-400": {
+      "line": "yellow",
+      "change": "slight"
+    },
+    "yellow-500": {
+      "text": "yellow",
+      "fill": "yellow",
+      "line": "yellow",
+      "change": "none"
+    },
+    "yellow-600": {
+      "text": "yellow-foreground",
+      "fill": "yellow-foreground",
+      "change": "slight",
+      "note": "#DFAF00 -> #AE8800"
+    },
+    "yellow-700": {
+      "text": "yellow-foreground",
+      "change": "none"
+    },
+    "yellow-800": {
+      "text": "yellow-foreground",
+      "change": "slight"
+    },
+    "yellow-900": {
+      "text": "yellow-foreground",
+      "change": "slight"
+    },
+    "zinc-50": {
+      "fill": "surface-muted",
+      "line": "surface-muted",
+      "change": "none"
+    },
+    "zinc-100": {
+      "fill": "surface-hover",
+      "line": "separator",
+      "change": "none"
+    },
+    "zinc-200": {
+      "fill": "surface-active",
+      "line": "border-base",
+      "change": "none"
+    },
+    "zinc-300": {
+      "text": "foreground-disabled",
+      "fill": "border-strong",
+      "line": "border-strong",
+      "change": "none"
+    },
+    "zinc-400": {
+      "text": "foreground-subtle",
+      "fill": "foreground-subtle",
+      "line": "foreground-subtle",
+      "change": "none"
+    },
+    "zinc-500": {
+      "text": "foreground-tertiary",
+      "fill": "foreground-tertiary",
+      "line": "foreground-tertiary",
+      "change": "none"
+    },
+    "zinc-600": {
+      "text": "foreground-secondary",
+      "fill": "foreground-secondary",
+      "line": "foreground-secondary",
+      "change": "none"
+    },
+    "zinc-700": {
+      "text": "foreground-body",
+      "fill": "foreground-body",
+      "line": "foreground-body",
+      "change": "none"
+    },
+    "zinc-800": {
+      "text": "foreground-emphasis",
+      "fill": "action",
+      "line": "action",
+      "change": "none"
+    },
+    "zinc-900": {
+      "text": "foreground-strong",
+      "fill": "action-hover",
+      "line": "action-hover",
+      "change": "none"
+    }
+  }
+}

@@ -42,6 +42,7 @@ _RAISE_MODULE = "backend.copilot.tools.raise_expert"
 _UPDATE_MODULE = "backend.copilot.tools.update_expert"
 _PROPOSAL_MODULE = "backend.copilot.tools.expert_proposal"
 _CONFIRM_MODULE = "backend.copilot.tools.confirm_expert_change"
+_PARK_MODULE = "backend.copilot.tools.expert_handoff_proposal"
 
 _CHARTER = {
     "name": "Otto",
@@ -49,15 +50,9 @@ _CHARTER = {
     "job_title": "Executive Assistant",
     "tagline": "Sorts your morning inbox and drafts the routine replies.",
     "color": "violet-300",
-    "avatar_glasses": "glasses",
-    "avatar_beard": "none",
-    "avatar_hat": "none",
     "about": "You group the morning inbox and draft routine replies.",
     "boundaries": "You never send a reply yourself.",
 }
-
-
-AVATAR_KEYS = {"avatar_glasses", "avatar_beard", "avatar_hat"}
 
 
 class _FakeRedis:
@@ -156,8 +151,7 @@ def _env(
         patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
-        patch(f"{_HIRE_MODULE}.get_redis_async", shared_redis),
-        patch(f"{_RAISE_MODULE}.get_redis_async", shared_redis),
+        patch(f"{_PARK_MODULE}.get_redis_async", shared_redis),
         patch(f"{_UPDATE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_CONFIRM_MODULE}.get_redis_async", shared_redis),
     ):
@@ -234,45 +228,20 @@ class TestPreviewNeverWrites:
         assert resp.preview.about == _CHARTER["about"]
         assert resp.preview.boundaries == _CHARTER["boundaries"]
         assert resp.preview.color == _CHARTER["color"]
-        assert (
-            resp.preview.avatar_url
-            == "/avatars/notion/11-12-11-10-7-4-32-0-0-0.violet.svg"
-        )
         db.create_raised_expert.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_seeds_an_avatar_from_the_name_when_none_is_picked(self):
+    async def test_raise_starts_on_the_general_fallback_appearance(self):
+        """A raised Expert never borrows a roster face or a category sheet; its
+        owner picks or generates an appearance from the Team page later."""
         with _env():
-            charter = {k: v for k, v in _CHARTER.items() if k not in AVATAR_KEYS}
-            resp = await _raise(make_session(_USER), **charter)
+            resp = await _raise(make_session(_USER), **_CHARTER)
         assert isinstance(resp, ExpertChangeProposedResponse)
-        # Golden vector cross-checked against the frontend's
-        # notionConfigForName: "otto" seeds these ten parts and the violet
-        # token maps to lavender. A literal, not build_avatar_url(), so a drift
-        # in the FNV/LCG constants, the draw order or the "none" odds fails
-        # here instead of comparing the implementation to itself.
         assert (
             resp.preview.avatar_url
-            == "/avatars/notion/11-12-11-10-7-0-32-5-0-0.violet.svg"
+            == "/autogpt-characters/v2.1/expert-general-01/neutral/128.webp"
         )
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_rejects_unknown_avatar_glasses(self):
-        with _env():
-            resp = await _raise(
-                make_session(_USER), **{**_CHARTER, "avatar_glasses": "monocle"}
-            )
-        assert isinstance(resp, ErrorResponse)
-        assert "avatar_glasses" in resp.message
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_raise_rejects_an_unknown_avatar_beard(self):
-        with _env():
-            resp = await _raise(
-                make_session(_USER), **{**_CHARTER, "avatar_beard": "muttonchops"}
-            )
-        assert isinstance(resp, ErrorResponse)
-        assert "avatar_beard" in resp.message
+        assert "avatar_category" not in RaiseExpertTool().parameters["properties"]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_hire_preview_carries_the_template_tagline(self):
@@ -563,7 +532,7 @@ class TestConfirm:
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.applied is True
         assert resp.kind == "hire"
-        db.hire_expert.assert_awaited_once_with(_USER, "tpl-scout", "Recon")
+        db.hire_expert.assert_awaited_once_with(_USER, "tpl-scout", "Recon", "copilot")
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_confirm_raises_exactly_what_was_previewed(self):

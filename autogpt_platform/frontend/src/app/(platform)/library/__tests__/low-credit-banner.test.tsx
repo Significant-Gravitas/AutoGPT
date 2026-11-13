@@ -18,7 +18,11 @@ import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPrompt
 import LibraryPage from "../page";
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+  useAuth: () => ({
+    user: { id: "user-a" },
+    isUserLoading: false,
+    isLoggedIn: true,
+  }),
 }));
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real
@@ -30,9 +34,16 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === actual.Flag.ENABLE_PLATFORM_PAYMENT,
+    useGetFlag: () => false,
   };
 });
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: true,
+    isResolved: true,
+  }),
+}));
 
 function setupLibraryHandlers() {
   server.use(
@@ -104,7 +115,11 @@ describe("Library low-credit banner", () => {
 
     renderLibraryWithTopUpPrompt();
 
-    expect(await screen.findByText(/out of automation credits/i)).toBeDefined();
+    expect(
+      await screen.findByText(
+        /out of automation credits\. Top up to keep your workflows running\./i,
+      ),
+    ).toBeDefined();
   });
 
   test("the Top up CTA opens the top-up dialog", async () => {
@@ -123,7 +138,7 @@ describe("Library low-credit banner", () => {
     // The dialog body copy mentions experts, which the banner copy does not —
     // keeps this assertion unambiguous against the banner's own message.
     expect(
-      await screen.findByText(/keep your agents and experts/i),
+      await screen.findByText(/keep your workflows and experts/i),
     ).toBeDefined();
   });
 

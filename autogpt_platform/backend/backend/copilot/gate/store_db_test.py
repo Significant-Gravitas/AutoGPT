@@ -1,12 +1,13 @@
 """The gate's state against Postgres: the approval mutex and the chat's mode."""
 
 import asyncio
+import json
 
 import pytest
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
 
-from backend.copilot.gate import resolve_mode
+from backend.copilot.gate import held, reads, resolve_mode
 from backend.copilot.gate import review as review_store
 from backend.copilot.model import (
     ChatSession,
@@ -14,6 +15,8 @@ from backend.copilot.model import (
     update_session_autopilot_mode,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.db_accessors import review_db
 
 
@@ -99,3 +102,44 @@ async def test_another_users_session_cannot_be_moved(setup_test_user, test_user_
     assert not await update_session_autopilot_mode(
         session.session_id, "someone-else", "unsupervised"
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "output",
+    [
+        '{"type": "web_fetch", "content": "plain page — naïve"}',
+        json.dumps({"content": [{"type": "text", "text": "\x1b[31mraw\x00\x1b[0m"}]}),
+    ],
+    ids=["registry-json", "mcp-envelope-with-control-chars"],
+)
+async def test_a_held_read_comes_back_from_its_row_byte_identical(
+    setup_test_user, test_user_id, output
+):
+    """The JSON column strips raw control characters; the seams hand it
+    escaped ones, so the late result is the bytes the model would have got."""
+    session = await upsert_chat_session(
+        ChatSession.new(user_id=test_user_id, dry_run=False)
+    )
+    args = {"path": "/tmp/page"}
+    call = held.HeldCall(
+        review_id=reads.read_review_id(
+            session.session_id, test_user_id, "read_file", args
+        ),
+        tool_name="read_file",
+        tool_call_id="call-1",
+        args=args,
+        cost_context=TrialCostContext(user_id=test_user_id, trial_id=None),
+    )
+    await reads._hold(call, test_user_id, session, "src", "passage", output, True)
+    await PendingHumanReview.prisma().update(
+        where={"nodeExecId": call.review_id}, data={"status": ReviewStatus.APPROVED}
+    )
+
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(test_user_id, session, delivered.append):
+        pass
+
+    [late] = delivered
+    assert late.metadata["held_call"]["outcome"] == "approved"
+    assert late.content.split(">\n", 1)[1] == f"{output}\n</held_call_result>"

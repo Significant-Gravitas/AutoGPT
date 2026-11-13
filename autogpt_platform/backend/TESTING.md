@@ -39,6 +39,20 @@ poetry run pytest -v
 poetry run pytest --cov=backend
 ```
 
+The local test stack uses the same PostgreSQL 15 + pgvector image as CI. Its
+`test-db-data` volume is separate from the development database.
+
+Tests that need backend services must request the `server` fixture, directly or
+through a setup fixture. It starts the services once per session and cleans up
+graphs and store listings before stopping them. Pure unit tests do not start
+these service processes.
+
+For local runs on platforms with `forkserver`, the service processes share
+preloaded code and models instead of importing separate copies. CI retains its
+existing process startup. The preload must stay free of
+background threads and open database connections; `scripts/test_server_fixture.py`
+checks this contract.
+
 ## Snapshot Testing
 
 Snapshot testing captures the output of your code and compares it against previously saved snapshots. This is particularly useful for testing API responses.

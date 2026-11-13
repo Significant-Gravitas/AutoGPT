@@ -10,6 +10,8 @@ from redis.exceptions import ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+from backend.util import tracing
+
 if TYPE_CHECKING:
     from backend.data.redis_client import AsyncRedisClient, RedisClient
 
@@ -104,6 +106,15 @@ class ClusterLock:
             return None
 
     def refresh(self) -> bool:
+        """Refresh lock TTL if we still own it; see ``_refresh``.
+
+        A keepalive repeated for as long as the lock is held, so its Redis
+        calls are kept out of the holder's Sentry transaction.
+        """
+        with tracing.suppress_child_spans():
+            return self._refresh()
+
+    def _refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
 
         Rate limited to at most once every timeout/10 seconds (minimum 1 second).
@@ -173,12 +184,11 @@ class ClusterLock:
 
         Owner-checked: only deletes the Redis key if the stored value still
         matches our owner_id. Prevents wiping a successor's lock when the
-        original key was force-released externally and re-acquired.
+        original key was force-released externally and re-acquired. Runs even
+        after a failed refresh, which may have been a transient Redis error
+        while this holder still owned the key; skipping the delete would leave
+        the key held until its TTL.
         """
-        with self._refresh_lock:
-            if self._last_refresh == 0:
-                return
-
         try:
             self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id)
         except Exception:
@@ -244,6 +254,15 @@ class AsyncClusterLock:
             return None
 
     async def refresh(self) -> bool:
+        """Refresh lock TTL if we still own it; see ``_refresh``.
+
+        A keepalive repeated for as long as the lock is held, so its Redis
+        calls are kept out of the holder's Sentry transaction.
+        """
+        with tracing.suppress_child_spans():
+            return await self._refresh()
+
+    async def _refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
 
         Rate limited to at most once every timeout/10 seconds (minimum 1 second).
@@ -309,16 +328,7 @@ class AsyncClusterLock:
             return False
 
     async def release(self):
-        """Release the lock.
-
-        Owner-checked: only deletes the Redis key if the stored value still
-        matches our owner_id. Prevents wiping a successor's lock when the
-        original key was force-released externally and re-acquired.
-        """
-        async with self._refresh_lock:
-            if self._last_refresh == 0:
-                return
-
+        """Release the lock; see :meth:`ClusterLock.release`."""
         try:
             await cast(Any, self.redis.eval(_RELEASE_LUA, 1, self.key, self.owner_id))
         except Exception:

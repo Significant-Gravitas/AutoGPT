@@ -1,3 +1,5 @@
+import { CHAT_IMAGE_TOKEN_PREFIXES } from "../../helpers/chatImageTokens";
+
 export interface CredentialMention {
   credentialId: string;
   provider: string;
@@ -8,7 +10,8 @@ export interface CredentialMentionPart extends CredentialMention {
   token: string;
 }
 
-export const CREDENTIAL_IMAGE_PREFIX = "/__credential-mention/";
+export const CREDENTIAL_IMAGE_PREFIX =
+  CHAT_IMAGE_TOKEN_PREFIXES.credentialMention;
 const MENTION_PATTERN =
   /\[((?:\\.|[^\\\]])*)\]\(credential:\/\/([^/\s]+)\/([^\s)]+)\)/g;
 

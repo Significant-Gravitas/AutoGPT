@@ -3,9 +3,12 @@
 Step 1 of the confirm-gated hire flow: resolve the template, check the team
 has room, and park the exact proposal under a one-time ``confirmation_id``.
 ``confirm_expert_change`` applies it once the user approves.
+
+A hire proposed for a task the user already described carries that task and
+is parked twice, plain hire and "hire and start" (see
+``expert_handoff_proposal``).
 """
 
-import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
@@ -13,14 +16,18 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.api.features.experts.models import EXPERT_NAME_MAX_LENGTH, Expert
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import experts_db
-from backend.data.redis_client import get_redis_async
 
 from .base import BaseTool
+from .expert_handoff_proposal import (
+    HANDOFF_PARAMETERS,
+    park_proposal,
+    parse_handoff,
+    proposed_message,
+)
 from .expert_proposal import (
     ExpertChangeProposal,
     autopilot_session_guard,
     capacity_error,
-    store_proposal,
     user_turn_watermark,
 )
 from .models import (
@@ -53,11 +60,11 @@ class HireExpertTool(BaseTool):
         return (
             "Propose hiring a ready-made expert from the roster. Never "
             "writes: returns who would join plus a one-time confirmation_id. "
-            "The user sees who would join on a card with Approve and Decline "
-            "buttons, so do not describe them in text — one short line at "
-            "most, then wait. Only after they approve, call "
-            "tool:confirm_expert_change with that id. Use tool:raise_expert when no "
-            "template fits."
+            "The user answers on a card, so do not describe it in text — one "
+            "short line at most, then wait. Only after they approve, call "
+            "tool:confirm_expert_change with the id they approved. For a task "
+            "already in the chat, pass handoff_title + handoff_task. Use "
+            "tool:raise_expert when no template fits."
         )
 
     @property
@@ -73,6 +80,7 @@ class HireExpertTool(BaseTool):
                     "type": "string",
                     "description": "Rename the hire; omit to keep the template name.",
                 },
+                **HANDOFF_PARAMETERS,
             },
             "required": ["template_id"],
         }
@@ -84,6 +92,8 @@ class HireExpertTool(BaseTool):
         *,
         template_id: str = "",
         name: str = "",
+        handoff_title: str = "",
+        handoff_task: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id
@@ -96,61 +106,66 @@ class HireExpertTool(BaseTool):
                 message="template_id is required.", session_id=session_id
             )
 
-        try:
-            params = _HireParams(name=" ".join(name.split()))
-        except ValidationError as e:
-            return ErrorResponse(
-                message=f"Invalid expert name — {_validation_detail(e)}",
-                session_id=session_id,
-            )
+        params = _hire_params(name)
+        if isinstance(params, str):
+            return ErrorResponse(message=params, session_id=session_id)
+        handoff = parse_handoff(handoff_title, handoff_task)
+        if isinstance(handoff, str):
+            return ErrorResponse(message=handoff, session_id=session_id)
 
         template = await _find_template(template_id.strip())
         if template is None:
             return ErrorResponse(
                 message=(
                     f"No expert template with id {template_id.strip()} is on "
-                    "the roster. List the roster and pick a current one."
+                    'the roster. Find one with find_capability(kind="expert").'
                 ),
                 session_id=session_id,
             )
         if error := await capacity_error(user_id, session_id, "hire"):
             return error
 
-        preview = ExpertChangePreview(
-            kind="hire",
-            name=params.name or template.name,
-            role=template.role,
-            tagline=template.tagline or "",
-            about=template.identity,
-            boundaries=template.boundaries,
-            voice_preferences=template.voice_preferences,
-            template_id=template.id,
-            avatar_url=template.avatar_url,
-            color=template.color,
-        )
-        confirmation_id = str(uuid.uuid4())
-        await store_proposal(
-            await get_redis_async(),
-            confirmation_id,
+        preview = _preview(template, params.name)
+        confirmation_id, handoff_confirmation_id = await park_proposal(
             ExpertChangeProposal(
                 user_id=user_id,
                 session_id=session_id,
                 preview=preview,
                 user_turn_watermark=user_turn_watermark(session),
-            ),
+                handoff=handoff,
+            )
         )
         return ExpertChangeProposedResponse(
-            message=(
-                "Nothing hired yet. The user is looking at this expert on a "
-                "card with Approve and Decline buttons — do not describe "
-                "them in text. Reply with one short line at most and wait. "
-                "Only after they explicitly approve, call "
-                "tool:confirm_expert_change with this confirmation_id."
-            ),
+            message=proposed_message("hire", handoff is not None),
             session_id=session_id,
             preview=preview,
             confirmation_id=confirmation_id,
+            handoff=handoff,
+            handoff_confirmation_id=handoff_confirmation_id,
         )
+
+
+def _hire_params(name: str) -> _HireParams | str:
+    """The validated hire arguments, or why they are refused."""
+    try:
+        return _HireParams(name=" ".join(name.split()))
+    except ValidationError as e:
+        return f"Invalid hire — {_validation_detail(e)}"
+
+
+def _preview(template: Expert, name: str) -> ExpertChangePreview:
+    return ExpertChangePreview(
+        kind="hire",
+        name=name or template.name,
+        role=template.role,
+        tagline=template.tagline or "",
+        about=template.identity,
+        boundaries=template.boundaries,
+        voice_preferences=template.voice_preferences,
+        template_id=template.id,
+        avatar_url=template.avatar_url,
+        color=template.color,
+    )
 
 
 async def _find_template(template_id: str) -> Expert | None:

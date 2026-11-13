@@ -148,7 +148,7 @@ class MyBlock(Block):
 The `ProviderBuilder` is available for advanced use cases (OAuth, webhooks, cost tracking). It allows you to:
 - **`.with_api_key()`**: Add API key authentication
 - **`.with_oauth()`**: Add OAuth authentication
-- **`.with_base_cost()`**: Set resource costs for the block
+- **`.with_base_cost()`**: Set what a run costs when it uses the platform's own key for this provider (for example the one `.with_api_key()` reads from the environment); runs on a user's own key are free
 - **`.with_webhook_manager()`**: Add webhook support
 - **`.with_user_password()`**: Add username/password auth
 

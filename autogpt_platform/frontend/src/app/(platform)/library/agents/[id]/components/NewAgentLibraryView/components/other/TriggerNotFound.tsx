@@ -17,7 +17,7 @@ export function TriggerNotFound({ agent, banner, onClearSelection }: Props) {
     <SelectedViewLayout agent={agent} banner={banner}>
       <RunDetailCard title="Trigger not found">
         <div className="flex flex-col items-start gap-4">
-          <Text variant="body" className="!text-zinc-500">
+          <Text variant="body" tone="muted">
             This trigger doesn&apos;t exist or is no longer available.
           </Text>
           {onClearSelection && (

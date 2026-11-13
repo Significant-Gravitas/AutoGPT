@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Optional
 
@@ -8,6 +7,7 @@ from replicate.client import Client as ReplicateClient
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -17,7 +17,11 @@ from backend.blocks.replicate._auth import (
     TEST_CREDENTIALS_INPUT,
     ReplicateCredentialsInput,
 )
-from backend.blocks.replicate._helper import extract_result
+from backend.blocks.replicate._helper import (
+    ReplicateModelNotRunnableError,
+    create_unpinned_prediction,
+    extract_result,
+)
 from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
@@ -26,7 +30,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.util.exceptions import BlockExecutionError, BlockInputError
-from backend.util.file import MediaFileType, store_media_file
+from backend.util.file import MediaFileType, check_total_file_size, store_media_file
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +99,12 @@ class ReplicateModelBlock(Block):
         )
         version: Optional[str] = SchemaField(
             default=None,
-            description="Specific version hash of the model (optional)",
+            description=(
+                "Version hash of the model to run. Leave empty to run the "
+                "latest version: official models run through Replicate's "
+                "model endpoint, and community models run their latest "
+                "published version."
+            ),
             placeholder="db21e45d3f7023abc2a46ee38a23973f6dce16bb082a930b0c49861f96d1e5bf",
             advanced=True,
         )
@@ -134,6 +143,7 @@ class ReplicateModelBlock(Block):
                     "Mock response from Replicate model"
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -166,6 +176,10 @@ class ReplicateModelBlock(Block):
             yield "result", result
             yield "status", "succeeded"
             yield "model_name", input_data.model_name
+        except ReplicateModelNotRunnableError as e:
+            raise BlockInputError(
+                message=str(e), block_name=self.name, block_id=self.id
+            ) from e
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error running Replicate model: {error_msg}")
@@ -205,17 +219,18 @@ class ReplicateModelBlock(Block):
         if not input_data.files:
             return model_inputs
 
-        uploaded = await asyncio.gather(
-            *(
-                store_media_file(
-                    file=file,
-                    execution_context=execution_context,
-                    return_format="for_external_api",
-                )
-                for file in input_data.files
+        # One at a time, so the total is checked before the next is loaded.
+        data_uris: list[str] = []
+        total_size = 0
+        for file in input_data.files:
+            data_uri = await store_media_file(
+                file=file,
+                execution_context=execution_context,
+                return_format="for_external_api",
             )
-        )
-        data_uris = [str(uri) for uri in uploaded]
+            total_size += len(data_uri)
+            check_total_file_size(total_size)
+            data_uris.append(str(data_uri))
         model_inputs[input_data.file_input_field] = (
             data_uris[0] if len(data_uris) == 1 else data_uris
         )
@@ -240,16 +255,17 @@ class ReplicateModelBlock(Block):
         api_key_str = api_key.get_secret_value()
         client = ReplicateClient(api_token=api_key_str)
 
-        # Replicate SDK: version-pinned refs use `version=`; unpinned use
-        # `model=`. Matches the `owner/name[:version]` contract above.
+        # Replicate SDK: version-pinned refs use `version=`; unpinned refs
+        # try `model=` and fall back to the latest version (see _helper).
+        # Matches the `owner/name[:version]` contract above.
         if ":" in model_ref:
             model_name, version = model_ref.split(":", 1)
             prediction = await client.predictions.async_create(
                 version=version, input=model_inputs
             )
         else:
-            prediction = await client.predictions.async_create(
-                model=model_ref, input=model_inputs
+            prediction = await create_unpinned_prediction(
+                client, model_ref, model_inputs
             )
 
         await prediction.async_wait()

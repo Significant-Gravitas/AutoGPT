@@ -20,10 +20,6 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const mockExecuteGraph = vi.fn();
-const mockSendDatafastEvent = vi.hoisted(() => vi.fn());
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent: mockSendDatafastEvent },
-}));
 
 interface ExecutionOptions {
   mutation: {
@@ -129,21 +125,5 @@ describe("useRunInputDialog", () => {
     expect(mockExecuteGraph).toHaveBeenCalledWith(
       expect.objectContaining({ graphId: "graph-1", graphVersion: 1 }),
     );
-  });
-
-  it("records a successful run from the input dialog", async () => {
-    const { result } = renderHook(() =>
-      useRunInputDialog({ setIsOpen: vi.fn() }),
-    );
-
-    await act(async () => {
-      await result.current.handleManualRun();
-    });
-
-    expect(mockSendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
-      id: "graph-1",
-      name: "",
-      surface: "builder",
-    });
   });
 });

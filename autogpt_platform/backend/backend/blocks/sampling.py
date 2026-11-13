@@ -1,3 +1,4 @@
+import heapq
 import random
 from collections import defaultdict
 from enum import Enum
@@ -6,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 from backend.blocks._base import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -96,10 +98,16 @@ class DataSamplingBlock(Block):
                 ),
                 ("sample_indices", [0, 1, 8]),
             ],
+            effect=BlockEffect.NONE,
         )
         self.accumulated_data = []
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        if input_data.sample_size < 0:
+            raise ValueError(
+                f"Sample size ({input_data.sample_size}) cannot be negative."
+            )
+
         if input_data.accumulate:
             if isinstance(input_data.data, dict):
                 self.accumulated_data.append(input_data.data)
@@ -121,8 +129,8 @@ class DataSamplingBlock(Block):
                 else [input_data.data]
             )
 
-        if input_data.random_seed is not None:
-            random.seed(input_data.random_seed)
+        # Its own generator: runs on other threads cannot reseed it mid-sample.
+        rng = random.Random(input_data.random_seed)
 
         data_size = len(data_to_sample)
 
@@ -134,10 +142,10 @@ class DataSamplingBlock(Block):
         indices = []
 
         if input_data.sampling_method == SamplingMethod.RANDOM:
-            indices = random.sample(range(data_size), input_data.sample_size)
+            indices = rng.sample(range(data_size), input_data.sample_size)
         elif input_data.sampling_method == SamplingMethod.SYSTEMATIC:
             step = data_size // input_data.sample_size
-            start = random.randint(0, step - 1)
+            start = rng.randint(0, step - 1)
             indices = list(range(start, data_size, step))[: input_data.sample_size]
         elif input_data.sampling_method == SamplingMethod.TOP:
             indices = list(range(input_data.sample_size))
@@ -173,18 +181,12 @@ class DataSamplingBlock(Block):
             }
 
             # Adjust sizes to ensure we get exactly sample_size samples
-            while sum(stratum_sizes.values()) != input_data.sample_size:
-                if sum(stratum_sizes.values()) < input_data.sample_size:
-                    stratum_sizes[
-                        max(stratum_sizes, key=lambda k: stratum_sizes[k])
-                    ] += 1
-                else:
-                    stratum_sizes[
-                        max(stratum_sizes, key=lambda k: stratum_sizes[k])
-                    ] -= 1
+            _balance_stratum_sizes(
+                stratum_sizes, strata, data_size, input_data.sample_size
+            )
 
             for stratum, size in stratum_sizes.items():
-                indices.extend(random.sample(strata[stratum], size))
+                indices.extend(rng.sample(strata[stratum], size))
         elif input_data.sampling_method == SamplingMethod.WEIGHTED:
             if not input_data.weight_key:
                 raise ValueError("Weight key must be provided for weighted sampling.")
@@ -215,13 +217,13 @@ class DataSamplingBlock(Block):
                     f"No valid weights found using key '{input_data.weight_key}'"
                 )
 
-            indices = random.choices(
+            indices = rng.choices(
                 range(data_size), weights=weights, k=input_data.sample_size
             )
         elif input_data.sampling_method == SamplingMethod.RESERVOIR:
             indices = list(range(input_data.sample_size))
             for i in range(input_data.sample_size, data_size):
-                j = random.randint(0, i)
+                j = rng.randint(0, i)
                 if j < input_data.sample_size:
                     indices[j] = i
         elif input_data.sampling_method == SamplingMethod.CLUSTER:
@@ -240,23 +242,17 @@ class DataSamplingBlock(Block):
 
                 clusters[str(cluster_value)].append(i)
 
-            # Randomly select clusters until we have enough samples
-            selected_clusters = []
-            while (
-                sum(len(clusters[c]) for c in selected_clusters)
-                < input_data.sample_size
-            ):
-                available_clusters = [c for c in clusters if c not in selected_clusters]
-                if not available_clusters:
+            # Take clusters in random order until we have enough samples
+            cluster_order = list(clusters)
+            rng.shuffle(cluster_order)
+            for cluster in cluster_order:
+                if len(indices) >= input_data.sample_size:
                     break
-                selected_clusters.append(random.choice(available_clusters))
-
-            for cluster in selected_clusters:
                 indices.extend(clusters[cluster])
 
             # If we have more samples than needed, randomly remove some
             if len(indices) > input_data.sample_size:
-                indices = random.sample(indices, input_data.sample_size)
+                indices = rng.sample(indices, input_data.sample_size)
         else:
             raise ValueError(f"Unknown sampling method: {input_data.sampling_method}")
 
@@ -268,3 +264,48 @@ class DataSamplingBlock(Block):
 
         yield "sampled_data", sampled_data
         yield "sample_indices", indices
+
+
+def _balance_stratum_sizes(
+    stratum_sizes: dict[str, int],
+    strata: dict[str, list[int]],
+    data_size: int,
+    sample_size: int,
+) -> None:
+    """Top up or trim *stratum_sizes* in place until they sum to *sample_size*.
+
+    Each step adjusts the stratum that is furthest below its proportional
+    share (top-up) or the largest one (trim), the earliest stratum winning a
+    tie. Heaps pick that stratum at each step.
+    """
+    order = {key: position for position, key in enumerate(stratum_sizes)}
+    total = sum(stratum_sizes.values())
+
+    if total > sample_size:
+        largest = [(-size, order[key], key) for key, size in stratum_sizes.items()]
+        heapq.heapify(largest)
+        for _ in range(total - sample_size):
+            negative_size, position, key = heapq.heappop(largest)
+            stratum_sizes[key] -= 1
+            heapq.heappush(largest, (negative_size + 1, position, key))
+        return
+
+    def shortfall(key: str) -> float:
+        return len(strata[key]) / data_size * sample_size - stratum_sizes[key]
+
+    # Only top up strata that still have unsampled items, or random.sample()
+    # asks for more than the stratum has. Total capacity is
+    # data_size >= sample_size, so a candidate always exists.
+    furthest_below = [
+        (-shortfall(key), order[key], key)
+        for key in stratum_sizes
+        if stratum_sizes[key] < len(strata[key])
+    ]
+    heapq.heapify(furthest_below)
+    for _ in range(sample_size - total):
+        if not furthest_below:
+            return
+        _, position, key = heapq.heappop(furthest_below)
+        stratum_sizes[key] += 1
+        if stratum_sizes[key] < len(strata[key]):
+            heapq.heappush(furthest_below, (-shortfall(key), position, key))

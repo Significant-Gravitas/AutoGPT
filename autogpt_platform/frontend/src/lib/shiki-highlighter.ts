@@ -1,11 +1,5 @@
-import {
-  bundledLanguages,
-  bundledLanguagesInfo,
-  createHighlighter,
-  type BundledLanguage,
-  type BundledTheme,
-  type HighlighterGeneric,
-} from "shiki";
+import type { BundledLanguage, BundledTheme, HighlighterGeneric } from "shiki";
+import { bundledLanguages, bundledLanguagesInfo } from "shiki/langs";
 
 export type { BundledLanguage, BundledTheme };
 
@@ -45,13 +39,19 @@ export function getShikiHighlighter(): Promise<
   HighlighterGeneric<BundledLanguage, BundledTheme>
 > {
   if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({
-      themes: SHIKI_THEMES,
-      langs: PRELOAD_LANGUAGES,
-    }).catch((err) => {
-      highlighterPromise = null;
-      throw err;
-    });
+    // The highlighter's engine stays out of the first load: it is fetched with
+    // the first code block. The language table above only holds lazy imports.
+    highlighterPromise = import("shiki")
+      .then(({ createHighlighter }) =>
+        createHighlighter({
+          themes: SHIKI_THEMES,
+          langs: PRELOAD_LANGUAGES,
+        }),
+      )
+      .catch((err) => {
+        highlighterPromise = null;
+        throw err;
+      });
   }
   return highlighterPromise;
 }

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Forward02Icon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { bubbleClassFor } from "../ColorStep/helpers";
-import { aboutPlaceholderFor } from "../RoleStep/helpers";
+import { aboutPlaceholderFor } from "./helpers";
 
 interface Props {
   submittedAbout: string | null;
@@ -33,9 +33,9 @@ export function AboutStep({
     return (
       <div
         className={cn(
-          "ml-auto max-w-[80%] rounded-2xl border px-4 py-3 text-[15px] leading-relaxed text-foreground",
+          "ml-auto max-w-[80%] rounded-2xl border px-4 py-3 text-body-md leading-relaxed text-foreground-base",
           isSkipped && "flex w-fit items-center gap-2",
-          bubbleClassFor(color) ?? "border-accent bg-accent/5",
+          bubbleClassFor(color) ?? "border-brand bg-brand/5",
         )}
       >
         {isSkipped ? (
@@ -79,7 +79,8 @@ export function AboutStep({
           variant="primary"
           size="small"
           disabled={!trimmed}
-          className="h-[2.625rem] rounded-xl py-3"
+          shape="rounded"
+          className="h-[2.625rem]"
         >
           That&apos;s it
         </Button>
@@ -88,7 +89,8 @@ export function AboutStep({
           variant="ghost"
           size="small"
           onClick={onSkip}
-          className="h-[2.625rem] rounded-xl py-3"
+          shape="rounded"
+          className="h-[2.625rem]"
         >
           Skip
         </Button>

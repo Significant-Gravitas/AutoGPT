@@ -164,14 +164,6 @@ export const getHandleId = <
   return parentHandleId;
 };
 
-export function isCredentialFieldSchema(schema: any): boolean {
-  return (
-    typeof schema === "object" &&
-    schema !== null &&
-    "credentials_provider" in schema
-  );
-}
-
 export function parseHandleIdToPath(handleId: string): PathSegment[] {
   const cleanedId = cleanUpHandleId(handleId);
   const segments: PathSegment[] = [];
@@ -275,4 +267,9 @@ export function ensurePathExists(
   }
 
   return modified;
+}
+
+export function isPromptValuesEntry(handleId: unknown) {
+  if (typeof handleId !== "string") return false;
+  return parseHandleIdToPath(handleId)[0]?.key === "prompt_values";
 }

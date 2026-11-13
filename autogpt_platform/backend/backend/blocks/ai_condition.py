@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 
 from backend.blocks._base import (
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -133,6 +134,7 @@ class AIConditionBlock(AIBlockBase):
                     reasoning=None,
                 )
             },
+            effect=BlockEffect.READ,
         )
 
     async def llm_call(
@@ -151,6 +153,7 @@ class AIConditionBlock(AIBlockBase):
             force_json_output=False,
             max_tokens=max_tokens,
             execution_context=execution_context,
+            on_abandoned=self.merge_stats,
         )
 
     async def run(
@@ -208,12 +211,8 @@ class AIConditionBlock(AIBlockBase):
             execution_context=kwargs.get("execution_context"),
         )
 
-        # Extract the boolean result from the response
-        result, error = _parse_boolean_response(response.response)
-        if error:
-            yield "error", error
-
-        # Update internal stats
+        # Record the call's usage before any output: an error output ends the
+        # run, and nothing after it would be reached.
         self.merge_stats(
             NodeExecutionStats(
                 input_token_count=response.prompt_tokens,
@@ -224,6 +223,11 @@ class AIConditionBlock(AIBlockBase):
             )
         )
         self.prompt = response.prompt
+
+        # Extract the boolean result from the response
+        result, error = _parse_boolean_response(response.response)
+        if error:
+            yield "error", error
 
         # Yield results
         yield "result", result

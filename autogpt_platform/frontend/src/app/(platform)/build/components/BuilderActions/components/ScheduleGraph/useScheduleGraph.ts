@@ -15,7 +15,7 @@ export const useScheduleGraph = () => {
   const [openCronSchedulerDialog, setOpenCronSchedulerDialog] = useState(false);
 
   const handleScheduleGraph = async () => {
-    await saveGraph(undefined);
+    if (!(await saveGraph(undefined))) return;
     if (hasInputs() || hasCredentials()) {
       setOpenScheduleInputDialog(true);
     } else {

@@ -7,6 +7,7 @@ viewer can drill into the underlying agent run; the cascade rules are
 encoded here (see :func:`disable_chat_session_share`).
 """
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -25,10 +26,11 @@ from prisma.models import (
     UserWorkspaceFile,
 )
 
-from backend.blocks import get_block
+from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.hidden_rows import is_hidden_from_model
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.sharing.models import (
     ChatShareState,
@@ -40,6 +42,11 @@ from backend.copilot.sharing.models import (
 )
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.db import transaction
+from backend.data.execution import attach_nodes_to_executions
+from backend.data.includes import (
+    EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
+    graph_execution_include,
+)
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 from backend.util import type as type_utils
@@ -91,7 +98,7 @@ async def enable_chat_session_share(
     Raises ValueError if the session does not belong to *user_id*.
     """
     session = await PrismaChatSession.prisma().find_first(
-        where={"id": session_id, "userId": user_id},
+        where={"id": session_id, "userId": user_id, "archivedAt": None},
     )
     if not session:
         raise ValueError(f"Chat session {session_id} not found for user")
@@ -152,9 +159,11 @@ async def enable_chat_session_share(
 
         # Session update goes LAST inside the transaction so the chat
         # only becomes publicly readable after the allowlist + linkage
-        # are committed.
-        await PrismaChatSession.prisma(tx).update(
-            where={"id": session_id},
+        # are committed.  Conditional on the chat still being open: an
+        # expert reset can archive it after the check above, and the
+        # raise rolls back every write this share made.
+        shared = await PrismaChatSession.prisma(tx).update_many(
+            where={"id": session_id, "archivedAt": None},
             data={
                 "isShared": True,
                 "shareToken": share_token,
@@ -162,6 +171,8 @@ async def enable_chat_session_share(
                 "autoShareExecutions": auto_share_executions,
             },
         )
+        if not shared:
+            raise ValueError(f"Chat session {session_id} not found for user")
 
     return share_token
 
@@ -310,7 +321,12 @@ async def get_chat_session_by_share_token(
 ) -> SharedChatSession | None:
     """Look up a shared session header (no messages, no auth)."""
     session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            # A reset expert's archived chats are no longer readable.
+            "archivedAt": None,
+        },
     )
     if not session:
         return None
@@ -335,7 +351,12 @@ async def get_shared_chat_messages_paginated(
     disabled (uniform with :func:`get_chat_session_by_share_token`).
     """
     session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            # A reset expert's archived chats are no longer readable.
+            "archivedAt": None,
+        },
     )
     if not session:
         return None
@@ -353,7 +374,11 @@ async def get_shared_chat_messages_paginated(
         messages=[
             sanitize_chat_message(message)
             for message in page.messages
+            # Hidden control turns, and the platform's notes to the owner: a
+            # scheduled chat's note says what their plan, usage or connections
+            # are, and the shared copy carries no metadata to hide it by.
             if not is_hidden_chat_message(message.metadata)
+            and not is_hidden_from_model(message.metadata)
         ],
         has_more=page.has_more,
         oldest_sequence=page.oldest_sequence,
@@ -378,7 +403,17 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     SharedChatFile row so subsequent downloads short-circuit.
     """
     record = await SharedChatFile.prisma().find_first(
-        where={"shareToken": share_token, "fileId": file_id}
+        where={
+            "shareToken": share_token,
+            "fileId": file_id,
+            "Session": {
+                "is": {
+                    "shareToken": share_token,
+                    "isShared": True,
+                    "archivedAt": None,
+                }
+            },
+        }
     )
     if record is not None:
         return record.sessionId
@@ -387,7 +422,12 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     # but the chat keeps accumulating messages.  Re-derive ownership
     # from the live messages for this token before giving up.
     session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            # A reset expert's archived chats are no longer readable.
+            "archivedAt": None,
+        },
     )
     if session is None:
         return None
@@ -478,16 +518,18 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
     # live state of the chat — sharing is live, not snapshot-at-enable
     # (see the share-modal warning text), so the numbers under the
     # toggle ARE the numbers that will be visible the moment the
-    # owner clicks "Enable sharing".
+    # owner clicks "Enable sharing".  Read only once the row proved the
+    # session is the user's.  The messages are counted first, so a message
+    # landing meanwhile can only add to what the two scans find, never be
+    # counted with its runs and files left out; the scans run side by side.
     message_count = await PrismaChatMessage.prisma().count(
         where={"sessionId": session_id},
     )
-    linked_run_count = len(
-        await _collect_execution_ids_from_messages(session_id=session_id)
+    linked_run_ids, file_count = await asyncio.gather(
+        _collect_execution_ids_from_messages(session_id=session_id),
+        _count_referenced_workspace_files(session_id=session_id, user_id=user_id),
     )
-    file_count = await _count_referenced_workspace_files(
-        session_id=session_id, user_id=user_id
-    )
+    linked_run_count = len(linked_run_ids)
 
     return ChatShareState(
         is_shared=row.isShared,
@@ -720,17 +762,16 @@ async def _build_shared_execution_file_allowlist(
     """
     node_rows = await AgentGraphExecution.prisma(tx).find_unique(
         where={"id": execution_id},
-        include={
-            "NodeExecutions": {
-                "include": {
-                    "Input": True,
-                    "Node": {"include": {"AgentBlock": True}},
-                }
-            }
-        },
+        # The shared-run viewer's own filter and cap, with each node read once.
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()],
+            node_execution_include=EXECUTION_RESULT_INCLUDE_WITHOUT_NODE,
+        ),
     )
     if node_rows is None or node_rows.NodeExecutions is None:
         return 0
+
+    await attach_nodes_to_executions(node_rows.NodeExecutions, tx)
 
     outputs = _collect_public_execution_outputs(node_rows)
     file_ids = extract_workspace_file_ids(outputs)
@@ -773,7 +814,7 @@ async def _resolve_linked_executions(
     session_id: str,
 ) -> list[SharedChatLinkedExecution]:
     rows = await ChatLinkedShare.prisma().find_many(
-        where={"sessionId": session_id},
+        where={"sessionId": session_id, "Execution": {"is": {"isDeleted": False}}},
         include={"Execution": {"include": {"AgentGraph": True}}},
     )
     out: list[SharedChatLinkedExecution] = []

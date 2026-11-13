@@ -14,11 +14,6 @@ def _server_noop():
     return None
 
 
-@pytest.fixture(scope="session", autouse=True, name="graph_cleanup")
-def _graph_cleanup_noop():
-    yield
-
-
 def _model(
     model: str,
     *,
@@ -74,7 +69,7 @@ def _transport(monkeypatch, models: list[CodexModelInfo]):
 @pytest.mark.parametrize(
     "mode,tier,expected_model,expected_effort",
     [
-        ("fast", "standard", "gpt-5.6-luna", "low"),
+        ("fast", "standard", "gpt-6-luna", "low"),
         ("fast", "advanced", "gpt-6-astra", "medium"),
         ("thinking", "standard", "gpt-5.6-terra", "high"),
         ("thinking", "advanced", "gpt-6-astra", "xhigh"),
@@ -89,7 +84,7 @@ async def test_catalog_cells_select_latest_advertised_model(
     expected_effort,
 ):
     models = [
-        _model("gpt-5.6-luna"),
+        _model("gpt-6-luna"),
         _model("gpt-5.6-terra"),
         _model("gpt-5.6-sol", default=True),
         _model("gpt-6-astra"),
