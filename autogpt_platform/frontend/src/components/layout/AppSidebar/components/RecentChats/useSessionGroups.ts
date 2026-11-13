@@ -16,8 +16,7 @@ import {
  *  chat count: at least its newest few chats, with the newest of the rest
  *  filling the sidebar up to its limit, most recently active group first.
  *  Plus the pinned chats on their own when the sidebar shows them in their
- *  own section. One request, refreshed every ten seconds like the list it
- *  replaces. */
+ *  own section. One request, read again every ten seconds. */
 export function useSessionGroups(pinnedSeparately: boolean) {
   const query = useQuery({
     queryKey: [...SESSION_GROUPS_QUERY_KEY, { pinnedSeparately }],
