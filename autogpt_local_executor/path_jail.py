@@ -323,9 +323,10 @@ def write_jail_file(
     contents whole. An existing file keeps its mode, less set-user-ID and
     set-group-ID, and its owner and group; a new one gets 0o666 less the
     umask. Where the directory takes no new entries, (on Windows) another
-    program has the file open, or the shim may not give the new file the old
+    program has the file open, the shim may not give the new file the old
     one's owner and group (a file another account owns, a group the shim
-    isn't in), the file is overwritten in place.
+    isn't in), or (on Windows) the old file's owner or DACL isn't what the
+    new one gets from the folder, the file is overwritten in place.
     """
     path = assert_inside_jail(requested_path, allowed_root)
     owner: tuple[int, int] | None = None
@@ -390,6 +391,8 @@ def _replace_with(
                     os.fchown(file.fileno(), *owner)
             if mode is not None and hasattr(os, "fchmod"):
                 os.fchmod(file.fileno(), mode)
+            if mode is not None and sys.platform == "win32":
+                _refuse_other_windows_permissions(path, temp)
             file.write(data)
             file.flush()
             os.fsync(file.fileno())
@@ -400,6 +403,86 @@ def _replace_with(
         with contextlib.suppress(OSError):
             os.unlink(temp)
         raise
+
+
+def _refuse_other_windows_permissions(path: Path, temp: Path) -> None:
+    """PermissionError, which writes the file in place, unless the new file
+    beside `path` has the owner and DACL `path` has (Windows). The new file
+    takes the folder's inheritable entries and the rename keeps them, so a
+    file with entries of its own (inheritance off, its owner alone, in a
+    folder other accounts can read) would become readable to them. Checked
+    before any content is written; written in place, the file keeps its
+    own permissions."""
+    try:
+        same = _windows_owner_and_dacl(temp) == _windows_owner_and_dacl(path)
+    except OSError as exc:
+        raise PermissionError(
+            errno.EACCES, f"The permissions of {path} couldn't be compared ({exc})"
+        ) from exc
+    if not same:
+        raise PermissionError(
+            errno.EACCES, f"{path} has permissions a replacement wouldn't keep"
+        )
+
+
+def _windows_owner_and_dacl(path: Path) -> str:
+    """`path`'s owner and DACL, as an SDDL string (Windows)."""
+    if sys.platform != "win32":
+        raise OSError(errno.ENOTSUP, "Windows only")
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_security = advapi32.GetNamedSecurityInfoW
+    get_security.argtypes = [
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    get_security.restype = wintypes.DWORD
+    as_text = advapi32.ConvertSecurityDescriptorToStringSecurityDescriptorW
+    as_text.argtypes = [
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_void_p,
+    ]
+    as_text.restype = wintypes.BOOL
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    se_file_object, sddl_revision_1 = 1, 1
+    owner_and_dacl = 0x1 | 0x4  # OWNER_ and DACL_SECURITY_INFORMATION
+
+    descriptor = ctypes.c_void_p()
+    status = get_security(
+        str(path),
+        se_file_object,
+        owner_and_dacl,
+        None,
+        None,
+        None,
+        None,
+        ctypes.byref(descriptor),
+    )
+    if status:
+        raise ctypes.WinError(status)
+    try:
+        text = ctypes.c_void_p()
+        if not as_text(descriptor, sddl_revision_1, owner_and_dacl, ctypes.byref(text), None):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return ctypes.wstring_at(text.value) if text.value else ""
+        finally:
+            kernel32.LocalFree(text)
+    finally:
+        kernel32.LocalFree(descriptor)
 
 
 __all__ = [

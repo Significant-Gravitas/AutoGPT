@@ -522,8 +522,12 @@ so no other account can open it, and read the new contents, before then. An exis
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
-write does replace gets a new inode, extended attributes and ACLs on the
-old file don't carry over. Where the directory takes no new entries, (on
+write does replace gets a new inode, extended attributes and POSIX ACLs on
+the old file don't carry over. On Windows the new file would take the
+folder's inherited permissions, so a file whose owner or DACL differs from
+what the folder gives a new file (inheritance turned off, entries of its
+own) is written in place, keeping its own; the shim compares the two
+before any content is written. Where the directory takes no new entries, (on
 Windows) another program has the file open, or the shim may not give the new
 file the old one's owner and group (a file another account owns, a group the
 shim isn't in), the shim overwrites the file in place instead:

@@ -1446,6 +1446,74 @@ async def test_a_write_that_fails_part_way_leaves_the_old_contents(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
 
 
+def _windows_acl(path: Path) -> list[str]:
+    """`path`'s access entries as icacls prints them, one per line."""
+    import subprocess
+
+    printed = subprocess.run(
+        ["icacls", str(path)], capture_output=True, text=True, check=True
+    ).stdout
+    return [line.replace(str(path), "").strip() for line in printed.splitlines() if ":(" in line]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DACLs")
+@pytest.mark.asyncio
+async def test_a_write_keeps_a_windows_files_own_permissions(tmp_path: Path) -> None:
+    """A rewrite renamed a new file over the old one, and the new file had
+    the folder's inherited DACL: a file the person had made private
+    (inheritance off, their account alone) in a folder other accounts can
+    read became readable to them. Such a file is written in place now."""
+    import subprocess
+
+    target = tmp_path / "private.txt"
+    target.write_text("the person's notes", encoding="utf-8")
+    account = subprocess.run(
+        ["whoami"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    subprocess.run(
+        ["icacls", str(target), "/inheritance:r", "/grant:r", f"{account}:(F)"],
+        capture_output=True,
+        check=True,
+    )
+    private = _windows_acl(target)
+    assert private and not any("(I)" in entry for entry in private)
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text(encoding="utf-8") == "new"
+    assert _windows_acl(target) == private
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["private.txt"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows DACLs")
+@pytest.mark.asyncio
+async def test_a_write_still_replaces_a_windows_file_with_the_folders_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file whose DACL is the folder's, as most are, is still replaced, so a
+    write that fails part way leaves it whole."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    target = tmp_path / "notes.txt"
+    target.write_text("old", encoding="utf-8")
+    inherited = _windows_acl(target)
+    replaced: list[str] = []
+    real_replace = path_jail.os.replace
+
+    def replace(src, dst) -> None:
+        replaced.append(str(dst))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(path_jail.os, "replace", replace)
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert replaced == [str(target)]
+    assert target.read_text(encoding="utf-8") == "new"
+    assert _windows_acl(target) == inherited
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes any file")
 @pytest.mark.asyncio
