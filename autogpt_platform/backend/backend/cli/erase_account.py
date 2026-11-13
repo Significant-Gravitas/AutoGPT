@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import click
@@ -105,6 +106,8 @@ def _log_the_erasure_only() -> None:
     ("Account erasure of <user ID>: ...", IDs only) in the log, and only
     warnings from everything else, which keeps Prisma and client chatter out
     of the report."""
+    # The handlers take LOG_LEVEL; above INFO they would drop those lines.
+    os.environ["LOG_LEVEL"] = "INFO"
     configure_logging()
     logging.getLogger().setLevel(logging.WARNING)
     logging.getLogger("backend.data.account_erasure").setLevel(logging.INFO)
