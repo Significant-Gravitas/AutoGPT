@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import subprocess
 import sys
@@ -17,6 +18,9 @@ DOCKERFILE_PATH = ASSET_DIR / "Dockerfile"
 SUPERVISOR_PATH = ASSET_DIR / "supervisor" / "supervisord.conf"
 NGINX_CONF_PATH = ASSET_DIR / "nginx" / "nginx.conf"
 BACKEND_SERVICE_PATH = ASSET_DIR.parent / "backend" / "backend" / "util" / "service.py"
+TRUSTED_PROXIES_VECTORS_PATH = (
+    ASSET_DIR.parent / "backend" / "backend" / "util" / "trusted_proxies_vectors.json"
+)
 
 
 class InternalServiceTopologyTest(unittest.TestCase):
@@ -399,6 +403,25 @@ class TrustedProxiesTest(unittest.TestCase):
             result.stdout.splitlines()[-1], "172.18.0.0/16 10.0.0.1/32|127.0.0.1,::1"
         )
 
+    def test_parses_the_vectors_the_backend_parser_also_meets(self) -> None:
+        vectors = json.loads(TRUSTED_PROXIES_VECTORS_PATH.read_text(encoding="utf-8"))
+        for vector in vectors["accepted"]:
+            with self.subTest(value=vector["value"]):
+                result = _validate_trusted_proxies(vector["value"])
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.split(), vector["networks"])
+        for vector in vectors["rejected"]:
+            with self.subTest(value=vector["value"]):
+                result = _validate_trusted_proxies(vector["value"])
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    "TRUSTED_PROXIES takes IP addresses or CIDR ranges; "
+                    f"cannot parse: {vector['unparseable']}\n",
+                    result.stderr,
+                )
+
     def test_refuses_an_entry_that_is_not_an_address_or_range(self) -> None:
         for value in ("nginx-proxy", "10.0.0.1; include /etc/passwd", "10.0.0.0/33"):
             with self.subTest(value=value):
@@ -463,6 +486,20 @@ def _configure(
         capture_output=True,
         encoding="utf-8",
         env=environment,
+    )
+
+
+def _validate_trusted_proxies(value: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            str(ASSET_DIR / "runtime_config.py"),
+            "validate-trusted-proxies",
+            value,
+        ],
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
     )
 
 

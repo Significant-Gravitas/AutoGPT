@@ -816,7 +816,8 @@ def validate_trusted_proxies(value: str) -> str:
     networks; only these normalized forms reach nginx's config.
 
     Kept in step by hand with the backend's parse_trusted_proxies
-    (backend/util/trusted_proxies.py), which this image cannot import."""
+    (backend/util/trusted_proxies.py), which this image cannot import; both are
+    tested against backend/util/trusted_proxies_vectors.json."""
     networks = []
     for entry in (part.strip() for part in value.split(",")):
         if not entry:

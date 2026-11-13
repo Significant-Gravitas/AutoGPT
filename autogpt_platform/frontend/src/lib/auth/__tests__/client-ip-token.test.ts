@@ -93,6 +93,16 @@ describe("getClientIPToken", () => {
     ).not.toBeNull();
   });
 
+  it("signs nothing on TRUST_X_FORWARDED_FOR alone, which no longer vouches for the header", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("TRUSTED_PROXIES", "");
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
+
+    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
+    expect(mintServiceTokenMock).not.toHaveBeenCalled();
+  });
+
   it("answers null when signing fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mintServiceTokenMock.mockRejectedValueOnce(new Error("no jwks"));

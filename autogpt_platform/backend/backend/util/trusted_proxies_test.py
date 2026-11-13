@@ -1,7 +1,9 @@
 """The client is named only by the proxies TRUSTED_PROXIES lists, the same way
 for every reader."""
 
+import json
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +21,10 @@ CLIENT = "203.0.113.7"
 NGINX = "172.18.0.2"
 HOST_PROXY = "172.18.0.5"
 PROXIES = "172.18.0.0/16, 10.0.0.1"
+# The single-container image's own parser reads the same vectors (test_entrypoint.py).
+VECTORS = json.loads(
+    (Path(__file__).with_name("trusted_proxies_vectors.json")).read_text()
+)
 
 
 @pytest.mark.parametrize(
@@ -187,3 +193,21 @@ def test_an_install_that_sets_neither_hears_nothing(
 
 def test_the_list_parses_once_per_value() -> None:
     assert parse_trusted_proxies(PROXIES) is parse_trusted_proxies(PROXIES)
+
+
+@pytest.mark.parametrize("vector", VECTORS["accepted"], ids=lambda v: repr(v["value"]))
+def test_parses_the_shared_vectors_the_container_parser_also_meets(vector) -> None:
+    networks = parse_trusted_proxies(vector["value"])
+
+    assert [str(network) for network in networks] == vector["networks"]
+
+
+@pytest.mark.parametrize("vector", VECTORS["rejected"], ids=lambda v: repr(v["value"]))
+def test_refuses_the_shared_vectors_the_container_parser_also_refuses(vector) -> None:
+    with pytest.raises(ValueError) as refused:
+        parse_trusted_proxies(vector["value"])
+
+    assert str(refused.value) == (
+        "TRUSTED_PROXIES takes IP addresses or CIDR ranges; "
+        f"cannot parse: {vector['unparseable']}"
+    )

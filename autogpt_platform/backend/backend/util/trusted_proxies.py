@@ -46,7 +46,8 @@ def parse_trusted_proxies(value: str) -> tuple[IPNetwork, ...]:
     """`value`'s comma-separated addresses and CIDR ranges, refusing any other entry.
 
     single-container/runtime_config.py's validate_trusted_proxies keeps the same
-    contract and message by hand, since the entrypoint cannot import the backend."""
+    contract and message by hand, since the entrypoint cannot import the backend;
+    both are tested against trusted_proxies_vectors.json."""
     entries = [entry.strip() for entry in value.split(",") if entry.strip()]
     networks: list[IPNetwork] = []
     invalid: list[str] = []
