@@ -1,7 +1,8 @@
 """The routine claims the request before any step, then runs every step in
 order; it deletes nothing on a dry run, when something is blocked or when the
-request can't be claimed (kept, not due, or erased already), and stops at the
-first failed step so a rerun can resume."""
+request can't be claimed (kept or not due), only repeats the PostHog delete
+when it is erased already, and stops at the first failed step so a rerun can
+resume."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -30,10 +31,10 @@ STEP_NAMES = [
     "marketplace",
     "files",
     "memory",
-    "posthog",
     "mailerlite",
     "ban_record",
     "database",
+    "posthog",
     "request",
 ]
 
@@ -231,27 +232,54 @@ async def test_a_dry_run_claims_nothing(monkeypatch, account):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "completed, reason",
-    [
-        (False, "kept by its owner, or its 14 days are not over"),
-        (True, "erased already"),
-    ],
-)
-async def test_a_request_that_cannot_be_claimed_runs_no_step(
-    monkeypatch, account, completed, reason
-):
-    """The owner kept the account after the dry run read it, or an earlier
-    run finished: nothing is deleted, and nothing reads as done."""
-    account.request_completed = completed
+async def test_a_request_that_cannot_be_claimed_runs_no_step(monkeypatch, account):
+    """The owner kept the account after the dry run read it: nothing is
+    deleted, and nothing reads as done."""
     monkeypatch.setattr(routine, "claim_request", AsyncMock(return_value=None))
     steps = Steps(monkeypatch)
 
     report = await routine.erase_account(USER_ID, dry_run=False)
 
     assert steps.calls == []
-    assert report.not_claimed == reason
+    assert report.not_claimed == "kept by its owner, or its 14 days are not over"
     assert not report.complete
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("email", [None, "sam@example.com"])
+async def test_a_rerun_of_a_finished_erasure_repeats_only_the_posthog_delete(
+    monkeypatch, account, lease, email
+):
+    """An event captured just before the rows went can bring the PostHog
+    person back after the erasure: a rerun removes it again, under the lease,
+    and leaves the request and everything else alone."""
+    account.request_completed = True
+    account.has_user_row = False
+    account.email = email
+    monkeypatch.setattr(routine, "claim_request", AsyncMock(return_value=None))
+    steps = Steps(monkeypatch)
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    assert steps.calls == [("posthog", False)]
+    assert [s.status for s in report.steps] == [StepStatus.DONE]
+    assert report.not_claimed == routine.ERASED_ALREADY
+    assert not report.failed
+    assert lease.keep.await_count == 1
+    lease.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_repeat_of_the_posthog_delete_is_reported(monkeypatch, account):
+    account.request_completed = True
+    account.email = None
+    monkeypatch.setattr(routine, "claim_request", AsyncMock(return_value=None))
+    Steps(monkeypatch, failing="posthog")
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    assert report.failed
+    assert report.steps[-1].name == "posthog"
 
 
 @pytest.mark.asyncio
@@ -310,9 +338,7 @@ async def test_a_refused_id_runs_no_step_even_in_a_dry_run(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "step", ["org_subscriptions", "files", "memory", "posthog", "mailerlite"]
-)
+@pytest.mark.parametrize("step", ["org_subscriptions", "files", "memory", "mailerlite"])
 async def test_a_step_skipped_for_want_of_its_service_stops_before_the_rows(
     monkeypatch, account, unused_services, step
 ):
@@ -328,6 +354,24 @@ async def test_a_step_skipped_for_want_of_its_service_stops_before_the_rows(
     assert "database" not in ran and "request" not in ran
     assert report.steps[-1].status == StepStatus.FAILED
     assert "ACCOUNT_ERASURE_UNUSED_SERVICES" in report.steps[-1].note
+    assert not report.complete
+
+
+@pytest.mark.asyncio
+async def test_the_posthog_person_goes_after_the_rows_and_before_the_request(
+    monkeypatch, account, unused_services
+):
+    """PostHog needs only the user ID. Once the rows are gone no webhook can
+    find the account to capture an event for it, so the person can't come
+    back from those; a PostHog left unset still keeps the request open."""
+    steps = Steps(monkeypatch, skipping="posthog")
+
+    report = await routine.erase_account(USER_ID, dry_run=False)
+
+    ran = [name for name, _ in steps.calls]
+    assert ran.index("database") < ran.index("posthog")
+    assert ran[-1] == "posthog" and "request" not in ran
+    assert report.steps[-1].status == StepStatus.FAILED
     assert not report.complete
 
 
