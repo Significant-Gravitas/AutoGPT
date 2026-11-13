@@ -14,6 +14,7 @@ import sys
 import threading
 import types
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -419,6 +420,43 @@ def test_a_chord_that_types_a_character_is_redacted(
     )
     assert details["keys"] == expected
     assert details["steps"][0]["args"]["keys"] == expected
+
+
+@pytest.mark.parametrize(
+    ("platform", "arguments", "expected"),
+    [
+        ("linux", {"key": "shift+a"}, {"key": ["shift", {"redacted_chars": 1}]}),
+        ("linux", {"key": " Shift + A "}, {"key": ["Shift", {"redacted_chars": 1}]}),
+        ("linux", {"key": " p "}, {"key": {"redacted_chars": 3}}),
+        ("linux", {"keys": "shift+a"}, {"keys": ["shift", {"redacted_chars": 1}]}),
+        ("linux", {"keys": "a"}, {"keys": [{"redacted_chars": 1}]}),
+        ("darwin", {"key": "option+l"}, {"key": ["option", {"redacted_chars": 1}]}),
+        ("win32", {"keys": "ctrl+alt+q"}, {"keys": ["ctrl", "alt", {"redacted_chars": 1}]}),
+        # Command chords, named keys, and what the driver takes whole stay.
+        ("linux", {"key": "ctrl+c"}, {"key": "ctrl+c"}),
+        ("linux", {"keys": "cmd+s"}, {"keys": "cmd+s"}),
+        ("linux", {"key": "shift+Right"}, {"key": "shift+Right"}),
+        ("win32", {"keys": "alt+f"}, {"keys": "alt+f"}),
+        ("linux", {"key": "a+"}, {"key": "a+"}),
+    ],
+)
+def test_a_chord_written_as_one_string_is_redacted(
+    platform: str, arguments: dict[str, str], expected: dict[str, Any]
+) -> None:
+    """cua-driver 0.38 takes a chord written as one string, splitting it at
+    "+" (`press_key` key "shift+a", `hotkey` keys "shift+a"), and trims a
+    key. The audit log redacted only a `keys` list and a `key` of exactly
+    one character, so those kept the character they typed: a secret typed
+    with Shift went into the log a chord at a time, inside run_steps too."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {**arguments, "steps": [{"tool": "press_key", "args": dict(arguments)}]},
+        platform=platform,
+    )
+
+    assert {name: details[name] for name in arguments} == expected
+    assert details["steps"][0]["args"] == expected
 
 
 # ── verify-all across multiple rotated files ─────────────────────────────────

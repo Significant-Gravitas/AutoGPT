@@ -2180,12 +2180,21 @@ def _audit_arguments(
     if isinstance(value, list):
         if key == "keys" and _types_a_character(value, platform):
             return [{"redacted_chars": 1} if _is_character(item) else item for item in value]
-        return [_audit_arguments(item, key, truncate=truncate, platform=platform) for item in value]
+        # A `keys` list holds one key each, none a chord written as one.
+        item_key = None if key == "keys" else key
+        return [
+            _audit_arguments(item, item_key, truncate=truncate, platform=platform)
+            for item in value
+        ]
     if isinstance(value, str):
         # press_key takes any single character, so a secret can be typed a
-        # key at a time; named keys (enter, tab) stay readable.
-        if key in _AUDIT_REDACTED_ARGUMENTS or (key == "key" and _is_character(value)):
+        # key at a time; named keys (enter, tab) stay readable. The driver
+        # trims the key first.
+        if key in _AUDIT_REDACTED_ARGUMENTS or (key == "key" and _is_character(value.strip())):
             return {"redacted_chars": len(value)}
+        chord = _chord_written_as_one(value, key)
+        if chord is not None and _types_a_character(chord, platform):
+            return [{"redacted_chars": 1} if _is_character(part) else part for part in chord]
         if truncate and len(value) > _AUDIT_STRING_LIMIT:
             return value[:_AUDIT_STRING_LIMIT] + f"… ({len(value)} chars)"
     return value
@@ -2193,6 +2202,24 @@ def _audit_arguments(
 
 def _is_character(value: Any) -> bool:
     return isinstance(value, str) and len(value) == 1
+
+
+def _chord_written_as_one(value: str, key: str | None) -> list[str] | None:
+    """The keys of a chord written as one string, split at "+" as cua-driver
+    0.38 splits it before the call (normalize_key_args in its tool.rs):
+    `hotkey`'s `keys` always, leaving out empty parts, and `press_key`'s
+    `key` once trimmed when it is longer than one character, holds a "+"
+    that isn't its last, and has no empty part. None where the driver takes
+    the string whole."""
+    if key == "keys":
+        return [part.strip() for part in value.split("+") if part.strip()]
+    if key == "key":
+        trimmed = value.strip()
+        if len(trimmed) > 1 and "+" in trimmed and not trimmed.endswith("+"):
+            parts = [part.strip() for part in trimmed.split("+")]
+            if all(parts):
+                return parts
+    return None
 
 
 def _types_a_character(keys: list[Any], platform: str) -> bool:

@@ -288,7 +288,9 @@ granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`, a single character pressed with `press_key`, and the character
 of a `hotkey` chord that types one: one that only holds Shift, or on macOS
-also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr)
+also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr; a
+chord written as one string, `press_key` key `shift+a` or `hotkey` keys
+`shift+a`, which the driver splits at `+`, is redacted the same way)
 replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
