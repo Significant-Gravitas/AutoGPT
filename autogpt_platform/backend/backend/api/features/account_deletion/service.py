@@ -156,9 +156,12 @@ async def delete_account(
     source: AccountDeletionSource,
     *,
     grace: timedelta = GRACE_PERIOD,
+    send_confirmation: bool = True,
 ) -> datetime:
     """Close the account, in the order the module docstring gives, and return
-    when its data may be erased: until then its owner can keep it.
+    when its data may be erased: until then its owner can keep it. Without
+    ``send_confirmation`` (the CLI's ``--no-email``) no confirmation email is
+    sent, and the request records that, so the erasure sends none either.
 
     Raises EmailMismatchError, having changed nothing, for a different email,
     and PlanCancellationError when Stripe refuses or times out on the cancel:
@@ -174,13 +177,18 @@ async def delete_account(
     await _cancel_plan(user_id)
     await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
     await _revoke_and_stop(user_id)
-    request = await _close(user_id, source, grace)
+    request = await _close(user_id, source, grace, send_confirmation)
     if request is None:
         return await _winners_erase_after(user_id)
     await _sweep_after_close(user_id)
-    await _send_confirmation(
-        user_id, user.email, source, request.eraseAfter, erase_now=grace < GRACE_PERIOD
-    )
+    if send_confirmation:
+        await _send_confirmation(
+            user_id,
+            user.email,
+            source,
+            request.eraseAfter,
+            erase_now=grace < GRACE_PERIOD,
+        )
     capture_anonymous(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": plan, "surface": _SURFACES[source]},
@@ -221,10 +229,15 @@ async def _revoke_and_stop(user_id: str) -> None:
 
 
 async def _close(
-    user_id: str, source: AccountDeletionSource, grace: timedelta
+    user_id: str,
+    source: AccountDeletionSource,
+    grace: timedelta,
+    send_confirmation: bool,
 ) -> AccountDeletionRequest | None:
     """Close the account; None when a concurrent call closed it first."""
-    request = await close_account(user_id, source, grace=grace)
+    request = await close_account(
+        user_id, source, grace=grace, confirmation_skipped=not send_confirmation
+    )
     # Closed either way, so this worker rejects the user from now on, no
     # background work starts for it, and its listings and creator page leave
     # the store at once (the transaction has committed).

@@ -110,7 +110,10 @@ async def test_every_step_runs_in_order(steps: MagicMock):
             step = getattr(steps, name)
             assert step.await_args_list == [call(USER_ID)] * STEPS.count(name)
     steps.close_account.assert_awaited_once_with(
-        USER_ID, AccountDeletionSource.SETTINGS, grace=timedelta(days=14)
+        USER_ID,
+        AccountDeletionSource.SETTINGS,
+        grace=timedelta(days=14),
+        confirmation_skipped=False,
     )
     steps.remember_account_closed.assert_called_once_with(USER_ID)
     steps.forget_refusal.assert_called_once_with(USER_ID)
@@ -441,3 +444,23 @@ async def test_an_account_kept_while_the_sweep_runs_keeps_its_keys_and_plan(
     assert await _delete() == ERASE_AFTER
 
     assert _called(steps) == LOAD + BEFORE_CLOSE + CLOSE + AFTER_CLOSE
+
+
+@pytest.mark.asyncio
+async def test_a_close_without_the_email_sends_none_and_records_it(steps: MagicMock):
+    """`--close --now --no-email`: no confirmation goes out, and the request
+    says so, so the erasure sends none late. Everything else still runs."""
+    await delete_account(
+        user_id=USER_ID,
+        confirm_email=TYPED,
+        source=AccountDeletionSource.EMAIL,
+        grace=timedelta(0),
+        send_confirmation=False,
+    )
+
+    assert _called(steps) == [
+        name
+        for name in STEPS
+        if name not in ("send_account_deleted_email", "mark_confirmation_sent")
+    ]
+    assert steps.close_account.await_args.kwargs["confirmation_skipped"] is True

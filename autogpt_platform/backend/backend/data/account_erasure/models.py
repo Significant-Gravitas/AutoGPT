@@ -98,6 +98,9 @@ class Subject(BaseModel):
     # Whether the account-deleted email went out (the request's
     # `confirmationSentAt`); the erasure sends it first when it did not.
     confirmation_sent: bool = False
+    # The operator closed it without the email (`confirmationSkipped`,
+    # `--no-email`): the erasure sends none.
+    confirmation_skipped: bool = False
     # The request's `completedAt` is set: an earlier erasure finished.
     request_completed: bool = False
     # Its agents other accounts still use (`shared_agents.py`): handed to the

@@ -48,6 +48,7 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         erase_after=request.eraseAfter if request else None,
         erase_asked_now=bool(request and _cut_short(request)),
         confirmation_sent=bool(request and request.confirmationSentAt),
+        confirmation_skipped=bool(request and request.confirmationSkipped),
         request_completed=bool(request and request.completedAt),
         banned=bool(identity and identity.banned),
         ban_expires=identity.banExpires if identity else None,
