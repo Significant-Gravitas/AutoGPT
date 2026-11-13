@@ -313,6 +313,38 @@ async def test_a_field_that_changes_after_the_card_is_fetched_leaves_it_unused(
 
 
 @pytest.mark.asyncio
+async def test_a_first_field_the_page_refuses_leaves_the_card_unused(
+    browser, intent, monkeypatch
+):
+    """The page answered the first write with `false`, so nothing was set and
+    the broker can cancel the card rather than wait out an unknown outcome."""
+    browser.max_length["#number"] = 4
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "not_submitted"
+    assert browser.filled == {}
+    assert browser.clicks == 0
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_after_the_card_number_is_in_leaves_the_outcome_unknown(
+    browser, intent, monkeypatch
+):
+    browser.max_length["#cvc"] = 1
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "outcome_unknown"
+    assert "#number" in browser.filled
+    assert browser.clicks == 0
+
+
+@pytest.mark.asyncio
 async def test_an_iframe_elsewhere_that_cannot_be_attached_is_skipped(
     browser, intent, monkeypatch
 ):
