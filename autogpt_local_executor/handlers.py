@@ -2174,7 +2174,19 @@ _AUDIT_STRING_LIMIT = 200
 # A name outside these holds nothing, so the chord's character is typed.
 _DRIVER_MODIFIERS = {
     "darwin": frozenset(
-        {"cmd", "command", "super", "meta", "win", "shift", "option", "alt", "ctrl", "control", "fn"}
+        {
+            "cmd",
+            "command",
+            "super",
+            "meta",
+            "win",
+            "shift",
+            "option",
+            "alt",
+            "ctrl",
+            "control",
+            "fn",
+        }
     ),
     "win32": frozenset({"ctrl", "control", "shift", "alt", "win", "windows", "cmd", "command"}),
 }
@@ -2198,8 +2210,7 @@ def _audit_arguments(
     if isinstance(value, list):
         if key == "keys" and _types_a_character(value, platform):
             return [
-                {"redacted_chars": len(item)} if _is_character_key(item) else item
-                for item in value
+                {"redacted_chars": len(item)} if _is_character_key(item) else item for item in value
             ]
         # A `keys` list holds one key each, none a chord written as one.
         item_key = None if key == "keys" else key
