@@ -149,7 +149,10 @@ authenticated encryption or a slow password KDF. It makes a new key only while
 there is no log yet; with one, which the keychain's key signed, the daemon
 waits for the keychain instead (it exits 75 to be restarted). A keychain that
 turns up later, holding no audit key, leaves the file key in use: it signed
-the log. OAuth tokens have no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+the log. A start without the passphrase to read the file key stops for good
+instead of making a keychain key, since the file key may have signed a log,
+another deployment's included, and every start would find the new key
+first. OAuth tokens have no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
 
 Only the daemon makes a key, and only while there is no log yet: a log with
 no key stored for it (a keychain entry removed, say) stops it at start,

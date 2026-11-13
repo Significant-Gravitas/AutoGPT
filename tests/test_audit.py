@@ -2179,6 +2179,54 @@ def test_a_file_key_made_while_waiting_for_the_lock_is_the_one_used(
     assert stored == []
 
 
+@pytest.mark.parametrize("when", ["before", "while-waiting"])
+def test_a_file_key_that_cant_be_read_is_not_replaced_by_a_keychain_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, when: str
+) -> None:
+    """The file fallback's key signed a deployment's log while there was no
+    keychain. Another deployment, starting with a new log and without the
+    passphrase, skipped the file key it couldn't read and stored a new key
+    in the keychain, which every start then finds first: the first
+    deployment's log stopped verifying, and that start stopped for good."""
+    import secrets
+
+    import keyring
+
+    from autogpt_local_executor.audit import AuditKeyError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+
+    def make_file_key() -> None:
+        salt = secrets.token_bytes(16)
+        ciphertext = audit_module._xor_encrypt("passphrase", salt, secrets.token_bytes(32))
+        audit_module._fallback_path().write_text(
+            f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8"
+        )
+
+    if when == "before":
+        make_file_key()
+    else:
+        real_lock = audit_module._holding_key_lock
+
+        @contextlib.contextmanager
+        def after_a_start_without_a_keychain():
+            with real_lock():
+                make_file_key()
+                yield
+
+        monkeypatch.setattr(audit_module, "_holding_key_lock", after_a_start_without_a_keychain)
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        with pytest.raises(AuditKeyError, match="AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            get_or_create_audit_key(tmp_path / "another-deployment" / "audit.log")
+
+    assert stored == []
+
+
 @pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
 def test_a_keychain_key_stored_while_waiting_for_the_lock_is_the_one_used(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
