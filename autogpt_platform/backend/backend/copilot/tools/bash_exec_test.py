@@ -11,12 +11,13 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from connectrpc.code import Code
 from connectrpc.errors import ConnectError
-from e2b import CommandExitException, CommandResult
+from e2b import AsyncSandbox, CommandExitException, CommandResult
 from e2b.envd.rpc import handle_rpc_exception
 from e2b.exceptions import NotFoundException, TimeoutException
 from pydantic import SecretStr
@@ -1058,10 +1059,21 @@ class _FakeProcess:
 
 class _FakeHandle:
     """``AsyncCommandHandle``: streams one process until it ends, the stream's
-    own deadline (the command ``timeout``) passes, or the box stops answering."""
+    own deadline (the command ``timeout``) passes, or the box stops answering.
+    At the deadline of the stream that started it, envd kills the process and
+    forgets it; a reattached stream's deadline only ends the stream."""
 
-    def __init__(self, box: "_FakeBox", pid: int, timeout: float, on_stdout, on_stderr):
+    def __init__(
+        self,
+        box: "_FakeBox",
+        pid: int,
+        timeout: float,
+        on_stdout,
+        on_stderr,
+        started: bool = False,
+    ):
         self.pid = pid
+        self._started = started
         self._box = box
         self._proc = box.processes[pid]
         self._timeout = timeout
@@ -1101,7 +1113,8 @@ class _FakeHandle:
                     error=None,
                 )
             if self._timeout and loop.time() - opened >= self._timeout:
-                # A connection deadline only: E2B leaves the process running.
+                if self._started:
+                    proc.killed = proc.ended = True
                 raise _sdk_error(Code.DEADLINE_EXCEEDED, "deadline exceeded")
 
     async def wait(self) -> CommandResult:
@@ -1140,7 +1153,9 @@ class _FakeCommands:
         self._box.answer()
         pid = next(self._pids)
         self._box.processes[pid] = self._box.next_process
-        handle = _FakeHandle(self._box, pid, timeout, on_stdout, on_stderr)
+        handle = _FakeHandle(
+            self._box, pid, timeout, on_stdout, on_stderr, started=True
+        )
         return handle if background else await handle.wait()
 
     async def connect(
@@ -1456,7 +1471,6 @@ class TestBashExecE2BTimeouts:
             result.message
             == "Timed out after 1s; it was killed, with every process it started."
         )
-        # E2B's deadline only closes the stream; the tool kills the command.
         assert proc.killed is True
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -1520,26 +1534,6 @@ class TestBashExecE2BTimeouts:
         assert isinstance(result, BashExecResponse)
         assert (result.stdout, result.exit_code) == ("1234567890", 0)
         assert proc.killed is False
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_timeout_kills_the_children_before_the_shell(self, kill_tree):
-        # envd's kill reaches only the shell, so its children are killed first,
-        # while the shell is still there to find them under.
-        proc = _FakeProcess([], runtime=60, code=0)
-        box = _FakeBox(limit=30, process=proc)
-
-        def children_first(sandbox, script, **kwargs):
-            assert proc.killed is False
-            return SimpleNamespace(exit_code=0)
-
-        kill_tree.side_effect = children_first
-
-        await _run(box, timeout=1)
-
-        kill_tree.assert_awaited_once()
-        script = kill_tree.await_args.args[1]
-        assert "p=100\n" in script
-        assert proc.killed is True
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_children_that_could_not_be_killed_are_reported(self, kill_tree):
@@ -1706,3 +1700,160 @@ def _kill_tree_of_sleep_then_echo() -> None:
     finally:
         shell.kill()
         shell.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+class TestBashExecTimeoutOnARealShell:
+    """The command runs as real processes, under what envd does at a command's
+    deadline (``_LocalCommands``)."""
+
+    @pytest.fixture(autouse=True)
+    def box_here(self):
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.keep_sandbox_running", new=AsyncMock()
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.run_internal", side_effect=_run_here
+            ),
+        ):
+            yield
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cd /tmp && sleep {length} && echo done",
+            # The shell exits at once; sleep keeps its output open.
+            "sleep {length} & echo started",
+        ],
+        ids=["compound", "backgrounded"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_timeout_leaves_nothing_the_command_started(self, command: str):
+        length = f"30.{time.time_ns() % 10**9:09d}"
+        try:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=_local_box(),
+                command=command.format(length=length),
+                timeout=1,
+                session_id=None,
+                user_id=None,
+            )
+
+            assert isinstance(result, BashExecResponse)
+            assert result.timed_out is True
+            assert result.message == (
+                "Timed out after 1s; it was killed, with every process it started."
+            )
+            assert _sleeping(length) == []
+        finally:
+            for pid in _sleeping(length):
+                os.kill(pid, signal.SIGKILL)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_command_that_ends_keeps_its_output_and_exit_code(self):
+        result = await _make_tool()._execute_on_e2b(
+            sandbox=_local_box(),
+            command="echo out; echo err >&2; exit 3",
+            timeout=10,
+            session_id=None,
+            user_id=None,
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.stdout, result.stderr) == ("out\n", "err\n")
+        assert (result.exit_code, result.timed_out) == (3, False)
+
+
+def _local_box() -> AsyncSandbox:
+    return cast(AsyncSandbox, SimpleNamespace(commands=_LocalCommands()))
+
+
+class _LocalCommands:
+    """``sandbox.commands`` on real local processes.  As on a live E2B box, a
+    command's stream ends once its shell has exited and both its pipes are at
+    EOF, and at the deadline envd SIGKILLs the shell alone, reaps it and
+    forgets its pid, leaving what the shell started running."""
+
+    def __init__(self):
+        self.running: dict[int, subprocess.Popen] = {}
+
+    async def run(self, cmd, timeout, on_stdout, on_stderr, **_):
+        shell = await asyncio.to_thread(
+            subprocess.Popen,
+            ["/bin/bash", "-c", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.running[shell.pid] = shell
+        return _LocalHandle(self, shell, timeout, on_stdout, on_stderr)
+
+    async def kill(self, pid, request_timeout=None) -> bool:
+        shell = self.running.pop(pid, None)
+        if shell is None:
+            return False
+        shell.kill()
+        shell.wait()
+        return True
+
+
+class _LocalHandle:
+    def __init__(self, commands: _LocalCommands, shell, timeout, on_stdout, on_stderr):
+        self.pid = shell.pid
+        self._commands = commands
+        self._shell = shell
+        self._timeout = timeout
+        self._callbacks = {shell.stdout: on_stdout, shell.stderr: on_stderr}
+
+    async def wait(self) -> CommandResult:
+        loop = asyncio.get_running_loop()
+        at_eof = loop.create_future()
+        open_pipes = set(self._callbacks)
+
+        def read(pipe) -> None:
+            if data := os.read(pipe.fileno(), 65536):
+                self._callbacks[pipe](data.decode())
+                return
+            loop.remove_reader(pipe.fileno())
+            open_pipes.discard(pipe)
+            if not open_pipes:
+                at_eof.set_result(None)
+
+        for pipe in open_pipes:
+            loop.add_reader(pipe.fileno(), read, pipe)
+        try:
+            await asyncio.wait_for(at_eof, self._timeout)
+        except TimeoutError:
+            self._shell.kill()
+            self._shell.wait()
+            raise _sdk_error(Code.DEADLINE_EXCEEDED, "deadline exceeded")
+        finally:
+            self._commands.running.pop(self.pid, None)
+            for pipe in open_pipes:
+                loop.remove_reader(pipe.fileno())
+            for pipe in self._callbacks:
+                pipe.close()
+        exit_code = await asyncio.to_thread(self._shell.wait)
+        if exit_code:
+            raise CommandExitException(
+                stdout="", stderr="", exit_code=exit_code, error=None
+            )
+        return CommandResult(stdout="", stderr="", exit_code=0, error=None)
+
+
+async def _run_here(sandbox, script: str, **_) -> SimpleNamespace:
+    done = await asyncio.to_thread(subprocess.run, ["bash", "-c", script], timeout=10)
+    return SimpleNamespace(exit_code=done.returncode)
+
+
+def _sleeping(length: str) -> list[int]:
+    found = []
+    for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            argv = cmdline.read_bytes().split(b"\0")
+        except OSError:
+            continue
+        pid = int(cmdline.parent.name)
+        if argv[:2] == [b"sleep", length.encode()] and _alive(pid):
+            found.append(pid)
+    return found

@@ -1,16 +1,17 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import {
-  getAuthDeepLink,
-  sanitizeAuthNext,
-  withAuthTracking,
-} from "@/lib/auth-redirect";
+import { getAuthDeepLink, sanitizeAuthNext } from "@/lib/auth-redirect";
+import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { isBannedNotice } from "@/lib/auth/account-banned";
 import {
   EMAIL_VERIFICATION_NOTICE_PARAM,
   getEmailVerificationNotice,
 } from "@/lib/auth/email-verification";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import {
+  getSocialSignInError,
+  isWaitlistSignInError,
+} from "@/lib/auth/microsoft-login";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +20,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { login as loginAction } from "./actions";
+import { getPostLoginPath, getSignInErrorNotice } from "./helpers";
 import { isTeamEmail } from "@/lib/auth/team-email";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
@@ -32,8 +34,18 @@ export function useLoginPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
+    null,
+  );
+  // A social sign-in that fails returns here with Better Auth's error code.
+  // Microsoft's own copy (microsoft-login.ts) is for a Microsoft sign-in only,
+  // which the with-provider route marks with `provider=microsoft`.
+  const microsoftErrorCode =
+    searchParams.get("provider") === "microsoft"
+      ? searchParams.get("error")
+      : null;
+  const isWaitlisted = isWaitlistSignInError(microsoftErrorCode);
+  const [showNotAllowedModal, setShowNotAllowedModal] = useState(isWaitlisted);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
   );
@@ -49,6 +61,7 @@ export function useLoginPage() {
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
+  const signInErrorNotice = getSignInErrorNotice(searchParams.get("error"));
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in
@@ -71,17 +84,14 @@ export function useLoginPage() {
   });
 
   async function handleProviderLogin(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setLoadingProvider(provider);
     setIsLoggingIn(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
     clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = safeNext
-        ? `/auth/callback?next=${encodeURIComponent(safeNext)}`
-        : `/auth/callback`;
-      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+      const fullCallbackUrl = `${window.location.origin}${providerCallbackPath(provider, safeNext)}`;
 
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
@@ -97,7 +107,7 @@ export function useLoginPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setLoadingProvider(null);
       setIsLoggingIn(false);
       setFeedback(
         error instanceof Error ? error.message : "Failed to start OAuth flow",
@@ -140,8 +150,11 @@ export function useLoginPage() {
       // router.replace() does a soft navigation where the cookie store may not
       // immediately reflect cookies set by the server action, causing a blank page.
       // This matches the OAuth flow which also uses window.location.href.
-      window.location.href =
-        nextUrl || withAuthTracking(result.next || "/", rawNext);
+      window.location.href = getPostLoginPath({
+        nextUrl,
+        resultNext: result.next,
+        rawNext,
+      });
     } catch (error) {
       toast({
         title:
@@ -158,14 +171,19 @@ export function useLoginPage() {
 
   return {
     form,
-    feedback,
+    feedback:
+      feedback ??
+      signInErrorNotice ??
+      (isWaitlisted ? null : getSocialSignInError(microsoftErrorCode)),
     nextUrl: safeNext,
     verificationEmail,
     verificationNotice,
     showBannedNotice,
     user,
     isLoading,
-    isGoogleLoading,
+    isGoogleLoading: loadingProvider === "google",
+    isMicrosoftLoading: loadingProvider === "microsoft",
+    isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,

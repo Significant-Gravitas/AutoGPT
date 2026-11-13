@@ -256,10 +256,9 @@ async def _ensure_user(user: SeedUser) -> _SeededUser:
                 links=list(user.links),
             ),
         )
-    # update_profile leaves a new profile's avatar NULL, but the Creator view's
-    # avatar_url is non-null, so one NULL fails the whole creators list. One
-    # write finishes the profile: a run that stopped before it finishes it next
-    # time, and a profile it already finished keeps any later edit.
+    # update_profile leaves a new profile's avatar NULL. One write finishes the
+    # profile: a run that stopped before it finishes it next time, and a
+    # profile it already finished keeps any later edit.
     await prisma.models.Profile.prisma().update_many(
         where={"userId": user_id, "avatarUrl": None},
         data={"avatarUrl": "", "isFeatured": user.featured},

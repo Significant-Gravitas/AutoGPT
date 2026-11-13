@@ -107,6 +107,7 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
 class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     num_graph_workers: int = Field(
         default=10,
         ge=1,
@@ -114,14 +115,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_graph_workers_per_user: int = Field(
         default=5,
         ge=1,
         le=1000,
         description=(
-            "How many of an executor's graph workers one user's top-level runs "
-            "may hold at once; kept below `num_graph_workers` when that is 2 or "
-            "more, and 1 when it is 1."
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
         ),
     )
 
@@ -130,6 +135,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     graph_run_requeue_delay_seconds: int = Field(
         default=30,
         ge=1,
@@ -249,6 +255,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
+    auth_legacy_token_deadline: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
+            "during auth rollout. Unset preserves legacy signature/expiry validation; "
+            "zero rejects them immediately. Tokens with sid always require an active session."
+        ),
+    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
@@ -278,16 +293,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_weekly_credit_budget_default: int = Field(
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_spend_approval_threshold_default: int = Field(
         default=250,
         ge=0,
         description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_spend_approval_window: Literal["week", "day"] = Field(
         default="week",
         description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
@@ -324,12 +342,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_concurrent_graph_executions_per_user: int = Field(
         default=25,
         ge=1,
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_inflight_copilot_turns_per_user: int = Field(
         default=15,
         ge=1,
@@ -344,6 +364,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "schedule_turn and share this cap."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_running_copilot_turns_per_user: int = Field(
         default=5,
         ge=1,
@@ -372,6 +393,33 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     block_error_include_top_blocks: int = Field(
         default=3,
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
+
+    # Account erasure (SECRT-2854): erases accounts closed from Settings
+    account_erasure_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the job that erases closed accounts (every AccountDeletionRequest "
+            "past its 14 days and not completed yet). Off by default. It runs in "
+            "the database manager, which then needs the bucket, FalkorDB, PostHog "
+            "personal key, MailerLite and Stripe settings and BAN_RECORD_HASH_KEY "
+            "(docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_sweep_interval_secs: int = Field(
+        default=60 * 60,
+        ge=5 * 60,
+        description="Interval in seconds between account erasure sweeps.",
+    )
+    account_erasure_unused_services: List[str] = Field(
+        default=[],
+        description=(
+            "Outside services this stack does not use, so the account erasure "
+            "may skip their step: a JSON list of any of buckets, falkordb, "
+            'posthog, mailerlite, stripe, e.g. \'["posthog", "mailerlite"]\'. '
+            "A step skipped for a service not listed stops the erasure before "
+            "the account's rows go, and the request stays open."
+        ),
     )
 
     # Auth identity <-> platform User invariant monitoring
@@ -423,16 +471,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     public_search_requests_per_minute: int = Field(
         default=30,
         ge=1,
         description="Store search requests one signed-out client may make per minute.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     public_search_user_requests_per_minute: int = Field(
         default=120,
         ge=1,
         description="Store search requests one signed-in account may make per minute.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     public_search_embeddings_per_minute: int = Field(
         default=1000,
         ge=0,
@@ -549,6 +600,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    # Documented in docs/platform/client-ip.md: update it with any change here.
     trusted_proxy_count: int = Field(
         # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
         # right; 1 keys every anonymous caller on the LB's address, one bucket.
@@ -568,6 +620,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "egresses through (see backend.util.e2b_network). Empty leaves egress "
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
+    )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
     )
 
     frontend_base_url: str = Field(
@@ -680,6 +750,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_schedules_per_user: int = Field(
         default=200,
         ge=1,
@@ -766,6 +837,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "canary run with team inboxes."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     owner_email_daily_limit: int = Field(
         default=20,
         description=(
@@ -1068,7 +1140,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -1342,6 +1415,14 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    ban_record_hash_key: str = Field(
+        default="",
+        description="Key of the hash that ban records (account erasure) keep "
+        "of a banned address. Never rotate it: the records kept under the old "
+        "one stop matching. Blank keeps no ban record, so erasing a banned "
+        "account fails, and sign-up matches none.",
+    )
+
     vapid_private_key: str = Field(
         default="", description="VAPID private key for Web Push"
     )
@@ -1516,6 +1597,13 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Linear team ID used when creating feature request issues",
     )
+    hubspot_client_id: str = Field(
+        default="", description="Client ID of the HubSpot app used for OAuth sign-in"
+    )
+    hubspot_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot OAuth sign-in app"
+    )
+
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
@@ -1587,6 +1675,22 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "Feature Flags), for local flag evaluation; without it flag reads fall back "
         "to a remote /flags call. A personal API key also works, but PostHog is "
         "deprecating that use.",
+    )
+    # Account deletion removes the PostHog person through the private API,
+    # which the project key above cannot call.
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key with the person:write scope, used "
+        "only to delete a deleted account's person. Blank stops the erasure "
+        "at that step, with the request left open, unless 'posthog' is in "
+        "ACCOUNT_ERASURE_UNUSED_SERVICES.",
+    )
+    posthog_project_id: str = Field(
+        default="", description="PostHog project ID the persons live in"
+    )
+    posthog_app_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog private API host (not the i. ingestion host)",
     )
 
     # Add more secret fields as needed
