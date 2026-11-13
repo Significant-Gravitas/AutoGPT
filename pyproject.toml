@@ -49,6 +49,8 @@ dev = [
     "pytest-mock>=3.12",
     "ruff>=0.4",
     "mypy>=1.10",
+    # tests/test_packaging.py builds the wheel `pipx install` builds.
+    "hatchling",
 ]
 all = [
     "autogpt-local-executor[computer-use,hardware,local-llm]",
@@ -57,11 +59,9 @@ all = [
 [project.scripts]
 autogpt-shim = "autogpt_local_executor.cli:main"
 
+# The package ships every file under it, the autostart templates included.
 [tool.hatch.build.targets.wheel]
 packages = ["autogpt_local_executor"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"autogpt_local_executor/templates" = "autogpt_local_executor/templates"
 
 [tool.ruff]
 line-length = 100

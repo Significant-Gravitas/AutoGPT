@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -62,3 +63,23 @@ def test_a_source_tree_that_isnt_installed_reports_pyproject_tomls_version(
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
 
     assert _version.distribution_version() == project["version"]
+
+
+def test_the_wheel_pipx_builds_holds_the_autostart_templates(tmp_path: Path) -> None:
+    """The platform's setup command is `pipx install git+...`, which builds
+    this wheel. pyproject.toml force-included autogpt_local_executor/templates,
+    which the package already ships, and hatchling refuses a file added twice,
+    so that build failed. CI installs the package editable, which never builds
+    the wheel."""
+    from hatchling.builders.wheel import WheelBuilder
+
+    wheel = next(WheelBuilder(str(ROOT)).build(directory=str(tmp_path), versions=["standard"]))
+    with zipfile.ZipFile(wheel) as archive:
+        names = set(archive.namelist())
+    templates = {
+        f"autogpt_local_executor/templates/{template.name}"
+        for template in (ROOT / "autogpt_local_executor" / "templates").glob("*.template")
+    }
+
+    assert templates
+    assert templates <= names

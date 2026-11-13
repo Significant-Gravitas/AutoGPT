@@ -60,7 +60,7 @@ jobs:
         run: python -m pip install -e ".[hardware,local-llm]"
 
       - name: Install test deps
-        run: python -m pip install pytest pytest-asyncio pytest-mock
+        run: python -m pip install pytest pytest-asyncio pytest-mock hatchling
 
       - name: Run pytest
         run: python -m pytest tests/ -v
@@ -100,7 +100,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest pytest-asyncio pytest-mock coverage
+          python -m pip install pytest pytest-asyncio pytest-mock coverage hatchling
 
       - name: Run coverage
         # No upload target yet (no codecov token); printing the report inline
