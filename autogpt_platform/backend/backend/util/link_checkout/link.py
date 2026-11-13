@@ -84,7 +84,9 @@ async def _send(
 async def _raise(client: httpx.AsyncClient, job: WorkerJob) -> SpendRequest:
     """Link's incremental authorization: the checkout's request takes the new
     total (``job.intent``'s), then the customer approves it again in Link. If
-    Link refuses, the request stays usable at its old amount."""
+    Link refuses, Link keeps the request usable at its old amount, which no
+    longer covers the checkout, so the raise cancels it and asks again at the
+    new total (``broker_raise._raise_in_link``)."""
     path = _spend_path(job.intent)
     total = job.intent.plan.amount
     await _send(
