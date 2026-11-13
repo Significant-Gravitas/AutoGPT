@@ -134,9 +134,11 @@ def bundled_binary() -> Path | None:
 
 def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path | None:
     """The cua-driver to run: an explicit path, else the bundled wheel's,
-    else one on PATH."""
+    else one on PATH. An explicit one is made absolute: Path drops the `./`
+    of `./cua-driver`, and the OS looks a bare name up on PATH, which would
+    run another install, or none, rather than the file checked here."""
     if explicit:
-        path = Path(explicit).expanduser()
+        path = Path(explicit).expanduser().absolute()
         return path if path.is_file() else None
     bundled = bundled_binary()
     if bundled is not None:

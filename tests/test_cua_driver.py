@@ -643,6 +643,23 @@ def test_the_wheels_binary_is_found_without_importing_the_package(
     assert "cua_driver" not in sys.modules
 
 
+def test_an_explicit_driver_in_the_current_folder_runs_from_there(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Path dropped the `./` of `./cua-driver`, so the driver was started as
+    a bare `cua-driver`, which the OS looks up on PATH: another install ran,
+    or none did, in place of the file the shim had checked."""
+    name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
+    (tmp_path / name).write_text("")
+    monkeypatch.chdir(tmp_path)
+
+    found = driver.find_driver_binary(f"./{name}")
+
+    assert found is not None and found.is_absolute()
+    assert found.samefile(tmp_path / name)
+    assert Path(driver.driver_argv(found, "direct")[0]).is_absolute()
+
+
 # ── Catalog ──────────────────────────────────────────────────────────────
 
 
