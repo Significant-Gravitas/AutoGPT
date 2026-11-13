@@ -537,6 +537,172 @@ def test_consent_token_mode_mismatch() -> None:
         broker.validate_consent_token(tok, mode="copilot")
 
 
+# ── The consent dialog's own process ─────────────────────────────────────────
+
+
+class _DialogProcess:
+    """subprocess.run as the dialog's process ends: what it printed and its
+    exit code, or the exception starting or waiting for it raised."""
+
+    def __init__(
+        self, *, stdout: bytes = b"", returncode: int = 0, raises: Exception | None = None
+    ) -> None:
+        self.stdout = stdout
+        self.returncode = returncode
+        self.raises = raises
+        self.calls: list[tuple[list[str], dict]] = []
+
+    def __call__(self, argv: list[str], **kwargs):
+        import subprocess
+
+        self.calls.append((argv, kwargs))
+        if self.raises is not None:
+            raise self.raises
+        return subprocess.CompletedProcess(argv, self.returncode, self.stdout, b"Traceback ...")
+
+
+def _no_tk_in_this_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A tkinter that fails the test if the shim's own process starts Tk."""
+    import sys
+
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("Tk started in the shim's own process")
+
+    tkinter = types.ModuleType("tkinter")
+    messagebox = types.ModuleType("tkinter.messagebox")
+    tkinter.Tk = refuse  # type: ignore[attr-defined]
+    messagebox.askyesno = refuse  # type: ignore[attr-defined]
+    tkinter.messagebox = messagebox  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tkinter", tkinter)
+    monkeypatch.setitem(sys.modules, "tkinter.messagebox", messagebox)
+
+
+def test_the_consent_dialog_runs_in_a_process_of_its_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dialog made its tk.Tk() in the worker thread the handler asks from
+    (asyncio.to_thread). Tk has to own the main thread on macOS, where that
+    aborts the whole shim. A process of its own has a main thread for it,
+    and only its printed "approved" mints a token."""
+    import subprocess
+    import sys
+
+    from autogpt_local_executor.recording import consent as consent_module
+
+    _no_tk_in_this_process(monkeypatch)
+    dialog = _DialogProcess(stdout=b"approved\n")
+    monkeypatch.setattr(consent_module.subprocess, "run", dialog)
+    broker = ConsentBroker()
+
+    token = consent_module.request_user_consent(
+        broker, mode="demonstration", interpretation_route="screenshots_to_cloud"
+    )
+
+    assert token is not None
+    broker.validate_consent_token(
+        token, mode="demonstration", interpretation_route="screenshots_to_cloud"
+    )
+    [(argv, options)] = dialog.calls
+    assert argv[:4] == [sys.executable, "-I", "-c", consent_module._DIALOG_SCRIPT]
+    assert argv[4] == "Allow AutoGPT workflow recording?"
+    assert "start a demonstration recording" in argv[5]
+    assert "screenshots may be sent" in argv[5]
+    assert options["stdin"] == subprocess.DEVNULL
+    assert options["timeout"] == consent_module.CONSENT_PROMPT_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize(
+    "dialog",
+    [
+        _DialogProcess(stdout=b"declined\n"),
+        _DialogProcess(stdout=b"", returncode=1),  # no display, or no tkinter
+        _DialogProcess(stdout=b"approved\n", returncode=1),
+        _DialogProcess(stdout=b"", returncode=0),  # something else ran and exited 0
+        _DialogProcess(stdout=b"approved, and more\n"),
+        _DialogProcess(raises=FileNotFoundError(2, "No such file")),
+        _DialogProcess(raises=PermissionError(13, "Permission denied")),
+    ],
+    ids=["declined", "no-display", "crashed", "no-answer", "other-text", "missing", "denied"],
+)
+def test_the_consent_dialog_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, dialog: _DialogProcess
+) -> None:
+    """No token unless the dialog's process printed "approved" and exited 0:
+    a no, a dialog that couldn't be shown, or a process that couldn't start
+    authorizes nothing."""
+    from autogpt_local_executor.recording import consent as consent_module
+
+    _no_tk_in_this_process(monkeypatch)
+    monkeypatch.setattr(consent_module.subprocess, "run", dialog)
+
+    assert (
+        consent_module.request_user_consent(
+            ConsentBroker(), mode="copilot", interpretation_route="extract_then_cloud"
+        )
+        is None
+    )
+
+
+def test_a_consent_dialog_left_unanswered_counts_as_no(monkeypatch: pytest.MonkeyPatch) -> None:
+    """subprocess.run stops the process when the timeout passes, then raises."""
+    import subprocess
+
+    from autogpt_local_executor.recording import consent as consent_module
+
+    _no_tk_in_this_process(monkeypatch)
+    dialog = _DialogProcess(raises=subprocess.TimeoutExpired(["python"], 300.0))
+    monkeypatch.setattr(consent_module.subprocess, "run", dialog)
+
+    assert (
+        consent_module.request_user_consent(
+            ConsentBroker(), mode="copilot", interpretation_route="extract_then_cloud"
+        )
+        is None
+    )
+    assert len(dialog.calls) == 1
+
+
+@pytest.mark.parametrize(("clicked", "printed"), [(True, "approved"), (False, "declined")])
+def test_the_consent_dialogs_script_prints_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    clicked: bool,
+    printed: str,
+) -> None:
+    """The script the dialog's process runs, with a stand-in for Tk."""
+    import sys
+
+    from autogpt_local_executor.recording import consent as consent_module
+
+    shown: list = []
+
+    class Root:
+        def withdraw(self) -> None:
+            pass
+
+        def attributes(self, *_args) -> None:
+            pass
+
+        def destroy(self) -> None:
+            shown.append("destroyed")
+
+    def askyesno(title: str, message: str, parent=None) -> bool:
+        shown.append((title, message, isinstance(parent, Root)))
+        return clicked
+
+    tkinter = types.ModuleType("tkinter")
+    messagebox = types.ModuleType("tkinter.messagebox")
+    tkinter.Tk = Root  # type: ignore[attr-defined]
+    messagebox.askyesno = askyesno  # type: ignore[attr-defined]
+    tkinter.messagebox = messagebox  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tkinter", tkinter)
+    monkeypatch.setitem(sys.modules, "tkinter.messagebox", messagebox)
+    monkeypatch.setattr(sys, "argv", ["-c", "The title", "The message"])
+
+    exec(compile(consent_module._DIALOG_SCRIPT, "<consent dialog>", "exec"), {})
+
+    assert capsys.readouterr().out == f"{printed}\n"
+    assert shown == [("The title", "The message", True), "destroyed"]
+
+
 # ── Route probing (§3.1) ──────────────────────────────────────────────────────
 
 

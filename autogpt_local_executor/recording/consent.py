@@ -12,8 +12,9 @@ Design (per docs/WORKFLOW_RECORDING.md §9):
   has no access to the shim-local HMAC key and never sees the issuance path.
 - `validate_consent_token` checks the signature, expiry, and single-use status.
   A token is consumed on the first successful START so it can't be replayed.
-- `request_user_consent()` renders the confirmation in the shim process, not
-  the platform-controlled browser, and only mints after an affirmative click.
+- `request_user_consent()` renders the confirmation on this machine, not in
+  the platform-controlled browser, in a short-lived process of its own, and
+  only mints after an affirmative click.
 
 The token is intentionally opaque to the platform: it round-trips it verbatim.
 """
@@ -25,6 +26,8 @@ import hmac
 import json
 import logging
 import secrets
+import subprocess
+import sys
 import time
 from hashlib import sha256
 
@@ -33,6 +36,27 @@ logger = logging.getLogger(__name__)
 # How long an issued token stays valid before it must be re-requested. Short by
 # design: consent is per-recording and the user just clicked "record".
 CONSENT_TOKEN_TTL_SECONDS: float = 300.0
+
+# How long the dialog waits for an answer; one left unanswered counts as no.
+CONSENT_PROMPT_TIMEOUT_SECONDS: float = 300.0
+
+# The dialog, run as `python -I -c` in a process of its own, with its title
+# and message as arguments. Tk has to own the main thread on macOS, and the
+# shim asks from a worker thread (asyncio.to_thread), where starting Tk
+# aborts the whole process. It imports only tkinter, so it runs from any
+# install, and it prints its answer.
+_DIALOG_SCRIPT = """\
+import sys
+import tkinter as tk
+from tkinter import messagebox
+
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+approved = messagebox.askyesno(sys.argv[1], sys.argv[2], parent=root)
+root.destroy()
+print("approved" if approved else "declined")
+"""
 
 # Token format version, so we can evolve the encoding without ambiguity.
 _TOKEN_VERSION = 1
@@ -167,38 +191,55 @@ def request_user_consent(
 ) -> str | None:
     """Show the OS-native confirmation and return a fresh consent token.
 
-    Returns ``None`` when the prompt is declined or cannot be rendered. A
-    headless shim therefore fails closed instead of silently authorizing a
-    recording.
+    The dialog runs in a process of its own (_DIALOG_SCRIPT), whose main
+    thread can own Tk, and only its printed "approved", with exit code 0,
+    mints a token. Returns ``None`` when the prompt is declined, can't be
+    shown (no display, no tkinter, a packaged build whose executable isn't
+    Python), or goes unanswered for CONSENT_PROMPT_TIMEOUT_SECONDS. A headless
+    shim therefore fails closed instead of silently authorizing a recording.
     """
-    try:
-        import tkinter as tk
-        from tkinter import messagebox
-
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        if interpretation_route == "screenshots_to_cloud":
-            detail = (
-                "After you stop, the structured trajectory and screenshots may be sent "
-                "to AutoGPT for browser review and skill generation."
-            )
-        else:
-            detail = (
-                "Screen pixels stay on this machine. After you stop, a hygiene-redacted "
-                "structured trajectory is sent through AutoGPT to your authenticated "
-                "browser for review."
-            )
-        approved = messagebox.askyesno(
-            "Allow AutoGPT workflow recording?",
-            f"AutoGPT wants to start a {mode} recording.\n\n{detail}",
-            parent=root,
+    if interpretation_route == "screenshots_to_cloud":
+        detail = (
+            "After you stop, the structured trajectory and screenshots may be sent "
+            "to AutoGPT for browser review and skill generation."
         )
-        root.destroy()
-    except Exception:
-        logger.warning("Could not render the local recording-consent prompt", exc_info=True)
+    else:
+        detail = (
+            "Screen pixels stay on this machine. After you stop, a hygiene-redacted "
+            "structured trajectory is sent through AutoGPT to your authenticated "
+            "browser for review."
+        )
+    argv = [
+        sys.executable,
+        "-I",  # no PYTHON* settings, user site, or working folder on its path
+        "-c",
+        _DIALOG_SCRIPT,
+        "Allow AutoGPT workflow recording?",
+        f"AutoGPT wants to start a {mode} recording.\n\n{detail}",
+    ]
+    try:
+        shown = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=CONSENT_PROMPT_TIMEOUT_SECONDS,
+            # No console window of its own on Windows; the dialog still shows.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("The local recording-consent prompt went unanswered; not recording")
         return None
-    if not approved:
+    except (OSError, subprocess.SubprocessError):
+        logger.warning("Could not start the local recording-consent prompt", exc_info=True)
+        return None
+    if shown.returncode != 0:
+        logger.warning(
+            "Could not show the local recording-consent prompt (exit %s): %s",
+            shown.returncode,
+            shown.stderr.decode("utf-8", "replace")[-500:],
+        )
+        return None
+    if shown.stdout.strip() != b"approved":
         return None
     return broker.issue_consent_token(mode=mode, interpretation_route=interpretation_route)
 
