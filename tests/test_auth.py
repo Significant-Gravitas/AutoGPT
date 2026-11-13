@@ -293,12 +293,20 @@ def test_a_redirect_the_browser_sends_to_ipv6_loopback_reaches_the_shim(tmp_path
 
 
 @_needs_ipv6
-def test_a_port_another_program_listens_on_at_ipv6_loopback_is_not_taken(tmp_path: Path) -> None:
+def test_a_port_another_program_listens_on_at_ipv6_loopback_is_not_taken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Another program listening on ::1, or on every address through a
     dual-stack socket (which macOS lets the same user share), left
     127.0.0.1 free, so the shim took the port, the browser's ::1 connection
     took the code to that program, and the sign-in timed out."""
+    import autogpt_local_executor.auth as auth_module
+
     port = _free_port()
+    # The busy port is the only one to try: one the OS hands out inside the
+    # registered range would have the shim go on to the next, as it should.
+    monkeypatch.setattr(auth_module, "CALLBACK_FIRST_PORT", port)
+    monkeypatch.setattr(auth_module, "CALLBACK_LAST_PORT", port)
     with socket.socket(socket.AF_INET6) as other:
         other.bind(("::1", port))
         other.listen()
