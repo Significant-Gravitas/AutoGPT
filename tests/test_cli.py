@@ -782,7 +782,9 @@ def test_install_takes_a_config_the_service_can_load(
     from autogpt_local_executor import install
 
     config = tmp_path / "config.toml"
-    config.write_text(f'allowed_root = "{(tmp_path / "files").as_posix()}"\n')
+    # TOML is UTF-8, and a temporary folder can hold any character (a home
+    # folder named José, written in Windows' code page).
+    config.write_text(f'allowed_root = "{(tmp_path / "files").as_posix()}"\n', encoding="utf-8")
     install_autostart = MagicMock()
     install_autostart.return_value = SimpleNamespace(
         target_path=tmp_path / "unit",
