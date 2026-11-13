@@ -9,6 +9,8 @@ publish its private advisories.
 
 1. Verify the fix in the release tag, not only on `dev`. Record the first release
    containing the fix. Distinguish a partial mitigation from a complete fix.
+   We don't ship partial mitigations, so a release that carries only one is never
+   an advisory's patched version.
 2. Add a link to that release in the advisory's description text, for example
    under a Fix or Release references heading. The helper searches the API's
    `description` field; a link only in `references[].url` is insufficient.
@@ -176,6 +178,11 @@ closed record to its canonical advisory and preserve the original evidence and
 discussion. Closing a duplicate does not mean the vulnerability is fixed. Do
 not put private report IDs, attachments or discussion into a public advisory.
 
+## Name the Platform package
+
+Name the Platform source package `autogpt-platform-beta`, in the `other`
+ecosystem. It matches the release tags, `autogpt-platform-beta-v<VERSION>`.
+
 ## Identify Docker distributions
 
 GitHub's [repository advisory API](https://docs.github.com/en/rest/security-advisories/repository-advisories#update-a-repository-security-advisory)
@@ -185,6 +192,9 @@ has no Docker ecosystem option. Use `other` and the image's repository name:
 | --- | --- | --- |
 | Platform single-container image | `significantgravitas/autogpt` | [Docker Hub](https://hub.docker.com/r/significantgravitas/autogpt) |
 | Classic image | `significantgravitas/auto-gpt` | [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt) |
+
+The first Platform release with a published image is 0.7.1 (Docker Hub tag
+`v0.7.1`), so an advisory whose affected range ends before 0.7.1 has no image row.
 
 Verify that the affected component ships in the image and that its runtime
 configuration exposes the reported path. Source-based Compose host mappings
