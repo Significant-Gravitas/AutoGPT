@@ -52,8 +52,6 @@ def creators_of(block: AnyBlockSchema, field_name: str) -> list[AnyBlockSchema]:
         # output is the thing this picker picks (an Airtable base id).
         return []
     provider = get_block_provider(block)
-    if provider is None:
-        return []
     permissions = get_current_permissions()
     found = []
     for entry in get_registry().entries:
