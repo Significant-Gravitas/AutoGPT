@@ -1,155 +1,132 @@
-"""Unit tests for ClaudeCodeBlock COST_USD billing migration.
+"""ClaudeCodeBlock is charged for the platform's E2B sandbox by the walltime the
+executor measures."""
 
-Verifies:
-- Block emits provider_cost / cost_usd when Claude Code CLI returns
-  total_cost_usd.
-- block_usage_cost resolves the COST_USD entry to the expected ceil(usd *
-  cost_amount) credit charge.
-- Missing total_cost_usd gracefully produces provider_cost=None (no bill).
-"""
-
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
-from backend.blocks._base import BlockCostType
-from backend.blocks.claude_code import ClaudeCodeBlock
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.blocks.claude_code import (
+    TEST_ANTHROPIC_CREDENTIALS,
+    TEST_ANTHROPIC_CREDENTIALS_INPUT,
+    ClaudeCodeBlock,
+)
+from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
-from backend.executor import utils as executor_utils
+from backend.executor.billing import charge_reconciled_usage
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import e2b_credentials
 
+WALLTIME_SECONDS = 95.0
+WALLTIME_CREDITS = 10  # ceil(95 / 10) at 1 credit per 10 s
 
-@pytest.fixture(autouse=True)
-def _stub_preflight_estimate(monkeypatch):
-    """Force `get_preflight_estimate` to return 0 in this module's tests so
-    the COST_USD pre-flight assertion doesn't couple to a populated
-    `block_preflight_estimates.json` once the seeding PR registers a non-zero
-    estimate for ClaudeCodeBlock."""
-    monkeypatch.setattr(executor_utils, "get_preflight_estimate", lambda _bid: 0)
-
-
-def _meta(credentials) -> dict:
-    return {
-        "id": credentials.id,
-        "provider": credentials.provider,
-        "type": credentials.type,
-    }
-
-
-def _own_meta(provider: str) -> dict:
-    """A credential the user brought themselves: an id no platform entry names."""
-    return {"id": f"user-own-{provider}", "provider": provider, "type": "api_key"}
-
-
-def test_claude_code_registered_as_cost_usd_150():
-    """Sanity: BLOCK_COSTS holds the COST_USD, 150 cr/$ entry. There is none for
-    the platform Anthropic key: the block refuses it (see claude_code_test)."""
-    entries = BLOCK_COSTS[ClaudeCodeBlock]
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry.cost_type == BlockCostType.COST_USD
-    assert entry.cost_amount == 150
+PLATFORM_E2B_INPUT = {
+    "id": e2b_credentials.id,
+    "provider": e2b_credentials.provider,
+    "type": e2b_credentials.type,
+    "title": e2b_credentials.title,
+}
+OWN_E2B_INPUT = {"id": "user-own-e2b", "provider": "e2b", "type": "api_key"}
 
 
 @pytest.mark.parametrize(
-    "e2b_meta, expected_credits",
+    "cli_stdout",
     [
-        # The platform sandbox: billed.
-        (_meta(e2b_credentials), 75),
-        # The user's own sandbox: nothing of the platform's is spent.
-        (_own_meta("e2b"), 0),
+        '{"result": "done", "total_cost_usd": 2.5}',
+        '{"result": "done", "total_cost_usd": 0}',
+        '{"result": "done"}',
+        "done",
     ],
+    ids=["reports-a-cost", "reports-zero", "reports-no-cost", "not-json"],
 )
-def test_run_is_billed_when_it_uses_the_platform_sandbox(e2b_meta, expected_credits):
-    """Billing keys on the E2B credential only; the Anthropic key is always the
-    user's own."""
-    stats = NodeExecutionStats(provider_cost=0.50, provider_cost_type="cost_usd")
+async def test_a_platform_sandbox_run_is_charged_its_walltime(cli_stdout: str):
+    block = ClaudeCodeBlock()
+    inputs = {
+        "e2b_credentials": PLATFORM_E2B_INPUT,
+        "anthropic_credentials": TEST_ANTHROPIC_CREDENTIALS_INPUT,
+        "prompt": "hi",
+    }
+    await _run_block(block, inputs, cli_stdout)
+
+    # The executor's order: the block's own stats, then the walltime it measured.
+    stats = NodeExecutionStats()
+    stats += block.execution_stats
+    stats.walltime = WALLTIME_SECONDS
+
+    db_client = MagicMock()
+    db_client.spend_credits = AsyncMock(return_value=500)
+    with (
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        delta, _ = await charge_reconciled_usage(
+            _node_exec(block.id, inputs), stats, pre_flight_charge=0
+        )
+
+    assert delta == WALLTIME_CREDITS
+    db_client.spend_credits.assert_awaited_once()
+    assert db_client.spend_credits.await_args.kwargs["cost"] == WALLTIME_CREDITS
+
+
+def test_a_run_on_the_users_own_sandbox_is_not_charged():
     cost, _ = block_usage_cost(
         block=ClaudeCodeBlock(),
         input_data={
-            "e2b_credentials": e2b_meta,
-            "anthropic_credentials": _own_meta("anthropic"),
+            "e2b_credentials": OWN_E2B_INPUT,
+            "anthropic_credentials": TEST_ANTHROPIC_CREDENTIALS_INPUT,
         },
-        stats=stats,
+        stats=NodeExecutionStats(walltime=WALLTIME_SECONDS),
     )
-    assert cost == expected_credits
+    assert cost == 0
 
 
-@pytest.mark.parametrize(
-    "total_cost_usd, expected_credits",
-    [
-        (0.50, 75),  # $0.50 × 150 = 75 cr
-        (1.00, 150),  # $1.00 × 150 = 150 cr
-        (0.0134, 3),  # ceil(0.0134 × 150) = ceil(2.01) = 3
-        (2.00, 300),  # $2 × 150 = 300 cr
-        (0.001, 1),  # ceil(0.001 × 150) = ceil(0.15) = 1 — no 0-cr leak on
-        # sub-cent runs
-    ],
-)
-def test_cost_usd_resolver_applies_150_multiplier(total_cost_usd, expected_credits):
-    """block_usage_cost with cost_usd stats returns ceil(usd * 150)."""
-    block = ClaudeCodeBlock()
-    # cost_filter requires matching e2b_credentials; supply the ones the
-    # registration uses so _is_cost_filter_match accepts the input.
-    entry = BLOCK_COSTS[ClaudeCodeBlock][0]
-    input_data = {"e2b_credentials": entry.cost_filter["e2b_credentials"]}
-    stats = NodeExecutionStats(
-        provider_cost=total_cost_usd,
-        provider_cost_type="cost_usd",
+async def _run_block(block: ClaudeCodeBlock, inputs: dict, cli_stdout: str) -> None:
+    box = AsyncMock()
+    box.sandbox_id = "sb-new"
+
+    async def run(command: str, **kwargs):
+        if "claude --session-id" in command:
+            stdout = cli_stdout
+        elif command.startswith("date"):
+            stdout = "2026-10-31T00:00:00"
+        else:
+            stdout = ""
+        return AsyncMock(exit_code=0, stdout=stdout, stderr="")
+
+    box.commands.run = AsyncMock(side_effect=run)
+    with (
+        patch("backend.blocks.claude_code.create_sandbox", AsyncMock(return_value=box)),
+        patch("backend.blocks.claude_code.kill_sandbox", AsyncMock()),
+        patch(
+            "backend.blocks.claude_code.extract_and_store_sandbox_files",
+            AsyncMock(return_value=[]),
+        ),
+    ):
+        outputs = [
+            output
+            async for output in block.run(
+                ClaudeCodeBlock.Input(**inputs),
+                e2b_credentials=e2b_credentials,
+                anthropic_credentials=TEST_ANTHROPIC_CREDENTIALS,
+                execution_context=ExecutionContext(user_id="user-a"),
+            )
+        ]
+    assert ("response", "done") in outputs
+
+
+def _node_exec(block_id: str, inputs: dict) -> NodeExecutionEntry:
+    return NodeExecutionEntry(
+        user_id="user-a",
+        graph_exec_id=str(uuid4()),
+        graph_id=str(uuid4()),
+        graph_version=1,
+        node_exec_id=str(uuid4()),
+        node_id=str(uuid4()),
+        block_id=block_id,
+        inputs=inputs,
+        execution_context=ExecutionContext(user_id="user-a"),
     )
-    cost, matching_filter = block_usage_cost(
-        block=block, input_data=input_data, stats=stats
-    )
-    assert cost == expected_credits
-    assert matching_filter == entry.cost_filter
-
-
-def test_cost_usd_resolver_returns_zero_when_stats_missing_cost():
-    """Pre-flight (no stats) or unbilled run (provider_cost None) → 0."""
-    block = ClaudeCodeBlock()
-    entry = BLOCK_COSTS[ClaudeCodeBlock][0]
-    input_data = {"e2b_credentials": entry.cost_filter["e2b_credentials"]}
-    # No stats at all → pre-flight path, returns 0.
-    pre_cost, _ = block_usage_cost(block=block, input_data=input_data)
-    assert pre_cost == 0
-    # Stats present but no provider_cost → resolver can't bill.
-    stats = NodeExecutionStats()
-    post_cost, _ = block_usage_cost(block=block, input_data=input_data, stats=stats)
-    assert post_cost == 0
-
-
-def test_record_cli_cost_emits_provider_cost_when_total_cost_present():
-    """``_record_cli_cost`` (the helper called from ``execute_claude_code``)
-    must emit a single ``merge_stats`` with provider_cost + cost_usd tag
-    when the CLI JSON payload carries ``total_cost_usd``.
-    """
-    block = ClaudeCodeBlock()
-    captured: list[NodeExecutionStats] = []
-    with patch.object(block, "merge_stats", side_effect=captured.append):
-        block._record_cli_cost(
-            {
-                "result": "hello from claude",
-                "total_cost_usd": 0.0421,
-                "usage": {"input_tokens": 1234, "output_tokens": 56},
-            }
-        )
-
-    assert len(captured) == 1
-    stats = captured[0]
-    assert stats.provider_cost == pytest.approx(0.0421)
-    assert stats.provider_cost_type == "cost_usd"
-
-
-def test_record_cli_cost_skips_merge_when_total_cost_absent():
-    """If the CLI payload lacks ``total_cost_usd`` (legacy / non-JSON
-    output), ``_record_cli_cost`` must not call ``merge_stats`` — otherwise
-    we'd pollute telemetry with a ``cost_usd`` emission that has no real
-    cost attached.
-    """
-    block = ClaudeCodeBlock()
-    mock = MagicMock()
-    with patch.object(block, "merge_stats", mock):
-        block._record_cli_cost({"result": "hello"})
-    mock.assert_not_called()
