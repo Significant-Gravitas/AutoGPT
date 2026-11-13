@@ -716,9 +716,10 @@ A symlink `src` is moved itself, and with `overwrite` a symlink `dst` is
 replaced itself; neither target changes. Without `overwrite`, the rename
 itself refuses an existing `dst` (`renameat2` with `RENAME_NOREPLACE` on
 Linux, `renamex_np` with `RENAME_EXCL` on macOS, a plain rename on
-Windows), so a file created there after the shim's check is never
-replaced; a filesystem without that flag gets a check followed by the
-rename.
+Windows), so there a file created after the shim's check is never
+replaced. A filesystem without that flag gets a check followed by the
+rename, and there a file another program creates at `dst` between the two
+is replaced.
 
 ---
 
