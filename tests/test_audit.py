@@ -423,6 +423,42 @@ def test_a_chord_that_types_a_character_is_redacted(
 
 
 @pytest.mark.parametrize(
+    ("platform", "chord", "expected"),
+    [
+        # cua-driver 0.38 holds a modifier only by a name it knows, lowercased
+        # but not trimmed, and presses or skips any other name.
+        ("darwin", [" shift ", "a"], [" shift ", {"redacted_chars": 1}]),
+        ("darwin", [" cmd ", "c"], [" cmd ", {"redacted_chars": 1}]),
+        ("darwin", ["capslock", "a"], ["capslock", {"redacted_chars": 1}]),
+        ("win32", ["super", "a"], ["super", {"redacted_chars": 1}]),
+        ("linux", ["logo", "a"], ["logo", {"redacted_chars": 1}]),
+        # On a Mac it trims the key it presses, so " a " types a.
+        ("darwin", ["shift", " a "], ["shift", {"redacted_chars": 3}]),
+        # Command chords by the names it holds stay readable.
+        ("darwin", ["Cmd", "c"], ["Cmd", "c"]),
+        ("win32", ["windows", "r"], ["windows", "r"]),
+        ("linux", ["super", "a"], ["super", "a"]),
+    ],
+)
+def test_a_chord_whose_names_the_driver_holds_no_modifier_for_is_redacted(
+    platform: str, chord: list[str], expected: list[Any]
+) -> None:
+    """A `keys` list counted every name longer than one character as a held
+    modifier, so a chord the driver reads without one kept its character in
+    the audit log. cua-driver matches modifier names untrimmed and presses
+    the last other key, so [" shift ", "a"] types a."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {"keys": chord, "steps": [{"tool": "hotkey", "args": {"keys": chord}}]},
+        platform=platform,
+    )
+
+    assert details["keys"] == expected
+    assert details["steps"][0]["args"]["keys"] == expected
+
+
+@pytest.mark.parametrize(
     ("platform", "arguments", "expected"),
     [
         ("linux", {"key": "shift+a"}, {"key": ["shift", {"redacted_chars": 1}]}),

@@ -2168,6 +2168,20 @@ DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS = 120
 _AUDIT_REDACTED_ARGUMENTS = frozenset({"prompt_text", "script", "text", "value"})
 _AUDIT_STRING_LIMIT = 200
 
+# The names cua-driver 0.38's hotkey holds as modifiers, matched lowercased
+# but not trimmed: is_modifier in its macOS and Windows hotkey tools, and on
+# Linux modifier_keysym, which its XTest input uses, skipping any other name.
+# A name outside these holds nothing, so the chord's character is typed.
+_DRIVER_MODIFIERS = {
+    "darwin": frozenset(
+        {"cmd", "command", "super", "meta", "win", "shift", "option", "alt", "ctrl", "control", "fn"}
+    ),
+    "win32": frozenset({"ctrl", "control", "shift", "alt", "win", "windows", "cmd", "command"}),
+}
+_LINUX_DRIVER_MODIFIERS = frozenset(
+    {"shift", "control", "ctrl", "alt", "option", "command", "cmd", "super", "win", "meta"}
+)
+
 
 def _audit_arguments(
     value: Any, key: str | None = None, *, truncate: bool = True, platform: str | None = None
@@ -2183,7 +2197,10 @@ def _audit_arguments(
         }
     if isinstance(value, list):
         if key == "keys" and _types_a_character(value, platform):
-            return [{"redacted_chars": 1} if _is_character(item) else item for item in value]
+            return [
+                {"redacted_chars": len(item)} if _is_character_key(item) else item
+                for item in value
+            ]
         # A `keys` list holds one key each, none a chord written as one.
         item_key = None if key == "keys" else key
         return [
@@ -2205,6 +2222,12 @@ def _audit_arguments(
 
 def _is_character(value: Any) -> bool:
     return isinstance(value, str) and len(value) == 1
+
+
+def _is_character_key(key: Any) -> bool:
+    """Whether hotkey presses `key` as a character: one, as given or once
+    trimmed, since cua-driver on a Mac trims the key it presses."""
+    return _is_character(key) or (isinstance(key, str) and _is_character(key.strip()))
 
 
 def _chord_written_as_one(value: str, key: str | None) -> list[str] | None:
@@ -2229,10 +2252,13 @@ def _types_a_character(keys: list[Any], platform: str) -> bool:
     """Whether a hotkey chord types a character, as against a command chord
     (ctrl+c) whose keys stay readable: Shift and a character on every OS;
     Option too on macOS (Option+L is @ on a German layout); Ctrl with Alt
-    on Windows, which reads the pair as AltGr (Ctrl+Alt+Q is @ there)."""
-    if not any(_is_character(key) for key in keys):
+    on Windows, which reads the pair as AltGr (Ctrl+Alt+Q is @ there).
+    Only the names the driver holds as modifiers count (_DRIVER_MODIFIERS):
+    it presses or skips any other, so ["capslock", "a"] types a."""
+    if not any(_is_character_key(key) for key in keys):
         return False
-    held = {key.lower() for key in keys if isinstance(key, str) and not _is_character(key)}
+    modifiers = _DRIVER_MODIFIERS.get(platform, _LINUX_DRIVER_MODIFIERS)
+    held = {key.lower() for key in keys if isinstance(key, str)} & modifiers
     if held <= {"shift"}:
         return True
     alt = bool(held & {"alt", "option"})
