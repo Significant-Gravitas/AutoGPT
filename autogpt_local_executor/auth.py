@@ -15,6 +15,7 @@ import errno
 import hashlib
 import io
 import json
+import logging
 import secrets
 import selectors
 import socket
@@ -30,6 +31,8 @@ import httpx
 import keyring
 
 from .config import ShimConfig, _validate_platform_endpoint
+
+logger = logging.getLogger(__name__)
 
 KEYCHAIN_SERVICE = "autogpt-local-executor"
 # How long `autogpt-shim auth` waits for the browser to come back.
@@ -194,11 +197,34 @@ class KeychainTokenStore:
 
     async def store_tokens(self, access_token: str, refresh_token: str) -> None:
         """Persist one versioned, deployment-bound token pair atomically."""
+        record = self._record(access_token, refresh_token)
+        await asyncio.to_thread(keyring.set_password, KEYCHAIN_SERVICE, self._record_key, record)
+
+    async def store_refreshed(self, tokens: RefreshedTokens) -> bool:
+        """Store a refreshed pair while the keychain still holds the refresh
+        token its exchange used up, and say whether it did. Otherwise the
+        keychain is left as it is: a sign-in stored since (`autogpt-shim
+        auth`) is newer, and a record removed since (`autogpt-shim revoke`)
+        signed this computer out. The keychain can't compare and replace in
+        one step, so the read and the write run back to back in one thread;
+        a sign-in stored between those two calls is still replaced."""
+        record = self._record(tokens.access_token, tokens.refresh_token)
+
+        def store_if_unchanged() -> bool:
+            current = self._read_record()
+            if current is None or current["refresh_token"] != tokens.used_refresh_token:
+                return False
+            keyring.set_password(KEYCHAIN_SERVICE, self._record_key, record)
+            return True
+
+        return await asyncio.to_thread(store_if_unchanged)
+
+    def _record(self, access_token: str, refresh_token: str) -> str:
         if not isinstance(access_token, str) or not access_token:
             raise CredentialScopeError("OAuth response did not contain a valid access token.")
         if not isinstance(refresh_token, str) or not refresh_token:
             raise CredentialScopeError("OAuth response did not contain a valid refresh token.")
-        record = json.dumps(
+        return json.dumps(
             {
                 "version": 1,
                 "scope": asdict(self.scope),
@@ -207,7 +233,6 @@ class KeychainTokenStore:
             },
             separators=(",", ":"),
         )
-        await asyncio.to_thread(keyring.set_password, KEYCHAIN_SERVICE, self._record_key, record)
 
     def clear_tokens(self) -> None:
         """Remove only this deployment's record."""
@@ -317,7 +342,9 @@ class OAuthFlow:
         refresh stores it, without exchanging again, for as long as the
         keychain still holds the token that exchange used up: a sign-in
         stored since (`autogpt-shim auth`) goes ahead of it. A restart loses
-        it, so the daemon retries in the same process."""
+        it, so the daemon retries in the same process. The new pair is
+        stored on those terms too (store_refreshed), so a sign-in stored, or
+        a sign-out made, while the exchange ran is kept."""
         self._ensure_scope()
         refresh = await self.token_store.get_refresh_token()
         tokens = self.token_store.unsaved_refresh
@@ -328,7 +355,11 @@ class OAuthFlow:
                 raise ValueError("No refresh token stored. Run `autogpt-shim auth` first.")
             tokens = self.token_store.unsaved_refresh = await self._exchange_refresh_token(refresh)
         self._ensure_scope()
-        await self.token_store.store_tokens(tokens.access_token, tokens.refresh_token)
+        if not await self.token_store.store_refreshed(tokens):
+            logger.info(
+                "The stored sign-in changed during the token refresh; keeping it, "
+                "not the refreshed pair."
+            )
         self.token_store.unsaved_refresh = None
 
     async def _exchange_refresh_token(self, refresh: str) -> RefreshedTokens:

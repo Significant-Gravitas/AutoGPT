@@ -187,6 +187,12 @@ keychain.
   the next try, which doesn't exchange again. The shim retries in the same
   process, since a restart would lose the pair. A sign-in stored meanwhile
   (`autogpt-shim auth`) goes ahead of the kept pair.
+- A refreshed pair, kept or new, is stored only while the keychain still
+  holds the refresh token its exchange used up. A sign-in stored during the
+  exchange is kept instead, and a record `autogpt-shim revoke` removed
+  stays removed. The keychain has no compare-and-replace, so the shim reads
+  the record and writes the pair back to back in one thread: a sign-in
+  stored in the moment between that read and that write is still replaced.
 
 Tokens stored in OS keychain:
 - macOS: Keychain Services via `keyring` library
