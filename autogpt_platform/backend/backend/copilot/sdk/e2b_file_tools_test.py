@@ -1644,11 +1644,9 @@ class TestSandboxEditResultSize:
         sandbox.commands.run.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_bytes_that_are_not_utf8_count_as_they_are_written_back(
-        self, sandbox
-    ):
-        # Seven bytes, read as seven characters, four of them U+FFFD, which
-        # go back as three bytes each: fifteen.
+    async def test_a_file_that_is_not_utf8_is_not_edited(self, sandbox):
+        """Its bytes that aren't UTF-8 were read as U+FFFD and written back as
+        three bytes each, changing the file outside the edit."""
         sandbox.files.read.return_value = _FileStream(b"x\xff\xff-x\xff\xff")
 
         result = await _handle_edit_file(
@@ -1661,9 +1659,7 @@ class TestSandboxEditResultSize:
         )
 
         assert result["isError"]
-        assert (
-            "Editing notes.txt would make it 15 bytes" in result["content"][0]["text"]
-        )
+        assert "notes.txt isn't UTF-8 text" in result["content"][0]["text"]
         sandbox.files.write.assert_not_awaited()
 
     @pytest.mark.asyncio

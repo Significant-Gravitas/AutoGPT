@@ -822,11 +822,20 @@ async def _edit_on_executor(
     """Read, replace and write one file on the E2B box or the Local PC."""
     try:
         raw = await _read_remote(sandbox, remote, _MAX_READ_BYTES)
-        content = raw.decode("utf-8", errors="replace")
     except Exception as exc:
         return _mcp(f"Failed to read {os.path.basename(remote)}: {exc}", error=True)
     if len(raw) > _MAX_READ_BYTES:
         return _mcp(_too_large(remote, "edited"), error=True)
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        # Edit writes text back as UTF-8, so bytes that aren't would come back
+        # as U+FFFD: on a Local PC, the person's own file changed outside the edit.
+        return _mcp(
+            f"{os.path.basename(remote)} isn't UTF-8 text, and Edit would change its "
+            "other bytes too. Nothing was changed.",
+            error=True,
+        )
 
     count = content.count(old_string)
     if count == 0:
@@ -837,8 +846,6 @@ async def _edit_on_executor(
             "Use replace_all=true or provide a more unique string.",
             error=True,
         )
-    # Counted from the decoded text, which is what is written back: a byte
-    # that isn't UTF-8 was read as U+FFFD and goes back as three.
     too_large = _edit_too_large(
         remote, content, old_string, new_string, count if replace_all else 1
     )

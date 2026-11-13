@@ -555,6 +555,26 @@ class TestLocalPCEditResultSize:
         assert "Editing notes.txt would make it 15 bytes" in _text(result)
         assert [call.args[0] for call in shim._rpc.await_args_list] == ["FILE_READ"]
 
+    @pytest.mark.asyncio
+    async def test_a_file_that_is_not_utf8_is_not_edited(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A Latin-1 file on the person's machine: its é was read as U+FFFD
+        and written back as three other bytes, outside the edit."""
+        shim = _shim(allowed_root="/Users/test/ws")
+        shim._rpc = AsyncMock(return_value=_contents(b"caf\xe9 au lait"))
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        result = await _handle_edit_file(
+            {"file_path": "menu.txt", "old_string": "lait", "new_string": "miel"}
+        )
+
+        assert result["isError"] is True
+        assert "menu.txt isn't UTF-8 text" in _text(result)
+        assert [call.args[0] for call in shim._rpc.await_args_list] == ["FILE_READ"]
+
 
 class TestLocalPCReadsThroughALimit:
     """Read, Edit and ``@@agptfile:`` references read a Local PC file through
