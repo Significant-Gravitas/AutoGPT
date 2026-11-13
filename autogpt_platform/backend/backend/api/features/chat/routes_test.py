@@ -23,7 +23,7 @@ from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
-from backend.copilot.model import AutopilotMode, ChatSession
+from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionGroup
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
@@ -3946,6 +3946,126 @@ def test_list_sessions_empty(mocker: pytest_mock.MockerFixture) -> None:
     data = response.json()
     assert data["total"] == 0
     assert data["sessions"] == []
+
+
+def test_list_sessions_passes_the_otto_scope_and_pinned_filter(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Paging through Otto's group asks for his own chats, unpinned when the
+    sidebar lists pinned chats on their own."""
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([], 0),
+    )
+
+    response = client.get("/sessions?autopilot_only=true&pinned=false")
+
+    assert response.status_code == 200
+    assert mock_get.await_args.kwargs["autopilot_only"] is True
+    assert mock_get.await_args.kwargs["pinned"] is False
+
+
+def test_list_sessions_rejects_an_expert_and_the_otto_scope_together(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/sessions?expert_id=expert-1&autopilot_only=true")
+
+    assert response.status_code == 400
+    mock_get.assert_not_awaited()
+
+
+def test_list_session_groups_returns_each_group_with_its_real_total(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Each group carries the count of all its chats next to the few listed,
+    and the running chat is marked wherever it is listed."""
+    maria = _make_session_info("sess-maria", expert_id="expert-maria")
+    otto = _make_session_info("sess-otto")
+    pinned = _make_session_info("sess-pinned", is_pinned=True)
+    mock_groups = mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+        return_value=(
+            [
+                ChatSessionGroup(expert_id="expert-maria", total=17, sessions=[maria]),
+                ChatSessionGroup(expert_id=None, total=29, sessions=[otto]),
+            ],
+            [pinned],
+        ),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    # Read in the order the route asks: pinned first, then each group's chats.
+    mock_pipe.execute = AsyncMock(return_value=["done", "running", None])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get(
+        "/session-groups?min_per_group=5&limit=40&pinned_separately=true"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [(g["expert_id"], g["total"]) for g in data["groups"]] == [
+        ("expert-maria", 17),
+        (None, 29),
+    ]
+    assert [
+        (s["id"], s["is_processing"]) for g in data["groups"] for s in g["sessions"]
+    ] == [("sess-maria", True), ("sess-otto", False)]
+    assert [(s["id"], s["is_pinned"]) for s in data["pinned"]] == [
+        ("sess-pinned", True)
+    ]
+    assert mock_groups.await_args.args[1:] == (5, 40)
+    assert mock_groups.await_args.kwargs["pinned_separately"] is True
+
+
+def test_list_session_groups_with_no_chats_skips_redis(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+        return_value=([], []),
+    )
+    mock_redis = mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/session-groups")
+
+    assert response.status_code == 200
+    assert response.json() == {"groups": [], "pinned": []}
+    mock_redis.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "query", ["min_per_group=0", "min_per_group=21", "limit=0", "limit=101"]
+)
+def test_list_session_groups_rejects_sizes_out_of_range(
+    mocker: pytest_mock.MockerFixture, query: str
+) -> None:
+    mock_groups = mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get(f"/session-groups?{query}")
+
+    assert response.status_code == 422
+    mock_groups.assert_not_awaited()
 
 
 # ─── delete_session ───────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV2ListSessionGroupsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { getGetFeatureFlagsMockHandler200 } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -72,9 +72,11 @@ const meta: Meta = {
     nextjs: { navigation: { pathname: "/marketplace" } },
     msw: {
       handlers: [
-        getGetV2ListSessionsMockHandler200({
-          sessions: SESSIONS,
-          total: SESSIONS.length,
+        getGetV2ListSessionGroupsMockHandler200({
+          groups: [
+            { expert_id: null, total: SESSIONS.length, sessions: SESSIONS },
+          ],
+          pinned: [],
         }),
         getListExpertIdentitiesMockHandler([]),
         getGetFeatureFlagsMockHandler200({ flags: {}, configured: false }),

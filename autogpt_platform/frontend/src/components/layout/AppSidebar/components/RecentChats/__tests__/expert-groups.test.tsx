@@ -1,20 +1,31 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
+import { Key, storage } from "@/services/storage/local-storage";
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@/tests/integrations/test-utils";
-import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChats } from "../RecentChats";
+import {
+  type SidebarChat,
+  type SidebarRequest,
+  groupChats,
+  sidebarBackend,
+} from "./sidebarBackend";
+
+// SECRT-3486: every group used to start collapsed except Otto's, which showed
+// one chat, and the counts covered only the newest 50 chats overall. Now each
+// group opens on its newest three, carries the server's real total, and pages
+// in its own older chats.
 
 const mariaExpert: Expert = {
   id: "expert-maria",
@@ -38,30 +49,14 @@ const mariaExpert: Expert = {
   workflows: [],
 };
 
-function makeSession(args: {
-  id: string;
-  title: string;
-  expertId?: string;
-  isProcessing?: boolean;
-}) {
-  return {
-    id: args.id,
-    title: args.title,
-    is_processing: args.isProcessing ?? false,
-    created_at: "2026-06-30T10:00:00",
-    updated_at: "2026-06-30T10:00:00",
-    expert_id: args.expertId ?? null,
-  };
-}
+let chats: SidebarChat[] = [];
+let requests: SidebarRequest[] = [];
 
-function makeSessions(count: number, expertId?: string) {
-  const prefix = expertId ?? "autopilot";
-  return Array.from({ length: count }, (_, index) =>
-    makeSession({
-      id: `${prefix}-${index + 1}`,
-      title: `${prefix} chat ${index + 1}`,
-      expertId,
-    }),
+function serve(nextChats: SidebarChat[], experts: Expert[] = [mariaExpert]) {
+  chats = nextChats;
+  server.use(
+    ...sidebarBackend(() => chats, requests),
+    getListExpertIdentitiesMockHandler(experts),
   );
 }
 
@@ -77,16 +72,16 @@ function groupHeader(label: string) {
   return screen.getByRole("button", { name: `${label} chats` });
 }
 
-/** Otto renders open and every other group collapsed, so one click flips
- * either to its other state. */
-async function toggleGroup(label: string) {
+async function showMore(label: string) {
   fireEvent.click(
-    await screen.findByRole("button", { name: `${label} chats` }),
+    await screen.findByRole("button", { name: `Show more ${label} chats` }),
   );
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
+  requests = [];
+  storage.clean(Key.RECENT_CHATS_COLLAPSED_GROUPS);
 });
 
 afterEach(() => {
@@ -95,120 +90,156 @@ afterEach(() => {
 });
 
 describe("RecentChats — expert groups", () => {
-  it("opens Otto, keeps other experts collapsed, and toggles on click", async () => {
-    const sessions = [...makeSessions(2), ...makeSessions(2, mariaExpert.id)];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
+  it("opens every group on its newest chats and toggles on click", async () => {
+    serve([...groupChats(2), ...groupChats(2, mariaExpert.id)]);
     renderRecentChats();
 
     expect(await screen.findByText("autopilot chat 1")).toBeDefined();
-    await screen.findByRole("button", { name: "Maria chats" });
-    expect(screen.queryByText("expert-maria chat 1")).toBeNull();
+    expect(screen.getByText("expert-maria chat 1")).toBeDefined();
 
+    // The header's name comes from the expert list, a separate request.
+    fireEvent.click(await screen.findByRole("button", { name: "Maria chats" }));
+    await waitFor(() =>
+      expect(screen.queryByText("expert-maria chat 1")).toBeNull(),
+    );
     fireEvent.click(groupHeader("Maria"));
     expect(await screen.findByText("expert-maria chat 1")).toBeDefined();
 
     fireEvent.click(groupHeader("Otto"));
-    expect(screen.queryByText("autopilot chat 1")).toBeNull();
-
-    fireEvent.click(groupHeader("Otto"));
-    expect(await screen.findByText("autopilot chat 1")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByText("autopilot chat 1")).toBeNull(),
+    );
   });
 
-  it("keeps a running chat visible while the group is collapsed", async () => {
-    const sessions = [
-      makeSession({ id: "running", title: "running chat", isProcessing: true }),
-      ...makeSessions(2),
-    ];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([]),
-    );
+  it("keeps a running chat visible while its group is collapsed", async () => {
+    serve([
+      { id: "running", title: "running chat", is_processing: true },
+      ...groupChats(2),
+    ]);
     renderRecentChats();
-    await toggleGroup("Otto");
+    fireEvent.click(await screen.findByRole("button", { name: "Otto chats" }));
 
-    expect(await screen.findByText("running chat")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 1")).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByText("autopilot chat 1")).toBeNull(),
+    );
+    expect(screen.getByText("running chat")).toBeDefined();
   });
 
-  it("previews one Otto chat and reveals the rest with Load all", async () => {
-    const sessions = makeSessions(10);
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([]),
-    );
+  it("fills the sidebar to 30 chats and pages ten more per Show more", async () => {
+    serve(groupChats(45));
     renderRecentChats();
 
-    expect(await screen.findByText("autopilot chat 1")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 2")).toBeNull();
+    expect(await screen.findByText("autopilot chat 30")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 31")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Load all Otto chats" }),
-    );
-    expect(await screen.findByText("autopilot chat 10")).toBeDefined();
+    await showMore("Otto");
+    expect(await screen.findByText("autopilot chat 40")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 41")).toBeNull();
+    const page = requests.find((request) => request.path === "sessions");
+    expect(page?.params.get("autopilot_only")).toBe("true");
+    expect(page?.params.get("pinned_first")).toBe("false");
+    expect(page?.params.has("expert_id")).toBe(false);
+
+    await showMore("Otto");
+    expect(await screen.findByText("autopilot chat 45")).toBeDefined();
     expect(
-      screen.queryByRole("button", { name: "Load all Otto chats" }),
+      screen.queryByRole("button", { name: "Show more Otto chats" }),
     ).toBeNull();
   });
 
-  it("shows how many chats each group holds", async () => {
-    const sessions = [...makeSessions(3), ...makeSessions(11, mariaExpert.id)];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
+  it("gives the experts in use more of the sidebar, but every expert three", async () => {
+    // Otto's 40 chats are the newest, Maria's 10 and Clip's 5 older: each
+    // keeps three, and the 21 slots left go to the newest of the rest.
+    serve([
+      ...groupChats(40),
+      ...groupChats(10, mariaExpert.id),
+      ...groupChats(5, "expert-clip"),
+    ]);
+    renderRecentChats();
+
+    expect(await screen.findByText("autopilot chat 24")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 25")).toBeNull();
+    expect(screen.getByText("expert-maria chat 3")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 4")).toBeNull();
+    expect(screen.getByText("expert-clip chat 3")).toBeDefined();
+    expect(screen.queryByText("expert-clip chat 4")).toBeNull();
+  });
+
+  it("counts every chat in a group, not just the ones listed", async () => {
+    serve([...groupChats(3), ...groupChats(40, mariaExpert.id)]);
     renderRecentChats();
 
     const mariaHeader = await screen.findByRole("button", {
       name: "Maria chats",
     });
-    expect(within(mariaHeader).getByText("11")).toBeDefined();
+    expect(within(mariaHeader).getByText("40")).toBeDefined();
+    const description = mariaHeader.getAttribute("aria-describedby");
+    expect(
+      description && document.getElementById(description)?.textContent,
+    ).toBe("40");
     expect(within(groupHeader("Otto")).getByText("3")).toBeDefined();
+    expect(screen.getByText("expert-maria chat 27")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 28")).toBeNull();
   });
 
-  it("groups expert chats under the expert's name with independent previews", async () => {
-    const sessions = [...makeSessions(12), ...makeSessions(11, mariaExpert.id)];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
+  it("lists an expert whose chats are all older than everyone else's", async () => {
+    // Fifty newer Otto chats used to push Maria off the first page, and with
+    // her the whole group, until the list-wide Load more was pressed.
+    serve([...groupChats(50), ...groupChats(2, mariaExpert.id)]);
+    renderRecentChats();
+
+    expect(await screen.findByText("expert-maria chat 1")).toBeDefined();
+    expect(within(groupHeader("Otto")).getByText("50")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+  });
+
+  it("pages an expert's older chats from that expert alone", async () => {
+    // Otto's 12 are the newest, so Maria shows 18 of her 40 at first.
+    serve([...groupChats(12), ...groupChats(40, mariaExpert.id)]);
     renderRecentChats();
 
     expect(await screen.findByText("Marketing Manager")).toBeDefined();
-    expect(screen.queryByText("expert-maria chat 1")).toBeNull();
-
-    await toggleGroup("Maria");
-    expect(await screen.findByText("expert-maria chat 4")).toBeDefined();
+    expect(screen.getByText("expert-maria chat 18")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 19")).toBeNull();
     expect(
       screen.getByText("Marketing Manager").classList.contains("opacity-70"),
     ).toBe(true);
     expect(screen.queryByText(mariaExpert.role)).toBeNull();
-    expect(screen.queryByText("expert-maria chat 5")).toBeNull();
-    expect(screen.queryByText("autopilot chat 2")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Load more Maria chats" }),
+    await showMore("Maria");
+    expect(await screen.findByText("expert-maria chat 28")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 29")).toBeNull();
+    expect(screen.queryByText("autopilot chat 13")).toBeNull();
+    const page = requests.find((request) => request.path === "sessions");
+    expect(page?.params.get("expert_id")).toBe(mariaExpert.id);
+    expect(page?.params.has("autopilot_only")).toBe(false);
+  });
+
+  it("remembers a collapsed group the next time the sidebar mounts", async () => {
+    serve([...groupChats(1), ...groupChats(1, mariaExpert.id)]);
+    const { unmount } = renderRecentChats();
+    fireEvent.click(await screen.findByRole("button", { name: "Maria chats" }));
+    await waitFor(() =>
+      expect(screen.queryByText("expert-maria chat 1")).toBeNull(),
     );
-    expect(await screen.findByText("expert-maria chat 8")).toBeDefined();
-    expect(screen.queryByText("expert-maria chat 9")).toBeNull();
-    expect(screen.queryByText("autopilot chat 2")).toBeNull();
+    unmount();
+
+    renderRecentChats();
+    expect(await screen.findByText("autopilot chat 1")).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: "Maria chats" }),
+    ).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 1")).toBeNull();
   });
 
   it("falls back to a generic Expert label when the expert is unknown", async () => {
-    const sessions = makeSessions(2, "expert-ghost");
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([]),
-    );
+    serve(groupChats(2, "expert-ghost"), []);
     renderRecentChats();
 
     const expertGroup = await screen.findByRole("button", {
       name: "Expert chats",
     });
     expect(expertGroup.querySelector("img")).not.toBe(null);
-    fireEvent.click(expertGroup);
     expect(await screen.findByText("expert-ghost chat 1")).toBeDefined();
   });
 
@@ -220,11 +251,7 @@ describe("RecentChats — expert groups", () => {
       avatar_url: null,
       color: "violet-300",
     };
-    const sessions = makeSessions(2, novaExpert.id);
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([novaExpert]),
-    );
+    serve(groupChats(2, novaExpert.id), [novaExpert]);
     renderRecentChats();
 
     const expertGroup = await screen.findByRole("button", {
@@ -238,48 +265,24 @@ describe("RecentChats — expert groups", () => {
     );
   });
 
-  it("keeps the group-level and list-level Load more buttons distinct", async () => {
-    const sessions = makeSessions(12);
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions,
-        total: sessions.length + 10,
-      }),
-      getListExpertIdentitiesMockHandler([]),
-    );
+  it("keeps a group's shown chats and collapse across the 10-second refresh", async () => {
+    serve([...groupChats(45), ...groupChats(2, mariaExpert.id)]);
     renderRecentChats();
 
-    expect(
-      await screen.findByRole("button", { name: "Load all Otto chats" }),
-    ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Load more" })).toBeDefined();
-  });
+    fireEvent.click(await screen.findByRole("button", { name: "Maria chats" }));
+    await showMore("Otto");
+    expect(await screen.findByText("autopilot chat 38")).toBeDefined();
 
-  it("keeps reveal and collapse state across session list refetches", async () => {
-    const sessions = [...makeSessions(12), ...makeSessions(2, mariaExpert.id)];
-    let listCalls = 0;
-    server.use(
-      http.get("*/api/internal/chat/sessions", () => {
-        listCalls++;
-        return HttpResponse.json({ sessions, total: sessions.length });
-      }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
-    renderRecentChats();
+    const reads = () =>
+      requests.filter((request) => request.path === "session-groups").length;
+    const readsBefore = reads();
+    await act(async () => {
+      vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
+    });
+    await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
 
-    await toggleGroup("Maria");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Load all Otto chats" }),
-    );
-    expect(await screen.findByText("autopilot chat 12")).toBeDefined();
-    expect(await screen.findByText("expert-maria chat 1")).toBeDefined();
-
-    const callsBefore = listCalls;
-    vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
-    await waitFor(() => expect(listCalls).toBeGreaterThan(callsBefore));
-
-    expect(screen.getByText("autopilot chat 12")).toBeDefined();
-    expect(screen.getByText("expert-maria chat 1")).toBeDefined();
+    expect(screen.getByText("autopilot chat 38")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 1")).toBeNull();
   });
 
   it("links each group header to a new chat, except for fired experts", async () => {
@@ -289,14 +292,13 @@ describe("RecentChats — expert groups", () => {
       name: "Max",
       is_archived: true,
     };
-    const sessions = [
-      ...makeSessions(1),
-      ...makeSessions(1, mariaExpert.id),
-      ...makeSessions(1, maxExpert.id),
-    ];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([mariaExpert, maxExpert]),
+    serve(
+      [
+        ...groupChats(1),
+        ...groupChats(1, mariaExpert.id),
+        ...groupChats(1, maxExpert.id),
+      ],
+      [mariaExpert, maxExpert],
     );
     renderRecentChats();
 
@@ -320,19 +322,15 @@ describe("RecentChats — expert groups", () => {
   });
 
   it("keeps the + link fresh even when the expert's latest chat is running", async () => {
-    const sessions = [
-      makeSession({
+    serve([
+      {
         id: "maria-running",
         title: "maria running chat",
-        expertId: mariaExpert.id,
-        isProcessing: true,
-      }),
-      ...makeSessions(1, mariaExpert.id),
-    ];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
+        expert_id: mariaExpert.id,
+        is_processing: true,
+      },
+      ...groupChats(1, mariaExpert.id),
+    ]);
     renderRecentChats();
 
     const mariaLink = await screen.findByRole("link", {
@@ -346,11 +344,7 @@ describe("RecentChats — expert groups", () => {
   });
 
   it("hides the group chevron at rest on desktop and reveals it on hover or focus", async () => {
-    const sessions = [...makeSessions(1), ...makeSessions(1, mariaExpert.id)];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-      getListExpertIdentitiesMockHandler([mariaExpert]),
-    );
+    serve([...groupChats(1), ...groupChats(1, mariaExpert.id)]);
     renderRecentChats();
 
     const header = await screen.findByRole("button", { name: "Maria chats" });

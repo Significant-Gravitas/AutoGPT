@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 
 import { useRecentChats } from "../useRecentChats";
+import { sidebarBackend } from "./sidebarBackend";
 
 const toastMock = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
@@ -35,26 +36,9 @@ function makeWrapper() {
   return Wrapper;
 }
 
-function sessionsHandler() {
-  return http.get("*/api/internal/chat/sessions", () =>
-    HttpResponse.json({
-      sessions: [
-        {
-          id: "s1",
-          title: "Chat one",
-          is_processing: false,
-          created_at: "2026-06-30T00:00:00Z",
-          updated_at: "2026-06-30T00:00:00Z",
-        },
-      ],
-      total: 1,
-    }),
-  );
-}
-
 beforeEach(() => {
   toastMock.mockClear();
-  server.use(sessionsHandler());
+  server.use(...sidebarBackend(() => [{ id: "s1", title: "Chat one" }]));
 });
 
 afterEach(() => {

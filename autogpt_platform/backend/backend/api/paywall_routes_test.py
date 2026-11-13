@@ -181,6 +181,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/internal/builder/suggestions",
     "GET /api/internal/chat/connections",
     "GET /api/internal/chat/model-tiers",
+    "GET /api/internal/chat/session-groups",
     "GET /api/internal/chat/sessions",
     "GET /api/internal/chat/sessions/{session_id}",
     "GET /api/internal/chat/sessions/{session_id}/at-reset",

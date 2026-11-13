@@ -15,6 +15,5 @@
   "src/app/(platform)/copilot/useCopilotRuntimeStream.ts": 6,
   "src/app/(platform)/copilot/useCopilotStream.ts": 2,
   "src/app/(platform)/copilot/useExpertMap.ts": 1,
-  "src/app/(platform)/copilot/useLoadMoreMessages.ts": 1,
-  "src/app/(platform)/copilot/useSessionList.ts": 1
+  "src/app/(platform)/copilot/useLoadMoreMessages.ts": 1
 }
