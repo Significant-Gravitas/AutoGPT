@@ -1013,6 +1013,14 @@ async def fork_graph_in_library(
     )
     graph.forked_from_id = graph.id
     graph.forked_from_version = forked_from_version
+    source = await graph_db.get_graph(
+        graph.id, forked_from_version, user_id, include_subgraphs=True
+    )
+    # The caller sends the sub-graphs; only those of the copied version have a source.
+    copied = {(sub.id, sub.version) for sub in source.sub_graphs} if source else set()
+    graph_db.record_copy_sources(
+        sub for sub in graph.sub_graphs if (sub.id, sub.version) in copied
+    )
     graph.name = graph_db.fork_name(graph.name)
     return await create_graph_in_library(
         graph, user_id, organization_id=organization_id, team_id=team_id
