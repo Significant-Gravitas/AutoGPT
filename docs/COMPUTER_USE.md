@@ -102,7 +102,8 @@ The service has
 `AUTOGPT_SHIM_SUPERVISOR=systemd` in its unit; an install from before
 2026-11-09 picks it up with `autogpt-shim install`.
 
-WSL2 can't drive Windows apps; run the shim on Windows itself.
+The shim doesn't offer computer use under WSL2 at all, not even for Linux
+apps WSLg shows; to drive your apps, run the shim on Windows itself.
 
 ## Clipboard
 
