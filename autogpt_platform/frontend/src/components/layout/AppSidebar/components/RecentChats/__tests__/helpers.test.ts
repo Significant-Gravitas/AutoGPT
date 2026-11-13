@@ -15,17 +15,16 @@ function summaries(...ids: string[]) {
   return ids.map((id, index) => toSummary({ id, title: id }, index));
 }
 
-function pages(total: number, ...ids: string[]) {
+function page(total: number, ...ids: string[]) {
   return {
-    pages: [
-      {
-        status: 200 as const,
-        headers: new Headers(),
-        data: { sessions: summaries(...ids), total },
-      },
-    ],
-    pageParams: [0],
+    status: 200 as const,
+    headers: new Headers(),
+    data: { sessions: summaries(...ids), total },
   };
+}
+
+function pages(total: number, ...ids: string[]) {
+  return { pages: [page(total, ...ids)], pageParams: [0] };
 }
 
 describe("getNewChatHref", () => {
@@ -108,6 +107,16 @@ describe("olderPagesMatchGroup", () => {
     expect(
       olderPagesMatchGroup(pages(5, "a", "b", "c"), summaries("new", "a"), 5),
     ).toBe(false);
+  });
+
+  it("stops matching when a chat was deleted between two page reads", () => {
+    // c went after the first page was read and before the second: d moved
+    // into the first page's offsets and was never read, and c is still there.
+    const split = {
+      pages: [page(5, "a", "b", "c"), page(4, "e")],
+      pageParams: [0, 3],
+    };
+    expect(olderPagesMatchGroup(split, preview, 4)).toBe(false);
   });
 });
 

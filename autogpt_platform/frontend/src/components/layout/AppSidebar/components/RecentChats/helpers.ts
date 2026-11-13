@@ -98,17 +98,19 @@ export function mergeGroupSessions(
 }
 
 /** Whether a group's older pages still line up with what the poll says the
- *  group holds: the same total, and the same chats at the top. A chat added
- *  or deleted since they were read shifts every offset after it, so the
- *  next page would repeat or skip one. */
+ *  group holds: every page read at the same total, and the same chats at the
+ *  top. A chat added or deleted since a page was read, even between two of
+ *  the reads, shifts every offset after it, so a page repeats or skips one. */
 export function olderPagesMatchGroup(
   pages: SessionListInfiniteData,
   preview: SessionSummaryResponse[],
   total: number,
 ) {
-  const lastPage = pages.pages.at(-1);
-  if (lastPage?.status !== 200) return true;
-  if (lastPage.data.total !== total) return false;
+  const totals = pages.pages.flatMap((page) =>
+    page.status === 200 ? [page.data.total] : [],
+  );
+  if (!totals.length) return true;
+  if (totals.some((pageTotal) => pageTotal !== total)) return false;
   const loaded = flattenSessions(pages);
   return preview.every((session, index) => loaded[index]?.id === session.id);
 }
