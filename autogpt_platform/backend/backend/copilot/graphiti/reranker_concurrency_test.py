@@ -66,12 +66,18 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
     started = 0
     finished = 0
     cancelled = 0
+    request_tasks: set[asyncio.Task[None]] = set()
     active_wave_ready = asyncio.Event()
     fail_first = asyncio.Event()
     release_siblings = asyncio.Event()
+    siblings_cancelled = asyncio.Event()
+    finish_cleanup = asyncio.Event()
 
     async def fake_create(**_kwargs):
         nonlocal started, finished, cancelled
+        task = asyncio.current_task()
+        assert task is not None
+        request_tasks.add(task)
         call_index = started
         started += 1
         if started == MAX_PARALLEL_SCORES:
@@ -84,6 +90,9 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
             return _logprob_response()
         except asyncio.CancelledError:
             cancelled += 1
+            if cancelled == MAX_PARALLEL_SCORES - 1:
+                siblings_cancelled.set()
+            await finish_cleanup.wait()
             raise
         finally:
             finished += 1
@@ -93,7 +102,6 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
     reranker = CompatOpenAIRerankerClient(
         config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
     )
-    baseline_tasks = asyncio.all_tasks()
     ranking = asyncio.create_task(
         reranker.rank(
             "query",
@@ -104,26 +112,28 @@ async def test_rank_cancels_and_drains_siblings_after_provider_error(recwarn):
     try:
         await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
         fail_first.set()
+        await asyncio.wait_for(siblings_cancelled.wait(), timeout=5)
+        assert not ranking.done()
+        finish_cleanup.set()
         with pytest.raises(RuntimeError, match="provider failed"):
             await asyncio.wait_for(ranking, timeout=5)
 
         started_when_rank_returned = started
-        pending_when_rank_returned = asyncio.all_tasks() - baseline_tasks
-        release_siblings.set()
-        await asyncio.gather(*pending_when_rank_returned, return_exceptions=True)
+        pending_when_rank_returned = {task for task in request_tasks if not task.done()}
     finally:
         fail_first.set()
         release_siblings.set()
+        finish_cleanup.set()
         if not ranking.done():
             ranking.cancel()
-        await asyncio.gather(ranking, return_exceptions=True)
+        await asyncio.gather(ranking, *request_tasks, return_exceptions=True)
     gc.collect()
 
     assert started_when_rank_returned == MAX_PARALLEL_SCORES
     assert started == started_when_rank_returned
     assert finished == started
     assert cancelled == MAX_PARALLEL_SCORES - 1
-    assert not (asyncio.all_tasks() - baseline_tasks)
+    assert not pending_when_rank_returned
     assert not [
         warning for warning in recwarn if issubclass(warning.category, RuntimeWarning)
     ]
@@ -134,11 +144,17 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
     started = 0
     finished = 0
     cancelled = 0
+    request_tasks: set[asyncio.Task[None]] = set()
     active_wave_ready = asyncio.Event()
     release_scores = asyncio.Event()
+    requests_cancelled = asyncio.Event()
+    finish_cleanup = asyncio.Event()
 
     async def fake_create(**_kwargs):
         nonlocal started, finished, cancelled
+        task = asyncio.current_task()
+        assert task is not None
+        request_tasks.add(task)
         started += 1
         if started == MAX_PARALLEL_SCORES:
             active_wave_ready.set()
@@ -147,6 +163,9 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
             return _logprob_response()
         except asyncio.CancelledError:
             cancelled += 1
+            if cancelled == MAX_PARALLEL_SCORES:
+                requests_cancelled.set()
+            await finish_cleanup.wait()
             raise
         finally:
             finished += 1
@@ -156,7 +175,6 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
     reranker = CompatOpenAIRerankerClient(
         config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
     )
-    baseline_tasks = asyncio.all_tasks()
     ranking = asyncio.create_task(
         reranker.rank(
             "query",
@@ -167,20 +185,25 @@ async def test_rank_cancellation_drains_active_and_queued_requests(recwarn):
     try:
         await asyncio.wait_for(active_wave_ready.wait(), timeout=5)
         ranking.cancel()
+        await asyncio.wait_for(requests_cancelled.wait(), timeout=5)
+        assert not ranking.done()
+        finish_cleanup.set()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(ranking, timeout=5)
+        pending_when_rank_returned = {task for task in request_tasks if not task.done()}
     finally:
         release_scores.set()
+        finish_cleanup.set()
         if not ranking.done():
             ranking.cancel()
-        await asyncio.gather(ranking, return_exceptions=True)
+        await asyncio.gather(ranking, *request_tasks, return_exceptions=True)
     del ranking
     gc.collect()
 
     assert started == MAX_PARALLEL_SCORES
     assert finished == started
     assert cancelled == started
-    assert not (asyncio.all_tasks() - baseline_tasks)
+    assert not pending_when_rank_returned
     assert not [
         warning for warning in recwarn if issubclass(warning.category, RuntimeWarning)
     ]

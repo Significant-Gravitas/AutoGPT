@@ -87,6 +87,8 @@ _READ = frozenset(
         "request_work_check",
         "read_skill",
         "read_workspace_file",
+        # Draws cards from what Otto wrote; touches nothing.
+        "render_ui",
         "search_docs",
         "search_feature_requests",
         "validate_agent_graph",
