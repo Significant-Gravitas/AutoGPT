@@ -95,6 +95,7 @@ function ChatHostView({
     isLoadingSession,
     isSessionError,
     isSessionNotFound,
+    removedChat,
     isCreatingSession,
     isUploadingFiles,
     pendingSend,
@@ -152,6 +153,7 @@ function ChatHostView({
           isLoadingSession={isLoadingSession}
           isSessionError={isSessionError}
           isSessionNotFound={isSessionNotFound}
+          removedChat={removedChat}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
           isFinishProbing={isFinishProbing}

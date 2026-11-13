@@ -442,6 +442,8 @@ class ChatSessionInfo(BaseModel):
     is_pinned: bool = False
     # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
+    # Set when that expert was reset: the chat is kept but closed.
+    archived_at: datetime | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -495,6 +497,7 @@ class ChatSessionInfo(BaseModel):
             team_id=prisma_session.teamId,
             is_pinned=prisma_session.isPinned,
             expert_id=prisma_session.expertId,
+            archived_at=prisma_session.archivedAt,
         )
 
 
@@ -1616,6 +1619,17 @@ async def get_or_create_expert_kickoff_session(
 
     session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
     existing = await get_chat_session(session_id, user_id)
+    # Resetting the expert archived that thread. The next kickoff gets an id
+    # derived from it and its archive time: still the same id for every
+    # browser racing to start it, and a new one after each reset.
+    while existing is not None and existing.archived_at is not None:
+        session_id = str(
+            uuid.uuid5(
+                _EXPERT_KICKOFF_SESSION_NAMESPACE,
+                f"{session_id}:{existing.archived_at.isoformat()}",
+            )
+        )
+        existing = await get_chat_session(session_id, user_id)
     if existing is not None:
         return existing
 

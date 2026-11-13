@@ -138,7 +138,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "403": {
-            "description": "Account deletion isn't available while impersonating a user."
+            "description": "Account deletion isn't available while impersonating a user. Or the account is banned (`account_banned`)."
           },
           "409": {
             "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
@@ -4864,6 +4864,14 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "410": {
+            "description": "The chat was removed when its expert was reset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatRemovedResponse" }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -8842,6 +8850,51 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/reset": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Reset Expert",
+        "description": "Factory-reset a hired expert. Cannot be undone, unlike firing.",
+        "operationId": "reset_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertResetResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "409": {
+            "description": "The expert has a turn running; reset once it ends"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "The reset did not finish; it is safe to retry"
           }
         }
       }
@@ -22645,6 +22698,38 @@
         "required": ["name", "values"],
         "title": "ChartSeries"
       },
+      "ChatRemovedDetail": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "chat_removed",
+            "title": "Type",
+            "default": "chat_removed"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ChatRemovedDetail",
+        "description": "Why the chat cannot be opened, and whose reset removed it."
+      },
+      "ChatRemovedResponse": {
+        "properties": {
+          "detail": { "$ref": "#/components/schemas/ChatRemovedDetail" }
+        },
+        "type": "object",
+        "required": ["detail"],
+        "title": "ChatRemovedResponse",
+        "description": "The 410 body; FastAPI wraps an HTTPException's detail like this."
+      },
       "ChatRequest": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -26777,6 +26862,33 @@
         "type": "object",
         "title": "ExpertRecommendations",
         "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
+      },
+      "ExpertResetResult": {
+        "properties": {
+          "memory_nodes_erased": {
+            "type": "integer",
+            "title": "Memory Nodes Erased"
+          },
+          "computer_erased": { "type": "boolean", "title": "Computer Erased" },
+          "soul_reset": { "type": "boolean", "title": "Soul Reset" },
+          "routines_reset": { "type": "integer", "title": "Routines Reset" },
+          "chats_archived": { "type": "integer", "title": "Chats Archived" },
+          "approvals_cleared": {
+            "type": "integer",
+            "title": "Approvals Cleared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "memory_nodes_erased",
+          "computer_erased",
+          "soul_reset",
+          "routines_reset",
+          "chats_archived",
+          "approvals_cleared"
+        ],
+        "title": "ExpertResetResult",
+        "description": "What one reset did."
       },
       "ExpertRun": {
         "properties": {

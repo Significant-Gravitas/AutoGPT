@@ -96,7 +96,7 @@ async def test_account_erase_forgets_the_understanding(client, test_user_id):
     driver = AsyncMock()
     driver.execute_query.side_effect = [([{"c": 0}], None, None)]
 
-    with patch("backend.api.features.memory.routes.open_driver", return_value=driver):
+    with patch("backend.copilot.graphiti.erase.open_driver", return_value=driver):
         resp = await client.delete("/api/memory")
 
     assert resp.status_code == 200

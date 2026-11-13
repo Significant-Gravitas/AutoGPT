@@ -87,6 +87,8 @@ async def test_both_reads_apply_the_same_visibility_rules_as_the_list():
     for call in (totals_call, rows_call):
         query = call.args[0]
         assert _NULL_SAFE_DREAM_FILTER in query
+        # A reset expert's archived chats neither count nor show.
+        assert '"archivedAt" IS NULL' in query
         assert _ORG_SCOPE in query
         assert 'AND NOT "isPinned"' in query
     assert 'GROUP BY "expertId"' in totals_call.args[0]
