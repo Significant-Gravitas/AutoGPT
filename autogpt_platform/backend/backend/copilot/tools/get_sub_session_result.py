@@ -23,15 +23,26 @@ import time
 from typing import Any
 
 from backend.copilot import stream_registry
+from backend.copilot.background_delivery import cancel_background_subtasks
+from backend.copilot.background_task import BackgroundChildResult
 from backend.copilot.executor.utils import enqueue_cancel_task
-from backend.copilot.model import ChatSession, get_chat_session
+from backend.copilot.legacy_first_turn_memory import without_stored_first_turn_memory
+from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    CHAT_STATUS_QUEUED,
+    ChatSession,
+    get_chat_session,
+)
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
     SessionResult,
+    wait_for_queued_session,
     wait_for_session_result,
 )
 from backend.copilot.sdk.stream_accumulator import ToolCallEntry
-from backend.data.db_accessors import experts_db
+from backend.copilot.tools.models import WorkspaceFileInfoData
+from backend.copilot.turn_queue import cancel_queued_turn, queued_turn_refusal
+from backend.data.db_accessors import background_task_db, experts_db
 
 from .base import BaseTool
 from .models import (
@@ -131,12 +142,12 @@ class GetSubSessionResultTool(BaseTool):
             return ErrorResponse(
                 message="sub_session_id is required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
         if user_id is None:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         # Ownership check on every call — loads the ChatSession and
         # confirms the caller owns it. Returning the same "not found"
@@ -150,12 +161,13 @@ class GetSubSessionResultTool(BaseTool):
                     "never existed or belongs to another user."
                 ),
                 session_id=session.session_id,
-            )
+            ).from_outside()
 
         started_at = time.monotonic()
         delegate = await _delegated_expert_info(user_id, sub, session)
         actor = delegate.name if delegate is not None else "Subtask"
         borrowed = _is_borrowed_thread(sub, session)
+        queued = sub.chat_status == CHAT_STATUS_QUEUED
 
         if cancel:
             if borrowed:
@@ -167,13 +179,21 @@ class GetSubSessionResultTool(BaseTool):
                         "you need instead."
                     ),
                     session_id=session.session_id,
-                )
+                ).from_outside()
             # Fan out the cancel event. Whichever worker is running the
             # sub will break out of its stream and finalise the session
             # as failed. Return "cancelled" immediately; the sub may
             # still emit a little more output before the worker notices,
-            # but the agent doesn't need to wait for that.
-            await enqueue_cancel_task(inner_session_id)
+            # but the agent doesn't need to wait for that. A queued one has
+            # nothing running yet, so it simply leaves the queue.
+            await cancel_background_subtasks(user_id, inner_session_id)
+            if not (
+                queued
+                and await cancel_queued_turn(
+                    user_id=user_id, session_id=inner_session_id
+                )
+            ):
+                await enqueue_cancel_task(inner_session_id)
             return apply_delegated_expert(
                 SubSessionStatusResponse(
                     message=f"{actor} cancellation requested.",
@@ -183,7 +203,7 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_id=inner_session_id,
                     sub_autopilot_session_link=_sub_session_link(inner_session_id),
                     elapsed_seconds=0.0,
-                ),
+                ).from_outside(),
                 delegate,
             )
 
@@ -200,9 +220,43 @@ class GetSubSessionResultTool(BaseTool):
             getattr(registry_session, "status", "") == "running"
         )
         terminal_result = None if turn_in_flight else _already_terminal_result(sub)
+        refusal = None if turn_in_flight else queued_turn_refusal(sub)
+        # A background child is read from its record, not its transcript: its
+        # answer comes from the turn recorded when it ended, so a later turn
+        # in its chat is never handed back as its result, and until that
+        # record exists a partial transcript is not a result either.
+        recorded = await background_task_db().background_child_result(
+            inner_session_id, user_id
+        )
         outcome: SessionOutcome
         result: SessionResult
-        if terminal_result is not None:
+        if registry_session is None and _nothing_reached(sub):
+            return apply_delegated_expert(
+                _nothing_reached_response(
+                    sub, inner_session_id, session.session_id, actor
+                ),
+                delegate,
+            )
+        if (
+            refusal is not None
+            and not queued
+            and (recorded is None or recorded.outcome != "completed")
+        ):
+            # A turn refused as it was promoted says why in its chat, a
+            # background child's included; its record, which the sweep closes
+            # as failed, does not.
+            outcome, result = "refused", SessionResult(refusal=refusal)
+        elif recorded is not None and recorded.outcome is not None:
+            outcome, result = _recorded_result(recorded, actor)
+        elif recorded is not None and not queued and not turn_in_flight:
+            # Ended without a recorded outcome: recovery records it within
+            # seconds, and only that record says whether the work completed.
+            outcome, result = "running", SessionResult()
+        elif queued:
+            outcome, result = await wait_for_queued_session(
+                session_id=inner_session_id, user_id=user_id, timeout=effective_wait
+            )
+        elif terminal_result is not None:
             outcome, result = "completed", terminal_result
         elif effective_wait > 0:
             outcome, result = await wait_for_session_result(
@@ -235,16 +289,20 @@ class GetSubSessionResultTool(BaseTool):
                     sub_autopilot_session_link=link,
                     elapsed_seconds=round(elapsed, 2),
                     progress=progress,
-                ),
+                ).from_outside(progress),
                 delegate,
             )
 
         # On completion, read the authoritative workspace-file manifest from the
         # sub's session. This covers the cold-poll / already-terminal path where
         # ``result.tool_calls`` reflects only the last persisted message and so
-        # would miss files the sub wrote in earlier turns (SECRT-2377).
+        # would miss files the sub wrote in earlier turns (SECRT-2377), and a
+        # recorded background result as well, within its turn's window: the
+        # turn's tool calls name only what ``write_workspace_file`` wrote, not
+        # a file another tool saved for the sub, such as a browser screenshot,
+        # while a later turn's files stay out of its result.
         workspace_files = (
-            await list_sub_workspace_files(user_id, inner_session_id)
+            await _sub_workspace_files(user_id, inner_session_id, recorded)
             if outcome == "completed"
             else None
         )
@@ -260,6 +318,70 @@ class GetSubSessionResultTool(BaseTool):
             ),
             delegate,
         )
+
+
+async def _sub_workspace_files(
+    user_id: str, inner_session_id: str, recorded: BackgroundChildResult | None
+) -> list[WorkspaceFileInfoData] | None:
+    """The manifest a completed sub reports: the whole workspace listing for
+    a foreground sub, and for a recorded background result the files written
+    in its turn's window. A record without a window (its launch row gone)
+    lists nothing rather than everything."""
+    if recorded is None:
+        return await list_sub_workspace_files(user_id, inner_session_id)
+    if recorded.written_from is None:
+        return []
+    return await list_sub_workspace_files(
+        user_id,
+        inner_session_id,
+        written_from=recorded.written_from,
+        written_until=recorded.written_until,
+    )
+
+
+def _recorded_result(
+    recorded: BackgroundChildResult, actor: str
+) -> tuple[SessionOutcome, SessionResult]:
+    if recorded.outcome == "completed":
+        result = SessionResult()
+        result.response_text = recorded.response_text
+        result.tool_calls = _tool_call_entries(recorded.tool_calls)
+        return "completed", result
+    label = "timed out" if recorded.outcome == "timed_out" else recorded.outcome
+    return "refused", SessionResult(
+        refusal=f"{actor} {label} before it could report a result; its chat holds what it did."
+    )
+
+
+def _nothing_reached(sub: ChatSession) -> bool:
+    """An idle thread with no messages and no stream meta: no turn was ever
+    dispatched to it, or the dispatch failed at the publish (the meta is
+    removed then). A dispatched turn always has meta until it ends, and an
+    ended one has messages."""
+    return sub.chat_status == CHAT_STATUS_IDLE and not sub.messages
+
+
+def _nothing_reached_response(
+    sub: ChatSession, inner_session_id: str, parent_session_id: str | None, actor: str
+) -> SubSessionStatusResponse:
+    """Polling a thread nothing reached would otherwise read "running"
+    forever. From here a task the broker never got cannot be told from one it
+    still holds (a lost confirm, a stopped executor), so it is "unconfirmed"
+    at any age and never advice to send again, which could run it twice."""
+    return SubSessionStatusResponse(
+        message=(
+            f"Nothing has reached {actor}'s thread, and from here it can't be "
+            "confirmed whether the task was delivered: it may still arrive. "
+            "Don't send it again on this basis. Tell the user it may not have "
+            "started and point them to the thread."
+        ),
+        session_id=parent_session_id,
+        status="unconfirmed",
+        sub_session_id=inner_session_id,
+        sub_autopilot_session_id=inner_session_id,
+        sub_autopilot_session_link=_sub_session_link(inner_session_id),
+        elapsed_seconds=0.0,
+    ).from_outside()
 
 
 def _in_caller_scope(sub: ChatSession, session: ChatSession) -> bool:
@@ -346,12 +468,18 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
         return None
     result = SessionResult()
     result.response_text = last.content or ""
-    # Persisted tool calls are OpenAI-shape dicts; translate to
-    # ToolCallEntry so the downstream ``response_from_outcome`` can
-    # ``.model_dump()`` them uniformly with the live-drain path.
-    for tc in last.tool_calls or []:
+    result.tool_calls = _tool_call_entries(last.tool_calls or [])
+    return result
+
+
+def _tool_call_entries(raw_calls: list[dict[str, Any]]) -> list[ToolCallEntry]:
+    """Persisted tool calls are OpenAI-shape dicts; translate to
+    ``ToolCallEntry`` so the downstream ``response_from_outcome`` can
+    ``.model_dump()`` them uniformly with the live-drain path."""
+    entries: list[ToolCallEntry] = []
+    for tc in raw_calls:
         fn = tc.get("function") or {}
-        result.tool_calls.append(
+        entries.append(
             ToolCallEntry(
                 tool_call_id=tc.get("id", ""),
                 tool_name=fn.get("name") or tc.get("name") or "",
@@ -360,13 +488,16 @@ def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
                 success=tc.get("success"),
             )
         )
-    return result
+    return entries
 
 
 async def _build_progress_snapshot(
     inner_session_id: str | None,
 ) -> SubSessionProgressSnapshot | None:
     """Read the sub's ChatSession and return a preview of recent messages.
+
+    The preview goes back to the model, so the sub's first message is read
+    without the memory block an older session stored in it.
 
     Returns ``None`` silently on lookup failure — progress is best-effort;
     missing progress shouldn't abort the normal ``still running`` response.
@@ -377,7 +508,7 @@ async def _build_progress_snapshot(
         sub = await get_chat_session(inner_session_id)
         if sub is None:
             return None
-        messages = list(sub.messages)
+        messages = without_stored_first_turn_memory(list(sub.messages))
     except Exception as exc:  # best-effort peek
         logger.debug(
             "Progress snapshot unavailable for sub %s: %s",

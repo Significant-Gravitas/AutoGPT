@@ -48,11 +48,3 @@ export function readSpeechLevel(): number | null {
   for (const sample of samples) sum += sample * sample;
   return Math.sqrt(sum / samples.length);
 }
-
-/** Test seam. The real graph outlives the tab, by design. */
-export function resetSpeechWatch() {
-  source = null;
-  analyser = null;
-  samples = null;
-  attachedTo = null;
-}

@@ -2,16 +2,19 @@
 would have, writes only what MailerLite does not already hold, and so resumes
 an interrupted run by simply running again."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
+from backend.data.posthog_lifecycle_test import NOW as LIFECYCLE_NOW
+from backend.data.posthog_lifecycle_test import TRIAL_START, by_request, coupon, trial
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
+from backend.data.subscription_trial import TrialState
 from backend.notifications import mailerlite, mailerlite_backfill
 from backend.notifications import mailerlite_field_backfill as backfill
-from backend.notifications.mailerlite_backfill import Subscription
 from backend.notifications.mailerlite_field_backfill import Person
 
 S = SubscriptionStatus
@@ -25,22 +28,42 @@ def _day(timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d")
 
 
-def _paid(status: str, **over) -> Subscription:
-    return Subscription(status=status, start_date=AUG, **over)
-
-
-def _trial(status: str, **over) -> Subscription:
-    return Subscription(
-        status=status, from_trial=True, trial_start=AUG, trial_end=SEP, **over
+def _sub(status: str, sub_id: str = "sub_1", **stripe) -> StripeSubscriptionFacts:
+    """A Stripe subscription as the backfill lists it."""
+    return StripeSubscriptionFacts.model_validate(
+        {
+            "id": sub_id,
+            "customer": "cus_1",
+            "status": status,
+            "start_date": AUG,
+            "items": {"data": [{"price": {"unit_amount": 5000}, "quantity": 1}]},
+            **stripe,
+        }
     )
 
 
-def _person(email: str = "a@x.io", *subscriptions: Subscription) -> Person:
+def _paid(status: str, **stripe) -> StripeSubscriptionFacts:
+    return _sub(status, **stripe)
+
+
+def _native_trial(status: str, **stripe) -> StripeSubscriptionFacts:
+    return _sub(
+        status, "sub_native", **{"trial_start": AUG, "trial_end": SEP, **stripe}
+    )
+
+
+def _person(
+    email: str = "a@x.io",
+    *subscriptions: StripeSubscriptionFacts,
+    trial: TrialState | None = None,
+) -> Person:
     return Person(
         user_id=f"u-{email}",
         email=email,
         created_at=CREATED,
+        stripe_customer_id="cus_1",
         subscriptions=list(subscriptions),
+        trial=trial,
     )
 
 
@@ -51,24 +74,83 @@ def _person(email: str = "a@x.io", *subscriptions: Subscription) -> Person:
         # Checkout never finished: nothing started.
         ([_paid("incomplete_expired")], S.SIGNED),
         ([_paid("active")], S.SUBSCRIBED),
-        ([_paid("past_due")], S.SUBSCRIBED),
+        # A failed payment is not a paying subscriber (PostHog says the same).
+        ([_paid("past_due")], S.PAYMENT_FAILED),
+        ([_paid("unpaid")], S.PAYMENT_FAILED),
         ([_paid("active", cancel_at_period_end=True)], S.SUBSCRIPTION_CANCELED),
         ([_paid("canceled")], S.SUBSCRIPTION_ENDED),
-        ([_paid("unpaid")], S.SUBSCRIPTION_ENDED),
-        ([_trial("trialing")], S.IN_TRIAL),
-        ([_trial("trialing", cancel_at_period_end=True)], S.TRIAL_CANCELED),
-        # Its first payment never cleared.
-        ([_trial("past_due")], S.TRIAL_CANCELED),
-        ([_trial("canceled")], S.TRIAL_CANCELED),
-        ([_trial("active")], S.SUBSCRIBED),
-        ([_trial("canceled", converted=True)], S.SUBSCRIPTION_ENDED),
+        ([_native_trial("trialing", trial_end=SEP20 * 2)], S.IN_TRIAL),
+        (
+            [_native_trial("trialing", trial_end=SEP20 * 2, cancel_at_period_end=True)],
+            S.TRIAL_CANCELED,
+        ),
+        # Native trials that ended before their first charge.
+        ([_native_trial("canceled", ended_at=SEP, **by_request())], S.TRIAL_CANCELED),
+        (
+            [
+                _native_trial(
+                    "canceled",
+                    ended_at=SEP,
+                    cancellation_details={"reason": "payment_failed"},
+                )
+            ],
+            S.TRIAL_EXPIRED,
+        ),
         # A paid subscription outranks a trial, and a live one an ended one.
-        ([_paid("canceled"), _trial("trialing")], S.IN_TRIAL),
-        ([_trial("canceled"), _paid("active")], S.SUBSCRIBED),
+        ([_native_trial("canceled"), _paid("active")], S.SUBSCRIBED),
     ],
 )
-def test_standing(subscriptions, status):
-    assert backfill.standing(subscriptions)[0] is status
+def test_the_status_is_the_shared_lifecycle_status(subscriptions, status):
+    assert backfill.desired(_person("a@x.io", *subscriptions))[0] is status
+
+
+# ---- the SECRT-2795 rules, as the backfill writes them ----------------------
+
+
+def test_a_tier_without_a_paid_subscription_is_signed():
+    # An admin-granted ENTERPRISE plan has no Stripe subscription; the tier is
+    # never read.
+    assert backfill.desired(_person("a@x.io"))[0] is S.SIGNED
+
+
+@pytest.mark.parametrize(
+    "discounts, status",
+    [
+        ([coupon(percent_off=100)], S.SIGNED),
+        ([coupon(amount_off=5000)], S.SIGNED),
+        ([coupon(percent_off=50)], S.SUBSCRIBED),
+    ],
+)
+def test_only_a_subscription_that_charges_something_is_subscribed(discounts, status):
+    person = _person("a@x.io", _paid("active", discounts=discounts))
+    status_, fields = backfill.desired(person)
+    assert status_ is status
+    if status is S.SIGNED:
+        assert fields[F.SUBSCRIPTION_STARTED] is None
+
+
+def test_a_trial_that_ran_out_has_expired():
+    ran_out = trial(ends_at=LIFECYCLE_NOW - timedelta(days=1))
+    status, fields = backfill.desired(
+        _person("a@x.io", trial=ran_out), now=LIFECYCLE_NOW
+    )
+    assert status is S.TRIAL_EXPIRED
+    assert fields[F.TRIAL_STARTED] == TRIAL_START.strftime("%Y-%m-%d")
+
+
+def test_a_trial_the_user_canceled_is_trial_canceled():
+    canceled = trial(
+        ends_at=LIFECYCLE_NOW - timedelta(days=1), cancel_at_period_end=True
+    )
+    status, _ = backfill.desired(_person("a@x.io", trial=canceled), now=LIFECYCLE_NOW)
+    assert status is S.TRIAL_CANCELED
+
+
+def test_the_subscription_start_is_the_first_paid_one():
+    first = _sub("canceled", "sub_old", start_date=AUG, ended_at=SEP)
+    again = _sub("active", "sub_new", start_date=SEP20)
+    _, fields = backfill.desired(_person("a@x.io", first, again))
+    assert fields[F.SUBSCRIPTION_STARTED] == _day(AUG)
 
 
 def test_every_field_is_set_so_nothing_stale_survives():
@@ -84,28 +166,27 @@ def test_every_field_is_set_so_nothing_stale_survives():
     }
 
 
-def test_the_dates_come_from_stripe():
-    _, fields = backfill.desired(
-        _person(
-            "a@x.io",
-            _trial(
-                "canceled",
-                converted=True,
-                cancel_at_period_end=True,
-                canceled_at=SEP10,
-                ended_at=SEP20,
-            ),
-        )
+def test_the_dates_come_from_stripe_and_the_trial_row():
+    converted = datetime.fromtimestamp(SEP, UTC)
+    ended_trial = trial(status="canceled", converted_at=converted)
+    gone = _sub(
+        "canceled",
+        "sub_trial",
+        metadata={"trial_enrollment_id": "trial-1"},
+        cancel_at_period_end=True,
+        canceled_at=SEP10,
+        ended_at=SEP20,
     )
-    assert fields[F.TRIAL_STARTED] == _day(AUG)
-    # A converted trial's paid subscription began when the trial ended.
+    _, fields = backfill.desired(_person("a@x.io", gone, trial=ended_trial))
+    assert fields[F.TRIAL_STARTED] == TRIAL_START.strftime("%Y-%m-%d")
+    # A converted trial's paid subscription began at the conversion.
     assert fields[F.SUBSCRIPTION_STARTED] == _day(SEP)
     assert fields[F.SUBSCRIPTION_CANCELED] == _day(SEP10)
     assert fields[F.SUBSCRIPTION_ENDED] == _day(SEP20)
 
 
 def test_a_missing_timestamp_is_left_empty_not_today():
-    _, fields = backfill.desired(_person("a@x.io", Subscription(status="canceled")))
+    _, fields = backfill.desired(_person("a@x.io", _paid("canceled")))
     assert fields[F.SUBSCRIPTION_ENDED] is None
 
 
@@ -146,7 +227,10 @@ def test_an_address_mailerlite_would_refuse_is_counted_not_sent():
 
 
 def test_a_second_run_finds_nothing_to_do():
-    people = [_person("a@x.io"), _person("b@x.io", _trial("trialing"))]
+    people = [
+        _person("a@x.io"),
+        _person("b@x.io", _native_trial("trialing", trial_end=SEP20 * 2)),
+    ]
     first = backfill.plan(people, {})
     held = {
         c.person.email: {k.value: v for k, v in c.fields.items()} for c in first.changes
@@ -182,7 +266,7 @@ async def test_apply_batches_upserts_at_the_import_pace(configured, monkeypatch)
     changes = backfill.plan([_person(f"p{i}@x.io") for i in range(120)], {}).changes
     progress = []
 
-    ok, failed = await backfill.apply(changes, lambda d, t: progress.append(d))
+    ok, failed, skipped = await backfill.apply(changes, lambda d, t: progress.append(d))
 
     batches = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
     assert [len(b) for b in batches] == [50, 50, 20]
@@ -197,8 +281,31 @@ async def test_apply_batches_upserts_at_the_import_pace(configured, monkeypatch)
     assert [c.args[0] for c in configured.await_args_list] == [
         mailerlite_backfill.UPSERT_BATCH_INTERVAL_SECONDS
     ] * 2
-    assert (ok, failed) == (120, 0)
+    assert (ok, failed, skipped) == (120, 0, 0)
     assert progress == [50, 100, 120]
+
+
+@pytest.mark.asyncio
+async def test_apply_drops_anyone_who_may_no_longer_be_written(configured, monkeypatch):
+    """The plan is hours old by its last batch: someone who opted out or was
+    seen in Iran or Russia since then is checked out right before the write."""
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _response(
+            200,
+            {"responses": [{"code": 200} for _ in kw["json"]["requests"]]},
+        )
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    people = [_person("in@x.io"), _person("out@x.io")]
+    changes = backfill.plan(people, {}).changes
+
+    async def kept_out(user_id: str) -> bool:
+        return user_id == "u-out@x.io"
+
+    assert await backfill.apply(changes, kept_out=kept_out) == (1, 0, 1)
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
 
 
 @pytest.mark.asyncio
@@ -216,7 +323,7 @@ async def test_apply_counts_a_refused_upsert_without_logging_the_address(
     monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
     changes = backfill.plan([_person("bad@x.io")], {}).changes
 
-    assert await backfill.apply(changes) == (0, 1)
+    assert await backfill.apply(changes) == (0, 1, 0)
     assert "bad@x.io" not in caplog.text
     assert " at .io with 422 " in caplog.text
     assert "The given data was invalid." in caplog.text
@@ -292,3 +399,83 @@ def test_without_create_only_existing_subscribers_are_planned():
     )
     assert [c.person.email for c in plan.changes] == ["held@x.io"]
     assert not any(c.new for c in plan.changes)
+    # The dry run's counts are of the people it would write.
+    assert sum(plan.statuses.values()) == 1
+    assert plan.not_held == 1
+
+
+@pytest.mark.parametrize("create", [True, False])
+def test_an_opted_out_person_is_counted_and_never_written(create):
+    """A field write creates the subscriber, so someone who refused marketing
+    is left out even when MailerLite already holds them with stale fields."""
+    opted_out = _person("out@x.io", _paid("active")).model_copy(
+        update={"marketing_opt_out_at": CREATED}
+    )
+    plan = backfill.plan(
+        [opted_out, _person("held@x.io", _paid("active"))],
+        {
+            "out@x.io": {"subscription_status": "signed"},
+            "held@x.io": {"subscription_status": "signed"},
+        },
+        create=create,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert plan.opted_out == 1
+    assert plan.invalid == 0
+    assert plan.statuses[S.SUBSCRIBED] == 1
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    [
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"timezone": "Europe/Moscow"}
+        ),
+        _person("out@firma.ir", _paid("active")),
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"billing_country": "RU"}
+        ),
+        _person("out@x.io", _paid("active")).model_copy(
+            update={"excluded_country": "IR"}
+        ),
+    ],
+    ids=["timezone", "email", "billing", "recorded-by-a-checkout"],
+)
+def test_a_person_placed_in_iran_or_russia_is_counted_and_never_written(excluded):
+    plan = backfill.plan(
+        [excluded, _person("held@x.io", _paid("active"))],
+        {
+            excluded.email: {"subscription_status": "signed"},
+            "held@x.io": {"subscription_status": "signed"},
+        },
+        create=False,
+    )
+    assert [c.person.email for c in plan.changes] == ["held@x.io"]
+    assert plan.excluded_country == 1
+    assert plan.opted_out == 0
+    assert plan.statuses[S.SUBSCRIBED] == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_cannot_be_read_fails_alone_and_the_run_goes_on(
+    configured, monkeypatch, caplog
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _response(
+            200,
+            {"responses": [{"code": 200} for _ in kw["json"]["requests"]]},
+        )
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    changes = backfill.plan([_person("in@x.io"), _person("gone@x.io")], {}).changes
+
+    async def kept_out(user_id: str) -> bool:
+        if user_id == "u-gone@x.io":
+            raise RuntimeError("db down")
+        return False
+
+    assert await backfill.apply(changes, kept_out=kept_out) == (1, 1, 0)
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert "gone@x.io" not in caplog.text

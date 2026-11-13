@@ -1,18 +1,34 @@
-"""Keep subscription status and lifecycle dates on the PostHog person.
+"""Keep subscription status, lifecycle dates and the plan tier on the PostHog
+person, and the same status and dates on the MailerLite subscriber.
 
 These are person properties, not events: each sync sends one ``$set`` on the
 platform user id, the same id the browser passes to ``identify``, so they land
-on the canonical person. The mapping itself is ``posthog_lifecycle``.
+on the canonical person. The mapping itself is ``posthog_lifecycle``. The same
+snapshot is queued for MailerLite (``notifications/lifecycle_audience.py``),
+so both agree on who is a paying subscriber.
 
 Three ways in, all best-effort (a failure is logged, never raised):
 
 - ``schedule_posthog_lifecycle_sync`` after a write that can change the
-  snapshot (signup, tier changes, ``sync_subscription_from_stripe``). It runs
-  in the background, so a webhook or a signup never waits on Stripe or
-  PostHog.
+  snapshot (signup, ``sync_subscription_from_stripe``, the tier writes
+  outside it: ``credit.set_subscription_tier`` and the admin's
+  ``rate_limit.set_user_tier``), and after a group
+  join that can create the MailerLite subscriber
+  (``lifecycle_audience.resync_after_group_change``). It runs
+  in the background, so a webhook or a signup never waits on Stripe, PostHog
+  or MailerLite. It sends to PostHog and queues MailerLite's fields.
 - ``sync_all_posthog_lifecycles``, daily from the scheduler: the safety net
-  for a missed hook and for a trial that runs out on the clock.
+  for a missed hook and for a trial that runs out on the clock. PostHog only:
+  MailerLite's safety net is its field backfill (``cli mailerlite-backfill``).
 - ``scripts/backfill_posthog_lifecycle.py``, the same sweep run by hand.
+
+The sync mirrors stored state, not anyone's action, so it runs the same while
+an admin acts as the user. A sign-in also sets the stored tier
+(``set_tier_on_sign_in``), for accounts the sweep doesn't cover; that one is
+dropped while an admin acts as the user, like every other ``$set`` of a
+request. It reads the row without the sync's coordination, so a tier change
+landing during a sign-in can be overwritten by the older read until the next
+sign-in or sync.
 """
 
 import asyncio
@@ -31,17 +47,31 @@ from backend.data.db import query_raw_with_schema
 from backend.data.posthog_lifecycle import (
     LifecycleSnapshot,
     LifecycleUser,
-    StripeSubscriptionFacts,
     compute_lifecycle_snapshot,
 )
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_client import (
+    stripe_call,
+    stripe_call_timeout,
+    stripe_list_items,
+)
+from backend.data.stripe_subscription_facts import LIST_EXPAND, StripeSubscriptionFacts
 from backend.data.subscription_trial import TrialState
+from backend.notifications.lifecycle_audience import (
+    LifecycleContact,
+    mailerlite_lifecycle_enabled,
+    queue_lifecycle_fields,
+)
+from backend.util import posthog_client
 from backend.util.posthog_client import get_posthog_client
 from backend.util.posthog_events import PostHogEvent
 
 logger = logging.getLogger(__name__)
 
 _SYNC_TIMEOUT_SECONDS = 60
+# Per page of the full listing: 100 subscriptions, each with its customer and
+# latest invoice expanded, can take longer than a plain call's 30s, and one
+# failed page aborts the whole sweep.
+_LIST_ALL_TIMEOUT_SECONDS = 90
 _MAX_CONCURRENT_SYNCS = 4
 
 
@@ -61,10 +91,12 @@ def schedule_posthog_lifecycle_sync(
     - two syncs for one user never run at the same time in this process, so
       an older read can't be sent after a newer one here. Another pod, or the
       daily sweep (which reads Stripe once at its start), can still send an
-      older read; the next sync or sweep corrects it.
+      older read. The next sync or sweep corrects PostHog. MailerLite has no
+      sweep: its fields stay stale until the user's next sync, or until
+      ``cli mailerlite-backfill --fields-only --apply --yes`` catches it up.
     """
     try:
-        if get_posthog_client() is None:
+        if not _sync_enabled():
             return
         if user_id:
             _schedule_user(user_id)
@@ -72,6 +104,13 @@ def schedule_posthog_lifecycle_sync(
             _spawn(_resolve_customer(stripe_customer_id))
     except Exception:
         logger.warning("Failed to schedule a lifecycle sync", exc_info=True)
+
+
+async def request_posthog_lifecycle_sync(user_id: str) -> None:
+    """``schedule_posthog_lifecycle_sync`` for a process without Prisma, such
+    as the notification service, through the database manager
+    (``db_accessors.posthog_lifecycle_db``)."""
+    schedule_posthog_lifecycle_sync(user_id)
 
 
 # Per user id: "queued", "running", or "rerun" (running, then run once more).
@@ -162,27 +201,51 @@ def _sync_slot() -> asyncio.Semaphore:
     return slot
 
 
+def _sync_enabled() -> bool:
+    """A sync has somewhere to go: PostHog, or MailerLite's checkout
+    openers, whose settings this process may not hold."""
+    return get_posthog_client() is not None or mailerlite_lifecycle_enabled()
+
+
 async def sync_posthog_lifecycle(
     user_id: str,
     *,
     stripe_subscriptions: Sequence[StripeSubscriptionFacts] | None = None,
 ) -> LifecycleSnapshot | None:
-    """Send the user's current lifecycle snapshot. Never raises.
+    """Send the user's current lifecycle snapshot to PostHog and queue it for
+    MailerLite. Never raises.
 
     ``stripe_subscriptions`` is the customer's complete list, for a caller
     that already has it. Otherwise it is read from Stripe, and only for a
     user with a Stripe customer. A webhook payload is deliberately not used
     in its place: it is one subscription as of one event, which is exactly
     the "last event received" the status must not depend on.
+
+    MailerLite's change is queued whatever this process's MailerLite settings:
+    only the notification service holds them, and drops it when MailerLite
+    is off.
     """
     try:
-        if not user_id or get_posthog_client() is None:
+        if not user_id or not _sync_enabled():
             return None
-        snapshot = await load_lifecycle_snapshot(
-            user_id, stripe_subscriptions=stripe_subscriptions
+        row = await User.prisma().find_unique(
+            where={"id": user_id}, include={"subscriptionTrial": True}
         )
-        if snapshot is not None:
-            send_lifecycle_snapshot(user_id, snapshot)
+        if row is None:
+            return None
+        snapshot = await _snapshot_for(row, stripe_subscriptions)
+        send_lifecycle_snapshot(user_id, snapshot)
+        await queue_lifecycle_fields(
+            LifecycleContact(
+                id=row.id,
+                email=row.email,
+                timezone=row.timezone,
+                marketing_opt_out_at=row.marketingOptOutAt,
+                excluded_country=row.marketingExcludedCountry,
+                stripe_customer_id=row.stripeCustomerId,
+            ),
+            snapshot,
+        )
         return snapshot
     except Exception:
         logger.warning(
@@ -191,18 +254,10 @@ async def sync_posthog_lifecycle(
         return None
 
 
-async def load_lifecycle_snapshot(
-    user_id: str,
-    *,
-    stripe_subscriptions: Sequence[StripeSubscriptionFacts] | None = None,
-    now: datetime | None = None,
-) -> LifecycleSnapshot | None:
-    """Read the user's current state and map it. None if the user is gone."""
-    row = await User.prisma().find_unique(
-        where={"id": user_id}, include={"subscriptionTrial": True}
-    )
-    if row is None:
-        return None
+async def _snapshot_for(
+    row: User, stripe_subscriptions: Sequence[StripeSubscriptionFacts] | None
+) -> LifecycleSnapshot:
+    """Map the user's current state."""
     if stripe_subscriptions is None:
         stripe_subscriptions = (
             await list_customer_subscriptions(row.stripeCustomerId)
@@ -219,7 +274,7 @@ async def load_lifecycle_snapshot(
         ),
         trial=TrialState.from_db(trial_row) if trial_row else None,
         subscriptions=stripe_subscriptions,
-        now=now or datetime.now(UTC),
+        now=datetime.now(UTC),
     )
 
 
@@ -227,7 +282,11 @@ async def list_customer_subscriptions(
     customer_id: str,
 ) -> list[StripeSubscriptionFacts]:
     page = await stripe_call(
-        stripe.Subscription.list_async, customer=customer_id, status="all", limit=100
+        stripe.Subscription.list_async,
+        customer=customer_id,
+        status="all",
+        limit=100,
+        expand=LIST_EXPAND,
     )
     return [
         StripeSubscriptionFacts.model_validate(sub)
@@ -256,6 +315,24 @@ def send_lifecycle_snapshot(user_id: str, snapshot: LifecycleSnapshot) -> bool:
             f"Failed to send lifecycle properties for user {user_id}", exc_info=True
         )
         return False
+
+
+def set_tier_on_sign_in(user_id: str, tier: str | None) -> None:
+    """At a sign-in, set the stored tier on the person, so an account the
+    daily sweep doesn't cover (no Stripe customer, no trial) gets it without
+    waiting for its tier to change, and one whose last sync was lost is
+    repaired. Never raises."""
+    try:
+        value = getattr(tier, "value", tier)
+        if not value:
+            return
+        posthog_client.capture(
+            user_id,
+            PostHogEvent.SET_PERSON_PROPERTIES,
+            {"$set": {"subscription_tier": str(value)}},
+        )
+    except Exception:
+        logger.warning(f"Could not set the PostHog tier of {user_id}")
 
 
 async def start_posthog_lifecycle_sweep() -> bool:
@@ -321,7 +398,7 @@ async def sync_all_posthog_lifecycles(
         summary.aborted = "PostHog is not configured"
         return summary
     try:
-        by_customer = await _all_subscriptions_by_customer()
+        by_customer = await all_subscriptions_by_customer()
     except Exception:
         logger.exception("Lifecycle sync: listing Stripe subscriptions failed")
         summary.aborted = "Stripe listing failed"
@@ -372,10 +449,19 @@ async def _sync_batch(
             summary.errors += 1
 
 
-async def _all_subscriptions_by_customer() -> dict[str, list[StripeSubscriptionFacts]]:
-    page = await stripe_call(stripe.Subscription.list_async, status="all", limit=100)
+async def all_subscriptions_by_customer() -> dict[str, list[StripeSubscriptionFacts]]:
+    """Every Stripe subscription, by customer ID, with the discounts the
+    mapping reads. A failed page raises: a partial list would mark people
+    whose subscriptions sit on the missing pages as ``signed``."""
+    page = await stripe_call_timeout(
+        _LIST_ALL_TIMEOUT_SECONDS,
+        stripe.Subscription.list_async,
+        status="all",
+        limit=100,
+        expand=LIST_EXPAND,
+    )
     by_customer: dict[str, list[StripeSubscriptionFacts]] = {}
-    async for sub in stripe_list_items(page):
+    async for sub in stripe_list_items(page, _LIST_ALL_TIMEOUT_SECONDS):
         facts = StripeSubscriptionFacts.model_validate(sub)
         if facts.customer:
             by_customer.setdefault(facts.customer, []).append(facts)

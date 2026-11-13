@@ -1,7 +1,9 @@
+import asyncio
 import base64
 import hashlib
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -17,13 +19,22 @@ from backend.data.model import (
     OAuthState,
     UserIntegrations,
     UserPasswordCredentials,
+    is_refused_sdk_default,
+    is_sdk_default,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.cache import thread_cached
+from backend.util.exceptions import InvalidInputError
 from backend.util.settings import Settings
 
 settings = Settings()
 logger = logging.getLogger(__name__)
+
+# Per-account limits for stored credentials and pending sign-ins, set here
+# because every route reaches the store. A real credential is a few KiB.
+MAX_STORED_ITEM_BYTES = 64 * 1024
+MAX_CREDENTIALS_PER_USER = 100
+MAX_PENDING_OAUTH_STATES_PER_USER = 100
 
 
 def canonical_provider(stored: str) -> str:
@@ -287,20 +298,45 @@ DEFAULT_CREDENTIALS = [
 ]
 
 
+# The platform's own keys come from two places. The list above predates the
+# block SDK; providers built with the SDK register theirs through
+# ``ProviderBuilder.with_api_key`` as ``"{provider}-default"`` (see
+# ``backend.sdk.registry``). Both are the platform's key, billed in credits, and
+# must behave the same everywhere: ask "is this ours?" with
+# ``is_system_credential`` / ``is_system_provider``, never with these sets.
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
 
-# Set of providers that have system credentials available
+# Set of providers that have built-in system credentials available
 SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
 
 
 def is_system_credential(credential_id: str) -> bool:
-    """Check if a credential ID belongs to a system-managed credential."""
-    return credential_id in SYSTEM_CREDENTIAL_IDS
+    """Whether this is one of the platform's own keys rather than a user's.
+
+    True for the built-in system credentials and for the SDK default key of a
+    provider whose shared key may run (Firecrawl, DataForSEO, Tavily and the
+    rest of ``RUNNABLE_SDK_DEFAULT_PROVIDERS``). An SDK default for any other
+    provider is refused wherever it is used, so it is not one of ours to offer.
+    """
+    return credential_id in SYSTEM_CREDENTIAL_IDS or (
+        is_sdk_default(credential_id) and not is_refused_sdk_default(credential_id)
+    )
+
+
+def system_providers() -> set[str]:
+    """Providers the platform supplies a usable key for."""
+    from backend.sdk.registry import AutoRegistry
+
+    return SYSTEM_PROVIDERS | {
+        str(getattr(cred.provider, "value", cred.provider))
+        for cred in AutoRegistry.get_all_credentials()
+        if is_system_credential(cred.id)
+    }
 
 
 def is_system_provider(provider: str) -> bool:
     """Check if a provider has system-managed credentials available."""
-    return provider in SYSTEM_PROVIDERS
+    return provider in system_providers()
 
 
 class IntegrationCredentialsStore:
@@ -333,14 +369,20 @@ class IntegrationCredentialsStore:
         blob→table migration; the UserIntegrations blob is retained only
         as a rollback artifact).
 
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        Reads may call this without the lock. A writer must call it under
+        ``locked_user_integrations(user_id)``, so the list it writes back
+        can't drop a concurrent write.
         """
         return list(await self.db_manager.get_user_credentials(user_id=user_id))
 
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
+        check_storable_size(credentials)
+        if credentials.is_managed:
+            # Managed credentials are written only by `add_managed_credential`.
+            raise InvalidInputError("Only user-owned credentials can be added")
         async with await self.locked_user_integrations(user_id):
             # Check system/managed IDs without triggering provisioning
-            if credentials.id in SYSTEM_CREDENTIAL_IDS:
+            if is_system_credential(credentials.id):
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
@@ -351,17 +393,16 @@ class IntegrationCredentialsStore:
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
+            _check_credential_count(persisted)
             await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        """Public entry point — acquires lock, then delegates."""
-        async with await self.locked_user_integrations(user_id):
-            return await self._get_all_creds_unlocked(user_id)
+        """Return all credentials for *user_id*, without taking the lock.
 
-    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
-        """Return all credentials for *user_id*.
-
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        A full-list replace commits in one transaction, so a read sees the
+        list from before it or after it, never a mix of the two. Taking
+        the lock here would queue a page load's concurrent reads behind each
+        other and behind every write or token refresh for the user.
         """
         all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
@@ -443,7 +484,7 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
-        if updated.id in SYSTEM_CREDENTIAL_IDS:
+        if is_system_credential(updated.id):
             raise ValueError(
                 f"System credential #{updated.id} cannot be updated directly"
             )
@@ -459,6 +500,10 @@ class IntegrationCredentialsStore:
                 raise ValueError(
                     f"AutoGPT-managed credential #{updated.id} cannot be updated"
                 )
+            # Measured against what is already stored, so a token refresh of
+            # an item saved before this bound existed still goes through as
+            # long as it does not grow.
+            check_storable_size(updated, allowance=stored_size(current))
             if type(current) is not type(updated):
                 raise TypeError(
                     f"Can not update credentials with ID {updated.id} "
@@ -489,7 +534,8 @@ class IntegrationCredentialsStore:
         user_id: str,
         credentials: Credentials,
     ) -> Credentials:
-        if credentials.id in SYSTEM_CREDENTIAL_IDS or credentials.is_managed:
+        check_storable_size(credentials)
+        if is_system_credential(credentials.id) or credentials.is_managed:
             raise ValueError("Single-provider upsert requires user-owned credentials")
 
         async with await self.locked_user_integrations(user_id):
@@ -501,6 +547,8 @@ class IntegrationCredentialsStore:
             ]
             if any(credential.is_managed for credential in matching):
                 raise ValueError("Cannot replace a managed credential")
+            if not matching:
+                _check_credential_count(persisted)
 
             replacement = credentials
             compatible = next(
@@ -518,6 +566,8 @@ class IntegrationCredentialsStore:
                         "title": compatible.title or credentials.title,
                     }
                 )
+                # The kept stored title can grow the item past the check above.
+                check_storable_size(replacement, allowance=stored_size(compatible))
 
             kept = [
                 credential
@@ -531,7 +581,7 @@ class IntegrationCredentialsStore:
             return replacement
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
-        if credentials_id in SYSTEM_CREDENTIAL_IDS:
+        if is_system_credential(credentials_id):
             raise ValueError(f"System credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
             persisted = await self._get_persisted_user_creds_unlocked(user_id)
@@ -601,9 +651,19 @@ class IntegrationCredentialsStore:
             state_metadata=state_metadata or {},
             initiated_by_api_key_id=initiated_by_api_key_id,
         )
+        check_storable_size(state)
 
         async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.oauth_states.append(state)
+            # The single writer of `oauth_states`, so expired ones go here.
+            now = datetime.now(timezone.utc).timestamp()
+            pending = [s for s in user_integrations.oauth_states if s.expires_at > now]
+            if len(pending) >= MAX_PENDING_OAUTH_STATES_PER_USER:
+                raise InvalidInputError(
+                    f"An account holds at most "
+                    f"{MAX_PENDING_OAUTH_STATES_PER_USER} pending sign-ins; "
+                    "finish or abandon one before starting another"
+                )
+            user_integrations.oauth_states = [*pending, state]
 
         return token, code_challenge
 
@@ -748,3 +808,54 @@ class IntegrationCredentialsStore:
         key = (f"user:{user_id}", "integrations")
         locks = await self.locks()
         return locks.locked(key)
+
+
+class CredentialsSnapshot:
+    """One user's credentials, loaded on the first lookup and shared by every
+    later or concurrent lookup; a failed load is shared the same way."""
+
+    def __init__(self, load: Callable[[], Awaitable[list[Credentials]]]):
+        self._load = load
+        self._loaded: asyncio.Task[dict[str, Credentials]] | None = None
+
+    async def get(self, credentials_id: str) -> Credentials | None:
+        if self._loaded is None:
+            self._loaded = asyncio.ensure_future(self._by_id())
+        return (await asyncio.shield(self._loaded)).get(credentials_id)
+
+    async def _by_id(self) -> dict[str, Credentials]:
+        by_id: dict[str, Credentials] = {}
+        for credentials in await self._load():
+            # First match wins, as in IntegrationCredentialsStore.get_creds_by_id.
+            by_id.setdefault(credentials.id, credentials)
+        return by_id
+
+
+def check_storable_size(item: Credentials | OAuthState, *, allowance: int = 0) -> None:
+    """Refuse an item larger than `MAX_STORED_ITEM_BYTES`.
+
+    `allowance` is the size the item being replaced already occupies: a
+    rewrite that does not grow an item stored before this bound existed is not
+    what the bound is for, and refusing it would strand a token refresh.
+    """
+    limit = max(MAX_STORED_ITEM_BYTES, allowance)
+    item_bytes = stored_size(item)
+    if item_bytes > limit:
+        raise InvalidInputError(
+            f"{type(item).__name__} is too large: at most "
+            f"{limit} bytes are allowed, got {item_bytes}"
+        )
+
+
+def _check_credential_count(persisted: list[Credentials]) -> None:
+    owned = sum(1 for credential in persisted if not credential.is_managed)
+    if owned >= MAX_CREDENTIALS_PER_USER:
+        raise InvalidInputError(
+            f"An account holds at most {MAX_CREDENTIALS_PER_USER} "
+            "credentials; delete one before connecting another"
+        )
+
+
+def stored_size(item: Credentials | OAuthState) -> int:
+    """How many bytes this item takes in the user's stored integrations."""
+    return len(item.model_dump_json().encode())

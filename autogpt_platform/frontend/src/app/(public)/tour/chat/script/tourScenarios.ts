@@ -50,7 +50,7 @@ export const tourScenarios: TourScenario[] = [
 export const DEFAULT_SCENARIO_ID = "competitor-watch";
 
 /** The scenario the end-of-demo nudge points at: the next unwatched one in
- * sidebar order (wrapping around), or simply the next one once all are
+ * scenario order (wrapping around), or simply the next one once all are
  * watched — "Watch another scenario" should always lead somewhere. */
 export function getNextTourScenario(
   activeScenarioId: string,

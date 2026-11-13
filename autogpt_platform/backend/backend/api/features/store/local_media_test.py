@@ -224,3 +224,24 @@ async def test_named_jpeg_aliases_reuse_upload(local_settings, filename):
 @pytest.mark.parametrize("filename", ["../image.png", "image.html", "missing.png"])
 async def test_invalid_or_missing_lookup_returns_none(local_settings, filename):
     assert await local_media.check_media_exists("user", filename) is None
+
+
+@pytest.mark.parametrize(
+    "byte_range, expected",
+    [(None, b"0123456789"), ((2, 5), b"2345"), ((7, 9), b"789"), ((0, 0), b"0")],
+)
+async def test_stream_media_returns_exactly_the_requested_bytes(
+    local_settings, byte_range, expected
+):
+    path = local_media.get_media_path("owner", "videos", "clip.mp4")
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"0123456789")
+
+    chunks = [
+        chunk
+        async for chunk in local_media.stream_media(
+            "owner", "videos", "clip.mp4", byte_range
+        )
+    ]
+
+    assert b"".join(chunks) == expected

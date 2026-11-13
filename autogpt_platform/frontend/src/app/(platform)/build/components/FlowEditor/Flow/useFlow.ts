@@ -12,7 +12,8 @@ import { useNodeStore } from "../../../stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
 import { convertNodesPlusBlockInfoIntoCustomNodes } from "../../helper";
 import { useEdgeStore } from "../../../stores/edgeStore";
-import { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useReactFlow } from "@xyflow/react";
 import { useControlPanelStore } from "../../../stores/controlPanelStore";
@@ -26,6 +27,16 @@ import {
   getGraphLoadErrorToast,
   retryUnlessClientError,
 } from "../../../helpers/graphLoadError";
+import { useIsExecutionSubscribed } from "./useFlowRealtime";
+import {
+  isSnapshotStatusCurrent,
+  orderSnapshotExecutions,
+} from "./executionUpdateOrder";
+
+const POLL_INTERVAL_MS = 1_000;
+// While subscribed, a slow poll still catches an event the backend failed to
+// deliver (e.g. a dropped pub/sub message), as the 1 s poll used to.
+const RECONCILE_INTERVAL_MS = 10_000;
 
 export const useFlow = () => {
   const { isReadOnly } = useIsReadOnlyGraph();
@@ -36,11 +47,8 @@ export const useFlow = () => {
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
   const addNodes = useNodeStore(useShallow((state) => state.addNodes));
   const addLinks = useEdgeStore(useShallow((state) => state.addLinks));
-  const updateNodeStatus = useNodeStore(
-    useShallow((state) => state.updateNodeStatus),
-  );
-  const updateNodeExecutionResult = useNodeStore(
-    useShallow((state) => state.updateNodeExecutionResult),
+  const applyNodeExecutionEvent = useNodeStore(
+    useShallow((state) => state.applyNodeExecutionEvent),
   );
   const setGraphSchemas = useGraphStore(
     useShallow((state) => state.setGraphSchemas),
@@ -50,9 +58,6 @@ export const useFlow = () => {
   );
   const setAvailableSubGraphs = useGraphStore(
     useShallow((state) => state.setAvailableSubGraphs),
-  );
-  const updateEdgeBeads = useEdgeStore(
-    useShallow((state) => state.updateEdgeBeads),
   );
   const { screenToFlowPosition, fitView } = useReactFlow();
   const addBlock = useNodeStore(useShallow((state) => state.addBlock));
@@ -69,22 +74,26 @@ export const useFlow = () => {
   const isGraphRunning = useGraphStore(
     useShallow((state) => state.isGraphRunning),
   );
+  const isExecutionSubscribed = useIsExecutionSubscribed(flowExecutionID);
 
-  const { data: executionDetails } = useGetV1GetExecutionDetails(
-    flowID || "",
-    flowExecutionID || "",
-    {
+  const { data: executionDetails, dataUpdatedAt: executionDetailsUpdatedAt } =
+    useGetV1GetExecutionDetails(flowID || "", flowExecutionID || "", {
       query: {
-        select: (res) => res.data as GetV1GetExecutionDetails200,
+        select: (res) => res.data as GraphExecution | GraphExecutionWithNodes,
         enabled: !!flowID && !!flowExecutionID,
-        // Poll while the graph is running to catch updates that arrive before
-        // the WebSocket subscription is established (race condition on fast
-        // executions like dry-runs).  Stops once the execution reaches a
-        // terminal state and isGraphRunning becomes false.
-        refetchInterval: isGraphRunning ? 1000 : false,
+        // Poll every second while the graph is running until the server
+        // acknowledges the WebSocket subscription (race condition on fast
+        // executions like dry-runs); useFlowRealtime refetches once on that
+        // acknowledgement. Then only reconcile slowly, every second again if
+        // the WebSocket drops, and stop once the execution reaches a terminal
+        // state and isGraphRunning becomes false.
+        refetchInterval: isGraphRunning
+          ? isExecutionSubscribed
+            ? RECONCILE_INTERVAL_MS
+            : POLL_INTERVAL_MS
+          : false,
       },
-    },
-  );
+    });
 
   // Fetch all available graphs for sub-agent update detection
   const { data: availableGraphs } = useGetV1ListUserGraphs({
@@ -193,41 +202,33 @@ export const useFlow = () => {
     }
   }, [customNodes, graph?.links]);
 
-  // update node execution status in nodes
+  // update node statuses, execution results and edge beads. Executions the
+  // store already has are no-ops, so a poll that changed nothing writes
+  // nothing. Re-runs when the nodes are rebuilt (customNodes), which drops them.
+  // Websocket deliveries that arrived after this snapshot's fetch started may
+  // be newer than it, so they replace the snapshot's copies and go last.
   useEffect(() => {
     if (
       executionDetails &&
       "node_executions" in executionDetails &&
       executionDetails.node_executions
     ) {
-      executionDetails.node_executions.forEach((nodeExecution) => {
-        updateNodeStatus(nodeExecution.node_id, nodeExecution.status);
+      orderSnapshotExecutions(
+        executionDetails.node_executions,
+        executionDetailsUpdatedAt,
+      ).forEach((nodeExecution) => {
+        applyNodeExecutionEvent(nodeExecution.node_id, nodeExecution);
       });
     }
-  }, [executionDetails, updateNodeStatus, customNodes]);
+  }, [executionDetails, applyNodeExecutionEvent, customNodes]);
 
-  // update node execution results in nodes, also update edge beads
+  // update graph execution status, unless the websocket sent one after this
+  // snapshot's fetch started
   useEffect(() => {
     if (
       executionDetails &&
-      "node_executions" in executionDetails &&
-      executionDetails.node_executions
+      isSnapshotStatusCurrent(executionDetailsUpdatedAt)
     ) {
-      executionDetails.node_executions.forEach((nodeExecution) => {
-        updateNodeExecutionResult(nodeExecution.node_id, nodeExecution);
-        updateEdgeBeads(nodeExecution.node_id, nodeExecution);
-      });
-    }
-  }, [
-    executionDetails,
-    updateNodeExecutionResult,
-    updateEdgeBeads,
-    customNodes,
-  ]);
-
-  // update graph execution status
-  useEffect(() => {
-    if (executionDetails) {
       setGraphExecutionStatus(executionDetails.status as AgentExecutionStatus);
     }
   }, [executionDetails]);

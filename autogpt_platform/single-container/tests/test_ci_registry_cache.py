@@ -20,14 +20,7 @@ class RegistryCacheTests(unittest.TestCase):
     def test_pull_requests_read_but_never_write_registry_cache(self):
         self.assertEqual(
             self.settings("pull_request", "refs/pull/1/merge"),
-            [
-                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64"
-                for target in (
-                    "backend-server-base",
-                    "backend-server",
-                    "single-container",
-                )
-            ],
+            [f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64"],
         )
         self.assertFalse(
             any("cache-to" in s for s in self.settings("pull_request", arch="arm64"))
@@ -73,16 +66,35 @@ class RegistryCacheTests(unittest.TestCase):
             self.settings("workflow_dispatch", "refs/heads/two"),
         )
 
-    def test_every_bake_target_reads_the_validation_cache(self):
+    def test_only_the_final_bake_target_reads_the_validation_cache(self):
+        # The helper targets' stages are part of the single-container build, so
+        # they are still served from its cache. A helper reading the cache
+        # itself can own the shared import, and its short-lived session then
+        # breaks the final build's layer pulls ("no active session").
         bake = (
             SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
         ).read_text(encoding="utf-8")
-        targets = re.findall(r'^target "([^"]+)"', bake, re.MULTILINE)
-        self.assertIn("backend-server-base", targets)
-        settings = self.settings("push")
-        for target in targets:
+        final = bake.split('target "single-container" {', 1)[1].split("\n}", 1)[0]
+        block = re.search(r"^\s*contexts\s*=\s*\{(.*?)^\s*\}", final, re.M | re.S)
+        self.assertIsNotNone(block, final)
+        contexts = dict(
+            re.findall(r'^\s*([\w-]+)\s*=\s*"target:([^"]+)"', block[1], re.MULTILINE)
+        )
+        self.assertEqual(
+            contexts,
+            {
+                "autogpt-backend-base": "backend-server-base",
+                "autogpt-backend": "backend-server",
+            },
+        )
+        for event in ("push", "pull_request", "workflow_dispatch"):
+            settings = self.settings(event)
             self.assertIn(
-                f"{target}.cache-from=type=registry,ref={IMAGE}:v4-amd64", settings
+                f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64",
+                settings,
+            )
+            self.assertTrue(
+                all(s.startswith("single-container.") for s in settings), settings
             )
 
     def test_validation_cache_reads_are_architecture_scoped(self):

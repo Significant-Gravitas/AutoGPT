@@ -8,13 +8,15 @@ from html.parser import HTMLParser
 from typing import Any
 
 import aiohttp
-import html2text
+from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
+from backend.util.html_to_text import BoundedHTML2Text
 from backend.util.request import Requests
 
 from .base import BaseTool
 from .models import ErrorResponse, ToolResponseBase, WebFetchResponse
+from .refused_pages import refused_page_notice
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,8 @@ _MAX_DOWNLOAD_BYTES = (
     2_097_152  # 2 MB of the response body is decoded and converted to text
 )
 _MAX_TEXT_CHARS = 100_000  # 100K characters text budget for the model
+# Conversion stops here, leaving room for the whitespace it strips last.
+_MAX_CONVERTED_CHARS = 10 * _MAX_TEXT_CHARS
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 # Content types we'll read as text
@@ -126,22 +130,30 @@ def _html_to_text(html: str) -> str:
             "HTML cleaner encountered an error, falling back to raw html: %s", err
         )
         cleaned_html = html
-    h = html2text.HTML2Text()
+    h = BoundedHTML2Text(_MAX_CONVERTED_CHARS)
     h.ignore_links = False
     h.ignore_images = True
     h.body_width = 0
     return h.handle(cleaned_html).strip()
 
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_TITLE_OPEN_RE = re.compile(r"<title", re.IGNORECASE)
+_TITLE_CLOSE_RE = re.compile(r"</title>", re.IGNORECASE)
 
 
 def _extract_title(html: str) -> str | None:
-    match = _TITLE_RE.search(html)
-    if not match:
+    # A later <title can't have an end the first one lacks.
+    opening = _TITLE_OPEN_RE.search(html)
+    if not opening:
         return None
-    title = re.sub(r"\s+", " ", unescape(match.group(1))).strip()
-    return title or None
+    content_start = html.find(">", opening.end()) + 1
+    if not content_start:
+        return None
+    closing = _TITLE_CLOSE_RE.search(html, content_start)
+    if not closing:
+        return None
+    title = re.sub(r"\s+", " ", unescape(html[content_start : closing.start()]))
+    return title.strip() or None
 
 
 def _is_client_rendered_shell(raw_html: str, extracted_text: str) -> bool:
@@ -159,6 +171,11 @@ class WebFetchTool(BaseTool):
     @property
     def name(self) -> str:
         return "web_fetch"
+
+    @property
+    def allow_external_use(self):
+        # Fetches a caller-chosen URL from platform infrastructure.
+        return True, [APIKeyPermission.USE_TOOLS]
 
     @property
     def description(self) -> str:
@@ -202,25 +219,28 @@ class WebFetchTool(BaseTool):
                 message="Please provide a URL to fetch.",
                 error="missing_url",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         try:
             client = Requests(raise_for_status=False, retry_max_attempts=1)
-            response = await client.get(url, timeout=_REQUEST_TIMEOUT)
+            # Read no more than the cap: the whole body was buffered first.
+            response = await client.get(
+                url, timeout=_REQUEST_TIMEOUT, max_body_bytes=_MAX_DOWNLOAD_BYTES
+            )
         except ValueError as e:
             # validate_url raises ValueError for SSRF / blocked IPs
             return ErrorResponse(
                 message=f"URL blocked: {e}",
                 error="url_blocked",
                 session_id=session_id,
-            )
+            ).from_outside()
         except Exception as e:
             logger.warning(f"[web_fetch] Request failed for {url}: {e}")
             return ErrorResponse(
                 message=f"Failed to fetch URL: {e}",
                 error="fetch_failed",
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
         content_type = response.headers.get("content-type", "")
         if not _is_text_content(content_type):
@@ -228,7 +248,7 @@ class WebFetchTool(BaseTool):
                 message=f"Non-text content type: {content_type.split(';')[0]}",
                 error="unsupported_content_type",
                 session_id=session_id,
-            )
+            ).from_outside(content_type.split(";")[0])
 
         raw_bytes = response.content[:_MAX_DOWNLOAD_BYTES]
         raw_text = raw_bytes.decode("utf-8", errors="replace")
@@ -252,7 +272,23 @@ class WebFetchTool(BaseTool):
             text = text[:_MAX_TEXT_CHARS]
             text_truncated = True
 
+        notice = refused_page_notice(
+            response.url,
+            bot_check=response.headers.get("cf-mitigated", "").lower() == "challenge",
+            # A server error or rate limit is worth a retry, not a sign-in wall.
+            content_withheld=is_html
+            and extract_text
+            and not text.strip()
+            and response.status < 500
+            and response.status != 429,
+        )
+        if notice:
+            return ErrorResponse(
+                message=notice, error="page_refused", session_id=session_id
+            ).from_outside(response.url)
+
         truncated = raw_truncated or text_truncated
+        page = text
 
         message = f"Fetched {url}"
 
@@ -288,4 +324,4 @@ class WebFetchTool(BaseTool):
             content_length=len(response.content),
             truncated=truncated,
             session_id=session_id,
-        )
+        ).from_outside(page, title, response.url, content_type.split(";")[0].strip())

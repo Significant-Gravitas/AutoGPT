@@ -214,9 +214,12 @@ BEGIN
 END
 $role$;
 
+-- Twice the frontend's auth pool (frontend/src/lib/auth/auth-db-pool.ts):
+-- Postgres counts a connection until its backend exits, and a limit equal
+-- to the pool left no headroom for that.
 ALTER ROLE autogpt_frontend
   LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
-  CONNECTION LIMIT 10 PASSWORD NULL;
+  CONNECTION LIMIT 20 PASSWORD NULL;
 ALTER ROLE autogpt_frontend RESET ALL;
 ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL;
 
@@ -245,7 +248,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   platform."UserAuthJwks"
 TO autogpt_frontend;
 
-GRANT SELECT (id, email), UPDATE (email, "updatedAt")
+-- INSERT creates the platform User row from the sign-up hook
+-- (frontend/src/lib/auth/provision-platform-user.ts), so a session never
+-- exists before it. Every other column keeps its database default.
+GRANT SELECT (id, email),
+  INSERT (id, email, name, "updatedAt"),
+  UPDATE (email, "updatedAt")
   ON TABLE platform."User"
   TO autogpt_frontend;
 

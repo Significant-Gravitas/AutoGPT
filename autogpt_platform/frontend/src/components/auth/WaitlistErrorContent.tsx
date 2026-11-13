@@ -1,3 +1,4 @@
+import { environment } from "@/services/environment";
 import { Button } from "../atoms/Button/Button";
 import { Text } from "../atoms/Text/Text";
 
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function WaitlistErrorContent(props: Props) {
+  if (!environment.isCloud()) return <SelfHostedNotAllowed {...props} />;
   return (
     <div className="flex flex-col items-center gap-6">
       <Text variant="h3">We&apos;re in closed beta</Text>
@@ -31,12 +33,12 @@ export function WaitlistErrorContent(props: Props) {
         ) : null}
       </div>
       <div className="flex flex-col gap-2">
-        <Text variant="small" className="text-center text-muted-foreground">
+        <Text variant="small" tone="muted" className="text-center">
           Already joined? Double-check you are using the same email you signed
           up with. Need a hand? Emails us at{" "}
           <a
             href="mailto:contact@agpt.co"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground-base"
           >
             contact@agpt.co
           </a>{" "}
@@ -45,12 +47,31 @@ export function WaitlistErrorContent(props: Props) {
             href="https://discord.gg/autogpt"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground-base"
           >
             message us on Discord
           </a>
         </Text>
       </div>
+    </div>
+  );
+}
+
+// A self-hosted instance's allowlist belongs to its operator, not to AutoGPT's
+// waitlist, so point the user at whoever runs it.
+function SelfHostedNotAllowed(props: Props) {
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <Text variant="h3">This email can&apos;t sign up here</Text>
+      <Text variant="large" className="text-center">
+        This instance only allows approved emails. Ask your administrator to add
+        yours, or sign up with an email they have already approved.
+      </Text>
+      {props.onBackToLogin ? (
+        <Button variant="secondary" onClick={props.onBackToLogin}>
+          Back to Login
+        </Button>
+      ) : null}
     </div>
   );
 }

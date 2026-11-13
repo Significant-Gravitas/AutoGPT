@@ -1,19 +1,27 @@
 "use client";
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
 import { Text } from "@/components/atoms/Text/Text";
 import AuthFeedback from "@/components/auth/AuthFeedback";
+import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
+import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import {
+  ACCOUNT_BANNED_NOTICE_COPY,
+  EMAIL_VERIFICATION_NOTICE_COPY,
+} from "./helpers";
 import { useLoginPage } from "./useLoginPage";
 
 export const dynamic = "force-dynamic";
@@ -29,29 +37,63 @@ export default function LoginPage() {
     user,
     form,
     feedback,
+    nextUrl: safeNextUrl,
+    verificationEmail,
+    verificationNotice,
+    showBannedNotice,
     isLoading,
     isGoogleLoading,
+    isMicrosoftLoading,
+    isMicrosoftEnabled,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
     handleSubmit,
     handleProviderLogin,
     handleCloseNotAllowedModal,
+    handleBackToLogin,
   } = useLoginPage();
 
   if (isUserLoading || user) {
     return <LoadingLogin />;
   }
 
+  if (verificationEmail) {
+    return (
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <CheckYourInbox
+          email={verificationEmail}
+          reason="login"
+          next={safeNextUrl}
+          onBack={handleBackToLogin}
+        />
+      </AuthSplitLayout>
+    );
+  }
+
   return (
     <AuthSplitLayout marketing={<LoginMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1" tone="primary">
           Log in to your account to continue
         </Text>
       </div>
 
-      <Form {...form}>
+      {showBannedNotice ? (
+        <Alert variant="error" className="mb-6">
+          <AlertDescription>{ACCOUNT_BANNED_NOTICE_COPY}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {verificationNotice ? (
+        <Alert className="mb-6">
+          <AlertDescription>
+            {EMAIL_VERIFICATION_NOTICE_COPY[verificationNotice]}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
@@ -93,7 +135,7 @@ export default function LoginPage() {
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading}
+            disabled={isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -101,14 +143,25 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {isCloudEnv ? (
+        {isCloudEnv || isMicrosoftEnabled ? (
           <>
             <AuthDivider />
-            <GoogleOAuthButton
-              onClick={() => handleProviderLogin("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
-            />
+            <div className="flex w-full flex-col gap-3">
+              {isCloudEnv ? (
+                <GoogleOAuthButton
+                  onClick={() => handleProviderLogin("google")}
+                  isLoading={isGoogleLoading}
+                  disabled={isLoading || isMicrosoftLoading}
+                />
+              ) : null}
+              {isMicrosoftEnabled ? (
+                <MicrosoftOAuthButton
+                  onClick={() => handleProviderLogin("microsoft")}
+                  isLoading={isMicrosoftLoading}
+                  disabled={isLoading || isGoogleLoading}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
 
@@ -118,10 +171,10 @@ export default function LoginPage() {
           isError={!!feedback}
           behaveAs={environment.getBehaveAs()}
         />
-      </Form>
+      </FormProvider>
 
       <div className="mt-6 inline-flex w-full items-center justify-center gap-1">
-        <Text variant="body-medium" className="!text-slate-500">
+        <Text variant="body-medium" tone="muted">
           Don&apos;t have an account?
         </Text>
         <Link href={signupHref} variant="secondary">

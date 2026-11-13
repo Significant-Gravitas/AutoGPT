@@ -9,13 +9,15 @@ personalize from it.
 Layered on purpose so the common cases stay free:
 
 1. Deterministic reject — unmistakably unusable text (empty, no letters,
-   a looping/repeated transcript) never reaches a model.
+   a looping/repeated transcript, or for voice a stock phrase speech-to-text
+   invents from silence, see ``stt_artifacts``) never reaches a model.
 2. Deterministic pass — clearly substantial text (a real rambling dump)
    never pays for a model call either.
 3. Everything in between gets one cheap LLM judgement: "is there enough
    concrete information here to personalize from?". Length alone cannot
    make this call — "Automate my Shopify refund emails" is six words and
-   must pass, "uh hello hello testing" must not.
+   must pass, "uh hello hello testing" must not. Typed text cannot carry
+   an STT failure, so its judge asks only whether there is a real answer.
 
 The gate never judges grammar, accent, fluency or language: a coherent
 dump in any language passes. And it never deletes anything — the caller
@@ -23,13 +25,17 @@ keeps the audio and transcript on the row, exactly like every other
 failure in this pipeline.
 """
 
-import asyncio
 import logging
 import os
 import zlib
+from collections import Counter
 from typing import Literal
 
-from backend.api.features.onboarding_dump.parsing import parse_response_json
+from prisma.enums import BrainDumpInputMode
+from pydantic import BaseModel
+
+from backend.api.features.onboarding_dump.structured import request_json
+from backend.api.features.onboarding_dump.stt_artifacts import is_stt_artifact
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -38,9 +44,14 @@ logger = logging.getLogger(__name__)
 # enum migration) and read by the frontend to show the recovery screen.
 NO_USABLE_SPEECH = "no_usable_speech"
 INSUFFICIENT_CONTENT = "insufficient_content"
-QUALITY_ERROR_CODES = frozenset({NO_USABLE_SPEECH, INSUFFICIENT_CONTENT})
+# Not a verdict: the judge could not be asked, so the frontend offers a
+# retry of the same take instead of telling the user they said too little.
+QUALITY_CHECK_UNAVAILABLE = "quality_check_unavailable"
+QUALITY_ERROR_CODES = frozenset(
+    {NO_USABLE_SPEECH, INSUFFICIENT_CONTENT, QUALITY_CHECK_UNAVAILABLE}
+)
 
-_MODEL = os.environ.get("BRAIN_DUMP_QUALITY_MODEL", "anthropic/claude-haiku-4-5")
+_MODEL = os.environ.get("BRAIN_DUMP_QUALITY_MODEL", "anthropic/claude-haiku-5.5")
 # The gate runs inside the finalize request, after transcription already
 # spent part of the frontend proxy's 30s budget. A 100-token Haiku verdict
 # typically lands in a couple of seconds; a stalled provider must degrade
@@ -68,8 +79,14 @@ REPETITION_MIN_WORDS = 20
 MIN_UNIQUE_WORD_RATIO = 0.3
 COMPRESSION_MIN_CHARS = 80
 MAX_COMPRESSION_RATIO = 2.4
+# Both are measured on the opening only. A loop shows within its first few
+# sentences, but over a whole long answer zlib finds ever more shared
+# substrings and the vocabulary keeps repeating: a real typed answer of
+# about 18,000 characters compressed like a loop. A loop that starts inside
+# the opening still counts against it.
+REPETITION_WINDOW_CHARS = 1000
 
-_PROMPT = """A new user of an automation platform was asked to describe \
+_VOICE_PROMPT = """A new user of an automation platform was asked to describe \
 their work and what they'd like automated. Below is the raw transcript \
 (spoken or typed). Decide whether it contains enough concrete information \
 to personalize a greeting or propose work for them — anything about who \
@@ -89,38 +106,73 @@ Transcript:
 {transcript}
 """
 
+_TYPED_PROMPT = """A new user of an automation platform was asked to describe \
+their work and what they'd like automated. They typed the reply below.
 
-async def check_transcript_quality(transcript: str) -> str | None:
-    """Return an error code when ``transcript`` can't support personalization.
+"usable": true — any real statement about their business, role, customers, \
+tools or a task they want handled, however short, vague or misspelled, in \
+any language.
+
+"usable": false — only a reply with no answer in it, such as keyboard \
+mashing, placeholders ("test", "asdf", "hello") or non-answers ("no", \
+"skip", "idk").
+
+Return ONLY valid JSON: {{"usable": true}} or {{"usable": false}}.
+
+Reply:
+{transcript}
+"""
+
+
+class QualityRejection(BaseModel):
+    """Why the gate refused a transcript.
+
+    ``error_code`` decides what the user is shown. ``reason`` records what
+    decided it, stored as ``OnboardingBrainDump.errorReason``: one of
+    ``deterministic``, ``judge_unusable``, ``judge_timeout``,
+    ``judge_malformed``, ``judge_unconfigured`` or
+    ``judge_failed:<ExceptionClass>``.
+    """
+
+    error_code: str
+    reason: str
+
+
+async def check_transcript_quality(
+    transcript: str, *, input_mode: BrainDumpInputMode = BrainDumpInputMode.voice
+) -> QualityRejection | None:
+    """Return why ``transcript`` can't support personalization, if it can't.
 
     ``None`` means the dump is usable and the personalized pipeline may
     run. Deterministic answers are preferred in both directions; only the
     ambiguous middle costs an LLM call.
     """
     text = transcript.strip()
-    verdict = _deterministic_verdict(text)
+    verdict = _deterministic_verdict(text, input_mode)
     if verdict == "reject":
-        return NO_USABLE_SPEECH
+        return QualityRejection(error_code=NO_USABLE_SPEECH, reason="deterministic")
     if verdict == "pass":
         return None
-    return await _semantic_verdict(text)
+    return await _semantic_verdict(text, input_mode)
 
 
-def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
+def count_words(transcript: str) -> int:
+    """How many words the gate sees in ``transcript``, for ``CLEAR_PASS_WORDS``."""
+    return len(_words(transcript))
+
+
+def _deterministic_verdict(
+    text: str, input_mode: BrainDumpInputMode
+) -> Literal["pass", "reject", "ambiguous"]:
     if not text or not any(ch.isalnum() for ch in text):
         return "reject"
 
-    words = [word for word in text.split() if any(ch.isalnum() for ch in word)]
+    words = _words(text)
     if not words:
         return "reject"
-    if len(words) >= REPETITION_MIN_WORDS:
-        unique_ratio = len({w.lower() for w in words}) / len(words)
-        if unique_ratio < MIN_UNIQUE_WORD_RATIO:
-            return "reject"
-    if (
-        len(text) >= COMPRESSION_MIN_CHARS
-        and _compression_ratio(text) > MAX_COMPRESSION_RATIO
-    ):
+    if _is_looping(text[:REPETITION_WINDOW_CHARS]):
+        return "reject"
+    if input_mode == BrainDumpInputMode.voice and is_stt_artifact(text):
         return "reject"
 
     alnum_chars = sum(1 for ch in text if ch.isalnum())
@@ -132,44 +184,90 @@ def _deterministic_verdict(text: str) -> Literal["pass", "reject", "ambiguous"]:
     return "ambiguous"
 
 
+def _is_looping(opening: str) -> bool:
+    words = _words(opening)
+    if len(words) >= REPETITION_MIN_WORDS:
+        unique_ratio = len({w.lower() for w in words}) / len(words)
+        if unique_ratio < MIN_UNIQUE_WORD_RATIO:
+            return True
+    return (
+        len(opening) >= COMPRESSION_MIN_CHARS
+        and _compression_ratio(opening) > MAX_COMPRESSION_RATIO
+    )
+
+
+def _words(text: str) -> list[str]:
+    return [word for word in text.split() if any(ch.isalnum() for ch in word)]
+
+
 def _compression_ratio(text: str) -> float:
-    """How far zlib collapses ``text`` — high means the decoder was looping."""
-    raw = text.encode("utf-8")
-    return len(raw) / len(zlib.compress(raw))
+    """How far zlib collapses ``text`` — high means the decoder was looping.
+
+    Characters per compressed byte, with each character coded by its rank
+    first, so the ratio measures repetition and not the script. On raw
+    UTF-8 a Devanagari, Bengali or Tamil letter is three bytes that share a
+    lead byte, and an ordinary Hindi answer scored like a loop while the
+    same answer in English scored 1.8. The 255 most frequent characters
+    take one byte and only rarer ones an escape, so a varied opening does
+    not lower the score of a loop inside it.
+    """
+    ranked = [ch for ch, _ in Counter(text).most_common()]
+    codes = {
+        ch: bytes([rank]) if rank < 255 else b"\xff" + (rank - 255).to_bytes(2, "big")
+        for rank, ch in enumerate(ranked)
+    }
+    symbols = b"".join(codes[ch] for ch in text)
+    return len(text) / len(zlib.compress(symbols))
 
 
-async def _semantic_verdict(text: str) -> str | None:
+async def _semantic_verdict(
+    text: str, input_mode: BrainDumpInputMode
+) -> QualityRejection | None:
     """One cheap LLM call for the short-but-nonempty middle band.
 
-    Every failure path here — no client, timeout, malformed output —
-    resolves to ``INSUFFICIENT_CONTENT`` rather than a silent pass: an
-    ambiguous dump must never produce confident personalized output just
-    because the judge was unavailable. The outcome is recoverable by
-    design (the user is offered retry / type / skip), which is the safe
-    documented behavior for a quality-model outage.
+    Every failure path here — no client, timeout, error, malformed output —
+    rejects rather than silently passing: an ambiguous dump must never
+    produce confident personalized output just because the judge was
+    unavailable. It rejects as ``QUALITY_CHECK_UNAVAILABLE`` rather than as
+    a verdict, so the user is offered a retry instead of being told they
+    said too little.
     """
     client = get_openai_client(prefer_openrouter=True)
     if client is None:
-        logger.warning("Brain dump quality check: no LLM client configured")
-        return INSUFFICIENT_CONTENT
+        return _judge_unavailable("judge_unconfigured")
 
+    template = (
+        _TYPED_PROMPT if input_mode == BrainDumpInputMode.typed else _VOICE_PROMPT
+    )
     try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_MODEL,
-                messages=[{"role": "user", "content": _PROMPT.format(transcript=text)}],
-                temperature=0,
-                max_tokens=100,
-            ),
+        reply = await request_json(
+            client,
+            model=_MODEL,
+            prompt=template.format(transcript=text),
+            temperature=0,
+            max_tokens=100,
             timeout=_TIMEOUT_SECONDS,
         )
-        content = response.choices[0].message.content or ""
+    except TimeoutError as e:
+        return _judge_unavailable("judge_timeout", e)
     except Exception as e:
-        logger.warning("Brain dump quality check failed: %s", e)
-        return INSUFFICIENT_CONTENT
+        return _judge_unavailable(f"judge_failed:{type(e).__name__}", e)
 
-    data = parse_response_json(content)
-    if not isinstance(data, dict) or not isinstance(data.get("usable"), bool):
-        logger.warning("Brain dump quality check: malformed verdict")
-        return INSUFFICIENT_CONTENT
-    return None if data["usable"] else INSUFFICIENT_CONTENT
+    data = reply.data
+    if data is None or not isinstance(data.get("usable"), bool):
+        return _judge_unavailable("judge_malformed", detail=reply.describe())
+    if data["usable"]:
+        return None
+    return QualityRejection(error_code=INSUFFICIENT_CONTENT, reason="judge_unusable")
+
+
+def _judge_unavailable(
+    reason: str, error: Exception | None = None, *, detail: str = ""
+) -> QualityRejection:
+    # ERROR, not WARNING: only ERROR raises a Sentry event, and an outage
+    # rejects every ambiguous dump, so it has to be seen.
+    suffix = f" ({detail})" if detail else ""
+    logger.error(
+        f"Brain dump quality check unavailable: {reason}{suffix}", exc_info=error
+    )
+    return QualityRejection(error_code=QUALITY_CHECK_UNAVAILABLE, reason=reason)

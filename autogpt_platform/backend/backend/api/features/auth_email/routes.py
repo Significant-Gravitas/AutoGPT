@@ -13,17 +13,18 @@ to our own hosts.
 """
 
 import asyncio
-import html
 import logging
 import re
-from typing import Literal
 from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
+from backend.data.account_erasure.ban_record import is_banned_address
+from backend.notifications.auth import AuthLinkEmailType, render_auth_email
 from backend.util.clients import get_notification_manager_client
+from backend.util.exceptions import EmailUndeliverableError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -33,24 +34,34 @@ auth_email_router = APIRouter()
 
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
-
-_SUBJECTS: dict[str, str] = {
-    "reset_password": "Reset your AutoGPT Platform password",
-    "verify_email": "Verify your AutoGPT Platform email",
-    "change_email": "Confirm your new AutoGPT Platform email",
-}
-
-_ACTIONS: dict[str, str] = {
-    "reset_password": "reset your password",
-    "verify_email": "verify your email",
-    "change_email": "confirm your new email address",
-}
+requires_sign_up_check_service = requires_frontend_service("auth-sign-up:check")
 
 
 class AuthEmailRequest(BaseModel):
-    type: Literal["reset_password", "verify_email", "change_email"]
+    # Link emails only: the account-deleted confirmation is sent by the
+    # deletion service, never on a service token's say-so.
+    type: AuthLinkEmailType
     to: EmailStr
     url: str
+    # For change_email: the address the account is moving to, shown to the
+    # current address so its owner can check the request before approving it.
+    new_email: EmailStr | None = None
+
+
+class AuthEmailSuppressionRequest(BaseModel):
+    to: EmailStr
+
+
+class AuthEmailSuppressionResponse(BaseModel):
+    suppressed: bool
+
+
+class AuthEmailBanRecordRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class AuthEmailBanRecordResponse(BaseModel):
+    banned: bool
 
 
 @auth_email_router.post(
@@ -64,6 +75,10 @@ class AuthEmailRequest(BaseModel):
     responses={
         400: {"description": "url does not point at a trusted frontend origin"},
         403: {"description": "Service token is missing the required scope"},
+        422: {
+            "description": "Invalid request, or detail `email_undeliverable`: "
+            "the mail provider won't deliver to this address"
+        },
         503: {"description": "Service-token verification is not configured"},
     },
     # The tag comes from the router include in rest_api.py; repeating it here
@@ -76,29 +91,70 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             detail="url must point at a trusted frontend origin.",
         )
 
-    subject = _SUBJECTS[request.type]
-    action = _ACTIONS[request.type]
-    # Escape the (host-validated) URL before embedding it in HTML — a path or
-    # query on an allowed host could still carry markup-breaking characters.
-    safe_url = html.escape(request.url, quote=True)
-    body = (
-        f"<p>Click the link below to {action} for the AutoGPT Platform:</p>"
-        f'<p><a href="{safe_url}">{safe_url}</a></p>'
-        "<p>If you didn't request this, you can safely ignore this email.</p>"
-    )
+    email = render_auth_email(request.type, request.url, request.to, request.new_email)
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
     # loudly instead of dropping the auth email.
-    await asyncio.to_thread(
-        get_notification_manager_client().send_email_or_raise,
-        request.to,
-        subject,
-        body,
-    )
+    try:
+        await asyncio.to_thread(
+            get_notification_manager_client().send_email_or_raise,
+            request.to,
+            email.subject,
+            email.html,
+            email.text,
+        )
+    except EmailUndeliverableError:
+        # The global ValueError handler would make this a 400 the frontend throws on.
+        logger.warning(f"Mail provider won't deliver {request.type} auth email")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="email_undeliverable",
+        )
     # Don't log the recipient address — auth emails go to arbitrary users and
     # the address is PII we don't want in application logs.
     logger.info(f"Sent {request.type} auth email")
+
+
+@auth_email_router.post(
+    "/suppression",
+    dependencies=[Security(requires_auth_email_service)],
+    summary="Check whether the mailer has suppressed an address",
+    operation_id="checkAuthEmailSuppression",
+    responses={
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+)
+async def check_auth_email_suppression(
+    request: AuthEmailSuppressionRequest,
+) -> AuthEmailSuppressionResponse:
+    """Asked by sign-up and the resend button before they email an address, so
+    one Postmark won't deliver to is refused up front. Not suppressed when the
+    mailer can't tell."""
+    suppressed = await asyncio.to_thread(
+        get_notification_manager_client().is_email_suppressed, request.to
+    )
+    return AuthEmailSuppressionResponse(suppressed=suppressed)
+
+
+@auth_email_router.post(
+    "/ban-record",
+    dependencies=[Security(requires_sign_up_check_service)],
+    summary="Check whether an address belongs to an erased, banned account",
+    operation_id="checkAuthEmailBanRecord",
+    responses={
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+)
+async def check_auth_email_ban_record(
+    request: AuthEmailBanRecordRequest,
+) -> AuthEmailBanRecordResponse:
+    """Asked by sign-up before it creates an account: an address whose banned
+    account was erased can't sign up again while its ban record lasts
+    (`account_erasure/ban_record.py`)."""
+    return AuthEmailBanRecordResponse(banned=await is_banned_address(request.email))
 
 
 def _url_origin_allowed(url: str) -> bool:

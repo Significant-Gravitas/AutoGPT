@@ -51,6 +51,27 @@ describe("handleStreamError", () => {
     mockToast.mockClear();
   });
 
+  it("hands a refusal for want of a plan to onPaywall, and nothing else", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    const onPaywall = vi.fn();
+    const noPlan = Object.assign(
+      new Error("A subscription is required to use this feature."),
+      { status: 402 },
+    );
+    handleStreamError({
+      error: noPlan,
+      onRateLimit,
+      onReconnect,
+      onPaywall,
+      isUserStoppingRef: makeRef(false),
+    });
+    expect(onPaywall).toHaveBeenCalledOnce();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
   it("routes rate-limit messages (case-insensitive 'usage limit') to onRateLimit", () => {
     const onRateLimit = vi.fn();
     const onReconnect = vi.fn();
@@ -131,6 +152,49 @@ describe("handleStreamError", () => {
     );
     expect(onRateLimit).not.toHaveBeenCalled();
     expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("names a sandbox limit refusal and says why, without retrying or a usage limit", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:sandbox_limit_reached] Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again.",
+      ),
+      onRateLimit,
+      onReconnect,
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't start a sandbox",
+        description:
+          "Too many sandboxes are running on your account: 10 at once is the most. Wait for one of your tasks to finish, then try again.",
+      }),
+    );
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("names a platform provider outage without routing it to a usage limit", () => {
+    const onRateLimit = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:provider_unavailable] The AI model provider is temporarily unavailable. We've been alerted and are working on it. Please try again shortly.",
+      ),
+      onRateLimit,
+      onReconnect: vi.fn(),
+      isUserStoppingRef: makeRef(false),
+    });
+
+    const arg = mockToast.mock.calls[0][0] as {
+      title: string;
+      description: string;
+    };
+    expect(arg.title).toBe("Your expert is temporarily unavailable");
+    expect(arg.description).toMatch(/try again shortly/i);
+    expect(onRateLimit).not.toHaveBeenCalled();
   });
 
   it("uses fallbackDescription when the backend message is empty", () => {

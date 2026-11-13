@@ -17,10 +17,19 @@ export const PageEvent = {
   PAGEVIEW: "$pageview",
 } as const;
 
-// Ops signal from the dual flag backend, not a user action: LaunchDarkly and
-// PostHog resolved the same flag to different values.
-export const FeatureFlagEvent = {
-  FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
+// Ops signal, not a user action: a tab on an older build could not load code
+// on demand after a deploy, and reloaded to pick up the current build.
+export const DeploySkewEvent = {
+  CHUNK_RELOAD_TRIGGERED: "chunk_reload_triggered",
+} as const;
+
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
 } as const;
 
 export const ExpertsFunnelEvent = {
@@ -33,6 +42,15 @@ export const ExpertsFunnelEvent = {
   BRIEFING_OUTCOME_CLICKED: "briefing_outcome_clicked",
   HOME_ATTENTION_ACTIONED: "home_attention_actioned",
   HOME_TEAM_MEMBER_CLICKED: "home_team_member_clicked",
+  // The greeting's suggested first tasks, on the greeting (`surface: intro`)
+  // or under the Home composer (`surface: home`).
+  HOME_SUGGESTION_CLICKED: "home_suggestion_clicked",
+  HOME_SUGGESTION_DISMISSED: "home_suggestion_dismissed",
+  // Hide / Show on the suggested tasks under the Home composer: the list
+  // folded away or brought back, with how many rows were still open. Nothing
+  // is written to the tasks.
+  HOME_SUGGESTIONS_COLLAPSED: "home_suggestions_collapsed",
+  HOME_SUGGESTIONS_EXPANDED: "home_suggestions_expanded",
 } as const;
 
 export const HireFlowEvent = {
@@ -53,15 +71,34 @@ export const BrainDumpEvent = {
   BRAIN_DUMP_RESTARTED: "brain_dump_restarted",
   BRAIN_DUMP_DOWNLOAD: "brain_dump_download",
   BRAIN_DUMP_PERMISSION_DENIED: "brain_dump_permission_denied",
+  // Every failure to open the microphone, a denial included, with the
+  // browser's `error_name` (NotFoundError, NotReadableError, …).
+  BRAIN_DUMP_MIC_FAILED: "brain_dump_mic_failed",
   BRAIN_DUMP_TYPED_FALLBACK: "brain_dump_typed_fallback",
-  // The welcome dialog shown on first copilot landing was closed — the
-  // greeting fetch and reveal animation start from this moment.
+  // The "not enough" screen showed, after a voice or typed take, with the
+  // `mode`, the gate's `error_code`, whether "You" showed any text (`heard`),
+  // the kind of take Jev picked for it (`reply_kind`; `other` and null both
+  // show the default line) and the role's `prompt_set`. Talk, Write and a skip on that screen
+  // (Continue without it or Skip for now) send `from: "insufficient"` on
+  // `brain_dump_restarted`, `brain_dump_typed_fallback` and
+  // `brain_dump_skipped`, and a take or text completed after it sends
+  // `follow_up: true` on `brain_dump_completed`.
+  BRAIN_DUMP_INSUFFICIENT_SHOWN: "brain_dump_insufficient_shown",
+  // The "Otto might ask" prompt moved on, by its timer (`via: auto`) or
+  // "Another question" (`click`), with the `screen`, the `prompt_index` now
+  // shown and the role's `prompt_set`. Never sent for the first prompt.
+  BRAIN_DUMP_PROMPT_ADVANCED: "brain_dump_prompt_advanced",
+  // A way back to Talk after the microphone was refused: `result` is what
+  // the browser answered (`granted`, `denied`, or `unavailable` for any
+  // other mic error), `via` is the link used or `permission_change` when
+  // the user allowed the site in its settings. `permission_state` is the
+  // Permissions API state when the retry began, or the one it changed to
+  // for `permission_change`; `unknown` where the API is missing.
+  BRAIN_DUMP_PERMISSION_RETRIED: "brain_dump_permission_retried",
+  // The first-run intro shown on the first copilot landing ended (finished
+  // or skipped). Since SECRT-3149 that intro is the guided walkthrough
+  // (first_run_tour_*); the name is kept so the funnel stays continuous.
   WELCOME_DIALOG_CLOSED: "welcome_dialog_closed",
-  // Capability-cards first-run funnel: which cards were reached and how
-  // the modal ended (finished the deck vs skipped at card_index).
-  CAPABILITY_CARD_VIEWED: "capability_card_viewed",
-  CAPABILITY_CARDS_COMPLETED: "capability_cards_completed",
-  CAPABILITY_CARDS_SKIPPED: "capability_cards_skipped",
   TRANSCRIPTION_FAILED: "transcription_failed",
   INTRO_PATH: "intro_path",
   // The user's first real message after seeing the intro card — the
@@ -70,15 +107,33 @@ export const BrainDumpEvent = {
   // this covers both a suggestion click and a typed reply.
   INTRO_FOLLOWUP_SENT: "intro_followup_sent",
   LATER_DUMP_COMPLETED: "later_dump_completed",
-  // The team Otto proposed on the greeting page: one event per card
-  // shown, then the doors out of it — hire, create your own, talk it
-  // through, or skip straight to the builder.
-  EXPERT_RECOMMENDED: "expert_recommended",
-  EXPERT_RECOMMENDATION_CLICKED: "expert_recommendation_clicked",
-  // The wizard's hire step was left, with how many of the proposed experts
-  // were hired, so the funnel can tell "hired a team" from "skipped past it".
-  // The hires themselves are the backend's `expert_hired`.
-  HIRE_STEP_CONTINUED: "hire_step_continued",
+} as const;
+
+// The onboarding plan (SECRT-3201): the plan + trial step, where the team
+// and the first tasks are proposed. The hire of that team once the trial is
+// confirmed is an outcome, so the backend sends it (`plan_experts_hired`,
+// and `expert_hired` with `via: plan`).
+export const PlanEvent = {
+  // Once per mount of the plan step, when the plan first renders. `gave_up`
+  // is true when the 30 s wait ran out before a plan was shown (the step then
+  // settles the plan); `plan_source` says whose plan that was.
+  PLAN_VIEWED: "plan_viewed",
+} as const;
+
+// The guided first run over the real UI (SECRT-3149), opened by itself after
+// onboarding (`source: auto`) or replayed from the profile menu
+// (`source: menu`), and the one-time tips that follow it.
+export const FirstRunEvent = {
+  FIRST_RUN_TOUR_SHOWN: "first_run_tour_shown",
+  // Each step reached, with the target it actually pointed at, so a step
+  // that keeps falling back (no wallet, no first tasks) shows up.
+  FIRST_RUN_TOUR_STEP_VIEWED: "first_run_tour_step_viewed",
+  // "Start here" on the last step.
+  FIRST_RUN_TOUR_COMPLETED: "first_run_tour_completed",
+  // Skip, Escape or the close button, at `step_id`.
+  FIRST_RUN_TOUR_SKIPPED: "first_run_tour_skipped",
+  CONTEXTUAL_TIP_SHOWN: "contextual_tip_shown",
+  CONTEXTUAL_TIP_DISMISSED: "contextual_tip_dismissed",
 } as const;
 
 export const TabIntroEvent = {
@@ -140,6 +195,9 @@ export const CredentialConnectionFailureEvent = {
 
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
+  TRIAL_CANCEL_POPUP_VIEWED: "trial_cancel_popup_viewed",
+  TRIAL_RESUME_CLICKED: "trial_resume_clicked",
+  TRIAL_SUBSCRIBE_NOW_CLICKED: "trial_subscribe_now_clicked",
 } as const;
 
 export const TourEvent = {
@@ -160,14 +218,23 @@ export const MonetizationEvent = {
   CHECKOUT_ABANDONED: "checkout_abandoned",
 } as const;
 
+export const VisualAnswerEvent = {
+  // An option card in one of Otto's visual answers was clicked.
+  VISUAL_OPTION_CLICKED: "visual_option_clicked",
+} as const;
+
 export const PostHogEvent = {
   ...PageEvent,
-  ...FeatureFlagEvent,
+  ...DeploySkewEvent,
+  ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,
+  ...PlanEvent,
+  ...FirstRunEvent,
   ...TabIntroEvent,
   ...VoiceModeEvent,
+  ...VisualAnswerEvent,
   ...CredentialConnectionFailureEvent,
   ...TrialEvent,
   ...TourEvent,

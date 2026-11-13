@@ -1,4 +1,5 @@
 import { environment } from "@/services/environment";
+import { v4 as uuidv4 } from "uuid";
 
 import { getCopilotAuthHeaders } from "../helpers";
 
@@ -12,6 +13,15 @@ export class QueueFollowUpNotActiveError extends Error {
   constructor() {
     super("Session has no active turn to queue against.");
     this.name = "QueueFollowUpNotActiveError";
+  }
+}
+
+export class QueueFollowUpFullError extends Error {
+  constructor() {
+    super(
+      "This conversation has too many messages waiting; wait for earlier ones to be processed",
+    );
+    this.name = "QueueFollowUpFullError";
   }
 }
 
@@ -34,6 +44,10 @@ export async function queueFollowUpMessage(
       message,
       context: null,
       file_ids: null,
+      // Idempotency key: a retransmit of this request is queued only once.
+      // Options force uuid's getRandomValues path, which (unlike
+      // crypto.randomUUID) exists on plain-HTTP LAN origins.
+      message_id: uuidv4({}),
     }),
   });
 
@@ -47,6 +61,19 @@ export async function queueFollowUpMessage(
 
   if (res.status === 409) {
     throw new QueueFollowUpNotActiveError();
+  }
+
+  if (res.status === 503) {
+    throw new Error(
+      "This conversation is temporarily unavailable; try again shortly",
+    );
+  }
+
+  if (
+    res.status === 429 &&
+    res.headers.get("X-Error-Code") === "pending_buffer_full"
+  ) {
+    throw new QueueFollowUpFullError();
   }
 
   throw new Error(`Expected 200 from /messages/pending; got ${res.status}`);

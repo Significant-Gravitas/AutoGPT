@@ -1,18 +1,24 @@
 """Saved display names survive cancellation and stay out of provider requests."""
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
 from contextlib import suppress
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from openai.types.chat import ChatCompletionChunk
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from backend.copilot.baseline import service
+from backend.copilot.baseline.pending_recovery_test import _final_stream
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
     StreamToolDisplayAvailable,
     StreamToolOutputAvailable,
 )
@@ -155,21 +161,142 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
     )
     for name, value in {
         "drain_pending_safe": [],
+        "drain_pending_messages": [],
         "resolve_model_route": ResolvedModel(
             model="anthropic/claude-sonnet-4-6", source="env"
         ),
         "_build_system_prompt": ("System prompt", None),
-        "is_enabled_for_user": False,
-        "is_feature_enabled": False,
+        "_fetch_graphiti_context": "",
+        "enqueue_conversation_turn": None,
         "persist_and_record_usage": None,
     }.items():
         monkeypatch.setattr(service, name, AsyncMock(return_value=value))
+    monkeypatch.setattr(service, "resolve_answered", _no_answered_cards)
     monkeypatch.setattr(service, "_get_main_client", MagicMock())
     monkeypatch.setattr(service, "upsert_chat_session", AsyncMock(side_effect=save))
     try:
         yield persisted
     finally:
         set_execution_context(None, None)
+
+
+@pytest.mark.asyncio
+async def test_learning_capture_contains_tools_and_the_final_persisted_reply(
+    monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
+) -> None:
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "Existing task"
+    session.messages = [
+        ChatMessage(role="user", content="Earlier task"),
+        ChatMessage(role="assistant", content="Earlier reply"),
+    ]
+    final = MagicMock()
+    final.__aiter__.return_value = [
+        ChatCompletionChunk.model_validate(
+            {
+                "id": "final",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": "anthropic/claude-sonnet-4-6",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "delta": {"content": "Both checks passed."},
+                    }
+                ],
+            }
+        )
+    ]
+    final.close = AsyncMock()
+    monkeypatch.setattr(
+        service,
+        "call_provider_stream",
+        AsyncMock(side_effect=[_tool_call_stream(), final]),
+    )
+    monkeypatch.setattr(service, "download_transcript", AsyncMock(return_value=None))
+    monkeypatch.setattr(service, "clear_pending_question", AsyncMock())
+    monkeypatch.setattr(
+        service, "build_skills_update_notice", AsyncMock(return_value="")
+    )
+
+    async def execute(*, tool_call_id, **kwargs):
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id, output="Checked successfully"
+        )
+
+    monkeypatch.setattr(service, "execute_tool", AsyncMock(side_effect=execute))
+    capture = AsyncMock()
+    monkeypatch.setattr(service, "capture_chat_turn", capture)
+    async with asyncio.timeout(10):
+        async for _ in service.stream_chat_completion_baseline(
+            session.session_id,
+            message="Run both workflows",
+            user_id="user-1",
+            session=session,
+            is_user_message=True,
+        ):
+            pass
+        await asyncio.sleep(0)
+    capture.assert_awaited_once()
+    assert capture.await_args.kwargs["initiating_user"].role == "user"
+    assert "Run both workflows" in capture.await_args.kwargs["initiating_user"].content
+    rows = capture.await_args.args[2]
+    assert sum(row.role == "tool" for row in rows) == 2
+    assert rows[-1].content == "Both checks passed."
+    assert all(row.content != "Earlier reply" for row in rows)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [RedisConnectionError("queue unavailable"), RedisTimeoutError("queue timed out")],
+)
+async def test_redis_drain_outage_does_not_abort_baseline_turn(
+    monkeypatch: pytest.MonkeyPatch,
+    baseline_io: list[ChatSession],
+    failure: Exception,
+) -> None:
+    session = ChatSession.new("user-1", dry_run=False)
+    session.title = "Existing task"
+    session.messages = [ChatMessage(role="user", content="Run both workflows")]
+    provider = AsyncMock(side_effect=[_tool_call_stream(), _final_stream()])
+    monkeypatch.setattr(service, "call_provider_stream", provider)
+    monkeypatch.setattr(
+        service, "drain_pending_messages", AsyncMock(side_effect=failure)
+    )
+    monkeypatch.setattr(service, "_upload_final_transcript", AsyncMock())
+    monkeypatch.setattr(service, "clear_pending_question", AsyncMock())
+    monkeypatch.setattr(
+        service, "build_skills_update_notice", AsyncMock(return_value="")
+    )
+    executed: list[str] = []
+
+    async def execute(*, tool_call_id: str, **_kwargs: object):
+        executed.append(tool_call_id)
+        return StreamToolOutputAvailable(
+            toolCallId=tool_call_id, output="Checked successfully"
+        )
+
+    monkeypatch.setattr(service, "execute_tool", execute)
+
+    async def collect_events():
+        return [
+            event
+            async for event in service.stream_chat_completion_baseline(
+                session.session_id,
+                user_id="user-1",
+                session=session,
+                is_user_message=False,
+            )
+        ]
+
+    events = await asyncio.wait_for(collect_events(), timeout=10)
+
+    assert not any(isinstance(event, StreamError) for event in events)
+    assert isinstance(events[-1], StreamFinish)
+    assert provider.await_count == 2
+    assert set(executed) == {"pending", "completed"}
+    assert baseline_io[-1].messages[-1].content == "Done"
 
 
 def _tool_call_stream() -> MagicMock:
@@ -211,3 +338,8 @@ def _tool_call_stream() -> MagicMock:
     stream.__aiter__.return_value = [chunk]
     stream.close = AsyncMock()
     return stream
+
+
+async def _no_answered_cards(*_: Any, **__: Any) -> AsyncGenerator[Any, None]:
+    return
+    yield

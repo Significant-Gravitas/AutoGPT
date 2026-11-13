@@ -1,11 +1,25 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { server } from "@/mocks/mock-server";
-import { render, screen, waitFor } from "@/tests/integrations/test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
 
 import { AutomationCreditsTab } from "../components/AutomationCreditsTab/AutomationCreditsTab";
 import SettingsBillingPage from "../page";
+
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
 
 // Allow per-test override of the search params Next.js exposes to the page.
 const mockSearchParams = { current: new URLSearchParams() };
@@ -29,6 +43,7 @@ vi.mock("next/navigation", async (importOriginal) => {
 });
 
 afterEach(() => {
+  useAuthStore.setState({ user: null });
   mockSearchParams.current = new URLSearchParams();
   mockRouterReplace.mockReset();
 });
@@ -76,7 +91,9 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     render(<SettingsBillingPage />);
 
-    expect(screen.getByRole("heading", { name: "Billing" })).toBeDefined();
+    expect(
+      screen.getByRole("heading", { name: "Billing & usage" }),
+    ).toBeDefined();
 
     const subscriptionTab = screen.getByRole("tab", { name: "Subscription" });
     expect(subscriptionTab.getAttribute("data-state")).toBe("active");
@@ -87,6 +104,23 @@ describe("Settings billing page (integration)", () => {
 
     // Invoices card empty-state copy (no invoices fixture above).
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();
+  });
+
+  it("explains usage and credits in a dialog from the info button by the title", async () => {
+    useDefaultBillingHandlers();
+    render(<SettingsBillingPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "How usage and credits work" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "How usage and credits work",
+    });
+    expect(dialog.textContent).toContain("What are automation credits for?");
+    expect(
+      screen.queryByRole("link", { name: /Go to billing settings/ }),
+    ).toBeNull();
   });
 
   it("AutomationCreditsTab renders the balance + add-credits CTA from API data", async () => {
@@ -107,6 +141,7 @@ describe("Settings billing page (integration)", () => {
       ),
     );
     mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    useAuthStore.setState({ user: { id: "user-a" } as User });
 
     render(<SettingsBillingPage />);
 
@@ -119,7 +154,7 @@ describe("Settings billing page (integration)", () => {
     useDefaultBillingHandlers();
     let fulfillCalled = false;
     server.use(
-      http.patch("*/api/credits/fulfill_checkout", () => {
+      http.patch("*/api/credits", () => {
         fulfillCalled = true;
         return HttpResponse.json({}, { status: 200 });
       }),
@@ -134,6 +169,43 @@ describe("Settings billing page (integration)", () => {
     // Cancel branch must NOT fulfill — webhook is the source of truth and
     // the user explicitly aborted the checkout.
     expect(fulfillCalled).toBe(false);
+  });
+
+  it("waits for the first authenticated identity before fulfilling a topup", async () => {
+    useDefaultBillingHandlers();
+    let fulfillCalls = 0;
+    server.use(
+      http.patch("*/api/credits", () => {
+        fulfillCalls += 1;
+        return HttpResponse.json({}, { status: 200 });
+      }),
+    );
+    mockSearchParams.current = new URLSearchParams({ topup: "success" });
+    // The redirect handler clears the query string as its last step, so its
+    // calls show whether it ran. (Onboarding may also replace the route once
+    // someone signs in, so only these count.)
+    function topupRedirectsHandled() {
+      return mockRouterReplace.mock.calls.filter(
+        ([path]) => path === "/settings/billing",
+      ).length;
+    }
+
+    render(<SettingsBillingPage />);
+    expect(topupRedirectsHandled()).toBe(0);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-a" } as User });
+    });
+    await waitFor(() => expect(fulfillCalls).toBe(1));
+    expect(topupRedirectsHandled()).toBe(1);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "user-b" } as User });
+    });
+    await act(async () => {});
+
+    expect(topupRedirectsHandled()).toBe(1);
+    expect(fulfillCalls).toBe(1);
   });
 
   it("clears the ?subscription=success query after a Stripe redirect", async () => {

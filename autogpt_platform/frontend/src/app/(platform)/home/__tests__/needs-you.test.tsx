@@ -18,11 +18,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     >();
   return {
     ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? { enabled: true, ready: true }
-        : actual.useFlagStatus(flag as never),
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: () => false,
   };
 });
 
@@ -336,3 +332,38 @@ test.each([
     expect(await screen.findByText(description)).toBeDefined();
   },
 );
+
+// Home's backend names the expert whose chat raised a block review
+// (attention.py `_waiting_on`); the row shows that line as written.
+test("a block review an expert raised in chat names the expert, not Otto", async () => {
+  const issa = { id: "issa", name: "Issa", role: "Ops", avatar_url: null };
+  const approval = makeApproval(0);
+  mockDashboard([
+    {
+      ...approval,
+      id: "approval-copilot-node-gmail:ab12",
+      title: "Gmail Send",
+      description: "Issa is waiting for your approval.",
+      expert: issa,
+      primary_action: { label: "Review", href: "/copilot?sessionId=s1" },
+      review: {
+        ...approval.review!,
+        node_exec_id: "copilot-node-gmail:ab12",
+        graph_exec_id: null,
+        graph_id: null,
+        graph_version: null,
+        session_id: "s1",
+        expert_id: "issa",
+        expert_name: "Issa",
+        action: "Gmail Send",
+      },
+    },
+  ]);
+
+  render(<HomeRecap />);
+
+  expect(
+    await screen.findByText("Issa is waiting for your approval."),
+  ).toBeDefined();
+  expect(screen.queryByText(/Otto is waiting/)).toBeNull();
+});

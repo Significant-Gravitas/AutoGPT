@@ -96,6 +96,94 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  describe("followArtifactOverwrite", () => {
+    it("swaps the open file without opening a history entry", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const next = makeArtifact("v2", "report.md");
+
+      useCopilotUIStore.getState().followArtifactOverwrite("v1", next);
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toEqual({ ...next, documentId: "v1" });
+      expect(s.history).toEqual([]);
+    });
+
+    it("keeps one document id across a chain of overwrites", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      const { followArtifactOverwrite } = useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+      followArtifactOverwrite("v2", makeArtifact("v3"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v3");
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("keeps the document id when the open version's card is clicked", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      const { followArtifactOverwrite, openArtifact } =
+        useCopilotUIStore.getState();
+      followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      openArtifact(makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.documentId).toBe("v1");
+    });
+
+    it("leaves no back entry to itself after an old card is clicked mid-turn", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v2"));
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.history).toEqual([]);
+    });
+
+    it("swaps a file waiting in the back stack and leaves the open one", () => {
+      const other = makeArtifact("other");
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openArtifact(other);
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact).toBe(other);
+      expect(s.history.map((ref) => ref.id)).toEqual(["v2"]);
+    });
+
+    it("keeps the computer face showing", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("v1"));
+      useCopilotUIStore.getState().openComputer();
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      const s = useCopilotUIStore.getState().artifactPanel;
+      expect(s.activeArtifact?.id).toBe("v2");
+      expect(s.mode).toBe("computer");
+    });
+
+    it("changes nothing when the panel holds no ref to the file", () => {
+      useCopilotUIStore.getState().openArtifact(makeArtifact("a"));
+      const before = useCopilotUIStore.getState().artifactPanel;
+
+      useCopilotUIStore
+        .getState()
+        .followArtifactOverwrite("v1", makeArtifact("v2"));
+
+      expect(useCopilotUIStore.getState().artifactPanel).toBe(before);
+    });
+  });
+
   it("goBackArtifact is a no-op when history is empty", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
@@ -248,7 +336,6 @@ describe("useCopilotUIStore", () => {
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
-      showNotificationDialog: false,
       copilotLlmModel: "standard",
     });
   });
@@ -472,14 +559,6 @@ describe("useCopilotUIStore", () => {
         "true",
       );
     });
-
-    it("shows and hides notification dialog", () => {
-      useCopilotUIStore.getState().setShowNotificationDialog(true);
-      expect(useCopilotUIStore.getState().showNotificationDialog).toBe(true);
-
-      useCopilotUIStore.getState().setShowNotificationDialog(false);
-      expect(useCopilotUIStore.getState().showNotificationDialog).toBe(false);
-    });
   });
 });
 
@@ -522,15 +601,13 @@ describe("lastArtifact session scoping", () => {
     expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
   });
 
-  it("clearLastArtifact forgets the previous chat's expert integrations", () => {
+  it("clearLastArtifact leaves the previous chat's integrations tab", () => {
     useCopilotUIStore
       .getState()
       .toggleIntegrationsPanel({ id: "expert-maria", name: "Maria" });
     useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().clearLastArtifact();
-    const s = useCopilotUIStore.getState();
-    expect(s.contextPanelExpert).toBeNull();
-    expect(s.artifactPanel.activeTab).toBe("files");
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
   });
 
   it("closing the artifacts tab forgets the remembered preview", () => {
