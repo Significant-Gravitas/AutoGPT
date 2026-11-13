@@ -16,6 +16,7 @@ from backend.copilot.tools.local_pc_relay_backlog import (
     append_stream_envelope,
 )
 from backend.copilot.tools.local_pc_relay_protocol import (
+    reply_budget_keys,
     response_stream_key,
     status_stream_key,
     stream_key,
@@ -544,7 +545,12 @@ async def test_a_transport_reads_status_and_responses_in_the_order_they_were_sto
         )
 
     async def store_response() -> None:
-        await append_response(redis, reply_key, response)
+        await append_response(
+            redis,
+            reply_key,
+            response,
+            budget_keys=reply_budget_keys("session-1", presence.connection_id),
+        )
 
     for store in (
         (store_status, store_response)

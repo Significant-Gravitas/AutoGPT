@@ -13,6 +13,7 @@ from .local_pc_relay_protocol import (
     RelayConnectionReplaced,
     RelayPresence,
     decode_keyed_stream_entries,
+    reply_budget_keys,
     response_stream_key,
     status_stream_key,
     stream_key,
@@ -69,6 +70,10 @@ class RedisRelayTransport:
         status_key = status_stream_key(
             self._presence.session_id, self._presence.connection_id
         )
+        # Reading an answer gives its bytes back to the connection's budget.
+        budget_keys = reply_budget_keys(
+            self._presence.session_id, self._presence.connection_id
+        )
         while not self._closed.is_set() and await self._relay.is_current(
             self._presence
         ):
@@ -90,12 +95,16 @@ class RedisRelayTransport:
                     continue
                 self._response_cursor = message_id
                 if envelope is None:
-                    await acknowledge_stream_entry(redis, key, message_id, fields)
+                    await acknowledge_stream_entry(
+                        redis, key, message_id, fields, budget_keys=budget_keys
+                    )
                     continue
                 try:
                     yield envelope
                 finally:
-                    await acknowledge_stream_entry(redis, key, message_id, fields)
+                    await acknowledge_stream_entry(
+                        redis, key, message_id, fields, budget_keys=budget_keys
+                    )
 
     async def close(self) -> None:
         self._closed.set()

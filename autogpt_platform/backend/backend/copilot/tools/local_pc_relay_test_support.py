@@ -152,9 +152,11 @@ class FakeRedis:
                 self.expirations[state_key] = int(ttl)
                 self.expirations[order_key] = int(ttl)
                 return len(stale_ids)
+            # Like expiry, a connection's reply budget is left to the real
+            # scripts, which local_pc_relay_backlog_test.py runs on fakeredis.
             if "LOCAL_EXECUTOR_BOUNDED_APPEND" in script:
-                key, counter_key = keys
-                size, max_entries, max_bytes, _ttl, *flat_fields = args
+                key, counter_key, *_budget_keys = keys
+                size, max_entries, max_bytes, _ttl, _budget_bytes, *flat_fields = args
                 if len(self.streams.get(key, [])) >= int(
                     max_entries
                 ) or self.strings.get(counter_key, 0) + int(size) > int(max_bytes):
@@ -169,7 +171,7 @@ class FakeRedis:
                 self.strings[counter_key] = self.strings.get(counter_key, 0) + int(size)
                 return 1
             if "LOCAL_EXECUTOR_ACKNOWLEDGE" in script:
-                key, counter_key = keys
+                key, counter_key, *_budget_keys = keys
                 message_id, size, _ttl = args
                 removed = await self.xdel(key, message_id)
                 if not removed:

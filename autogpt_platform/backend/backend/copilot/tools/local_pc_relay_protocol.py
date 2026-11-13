@@ -199,6 +199,16 @@ def status_stream_key(session_id: str, connection_id: str) -> str:
     return stream_key(session_id, connection_id, "status")
 
 
+def reply_budget_keys(session_id: str, connection_id: str) -> list[str]:
+    """What the connection's reply streams hold, in the order the relay's
+    scripts take them: the total, each stream's share of it, and when each
+    stream expires. They carry the connection's hash tag, as its streams do."""
+    return [
+        stream_key(session_id, connection_id, part)
+        for part in ("reply-bytes", "reply-shares", "reply-expiry")
+    ]
+
+
 def as_text(value: Any) -> str:
     return value.decode() if isinstance(value, bytes) else str(value)
 

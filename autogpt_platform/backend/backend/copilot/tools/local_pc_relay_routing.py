@@ -16,6 +16,7 @@ from .local_pc_relay_protocol import (
     RelayRequestTarget,
     is_reply_id,
     register_pending_request,
+    reply_budget_keys,
     response_stream_key,
     status_stream_key,
     validate_envelope,
@@ -34,6 +35,7 @@ class RelayResponseRouter:
         self._redis = redis
         self._session_id = session_id
         self._connection_id = connection_id
+        self._budget_keys = reply_budget_keys(session_id, connection_id)
         self._pending: dict[str, RelayRequestTarget] = {}
         self._pending_activity: dict[str, float] = {}
         self._recording_owners: dict[str, str] = {}
@@ -121,16 +123,17 @@ class RelayResponseRouter:
 
     async def _append_or_drop(self, raw: str, reply_id: str) -> bool:
         """Append to one worker's reply stream, or drop the frame if that stream
-        is full. A full stream belongs to a worker that stopped reading; ending
-        the shim connection over it would fail every other worker's requests,
-        and the stalled worker's own request times out on its side."""
+        is full or the connection's reply streams already hold all they may.
+        A full stream belongs to a worker that stopped reading, and a full
+        budget to a shim that kept answering such workers. Ending the shim
+        connection over either would fail every other worker's requests; the
+        worker whose frame is dropped times out on its side."""
         key = response_stream_key(self._session_id, self._connection_id, reply_id)
         try:
-            await append_response(self._redis, key, raw)
-        except RelayBacklogExceeded:
+            await append_response(self._redis, key, raw, budget_keys=self._budget_keys)
+        except RelayBacklogExceeded as exc:
             logger.warning(
-                "Dropping a Local PC response for a full reply stream %s",
-                reply_id[:8],
+                f"Dropping a Local PC response for reply stream {reply_id[:8]}: {exc}"
             )
             return False
         return True

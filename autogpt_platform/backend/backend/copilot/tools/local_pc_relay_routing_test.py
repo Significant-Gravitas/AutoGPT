@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from typing import Any
 
 import pytest
@@ -214,11 +215,13 @@ def _full_stream(monkeypatch: pytest.MonkeyPatch, full_keys: set[str]) -> list[s
     attempts: list[str] = []
     real_append = relay_routing.append_response
 
-    async def append(redis_: Any, key: str, raw: str) -> None:
+    async def append(
+        redis_: Any, key: str, raw: str, *, budget_keys: Sequence[str]
+    ) -> None:
         attempts.append(key)
         if key in full_keys:
             raise RelayBacklogExceeded("full")
-        await real_append(redis_, key, raw)
+        await real_append(redis_, key, raw, budget_keys=budget_keys)
 
     monkeypatch.setattr(relay_routing, "append_response", append)
     return attempts

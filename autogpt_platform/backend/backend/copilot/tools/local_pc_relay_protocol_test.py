@@ -15,9 +15,12 @@ from backend.copilot.tools.local_pc_relay_protocol import (
     RelayBacklogExceeded,
     RelayRequestTarget,
     register_pending_request,
+    reply_budget_keys,
     validate_response_correlation,
 )
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis
+
+_BUDGET = reply_budget_keys("session-1", "connection-1")
 
 
 def _message(message_type: str, message_id: str = "request-1") -> dict[str, Any]:
@@ -63,10 +66,10 @@ async def test_stream_append_is_atomic_and_consumed_response_releases_backlog(
     key = "responses"
     monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_BYTES", 5)
 
-    await append_response(redis, key, "12345")
+    await append_response(redis, key, "12345", budget_keys=_BUDGET)
     message_id, fields = redis.streams[key][0]
     await acknowledge_stream_entry(redis, key, message_id, fields)
-    await append_response(redis, key, "abcde")
+    await append_response(redis, key, "abcde", budget_keys=_BUDGET)
 
     assert redis.strings["responses:backlog-bytes"] == 5
     assert len(redis.streams[key]) == 1
@@ -78,15 +81,15 @@ async def test_response_backlog_has_strict_entry_and_byte_limits(
 ) -> None:
     redis = FakeRedis()
     monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_ENTRIES", 1)
-    await append_response(redis, "entry-limit", "one")
+    await append_response(redis, "entry-limit", "one", budget_keys=_BUDGET)
     with pytest.raises(RelayBacklogExceeded):
-        await append_response(redis, "entry-limit", "two")
+        await append_response(redis, "entry-limit", "two", budget_keys=_BUDGET)
 
     monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_ENTRIES", 128)
     monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_BYTES", 5)
-    await append_response(redis, "byte-limit", "1234")
+    await append_response(redis, "byte-limit", "1234", budget_keys=_BUDGET)
     with pytest.raises(RelayBacklogExceeded):
-        await append_response(redis, "byte-limit", "56")
+        await append_response(redis, "byte-limit", "56", budget_keys=_BUDGET)
 
 
 @pytest.mark.asyncio
@@ -122,8 +125,8 @@ async def test_concurrent_appends_cannot_overshoot_byte_limit(
     monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_BYTES", 5)
 
     results = await asyncio.gather(
-        append_response(redis, "responses", "1234"),
-        append_response(redis, "responses", "5678"),
+        append_response(redis, "responses", "1234", budget_keys=_BUDGET),
+        append_response(redis, "responses", "5678", budget_keys=_BUDGET),
         return_exceptions=True,
     )
 
