@@ -32,20 +32,24 @@ export function LinkCheckout({ output }: Props) {
   const fromRecord = approvesInChat && !readOnly;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4">
+    <div className="flex flex-col gap-3 rounded-lg border border-border-base bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-semibold text-zinc-900">
+          <p className="font-semibold text-foreground-strong">
             {fromRecord ? "Link purchase" : merchant}
           </p>
-          {!fromRecord && <p className="text-sm text-zinc-600">{status}</p>}
+          {!fromRecord && (
+            <p className="text-body text-foreground-secondary">{status}</p>
+          )}
         </div>
         {!fromRecord && (
-          <p className="text-lg font-semibold text-zinc-900">{total}</p>
+          <p className="text-lead font-semibold text-foreground-strong">
+            {total}
+          </p>
         )}
       </div>
       {testMode && (
-        <p className="text-sm font-medium text-zinc-600">
+        <p className="text-body font-medium text-foreground-secondary">
           Test payment · no charge
         </p>
       )}
@@ -54,9 +58,11 @@ export function LinkCheckout({ output }: Props) {
       ) : (
         <>
           {actionMessage && (
-            <p className="text-sm text-zinc-800">{actionMessage}</p>
+            <p className="text-body text-foreground-emphasis">
+              {actionMessage}
+            </p>
           )}
-          <p className="text-sm text-zinc-600">{message}</p>
+          <p className="text-body text-foreground-secondary">{message}</p>
           {approvalUrl && !readOnly && (
             <Button
               as="NextLink"
@@ -77,7 +83,7 @@ export function LinkCheckout({ output }: Props) {
             </Button>
           )}
           {error && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-body text-error-foreground">
               {error}
             </p>
           )}

@@ -15,10 +15,10 @@ interface Props {
 export function SettledDecision({ state, agentNotTold, onTellAgent }: Props) {
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-zinc-600">{SETTLED[state]}</p>
+      <p className="text-body text-foreground-secondary">{SETTLED[state]}</p>
       {agentNotTold && (
         <>
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-body text-error-foreground">
             Your decision is saved, but the message to the agent did not send.
           </p>
           <Button size="small" variant="secondary" onClick={onTellAgent}>
