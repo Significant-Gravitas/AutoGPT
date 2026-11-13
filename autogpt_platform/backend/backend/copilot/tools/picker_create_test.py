@@ -17,7 +17,7 @@ from backend.blocks.google.sheets import (
     GoogleSheetsCreateSpreadsheetBlock,
     GoogleSheetsReadBlock,
 )
-from backend.copilot.capabilities.registry import get_registry
+from backend.copilot.capabilities.registry import get_registry, reset_registry
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools._test_data import make_session
@@ -28,6 +28,18 @@ from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
 USER = "user-picker-create"
 ROW = ["12 Elm St", "3 bed", "$410,000"]
 CREATE_SHEET = f"block:{GoogleSheetsCreateSpreadsheetBlock().id}"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _google_configured():
+    """Without a Google OAuth client (CI has none) these blocks load disabled
+    and the registry leaves them out, so it is rebuilt with them enabled."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
+        mp.setattr("backend.blocks.google.docs.GOOGLE_DOCS_DISABLED", False)
+        reset_registry()
+        yield
+    reset_registry()
 
 
 @pytest.fixture(autouse=True)
