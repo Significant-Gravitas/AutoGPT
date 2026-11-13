@@ -450,7 +450,7 @@ class TestGenericWebhookOptionalToken:
     `secret_token` on the trigger block, the manager requires inbound
     requests to echo it in `X-Webhook-Secret`."""
 
-    def _webhook(self, secret_token: str | None = None):
+    def _webhook(self, secret_token: object = None):
         nodes = []
         if secret_token is not None:
             n = MagicMock()
@@ -487,6 +487,13 @@ class TestGenericWebhookOptionalToken:
             headers={"X-Webhook-Secret": "t0ken"},
         )
         assert resp.status_code != 403, resp.text
+
+    @pytest.mark.parametrize("secret_token", [1234, 0, ["t0ken"]])
+    def test_token_configured_but_not_text_403(self, secret_token):
+        """A stored token that is not text is refused, not read as 'not set'."""
+        resp = _run(self._webhook(secret_token=secret_token), "generic_webhook")
+        assert resp.status_code == 403, resp.text
+        assert "could not be read" in resp.text
 
 
 # ---------------------------------------------------------------------------
