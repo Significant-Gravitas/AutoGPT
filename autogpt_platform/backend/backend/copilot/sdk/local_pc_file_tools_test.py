@@ -552,7 +552,7 @@ class TestLocalPCEditResultSize:
         )
 
         assert result["isError"] is True
-        assert "would make notes.txt 15 bytes" in _text(result)
+        assert "Editing notes.txt would make it 15 bytes" in _text(result)
         assert [call.args[0] for call in shim._rpc.await_args_list] == ["FILE_READ"]
 
 

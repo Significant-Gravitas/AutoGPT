@@ -10,7 +10,7 @@ Triggers when an Exa Search Monitor reports new results. Paste this block's webh
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block gives you a webhook URL to paste into Exa Create Search Monitor; nothing is registered with Exa automatically. When `webhook_secret` is set, each delivery's `Exa-Signature` header (HMAC-SHA256 of the timestamp and body) is checked and unsigned or mismatched deliveries are rejected. Until it is set, any request to the URL is accepted. By default only `monitor.run.completed` starts the workflow; it carries the run's results, or why it failed, so check `status` and `fail_reason` before using the results.
+This block gives you a webhook URL to paste into Exa Create Search Monitor; nothing is registered with Exa automatically. When `webhook_secret` is set, each delivery's `Exa-Signature` header (HMAC-SHA256 of the timestamp and body) is checked and unsigned or mismatched deliveries are rejected, as is a delivery whose signed timestamp is more than five minutes from the current time. Until it is set, any request to the URL is accepted. By default only `monitor.run.completed` starts the workflow; it carries the run's results, or why it failed, so check `status` and `fail_reason` before using the results.
 
 For run events the block outputs the run's ID, status, new results (as a list and one at a time), synthesized content, grounding and fail reason. For monitor created, updated and deleted events it outputs the monitor instead. The monitor's metadata is output for every event.
 <!-- END MANUAL -->

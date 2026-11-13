@@ -185,36 +185,24 @@ def _too_large(path: str, done: str) -> str:
     )
 
 
-def _utf8_size(text: str) -> int:
-    """Bytes *text* takes as UTF-8, a slice at a time so the whole encoding is
-    never held. A lone surrogate counts as the three bytes it would take."""
-    if text.isascii():
-        return len(text)
-    step = 1 << 20
-    return sum(
-        len(text[start : start + step].encode("utf-8", "surrogatepass"))
-        for start in range(0, len(text), step)
-    )
+def _utf8_len(text: str) -> int:
+    return len(text.encode("utf-8", errors="surrogatepass"))
 
 
-def _edit_result_too_large(
+def _edit_too_large(
     path: str, content: str, old_string: str, new_string: str, replacements: int
 ) -> str | None:
-    """Why an edit is refused because its result would be over the limit Read
-    and Edit hold a file to, or None.
-
-    The size is worked out from the inputs before the result is built: with
-    ``replace_all``, a short ``old_string`` and a long ``new_string`` turn a
-    few megabytes into gigabytes.
-    """
-    size = _utf8_size(content) + replacements * (
-        _utf8_size(new_string) - _utf8_size(old_string)
+    """Refusal text when the edited file would pass ``_MAX_READ_BYTES``,
+    worked out before the result is built."""
+    size = _utf8_len(content) + replacements * (
+        _utf8_len(new_string) - _utf8_len(old_string)
     )
     if size <= _MAX_READ_BYTES:
         return None
     return (
-        f"The edit would make {os.path.basename(path)} {size:,} bytes, over the "
-        f"{_MAX_READ_BYTES:,}-byte limit for Read and Edit. Nothing was changed."
+        f"Editing {os.path.basename(path)} would make it {size:,} bytes, over "
+        f"the {_MAX_READ_BYTES // 2**20} MB limit for files that can be read "
+        "or edited whole. Nothing was changed."
     )
 
 
@@ -754,10 +742,11 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
                 "Use replace_all=true or provide a more unique string.",
                 error=True,
             )
-        too_large = _edit_result_too_large(
+
+        too_large = _edit_too_large(
             resolved, content, old_string, new_string, count if replace_all else 1
         )
-        if too_large is not None:
+        if too_large:
             return _mcp(too_large, error=True)
 
         updated = (
@@ -850,7 +839,7 @@ async def _edit_on_executor(
         )
     # Counted from the decoded text, which is what is written back: a byte
     # that isn't UTF-8 was read as U+FFFD and goes back as three.
-    too_large = _edit_result_too_large(
+    too_large = _edit_too_large(
         remote, content, old_string, new_string, count if replace_all else 1
     )
     if too_large is not None:
