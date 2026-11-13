@@ -211,6 +211,72 @@ class TestCoPilotConfirmation:
         assert not any(p.confirmed for p in skill.parameters)
 
 
+def _joined_recording():
+    return WorkflowRecording.from_payload(
+        {
+            "recording_id": "rec_join",
+            "steps": [
+                _step(
+                    1,
+                    "fill",
+                    label="Email",
+                    raw="john@x.com",
+                    vtype="email",
+                    selectors=[{"strategy": "id", "value": "#email"}],
+                ),
+                _step(
+                    2,
+                    "fill",
+                    label="Confirm email",
+                    raw="john@x.com",
+                    vtype="email",
+                    selectors=[{"strategy": "id", "value": "#confirm"}],
+                ),
+                _step(
+                    3,
+                    "fill",
+                    label="Contact",
+                    raw="Jane",
+                    selectors=[{"strategy": "id", "value": "#contact"}],
+                ),
+                _step(4, "submit", label="Save"),
+            ],
+        }
+    )
+
+
+class TestJoinedColumnNames:
+    def test_no_field_takes_a_joined_columns_name(self):
+        """A joined column's parameter is named after the column, which is how
+        a data row fills it, but the name wasn't reserved: a field with the
+        same name got the same parameter name, and the two collided."""
+        skill = generate_skill_from_recording(
+            _joined_recording(),
+            clarifications={
+                "data_source_columns": {"Contact": "email"},
+                "confirmed_parameters": {"Email": True, "Confirm email": False},
+            },
+        )
+
+        names = [p.name for p in skill.parameters]
+        assert len(names) == len(set(names))
+        by_label = {p.label: p.name for p in skill.parameters}
+        assert by_label == {"Email": "email_2", "Contact": "email"}
+
+    def test_two_fields_joined_to_one_column_share_its_parameter(self):
+        skill = generate_skill_from_recording(
+            _joined_recording(),
+            clarifications={
+                "data_source_columns": {"Email": "email", "Confirm email": "email"},
+                "confirmed_parameters": {"Contact": False},
+            },
+        )
+
+        assert [p.name for p in skill.parameters] == ["email"]
+        bound = {b.seq: b.parameter for b in skill.manifest.bindings if b.parameter}
+        assert bound == {1: "email", 2: "email"}
+
+
 class TestMultiRowInference:
     def test_two_rows_varied_value_is_confirmed_parameter(self):
         skill = generate_skill_from_recording(_two_row_recording())

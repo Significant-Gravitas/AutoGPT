@@ -298,7 +298,9 @@ def _infer_parameters(
 
     params: list[SkillParameter] = []
     seq_to_param: dict[int, str] = {}
-    used_names: set[str] = set()
+    # A joined column's parameter is named after the column, which is how a
+    # data row fills it, so no other field may take one of those names.
+    used_names: set[str] = {_slugify(column) for column in data_columns.values()}
 
     for key in field_order:
         step = field_step[key]
@@ -342,14 +344,16 @@ def _infer_parameters(
                 if isinstance(joined_column, str)
                 else _parameter_name(step, used_names)
             )
-            params.append(
-                SkillParameter(
-                    name=name,
-                    type=vtype,
-                    label=label,
-                    confirmed=confirmed,
+            # Two fields joined to one column share its parameter.
+            if all(param.name != name for param in params):
+                params.append(
+                    SkillParameter(
+                        name=name,
+                        type=vtype,
+                        label=label,
+                        confirmed=confirmed,
+                    )
                 )
-            )
             # Bind every step occurrence of this field.
             for row in rows:
                 for s in row:
