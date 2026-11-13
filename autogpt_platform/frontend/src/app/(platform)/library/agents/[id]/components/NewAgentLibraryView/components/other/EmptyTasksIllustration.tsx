@@ -466,7 +466,6 @@ export function EmptyTasksIllustration({ className }: Props) {
         />
         <mask
           id="mask0_910_13921"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="31"
           y="191"
@@ -522,7 +521,6 @@ export function EmptyTasksIllustration({ className }: Props) {
         />
         <mask
           id="mask1_910_13921"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="216"
           y="187"
@@ -614,7 +612,6 @@ export function EmptyTasksIllustration({ className }: Props) {
         />
         <mask
           id="mask2_910_13921"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="189"
           y="94"
@@ -658,7 +655,6 @@ export function EmptyTasksIllustration({ className }: Props) {
         />
         <mask
           id="mask3_910_13921"
-          style={{ maskType: "luminance" }}
           maskUnits="userSpaceOnUse"
           x="178"
           y="95"

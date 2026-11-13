@@ -9,6 +9,7 @@ from typing import Optional
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -148,6 +149,7 @@ class RMFGCreateCartBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=CART_TEST_OUTPUT,
             test_mock={"create_cart": lambda *args, **kwargs: TEST_CART},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -208,6 +210,7 @@ class RMFGGetCartBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=CART_TEST_OUTPUT,
             test_mock={"get_cart": lambda *args, **kwargs: TEST_CART},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -267,6 +270,7 @@ class RMFGUpdateCartBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=CART_TEST_OUTPUT,
             test_mock={"update_cart": lambda *args, **kwargs: TEST_CART},
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

@@ -1,6 +1,6 @@
+import { expertPastel } from "@/components/molecules/ExpertAvatar/colors";
 import { coverClassFor } from "@/app/(platform)/raise/components/ColorStep/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Activity01Icon, Alert01Icon } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -19,12 +19,12 @@ const STATUS_STYLES: Partial<
 > = {
   working: {
     label: "Working",
-    className: "bg-emerald-50 text-emerald-700",
+    className: "bg-success-surface text-success-foreground",
     icon: Activity01Icon,
   },
   "needs-you": {
     label: "Needs you",
-    className: "bg-amber-50 text-amber-700",
+    className: "bg-warning-surface text-warning-foreground",
     icon: Alert01Icon,
   },
 };
@@ -42,8 +42,14 @@ export function ExpertCover({ className, color, status, art }: Props) {
 
   return (
     <div
+      style={
+        color?.startsWith("#")
+          ? // oxlint-disable-next-line design-system/no-inline-styles -- the cover colour is per-expert data (a pastel of the expert's hex)
+            { backgroundColor: expertPastel(color) }
+          : undefined
+      }
       className={cn(
-        "relative h-28 w-full overflow-hidden rounded-lg bg-zinc-100",
+        "relative h-24 w-full overflow-hidden rounded-lg bg-surface-hover",
         coverClassFor(color ?? null),
         className,
       )}
@@ -58,17 +64,15 @@ export function ExpertCover({ className, color, status, art }: Props) {
         />
       ) : null}
       {statusStyle ? (
-        <Text
-          variant="small-medium"
-          as="span"
+        <span
           className={cn(
-            "absolute bottom-3 right-3 flex items-center gap-1 rounded-md px-2 py-0.5",
+            "absolute right-3 bottom-3 flex items-center gap-1 rounded-md px-2 py-0.5 font-sans text-caption font-medium",
             statusStyle.className,
           )}
         >
           <Icon icon={statusStyle.icon} size={13} />
           {statusStyle.label}
-        </Text>
+        </span>
       ) : null}
     </div>
   );

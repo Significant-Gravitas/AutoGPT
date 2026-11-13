@@ -6,12 +6,14 @@ import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 from pydantic_core import PydanticUndefined
 
 from backend.blocks import BlockType, get_block
 from backend.blocks._base import AnyBlockSchema
+from backend.copilot.capabilities import block_meta
 from backend.copilot.capabilities.block_meta import get_block_provider
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
@@ -19,10 +21,19 @@ from backend.copilot.constants import (
     COPILOT_SESSION_PREFIX,
     MAX_TOOL_WAIT_SECONDS,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.context import get_current_permissions, is_unattended_turn
+from backend.copilot.credential_selection import (
+    host_selection_key,
+    turn_credential_pins,
+)
+from backend.copilot.model import ChatSession, ChatSessionMetadata
+from backend.copilot.pending_messages import finish_despite_cancellation
+from backend.copilot.permissions import denied_block_providers
+from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.copilot.tool_display import emit_tool_display_name
+from backend.copilot.tree import charge_credits
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import (
     credit_db,
@@ -38,20 +49,37 @@ from backend.executor.auto_credentials import (
     MissingAutoCredentialsError,
     acquire_auto_credentials,
 )
+from backend.executor.billing import _block_has_paid_cost_entry, _with_stop_estimate
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.codex.access import enforce_codex_access
 from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
 from backend.integrations.providers import ProviderName
-from backend.util.exceptions import BlockError, InsufficientBalanceError
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.exceptions import (
+    BlockError,
+    BlockInputError,
+    InsufficientBalanceError,
+)
+from backend.util.file import separate_exec_files
+from backend.util.json import same_json
 from backend.util.request import HTTPClientError
+from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 from backend.util.type import coerce_inputs_to_schema
 
+from .ayrshare_managed import is_ayrshare, is_not_linked_error
+from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
+from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
+from .chat_platform_hint import bot_link_hint
+from .credential_gaps import annotate_credential_gaps, credentials_for_gaps
 from .expert_scope import (
+    CredentialScopeSnapshot,
     annotate_expert_grants,
     provider_slug,
     ungranted_credential_hint,
@@ -67,14 +95,21 @@ from .models import (
     ToolResponseBase,
     UserReadiness,
 )
+from .review_card import review_card_location
 from .utils import (
     build_missing_credentials_from_field_info,
     credential_rejection_status,
+    get_user_credentials,
+    is_per_target_credential,
     match_credentials_to_requirements,
     sanitize_provider_message,
 )
 
 logger = logging.getLogger(__name__)
+
+# The least a block priced on its usage is debited before it runs, where the
+# executor has no estimate of its cost (see ``_pre_run_charge``).
+_MIN_USAGE_PRICED_DEBIT = 1
 
 
 def get_inputs_from_schema(
@@ -123,13 +158,31 @@ def get_inputs_from_schema(
 
 
 def is_picker_field(schema: Any) -> bool:
-    """A field only a platform-rendered picker can fill (e.g. Google Drive).
+    """A field a platform-rendered picker fills.
 
-    The picker attaches hidden credentials to the chosen resource, so a bare
-    ID or URL typed into the chat can never stand in for it.
+    Google Drive's picker attaches hidden credentials to the chosen file, so a
+    bare ID or URL typed into the chat can never stand in for it. A
+    ``resource_picker`` (an Airtable base) lists what the user's own account
+    holds, so they choose by name instead of digging an id out of a URL.
     """
     return isinstance(schema, dict) and (
-        schema.get("format") == "google-drive-picker" or "auto_credentials" in schema
+        schema.get("format") == "google-drive-picker"
+        or "auto_credentials" in schema
+        or "resource_picker" in schema
+    )
+
+
+def missing_picker_fields(
+    input_schema: dict[str, Any], required: set[str], input_data: dict[str, Any]
+) -> list[str]:
+    """Required picker inputs the call leaves unpicked. The prompt tells the
+    model to pass an unpicked field as null, so an empty value is as missing
+    as an absent one. A call with any of these only shows its setup card."""
+    properties = input_schema.get("properties", {})
+    return sorted(
+        f
+        for f in required
+        if input_data.get(f) in (None, "") and is_picker_field(properties.get(f))
     )
 
 
@@ -137,19 +190,78 @@ def get_picker_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
     input_data: dict[str, Any] | None = None,
+    picker_credentials: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Inputs a setup card should render: picker-backed fields only.
 
     Every other input is collected in the chat by the CoPilot asking the
-    user, so the card carries no form for them.
+    user, so the card carries no form for them. ``picker_credentials`` maps a
+    provider to the credential the run will use, which a resource picker
+    lists with.
     """
-    return [
-        entry
+    entries = [
+        _with_picker_credentials(entry, picker_credentials or {})
         for entry in get_inputs_from_schema(
             input_schema, exclude_fields=exclude_fields, input_data=input_data
         )
         if is_picker_field(entry)
     ]
+    return [entry for entry in entries if entry is not None]
+
+
+def _with_picker_credentials(
+    entry: dict[str, Any], by_provider: dict[str, str]
+) -> dict[str, Any] | None:
+    """A resource picker lists with the account the run will use. Without
+    one there is nothing to list, so the card signs in first and the picker
+    follows when the call runs again."""
+    picker = entry.get("resource_picker")
+    if not isinstance(picker, dict):
+        return entry
+    credentials_id = by_provider.get(str(picker.get("provider")))
+    if not credentials_id:
+        return None
+    return {**entry, "resource_picker": {**picker, "credentials_id": credentials_id}}
+
+
+def _unattended_picker_error(
+    block_name: str,
+    input_schema: dict[str, Any],
+    fields: list[str],
+    session_id: str,
+) -> ErrorResponse:
+    """A card in a turn nobody watches is never answered, so say what the
+    user must choose, the way a missing credential is reported."""
+    titles = " and ".join(_field_titles(input_schema, fields))
+    logger.warning(
+        "Unattended copilot turn in session %s: %s needs %s picked",
+        session_id,
+        block_name,
+        titles,
+    )
+    return ErrorResponse(
+        message=(
+            f"This step did not run: it needs the user's {titles}, which they "
+            "choose in a card, and nobody is watching this run. Tell them to "
+            "pick it in a chat, then it can run unattended."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _field_titles(input_schema: dict[str, Any], fields: list[str]) -> list[str]:
+    properties = input_schema.get("properties", {})
+    return [str(properties.get(f, {}).get("title") or f) for f in fields]
+
+
+def _picker_message(input_schema: dict[str, Any], fields: list[str]) -> str:
+    """The card's line for a pick: shown to the user as well as the model, so
+    it names each field by its title, never its key."""
+    titles = _field_titles(input_schema, fields)
+    return (
+        f"Choose your {' and '.join(titles)} in the card below. The step runs "
+        "again with your choice."
+    )
 
 
 async def _charge_block_credits(
@@ -164,41 +276,37 @@ async def _charge_block_credits(
     session_id: str,
     expert_id: str | None = None,
 ) -> None:
-    """Charge credits for a block execution and log any billing leak.
+    """Debit a block run before it starts.
 
-    Centralised so the normal-path charge and the cancellation-recovery charge
-    (see ``execute_block``'s finally) use the same metadata and the same
-    leak-logging contract. ``expert_id`` also meters the charge on the
-    expert's spend counters.
+    ``spend_credits`` checks the balance and debits in one atomic step, so it
+    is the only balance check: it raises ``InsufficientBalanceError`` when the
+    balance cannot cover ``cost``, and any other failure propagates too, so
+    the caller never runs a block it could not charge for. ``expert_id`` also
+    meters the charge on the expert's spend counters.
     """
+    await _credit_db.spend_credits(
+        user_id=user_id,
+        cost=cost,
+        metadata=UsageTransactionMetadata(
+            chat_session_id=session_id,
+            node_exec_id=node_exec_id,
+            block_id=block_id,
+            block=block_name,
+            input=cost_filter,
+            reason="copilot_block_execution",
+        ),
+    )
     try:
-        await _credit_db.spend_credits(
-            user_id=user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                chat_session_id=session_id,
-                node_exec_id=node_exec_id,
-                block_id=block_id,
-                block=block_name,
-                input=cost_filter,
-                reason="copilot_block_execution",
-            ),
-        )
+        # Before the expert metering, which can fail after the debit landed.
+        await charge_credits(user_id, lambda: cost)
         if expert_id:
             await add_weekly_spend(expert_id, cost)
     except Exception as e:
-        # Block already executed (with possible side effects). Never
-        # return ErrorResponse here — the user received output and
-        # deserves it. Log the billing failure for reconciliation.
-        leak_type = (
-            "INSUFFICIENT_BALANCE"
-            if isinstance(e, InsufficientBalanceError)
-            else "UNEXPECTED_ERROR"
-        )
+        # The debit landed, so the run is paid for and goes ahead; only the
+        # chat's spend metering missed it. Log it for reconciliation.
         logger.error(
-            "BILLING_LEAK[%s]: block executed but credit charge failed — "
-            "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
-            leak_type,
+            "SPEND_METERING_MISSED: block debited but spend metering "
+            "failed — user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
             user_id,
             block_id,
             node_exec_id,
@@ -206,16 +314,12 @@ async def _charge_block_credits(
             e,
             extra={
                 "json_fields": {
-                    "billing_leak": True,
-                    "leak_type": leak_type,
+                    "spend_metering_missed": True,
                     "user_id": user_id,
                     "cost": str(cost),
                 }
             },
         )
-        # Intentionally swallow. Block already executed with possible side
-        # effects; the caller must still return BlockOutputResponse. The
-        # BILLING_LEAK log above is the signal for reconciliation.
 
 
 async def execute_block(
@@ -268,7 +372,7 @@ async def execute_block(
                     message=sim_error[0],
                     error=sim_error[0],
                     session_id=session_id,
-                )
+                ).from_outside(sim_error[0])
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
@@ -279,14 +383,14 @@ async def execute_block(
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
-            )
+            ).from_outside(outputs)
         except Exception as e:
             logger.error("Dry-run simulation failed: %s", e, exc_info=True)
             return ErrorResponse(
                 message=f"Dry-run simulation failed: {e}",
                 error=str(e),
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
@@ -336,8 +440,10 @@ async def execute_block(
         try:
             for field_name, cred_meta in matched_credentials.items():
                 credential_field_name = field_name
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+                # Always overwrite: the block runs with the resolved
+                # credential below, so the input it is priced on must name
+                # that same credential, not whatever the model passed.
+                input_data[field_name] = cred_meta.model_dump()
                 if cred_meta.provider == ProviderName.CODEX:
                     lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
                     credential_leases[field_name] = lease
@@ -360,11 +466,13 @@ async def execute_block(
                 except HTTPClientError as e:
                     # The provider refused the refresh (revoked grant, expired
                     # refresh token). The user can only fix that by
-                    # reconnecting, so hand them the card rather than an error.
+                    # reconnecting, so hand them the card (or, with nobody
+                    # watching, an error naming the account) rather than a
+                    # bare failure.
                     # Anything else (store, config, handler setup) is not
                     # theirs to fix and takes the usual error path below.
                     await _release_credential_leases(credential_leases)
-                    return _build_credential_rejected_card(
+                    return _credential_rejected_response(
                         block=block,
                         block_id=block_id,
                         input_data=input_data,
@@ -384,7 +492,7 @@ async def execute_block(
                     return ErrorResponse(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
-                    )
+                    ).from_outside()
                 if not (
                     credentials is not None
                     and provider_matches(credentials.provider, cred_meta.provider)
@@ -394,14 +502,14 @@ async def execute_block(
                     return ErrorResponse(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
-                    )
+                    ).from_outside()
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)
             return ErrorResponse(
                 message=f"Failed to retrieve credentials for {credential_field_name}",
                 session_id=session_id,
-            )
+            ).from_outside()
         except BaseException:
             await _release_credential_leases(credential_leases)
             raise
@@ -449,10 +557,13 @@ async def execute_block(
                 ),
                 graph_id=None,
                 graph_version=None,
-            )
+            ).from_outside()
         except ValueError as e:
             await _release_credential_leases(credential_leases)
-            return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
+            # Our wording around the model's own input: nothing from outside.
+            return ErrorResponse(
+                message=str(e), error=str(e), session_id=session_id
+            ).from_outside()
         except BaseException:
             await _release_credential_leases(credential_leases)
             raise
@@ -467,63 +578,39 @@ async def execute_block(
             # Coerce non-matching data types to the expected input schema.
             coerce_inputs_to_schema(input_data, block.input_schema)
 
-            # Pre-execution credit check (courtesy; spend_credits is atomic).
-            # Pass `use_preflight_estimate=False` because this path bypasses
-            # the executor manager and never runs reconciliation — locking in
-            # the historical-average estimate as the final charge would be
-            # incorrect for SECOND/ITEMS/COST_USD blocks. Returns 0 here for
-            # those types, preserving the pre-#13031 contract.
-            cost, cost_filter = block_usage_cost(
-                block, input_data, use_preflight_estimate=False
+            # Debited before it runs, as the graph executor charges a node,
+            # and settled to what the run cost once it ends (below).
+            cost, cost_filter = _pre_run_charge(block, input_data)
+            refused = await _debit_block_run(
+                block=block,
+                input_data=input_data,
+                cost=cost,
+                cost_filter=cost_filter,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=node_exec_id,
+                expert_id=expert_id,
             )
-            has_cost = cost > 0
-            _credit_db = credit_db()
-            if has_cost:
-                balance = await _credit_db.get_credits(user_id)
-                if balance < cost:
-                    return ErrorResponse(
-                        message=(
-                            f"Insufficient credits to run '{block.name}'. "
-                            "Please top up your credits to continue."
-                        ),
-                        session_id=session_id,
-                    )
+            if refused is not None:
+                return refused
 
             # Execute the block under the shared MCP wait cap. A block is
             # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
             # MCP handler would block the stream close to the idle timeout.
-            # wait_for cancels the generator on timeout, but the finally below
-            # still settles billing via asyncio.shield — external side effects
-            # may already have landed and the user should be charged for them.
+            # wait_for cancels the generator on timeout; the run is still
+            # settled, since external side effects may already have landed.
             outputs: dict[str, list[Any]] = defaultdict(list)
-            charge_handled = False
+            started = perf_counter()
+            refunded = stopped = False
             try:
-                await asyncio.wait_for(
-                    _collect_block_outputs(block, input_data, exec_kwargs, outputs),
-                    timeout=MAX_TOOL_WAIT_SECONDS,
-                )
-
-                # Normal (non-cancelled) path. Mark charge_handled BEFORE the
-                # await so an outer cancellation landing mid-charge can't race
-                # the finally block into a double-charge. asyncio.shield keeps
-                # the spend running to completion even if the outer awaitable
-                # is cancelled.
-                if has_cost:
-                    charge_handled = True
-                    await asyncio.shield(
-                        _charge_block_credits(
-                            _credit_db,
-                            user_id=user_id,
-                            block_name=block.name,
-                            block_id=block_id,
-                            node_exec_id=node_exec_id,
-                            cost=cost,
-                            cost_filter=cost_filter,
-                            session_id=session_id,
-                            expert_id=await metered_expert_id(user_id, expert_id),
-                        )
+                # Every call in the chat shares its execution id, and calls from
+                # one message run at once: each keeps its local media files in
+                # a folder of its own, removed when the call ends.
+                with separate_exec_files(synthetic_graph_id):
+                    await asyncio.wait_for(
+                        _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                        timeout=MAX_TOOL_WAIT_SECONDS,
                     )
-
                 return BlockOutputResponse(
                     message=f"Block '{block.name}' executed successfully",
                     block_id=block_id,
@@ -532,7 +619,28 @@ async def execute_block(
                     provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,
-                )
+                ).from_outside(outputs)
+            except BlockError as e:
+                # A setup card (connect or reconnect) that comes before any
+                # output means the provider did no work, so it stays free.
+                if (
+                    cost > 0
+                    and not outputs
+                    and _is_setup_card_failure(block, e, matched_credentials)
+                ):
+                    refunded = True
+                    await asyncio.shield(
+                        _refund_block_run(
+                            block=block,
+                            user_id=user_id,
+                            session_id=session_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            expert_id=expert_id,
+                        )
+                    )
+                raise
             except asyncio.TimeoutError:
                 # Structured record of tool-call timeouts (SECRT-2247 part 3).
                 # Grep prod logs for `copilot_tool_timeout` to find tools that
@@ -558,30 +666,32 @@ async def execute_block(
                         "so nothing blocks the chat stream."
                     ),
                     session_id=session_id,
-                )
+                ).from_outside()
+            except asyncio.CancelledError:
+                # The turn was stopped while the block ran.
+                stopped = True
+                raise
             finally:
-                # Sentry r3105079148: asyncio.wait_for raises CancelledError
-                # into the generator. Normal `except Exception` doesn't catch
-                # it, so without this finally a cancelled block would skip
-                # credit charging entirely while external side effects still
-                # landed. Only run when the normal-path charge was NOT
-                # reached (the flag is set before the await, so any
-                # cancellation during charge still sets it and avoids
-                # double-billing — r3105216985).
-                if has_cost and outputs and not charge_handled:
-                    await asyncio.shield(
-                        _charge_block_credits(
-                            _credit_db,
+                if not refunded:
+                    # Finishes even if the turn is stopped meanwhile.
+                    settlement = asyncio.ensure_future(
+                        _settle_block_run(
+                            block=block,
+                            input_data=input_data,
+                            debited=cost,
+                            walltime=perf_counter() - started,
+                            stopped=stopped,
                             user_id=user_id,
-                            block_name=block.name,
-                            block_id=block_id,
-                            node_exec_id=node_exec_id,
-                            cost=cost,
-                            cost_filter=cost_filter,
                             session_id=session_id,
-                            expert_id=await metered_expert_id(user_id, expert_id),
+                            node_exec_id=node_exec_id,
+                            expert_id=expert_id,
                         )
                     )
+                    try:
+                        await asyncio.shield(settlement)
+                    except asyncio.CancelledError:
+                        await finish_despite_cancellation(settlement)
+                        raise
         finally:
             await _release_credential_leases(credential_leases)
             # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
@@ -595,13 +705,17 @@ async def execute_block(
                     )
 
     except BlockError as e:
+        if is_ayrshare(get_block_provider(block)) and is_not_linked_error(e):
+            return await ayrshare_not_linked_response(
+                user_id, block, block_id, e, session_id, expert_id
+            )
         status_code = credential_rejection_status(e)
         if status_code is not None and matched_credentials:
             logger.warning(
                 f"Provider rejected a stored credential for block {block.name} "
                 f"with HTTP {status_code}"
             )
-            return _build_credential_rejected_card(
+            return _credential_rejected_response(
                 block=block,
                 block_id=block_id,
                 input_data=input_data,
@@ -615,14 +729,295 @@ async def execute_block(
             message=f"Block execution failed: {e}",
             error=str(e),
             session_id=session_id,
-        )
+        ).from_outside(str(e))
     except Exception as e:
         logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
             message=f"Failed to execute block: {str(e)}",
             error=str(e),
             session_id=session_id,
+        ).from_outside(str(e))
+
+
+async def _debit_block_run(
+    *,
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    cost: int,
+    cost_filter: dict[str, Any],
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    expert_id: str | None,
+) -> ErrorResponse | None:
+    """Charge a block run before it starts, or say why it may not run.
+
+    The debit is the balance check: ``spend_credits`` checks the balance and
+    debits it in one atomic step, refusing to overdraw.
+    Once the run ends, ``_settle_block_run`` charges or gives back the
+    difference to what it cost, failed runs included, as the executor
+    settles a node, since a run may already have called the provider; the
+    one exception is a setup card before any output, which is refunded
+    whole (see ``_is_setup_card_failure``).
+    """
+    if cost <= 0:
+        return None
+    # Invalid input fails in the block before any provider call, so refuse
+    # it here rather than charge for it.
+    if error := block.input_schema.validate_data(input_data):
+        raise BlockInputError(
+            message=f"Unable to execute block with invalid input data: {error}",
+            block_name=block.name,
+            block_id=block.id,
         )
+    try:
+        await _charge_block_credits(
+            credit_db(),
+            user_id=user_id,
+            block_name=block.name,
+            block_id=block.id,
+            node_exec_id=node_exec_id,
+            cost=cost,
+            cost_filter=cost_filter,
+            session_id=session_id,
+            expert_id=await metered_expert_id(user_id, expert_id),
+        )
+    except InsufficientBalanceError:
+        return ErrorResponse(
+            message=(
+                f"Insufficient credits to run '{block.name}'. "
+                "Please top up your credits to continue."
+            ),
+            session_id=session_id,
+        ).from_outside()
+    return None
+
+
+def _pre_run_charge(
+    block: AnyBlockSchema, input_data: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """What a block run is debited before it starts: the graph executor's
+    pre-flight charge for it (``billing.charge_usage``). A block priced on
+    its usage (SECOND, ITEMS or COST_USD) is debited its historical
+    estimate, or one credit where it has none, so a balance that can't
+    cover a credit can't start it. The rest is settled once the run ends
+    (``_settle_block_run``)."""
+    cost, cost_filter = block_usage_cost(block, input_data)
+    if cost <= 0 and _block_has_paid_cost_entry(block, input_data):
+        return _MIN_USAGE_PRICED_DEBIT, cost_filter
+    return cost, cost_filter
+
+
+async def _settle_block_run(
+    *,
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    debited: int,
+    walltime: float,
+    stopped: bool,
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    expert_id: str | None,
+) -> None:
+    """Charge, or give back, the difference between a run's debit and what
+    it cost, as the graph executor settles a node
+    (``billing.charge_reconciled_usage``): priced from the stats the block
+    recorded and the run's wall time, plus, for a run stopped during a model
+    call, that request's estimated input. A charge may take the balance
+    below zero, since the provider has already been paid. A failure is
+    logged, never raised, so the run's result still reaches the user."""
+    try:
+        stats = block.execution_stats.model_copy(update={"walltime": walltime})
+        cost, cost_filter = block_usage_cost(block, input_data, stats=stats)
+        if stopped:
+            cost = _with_stop_estimate(block, input_data, stats, cost, debited)
+        delta = cost - debited
+        if delta == 0:
+            return
+        await credit_db().spend_credits(
+            user_id=user_id,
+            cost=delta,
+            metadata=UsageTransactionMetadata(
+                chat_session_id=session_id,
+                node_exec_id=node_exec_id,
+                block_id=block.id,
+                block=block.name,
+                input={**cost_filter, "reconciled_delta": delta},
+                reason="copilot_block_execution_settlement",
+            ),
+            fail_insufficient_credits=False,
+        )
+    except Exception as e:
+        logger.error(
+            "BILLING_LEAK: block run not settled — user_id=%s, block_id=%s, "
+            "node_exec_id=%s, debited=%s: %s",
+            user_id,
+            block.id,
+            node_exec_id,
+            debited,
+            e,
+            extra={"json_fields": {"billing_leak": True, "user_id": user_id}},
+        )
+        return
+    try:
+        # A refund leaves the chat's spend ledger as it was, as
+        # ``_refund_block_run`` does.
+        if delta > 0:
+            await charge_credits(user_id, lambda: delta)
+        if metered := await metered_expert_id(user_id, expert_id):
+            await add_weekly_spend(metered, delta)
+    except Exception as e:
+        logger.error(
+            "SPEND_METERING_MISSED: block run settled but spend metering "
+            "failed — user_id=%s, block_id=%s, node_exec_id=%s, delta=%s: %s",
+            user_id,
+            block.id,
+            node_exec_id,
+            delta,
+            e,
+            extra={
+                "json_fields": {
+                    "spend_metering_missed": True,
+                    "user_id": user_id,
+                    "cost": str(delta),
+                }
+            },
+        )
+
+
+def _is_setup_card_failure(
+    block: AnyBlockSchema,
+    error: BlockError,
+    matched_credentials: dict[str, CredentialsMetaInput],
+) -> bool:
+    """The provider refused the account before doing any work: an Ayrshare
+    network that is not linked, or a credential of the user's own that it
+    rejected. The user gets a connect or reconnect card for these (see
+    ``execute_block``). A rejected platform-managed credential is not the
+    user's to reconnect, so it does not count."""
+    if is_ayrshare(get_block_provider(block)) and is_not_linked_error(error):
+        return True
+    users_own = any(
+        not is_system_credential(meta.id) for meta in matched_credentials.values()
+    )
+    return users_own and credential_rejection_status(error) is not None
+
+
+async def _refund_block_run(
+    *,
+    block: AnyBlockSchema,
+    user_id: str,
+    session_id: str,
+    node_exec_id: str,
+    cost: int,
+    cost_filter: dict[str, Any],
+    expert_id: str | None,
+) -> None:
+    """Give back a run's debit. The chat's spend ledger keeps the charge, so
+    it errs towards stopping a chat early, never late."""
+    try:
+        await credit_db().spend_credits(
+            user_id=user_id,
+            cost=-cost,
+            metadata=UsageTransactionMetadata(
+                chat_session_id=session_id,
+                node_exec_id=node_exec_id,
+                block_id=block.id,
+                block=block.name,
+                input=cost_filter,
+                reason="copilot_block_execution_refund",
+            ),
+        )
+    except Exception as e:
+        logger.error(
+            f"Could not refund {cost} credits to user {user_id} for block "
+            f"{block.id} (node_exec_id={node_exec_id}): {e}"
+        )
+        return
+    if metered := await metered_expert_id(user_id, expert_id):
+        await add_weekly_spend(metered, -cost)
+
+
+def _credential_rejected_response(
+    *,
+    block: AnyBlockSchema,
+    block_id: str,
+    input_data: dict[str, Any],
+    matched_credentials: dict[str, CredentialsMetaInput],
+    session_id: str,
+    status_code: int | None,
+    exc: BaseException,
+) -> SetupRequirementsResponse | ErrorResponse:
+    """The answer when the provider refused a stored credential.
+
+    A watched turn gets the reconnect card. A scheduled turn's card would go
+    unanswered (SECRT-2804), so it gets an error naming the account instead,
+    which the turn's reply passes on to the user.
+    """
+    if not is_unattended_turn():
+        return _build_credential_rejected_card(
+            block=block,
+            block_id=block_id,
+            input_data=input_data,
+            matched_credentials=matched_credentials,
+            session_id=session_id,
+            status_code=status_code,
+            exc=exc,
+        )
+    rejected, provider = _rejected_credential(block, matched_credentials)
+    provider_name = provider.replace("_", " ").title() or "The provider"
+    named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    if isinstance(exc, CredentialsNeedReconnectError):
+        refused = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}"
+        )
+    elif status_code is not None:
+        refused = (
+            f"{provider_name} rejected the saved credential{named} "
+            f"(HTTP {status_code})"
+        )
+    else:
+        refused = f"The saved {provider_name} credential{named} could not be refreshed"
+    logger.warning(
+        "Unattended copilot turn in session %s: block %s did not run, %s",
+        session_id,
+        block.name,
+        refused,
+    )
+    return ErrorResponse(
+        message=(
+            f"{refused}, so block '{block.name}' did not run. Nobody is "
+            "watching this turn (it was scheduled), so there is no one to "
+            "reconnect it now, and it did not switch to a different account. "
+            "Say plainly in your reply that this step was skipped, name that "
+            "credential, and tell the user to reconnect it or choose another "
+            "before the next run."
+        ),
+        error="credential_rejected",
+        # The scheduled chat's failure streak reads which connection to fix.
+        details={"provider": provider} if provider else None,
+        session_id=session_id,
+    ).from_outside()
+
+
+def _rejected_credential(
+    block: AnyBlockSchema, matched_credentials: dict[str, CredentialsMetaInput]
+) -> tuple[CredentialsMetaInput | None, str]:
+    """The refused credential, when only one was in play, and its provider."""
+    rejected = (
+        next(iter(matched_credentials.values()))
+        if len(matched_credentials) == 1
+        else None
+    )
+    provider = (
+        # ProviderName is a str-Enum: str() would render "ProviderName.X".
+        str(getattr(rejected.provider, "value", rejected.provider))
+        if rejected
+        else get_block_provider(block) or ""
+    )
+    return rejected, provider
 
 
 def _build_credential_rejected_card(
@@ -643,27 +1038,28 @@ def _build_credential_rejected_card(
     missing_creds_dict = build_missing_credentials_from_field_info(
         _resolve_discriminated_credentials(block, input_data), matched_keys=set()
     )
-    rejected = (
-        next(iter(matched_credentials.values()))
-        if len(matched_credentials) == 1
-        else None
-    )
-    provider = (
-        # ProviderName is a str-Enum: str() would render "ProviderName.X".
-        str(getattr(rejected.provider, "value", rejected.provider))
-        if rejected
-        else get_block_provider(block) or ""
-    )
+    rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
-    return SetupRequirementsResponse(
-        message=(
+    detail = sanitize_provider_message(str(exc))
+    if isinstance(exc, CredentialsNeedReconnectError):
+        message = (
+            f"The saved {provider_name} credential{named} has to be reconnected: "
+            f"{exc.marker.reason(provider_name)}. Reconnect it or pick a "
+            "different one, then re-run."
+        )
+    elif status_code is not None:
+        message = (
             f"{provider_name} rejected the saved credential{named} "
             f"(HTTP {status_code}). Connect or pick a different one, then re-run."
-            if status_code is not None
-            else f"The saved {provider_name} credential{named} could not be "
+        )
+    else:
+        message = (
+            f"The saved {provider_name} credential{named} could not be "
             "refreshed. Reconnect it or pick a different one, then re-run."
-        ),
+        )
+    return SetupRequirementsResponse(
+        message=message,
         session_id=session_id,
         setup_info=SetupInfo(
             agent_id=block_id,
@@ -681,12 +1077,12 @@ def _build_credential_rejected_card(
         ),
         rejection=CredentialRejection(
             provider=provider or "unknown",
-            detail=sanitize_provider_message(str(exc)),
+            detail=detail,
             status_code=status_code,
             credential_id=rejected.id if rejected else None,
             credential_title=rejected.title if rejected else None,
         ),
-    )
+    ).from_outside(detail)
 
 
 async def _collect_block_outputs(
@@ -743,9 +1139,171 @@ async def resolve_block_credentials(
     if not requirements:
         return {}, []
 
+    # An optional field runs without a credential, as in the executor. Picker
+    # kwargs are not model fields; discriminated fields were decided above.
+    required_fields = block.input_schema.get_required_fields()
+    optional_fields = {
+        name
+        for name, info in requirements.items()
+        if name not in required_fields
+        and name in block.input_schema.model_fields
+        and not info.discriminator
+    }
     return await match_credentials_to_requirements(
-        user_id, requirements, expert_id, session_id
+        user_id, requirements, expert_id, session_id, optional_fields
     )
+
+
+async def unattended_missing_credentials_error(
+    subject: str,
+    missing: dict[str, dict[str, Any]],
+    session_id: str,
+    user_id: str,
+    expert_id: str | None,
+    *,
+    credential_scope: CredentialScopeSnapshot | None = None,
+) -> ErrorResponse:
+    """The answer when a turn nobody watches has no credential to run with.
+
+    *missing* holds the setup card's entries, one per credential field that
+    nothing fitted. A setup card there is never answered, and the step used to
+    end as a quiet "not configured" (SECRT-2804). Name the provider, so the
+    turn's reply tells the user what to connect, and log it so the failure can
+    be found.
+
+    When the schedule pinned an account that is gone or cannot do this step,
+    name that account: the run refused to switch to another one, and the user
+    has to know which. When the account already has a credential the expert was never
+    granted and a field would accept, say to grant that one, since connecting
+    another would not help.
+    """
+    providers = {provider_slug(m.get("provider", "")) for m in missing.values()}
+    providers -= {""}
+    names = ", ".join(sorted(providers)) or "an integration"
+    pinned = await _pinned_account_error(
+        subject, _missing_selection_keys(missing), session_id, user_id, expert_id
+    )
+    if pinned is not None:
+        return pinned
+    grant_hint = await ungranted_credential_hint(
+        user_id,
+        expert_id,
+        providers,
+        missing.values(),
+        credential_scope=credential_scope,
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: %s has no %s credential to use",
+        session_id,
+        subject,
+        names,
+    )
+    if grant_hint:
+        state = "granted to this expert"
+        fix = (
+            "grant this expert one of the existing credentials listed below, "
+            f"or connect {names} in their integrations,"
+        )
+    else:
+        state = "connected"
+        fix = f"connect {names} in their integrations"
+    return ErrorResponse(
+        message=(
+            f"{subject} has no {names} credential {state}, so this step "
+            "did not run. Nobody is watching this turn (it was "
+            "scheduled), so there is no one to fix it now. Say plainly "
+            "in your reply that this step was skipped and that the user needs "
+            f"to {fix} before the next run."
+        )
+        + grant_hint,
+        error="missing_credentials",
+        details=_single_provider(providers),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _single_provider(providers: set[str]) -> dict[str, Any] | None:
+    """The provider to fix, for a scheduled chat's failure streak; only when
+    there is exactly one, since a reconnect button opens one."""
+    return {"provider": next(iter(providers))} if len(providers) == 1 else None
+
+
+def _missing_selection_keys(missing: dict[str, dict[str, Any]]) -> set[str]:
+    keys = set()
+    for entry in missing.values():
+        provider = provider_slug(entry.get("provider", ""))
+        if not provider:
+            continue
+        keys.add(provider)
+        if "host_scoped" in entry.get("types", []):
+            keys.update(
+                host_selection_key(provider, url)
+                for url in entry.get("discriminator_values", [])
+                if isinstance(url, str)
+            )
+    return keys
+
+
+async def _pinned_account_error(
+    subject: str,
+    providers: set[str],
+    session_id: str,
+    user_id: str,
+    expert_id: str | None,
+) -> ErrorResponse | None:
+    """The error when a missing provider is pinned to an account this run
+    could not use, or ``None`` when no pin explains it."""
+    pins = turn_credential_pins()
+    pinned = set(pins) & providers
+    if not pinned:
+        return None
+    by_id = {c.id: c for c in await get_user_credentials(user_id, expert_id)}
+    lost = sorted(p for p in pinned if pins[p].id not in by_id)
+    unfit = sorted(
+        p
+        for p in pinned
+        if pins[p].id in by_id
+        and (":" in p or not is_per_target_credential(by_id[pins[p].id]))
+    )
+    if not lost and not unfit:
+        return None
+
+    def account(p: str) -> str:
+        return (
+            f"the {p} account '{pins[p].title or pins[p].id}' "
+            f"(credential_id={pins[p].id})"
+        )
+
+    detail = "; ".join(
+        [
+            f"{account(p)}, which has been deleted or is no longer available "
+            "to this run"
+            for p in lost
+        ]
+        + [
+            f"{account(p)}, which cannot do this step (it lacks the type or "
+            "permissions the step needs)"
+            for p in unfit
+        ]
+    )
+    logger.warning(
+        "Unattended copilot turn in session %s: %s is pinned to %s",
+        session_id,
+        subject,
+        detail,
+    )
+    return ErrorResponse(
+        message=(
+            f"{subject} did not run. This schedule is set to use {detail}. It "
+            "did not switch to a different account. Say plainly in your reply "
+            "that this step was skipped, name that account, and tell the user "
+            "to reconnect it with the access this step needs, or choose "
+            "another account for this schedule, before the next run."
+        ),
+        error="pinned_credential_missing" if lost else "pinned_credential_unusable",
+        details=_single_provider({p.partition(":")[0] for p in lost + unfit}),
+        session_id=session_id,
+    ).from_outside()
 
 
 @dataclass
@@ -790,6 +1348,7 @@ async def prepare_block_for_execution(
     session_id: str,
     dry_run: bool,
     validate_only: bool = False,
+    refs_resolved: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -811,38 +1370,19 @@ async def prepare_block_for_execution(
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
     """
-    from backend.copilot.capabilities.block_meta import (
-        COPILOT_EXCLUDED_BLOCK_IDS,
-        COPILOT_EXCLUDED_BLOCK_TYPES,
-    )
-
     block = get_block(block_id)
     if not block:
         return ErrorResponse(
             message=f"Block '{block_id}' not found", session_id=session_id
-        )
+        ).from_outside()
     if block.disabled:
         return ErrorResponse(
             message=f"Block '{block_id}' is disabled", session_id=session_id
-        )
+        ).from_outside()
 
-    if (
-        block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-        or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-    ):
-        if block.block_type == BlockType.MCP_TOOL:
-            hint = (
-                " Use run_capability on the MCP server entry from find_capability instead — it handles "
-                "MCP server discovery, authentication, and execution."
-            )
-        elif block.block_type == BlockType.AGENT:
-            hint = " Use the `run_agent` tool instead."
-        else:
-            hint = " This block is designed for use within graphs only."
-        return ErrorResponse(
-            message=f"Block '{block.name}' cannot be run directly.{hint}",
-            session_id=session_id,
-        )
+    # Before credentials: resolving them can provision a managed profile.
+    if refusal := block_run_refusal(block, block_id, session_id):
+        return refusal
 
     emit_tool_display_name(block.name)
 
@@ -857,6 +1397,18 @@ async def prepare_block_for_execution(
     matched_credentials, missing_credentials = await resolve_block_credentials(
         user_id, block, input_data, session.expert_id, session_id=session_id
     )
+    # Ayrshare's credential is a profile AutoGPT provisions, never one the
+    # user brings: create it now and hand back the account-linking link.
+    if (
+        any(is_ayrshare(m.provider) for m in missing_credentials)
+        and not (dry_run or validate_only)
+        and (
+            managed := await provision_ayrshare_for_block(
+                user_id, block, block_id, session_id, session.expert_id
+            )
+        )
+    ):
+        return managed
 
     try:
         input_schema: dict[str, Any] = block.input_schema.jsonschema()
@@ -866,11 +1418,13 @@ async def prepare_block_for_execution(
             message=f"Block '{block.name}' has an invalid input schema",
             error=str(e),
             session_id=session_id,
-        )
+        ).from_outside()
 
     # Expand @@agptfile: refs using the block's input schema so string/list
-    # fields get the correct deserialization.
-    if input_data:
+    # fields get the correct deserialization. A call the gate reviewed arrives
+    # resolved, and resolving file content again could expand a reference
+    # that is only text inside a file.
+    if input_data and not refs_resolved:
         try:
             input_data = await expand_file_refs_in_args(
                 input_data, user_id, session, input_schema=input_schema
@@ -882,11 +1436,10 @@ async def prepare_block_for_execution(
                     "Ensure the file exists before referencing it."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-    required_keys = set(input_schema.get("required", []))
-    required_non_credential_keys = required_keys - credentials_fields
+    required_non_credential_keys = required_input_keys(block)
     provided_input_keys = set(input_data.keys()) - credentials_fields
 
     # Picker-backed required fields that the caller hasn't filled surface the
@@ -894,11 +1447,9 @@ async def prepare_block_for_execution(
     # the picker inline via FormRenderer's custom-field dispatch. Detecting
     # it here (instead of only inside execute_block's auto-creds layer)
     # saves a round trip when the caller omitted the field entirely.
-    picker_fields_missing = [
-        f
-        for f in required_non_credential_keys - provided_input_keys
-        if is_picker_field(input_schema.get("properties", {}).get(f))
-    ]
+    picker_fields_missing = missing_picker_fields(
+        input_schema, required_non_credential_keys, input_data
+    )
 
     # validate_only suppresses the setup-card early-return — the caller is
     # doing static introspection, rendering a picker would violate the
@@ -907,31 +1458,76 @@ async def prepare_block_for_execution(
         dry_run or validate_only
     ):
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
-        missing_creds_dict = await annotate_expert_grants(
-            user_id,
-            session.expert_id,
-            build_missing_credentials_from_field_info(
-                credentials_fields_info, set(matched_credentials.keys())
-            ),
+        missing_entries = build_missing_credentials_from_field_info(
+            credentials_fields_info, set(matched_credentials.keys())
         )
-        missing_creds_list = list(missing_creds_dict.values())
-        if missing_credentials:
-            message = (
-                f"Block '{block.name}' requires credentials that are not "
-                "configured. Please set up the required credentials before "
-                "running this block."
-            ) + await ungranted_credential_hint(
+        missing_providers = {provider_slug(m.provider) for m in missing_credentials}
+        grant_hint = (
+            await ungranted_credential_hint(
                 user_id,
                 session.expert_id,
-                {provider_slug(m.provider) for m in missing_credentials},
+                missing_providers,
+                missing_entries.values(),
+            )
+            if missing_credentials
+            else ""
+        )
+        # A pinned account or an ungranted credential is the fix the owner
+        # set up, so its error or grant card stands; the bot is the hint
+        # only when nothing of theirs would be.
+        owners_fix = bool(grant_hint) or bool(
+            set(turn_credential_pins()) & _missing_selection_keys(missing_entries)
+        )
+        bot_hint = "" if owners_fix else bot_link_hint(block.name, input_data)
+        if not missing_credentials and is_unattended_turn():
+            return _unattended_picker_error(
+                block.name, input_schema, picker_fields_missing, session_id
+            )
+        if missing_credentials and is_unattended_turn():
+            unattended = await unattended_missing_credentials_error(
+                f"Block '{block.name}'",
+                missing_entries,
+                session_id,
+                user_id,
+                session.expert_id,
+            )
+            unattended.message += bot_hint
+            return unattended
+        # Connected-but-short (missing scopes, refused refresh) is not "not
+        # configured": the card names what is missing and its reconnect asks
+        # for the full set of scopes.
+        missing_creds_dict, gap_messages = annotate_credential_gaps(
+            (
+                await credentials_for_gaps(user_id, session.expert_id)
+                if missing_credentials
+                else []
+            ),
+            credentials_fields_info,
+            missing_entries,
+        )
+        missing_creds_dict = await annotate_expert_grants(
+            user_id, session.expert_id, missing_creds_dict
+        )
+        missing_creds_list = list(missing_creds_dict.values())
+        if gap_messages:
+            message = (
+                f"Block '{block.name}' can't run yet. "
+                + " ".join(gap_messages)
+                + grant_hint
+                + bot_hint
+            )
+        elif missing_credentials:
+            message = (
+                (
+                    f"Block '{block.name}' requires credentials that are not "
+                    "configured. Please set up the required credentials before "
+                    "running this block."
+                )
+                + grant_hint
+                + bot_hint
             )
         else:
-            message = (
-                f"Block '{block.name}' needs "
-                f"{', '.join(repr(f) for f in picker_fields_missing)} "
-                "picked before it can run. Select in the card below; the "
-                "tool will re-run automatically."
-            )
+            message = _picker_message(input_schema, picker_fields_missing)
         return SetupRequirementsResponse(
             message=message,
             session_id=session_id,
@@ -949,13 +1545,17 @@ async def prepare_block_for_execution(
                         input_schema,
                         exclude_fields=credentials_fields,
                         input_data=input_data,
+                        picker_credentials={
+                            provider_slug(m.provider): m.id
+                            for m in matched_credentials.values()
+                        },
                     ),
                     "execution_modes": ["immediate"],
                 },
             ),
             graph_id=None,
             graph_version=None,
-        )
+        ).from_outside()
 
     valid_fields = set(input_schema.get("properties", {}).keys()) - credentials_fields
     unrecognized_fields = provided_input_keys - valid_fields
@@ -968,7 +1568,7 @@ async def prepare_block_for_execution(
             session_id=session_id,
             unrecognized_fields=sorted(unrecognized_fields),
             inputs=input_schema,
-        )
+        ).from_outside()
 
     synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
     synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -987,18 +1587,102 @@ async def prepare_block_for_execution(
     )
 
 
+def block_run_refusal(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when this turn may not run *block* directly: a block made
+    for graphs only, or one the session's permissions or provider ceiling
+    keep from the run.  Resuming an approved call answers to it too, since an
+    approval from an earlier turn is no exemption from this one's."""
+    if (
+        block.block_type in block_meta.COPILOT_EXCLUDED_BLOCK_TYPES
+        or block.id in block_meta.COPILOT_EXCLUDED_BLOCK_IDS
+    ):
+        if block.block_type == BlockType.MCP_TOOL:
+            hint = (
+                " Use run_capability on the MCP server entry from find_capability instead — it handles "
+                "MCP server discovery, authentication, and execution."
+            )
+        elif block.block_type == BlockType.AGENT:
+            hint = " Use the `run_agent` tool instead."
+        else:
+            hint = " This block is designed for use within workflows only."
+        return ErrorResponse(
+            message=f"Block '{block.name}' cannot be run directly.{hint}",
+            session_id=session_id,
+        ).from_outside()
+    if denied := _permission_denied(block_id, block.name, session_id):
+        return denied
+    return _provider_denied(block, block_id, session_id)
+
+
+def _permission_denied(
+    block_id: str, block_name: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when the session's permissions do not allow this block."""
+    perms = get_current_permissions()
+    if perms is None or perms.is_block_allowed(block_id, block_name):
+        return None
+    available_hint = (
+        f"Allowed identifiers: {perms.blocks!r}. "
+        if not perms.blocks_exclude and perms.blocks
+        else (
+            f"Blocked identifiers: {perms.blocks!r}. "
+            if perms.blocks_exclude and perms.blocks
+            else ""
+        )
+    )
+    return ErrorResponse(
+        message=(
+            f"Block '{block_name}' ({block_id}) is not permitted "
+            f"by the current execution permissions. {available_hint}"
+            "Use find_capability to discover blocks that are allowed."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _provider_denied(
+    block: AnyBlockSchema, block_id: str, session_id: str
+) -> ErrorResponse | None:
+    """The refusal when *block* would act with a provider's stored credential
+    the run may not use.  The run's ceiling on connected accounts covers
+    blocks too, as the sandbox's placeholders are by the swap service."""
+    denied = denied_block_providers(get_current_permissions(), block)
+    if not denied:
+        return None
+    names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
+    return ErrorResponse(
+        message=(
+            f"Block '{block.name}' ({block_id}) acts with the user's {names} "
+            "account, which this run is not permitted to use. Tell the user it "
+            "is outside what this run was allowed to do."
+        ),
+        session_id=session_id,
+    ).from_outside()
+
+
+def required_input_keys(block: AnyBlockSchema) -> set[str]:
+    """Inputs a block needs from its caller; without them ``run_block`` answers
+    with the schema and runs nothing. Credentials resolve on their own."""
+    credentials = set(block.input_schema.get_credentials_fields())
+    return set(block.input_schema.jsonschema().get("required", [])) - credentials
+
+
 async def check_hitl_review(
     prep: BlockPreparation,
     user_id: str,
     session_id: str,
     organization_id: str | None = None,
     team_id: str | None = None,
+    metadata: ChatSessionMetadata | None = None,
 ) -> "tuple[str, dict[str, Any]] | ToolResponseBase":
     """Check for an existing or new HITL review requirement.
 
     If a review is needed, stores the review record and returns a
     ReviewRequiredResponse.  Otherwise returns
     ``(synthetic_node_exec_id, input_data)`` ready for execute_block.
+    *metadata* is the session's, which decides where the reply says the card is.
     """
     block = prep.block
     block_id = prep.block_id
@@ -1015,7 +1699,7 @@ async def check_hitl_review(
             for r in existing_reviews
             if r.node_id == synthetic_node_id
             and r.status.value == "WAITING"
-            and r.payload == input_data
+            and same_json(r.payload, input_data)
         ),
         None,
     )
@@ -1024,14 +1708,15 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{existing_review.node_exec_id}' to execute."
+                f"review_id='{existing_review.node_exec_id}' to execute. "
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
             block_name=block.name,
             review_id=existing_review.node_exec_id,
             input_data=input_data,
-        )
+        ).from_outside()
 
     synthetic_node_exec_id = (
         f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"
@@ -1062,14 +1747,15 @@ async def check_hitl_review(
             message=(
                 f"Block '{block.name}' requires human review. "
                 f"After the user approves, call resume_capability with "
-                f"review_id='{synthetic_node_exec_id}' to execute."
+                f"review_id='{synthetic_node_exec_id}' to execute. "
+                f"{review_card_location(metadata)}"
             ),
             session_id=session_id,
             block_id=block_id,
             block_name=block.name,
             review_id=synthetic_node_exec_id,
             input_data=input_data,
-        )
+        ).from_outside()
 
     return synthetic_node_exec_id, input_data
 
@@ -1081,9 +1767,10 @@ async def check_spend_approval(
     threshold (SECRT-2599). None means the block may run."""
     if session.expert_id is None:
         return None
-    cost, _ = block_usage_cost(
-        prep.block, prep.input_data, use_preflight_estimate=False
-    )
+    # Price with the credentials the run will use, not the model's own. A
+    # block priced on its usage is paid even before its cost is known.
+    resolved = {f: m.model_dump() for f, m in prep.matched_credentials.items()}
+    cost, _ = _pre_run_charge(prep.block, {**prep.input_data, **resolved})
     if cost <= 0:
         return None
     needed = await spend_approval_db().spend_approval_required(
@@ -1102,26 +1789,22 @@ async def check_spend_approval(
     return ReviewRequiredResponse(
         message=(
             f"{needed.headline}. Tell the user, and after they approve "
-            "call run_capability again with the same input."
+            "call run_capability again with the same input. "
+            f"{review_card_location(session.metadata)}"
         ),
         session_id=session.session_id,
         block_id=prep.block_id,
         block_name=prep.block.name,
         review_id=review_id,
         input_data=prep.input_data,
-    )
+    ).from_outside()
 
 
 async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:
-    """The expert whose spend counters a chat block charge lands on; None
-    keeps the pre-SECRT-2599 behaviour of not counting chat block spend.
-
-    Narrower than the scope id ``execute_block`` takes: the flag gates who
-    gets metered, never whose file scope a ``workspace://`` input resolves in.
-    """
+    """The expert to meter when billing is enabled, independently of file scope."""
     if expert_id is None:
         return None
-    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
+    if not Settings().config.enable_credit:
         return None
     return expert_id
 
@@ -1320,6 +2003,10 @@ def require_guide_read(session: ChatSession, tool_name: str):
     # requiring one would waste a round-trip every turn.
     if session.metadata.builder_graph_id:
         return None
+    # An External API call has no earlier calls to find; its client reads the
+    # guide through `get_agent_building_guide` when it wants it.
+    if session.external_caller:
+        return None
     # Building sessions get the guide in the (cached) system prompt — see
     # ``build_builder_system_prompt_suffix``.
     if session.guide_in_system_prompt:
@@ -1385,19 +2072,23 @@ def require_library_check(session: ChatSession, tool_name: str):
 
     if session.metadata.builder_graph_id:
         return None
+    # As in `require_guide_read`: an External API call has no history; its
+    # client searches the library with `find_library_agent` itself.
+    if session.external_caller:
+        return None
     if _was_called_for_creation(session):
         return None
     return ErrorResponse(
         message=(
-            f"Before tool:{tool_name} can run, search the user's library for an "
-            "agent that already does what they want. Call "
+            f"Before tool:{tool_name} can run, search the user's library for a "
+            "workflow that already does what they want. Call "
             "`find_library_agent` with `for_creation=true` and "
             "`goal_summary=<one-sentence description of the user's goal>` "
             "(default-mode substring search does NOT satisfy this gate). "
-            "If any agents are returned, present them to the user and ask "
+            "If any workflows are returned, present them to the user and ask "
             "whether they want to reuse one. Only retry "
             f"tool:{tool_name} with `library_check_ack=true` if the user "
-            "explicitly chooses to build a new agent anyway."
+            "explicitly chooses to build a new workflow anyway."
         ),
         session_id=session.session_id,
     )

@@ -12,6 +12,7 @@ from openai import AsyncOpenAI
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class SpeechUnavailable(Exception):
     """No OpenAI key is configured, so voice mode cannot synthesise."""
 
 
+@attributed_usage
 async def synthesize_speech(
     *,
     user_id: str,

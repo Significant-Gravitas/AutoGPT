@@ -47,7 +47,7 @@ export function AgentDetailsCard({ output }: Props) {
       ),
     );
     onSend(
-      `Run the agent "${output.agent.name}" with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
+      `Run the workflow "${output.agent.name}" with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
     );
   }
 
@@ -58,7 +58,7 @@ export function AgentDetailsCard({ output }: Props) {
     // redundant and, once setup has succeeded, a stale backward-pointing CTA.
     return (
       <ContentMessage>
-        This agent runs on a webhook trigger, so it can&apos;t be run or
+        This workflow runs on a webhook trigger, so it can&apos;t be run or
         scheduled directly — it&apos;s activated by setting up its trigger.
       </ContentMessage>
     );
@@ -67,14 +67,16 @@ export function AgentDetailsCard({ output }: Props) {
   if (!schema) {
     return (
       <div className="grid gap-2">
-        <ContentMessage>This agent has no configurable inputs.</ContentMessage>
+        <ContentMessage>
+          This workflow has no configurable inputs.
+        </ContentMessage>
         <div className="flex gap-2 pt-2">
           <Button
             size="small"
             className="w-fit"
             onClick={() =>
               onSend(
-                `Run the agent "${output.agent.name}" with placeholder/example values so I can test it.`,
+                `Run the workflow "${output.agent.name}" with placeholder/example values so I can test it.`,
               )
             }
           >
@@ -91,7 +93,7 @@ export function AgentDetailsCard({ output }: Props) {
         Review the inputs below and press Proceed to run.
       </ContentMessage>
 
-      <div className="mt-2 rounded-2xl border bg-background p-3 pt-4">
+      <div className="mt-2 rounded-2xl border bg-canvas p-3 pt-4">
         <FormRenderer
           jsonSchema={schema}
           handleChange={handleChange}

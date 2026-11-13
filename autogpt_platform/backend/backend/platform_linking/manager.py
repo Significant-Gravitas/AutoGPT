@@ -6,16 +6,21 @@ from backend.data.db_accessors import bot_analytics_db, platform_linking_db
 from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Settings
 
+from .cards import answer_card, open_card
 from .chat import (
     ensure_chat_session,
     list_user_chats,
+    list_user_experts,
     start_chat_turn,
     upload_workspace_file,
 )
 from .models import (
     BotChatRequest,
     BotEventInput,
+    BotExpert,
     BotGuildInput,
+    CardAnswer,
+    ChannelCard,
     ChatTurnHandle,
     CreateLinkTokenRequest,
     CreateUserLinkTokenRequest,
@@ -48,10 +53,10 @@ class PlatformLinkingManager(AppService):
 
     @expose
     async def resolve_user_link(
-        self, platform: Platform, platform_user_id: str
+        self, platform: Platform, platform_user_id: str, include_account: bool = False
     ) -> ResolveResponse:
         return await platform_linking_db().resolve_user_link(
-            platform.value, platform_user_id
+            platform.value, platform_user_id, include_account
         )
 
     @expose
@@ -103,10 +108,20 @@ class PlatformLinkingManager(AppService):
         platform_user_id: str,
         platform_server_id: str | None,
         session_id: str | None,
+        expert_id: str | None = None,
     ) -> EnsureSessionResult:
         return await ensure_chat_session(
-            platform, platform_user_id, platform_server_id, session_id
+            platform, platform_user_id, platform_server_id, session_id, expert_id
         )
+
+    @expose
+    async def list_user_experts(
+        self,
+        platform: Platform,
+        platform_user_id: str,
+        platform_server_id: str | None,
+    ) -> list[BotExpert]:
+        return await list_user_experts(platform, platform_user_id, platform_server_id)
 
     @expose
     async def start_chat_turn(self, request: BotChatRequest) -> ChatTurnHandle:
@@ -143,6 +158,30 @@ class PlatformLinkingManager(AppService):
         return await platform_linking_db().fetch_workspace_artifact(
             session_id, file_id, max_bytes
         )
+
+    @expose
+    async def open_channel_card(
+        self,
+        platform: Platform,
+        platform_server_id: str | None,
+        platform_user_id: str,
+        session_id: str,
+        review_id: str,
+    ) -> ChannelCard | None:
+        return await open_card(
+            platform, platform_server_id, platform_user_id, session_id, review_id
+        )
+
+    @expose
+    async def answer_channel_card(
+        self,
+        platform: Platform,
+        platform_server_id: str | None,
+        clicker_id: str,
+        token: str,
+        index: int,
+    ) -> CardAnswer:
+        return await answer_card(platform, platform_server_id, clicker_id, token, index)
 
     @expose
     async def record_bot_event(self, event: BotEventInput) -> None:
@@ -192,9 +231,12 @@ class PlatformLinkingManagerClient(AppServiceClient):
         PlatformLinkingManager.refresh_server_link_name
     )
     list_user_chats = endpoint_to_async(PlatformLinkingManager.list_user_chats)
+    list_user_experts = endpoint_to_async(PlatformLinkingManager.list_user_experts)
     fetch_workspace_artifact = endpoint_to_async(
         PlatformLinkingManager.fetch_workspace_artifact
     )
+    open_channel_card = endpoint_to_async(PlatformLinkingManager.open_channel_card)
+    answer_channel_card = endpoint_to_async(PlatformLinkingManager.answer_channel_card)
     record_bot_event = endpoint_to_async(PlatformLinkingManager.record_bot_event)
     record_guild_joined = endpoint_to_async(PlatformLinkingManager.record_guild_joined)
     mark_guild_left = endpoint_to_async(PlatformLinkingManager.mark_guild_left)

@@ -3,10 +3,21 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    PrivateAttr,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
+from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.autopilot_mode import AutopilotMode
+from backend.copilot.credential_selection import CredentialPins
 from backend.data.expert_run_output import OutputType
-from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
+from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 
 ExpertRunStatus = Literal[
     "incomplete",
@@ -33,6 +44,8 @@ EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
 EXPERT_COLOR_MAX_LENGTH = 32
 EXPERT_AVATAR_URL_MAX_LENGTH = 2_000
+# Each repeat time of a routine is one scheduler job.
+MAX_ROUTINE_CRONS = 24
 
 # Avatars come from our own upload (an absolute https URL) or ship with a
 # roster template (a path under /public). Anything else — notably data:,
@@ -123,6 +136,13 @@ class ExpertWorkflowRef(BaseModel):
     integration_providers: list[str] = Field(default_factory=list)
 
 
+class ExpertWorkflowLabel(BaseModel):
+    """What names an installed workflow on an approval card."""
+
+    expert_id: str
+    name: str | None
+
+
 class ExpertIdentity(BaseModel):
     id: str
     name: str
@@ -131,6 +151,17 @@ class ExpertIdentity(BaseModel):
     role: str
     job_title: str | None = None
     is_archived: bool
+    # The approval mode a new web chat with this expert starts on.
+    autopilot_mode: AutopilotMode | None = None
+    # When the expert joined the team: the sidebar lists a new expert before
+    # their first chat. ``None`` only where a caller builds the identity by
+    # hand without it.
+    created_at: datetime | None = None
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertSetupItem(BaseModel):
@@ -157,6 +188,11 @@ class ExpertSetupItem(BaseModel):
     # an ``inputs`` item.
     missing_inputs: list[str] = Field(default_factory=list)
 
+    @field_validator("expert_avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
+
 
 class ExpertCredentialRef(BaseModel):
     """One integration credential an expert is allowed to use.
@@ -169,6 +205,9 @@ class ExpertCredentialRef(BaseModel):
     provider: str
     title: str
     type: str
+    service: str = ""
+    service_name: str | None = None
+    service_icon: str | None = None
 
 
 EXPERT_DAY_ONE_MAX_ITEMS = 3
@@ -232,6 +271,9 @@ class ExpertRoutine(BaseModel):
     # Whether this routine's turns may reach the owner's connected services.
     # Always False on anything a template shipped.
     grants_credentials: bool = False
+    # ``{provider: pin}``: the account each of its turns runs on where the
+    # owner has several, chosen in the chat that set it up (SECRT-2804).
+    credential_pins: CredentialPins = {}
 
     @property
     def recurring(self) -> bool:
@@ -283,12 +325,23 @@ class Expert(BaseModel):
     weekly_budget: int | None = None
     weekly_spend: int = 0
     schedules_paused_at: datetime | None = None
+    # Set while the owner has paused nightly skill learning for this expert.
+    # Existing skills stay usable; only future automated learning stops.
+    learning_paused_at: datetime | None = None
+    # Approval mode every new web chat with this expert starts on; None =
+    # platform default. Hire-only, never set on templates.
+    autopilot_mode: AutopilotMode | None = None
     # Owner-scoped grouping. None = ungrouped ("unpodded").
     pod_id: str | None = None
     # A hire's workflows, skills and routines land after it is returned.
     setup_status: ExpertSetupStatus = "ready"
     # What setup could not install; re-hiring the template retries it.
     setup_failures: list[str] = []
+
+    @field_validator("avatar_url")
+    @classmethod
+    def resolve_avatar(cls, value: str | None) -> str | None:
+        return resolve_avatar_url(value)
 
 
 class ExpertBundledSkill(BaseModel):
@@ -305,6 +358,22 @@ class ExpertTemplate(Expert):
 
     # What a hire gets installed, in roster order; a template's `skills` is unused.
     bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
+
+
+class CheckedExpert(BaseModel):
+    """An owner's active PRIVATE expert, with the owner's personal
+    organization and team that the expert's work belongs to.
+
+    Only the expert's own columns are loaded. Roster enrichments such as
+    workflows, credential counts/providers, latest run and weekly spend
+    retain their model defaults; those values are not authoritative. Use
+    the roster's get_expert or list_experts paths when those fields are needed.
+    """
+
+    # The expert's own columns only: no workflows, latest run or spend.
+    expert: Expert
+    organization_id: str
+    team_id: str | None
 
 
 # Membership is deliberately not embedded: clients already hold the expert
@@ -367,6 +436,26 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
+    # False when the expert was already on the team and nothing changed. Kept
+    # out of the response, which stays the expert.
+    _joined: bool = PrivateAttr(default=True)
+
+    @classmethod
+    def of(cls, expert: Expert, joined: bool) -> "HireResult":
+        result = cls(expert=expert)
+        result._joined = joined
+        return result
+
+    @property
+    def joined(self) -> bool:
+        return self._joined
+
+
+# Where a hire was made, for the ``expert_hired`` analytics event.
+HireSurface = Literal["onboarding", "expert_page", "copilot"]
+# What made it, when that is more than a person picking one expert: "plan" is
+# the onboarding plan's team hired once the trial starts.
+HireVia = Literal["plan"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]
@@ -423,16 +512,39 @@ class RaiseResult(BaseModel):
 
 
 class ExpertSkillsUpdate(BaseModel):
-    """The full list of skill names an expert should carry. Names new to the
-    expert must be library skills (default or uploaded); names already on
-    the expert are kept as-is so marketplace skills survive a round-trip."""
+    """Skills to attach to an expert and skills to remove from it. Names new
+    to the expert must be library skills (default or uploaded); names already
+    on the expert are kept as-is so marketplace skills survive a round-trip.
 
-    skills: list[str] = Field(max_length=MAX_SKILLS_PER_EXPERT)
+    Only names listed in ``remove`` are removed. A skill the expert carries
+    that appears in neither list is left alone, so a client holding a stale
+    list can never delete a skill it has not seen (the expert can distil new
+    ones at any time).
+
+    A normalized name must not appear in both ``skills`` and ``remove``;
+    such a request is rejected with a validation error. A marketplace listing
+    whose name matches a ``remove`` entry is rejected with a 400."""
+
+    skills: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
+    remove: list[str] = Field(default_factory=list, max_length=MAX_SKILLS_PER_EXPERT)
     # Store listing versions to attach as marketplace skills; each resolves
     # to the listing's public name, the same way the raise flow records them.
     marketplace_listing_ids: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("skills", mode="before")
+    @model_validator(mode="after")
+    def reject_names_both_kept_and_removed(self) -> "ExpertSkillsUpdate":
+        # The same key update_skills removes by, so a name cannot pass this
+        # check as "different" and then match a removal on spelling alone.
+        both = {skill_name_key(n) for n in self.skills} & {
+            skill_name_key(n) for n in self.remove
+        }
+        if both:
+            raise ValueError(
+                f"Skills cannot be both added and removed: {', '.join(sorted(both))}"
+            )
+        return self
+
+    @field_validator("skills", "remove", mode="before")
     @classmethod
     def strip_and_dedupe(cls, value: object) -> object:
         if not isinstance(value, list):
@@ -445,9 +557,12 @@ class ExpertSkillsUpdate(BaseModel):
             name = item.strip()
             if not name or len(name) > 100:
                 raise ValueError("Skill names must be 1-100 characters")
-            if name.lower() in seen:
+            # Same key the overlap check and update_skills use, so
+            # "Deep Research" and "deep_research" count as one skill.
+            key = skill_name_key(name)
+            if key in seen:
                 continue
-            seen.add(name.lower())
+            seen.add(key)
             cleaned.append(name)
         return cleaned
 
@@ -476,6 +591,16 @@ class ExpertBudgetUpdate(BaseModel):
     """
 
     weekly_budget: int | None = Field(default=None, ge=0, le=WEEKLY_BUDGET_MAX_CREDITS)
+
+
+class ExpertModeUpdate(BaseModel):
+    """Set the approval mode new web chats with an expert start on.
+
+    ``None`` clears it back to the platform default. The field is required,
+    so an empty body cannot clear it by accident.
+    """
+
+    autopilot_mode: AutopilotMode | None
 
 
 class ExpertAvatarUpdate(BaseModel):

@@ -10,6 +10,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -90,6 +91,7 @@ class AgentMailListInboxThreadsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -179,6 +181,7 @@ class AgentMailGetInboxThreadBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -245,6 +248,7 @@ class AgentMailDeleteInboxThreadBlock(Block):
             test_mock={
                 "delete_thread": lambda *a, **kw: None,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -331,6 +335,7 @@ class AgentMailListOrgThreadsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -415,6 +420,7 @@ class AgentMailGetOrgThreadBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

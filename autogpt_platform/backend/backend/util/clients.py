@@ -24,7 +24,7 @@ if TYPE_CHECKING:
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
     )
-    from backend.data.rabbitmq import AsyncRabbitMQ, SyncRabbitMQ
+    from backend.data.rabbitmq import AsyncRabbitMQ
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
@@ -52,12 +52,16 @@ def get_database_manager_async_client(
 
 
 @thread_cached
-def get_scheduler_client() -> "SchedulerClient":
-    """Get a thread-cached SchedulerClient."""
+def get_scheduler_client(should_retry: bool = False) -> "SchedulerClient":
+    """Get a thread-cached SchedulerClient.
+
+    ``should_retry`` repeats a call that failed in transit, such as on a pooled
+    connection the scheduler had just closed; only for calls safe to repeat.
+    """
     from backend.executor.scheduler import SchedulerClient
     from backend.util.service import get_service_client
 
-    return get_service_client(SchedulerClient)
+    return get_service_client(SchedulerClient, request_retry=should_retry)
 
 
 @thread_cached
@@ -107,17 +111,6 @@ def get_async_execution_event_bus() -> "AsyncRedisExecutionEventBus":
 
 
 # ============ Execution Queue Helpers ============ #
-
-
-@thread_cached
-def get_execution_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ execution queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.executor.utils import create_execution_queue_config
-
-    client = SyncRabbitMQ(create_execution_queue_config())
-    client.connect()
-    return client
 
 
 @thread_cached
@@ -287,17 +280,6 @@ def openrouter_helper_cost_provider() -> str:
 
 
 # ============ Notification Queue Helpers ============ #
-
-
-@thread_cached
-def get_notification_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ notification queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.notifications.queue import create_notification_config
-
-    client = SyncRabbitMQ(create_notification_config())
-    client.connect()
-    return client
 
 
 @thread_cached

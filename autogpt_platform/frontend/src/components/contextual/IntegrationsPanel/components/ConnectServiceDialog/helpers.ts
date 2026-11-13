@@ -1,7 +1,8 @@
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
 import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__generated__/models/providerMetadataSupportedAuthTypesItem";
 
-import { formatProviderName } from "../../helpers";
+import { serviceIcon, serviceKey, serviceName } from "../../helpers";
+import { POPULAR_SERVICE_IDS } from "./popularity";
 
 export type AuthMethod = (typeof AuthType)[keyof typeof AuthType];
 
@@ -9,12 +10,14 @@ export { AuthType };
 
 export interface ConnectableProvider {
   id: string;
+  serviceId: string;
   name: string;
   description?: string | null;
   supportedAuthTypes: AuthMethod[];
   authProviderByType?: Partial<Record<AuthMethod, string>>;
   searchTerms?: string[];
   mcpServer?: ProviderMetadata["mcp_server"];
+  iconId?: string;
 }
 
 const KNOWN_AUTH_METHODS: ReadonlySet<AuthMethod> = new Set(
@@ -28,31 +31,80 @@ function normalizeAuthTypes(
   return raw.filter((t) => KNOWN_AUTH_METHODS.has(t));
 }
 
+export function opensOnNativeMethods(
+  preferMcp: boolean,
+  nativeMethodCount: number,
+): boolean {
+  if (nativeMethodCount === 0) return false;
+  return !preferMcp;
+}
+
+// A vendor's MCP token and its block API key are the same key, so when the
+// block takes one the server's token method is dropped and the key is asked
+// for once.
+export function withoutDuplicateKeyMethod(
+  server: NonNullable<ProviderMetadata["mcp_server"]>,
+  nativeMethods: readonly AuthMethod[],
+): NonNullable<ProviderMetadata["mcp_server"]> {
+  if (!nativeMethods.includes(AuthType.api_key)) return server;
+  const authMethods = server.auth_methods.filter(
+    (method) => method !== "bearer",
+  );
+  return authMethods.length ? { ...server, auth_methods: authMethods } : server;
+}
+
+export function getSignInFallbackLabel(provider: ConnectableProvider): string {
+  if (provider.mcpServer?.auth_methods.includes("oauth")) {
+    return `Use the ${provider.name} sign-in instead`;
+  }
+  const article = /^[aeiou]/i.test(provider.name) ? "an" : "a";
+  return `Use ${article} ${provider.name} token instead`;
+}
+
 export function toConnectableProviders(
   metadata: ProviderMetadata[],
 ): ConnectableProvider[] {
   const seen = new Set<string>();
-  const byDisplayProvider = new Map<string, ConnectableProvider>();
+  const byService = new Map<string, ConnectableProvider>();
   for (const item of metadata) {
     if (seen.has(item.name)) continue;
     seen.add(item.name);
 
     const displayProvider = item.name === "codex" ? "openai" : item.name;
+    const ref = {
+      provider: item.name,
+      service: item.service,
+      service_name: item.service_name,
+      service_icon: item.service_icon,
+    };
+    const key = serviceKey(ref);
     const authTypes = normalizeAuthTypes(item.supported_auth_types);
-    const existing = byDisplayProvider.get(displayProvider);
-    const provider = existing ?? {
-      id: displayProvider,
-      name: item.display_name ?? formatProviderName(displayProvider),
+    const existing = byService.get(key);
+    const provider: ConnectableProvider = existing ?? {
+      id: item.mcp_server ? item.name : displayProvider,
+      serviceId: key,
+      name: serviceName(ref),
       description: item.description,
       supportedAuthTypes: [],
+      iconId: serviceIcon(ref),
     };
-    if (item.mcp_server) provider.mcpServer = item.mcp_server;
+    if (item.mcp_server) {
+      provider.mcpServer = item.mcp_server;
+      if (existing) {
+        provider.searchTerms = Array.from(
+          new Set([...(provider.searchTerms ?? []), item.name]),
+        );
+      }
+    } else if (existing?.mcpServer && provider.id !== displayProvider) {
+      provider.searchTerms = Array.from(
+        new Set([...(provider.searchTerms ?? []), provider.id]),
+      );
+      provider.id = displayProvider;
+    }
 
     for (const authType of authTypes) {
       const alreadySupported = provider.supportedAuthTypes.includes(authType);
-      if (!alreadySupported) {
-        provider.supportedAuthTypes.push(authType);
-      }
+      if (!alreadySupported) provider.supportedAuthTypes.push(authType);
       if (item.name === displayProvider) {
         delete provider.authProviderByType?.[authType];
       } else if (!alreadySupported) {
@@ -62,26 +114,70 @@ export function toConnectableProviders(
         };
       }
     }
-    if (item.name !== displayProvider) {
+    if (item.name !== displayProvider && !item.mcp_server) {
       provider.searchTerms = Array.from(
         new Set([...(provider.searchTerms ?? []), item.name]),
       );
     }
-    if (item.name === displayProvider) {
+    // A service's own provider names it, but one without a description
+    // (Microsoft 365 Copilot's older provider) mustn't blank it.
+    if (item.name === displayProvider && !item.mcp_server && item.description) {
       provider.description = item.description;
     }
-    byDisplayProvider.set(displayProvider, provider);
+    byService.set(key, provider);
   }
 
-  const openai = byDisplayProvider.get("openai");
+  const openai = byService.get("openai");
   if (openai?.authProviderByType?.oauth2 === "codex") {
     openai.description =
       "OpenAI models via API key or your ChatGPT subscription";
   }
 
-  const result = Array.from(byDisplayProvider.values());
+  const result = Array.from(byService.values());
   result.sort((a, b) => a.name.localeCompare(b.name));
   return result;
+}
+
+const POPULAR_COUNT = 8;
+
+// A service only ranks once it opens straight onto a way to connect, never
+// onto "No connection method available" or a server that needs setting up.
+function popularityRank(provider: ConnectableProvider): number {
+  const rank = POPULAR_SERVICE_IDS.indexOf(provider.serviceId);
+  if (rank === -1 || !connectsInOneStep(provider)) {
+    return POPULAR_SERVICE_IDS.length;
+  }
+  return rank;
+}
+
+export function sortByPopularity(
+  providers: ConnectableProvider[],
+): ConnectableProvider[] {
+  return [...providers].sort(
+    (a, b) =>
+      popularityRank(a) - popularityRank(b) || a.name.localeCompare(b.name),
+  );
+}
+
+function connectsInOneStep(provider: ConnectableProvider): boolean {
+  if (provider.supportedAuthTypes.length > 0) return true;
+  return provider.mcpServer?.connection_mode === "hosted";
+}
+
+export function popularProviders(
+  providers: ConnectableProvider[],
+): ConnectableProvider[] {
+  return sortByPopularity(providers)
+    .filter((provider) => popularityRank(provider) < POPULAR_SERVICE_IDS.length)
+    .slice(0, POPULAR_COUNT);
+}
+
+export function withoutProviders(
+  providers: ConnectableProvider[],
+  excluded: ConnectableProvider[],
+): ConnectableProvider[] {
+  const excludedIds = new Set(excluded.map((provider) => provider.id));
+  return providers.filter((provider) => !excludedIds.has(provider.id));
 }
 
 function normalize(text: string): string {
