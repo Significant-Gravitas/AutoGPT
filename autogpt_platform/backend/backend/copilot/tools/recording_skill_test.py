@@ -277,6 +277,25 @@ class TestJoinedColumnNames:
         assert bound == {1: "email", 2: "email"}
 
 
+class TestSkillMetadata:
+    def test_metadata_that_is_not_text_falls_back_to_the_derived_values(self):
+        """A name that wasn't a string failed GeneratedSkill's validation, and a
+        list for success_criterion broke joining the SKILL.md lines."""
+        skill = generate_skill_from_recording(
+            _single_row_recording(),
+            clarifications={
+                "name": 5,
+                "description": {"x": 1},
+                "trigger": ["t"],
+                "success_criterion": ["done"],
+            },
+        )
+
+        assert isinstance(skill.name, str) and skill.name
+        assert "['done']" not in skill.skill_md
+        assert "['t']" not in skill.skill_md
+
+
 class TestMultiRowInference:
     def test_two_rows_varied_value_is_confirmed_parameter(self):
         skill = generate_skill_from_recording(_two_row_recording())

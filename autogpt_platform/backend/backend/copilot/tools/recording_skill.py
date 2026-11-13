@@ -363,6 +363,12 @@ def _infer_parameters(
     return params, seq_to_param
 
 
+def _text(clarifications: dict[str, Any], key: str) -> str | None:
+    """A skill metadata answer when it is text; anything else is no answer."""
+    value = clarifications.get(key)
+    return value if isinstance(value, str) else None
+
+
 def _hashable(value: Any) -> Any:
     """Make a demonstrated value hashable for set-based variance detection."""
     if isinstance(value, (list, dict)):
@@ -558,11 +564,11 @@ def generate_skill_from_recording(
 
     multi_row = len(rows) >= 2 and len({_signature(r) for r in rows}) == 1
 
-    name = clar.get("name") or _derive_name(recording)
-    description = clar.get("description") or _derive_description(recording, params)
-    trigger = clar.get("trigger") or f"run '{name}' on a batch of rows"
+    name = _text(clar, "name") or _derive_name(recording)
+    description = _text(clar, "description") or _derive_description(recording, params)
+    trigger = _text(clar, "trigger") or f"run '{name}' on a batch of rows"
     destructive = any(s.is_destructive for s in recording.steps)
-    success_criterion = clar.get("success_criterion") or _derive_success_criterion(
+    success_criterion = _text(clar, "success_criterion") or _derive_success_criterion(
         recording
     )
 

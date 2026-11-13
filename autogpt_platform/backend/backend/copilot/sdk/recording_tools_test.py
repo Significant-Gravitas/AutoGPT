@@ -577,6 +577,27 @@ class TestDryRunSkill:
         assert "must map each field label to" in body["error"]
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "field", ["name", "description", "trigger", "success_criterion"]
+    )
+    async def test_skill_metadata_that_is_not_text_is_refused(self, monkeypatch, field):
+        """The generator raised on a name or a success criterion that wasn't
+        text; the model now hears what to send instead."""
+        shim = _shim()
+        shim.recording.fetch = AsyncMock(return_value=_single_row_recording())
+        _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_1")
+
+        out = await rt._h_generate_skill(
+            {"recording_id": "rec_1", "clarifications": {field: ["not", "text"]}}
+        )
+
+        assert out["isError"] is True
+        body = _parse(out)
+        assert body["code"] == "INVALID_ARGUMENT"
+        assert f"clarifications.{field} must be text" in body["error"]
+
+    @pytest.mark.asyncio
     async def test_dry_run_requires_rows(self, monkeypatch):
         shim = _shim()
         shim.recording.fetch = AsyncMock(return_value=_two_row_recording())

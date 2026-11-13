@@ -570,8 +570,12 @@ async def _h_generate_skill(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _mistyped_clarification(clarifications: dict[str, Any]) -> str | None:
-    """Why a confirmation map can't be read, so the model can fix it rather
-    than have its answers ignored; None when both read (or are absent)."""
+    """Why a clarification can't be read, so the model can fix it rather
+    than have its answers ignored; None when every one reads (or is absent)."""
+    for name in ("name", "description", "trigger", "success_criterion"):
+        value = clarifications.get(name)
+        if value is not None and not isinstance(value, str):
+            return f"clarifications.{name} must be text"
     for name, kind, answer in (
         ("confirmed_parameters", bool, "true or false"),
         ("data_source_columns", str, "a column name"),
