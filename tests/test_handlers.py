@@ -1496,18 +1496,18 @@ async def test_a_write_still_replaces_a_windows_file_with_the_folders_permission
     target = tmp_path / "notes.txt"
     target.write_text("old", encoding="utf-8")
     inherited = _windows_acl(target)
-    replaced: list[str] = []
+    replaced: list[Path] = []
     real_replace = path_jail.os.replace
 
     def replace(src, dst) -> None:
-        replaced.append(str(dst))
+        replaced.append(Path(dst))
         real_replace(src, dst)
 
     monkeypatch.setattr(path_jail.os, "replace", replace)
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert replaced == [str(target)]
+    assert replaced == [target]
     assert target.read_text(encoding="utf-8") == "new"
     assert _windows_acl(target) == inherited
 

@@ -510,7 +510,7 @@ async def test_audit_show_prints_a_record_stdout_cant_encode(
 
     writer = AuditWriter(path=tmp_path / "审计.log", audit_key=audit_key)
     await writer.write("FILE_READ", request_id="r", details={"path": "未来.txt"})
-    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", newline="\n")
     monkeypatch.setattr(sys, "stdout", stdout)
 
     found = cli._audit_show(writer.path, 1)
