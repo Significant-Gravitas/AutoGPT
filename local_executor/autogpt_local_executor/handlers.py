@@ -1514,22 +1514,33 @@ class ComputerUseHandler:
         return not self._owns_driver
 
     async def hello_snapshot(self) -> DriverSnapshot:
-        """What this session's HELLO advertises. A chat's session waits for
-        the shared driver at most CHILD_DRIVER_WAIT_SECONDS: after another
-        chat's call overran, the driver can take up to a minute to start
-        again, longer than the platform waits for the session. Past that it
-        goes on with what the driver offered when it last ran, which its
-        next start lists again."""
-        if not self.shares_a_driver:
+        """What this session's HELLO advertises. HELLO waits for the driver at
+        most _hello_wait: after a chat's call overran, the driver can take up
+        to a minute to start again, longer than the platform waits for HELLO.
+        Past that it goes on with what the driver offered when it last ran,
+        which its next start lists again."""
+        wait = self._hello_wait
+        if wait is None:
             return await self.driver.snapshot()
         loop = asyncio.get_running_loop()
         try:
-            return await self.driver.snapshot(deadline=loop.time() + CHILD_DRIVER_WAIT_SECONDS)
+            return await self.driver.snapshot(deadline=loop.time() + wait)
         except CallNotStarted:
             last = self.driver.last_snapshot
             if last is None:
                 raise DriverUnavailable("cua-driver is still starting") from None
             return last
+
+    @property
+    def _hello_wait(self) -> float | None:
+        """How long HELLO waits for the driver: CHILD_DRIVER_WAIT_SECONDS for
+        a chat's session, which the platform undoes in about eight seconds,
+        and for the owner's once the driver has run, since the platform
+        closes a connection whose HELLO hasn't come in ten. The owner's first
+        start is waited for in full: nothing earlier can stand in for it."""
+        if self.shares_a_driver or self.driver.last_snapshot is not None:
+            return CHILD_DRIVER_WAIT_SECONDS
+        return None
 
     @property
     def driver(self) -> CuaDriverBridge:
@@ -1558,7 +1569,7 @@ class ComputerUseHandler:
                 "get_screen_size",
                 {"session": self.session_label},
                 timeout=SCREEN_SIZE_SECONDS,
-                start_within=CHILD_DRIVER_WAIT_SECONDS if self.shares_a_driver else None,
+                start_within=self._hello_wait,
             )
         except (DriverUnavailable, McpError, TimeoutError):
             # HELLO goes out without the size rather than not at all.
