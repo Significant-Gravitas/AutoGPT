@@ -32,3 +32,33 @@ def test_the_homebrew_test_imports_every_runtime_dependency() -> None:
     }
 
     assert _runtime_modules() <= imported
+
+
+def test_hello_and_the_audit_log_report_the_version_releases_are_tagged_with() -> None:
+    """__version__, which HELLO and every audit record send, was a literal
+    of its own ("0.0.1-experimental") that no release step checks, while
+    `--version` printed the installed distribution's: pyproject.toml's,
+    which the release workflow checks against the tag."""
+    from importlib.metadata import version
+
+    import autogpt_local_executor
+    from autogpt_local_executor.audit import _detect_shim_version
+
+    assert autogpt_local_executor.__version__ == version("autogpt-local-executor")
+    assert _detect_shim_version() == autogpt_local_executor.__version__
+
+
+def test_a_source_tree_that_isnt_installed_reports_pyproject_tomls_version(
+    monkeypatch,
+) -> None:
+    from importlib.metadata import PackageNotFoundError
+
+    from autogpt_local_executor import _version
+
+    def not_installed(name: str) -> str:
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(_version, "version", not_installed)
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+    assert _version.distribution_version() == project["version"]

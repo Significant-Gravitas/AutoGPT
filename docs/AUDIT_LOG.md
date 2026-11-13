@@ -62,7 +62,7 @@ single JSON object with this shape:
 | `ts` | float (unix epoch seconds) | Record timestamp, monotonic-rounded |
 | `session_id` | string | The platform session that issued the op |
 | `machine_id` | string | This shim's stable machine identifier |
-| `shim_version` | string | semver of the shim writing the line |
+| `shim_version` | string | version of the shim writing the line, as `autogpt-shim --version` prints it |
 | `request_id` | string \| null | Wire envelope `id` for traceability (null for shim-internal events) |
 | `op` | string | One of the message types from PROTOCOL.md plus a few shim-internal events (see below) |
 | `details` | object | Op-specific payload (see "Per-op fields") |

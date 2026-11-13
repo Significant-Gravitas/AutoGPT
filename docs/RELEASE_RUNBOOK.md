@@ -70,7 +70,11 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
   matrix passes on mac/Linux/Windows × py3.11/py3.12).
 - `pyproject.toml` `version` field bumped to the target tag — the
   release workflow's `verify pyproject version matches tag` step
-  will fail loudly if not.
+  will fail loudly if not — and `SOURCE_TREE_VERSION` in
+  `autogpt_local_executor/_version.py` with it, which
+  `tests/test_packaging.py` checks. An installed shim reports the
+  distribution's version (`--version`, HELLO, the audit log); the
+  constant is for a source tree that isn't installed.
 - `CHANGELOG.md` (if/when added) updated.
 - Every change made to the monorepo copy (`local_executor/` in
   AutoGPT) is in this repository too. Fixes usually land here first and

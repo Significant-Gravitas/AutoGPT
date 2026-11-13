@@ -222,15 +222,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _installed_version() -> str:
     """The installed distribution's version, which releases are tagged with;
-    the package's own `__version__` when running from a source tree."""
-    from importlib.metadata import PackageNotFoundError, version
+    pyproject.toml's when running from a source tree (_version)."""
+    from ._version import __version__
 
-    try:
-        return version("autogpt-local-executor")
-    except PackageNotFoundError:
-        from . import __version__
-
-        return __version__
+    return __version__
 
 
 def _config_error_exit_code() -> int:

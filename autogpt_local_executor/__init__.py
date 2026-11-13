@@ -18,8 +18,7 @@ Architecture overview:
     the cloud; the shim is just an execution bridge.
 """
 
-__version__ = "0.0.1-experimental"
-
+from ._version import __version__
 from .config import ShimConfig, load_config
 from .daemon import ShimDaemon
 
