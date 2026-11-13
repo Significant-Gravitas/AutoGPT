@@ -1838,7 +1838,9 @@ async def get_user_sessions(
     return sessions, total_count
 
 
-# The sidebar lists every pinned session; this only bounds the read.
+# The most pinned sessions the sidebar lists, newest first, so the 10-second
+# poll's read stays bounded. Older pinned sessions aren't listed past it, since
+# the groups leave every pinned session out.
 MAX_PINNED_SESSIONS = 100
 
 
@@ -1854,9 +1856,9 @@ async def get_user_session_groups(
     ``min_per_group`` newest sessions, and the newest of the rest fill the
     read up to ``fill_to`` in all.
 
-    With ``pinned_separately`` the pinned sessions come back on their own,
-    newest first, and are left out of the groups and their totals; without
-    it the second list is empty.
+    With ``pinned_separately`` the newest ``MAX_PINNED_SESSIONS`` pinned
+    sessions come back on their own, and every pinned session is left out of
+    the groups and their totals; without it the second list is empty.
     """
     db = chat_db()
     if not pinned_separately:
