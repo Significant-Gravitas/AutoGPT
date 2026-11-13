@@ -296,8 +296,11 @@ with a request still queued or running is not idle, however long that request
 takes. The stop is audited (`IDLE_SESSION_DETACH`) before it happens, and from
 the moment the daemon decides on it the child refuses requests with
 `SHIM_OVERLOADED` (`details.reason: "detaching"`), so none starts only to be cut
-off; the platform retries once the child is restored. If the audit record
-can't be written, the child keeps running.
+off. Nothing ran, so a refused request can be sent again once the child is
+restored: the auto-retry layer re-sends only an idempotent one (see
+[Idempotency](#idempotency)), and a `COMPUTER_TOOL_CALL`, like every other
+non-idempotent request, goes back to the model, which decides. If the audit
+record can't be written, the child keeps running.
 
 #### `HELLO.platform` enum
 
