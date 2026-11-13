@@ -2,9 +2,15 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockListExpertTemplates = vi.hoisted(() => vi.fn());
 
-vi.mock("@/app/api/__generated__/endpoints/experts/experts", () => ({
-  listExpertTemplates: mockListExpertTemplates,
-}));
+vi.mock(
+  "@/app/api/__generated__/endpoints/experts/experts",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/app/api/__generated__/endpoints/experts/experts")
+    >()),
+    listExpertTemplates: mockListExpertTemplates,
+  }),
+);
 
 vi.mock("../[expertId]/components/ExpertPage", () => ({
   ExpertPage: () => null,

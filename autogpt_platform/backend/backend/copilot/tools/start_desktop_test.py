@@ -6,6 +6,7 @@ import pytest
 
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH, DesktopStream
 from backend.blocks.desktop._common import expert_volume_name, user_volume_name
+from backend.util.sandbox_limits import SandboxLimitError
 
 from ._test_data import make_session
 from .models import DesktopStreamToolResponse, ErrorResponse
@@ -84,7 +85,7 @@ async def _run(tool, box: _Box, *, user_id, session):
     with redis_p, get_p, cls_p, computer_cfg as ccfg, tool_cfg as tcfg:
         tcfg.active_e2b_api_key = "e2b_test_key"
         ccfg.e2b_sandbox_timeout = 420
-        ccfg.e2b_sandbox_template = "agpt-desktop-1x2"
+        ccfg.e2b_sandbox_template = "agpt-desktop-1x2-cfc276e0"
         ccfg.e2b_sandbox_on_timeout = "pause"
         return await tool._execute(user_id=user_id, session=session)
 
@@ -126,8 +127,11 @@ class TestStartDesktop:
             f"copilot:e2b:sandbox:{session.session_id}"
         )
         assert kwargs["volume_mounts"] == {WORKSPACE_PATH: user_volume_name(_USER)}
-        assert kwargs["template"] == "agpt-desktop-1x2"
+        assert kwargs["template"] == "agpt-desktop-1x2-cfc276e0"
         assert kwargs["count_turn"] is False
+        # The turn's own ceiling (none here), never KEEP: a box this creates
+        # must not get every provider in a restricted turn.
+        assert kwargs["providers"] is None
         assert kwargs["user_id"] == _USER
         assert kwargs["session_id"] == session.session_id
         box.desktop.ensure_display.assert_awaited_once()
@@ -143,6 +147,26 @@ class TestStartDesktop:
         # browser_* runs outside the box, so it is never on this screen.
         assert "DISPLAY=:0" in result.message
         assert "browser_* tools run elsewhere" in result.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_restricted_turn_opens_the_desktop_under_its_ceiling(self):
+        from backend.copilot.context import _current_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        box = _Box()
+        token = _current_permissions.set(
+            CopilotPermissions(providers=["github"], providers_exclude=True)
+        )
+        try:
+            await _run(
+                StartDesktopTool(),
+                box,
+                user_id=_USER,
+                session=make_session(user_id=_USER),
+            )
+        finally:
+            _current_permissions.reset(token)
+        assert box.get_box.await_args.kwargs["providers"] == ()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_stored_result_carries_the_owner_link_not_the_password(self):
@@ -196,6 +220,19 @@ class TestStartDesktop:
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "desktop_start_failed"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_start_refused_under_a_sandbox_limit_says_so(self):
+        tool = StartDesktopTool()
+        session = make_session(user_id=_USER)
+        box = _Box()
+        box.get_box.side_effect = SandboxLimitError("Too many sandboxes are running.")
+
+        result = await _run(tool, box, user_id=_USER, session=session)
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "sandbox_limit_reached"
+        assert result.message == "Too many sandboxes are running."
 
 
 class TestExpertDesktop:

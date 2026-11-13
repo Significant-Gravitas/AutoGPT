@@ -74,7 +74,7 @@ export function enrichExecutionWithAgentInfo(
 
   return {
     ...execution,
-    agent_name: agentInfo?.name ?? "Unknown Agent",
+    agent_name: agentInfo?.name ?? "Unknown Workflow",
     agent_description: agentInfo?.description ?? "",
     library_agent_id: agentInfo?.library_agent_id,
   };
@@ -168,6 +168,24 @@ export function categorizeExecutions(
       activeExecutions.length +
       recentCompletions.length +
       recentFailures.length,
+  };
+}
+
+export function relabelNotifications(
+  state: NotificationState,
+  agentInfoMap: Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >,
+): NotificationState {
+  function relabel(execution: AgentExecutionWithInfo) {
+    return enrichExecutionWithAgentInfo(execution, agentInfoMap);
+  }
+  return {
+    ...state,
+    activeExecutions: state.activeExecutions.map(relabel),
+    recentCompletions: state.recentCompletions.map(relabel),
+    recentFailures: state.recentFailures.map(relabel),
   };
 }
 

@@ -109,7 +109,9 @@ async def _raise(
     problem = _cannot_raise(current, request.amount)
     if problem:
         return failure(session, problem)
-    async with link_credentials(principal.user_id, current.credentials_id) as c:
+    async with link_credentials(
+        principal.user_id, current.credentials_id, expert_id=session.expert_id
+    ) as c:
         token = c.access_token.get_secret_value()
         blocker = await purchase_blocker(token, request.amount, current.currency)
         if blocker is not None:

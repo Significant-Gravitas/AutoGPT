@@ -1,5 +1,6 @@
 "use client";
 
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { ErrorView } from "./components/ErrorView";
 import { LoadingView } from "./components/LoadingView";
 import { NotAuthenticatedView } from "./components/NotAuthenticatedView";
@@ -59,9 +60,10 @@ export default function PlatformLinkPage() {
 
       {page.status === "error" && <ErrorView message={page.errorMessage} />}
 
-      <div className="mt-8 text-center text-xs text-muted-foreground">
+      <div className="mt-8 text-center text-caption text-foreground-tertiary">
         <p>Powered by AutoGPT Platform</p>
       </div>
+      <CookieSettingsLink className="mt-2" />
     </div>
   );
 }

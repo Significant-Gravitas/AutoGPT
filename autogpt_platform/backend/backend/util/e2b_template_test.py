@@ -1,7 +1,10 @@
 import asyncio
+import hashlib
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from e2b import Template
 from e2b.api.client.models import TemplateAliasResponse, TemplateBuildStatus
 
 from backend.copilot.config import ChatConfig
@@ -10,6 +13,7 @@ from backend.util.e2b_template import (
     DESKTOP_IMAGE,
     TemplateSpec,
     TemplateState,
+    desktop_image,
     ensure_template,
     forget_ready_templates,
     get_template_state,
@@ -43,6 +47,15 @@ class TestSpec:
     def test_the_managed_image_is_the_copilot_default(self):
         assert ChatConfig().e2b_sandbox_template == DESKTOP_IMAGE.alias
         assert DESKTOP_IMAGE.cpu_count == 1 and DESKTOP_IMAGE.memory_mb == 2048
+
+    def test_the_alias_names_the_image_it_builds(self):
+        # Teams keep a ready alias forever, so a changed image needs a new alias.
+        steps = Template.to_json(desktop_image(DESKTOP_IMAGE.source))
+        digest = hashlib.sha256(steps.encode()).hexdigest()[:8]
+        assert DESKTOP_IMAGE.alias == f"agpt-desktop-1x2-{digest}", (
+            "desktop_image() changed: rename DESKTOP_IMAGE and the "
+            "ChatConfig.e2b_sandbox_template default to this alias"
+        )
 
     def test_tags_are_docker_safe_and_resolve_the_bare_alias(self):
         tags = TemplateSpec(
@@ -244,6 +257,49 @@ class TestEnsureTemplate:
             gate.set()
             await asyncio.gather(first, second)
         st.assert_awaited_once()
+        assert not e2b_template._inflight
+
+    def test_first_turns_on_two_event_loops_both_get_the_template(self):
+        # The executor runs a loop per worker thread; B starts while A's check
+        # is still in flight, and A's check stays open until B's call is over.
+        loops: dict[str, asyncio.AbstractEventLoop] = {}
+        errors: dict[str, RuntimeError | None] = {}
+        a_checking, b_done = threading.Event(), threading.Event()
+
+        async def state(*_args):
+            if asyncio.get_running_loop() is loops["a"]:
+                a_checking.set()
+                # A timeout here means B never raced _inflight while A's
+                # check was still open, so returning READY regardless would
+                # let this test pass on the old template-only key too.
+                assert b_done.wait(timeout=10), "b never finished"
+            return TemplateState.READY
+
+        def turn(name: str) -> None:
+            loop = loops[name] = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(ensure_template(DESKTOP_IMAGE.alias, _KEY))
+                errors[name] = None
+            except RuntimeError as e:
+                errors[name] = e
+            finally:
+                loop.close()
+                if name == "b":
+                    b_done.set()
+
+        a = threading.Thread(target=turn, args=("a",))
+        b = threading.Thread(target=turn, args=("b",))
+        with patch(f"{_M}.get_template_state", AsyncMock(side_effect=state)):
+            a.start()
+            assert a_checking.wait(timeout=10)
+            b.start()
+            b.join(timeout=10)
+            a.join(timeout=10)
+            # Both must be finished before the patch comes off, or a thread
+            # still running would fall through to the real, unmocked check.
+            assert not a.is_alive() and not b.is_alive()
+        assert errors == {"a": None, "b": None}
+        assert e2b_template._scoped_key(DESKTOP_IMAGE, _KEY) in e2b_template._ready
         assert not e2b_template._inflight
 
     @pytest.mark.asyncio

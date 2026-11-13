@@ -1,14 +1,20 @@
+from .closed_accounts import (
+    forget_account_state,
+    reject_closed_account,
+    remember_account_closed,
+)
 from .config import verify_settings
 from .dependencies import (
     get_optional_user_id,
     get_request_context,
     get_user_id,
+    get_user_id_allowing_closed,
     requires_admin_user,
     requires_org_permission,
     requires_team_permission,
     requires_user,
 )
-from .helpers import add_auth_responses_to_openapi
+from .jwt_utils import add_auth_responses_to_openapi
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
@@ -21,6 +27,10 @@ from .service import requires_frontend_service
 __all__ = [
     "verify_settings",
     "get_user_id",
+    "get_user_id_allowing_closed",
+    "remember_account_closed",
+    "forget_account_state",
+    "reject_closed_account",
     "requires_admin_user",
     "requires_user",
     "get_optional_user_id",

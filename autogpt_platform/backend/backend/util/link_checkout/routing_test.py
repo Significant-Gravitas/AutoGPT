@@ -12,8 +12,19 @@ from backend.util.link_checkout.broker_routing import route_for, routed
 async def test_code_execution_does_not_even_load_wallet_tokens(monkeypatch):
     lookup = AsyncMock(return_value="synthetic-provider-token")
     monkeypatch.setattr(integration_creds, "get_provider_token", lookup)
-    result = await integration_creds.get_integration_env_vars("owner")
+    result = await integration_creds.get_integration_env_vars("owner", allowed_ids=None)
     assert "GH_TOKEN" in result
+    assert all(call.args[1] != "stripe_link" for call in lookup.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_a_box_behind_the_swap_proxy_is_never_granted_a_wallet(monkeypatch):
+    """The proxy's placeholders are the other way a sandbox reaches a token."""
+    lookup = AsyncMock(return_value="synthetic-credential-id")
+    monkeypatch.setattr(integration_creds, "get_provider_credential_id", lookup)
+    grants = await integration_creds.placeholder_grants("owner", allowed_ids=None)
+    assert "github" in grants
+    assert "stripe_link" not in grants
     assert all(call.args[1] != "stripe_link" for call in lookup.await_args_list)
 
 

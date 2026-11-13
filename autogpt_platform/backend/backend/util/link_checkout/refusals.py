@@ -45,6 +45,10 @@ LINK_ACCOUNT_NOT_CHOSEN = (
     "Several Stripe Link accounts are connected and none was chosen in this "
     "chat. Run the Stripe Link List Payment Methods block so the user picks one."
 )
+LINK_NOT_GRANTED = (
+    "This expert has not been granted the Stripe Link account to pay with. Use "
+    "tool:request_credential_grant to ask the user for access."
+)
 PAY_TOKEN_UNAVAILABLE = (
     "This page has no single Stripe 'I am an AI agent' payment option that "
     "takes a Link Pay Token, or it did not respond when ticked. Pay through "
@@ -71,6 +75,7 @@ MESSAGES = frozenset(
         ATTEMPT_UNRECONCILED,
         LINK_NOT_CONNECTED,
         LINK_ACCOUNT_NOT_CHOSEN,
+        LINK_NOT_GRANTED,
         PAY_TOKEN_UNAVAILABLE,
         RAISE_NOT_HIGHER,
         RAISE_CLOSED,

@@ -10,6 +10,8 @@ from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .hubspot import HubSpotOAuthHandler
+from .microsoft import MicrosoftDeviceAuthHandler, MicrosoftOAuthHandler
 from .microsoft_365_copilot import Microsoft365CopilotDeviceAuthHandler
 from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
@@ -30,10 +32,12 @@ _ORIGINAL_HANDLERS = [
     DiscordOAuthHandler,
     GitHubOAuthHandler,
     GoogleOAuthHandler,
+    HubSpotOAuthHandler,
     NotionOAuthHandler,
     RedditOAuthHandler,
     TwitterOAuthHandler,
     TodoistOAuthHandler,
+    MicrosoftOAuthHandler,
     # Only with a registered confidential client; without one Stripe Link
     # connects through its device handler alone. When both are present, which
     # one serves a credential is decided by how it was issued (see
@@ -246,6 +250,7 @@ CREDENTIALS_BY_PROVIDER: dict[str, SDKAwareCredentials] = SDKAwareCredentialsDic
 _ORIGINAL_DEVICE_HANDLERS: list[type[BaseDeviceAuthHandler]] = [
     CodexDeviceAuthHandler,
     Microsoft365CopilotDeviceAuthHandler,
+    MicrosoftDeviceAuthHandler,
     RMFGDeviceAuthHandler,
     StripeLinkDeviceAuthHandler,
 ]

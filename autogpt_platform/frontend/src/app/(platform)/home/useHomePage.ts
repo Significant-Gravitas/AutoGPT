@@ -1,15 +1,12 @@
 import { useGetHomeDashboard } from "@/app/api/__generated__/endpoints/home/home";
 import { okData } from "@/app/api/helpers";
 
-interface Args {
-  enabled: boolean;
-}
-
-export function useHomePage({ enabled }: Args) {
+export function useHomePage({ enabled = true }: { enabled?: boolean } = {}) {
   const query = useGetHomeDashboard({
     query: {
-      select: (response) => okData(response) ?? null,
       enabled,
+      select: (response) => okData(response) ?? null,
+      staleTime: 0,
       refetchInterval: 60_000,
       refetchOnWindowFocus: true,
     },

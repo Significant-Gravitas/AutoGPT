@@ -35,7 +35,7 @@ export const ScheduleGraph = ({ flowID }: { flowID: string | null }) => {
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Schedule Graph</p>
+            <p>Schedule Workflow</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

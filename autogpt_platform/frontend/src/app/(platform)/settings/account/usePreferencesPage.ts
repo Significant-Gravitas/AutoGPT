@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetV1GetNotificationPreferencesQueryKey,
   getGetV1GetUserTimezoneQueryKey,
+  postV1ApplyAVolumeKnobChoiceFromABriefingFooterLink,
   useGetV1GetNotificationPreferences,
   useGetV1GetUserTimezone,
   usePostV1UpdateNotificationPreferences,
@@ -111,12 +112,13 @@ export function usePreferencesPage() {
     next: NotificationSettings,
   ) {
     // Token-authenticated, not session-authenticated — see the note on
-    // footerChoice above.
-    const res = await fetch(
-      `/api/auth/user/preferences/from-email?choice=${encodeURIComponent(choice)}&token=${encodeURIComponent(token)}`,
-      { method: "POST" },
-    );
-    if (!res.ok) throw new Error(`Preference link rejected (${res.status})`);
+    // footerChoice above. Goes through the backend proxy: a bare
+    // /api/auth/... fetch lands on the Next.js Better Auth catch-all and 404s.
+    // The generated client throws ApiError on a non-2xx response.
+    await postV1ApplyAVolumeKnobChoiceFromABriefingFooterLink({
+      choice,
+      token,
+    });
     await queryClient.invalidateQueries({
       queryKey: getGetV1GetNotificationPreferencesQueryKey(),
     });

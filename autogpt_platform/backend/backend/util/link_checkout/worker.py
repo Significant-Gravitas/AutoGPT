@@ -94,7 +94,11 @@ async def fill(
 ) -> None:
     """Type the card into the pinned fields. The receipt stays `not_submitted`
     until the first write is sent, so an attempt that stops before any field
-    was touched still counts as one whose card never reached the page."""
+    was touched still counts as one whose card never reached the page.
+
+    A write that raises may still have run in the page, so from then on the
+    outcome is unknown. One the page answers with `false` set nothing: when
+    that is the first, the card never reached the page after all."""
     month = f"{card.exp_month:02d}"
     year = f"{card.exp_year % 100:02d}"
     # Each role's spellings, most common first; the field's maxlength picks the
@@ -106,6 +110,7 @@ async def fill(
         ("exp_month", [month]),
         ("exp_year", [str(card.exp_year), year]),
     ]
+    written = False
     for role, values in fields:
         if role not in controls:
             continue
@@ -131,8 +136,12 @@ async def fill(
             },
             control.session,
         )
-        if result.result is None or result.result.value is not True:
+        answer = None if result.result is None else result.result.value
+        if answer is not True:
+            if answer is False and not written:
+                receipt.status = "not_submitted"
             raise RuntimeError("Private fill failed")
+        written = True
 
 
 async def inject_pay_token(

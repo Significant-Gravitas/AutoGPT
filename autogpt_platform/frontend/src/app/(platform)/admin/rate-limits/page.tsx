@@ -1,25 +1,17 @@
-import { withRoleAccess } from "@/lib/withRoleAccess";
-import { RateLimitManager } from "./components/RateLimitManager";
+import { redirect } from "next/navigation";
+import { getAdminUsersHref } from "../users/helpers";
 
-function RateLimitsDashboard() {
-  return (
-    <div className="mx-auto p-6">
-      <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">User Rate Limits</h1>
-          <p className="text-gray-500">
-            Check and manage CoPilot rate limits per user
-          </p>
-        </div>
-        <RateLimitManager />
-      </div>
-    </div>
-  );
+interface SearchParams {
+  user?: string | string[];
+  user_id?: string | string[];
+  email?: string | string[];
 }
 
-export default async function RateLimitsDashboardPage() {
-  "use server";
-  const withAdminAccess = await withRoleAccess(["admin"]);
-  const ProtectedDashboard = await withAdminAccess(RateLimitsDashboard);
-  return <ProtectedDashboard />;
+export default async function RateLimitsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const { user, user_id, email } = await searchParams;
+  redirect(getAdminUsersHref(user ?? user_id ?? email));
 }

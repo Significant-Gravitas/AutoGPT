@@ -171,7 +171,7 @@ describe("NewSaveControl", () => {
       </TooltipProvider>,
     );
 
-    const saveButton = screen.getByRole("button", { name: /save agent/i });
+    const saveButton = screen.getByRole("button", { name: /save workflow/i });
     expect((saveButton as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -265,6 +265,6 @@ describe("NewSaveControl", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.getByText("Save Agent")).toBeDefined();
+    expect(screen.getByText("Save Workflow")).toBeDefined();
   });
 });

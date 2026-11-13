@@ -17,11 +17,32 @@ class ProviderEntry(TypedDict):
             connected (e.g. ``["GH_TOKEN", "GITHUB_TOKEN"]``).
         default_scopes: Default OAuth scopes requested when the agent does not
             specify any.
+        swap_hosts: The only hosts the credential swap proxy may send this
+            provider's token to (exact names, or ``.example.com`` for every
+            subdomain).  Empty means the token is never swapped in.  List the
+            hosts that *take* the token, not every host the provider serves
+            from: a redirect target with a signed URL needs none.
+        content_hosts: Hosts that serve back what was stored with the
+            credential (raw files, attachments, release assets) but never take
+            the token.  The proxy opens their traffic too, and a value in a
+            text response from one is turned back into its placeholder, so a
+            token a user once committed or pasted cannot be read back through
+            them; nothing is ever swapped into a request to one.  Same syntax
+            as *swap_hosts*.  No content host may name a swap host exactly
+            (it would take the token); a suffix may cover one, which stays a
+            swap host.
+
+    Both lists are the provider's whole footprint as far as the proxy is
+    concerned: a host in neither is passed through unread.  They are declared
+    here, beside the provider's variables and scopes, because a provider is
+    only ever handed to a box through this table.
     """
 
     name: str
     env_vars: list[str]
     default_scopes: list[str]
+    swap_hosts: list[str]
+    content_hosts: list[str]
 
 
 def _is_github_oauth_configured() -> bool:
@@ -50,19 +71,54 @@ def _is_stripe_link_oauth_configured() -> bool:
 # from this single registry.
 
 SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
-    # No env vars: a Link wallet token never enters the sandbox. Listed so the
-    # agent can ask for a Link connection before a checkout.
-    "stripe_link": {
-        "name": "Stripe Link",
-        "env_vars": [],
-        "default_scopes": ["payment_methods.agentic", "userinfo:read"],
-    },
     "github": {
         "name": "GitHub",
         "env_vars": ["GH_TOKEN", "GITHUB_TOKEN"],
         "default_scopes": ["repo"],
+        # The API, git over HTTPS, release asset uploads, and the two
+        # GitHub-owned content hosts that do take the token: a private repo's
+        # raw file (``Authorization: token ...`` to raw.githubusercontent.com)
+        # and git over HTTPS to a gist (Basic auth to gist.github.com).
+        "swap_hosts": [
+            "github.com",
+            "api.github.com",
+            "uploads.github.com",
+            "raw.githubusercontent.com",
+            "gist.github.com",
+        ],
+        # objects., gist., media. (LFS) and the other user-content domains:
+        # served from signed URLs, they never need the token, so they are only
+        # scrubbed.  codeload.github.com is left out: it serves only archives,
+        # which are binary and never scrubbed, so opening its traffic would
+        # cost TLS termination and protect nothing.
+        "content_hosts": [".githubusercontent.com"],
     },
 }
+
+
+class ConnectOnlyEntry(TypedDict):
+    """A provider the setup card connects that nothing in a sandbox may use."""
+
+    name: str
+    default_scopes: list[str]
+
+
+# Connected through the setup card like the providers above, but kept out of
+# SUPPORTED_PROVIDERS, which also decides what a sandbox can be handed (its
+# variables, the swap proxy's hosts, a run's providers ceiling).
+CONNECT_ONLY_PROVIDERS: dict[str, ConnectOnlyEntry] = {
+    # Only the private checkout uses a Link wallet token; listed so the agent
+    # can ask for a Link connection before a checkout.
+    "stripe_link": {
+        "name": "Stripe Link",
+        "default_scopes": ["payment_methods.agentic", "userinfo:read"],
+    },
+}
+
+
+def setup_card_entry(provider: str) -> ProviderEntry | ConnectOnlyEntry | None:
+    """The registry entry the setup card connects *provider* with, if any."""
+    return SUPPORTED_PROVIDERS.get(provider) or CONNECT_ONLY_PROVIDERS.get(provider)
 
 
 def get_provider_auth_types(provider: str) -> list[str]:

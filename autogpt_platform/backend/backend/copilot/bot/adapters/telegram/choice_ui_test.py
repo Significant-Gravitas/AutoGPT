@@ -22,7 +22,7 @@ class TestParseCallbackData:
     def test_round_trips_token_and_index(self):
         keyboard = choice_keyboard("abcdef012345", ["US", "EU"])
         data = keyboard["inline_keyboard"][1][0]["callback_data"]
-        assert parse_callback_data(data) == ("abcdef012345", 1)
+        assert parse_callback_data(data) == ("qans", "abcdef012345", 1)
 
     def test_rejects_malformed_callback_data(self):
         assert parse_callback_data("not-a-choice-callback") is None

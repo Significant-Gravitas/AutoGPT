@@ -31,7 +31,7 @@ export function FlyingHeart({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="pointer-events-none fixed z-50"
+          className="pointer-events-none fixed z-50 text-error drop-shadow-md"
           initial={{
             x: startPosition.x,
             y: startPosition.y,
@@ -60,11 +60,7 @@ export function FlyingHeart({
             onAnimationComplete();
           }}
         >
-          <Icon
-            icon={FavouriteIcon}
-            size={24}
-            className="text-red-500 drop-shadow-md"
-          />
+          <Icon icon={FavouriteIcon} size={24} />
         </motion.div>
       )}
     </AnimatePresence>

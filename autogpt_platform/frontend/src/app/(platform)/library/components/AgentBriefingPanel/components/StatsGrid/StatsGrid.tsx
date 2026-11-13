@@ -5,6 +5,7 @@ import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Emoji } from "@/components/atoms/Emoji/Emoji";
 import { cn } from "@/lib/utils";
 import { formatCents } from "@/app/(platform)/copilot/components/usageHelpers";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import type { FleetSummary, AgentStatusFilter } from "../../../../types";
 
 interface Props {
@@ -27,49 +28,59 @@ const TILES: {
     format: formatCents,
     filter: "all",
     emoji: "💵",
-    color: "text-zinc-700",
+    color: "text-foreground-body",
   },
   {
     label: "Running now",
     key: "running",
     filter: "running",
     emoji: "🚩",
-    color: "text-blue-600",
+    color: "text-info-foreground",
   },
   {
     label: "Recently completed",
     key: "completed",
     filter: "completed",
     emoji: "🗃️",
-    color: "text-green-600",
+    color: "text-success",
   },
   {
     label: "Needs attention",
     key: "error",
     filter: "attention",
     emoji: "⚠️",
-    color: "text-red-500",
+    color: "text-error",
   },
   {
     label: "Scheduled",
     key: "scheduled",
     filter: "scheduled",
     emoji: "📅",
-    color: "text-yellow-600",
+    color: "text-warning",
   },
   {
     label: "Idle",
     key: "idle",
     filter: "idle",
     emoji: "💤",
-    color: "text-zinc-400",
+    color: "text-foreground-subtle",
   },
 ];
 
 export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
+  const isBillingEnabled = useIsBillingEnabled();
+  const tiles = isBillingEnabled
+    ? TILES
+    : TILES.filter((tile) => tile.key !== "monthlySpend");
+
   return (
-    <div className="grid grid-cols-1 gap-3 min-[450px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-      {TILES.map((tile) => {
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-3 min-[450px]:grid-cols-2 sm:grid-cols-3",
+        isBillingEnabled ? "lg:grid-cols-6" : "lg:grid-cols-5",
+      )}
+    >
+      {tiles.map((tile) => {
         const rawValue = summary[tile.key];
         const value = tile.format ? tile.format(rawValue) : rawValue;
         const isActive = activeTab === tile.filter;
@@ -78,21 +89,20 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
           <button
             key={tile.label}
             type="button"
-            onClick={() => onTabChange(tile.filter)}
+            aria-pressed={isActive}
+            // A second click goes back to the overview, which has no tile of
+            // its own when billing is off.
+            onClick={() => onTabChange(isActive ? "all" : tile.filter)}
             className={cn(
               "flex min-w-0 flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
               isActive
-                ? "border-zinc-900 bg-zinc-50"
-                : "border-zinc-100 bg-white",
+                ? "border-action-hover bg-surface-muted"
+                : "border-separator bg-surface",
             )}
           >
             <div className="flex min-w-0 items-center gap-1.5">
               <Emoji text={tile.emoji} size={18} />
-              <OverflowText
-                value={tile.label}
-                variant="body"
-                className="text-zinc-800"
-              />
+              <OverflowText value={tile.label} variant="body" tone="emphasis" />
             </div>
             <Text variant="h4">{value}</Text>
           </button>

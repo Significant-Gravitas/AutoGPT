@@ -18,6 +18,7 @@ import {
   ToolIcon,
 } from "./helpers";
 import { ExecutionStartedCard } from "./components/ExecutionStartedCard/ExecutionStartedCard";
+import { useLiveRunStatus } from "./components/ExecutionStartedCard/useLiveRunStatus";
 import { AgentDetailsCard } from "./components/AgentDetailsCard/AgentDetailsCard";
 import { SetupRequirementsCard } from "../../components/SetupRequirementsCard/SetupRequirementsCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
@@ -25,6 +26,7 @@ import {
   isUnparseableJsonOutput,
   reportCorruptedToolOutput,
 } from "../../helpers/toolOutput";
+import { Text } from "@/components/atoms/Text/Text";
 
 export interface RunAgentToolPart {
   type: string;
@@ -69,6 +71,20 @@ export function RunAgentTool({ part }: Props) {
   const agentOutputResponse =
     isOutputAvailable && isRunAgentAgentOutputResponse(output) ? output : null;
 
+  const startedOutput =
+    isOutputAvailable && isRunAgentExecutionStartedOutput(output)
+      ? output
+      : null;
+  const liveRun = useLiveRunStatus(startedOutput);
+  const liveStartedOutput = startedOutput
+    ? {
+        ...startedOutput,
+        status: liveRun.status,
+        // "Started successfully" reads wrong once the card says it failed.
+        message: liveRun.endedAfterStart ? "" : startedOutput.message,
+      }
+    : null;
+
   const hasExpandableContent =
     isOutputAvailable &&
     !setupRequirementsOutput &&
@@ -86,24 +102,26 @@ export function RunAgentTool({ part }: Props) {
         !agentDetailsOutput &&
         !needLoginOutput &&
         !hasExpandableContent && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-body text-foreground-tertiary">
             <ToolIcon isStreaming={isStreaming} isError={isError} />
             <MorphingTextAnimation
-              text={isCorrupted ? "Agent result could not be displayed" : text}
-              className={isError ? "text-red-500" : undefined}
+              text={
+                isCorrupted ? "Workflow result could not be displayed" : text
+              }
+              className={isError ? "text-error" : undefined}
             />
           </div>
         )}
 
       {isCorrupted && (
-        <p className="mt-1 text-sm text-red-500">
+        <Text variant="body-tight" tone="error" className="mt-1">
           The result data arrived corrupted, so any sign-in or setup card it
           contained can&apos;t be shown. Ask your expert to retry this step.
-        </p>
+        </Text>
       )}
 
       {isStreaming && !output && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-body text-foreground-tertiary">
           <ToolIcon isStreaming isError={isError} />
           <MorphingTextAnimation text={getStreamingLoadingText(part)} />
         </div>
@@ -131,9 +149,12 @@ export function RunAgentTool({ part }: Props) {
       )}
 
       {hasExpandableContent && output && (
-        <ToolAccordion {...getAccordionMeta(output)}>
-          {isRunAgentExecutionStartedOutput(output) && (
-            <ExecutionStartedCard output={output} />
+        <ToolAccordion {...getAccordionMeta(liveStartedOutput ?? output)}>
+          {liveStartedOutput && (
+            <ExecutionStartedCard
+              output={liveStartedOutput}
+              error={liveRun.error}
+            />
           )}
 
           {agentOutputResponse && (
