@@ -138,7 +138,13 @@ def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path |
     of `./cua-driver`, and the OS looks a bare name up on PATH, which would
     run another install, or none, rather than the file checked here."""
     if explicit:
-        path = Path(explicit).expanduser().absolute()
+        try:
+            path = Path(explicit).expanduser().absolute()
+        except RuntimeError as exc:
+            # `~someone` with no such account, or a home Python can't find:
+            # a driver that isn't there, which every caller reports.
+            logger.warning("Can't expand the cua-driver path %r: %s", str(explicit), exc)
+            return None
         return path if path.is_file() else None
     bundled = bundled_binary()
     if bundled is not None:
@@ -435,6 +441,10 @@ class CuaDriverBridge:
             try:
                 initialized = await client.start(timeout=START_TIMEOUT_SECONDS)
                 if not same_minor(initialized.server_version):
+                    # A driver of another version didn't crash: its start
+                    # comes off the restart budget, which would otherwise
+                    # report stops in place of the version it needs.
+                    self._starts.pop()
                     raise DriverUnavailable(
                         f"This local executor works with cua-driver {REVIEWED_DRIVER_VERSION}; "
                         f"found {initialized.server_version or 'an unknown version'} at "
@@ -456,14 +466,13 @@ class CuaDriverBridge:
                 tail = client.stderr_tail(5)
                 await client.close()
                 self._last_failure = tail or str(exc)
-                code = (
-                    ErrorCode.DEPENDENCY_MISSING
-                    if isinstance(exc, (FileNotFoundError, PermissionError))
-                    else ErrorCode.INTERNAL_ERROR
-                )
+                missing = isinstance(exc, (FileNotFoundError, PermissionError))
+                if missing:
+                    # A driver that can't be run didn't crash either.
+                    self._starts.pop()
                 raise DriverUnavailable(
                     f"cua-driver did not start: {exc}" + (f" ({tail})" if tail else ""),
-                    code=code,
+                    code=ErrorCode.DEPENDENCY_MISSING if missing else ErrorCode.INTERNAL_ERROR,
                 ) from exc
             tools = tuple(
                 tool
@@ -504,10 +513,18 @@ class CuaDriverBridge:
             )
 
     def _write_policy(self) -> Path:
-        """The policy file lives as long as the bridge: the driver reads it
-        the first time it authorizes a call, not at startup."""
-        if self._policy_dir is None:
-            self._policy_dir = Path(tempfile.mkdtemp(prefix="autogpt-cua-driver-"))
+        """Write the policy in a new private folder for each driver start.
+        The driver reads it the first time it authorizes a call, not at
+        startup, so a folder lives as long as its driver, and close() removes
+        the last one. A folder made once, at the first start, was gone after
+        a temporary-file cleaner purged it while the shim ran, and its name,
+        once free, could be another user's folder, so none is reused."""
+        previous, self._policy_dir = (
+            self._policy_dir,
+            Path(tempfile.mkdtemp(prefix="autogpt-cua-driver-")),
+        )
+        if previous is not None:
+            shutil.rmtree(previous, ignore_errors=True)
         path = self._policy_dir / "policy.yaml"
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
