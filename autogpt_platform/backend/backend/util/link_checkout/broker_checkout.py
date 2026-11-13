@@ -53,6 +53,7 @@ from backend.util.link_checkout.models import (
     WorkerReceipt,
 )
 from backend.util.link_checkout.refusals import (
+    APPROVAL_SUPERSEDED,
     ATTEMPT_UNRECONCILED,
     LIVE_PAYMENTS_DISABLED,
     CheckoutRefused,
@@ -106,6 +107,14 @@ async def complete_checkout(request: AuthorizedCheckout) -> CheckoutView:
         elif intent.approval_mode == "in_app" and request.approval is None:
             return view(intent)
         else:
+            if (
+                request.approval is not None
+                and request.approved_revision != intent.revision
+            ):
+                # Checked under the lock a raise also takes, so a raise landing
+                # after the tool read the approval is seen here: the approval
+                # pays only the total it was given for.
+                raise CheckoutRefused(APPROVAL_SUPERSEDED)
             spend = await first_spend(
                 directory, intent, request.access_token, request.approval
             )

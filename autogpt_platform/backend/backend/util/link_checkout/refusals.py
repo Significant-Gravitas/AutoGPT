@@ -63,6 +63,11 @@ RAISE_CLOSED = (
     "or has expired, so its total can't change. Prepare a new checkout if the "
     "customer still wants it."
 )
+APPROVAL_SUPERSEDED = (
+    "The total was raised after the customer approved it, so that approval no "
+    "longer pays. Nothing was charged. Wait for them to approve the new total "
+    "in the chat, then call tool:browser_complete_link_payment again."
+)
 
 MESSAGES = frozenset(
     {
@@ -79,6 +84,7 @@ MESSAGES = frozenset(
         PAY_TOKEN_UNAVAILABLE,
         RAISE_NOT_HIGHER,
         RAISE_CLOSED,
+        APPROVAL_SUPERSEDED,
     }
 )
 

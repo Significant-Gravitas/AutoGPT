@@ -263,6 +263,7 @@ async def test_in_chat_approval_creates_an_approved_request_then_pays(
                 **reference,
                 "access_token": "synthetic",
                 "approval": approval(created["checkout_id"]),
+                "approved_revision": 0,
             },
         )
         assert paid.status_code == 200, paid.text
@@ -285,6 +286,7 @@ async def test_link_refusing_the_chat_approval_falls_back_to_link(
                 "checkout_id": created["checkout_id"],
                 "access_token": "synthetic",
                 "approval": approval(created["checkout_id"]),
+                "approved_revision": 0,
             },
         )
         body = fallback.json()
@@ -310,6 +312,7 @@ async def test_a_duplicate_request_is_explained_not_retried_another_way(
                 "checkout_id": created["checkout_id"],
                 "access_token": "synthetic",
                 "approval": approval(created["checkout_id"]),
+                "approved_revision": 0,
             },
         )
         assert refused.status_code == 422

@@ -201,14 +201,18 @@ class BrowserCompleteLinkPaymentTool(BaseTool):
             async with link_credentials(
                 principal.user_id, current.credentials_id, expert_id=session.expert_id
             ) as credentials:
+                approved = (
+                    approval
+                    if approval is not None and approval.state == "approved"
+                    else None
+                )
                 view = await engine.complete(
                     AuthorizedCheckout(
                         **reference.model_dump(),
                         access_token=credentials.access_token,
-                        approval=(
-                            approval_details(approval)
-                            if approval is not None and approval.state == "approved"
-                            else None
+                        approval=approval_details(approved) if approved else None,
+                        approved_revision=(
+                            approved.pending.revision if approved else None
                         ),
                     )
                 )

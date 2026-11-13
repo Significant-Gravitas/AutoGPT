@@ -14,15 +14,22 @@ from backend.copilot.tools import browser_checkout_raise as raise_tools
 from backend.copilot.tools import browser_checkout_status as status_tools
 from backend.copilot.tools import browser_checkout_support as support
 from backend.copilot.tools.browser_checkout_support import CheckoutResponse
+from backend.copilot.tools.models import ErrorResponse
 from backend.util.link_checkout import approval
 from backend.util.link_checkout.preflight import PurchaseBlocker
-from backend.util.link_checkout.refusals import RAISE_CLOSED, RAISE_NOT_HIGHER
+from backend.util.link_checkout.refusals import (
+    APPROVAL_SUPERSEDED,
+    RAISE_CLOSED,
+    RAISE_NOT_HIGHER,
+)
 
 REASON = "Sales tax was added on the final checkout step."
 
 
 @asynccontextmanager
-async def fake_link_credentials(user_id: str, credentials_id: str):
+async def fake_link_credentials(
+    user_id: str, credentials_id: str, *, expert_id: str | None
+):
     yield MagicMock(access_token=SecretStr("synthetic-token"))
 
 
@@ -46,6 +53,9 @@ async def run(name: str, **arguments):
         spec=ChatSession,
         session_id="chat",
         user_id="owner",
+        expert_id=None,
+        organization_id=None,
+        external_caller=False,
         metadata=MagicMock(origin="scheduled"),
     )
     return await TOOL_REGISTRY[name].execute("owner", session, "call", **arguments)
@@ -125,6 +135,38 @@ async def test_a_raise_in_the_chat_needs_its_own_approval(tools, plan, monkeypat
     assert paid.status == "submitted"
     assert tools.calls == ["create_delegated", "pay"]
     assert tools.amounts == [250, 250]
+
+
+@pytest.mark.asyncio
+async def test_a_raise_landing_mid_completion_is_not_paid_on_the_old_approval(
+    tools, plan, monkeypatch
+):
+    """Tools run in parallel, so a raise can land after the complete tool read
+    the approval and before the broker's lock. The broker checks the approval's
+    revision under that lock, so Link never gets the raised total already
+    approved on the old one's approval."""
+    for module in (request_tools, raise_tools):
+        monkeypatch.setattr(
+            module, "in_app_approval_allowed", AsyncMock(return_value=True)
+        )
+    created = await request(plan)
+    await approval.decide(
+        created.checkout_id, "owner", "chat", approve=True, user_agent=None
+    )
+    complete_now = request_tools.engine.complete
+
+    async def raised_first(checkout):
+        await raise_to(created.checkout_id, 250)
+        return await complete_now(checkout)
+
+    monkeypatch.setattr(request_tools.engine, "complete", raised_first)
+
+    result = await run("browser_complete_link_payment", checkout_id=created.checkout_id)
+
+    assert (
+        ErrorResponse.model_validate_json(result.output).message == APPROVAL_SUPERSEDED
+    )
+    assert tools.calls == []
 
 
 @pytest.mark.asyncio

@@ -65,8 +65,12 @@ class CheckoutReference(Principal):
 
 class AuthorizedCheckout(CheckoutReference):
     access_token: SecretStr
-    # The customer's in-chat approval, when the checkout is waiting for one.
+    # The customer's in-chat approval, when the checkout is waiting for one,
+    # and the revision of the purchase it was given for. Link's
+    # approval_details names no amount, so this is what ties the approval to a
+    # total: one raised since needs an approval of its own.
     approval: ApprovalDetails | None = None
+    approved_revision: int | None = Field(default=None, ge=0)
 
     _serialize_token = field_serializer("access_token")(reveal_token)
 
