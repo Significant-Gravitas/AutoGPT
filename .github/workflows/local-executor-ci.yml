@@ -8,10 +8,12 @@ on:
     branches: [master, dev]
     paths:
       - ".github/workflows/local-executor-ci.yml"
+      - ".pre-commit-config.yaml" # the Ruff version the lint job runs
       - "local_executor/**"
   pull_request:
     paths:
       - ".github/workflows/local-executor-ci.yml"
+      - ".pre-commit-config.yaml"
       - "local_executor/**"
   workflow_dispatch:
 
@@ -88,8 +90,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install ruff
-        run: python -m pip install "ruff>=0.4"
+      # The Ruff the pre-commit hooks run, whose rev in .pre-commit-config.yaml
+      # is the one to bump: Ruff's output changes between releases, so a newer
+      # one could fail code the hooks passed, or pass code they would rewrite.
+      - name: Install the Ruff that pre-commit pins
+        working-directory: .
+        run: |
+          version=$(sed -n '/astral-sh\/ruff-pre-commit/{n;s/^ *rev: *v//p;}' .pre-commit-config.yaml)
+          if [ -z "$version" ]; then
+            echo "::error::No ruff-pre-commit rev found in .pre-commit-config.yaml"
+            exit 1
+          fi
+          python -m pip install "ruff==$version"
 
       - name: ruff check
         run: ruff check .
