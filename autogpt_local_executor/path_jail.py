@@ -420,9 +420,7 @@ def _refuse_other_windows_permissions(path: Path, temp: Path) -> None:
             errno.EACCES, f"The permissions of {path} couldn't be compared ({exc})"
         ) from exc
     if not same:
-        raise PermissionError(
-            errno.EACCES, f"{path} has permissions a replacement wouldn't keep"
-        )
+        raise PermissionError(errno.EACCES, f"{path} has permissions a replacement wouldn't keep")
 
 
 def _windows_owner_and_dacl(path: Path) -> str:

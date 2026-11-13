@@ -2183,8 +2183,7 @@ def _audit_arguments(
         # A `keys` list holds one key each, none a chord written as one.
         item_key = None if key == "keys" else key
         return [
-            _audit_arguments(item, item_key, truncate=truncate, platform=platform)
-            for item in value
+            _audit_arguments(item, item_key, truncate=truncate, platform=platform) for item in value
         ]
     if isinstance(value, str):
         # press_key takes any single character, so a secret can be typed a

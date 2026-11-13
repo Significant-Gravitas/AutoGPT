@@ -1467,9 +1467,7 @@ async def test_a_write_keeps_a_windows_files_own_permissions(tmp_path: Path) -> 
 
     target = tmp_path / "private.txt"
     target.write_text("the person's notes", encoding="utf-8")
-    account = subprocess.run(
-        ["whoami"], capture_output=True, text=True, check=True
-    ).stdout.strip()
+    account = subprocess.run(["whoami"], capture_output=True, text=True, check=True).stdout.strip()
     subprocess.run(
         ["icacls", str(target), "/inheritance:r", "/grant:r", f"{account}:(F)"],
         capture_output=True,
