@@ -143,7 +143,8 @@ class ReadDiscordMessagesBlock(Block):
 
             await client.close()
 
-        await client.start(token.get_secret_value())
+        async with client:
+            await client.start(token.get_secret_value())
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -325,7 +326,8 @@ class SendDiscordMessageBlock(Block):
                 finally:
                     await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     def chunk_message(self, message: str, limit: int = 2000) -> list:
@@ -431,7 +433,8 @@ class SendDiscordDMBlock(Block):
             finally:
                 await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
@@ -608,7 +611,8 @@ class SendDiscordEmbedBlock(Block):
             finally:
                 await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
@@ -811,7 +815,8 @@ class SendDiscordFileBlock(Block):
             finally:
                 await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
@@ -945,7 +950,8 @@ class ReplyToDiscordMessageBlock(Block):
             finally:
                 await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
@@ -1060,7 +1066,8 @@ class DiscordUserInfoBlock(Block):
             finally:
                 await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
@@ -1194,7 +1201,8 @@ class DiscordChannelInfoBlock(Block):
             result["error"] = f"Channel not found: {channel_identifier}"
             await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
@@ -1405,7 +1413,8 @@ class CreateDiscordThreadBlock(Block):
             finally:
                 await client.close()
 
-        await client.start(token)
+        async with client:
+            await client.start(token)
         return result
 
     async def run(
