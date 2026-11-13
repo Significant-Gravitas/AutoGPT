@@ -5,6 +5,7 @@ its providers' platform keys as ``"{provider}-default"``. Code asking "is this
 ours?" must get the same answer for both (SECRT-3207).
 """
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from pydantic import SecretStr
@@ -56,3 +57,37 @@ def test_providers_with_a_runnable_sdk_key_count_as_supplied():
         assert not is_system_provider("linear")
     assert "firecrawl" in providers
     assert "linear" not in providers
+
+
+class _Secrets:
+    """Settings secrets with only the given keys set."""
+
+    def __init__(self, **keys: str) -> None:
+        self._keys = keys
+
+    def __getattr__(self, name: str) -> str:
+        return self._keys.get(name, "")
+
+
+def _system_providers_with(**keys: str) -> set[str]:
+    with (
+        patch(
+            "backend.integrations.credentials_store.settings",
+            SimpleNamespace(secrets=_Secrets(**keys)),
+        ),
+        patch(
+            "backend.sdk.registry.AutoRegistry.get_all_credentials",
+            return_value=[],
+        ),
+    ):
+        return system_providers()
+
+
+def test_a_built_in_provider_without_a_platform_key_is_not_supplied():
+    """A keyless install supplies only the always-available Ollama credential,
+    the same set ``get_all_creds`` hands out (#16772)."""
+    assert _system_providers_with() == {"ollama"}
+
+
+def test_a_built_in_provider_with_a_platform_key_is_supplied():
+    assert _system_providers_with(openai_api_key="sk-test") == {"ollama", "openai"}
