@@ -284,8 +284,10 @@ Every `COMPUTER_TOOL_CALL` the computer-use handler takes writes a
 call, and a call refused before the handler (computer use off, or not
 granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
-`prompt_text`, a single character pressed with `press_key` or a shift-only
-`hotkey`) replaced by its length and other long strings cut short, the
+`prompt_text`, a single character pressed with `press_key`, and the character
+of a `hotkey` chord that types one: one that only holds Shift, or on macOS
+also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr)
+replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as
 `CANCELLED`: the shim stopped the driver to end it, but an action it
