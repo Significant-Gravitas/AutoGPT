@@ -19,6 +19,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
+        # The sign-in and the platform connection arrive one package per PR,
+        # as their security updates do (below).
+        exclude-patterns:
+          - "keyring"
+          - "httpx*"
+          - "websockets"
 
   # autogpt_libs (Poetry project)
   - package-ecosystem: "pip"
