@@ -2,6 +2,7 @@ import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSe
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
+import { Key, storage } from "@/services/storage/local-storage";
 import {
   act,
   fireEvent,
@@ -9,47 +10,17 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
-import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentChats } from "../RecentChats";
+import {
+  type SidebarChat,
+  type SidebarRequest,
+  groupChats,
+  sidebarBackend,
+} from "./sidebarBackend";
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useGetFlag: (flag: string) => flag === "chat-pinning",
-  };
-});
-
-interface SessionSeed {
-  id: string;
-  title: string;
-}
-
-let listed: SessionSeed[] = [];
-let listRequests: string[] = [];
-
-function toSummary(seed: SessionSeed) {
-  return {
-    id: seed.id,
-    title: seed.title,
-    is_processing: false,
-    is_pinned: false,
-    // `Z`-suffixed, so the API client turns them into `Date`s as in the app.
-    created_at: "2026-06-30T10:00:00Z",
-    updated_at: "2026-06-30T10:00:00Z",
-  };
-}
-
-function seedPages(count: number) {
-  listed = Array.from({ length: count }, (_, i) => ({
-    id: `s${i}`,
-    title: `Chat ${i}`,
-  }));
-}
+let chats: SidebarChat[] = [];
+let requests: SidebarRequest[] = [];
 
 function renderRecentChats() {
   return render(
@@ -59,10 +30,8 @@ function renderRecentChats() {
   );
 }
 
-async function tick(ms: number) {
-  await act(async () => {
-    vi.advanceTimersByTime(ms);
-  });
+function reads(path: SidebarRequest["path"]) {
+  return requests.filter((request) => request.path === path).length;
 }
 
 /** Lets in-flight requests resolve and React commit what they returned. */
@@ -72,12 +41,20 @@ async function settle() {
   });
 }
 
-async function loadOlderChats() {
-  fireEvent.click(await screen.findByRole("button", { name: /load more/i }));
+async function nextRefresh() {
+  const before = reads("session-groups");
+  await act(async () => {
+    vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
+  });
+  await waitFor(() => expect(reads("session-groups")).toBeGreaterThan(before));
+  await settle();
+}
+
+async function showOlderOttoChats() {
   fireEvent.click(
-    await screen.findByRole("button", { name: "Load all Otto chats" }),
+    await screen.findByRole("button", { name: "Show more Otto chats" }),
   );
-  await screen.findByText("Chat 74");
+  await screen.findByText("autopilot chat 13");
   await settle();
 }
 
@@ -85,20 +62,10 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-06-30T12:00:00Z"));
   useCopilotUIStore.setState({ sessionToDelete: null });
-  seedPages(75);
-  listRequests = [];
-  server.use(
-    http.get("*/api/chat/sessions", ({ request }) => {
-      const url = new URL(request.url);
-      const offset = Number(url.searchParams.get("offset") ?? "0");
-      const limit = Number(url.searchParams.get("limit") ?? "50");
-      listRequests.push(String(offset));
-      return HttpResponse.json({
-        sessions: listed.slice(offset, offset + limit).map(toSummary),
-        total: listed.length,
-      });
-    }),
-  );
+  storage.clean(Key.RECENT_CHATS_COLLAPSED_GROUPS);
+  chats = groupChats(30);
+  requests = [];
+  server.use(...sidebarBackend(() => chats, requests));
 });
 
 afterEach(() => {
@@ -107,44 +74,37 @@ afterEach(() => {
 });
 
 describe("RecentChats — 10-second refresh", () => {
-  it("requests only the first page once older pages are loaded", async () => {
+  it("shows a chat renamed on the server after one interval", async () => {
     renderRecentChats();
-    await loadOlderChats();
-    listRequests = [];
+    await screen.findByText("autopilot chat 2");
 
-    await tick(SESSION_LIST_REFETCH_INTERVAL_MS);
-    await waitFor(() => expect(listRequests.length).toBeGreaterThan(0));
-    await settle();
+    chats[1] = { ...chats[1], title: "Renamed on the server" };
+    await nextRefresh();
 
-    expect(listRequests).toEqual(["0"]);
+    expect(screen.getByText("Renamed on the server")).toBeDefined();
   });
 
-  it("still shows a renamed chat on the first page after one interval", async () => {
+  it("refreshes the grouped read alone, not a group's older pages", async () => {
     renderRecentChats();
-    await loadOlderChats();
-    listRequests = [];
+    await showOlderOttoChats();
+    const pagesBefore = reads("sessions");
 
-    listed[3] = { ...listed[3], title: "Renamed on the server" };
-    await tick(SESSION_LIST_REFETCH_INTERVAL_MS);
+    await nextRefresh();
 
-    expect(await screen.findByText("Renamed on the server")).toBeDefined();
-    expect(listRequests).toEqual(["0"]);
-    expect(screen.getByText("Chat 74")).toBeDefined();
+    expect(reads("sessions")).toBe(pagesBefore);
+    expect(screen.getByText("autopilot chat 13")).toBeDefined();
   });
 
-  it("refetches every loaded page when a new chat shifts the first page", async () => {
+  it("puts a new chat on top of a group whose older chats are shown", async () => {
     renderRecentChats();
-    await loadOlderChats();
+    await showOlderOttoChats();
 
-    listed = [{ id: "new", title: "Brand new chat" }, ...listed];
-    await tick(SESSION_LIST_REFETCH_INTERVAL_MS);
+    chats = [{ id: "new", title: "Brand new chat" }, ...chats];
+    await nextRefresh();
 
-    expect(await screen.findByText("Brand new chat")).toBeDefined();
-    // Chat 49 was pushed from the first page onto the second; it must not
-    // fall into the gap between them.
-    await waitFor(() => expect(screen.getByText("Chat 49")).toBeDefined());
-    for (let i = 0; i < 75; i++) {
-      expect(screen.getAllByText(`Chat ${i}`)).toHaveLength(1);
+    expect(screen.getByText("Brand new chat")).toBeDefined();
+    for (let i = 1; i <= 12; i++) {
+      expect(screen.getAllByText(`autopilot chat ${i}`)).toHaveLength(1);
     }
   });
 });

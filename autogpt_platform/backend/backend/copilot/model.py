@@ -498,6 +498,16 @@ class ChatSessionInfo(BaseModel):
         )
 
 
+class ChatSessionGroup(BaseModel):
+    """One expert's sessions as the sidebar lists them; Otto's own when
+    ``expert_id`` is None. ``sessions`` holds only the newest few, while
+    ``total`` counts all of them."""
+
+    expert_id: str | None = None
+    total: int
+    sessions: list[ChatSessionInfo]
+
+
 class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
     # In-flight tool-call names for the CURRENT turn.  Not persisted to
@@ -1786,6 +1796,8 @@ async def get_user_sessions(
     title_contains: str | None = None,
     expert_id: str | None = None,
     pinned_first: bool = True,
+    autopilot_only: bool = False,
+    pinned: bool | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1793,7 +1805,9 @@ async def get_user_sessions(
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
 
-    ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``expert_id`` restricts the listing to sessions scoped to that expert,
+    ``autopilot_only`` to Otto's own sessions (no expert). ``pinned`` keeps
+    only pinned (``True``) or only unpinned (``False``) sessions.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
@@ -1808,14 +1822,60 @@ async def get_user_sessions(
             organization_id=organization_id,
             title_contains=title_contains,
             expert_id=expert_id,
+            autopilot_only=autopilot_only,
             pinned_first=pinned_first,
+            pinned=pinned,
         ),
         db.get_user_session_count(
-            user_id, organization_id=organization_id, expert_id=expert_id
+            user_id,
+            organization_id=organization_id,
+            expert_id=expert_id,
+            autopilot_only=autopilot_only,
+            pinned=pinned,
         ),
     )
 
     return sessions, total_count
+
+
+# The sidebar lists every pinned session; this only bounds the read.
+MAX_PINNED_SESSIONS = 100
+
+
+async def get_user_session_groups(
+    user_id: str,
+    per_group: int,
+    organization_id: str | None = None,
+    pinned_separately: bool = False,
+) -> tuple[list[ChatSessionGroup], list[ChatSessionInfo]]:
+    """The sidebar's sessions: one group per expert, Otto's own included, each
+    with its real total and newest ``per_group`` sessions, most recently
+    active first.
+
+    With ``pinned_separately`` the pinned sessions come back on their own,
+    newest first, and are left out of the groups and their totals; without
+    it the second list is empty.
+    """
+    db = chat_db()
+    if not pinned_separately:
+        groups = await db.get_user_chat_session_groups(
+            user_id, per_group, organization_id=organization_id
+        )
+        return groups, []
+    groups, pinned = await asyncio.gather(
+        db.get_user_chat_session_groups(
+            user_id, per_group, organization_id=organization_id, pinned=False
+        ),
+        db.get_user_chat_sessions(
+            user_id,
+            MAX_PINNED_SESSIONS,
+            0,
+            organization_id=organization_id,
+            pinned_first=False,
+            pinned=True,
+        ),
+    )
+    return groups, pinned
 
 
 async def delete_chat_session(

@@ -1,10 +1,12 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { server } from "@/mocks/mock-server";
+import { Key, storage } from "@/services/storage/local-storage";
 import {
+  act,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
@@ -13,6 +15,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { RecentChats } from "../RecentChats";
+import {
+  type SidebarChat,
+  type SidebarRequest,
+  groupChats,
+  groupedRead,
+  sidebarBackend,
+} from "./sidebarBackend";
 
 const mockEnabledFlags = new Set<string>();
 
@@ -27,26 +36,13 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-interface SessionSeed {
-  id: string;
-  title: string;
-  updated_at: string;
-  is_pinned?: boolean;
-}
+let chats: SidebarChat[] = [];
+let requests: SidebarRequest[] = [];
 
-function makeSession(seed: SessionSeed) {
-  return {
-    id: seed.id,
-    title: seed.title,
-    is_processing: false,
-    is_pinned: seed.is_pinned ?? false,
-    created_at: seed.updated_at,
-    updated_at: seed.updated_at,
-  };
+function serve(nextChats: SidebarChat[]) {
+  chats = nextChats;
+  server.use(...sidebarBackend(() => chats, requests));
 }
-
-const TODAY = "2026-06-30T10:00:00";
-const YESTERDAY = "2026-06-29T10:00:00";
 
 function renderRecentChats() {
   return render(
@@ -56,10 +52,20 @@ function renderRecentChats() {
   );
 }
 
+function ottoGroup() {
+  const group = screen
+    .getByRole("button", { name: "Otto chats" })
+    .closest("div")?.parentElement;
+  if (!group) throw new Error("Otto group not found");
+  return group;
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-06-30T12:00:00"));
   useCopilotUIStore.setState({ sessionToDelete: null });
+  requests = [];
+  storage.clean(Key.RECENT_CHATS_COLLAPSED_GROUPS);
   server.use(getListExpertIdentitiesMockHandler([]));
 });
 
@@ -71,57 +77,48 @@ afterEach(() => {
 
 describe("RecentChats — empty + loading", () => {
   it("shows the empty state when there are no sessions", async () => {
-    server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
+    serve([]);
     renderRecentChats();
     expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
   });
 });
 
 describe("RecentChats — grouped list", () => {
-  it("keeps chats from different dates together under Otto", async () => {
-    const sessions = [
-      makeSession({ id: "a", title: "Today chat", updated_at: TODAY }),
-      makeSession({
-        id: "b",
-        title: "Yesterday chat",
-        updated_at: YESTERDAY,
-      }),
-    ];
-    server.use(
-      getGetV2ListSessionsMockHandler200({ sessions, total: sessions.length }),
-    );
+  it("shows Otto's chats from different dates together, without a click", async () => {
+    serve([
+      { id: "a", title: "Today chat" },
+      { id: "b", title: "Yesterday chat" },
+    ]);
     renderRecentChats();
 
     expect(await screen.findByText("Today chat")).toBeDefined();
+    expect(screen.getByText("Yesterday chat")).toBeDefined();
     expect(screen.getByRole("button", { name: "Otto chats" })).toBeDefined();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Load all Otto chats" }),
-    );
-    expect(await screen.findByText("Yesterday chat")).toBeDefined();
     expect(screen.queryByText("Today")).toBeNull();
     expect(screen.queryByText("Yesterday")).toBeNull();
+  });
+
+  it("asks the server for each group's newest three chats in one read", async () => {
+    serve(groupChats(2));
+    renderRecentChats();
+    await screen.findByText("autopilot chat 1");
+
+    const reads = requests.filter((r) => r.path === "session-groups");
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads[0].params.get("per_group")).toBe("3");
+    expect(requests.some((r) => r.path === "sessions")).toBe(false);
   });
 });
 
 describe("RecentChats — pinned split", () => {
-  const pinnedAndDated = [
-    makeSession({
-      id: "pinned",
-      title: "Pinned chat",
-      updated_at: YESTERDAY,
-      is_pinned: true,
-    }),
-    makeSession({ id: "loose", title: "Loose chat", updated_at: TODAY }),
+  const pinnedAndLoose: SidebarChat[] = [
+    { id: "loose", title: "Loose chat" },
+    { id: "pinned", title: "Pinned chat", is_pinned: true },
   ];
 
   it("lifts pinned sessions out of the expert groups", async () => {
     mockEnabledFlags.add("chat-pinning");
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: pinnedAndDated,
-        total: pinnedAndDated.length,
-      }),
-    );
+    serve(pinnedAndLoose);
     renderRecentChats();
 
     const pinnedGroup = (await screen.findByText("Pinned")).closest(
@@ -129,83 +126,61 @@ describe("RecentChats — pinned split", () => {
     )?.parentElement;
     if (!pinnedGroup) throw new Error("pinned group not found");
     expect(within(pinnedGroup).getByText("Pinned chat")).toBeDefined();
-
-    const ottoGroup = screen
-      .getByRole("button", { name: "Otto chats" })
-      .closest("div")?.parentElement;
-    if (!ottoGroup) throw new Error("Otto group not found");
-    expect(within(ottoGroup).getByText("Loose chat")).toBeDefined();
-    expect(within(ottoGroup).queryByText("Pinned chat")).toBeNull();
+    expect(within(ottoGroup()).getByText("Loose chat")).toBeDefined();
+    expect(within(ottoGroup()).queryByText("Pinned chat")).toBeNull();
+    expect(
+      within(screen.getByRole("button", { name: "Otto chats" })).getByText("1"),
+    ).toBeDefined();
+    const read = requests.find((r) => r.path === "session-groups");
+    expect(read?.params.get("pinned_separately")).toBe("true");
   });
 
   it("keeps pinned sessions in their expert group when the pinning flag is off", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: pinnedAndDated,
-        total: pinnedAndDated.length,
-      }),
-    );
+    serve(pinnedAndLoose);
     renderRecentChats();
 
     await screen.findByText("Pinned chat");
     expect(screen.queryByText("Pinned")).toBeNull();
-    const ottoGroup = screen
-      .getByRole("button", { name: "Otto chats" })
-      .closest("div")?.parentElement;
-    if (!ottoGroup) throw new Error("Otto group not found");
-    expect(within(ottoGroup).getByText("Pinned chat")).toBeDefined();
+    expect(within(ottoGroup()).getByText("Pinned chat")).toBeDefined();
   });
 });
 
-describe("RecentChats — load more", () => {
-  it("hides 'Load more' when all sessions are loaded", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [makeSession({ id: "a", title: "Only", updated_at: TODAY })],
-        total: 1,
-      }),
-    );
+describe("RecentChats — show more", () => {
+  it("shows a small group whole, with no Show more", async () => {
+    serve([{ id: "a", title: "Only" }]);
     renderRecentChats();
     await screen.findByText("Only");
-    expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /show more/i })).toBeNull();
   });
 
-  it("shows 'Load more' and fetches the next page", async () => {
-    const seenOffsets: string[] = [];
-    server.use(
-      http.get("*/api/chat/sessions", ({ request }) => {
-        const offset = new URL(request.url).searchParams.get("offset") ?? "0";
-        seenOffsets.push(offset);
-        const sessions =
-          Number(offset) === 0
-            ? [makeSession({ id: "p0", title: "Page 0", updated_at: TODAY })]
-            : [makeSession({ id: "p1", title: "Page 1", updated_at: TODAY })];
-        return HttpResponse.json({ sessions, total: 2 });
-      }),
-    );
+  it("has no list-wide Load more, only each group's own Show more", async () => {
+    serve(groupChats(60));
     renderRecentChats();
 
-    const loadMore = await screen.findByRole("button", { name: /load more/i });
-    fireEvent.click(loadMore);
+    expect(
+      await screen.findByRole("button", { name: "Show more Otto chats" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /load more/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /load all/i })).toBeNull();
+  });
+
+  it("asks only for the group's unpinned chats when pinned ones sit apart", async () => {
+    mockEnabledFlags.add("chat-pinning");
+    serve(groupChats(5));
+    renderRecentChats();
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Load all Otto chats" }),
+      await screen.findByRole("button", { name: "Show more Otto chats" }),
     );
-    expect(await screen.findByText("Page 1")).toBeDefined();
-    expect(seenOffsets).toContain("1");
+    expect(await screen.findByText("autopilot chat 5")).toBeDefined();
+    const page = requests.find((r) => r.path === "sessions");
+    expect(page?.params.get("pinned")).toBe("false");
   });
 });
 
 describe("RecentChats — delete flow", () => {
   it("stages a session for deletion when Delete is chosen", async () => {
-    server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          makeSession({ id: "x", title: "Deletable", updated_at: TODAY }),
-        ],
-        total: 1,
-      }),
-    );
+    serve([{ id: "x", title: "Deletable" }]);
     renderRecentChats();
 
     const row = (await screen.findByText("Deletable")).closest("li");
@@ -220,6 +195,59 @@ describe("RecentChats — delete flow", () => {
 
     expect(useCopilotUIStore.getState().sessionToDelete).toMatchObject({
       id: "x",
+    });
+  });
+
+  it("keeps a deleted chat out of its group and count while the refetch is out", async () => {
+    serve(groupChats(2));
+    let deletes = 0;
+    server.use(
+      http.delete("*/api/chat/sessions/:id", ({ params }) => {
+        deletes += 1;
+        chats = chats.filter((chat) => chat.id !== params.id);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderRecentChats();
+    const row = (await screen.findByText("autopilot chat 1")).closest("li");
+    if (!row) throw new Error("row not found");
+
+    // Every grouped read after this point waits, so what the sidebar shows
+    // once the delete succeeds comes from its own cache.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get("*/api/chat/session-groups", async ({ request }) => {
+        await held;
+        return HttpResponse.json(
+          groupedRead(chats, new URL(request.url).searchParams),
+        );
+      }),
+    );
+    fireEvent.pointerDown(
+      within(row).getByRole("button", { name: /chat actions/i }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /delete chat/i }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deletes).toBe(1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(screen.queryByText("autopilot chat 1")).toBeNull();
+    expect(screen.getByText("autopilot chat 2")).toBeDefined();
+    expect(
+      within(screen.getByRole("button", { name: "Otto chats" })).getByText("1"),
+    ).toBeDefined();
+
+    release();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
     });
   });
 });

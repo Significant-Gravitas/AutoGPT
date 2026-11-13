@@ -4560,11 +4560,69 @@
         }
       }
     },
+    "/api/chat/session-groups": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Session Groups",
+        "description": "List the user's chats grouped by expert, for the sidebar.\n\nEvery group, Otto's own (``expert_id`` null) included, carries its real\nchat count and its newest ``per_group`` chats; the most recently active\ngroup comes first. Page further into a group with ``GET /sessions`` and\n``expert_id``, or ``autopilot_only`` for Otto's.",
+        "operationId": "getV2ListSessionGroups",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "per_group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 3,
+              "title": "Per Group"
+            }
+          },
+          {
+            "name": "pinned_separately",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Return pinned chats in `pinned` and leave them out of the groups and their totals.",
+              "default": false,
+              "title": "Pinned Separately"
+            },
+            "description": "Return pinned chats in `pinned` and leave them out of the groups and their totals."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionGroupsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n    autopilot_only: Restrict the listing to sessions with no expert.\n    pinned: Restrict the listing to pinned or to unpinned sessions.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4614,6 +4672,29 @@
               "title": "Pinned First"
             },
             "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread."
+          },
+          {
+            "name": "autopilot_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only Otto's own chats, those with no expert.",
+              "default": false,
+              "title": "Autopilot Only"
+            },
+            "description": "Only Otto's own chats, those with no expert."
+          },
+          {
+            "name": "pinned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Only pinned (true) or only unpinned (false) chats; both when left out.",
+              "title": "Pinned"
+            },
+            "description": "Only pinned (true) or only unpinned (false) chats; both when left out."
           }
         ],
         "responses": {
@@ -30443,6 +30524,25 @@
         "required": ["files"],
         "title": "ListFilesResponse"
       },
+      "ListSessionGroupsResponse": {
+        "properties": {
+          "groups": {
+            "items": { "$ref": "#/components/schemas/SessionGroupResponse" },
+            "type": "array",
+            "title": "Groups"
+          },
+          "pinned": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Pinned",
+            "description": "Pinned chats, newest first, when asked for separately."
+          }
+        },
+        "type": "object",
+        "required": ["groups"],
+        "title": "ListSessionGroupsResponse",
+        "description": "The sidebar's chats, grouped by expert, most recently active first."
+      },
       "ListSessionsResponse": {
         "properties": {
           "sessions": {
@@ -35403,6 +35503,29 @@
         "required": ["id", "created_at", "updated_at", "user_id", "messages"],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
+      },
+      "SessionGroupResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Every chat in the group, not just those listed."
+          },
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions",
+            "description": "The group's newest chats, newest first."
+          }
+        },
+        "type": "object",
+        "required": ["total", "sessions"],
+        "title": "SessionGroupResponse",
+        "description": "One expert's chats in the sidebar; Otto's own when ``expert_id`` is null."
       },
       "SessionRow": {
         "properties": {

@@ -1,5 +1,18 @@
 import type { ExpertIdentity } from "@/app/(platform)/copilot/useExpertMap";
+import type { SessionGroupResponse } from "@/app/api/__generated__/models/sessionGroupResponse";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import { Key, storage } from "@/services/storage/local-storage";
+
+/** Chats a group shows before its "Show more", which is also how many the
+ *  sidebar asks the server for per group. */
+export const GROUP_PREVIEW_COUNT = 3;
+/** Chats each press of a group's "Show more" adds. */
+export const GROUP_SHOW_MORE_STEP = 10;
+/** Chats per request when a group pages in its older chats. */
+export const GROUP_PAGE_LIMIT = 20;
+
+// The key Otto's own group is remembered under; experts use their id.
+const OTTO_GROUP_KEY = "autopilot";
 
 // Fired experts can't be addressed, so their group gets no new-chat entry:
 // the deep link would only fall back to Otto. `new=1` keeps the page on the
@@ -19,15 +32,13 @@ export const NEW_EXPERT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Experts who joined in the last week and have no chat yet, newest first.
  *  Each gets a sidebar group leading to their first chat; once a chat exists
- *  their normal group takes over. Only loaded chats are seen, so an expert
- *  whose chats are all past the first page still gets one, and its link then
- *  opens the chat they already have. */
+ *  their normal group takes over. */
 export function getNewExpertsWithoutChats(
   activeExperts: ExpertIdentity[],
-  sessions: SessionSummaryResponse[],
+  expertIdsWithChats: (string | null | undefined)[],
   now: number,
 ) {
-  const withChats = new Set(sessions.map((session) => session.expert_id));
+  const withChats = new Set(expertIdsWithChats);
   return activeExperts
     .filter((expert) => {
       const joined = expert.createdAt?.getTime();
@@ -40,4 +51,74 @@ export function getNewExpertsWithoutChats(
     .sort(
       (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0),
     );
+}
+
+/** The groups without the chats being deleted, each total lowered to match;
+ *  a group left with no chats is dropped. Untouched groups keep their
+ *  object. */
+export function withoutDeletingSessions(
+  groups: SessionGroupResponse[],
+  deletingIds: string[],
+) {
+  if (!deletingIds.length) return groups;
+  return groups.flatMap((group) => {
+    const sessions = group.sessions.filter(
+      (session) => !deletingIds.includes(session.id),
+    );
+    const removed = group.sessions.length - sessions.length;
+    if (!removed) return [group];
+    const total = group.total - removed;
+    return total > 0 ? [{ ...group, total, sessions }] : [];
+  });
+}
+
+/** A group's chats, newest first: its preview, which the sidebar's poll keeps
+ *  fresh, over the older pages read when "Show more" was pressed, each chat
+ *  once. */
+export function mergeGroupSessions(
+  preview: SessionSummaryResponse[],
+  older: SessionSummaryResponse[],
+) {
+  if (!older.length) return preview;
+  const inPreview = new Set(preview.map((session) => session.id));
+  return [
+    ...preview,
+    ...older.filter((session) => !inPreview.has(session.id)),
+  ].sort(newestFirst);
+}
+
+function newestFirst(a: SessionSummaryResponse, b: SessionSummaryResponse) {
+  const byTime =
+    new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  if (byTime) return byTime;
+  if (a.id === b.id) return 0;
+  return a.id < b.id ? 1 : -1;
+}
+
+// Collapsing a group is a per-device preference, kept as the keys of the
+// groups the user collapsed. Every group starts open.
+export function isGroupCollapsed(expertId: string | null) {
+  return readCollapsedGroups().includes(expertId ?? OTTO_GROUP_KEY);
+}
+
+export function setGroupCollapsed(expertId: string | null, collapsed: boolean) {
+  const key = expertId ?? OTTO_GROUP_KEY;
+  const others = readCollapsedGroups().filter((group) => group !== key);
+  storage.set(
+    Key.RECENT_CHATS_COLLAPSED_GROUPS,
+    JSON.stringify(collapsed ? [...others, key] : others),
+  );
+}
+
+function readCollapsedGroups(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(
+      storage.get(Key.RECENT_CHATS_COLLAPSED_GROUPS) ?? "[]",
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((key): key is string => typeof key === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }

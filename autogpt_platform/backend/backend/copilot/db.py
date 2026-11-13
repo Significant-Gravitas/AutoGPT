@@ -31,6 +31,7 @@ from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
     CHAT_STATUS_RUNNING,
     ChatMessage,
+    ChatSessionGroup,
     ChatSessionInfo,
     ChatSessionMetadata,
     _get_session_lock,
@@ -823,6 +824,7 @@ async def get_user_chat_sessions(
     autopilot_only: bool = False,
     experts_only: bool = False,
     pinned_first: bool = True,
+    pinned: bool | None = None,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -844,7 +846,117 @@ async def get_user_chat_sessions(
 
     ``pinned_first=False`` provides strict recency ordering for internal
     adoption flows; the user-facing sidebar keeps pinned sessions first.
+
+    ``pinned`` keeps only pinned (``True``) or only unpinned (``False``)
+    sessions; ``None`` keeps both.
     """
+    where, params = _visible_sessions_where(
+        user_id,
+        organization_id,
+        title_contains=title_contains,
+        expert_id=expert_id,
+        autopilot_only=autopilot_only,
+        experts_only=experts_only,
+        pinned=pinned,
+    )
+    params.extend((limit, offset))
+    # "id" breaks ties: without a total order, LIMIT/OFFSET paging can skip or
+    # repeat a row when two sessions share an updatedAt.
+    ordering = (
+        '"isPinned" DESC, "updatedAt" DESC, "id" DESC'
+        if pinned_first
+        else '"updatedAt" DESC, "id" DESC'
+    )
+    query = (
+        'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
+        + where
+        + f" ORDER BY {ordering} "
+        + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
+    )
+    sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
+    return [ChatSessionInfo.from_db(s) for s in sessions]
+
+
+async def get_user_session_count(
+    user_id: str,
+    organization_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_only: bool = False,
+    pinned: bool | None = None,
+) -> int:
+    """Get the total number of chat sessions for a user.
+
+    Applies the same dream-session exclusion, org scoping, and expert
+    filter as :func:`get_user_chat_sessions` so pagination totals always
+    match the visible list.
+    """
+    where, params = _visible_sessions_where(
+        user_id,
+        organization_id,
+        expert_id=expert_id,
+        autopilot_only=autopilot_only,
+        pinned=pinned,
+    )
+    rows = await db.query_raw_with_schema(
+        'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
+        + where,
+        *params,
+    )
+    return rows[0]["count"] if rows else 0
+
+
+async def get_user_chat_session_groups(
+    user_id: str,
+    per_group: int,
+    organization_id: str | None = None,
+    pinned: bool | None = None,
+) -> list[ChatSessionGroup]:
+    """The user's sessions grouped by expert, Otto's own (``expert_id`` None)
+    included: each group's real total and its ``per_group`` newest sessions,
+    the most recently active group first.
+
+    Same visibility rules as :func:`get_user_chat_sessions`, so a group's
+    total matches what paging through it with ``expert_id`` (or
+    ``autopilot_only``) returns.
+    """
+    where, params = _visible_sessions_where(user_id, organization_id, pinned=pinned)
+    totals, rows = await asyncio.gather(
+        db.query_raw_with_schema(
+            'SELECT "expertId", COUNT(*)::int AS "total" '
+            'FROM {schema_prefix}"ChatSession" WHERE ' + where + ' GROUP BY "expertId"',
+            *params,
+        ),
+        db.query_raw_with_schema(
+            'SELECT * FROM {schema_prefix}"ChatSession" WHERE "id" IN ('
+            'SELECT "id" FROM (SELECT "id", ROW_NUMBER() OVER ('
+            'PARTITION BY "expertId" ORDER BY "updatedAt" DESC, "id" DESC'
+            ') AS "rank" FROM {schema_prefix}"ChatSession" WHERE '
+            + where
+            + f') AS "ranked" WHERE "rank" <= ${len(params) + 1})',
+            *params,
+            per_group,
+            model=PrismaChatSession,
+        ),
+    )
+    return _group_newest_sessions(
+        {row["expertId"]: row["total"] for row in totals},
+        [ChatSessionInfo.from_db(row) for row in rows],
+    )
+
+
+def _visible_sessions_where(
+    user_id: str,
+    organization_id: str | None = None,
+    *,
+    title_contains: str | None = None,
+    expert_id: str | None = None,
+    autopilot_only: bool = False,
+    experts_only: bool = False,
+    pinned: bool | None = None,
+) -> tuple[str, list[Any]]:
+    """The WHERE clause, and its parameters, for the sessions a user sees in
+    lists. The session list, its count and the grouped read all build theirs
+    here, so their rows and totals can't drift apart."""
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
     if sum((expert_id is not None, autopilot_only, experts_only)) > 1:
@@ -872,62 +984,35 @@ async def get_user_chat_sessions(
         conditions.append('"expertId" IS NULL')
     elif experts_only:
         conditions.append('"expertId" IS NOT NULL')
-    params.extend((limit, offset))
-    # "id" breaks ties: without a total order, LIMIT/OFFSET paging can skip or
-    # repeat a row when two sessions share an updatedAt.
-    ordering = (
-        '"isPinned" DESC, "updatedAt" DESC, "id" DESC'
-        if pinned_first
-        else '"updatedAt" DESC, "id" DESC'
+    if pinned is not None:
+        conditions.append('"isPinned"' if pinned else 'NOT "isPinned"')
+    return " AND ".join(conditions), params
+
+
+def _group_newest_sessions(
+    totals: dict[str | None, int], sessions: list[ChatSessionInfo]
+) -> list[ChatSessionGroup]:
+    """Builds one group per expert in ``totals``, newest session first, the
+    group with the newest session first. The totals and the rows are two
+    reads, so a group whose sessions were all deleted between them is
+    dropped, and a session whose group appeared in between waits for the
+    next read."""
+    newest_first = sorted(
+        sessions, key=lambda s: (s.updated_at, s.session_id), reverse=True
     )
-    query = (
-        'SELECT * FROM {schema_prefix}"ChatSession" WHERE '
-        + " AND ".join(conditions)
-        + f" ORDER BY {ordering} "
-        + f"LIMIT ${len(params) - 1} OFFSET ${len(params)}"
-    )
-    sessions = await db.query_raw_with_schema(query, *params, model=PrismaChatSession)
-    return [ChatSessionInfo.from_db(s) for s in sessions]
-
-
-async def get_user_session_count(
-    user_id: str,
-    organization_id: str | None = None,
-    expert_id: str | None = None,
-    autopilot_only: bool = False,
-) -> int:
-    """Get the total number of chat sessions for a user.
-
-    Applies the same dream-session exclusion, org scoping, and expert
-    filter as :func:`get_user_chat_sessions` so pagination totals always
-    match the visible list.
-    """
-    if expert_id == "":
-        raise ValueError("expert_id must be non-empty")
-    if expert_id is not None and autopilot_only:
-        raise ValueError("expert_id and autopilot_only are mutually exclusive")
-
-    params: list[Any] = [user_id]
-    conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
-    if organization_id is not None:
-        params.append(organization_id)
-        # Keep in lockstep with get_user_chat_sessions so pagination totals
-        # always match the visible list (expert sessions included).
-        conditions.append(
-            f'("organizationId" = ${len(params)} OR "organizationId" IS NULL'
-            ' OR "expertId" IS NOT NULL)'
+    groups = [
+        ChatSessionGroup(
+            expert_id=expert_id,
+            total=total,
+            sessions=[s for s in newest_first if s.expert_id == expert_id],
         )
-    if expert_id is not None:
-        params.append(expert_id)
-        conditions.append(f'"expertId" = ${len(params)}')
-    elif autopilot_only:
-        conditions.append('"expertId" IS NULL')
-    rows = await db.query_raw_with_schema(
-        'SELECT COUNT(*)::int AS "count" FROM {schema_prefix}"ChatSession" WHERE '
-        + " AND ".join(conditions),
-        *params,
+        for expert_id, total in totals.items()
+    ]
+    return sorted(
+        (group for group in groups if group.sessions),
+        key=lambda g: (g.sessions[0].updated_at, g.sessions[0].session_id),
+        reverse=True,
     )
-    return rows[0]["count"] if rows else 0
 
 
 async def user_has_any_session(user_id: str) -> bool:

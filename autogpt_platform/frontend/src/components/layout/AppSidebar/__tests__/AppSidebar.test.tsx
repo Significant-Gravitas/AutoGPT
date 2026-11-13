@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV2ListSessionGroupsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
   getGetHomeDashboardMockHandler200,
   getGetHomeDashboardResponseMock200,
@@ -97,7 +97,9 @@ function renderSidebar() {
 beforeEach(() => {
   routerPush.mockClear();
   useGetFlagMock.mockReturnValue(false);
-  server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
+  server.use(
+    getGetV2ListSessionGroupsMockHandler200({ groups: [], pinned: [] }),
+  );
 });
 
 afterEach(() => {

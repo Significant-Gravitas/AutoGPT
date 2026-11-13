@@ -22,8 +22,8 @@ import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
-import { ReactNode, useState } from "react";
-import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";
+import type { ReactNode } from "react";
+import { useExpertChatGroup } from "./useExpertChatGroup";
 
 // The chevron, the slot the header reserves next to it, and the new-chat link
 // that floats over that slot are all one size. On touch widths the slot and
@@ -34,38 +34,57 @@ const NEW_CHAT_SLOT_SIZE_CLASS = "size-5 max-md:size-9";
 // trigger's `px-2` (0.5rem) + the chevron's `size-5` (1.25rem) + the `gap-2`
 // between them (0.5rem) = 2.25rem. Change any of the three and this moves.
 const NEW_CHAT_LINK_OFFSET_CLASS = "right-9";
-// Otto opens with a short preview and a single "Load all"; every other
-// expert starts collapsed and pages in when opened.
-const OTTO_PREVIEW_COUNT = 1;
 
 interface Props {
+  /** The group's expert; null for Otto's own chats. */
+  expertId: string | null;
   label: string;
   role?: string | null;
   avatarUrl: string | null;
   newChatHref: string | null;
   color?: string | null;
   isAutopilot?: boolean;
-  sessions: SessionSummaryResponse[];
+  /** Every chat in the group, not just the ones loaded. */
+  total: number;
+  /** The group's newest chats, as the grouped read returned them. */
+  previewSessions: SessionSummaryResponse[];
+  pinnedSeparately: boolean;
+  activeSessionId: string | null;
   renderItem: (session: SessionSummaryResponse) => ReactNode;
 }
 
+/** One expert's chats, open by default with the newest few, and "Show more"
+ *  paging in older ones from the server. A group the user collapses stays
+ *  collapsed on this device. */
 export function ExpertChatGroup({
+  expertId,
   label,
   role,
   avatarUrl,
   newChatHref,
   color,
   isAutopilot,
-  sessions,
+  total,
+  previewSessions,
+  pinnedSeparately,
+  activeSessionId,
   renderItem,
 }: Props) {
-  const [isOpen, setIsOpen] = useState(!!isAutopilot);
-  const [visibleCount, setVisibleCount] = useState(
-    isAutopilot ? OTTO_PREVIEW_COUNT : EXPERT_CHAT_PAGE_SIZE,
-  );
-  const visibleSessions = sessions.slice(0, visibleCount);
-  const hasHiddenSessions = sessions.length > visibleSessions.length;
-  const runningSessions = sessions.filter((session) => session.is_processing);
+  const {
+    isOpen,
+    setIsOpen,
+    visibleSessions,
+    collapsedSessions,
+    hasMore,
+    isLoadingMore,
+    showMore,
+  } = useExpertChatGroup({
+    expertId,
+    total,
+    previewSessions,
+    pinnedSeparately,
+    activeSessionId,
+  });
 
   return (
     <CollapsibleRoot
@@ -90,7 +109,7 @@ export function ExpertChatGroup({
             avatarUrl={avatarUrl}
             color={color}
             isAutopilot={isAutopilot}
-            nameAccessory={<SessionCount count={sessions.length} />}
+            nameAccessory={<SessionCount count={total} />}
           />
           {newChatHref && (
             <span
@@ -115,39 +134,48 @@ export function ExpertChatGroup({
         {newChatHref && <NewChatLink href={newChatHref} label={label} />}
       </div>
 
-      {!isOpen && runningSessions.length > 0 && (
+      {!isOpen && collapsedSessions.length > 0 && (
         <GroupBody>
-          <SidebarMenu>{runningSessions.map(renderItem)}</SidebarMenu>
+          <SidebarMenu>{collapsedSessions.map(renderItem)}</SidebarMenu>
         </GroupBody>
       )}
 
       <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
         <GroupBody>
           <SidebarMenu>{visibleSessions.map(renderItem)}</SidebarMenu>
-          {hasHiddenSessions && (
-            <button
-              type="button"
-              aria-label={`${isAutopilot ? "Load all" : "Load more"} ${label} chats`}
-              onClick={() =>
-                setVisibleCount((count) =>
-                  isAutopilot ? Infinity : count + EXPERT_CHAT_PAGE_SIZE,
-                )
-              }
-              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
-            >
-              <Text
-                as="span"
-                variant="small-medium-tight-touch"
-                tone="inherit"
-                className="block"
-              >
-                {isAutopilot ? "Load all" : "Load more"}
-              </Text>
-            </button>
+          {hasMore && (
+            <ShowMoreButton
+              label={label}
+              isLoading={isLoadingMore}
+              onClick={showMore}
+            />
           )}
         </GroupBody>
       </CollapsibleContent>
     </CollapsibleRoot>
+  );
+}
+
+interface ShowMoreProps {
+  label: string;
+  isLoading: boolean;
+  onClick: () => void;
+}
+
+function ShowMoreButton({ label, isLoading, onClick }: ShowMoreProps) {
+  return (
+    <button
+      type="button"
+      aria-label={`Show more ${label} chats`}
+      aria-busy={isLoading}
+      onClick={onClick}
+      className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
+    >
+      <Text as="span" variant="small-medium-tight-touch" tone="inherit">
+        Show more
+      </Text>
+      {isLoading && <LoadingSpinner size="small" />}
+    </button>
   );
 }
 
