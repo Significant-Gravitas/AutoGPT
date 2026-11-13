@@ -141,6 +141,27 @@ updates:
   # the default branch with version updates off (limit 0), keeping the critical path
   # out of the security bundle too.
   - package-ecosystem: "pip"
+    directory: "local_executor"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "chore(local_executor/deps)"
+    groups:
+      security-updates:
+        applies-to: "security-updates"
+        patterns:
+          - "*"
+        # The sign-in and the platform connection, one package per PR, and
+        # cua-driver alone too: its pin moves only after the review in
+        # local_executor/docs/CUA_DRIVER.md, so a fix for it starts one.
+        exclude-patterns:
+          - "keyring"
+          - "httpx*"
+          - "websockets"
+          - "cua-driver"
+
+  - package-ecosystem: "pip"
     directory: "autogpt_platform/autogpt_libs"
     schedule:
       interval: "weekly"
