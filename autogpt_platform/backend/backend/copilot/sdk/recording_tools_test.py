@@ -122,6 +122,42 @@ def _single_row_recording():
     )
 
 
+def _two_field_recording():
+    """One row with two fields, First Name and Email, before Save."""
+    return WorkflowRecording.from_payload(
+        {
+            "recording_id": "rec_1",
+            "steps": [
+                {
+                    "seq": seq,
+                    "action": "fill",
+                    "screenshot_ref": f"s{seq}",
+                    "cursor": [10, 20 * seq],
+                    "enrichment": {
+                        "kind": "dom",
+                        "label": label,
+                        "selectors": [{"strategy": "id", "value": selector}],
+                    },
+                    "value": {"raw": raw, "type": "text", "is_parameter": None},
+                }
+                for seq, label, selector, raw in (
+                    (1, "First Name", "#fn", "John"),
+                    (2, "Email", "#em", "john@example.com"),
+                )
+            ]
+            + [
+                {
+                    "seq": 3,
+                    "action": "submit",
+                    "screenshot_ref": "s3",
+                    "cursor": [30, 40],
+                    "enrichment": {"kind": "none", "label": "Save"},
+                },
+            ],
+        }
+    )
+
+
 def _two_row_recording():
     def row(seq_off, fn):
         return [
@@ -424,6 +460,29 @@ class TestGenerateSkill:
         )
         body = _parse(out)
         assert body["needs_confirmation"] is False
+
+    @pytest.mark.asyncio
+    async def test_proposed_clarifications_leave_out_a_confirmed_field(
+        self, monkeypatch
+    ):
+        """With confirmation still needed, generate_skill proposed questions
+        from the recording alone, so it asked again about a field the answers
+        passed in had already confirmed."""
+        shim = _shim()
+        shim.recording.fetch = AsyncMock(return_value=_two_field_recording())
+        _install(monkeypatch, shim)
+        _mark_reviewed(shim, "rec_1")
+        out = await rt._h_generate_skill(
+            {
+                "recording_id": "rec_1",
+                "clarifications": {"confirmed_parameters": {"First Name": True}},
+            }
+        )
+        body = _parse(out)
+        asked = {q["id"] for q in body["proposed_clarifications"]}
+        assert body["needs_confirmation"] is True
+        assert "param:email" in asked
+        assert "param:first_name" not in asked
 
 
 class TestDryRunSkill:

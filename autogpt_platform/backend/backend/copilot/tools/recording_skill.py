@@ -673,6 +673,7 @@ def _questions_for_unconfirmed(
 
 def propose_clarifications(
     recording: WorkflowRecording,
+    clarifications: dict[str, Any] | None = None,
 ) -> list[ClarifyingQuestion]:
     """The §3.3 clarifying questions to ask before trusting a skill.
 
@@ -680,7 +681,9 @@ def propose_clarifications(
     come from?", "stop on validation error?") plus one per candidate
     parameter ("does this field change each run?"). These seed the
     co-pilot's real-time clarification loop; answering them is what lets a
-    single-row recording become a confirmed, savable skill (§8).
+    single-row recording become a confirmed, savable skill (§8). A field the
+    ``clarifications`` given so far confirm, or join to a data column, isn't
+    asked about again.
     """
     questions: list[ClarifyingQuestion] = [
         ClarifyingQuestion(
@@ -701,7 +704,7 @@ def propose_clarifications(
         )
     # One per candidate parameter, seeded by the field-type prior (§8).
     rows = _cluster_rows(recording)
-    params, seq_to_param = _infer_parameters(recording, rows, {})
+    params, seq_to_param = _infer_parameters(recording, rows, clarifications or {})
     questions.extend(
         _questions_for_unconfirmed(
             [p for p in params if not p.confirmed], seq_to_param, recording

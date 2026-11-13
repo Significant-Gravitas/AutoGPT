@@ -564,7 +564,7 @@ async def _h_generate_skill(args: dict[str, Any]) -> dict[str, Any]:
     # clarifications so the co-pilot can drive the trust loop in one step.
     if skill.needs_confirmation:
         result["proposed_clarifications"] = [
-            q.to_dict() for q in propose_clarifications(recording)
+            q.to_dict() for q in propose_clarifications(recording, clarifications)
         ]
     return _ok(result)
 

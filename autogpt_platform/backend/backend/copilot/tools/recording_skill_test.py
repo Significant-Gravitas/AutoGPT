@@ -380,6 +380,23 @@ class TestProposeClarifications:
         assert "error_policy" in kinds  # destructive recording
         assert "parameter" in kinds
 
+    def test_a_parameter_already_confirmed_is_not_asked_again(self):
+        """The proposed questions were worked out from the recording alone,
+        so they asked again about a field the answers had confirmed."""
+        recording = _single_row_recording()
+        first = next(
+            p
+            for p in generate_skill_from_recording(recording).parameters
+            if not p.confirmed
+        )
+
+        asked = propose_clarifications(
+            recording, {"confirmed_parameters": {first.label: True}}
+        )
+
+        assert f"param:{first.name}" not in {q.id for q in asked}
+        assert "data_source" in {q.kind for q in asked}
+
 
 def _mock_shim(*, is_error: bool = False):
     shim = MagicMock()
