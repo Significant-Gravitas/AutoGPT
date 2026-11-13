@@ -2137,3 +2137,43 @@ def test_prune_refuses_a_duration_too_long_to_convert(tmp_path: Path, capsys) ->
 
     assert cli._audit_prune(current, "9" * 5000 + "d") == 2
     assert "Could not parse duration" in capsys.readouterr().out
+
+
+def test_a_file_key_made_while_waiting_for_the_lock_is_the_one_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start that found no keychain key and no file key waited for the
+    lock, then looked again only in the keychain. A start without a keychain
+    that made the file key meanwhile, and signed the log with it, left this
+    one storing a second key the log would never verify with."""
+    import secrets
+
+    import keyring
+
+    from autogpt_local_executor import audit as audit_module
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    other_key = secrets.token_bytes(32)
+    real_lock = audit_module._holding_key_lock
+
+    @contextlib.contextmanager
+    def after_the_other_start():
+        with real_lock():
+            salt = secrets.token_bytes(16)
+            ciphertext = audit_module._xor_encrypt("passphrase", salt, other_key)
+            audit_module._fallback_path().write_text(
+                f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8"
+            )
+            yield
+
+    monkeypatch.setattr(audit_module, "_holding_key_lock", after_the_other_start)
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        key = get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert key == other_key
+    assert stored == []
