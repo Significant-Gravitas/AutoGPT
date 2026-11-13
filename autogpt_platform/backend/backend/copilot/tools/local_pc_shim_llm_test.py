@@ -282,7 +282,10 @@ async def test_cancelled_initial_llm_send_unregisters():
 
 @pytest.mark.asyncio
 async def test_total_llm_deadline_expires_even_with_buffered_frames(monkeypatch):
-    monkeypatch.setattr(llm_module, "_LLM_STREAM_TIMEOUT_SECONDS", 0.02)
+    # The module's own clock, set by the test: a real 20 ms deadline could pass
+    # before the first frame is read on a loaded runner.
+    now = [1_000.0]
+    monkeypatch.setattr(llm_module, "monotonic", lambda: now[0])
     shim = _make_shim_for_streaming()
 
     async def send(payload: str):
@@ -294,7 +297,7 @@ async def test_total_llm_deadline_expires_even_with_buffered_frames(monkeypatch)
     shim._ws.send_text.side_effect = send
     stream = shim.local_llm.complete(model="llama3.2:3b", messages=[])
     assert await anext(stream) == "first"
-    await asyncio.sleep(0.03)
+    now[0] += llm_module._LLM_STREAM_TIMEOUT_SECONDS + 1
     with pytest.raises(LocalLLMError) as error:
         await anext(stream)
     assert error.value.code == "LOCAL_LLM_TIMEOUT"

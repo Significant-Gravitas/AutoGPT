@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator
+from time import monotonic
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -51,7 +52,7 @@ class LocalLLMProxy:
                 "stream": True,
             },
         }
-        deadline = asyncio.get_running_loop().time() + _LLM_STREAM_TIMEOUT_SECONDS
+        deadline = monotonic() + _LLM_STREAM_TIMEOUT_SECONDS
         try:
             try:
                 await asyncio.wait_for(
@@ -101,7 +102,7 @@ async def _read_stream(
 ) -> AsyncIterator[str]:
     received_bytes = 0
     while True:
-        remaining = deadline - asyncio.get_running_loop().time()
+        remaining = deadline - monotonic()
         try:
             frame = await asyncio.wait_for(
                 queue.get(), timeout=min(_LLM_STREAM_IDLE_TIMEOUT_SECONDS, remaining)
