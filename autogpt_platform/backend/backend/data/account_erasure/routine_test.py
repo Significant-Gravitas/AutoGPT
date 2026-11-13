@@ -4,6 +4,7 @@ request can't be claimed (kept or not due), only repeats the PostHog delete
 when it is erased already, and stops at the first failed step so a rerun can
 resume."""
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -94,6 +95,17 @@ def lease(monkeypatch):
     monkeypatch.setattr(routine, "release_erasure_lease", held.release)
     held.keep = AsyncMock(return_value=True)
     monkeypatch.setattr(routine, "keep_erasure_lease", held.keep)
+    held.beating = []
+
+    @contextlib.asynccontextmanager
+    async def renew_in_background(lock):
+        held.beating.append(True)
+        try:
+            yield
+        finally:
+            held.beating[-1] = False
+
+    monkeypatch.setattr(routine, "renew_in_background", renew_in_background)
     return held
 
 
@@ -430,6 +442,29 @@ async def test_the_lease_is_released_after_an_apply_and_never_taken_by_a_dry_run
     await routine.erase_account(USER_ID, dry_run=False)
     lease.acquire.assert_awaited_once_with(USER_ID)
     lease.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_heartbeat_keeps_the_lease_for_the_whole_apply(
+    monkeypatch, account, lease
+):
+    """A step can outlast the lease's few minutes: the heartbeat renews it
+    while every step runs, and stops once the erasure ends. A dry run takes
+    no lease, so it has no heartbeat."""
+    seen: list[bool] = []
+
+    async def step(subject, *, dry_run):
+        seen.append(bool(lease.beating) and lease.beating[-1])
+        return StepReport(name="files", status=StepStatus.DONE)
+
+    monkeypatch.setattr(routine, "_erasure_steps", lambda: [("files", step)])
+
+    await routine.erase_account(USER_ID)
+    assert lease.beating == []
+
+    await routine.erase_account(USER_ID, dry_run=False)
+    assert seen == [False, True]
+    assert lease.beating == [False]
 
 
 @pytest.mark.asyncio

@@ -83,6 +83,7 @@ from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
 from backend.data.account_deletion import is_account_closed
+from backend.data.account_erasure.request import stalled_user_ids
 from backend.data.account_erasure.sweep import start_account_erasure_sweep
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
@@ -620,6 +621,7 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
     start_account_erasure_sweep = _(start_account_erasure_sweep)
+    stalled_account_erasures = _(stalled_user_ids, name="stalled_account_erasures")
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
     send_trial_last_calls = _(send_trial_last_calls)
 
@@ -952,6 +954,8 @@ class DatabaseManagerClient(AppServiceClient):
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
     # Auth identity invariant monitoring
     heal_orphaned_auth_identities = _(d.heal_orphaned_auth_identities)
+    # Account erasures that started and did not finish
+    stalled_account_erasures = _(d.stalled_account_erasures)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 

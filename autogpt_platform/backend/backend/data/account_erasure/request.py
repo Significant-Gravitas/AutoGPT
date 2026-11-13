@@ -54,6 +54,22 @@ async def pending_user_ids(*, now: datetime | None = None) -> list[str]:
     return [row.userId for row in rows]
 
 
+async def stalled_user_ids(
+    *, older_than_secs: int, now: datetime | None = None
+) -> list[str]:
+    """The accounts whose erasure started more than `older_than_secs` ago and
+    has not finished, oldest first: a step that keeps failing, a service left
+    unset, or a CLI run that crashed and was not run again. Whichever ran it,
+    the job or the CLI, the claim (`startedAt`) is set and `completedAt` is
+    not."""
+    cutoff = (now or datetime.now(UTC)) - timedelta(seconds=older_than_secs)
+    rows = await AccountDeletionRequest.prisma().find_many(
+        where={"completedAt": None, "startedAt": {"lte": cutoff}},
+        order={"startedAt": "asc"},
+    )
+    return [row.userId for row in rows]
+
+
 async def claim_request(user_id: str) -> str | None:
     """Claim the account's request for the erasure, in one short statement of
     its own, before any step runs: from then on Keep refuses (it deletes only
