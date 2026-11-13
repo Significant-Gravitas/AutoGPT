@@ -23,15 +23,9 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import (
-    experts_db,
-    raise_attachments,
-    routine_jobs,
-    routines,
-    scheduling,
-    seed,
-)
+from backend.api.features.experts import experts_db, raise_attachments
 from backend.api.features.experts import reset as expert_reset
+from backend.api.features.experts import routine_jobs, routines, scheduling, seed
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
