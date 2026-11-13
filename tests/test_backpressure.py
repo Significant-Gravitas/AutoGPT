@@ -476,10 +476,26 @@ async def test_a_computer_calls_deadline_counts_from_its_frames_arrival(
     assert seen[0] - arrived < 0.5
 
 
+class _WatchedSlots(asyncio.Semaphore):
+    """A machine slot that says when a request starts waiting for one."""
+
+    def __init__(self, value: int) -> None:
+        super().__init__(value)
+        self.waiting = asyncio.Event()
+
+    async def acquire(self) -> bool:
+        if self.locked():
+            self.waiting.set()
+        return await super().acquire()
+
+
 async def test_a_request_takes_a_machine_slot_freed_while_it_waits(
     shim_config: ShimConfig, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    machine = asyncio.Semaphore(1)
+    """The slot is freed once the request waits for it: freed after a fixed
+    sleep, it could be free before a slow runner's request got there, and
+    the test then never saw a wait end."""
+    machine = _WatchedSlots(1)
     await machine.acquire()
     child = _child(shim_config, machine)
 
@@ -489,11 +505,11 @@ async def test_a_request_takes_a_machine_slot_freed_while_it_waits(
     monkeypatch.setattr(child, "_handle", fake_handle)
     ws = _FakeWS()
     request = asyncio.create_task(child._dispatch(ws, make_ack("req")))
-    await asyncio.sleep(0.05)
+    await asyncio.wait_for(machine.waiting.wait(), timeout=10)
     assert ws.sent == []
 
     machine.release()
-    await asyncio.wait_for(request, timeout=2)
+    await asyncio.wait_for(request, timeout=10)
 
     assert parse_message(ws.sent[0]).type == MessageType.ACK
     assert not machine.locked()
