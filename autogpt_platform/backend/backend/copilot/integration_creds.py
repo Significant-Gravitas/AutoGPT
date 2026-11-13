@@ -593,8 +593,6 @@ async def get_integration_env_vars(
     """
     env: dict[str, str] = {}
     for provider, var_names in _permitted(providers):
-        if not var_names:
-            continue
         scopes = (required_scopes or {}).get(provider, frozenset())
         token = await get_provider_token(
             user_id,

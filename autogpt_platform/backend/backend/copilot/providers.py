@@ -71,16 +71,6 @@ def _is_stripe_link_oauth_configured() -> bool:
 # from this single registry.
 
 SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
-    # No env vars: a Link wallet token never enters the sandbox. Listed so the
-    # agent can ask for a Link connection before a checkout.
-    "stripe_link": {
-        "name": "Stripe Link",
-        "env_vars": [],
-        "default_scopes": ["payment_methods.agentic", "userinfo:read"],
-        # And for the same reason the swap proxy never sends it anywhere.
-        "swap_hosts": [],
-        "content_hosts": [],
-    },
     "github": {
         "name": "GitHub",
         "env_vars": ["GH_TOKEN", "GITHUB_TOKEN"],
@@ -104,6 +94,31 @@ SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
         "content_hosts": [".githubusercontent.com"],
     },
 }
+
+
+class ConnectOnlyEntry(TypedDict):
+    """A provider the setup card connects that nothing in a sandbox may use."""
+
+    name: str
+    default_scopes: list[str]
+
+
+# Connected through the setup card like the providers above, but kept out of
+# SUPPORTED_PROVIDERS, which also decides what a sandbox can be handed (its
+# variables, the swap proxy's hosts, a run's providers ceiling).
+CONNECT_ONLY_PROVIDERS: dict[str, ConnectOnlyEntry] = {
+    # Only the private checkout uses a Link wallet token; listed so the agent
+    # can ask for a Link connection before a checkout.
+    "stripe_link": {
+        "name": "Stripe Link",
+        "default_scopes": ["payment_methods.agentic", "userinfo:read"],
+    },
+}
+
+
+def setup_card_entry(provider: str) -> ProviderEntry | ConnectOnlyEntry | None:
+    """The registry entry the setup card connects *provider* with, if any."""
+    return SUPPORTED_PROVIDERS.get(provider) or CONNECT_ONLY_PROVIDERS.get(provider)
 
 
 def get_provider_auth_types(provider: str) -> list[str]:
