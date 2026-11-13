@@ -160,8 +160,12 @@ def _session(
 ) -> list:
     """A machine of `platform_name` with `env` set, and cua-driver installed
     or not. Returns the paths the driver lookup was asked for."""
-    for name in _SESSION_VARIABLES:
-        monkeypatch.delenv(name, raising=False)
+    for name in dict.fromkeys(_SESSION_VARIABLES + platform_info.SESSION_DISPLAY_VARIABLES):
+        # Set first, so the test's end restores the variable even when it
+        # wasn't set: delenv records nothing for one that isn't there, and a
+        # SessionDisplay writes os.environ itself, outside monkeypatch.
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
@@ -378,6 +382,29 @@ def test_the_systemd_service_advertises_computer_use_once_the_desktop_exports_it
     )
 
     assert "computer_use" in platform_info.detect_capabilities(enable_computer_use=True)
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "env", "waits"),
+    [
+        ("linux", {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}, True),
+        ("linux", {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "DISPLAY": ":0"}, False),
+        ("linux", {}, False),  # run by hand: its environment is its own
+        ("darwin", {"AUTOGPT_SHIM_SUPERVISOR": "launchd"}, False),
+    ],
+    ids=["service-before-the-desktop", "service-with-a-display", "by-hand", "macos"],
+)
+def test_computer_use_waits_for_a_display_only_where_one_can_come(
+    monkeypatch: pytest.MonkeyPatch, platform_name: str, env: dict[str, str], waits: bool
+) -> None:
+    """Only the systemd service, started without a display, gets one later
+    (from the user manager), so only its HELLO is said again for it."""
+    _session(monkeypatch, platform_name, **env)
+    monkeypatch.setattr(
+        platform_info, "session_display", platform_info.SessionDisplay(read=_Manager())
+    )
+
+    assert platform_info.computer_use_waits_for_a_display() is waits
 
 
 def test_reading_the_manager_environment_parses_systemctl(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -265,6 +265,13 @@ def _keychain_not_up_yet(exc: Exception) -> KeychainNotUpError:
     return KeychainNotUpError(exc)
 
 
+def _retrieve_outcome(task: asyncio.Future[Any]) -> None:
+    """Take a shielded task's exception, so one whose caller stopped waiting
+    isn't logged as never retrieved; the caller still waiting gets it too."""
+    if not task.cancelled():
+        task.exception()
+
+
 # RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
 # close code. A longer reason fails to send, and the close code with it.
 MAX_CLOSE_REASON_BYTES = 123
@@ -323,6 +330,9 @@ MACHINE_WORK_WAIT_SECONDS = 10.0
 # failed connect, so the backoff keeps growing rather than every shim
 # reconnecting every few seconds.
 STABLE_SESSION_SECONDS = 60.0
+# How often a session whose HELLO went without the desktop's display looks
+# for it (SessionDisplay reads the systemd manager at most this often too).
+DISPLAY_WATCH_SECONDS = 10.0
 
 # When the shim received the request this task serves (loop time), set by
 # _dispatch: a computer-use call's deadline counts from it.
@@ -474,6 +484,10 @@ class ShimDaemon:
         # Background task that emits periodic STATUS frames.
         self._status_task: asyncio.Task[None] | None = None
         self._child_reaper_task: asyncio.Task[None] | None = None
+        # Whether the last HELLO left computer use out only for want of the
+        # desktop's display, and the task that says HELLO again once it's up.
+        self._hello_waits_for_display = False
+        self._display_watch_task: asyncio.Task[None] | None = None
         self._connection_id: str | None = None
         self._directory_browser = DirectoryBrowser() if self._control_mode else None
         self._browser_lock = asyncio.Lock()
@@ -786,6 +800,10 @@ class ShimDaemon:
             self._status_task = asyncio.create_task(self._status_ticker(ws))
             if self._control_mode:
                 self._child_reaper_task = asyncio.create_task(self._child_reaper(ws))
+            if self._hello_waits_for_display:
+                self._display_watch_task = asyncio.create_task(
+                    self._hello_again_once_a_display_is_up(ws)
+                )
             try:
                 async for raw in ws:
                     await self._on_frame(ws, raw)
@@ -825,6 +843,13 @@ class ShimDaemon:
                 except (asyncio.CancelledError, Exception):
                     pass
                 self._child_reaper_task = None
+            if self._display_watch_task is not None:
+                self._display_watch_task.cancel()
+                try:
+                    await self._display_watch_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                self._display_watch_task = None
             self._ws = None
             self._session_started_at = None
             if self.audit is not None:
@@ -897,6 +922,16 @@ class ShimDaemon:
         self._ensure_credential_scope()
         if not refresh_on_fail:
             return await self._read_access_token()
+        # In a task of its own, which stopping this session (its task
+        # cancelled, _stop_child_session) leaves running: the platform may
+        # have rotated the refresh token already, and only the exchange's
+        # answer holds the new pair. The task holds the refresh lock until it
+        # ends, so no other session sends the used-up token meanwhile.
+        refresh = asyncio.ensure_future(self._refresh_access_token(rejected_token))
+        refresh.add_done_callback(_retrieve_outcome)
+        return await asyncio.shield(refresh)
+
+    async def _refresh_access_token(self, rejected_token: str | None) -> str | None:
         async with self._token_refresh_lock:
             # Another machine/session socket may already have rotated the
             # refresh family while this connection was receiving its 401.
@@ -1169,6 +1204,15 @@ class ShimDaemon:
             enable_hardware=cfg.enable_hardware,
             enable_recording=cfg.enable_recording,
             cua_driver_path=cfg.cua_driver_path,
+        )
+        # HELLO is the only place computer use is offered, so a session that
+        # left it out for want of the desktop's display (the systemd service
+        # starts at login, before the desktop exports it) says HELLO again
+        # once it's up (_hello_again_once_a_display_is_up).
+        self._hello_waits_for_display = bool(
+            cfg.enable_computer_use
+            and "computer_use" not in caps
+            and await asyncio.to_thread(platform_info.computer_use_waits_for_a_display)
         )
         if self._control_mode:
             caps.append("directory_browse")
@@ -1462,6 +1506,34 @@ class ShimDaemon:
                 await self._reap_idle_children()
         except asyncio.CancelledError:
             raise
+
+    async def _hello_again_once_a_display_is_up(self, ws: Any) -> None:
+        """Close this connection, to say HELLO again, once the desktop has
+        exported the display its HELLO went without and nothing is under
+        way: the reconnect's HELLO offers computer use (PROTOCOL.md,
+        Reconnection). Work in progress is waited for: a request or a
+        recording, and for the machine's connection, whose next session
+        stops every chat's, a chat's too."""
+        while self._running and self._ws is ws:
+            await asyncio.sleep(DISPLAY_WATCH_SECONDS)
+            if not await asyncio.to_thread(
+                platform_info.can_do_computer_use, self.config.cua_driver_path
+            ):
+                continue
+            if self._ws is not ws or not self._quiet_enough_for_a_new_hello():
+                continue
+            logger.info("The desktop's display is up; reconnecting so HELLO offers computer use")
+            await ws.close(code=1000, reason="Computer use is available now")
+            return
+
+    def _quiet_enough_for_a_new_hello(self) -> bool:
+        now = now_ts()
+        if not self._idle_since(now):
+            return False
+        return not self._control_mode or all(
+            active.task.done() or active.daemon._idle_since(now)
+            for active in self._child_sessions.values()
+        )
 
     async def _reap_idle_children(self) -> None:
         """Detach each child session idle for CHILD_IDLE_TTL_SECONDS."""

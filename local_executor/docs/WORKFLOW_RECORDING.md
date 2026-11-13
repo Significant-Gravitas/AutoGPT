@@ -419,7 +419,12 @@ clarifying question or a second row.
   short-lived, single-use token only after approval. The token is bound to the
   mode and effective interpretation route. `START_RECORDING` without that
   exact token gets `CONSENT_REQUIRED`; an extract-only approval cannot be
-  reused for `screenshots_to_cloud`.
+  reused for `screenshots_to_cloud`. The confirmation is a Tk dialog in a
+  short-lived Python process of its own, since Tk has to own the main
+  thread on macOS and the shim asks from a worker thread. A dialog that
+  can't be shown (no display, no tkinter, a packaged build whose
+  executable isn't Python) or that goes unanswered for five minutes counts
+  as no.
 - **Scoped capture.** Browser enrichment is **origin/active-form
   allow-listed** — it attaches to steps on the demonstrated origin, not
   every tab. The current macOS floor uses a session-wide, listen-only Quartz

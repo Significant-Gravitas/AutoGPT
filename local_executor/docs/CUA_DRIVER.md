@@ -41,10 +41,12 @@ minor version this document reviews
 or arguments nobody has looked at.
 
 **Which runtime.** The driver process the shim starts always owns the
-runtime (`HELLO.computer_use_driver.runtime` is `direct`): `cua-driver mcp`
-on Windows and Linux, `cua-driver mcp --direct` on macOS, where cua-driver's
-default would relay to CuaDriver.app's service instead. The shim doesn't use
-that service:
+runtime (`HELLO.computer_use_driver.runtime` is `direct`): it runs
+`cua-driver mcp --direct` on every OS. Without `--direct`, cua-driver's
+default on macOS relays to CuaDriver.app's service, and on Windows and Linux
+it relays to a `cua-driver serve` daemon once the person has let the
+driver's Computer History preview in (a preference file the driver reads at
+start). The shim doesn't use that service:
 
 - It is installed and updated by the person, not pinned with the shim, so it
   can be another release than the one this catalog was reviewed against,
@@ -201,16 +203,20 @@ capability is off until the person turns it on, the platform must grant it
 to each session, the calls it takes are audited (best effort, see Audit),
 and the agent cursor shows where the agent works. The approval arguments keep disk access out of side channels the
 person can't see: each one waits for the person to approve it, unless the
-chat runs Unsupervised. They are not a sandbox around the GUI.
+chat runs Unsupervised or a standing rule the person set on an earlier card
+("from now on") approves later calls of that kind, whatever their
+arguments (see Enforcement). They are not a sandbox around the GUI.
 
 Known gaps:
 
 - A `run_script` script can pass `screenshot_out_file` to
   `get_window_state` inside the driver, writing a PNG where the script says.
   cua-driver 0.38's policy can allow a tool but can't forbid one of its
-  arguments, and the shim can't see into scripts, so every script waits for
-  the person's approval instead, on a card that shows it. A policy rule that
-  forbids an argument belongs upstream; with one, scripts could run unasked.
+  arguments, and the shim can't see into scripts, so every script needs
+  approval instead: a card that shows it, unless the chat runs Unsupervised
+  or a standing rule set on an earlier `run_script` card approves later
+  scripts, whatever they hold, unasked. A policy rule that forbids an
+  argument belongs upstream; with one, scripts could run unasked safely.
 - `launch_app` can start any program with any arguments: `launch_path` (on
   Linux the `Exec=` line of a `.desktop` file, run split at spaces), a
   Windows `path`, and `additional_arguments`, where a Chromium flag such as
@@ -238,8 +244,10 @@ Known gaps:
 ## Clipboard
 
 Off unless `--enable-clipboard`. Then `clipboard_write` takes exactly one
-of `text`, `file_path` or `image_path`, the last two only once the person
-approves the call (see Enforcement), and `clipboard_read` returns:
+of `text`, `file_path` or `image_path`, the last two only once the call is
+approved: by the person on its card, by a standing rule they set on an
+earlier one, or in an Unsupervised chat (see Enforcement). `clipboard_read`
+returns:
 
 - by default, only text this shim wrote in the last 30 seconds, for any of
   its sessions: the clipboard is the computer's, so one record serves every
@@ -286,7 +294,9 @@ granted to the session) has none. The record holds the tool,
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`, a single character pressed with `press_key`, and the character
 of a `hotkey` chord that types one: one that only holds Shift, or on macOS
-also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr)
+also Option, or on Windows Ctrl with Alt, which Windows reads as AltGr; a
+chord written as one string, `press_key` key `shift+a` or `hotkey` keys
+`shift+a`, which the driver splits at `+`, is redacted the same way)
 replaced by its length and other long strings cut short, the
 outcome, whether the driver reported an error, how many images were sent or
 withheld, and the duration. A call cancelled by revocation is recorded as

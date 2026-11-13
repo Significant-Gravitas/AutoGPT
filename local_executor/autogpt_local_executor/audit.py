@@ -607,7 +607,8 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
     With no keychain, the fallback's key is used once it exists, and so it
     is when a keychain that turns up later holds none: that key signed the
-    log. A new one is made only while `audit_log` (the log the key is for)
+    log; without the passphrase to read it, none is made in its place. A
+    new one is made only while `audit_log` (the log the key is for)
     doesn't exist yet, since a log another key signed would never verify
     with it. With `create` false no key is made at all (load_audit_key).
     A key is made under a lock all starts share, after a second look for
@@ -641,8 +642,18 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
             stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
             if stored is not None:
                 return _stored_audit_key(stored)
-            passphrase = os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE")
-            if passphrase and _fallback_path().exists():
+            if _fallback_path().exists():
+                passphrase = os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE")
+                if not passphrase:
+                    # The file key may have signed a log, another deployment's
+                    # even, as they share the key; a keychain key made now is
+                    # the one every start would find first.
+                    raise AuditKeyError(
+                        "The OS keychain holds no audit key, and the file fallback at "
+                        f"{_fallback_path()} holds one, which may have signed a log that a "
+                        "new key couldn't verify. Set AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE to "
+                        "read it, or move it aside to start with a new key"
+                    )
                 logger.info("The keychain holds no audit key; using the file fallback's.")
                 return _fallback_key_held(_fallback_path(), passphrase)
             key = secrets.token_bytes(32)

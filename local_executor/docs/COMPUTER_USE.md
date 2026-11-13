@@ -29,10 +29,14 @@ If your install command named a revision (`...autogpt-local-executor.git@<revisi
 add the same `@<revision>` at the end of the URL here. The command works as
 it is in Windows `cmd.exe` and PowerShell too: both take the double quotes.
 
-Then start the shim with `--enable-computer-use` (or set
-`enable_computer_use = true` in the config), and run `autogpt-shim doctor`.
-The platform still has to grant the `computer_use` capability to each chat
-session; the shim advertises it only once cua-driver has started.
+Then turn computer use on in the config, `enable_computer_use = true` (or
+`AUTOGPT_SHIM_ENABLE_COMPUTER_USE=true` in the environment), and run
+`autogpt-shim doctor`. Doctor reads only those: `--enable-computer-use` is a
+flag of `start`, so with the flag alone doctor skips the driver, display
+and permission checks (it reports computer use "not requested in config")
+and can pass. The platform still has to grant the `computer_use` capability
+to each chat session; the shim advertises it only once cua-driver has
+started.
 
 | Setting | Default | Effect |
 |---|---|---|
@@ -92,12 +96,18 @@ them, and lets them go when the session ends. GNOME and KDE export them, as
 do the Xsession and xinit scripts of most distributions. A session that
 doesn't, such as some standalone window managers, needs
 `dbus-update-activation-environment --systemd DISPLAY XAUTHORITY` (or
-`WAYLAND_DISPLAY`) in its startup. A shim started by hand, or a service that
-started with a display, keeps its own. The service has
+`WAYLAND_DISPLAY`) in its startup. HELLO is the only place the platform
+learns that computer use is on offer, so a connection whose HELLO came
+before the display (the service's, at login) closes once the display is up
+and nothing is under way on it (on the machine's connection, nothing in
+any chat either), and the reconnect's HELLO offers computer use. A shim
+started by hand, or a service that started with a display, keeps its own.
+The service has
 `AUTOGPT_SHIM_SUPERVISOR=systemd` in its unit; an install from before
 2026-11-09 picks it up with `autogpt-shim install`.
 
-WSL2 can't drive Windows apps; run the shim on Windows itself.
+The shim doesn't offer computer use under WSL2 at all, not even for Linux
+apps WSLg shows; to drive your apps, run the shim on Windows itself.
 
 ## Clipboard
 

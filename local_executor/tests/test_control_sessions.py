@@ -862,3 +862,175 @@ async def test_hello_detects_capabilities_off_the_event_loop(
     await daemon._build_hello()
 
     assert ran_on and ran_on[0] != threading.get_ident()
+
+
+# ── A HELLO said before the desktop's display was up ─────────────────────────
+
+
+class _ConnectedSocket:
+    """Answers HELLO with a HELLO_ACK, then carries nothing until the shim
+    closes it."""
+
+    def __init__(self, session_id: str | None) -> None:
+        self.sent: list[str] = []
+        self.closed_with: tuple[int, str] | None = None
+        self._closed = asyncio.Event()
+        self._session_id = session_id
+
+    async def send(self, raw: str) -> None:
+        self.sent.append(raw)
+
+    async def recv(self) -> str:
+        hello_id = json.loads(self.sent[0])["id"]
+        granted = ["files"] if self._session_id else ["files", "directory_browse"]
+        return dump_message(
+            HelloAckMessage(
+                id=hello_id,
+                ts=now_ts(),
+                payload=HelloAckPayload(
+                    session_id=self._session_id,
+                    connection_id="connection-1",
+                    granted_capabilities=granted,
+                ),
+            )
+        )
+
+    def __aiter__(self) -> _ConnectedSocket:
+        return self
+
+    async def __anext__(self) -> str:
+        await self._closed.wait()
+        raise StopAsyncIteration
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        self.closed_with = (code, reason)
+        self._closed.set()
+
+    async def wait_closed(self) -> None:
+        await asyncio.wait_for(self._closed.wait(), timeout=10)
+
+
+class _Desktop:
+    """The desktop's display, exported to the systemd manager or not yet,
+    counting the times the daemon looks for it."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import autogpt_local_executor.daemon as daemon_module
+        from autogpt_local_executor import platform_info
+
+        self.up = False
+        self.looks = 0
+        monkeypatch.setattr(daemon_module, "DISPLAY_WATCH_SECONDS", 0.01, raising=False)
+        monkeypatch.setattr(platform_info, "detect_capabilities", lambda **_kwargs: ["files"])
+        monkeypatch.setattr(
+            platform_info, "computer_use_waits_for_a_display", lambda: not self.up, raising=False
+        )
+        monkeypatch.setattr(platform_info, "can_do_computer_use", self._can_do_computer_use)
+
+    def _can_do_computer_use(self, _driver_path: str | None = None) -> bool:
+        self.looks += 1
+        return self.up
+
+    async def looked(self, times: int) -> None:
+        loop = asyncio.get_running_loop()
+        until, deadline = self.looks + times, loop.time() + 10
+        while self.looks < until:
+            assert loop.time() < deadline, "the session never looked for the display"
+            await asyncio.sleep(0.01)
+
+
+def _computer_use_session(tmp_path: Path, mode: str) -> ShimDaemon:
+    config = ShimConfig(
+        session_id="session-1" if mode == "chat" else None,
+        machine_id="machine-1",
+        allowed_root=tmp_path / "root",
+        audit_log_path=tmp_path / "audit.log",
+        enable_computer_use=True,
+    )
+    audit = AuditWriter(config.audit_log_path, b"a" * 32, machine_id=config.machine_id)
+    daemon = ShimDaemon(config, token_store=object(), audit=audit)
+    daemon._running = True
+    return daemon
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["chat", "machine"])
+async def test_a_session_says_hello_again_once_the_desktops_display_is_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    """The systemd service starts at login, before the desktop exports its
+    display to the user manager, so a session's HELLO left computer use out,
+    and nothing offered it afterwards: HELLO is the only place it is offered,
+    and the connection could last for days. Once the display is up, the
+    session closes its connection, and the reconnect's HELLO offers it."""
+    desktop = _Desktop(monkeypatch)
+    daemon = _computer_use_session(tmp_path, mode)
+    ws = _ConnectedSocket("session-1" if mode == "chat" else None)
+    session = asyncio.create_task(daemon._run_session(ws))
+    try:
+        await desktop.looked(2)
+        assert ws.closed_with is None
+        desktop.up = True
+        await ws.wait_closed()
+        await asyncio.wait_for(session, timeout=10)
+    finally:
+        session.cancel()
+
+    assert ws.closed_with is not None and ws.closed_with[0] == 1000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("busy", ["request", "chat"])
+async def test_a_session_says_hello_again_once_nothing_is_under_way(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, busy: str
+) -> None:
+    """Closing a connection fails what it carries, and the machine's next
+    session stops every chat's, so the new HELLO waits for the session's own
+    requests, and the machine's for its chats' too."""
+    desktop = _Desktop(monkeypatch)
+    daemon = _computer_use_session(tmp_path, "chat" if busy == "request" else "machine")
+    ws = _ConnectedSocket("session-1" if busy == "request" else None)
+    session = asyncio.create_task(daemon._run_session(ws))
+    chat = asyncio.create_task(asyncio.sleep(60))
+    try:
+        await desktop.looked(1)
+        if busy == "request":
+            working = daemon
+        else:
+            working, _started, _sent = _idle_child(tmp_path)
+            daemon._child_sessions["session-1"] = _ActiveChild(daemon=working, task=chat)
+        working._pending_requests = 1
+        desktop.up = True
+        await desktop.looked(3)
+        assert ws.closed_with is None
+
+        working._pending_requests = 0
+        await ws.wait_closed()
+        await asyncio.wait_for(session, timeout=10)
+    finally:
+        session.cancel()
+        chat.cancel()
+
+    assert ws.closed_with is not None and ws.closed_with[0] == 1000
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("why", ["computer-use-off", "display-there"])
+async def test_a_hello_without_computer_use_for_another_reason_isnt_said_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, why: str
+) -> None:
+    """A HELLO that left computer use out for another reason (the person
+    didn't turn it on; a driver missing, with the display there) would leave
+    it out again: no new HELLO, every ten seconds, for it."""
+    from autogpt_local_executor import platform_info
+
+    monkeypatch.setattr(platform_info, "detect_capabilities", lambda **_kwargs: ["files"])
+    monkeypatch.setattr(
+        platform_info, "computer_use_waits_for_a_display", lambda: why != "display-there"
+    )
+    daemon = _computer_use_session(tmp_path, "chat")
+    daemon.config.enable_computer_use = why != "computer-use-off"
+
+    await daemon._build_hello()
+
+    assert daemon._hello_waits_for_display is False

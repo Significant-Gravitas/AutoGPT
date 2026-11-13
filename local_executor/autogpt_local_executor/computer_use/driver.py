@@ -176,15 +176,18 @@ def driver_runtime(platform: str | None = None) -> Runtime:
     permission mode and policy it was started with, so the calls a script
     makes inside it wouldn't be bound by the shim's policy. Owning the
     runtime keeps all of that the shim's. The macOS grants then belong to
-    the app that starts the shim, as they did before cua-driver."""
+    the app that starts the shim, as they did before cua-driver. On Linux
+    and Windows, `mcp` relays to such a daemon too once the person has let
+    the driver's Computer History preview in (a preference file cua-driver
+    0.38 reads at start), so the shim says `--direct` there as well."""
     return "direct"
 
 
 def driver_argv(binary: Path, runtime: Runtime, platform: str | None = None) -> list[str]:
-    platform = sys.platform if platform is None else platform
     argv = [str(binary), "mcp"]
-    if platform == "darwin" and runtime == "direct":
-        # macOS's default would relay to CuaDriver.app.
+    if runtime == "direct":
+        # Without it, macOS relays to CuaDriver.app, and Linux and Windows to
+        # a daemon once the Computer History preview is let in.
         argv.append("--direct")
     return argv
 

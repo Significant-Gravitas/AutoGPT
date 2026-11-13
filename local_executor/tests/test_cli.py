@@ -496,6 +496,35 @@ async def test_audit_show_prints_every_record_with_that_seq(
     assert "after-rotation" in output
 
 
+@pytest.mark.asyncio
+async def test_audit_show_prints_a_record_stdout_cant_encode(
+    tmp_path: Path, audit_key: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record of a file named 未来.txt, shown to a stdout whose encoding
+    can't carry it (a Windows code page, once redirected to a file), raised
+    UnicodeEncodeError instead of showing the record."""
+    import io
+    import json
+
+    from autogpt_local_executor.audit import AuditWriter
+
+    writer = AuditWriter(path=tmp_path / "审计.log", audit_key=audit_key)
+    await writer.write("FILE_READ", request_id="r", details={"path": "未来.txt"})
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", newline="\n")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    found = cli._audit_show(writer.path, 1)
+    missing = cli._audit_show(writer.path, 99)
+
+    stdout.flush()
+    output = stdout.buffer.getvalue().decode("cp1252")
+    assert (found, missing) == (0, 1)
+    assert "\\u672a\\u6765.txt" in output
+    record = output.split("\n", 1)[1].split("\nNo record", 1)[0]
+    assert json.loads(record)["details"]["path"] == "未来.txt"
+    assert "# from \\u5ba1\\u8ba1.log" in output
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX directory permissions")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores modes")
 @pytest.mark.asyncio
@@ -556,6 +585,56 @@ def test_audit_prune_keeps_a_file_with_a_timestamp_that_is_not_a_finite_number(
 
     assert rotated.exists()
     assert "Kept" in capsys.readouterr().out
+
+
+def test_audit_prune_prints_once_it_lets_go_of_the_writers_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Prune printed each file it deleted while it held the lock every audit
+    write takes, so a terminal or pipe that stopped reading held off the
+    daemon's audit writes, and the work they record, until it read again."""
+    import autogpt_local_executor.audit as audit_module
+
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    deleted = tmp_path / "audit.log.20240101-000000"
+    deleted.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    replaced = tmp_path / "audit.log.20240102-000000"
+    replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    real_lock = audit_module.holding_log_lock
+    held = False
+
+    @contextlib.contextmanager
+    def watched_lock(log: Path) -> Iterator[None]:
+        nonlocal held
+        with real_lock(log):
+            # A file changed since prune read it: it's kept.
+            replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 2.5}\n')
+            held = True
+            try:
+                yield
+            finally:
+                held = False
+
+    printed_while_held: list[bool] = []
+    real_print = print
+
+    def watched_print(*args, **kwargs) -> None:
+        printed_while_held.append(held)
+        real_print(*args, **kwargs)
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", watched_lock)
+    monkeypatch.setattr(cli, "print", watched_print, raising=False)
+
+    assert cli._prune_rotated(current, cutoff=10.0) == 0
+
+    output = capsys.readouterr().out
+    assert not deleted.exists()
+    assert replaced.exists()
+    assert f"Deleted {deleted.name}" in output
+    assert f"Kept {replaced.name}" in output
+    assert "Pruned 1 of 2" in output
+    assert printed_while_held and not any(printed_while_held)
 
 
 def test_version_prints_the_installed_version(
@@ -703,7 +782,9 @@ def test_install_takes_a_config_the_service_can_load(
     from autogpt_local_executor import install
 
     config = tmp_path / "config.toml"
-    config.write_text(f'allowed_root = "{(tmp_path / "files").as_posix()}"\n')
+    # TOML is UTF-8, and a temporary folder can hold any character (a home
+    # folder named José, written in Windows' code page).
+    config.write_text(f'allowed_root = "{(tmp_path / "files").as_posix()}"\n', encoding="utf-8")
     install_autostart = MagicMock()
     install_autostart.return_value = SimpleNamespace(
         target_path=tmp_path / "unit",

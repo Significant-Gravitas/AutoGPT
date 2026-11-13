@@ -6,6 +6,7 @@ import asyncio
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -620,22 +621,28 @@ async def test_a_keychain_failure_during_a_refresh_is_retried(
         await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")
 
 
-def _rotating_token_endpoint(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def _rotating_token_endpoint(
+    monkeypatch: pytest.MonkeyPatch, *, before_answering: Any = None
+) -> list[str]:
     """A token endpoint that rotates the refresh token as the platform's
     does: each one works once, and one used already gets 400. Returns the
-    refresh tokens it was sent, in order."""
+    refresh tokens it was sent, in order. `before_answering`, a coroutine
+    function, runs once the first exchange has gone through, before the
+    answer comes back."""
     import urllib.parse
 
     import httpx
 
     sent: list[str] = []
 
-    def token_endpoint(request: httpx.Request) -> httpx.Response:
+    async def token_endpoint(request: httpx.Request) -> httpx.Response:
         token = urllib.parse.parse_qs(request.content.decode())["refresh_token"][0]
         used = token in sent
         sent.append(token)
         if used:
             return httpx.Response(400, json={"detail": "refresh token has been revoked"})
+        if before_answering is not None and len(sent) == 1:
+            await before_answering()
         tokens = {"access_token": f"access-{len(sent)}", "refresh_token": f"refresh-{len(sent)}"}
         return httpx.Response(200, json=tokens)
 
@@ -658,11 +665,18 @@ def _keychain_failing_writes(monkeypatch: pytest.MonkeyPatch) -> list[Exception]
             raise failures.pop(0)
         passwords[(service, user)] = value
 
+    def delete_password(service: str, user: str) -> None:
+        import keyring.errors
+
+        if passwords.pop((service, user), None) is None:
+            raise keyring.errors.PasswordDeleteError("not found")
+
     monkeypatch.setattr(
         "autogpt_local_executor.auth.keyring.get_password",
         lambda service, user: passwords.get((service, user)),
     )
     monkeypatch.setattr("autogpt_local_executor.auth.keyring.set_password", set_password)
+    monkeypatch.setattr("autogpt_local_executor.auth.keyring.delete_password", delete_password)
     return failures
 
 
@@ -739,6 +753,133 @@ async def test_a_sign_in_stored_after_a_failed_refresh_goes_ahead_of_the_kept_pa
     assert sent == ["refresh-0", "refresh-auth"]
     assert token == "access-2"
     assert await store.get_refresh_token() == "refresh-2"
+
+
+def _refresh_config(tmp_path: Path) -> ShimConfig:
+    return ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("meanwhile", ["auth", "revoke"])
+async def test_a_refresh_keeps_a_sign_in_change_made_during_its_exchange(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, meanwhile: str
+) -> None:
+    """A refresh stored its new pair over whatever the keychain held once the
+    exchange came back: a sign-in `autogpt-shim auth` stored meanwhile was
+    replaced by the older sign-in's refreshed pair, and a computer
+    `autogpt-shim revoke` had just signed out was signed back in."""
+    _keychain_failing_writes(monkeypatch)
+    config = _refresh_config(tmp_path)
+
+    async def another_process() -> None:
+        other = KeychainTokenStore(config)
+        if meanwhile == "auth":
+            await other.store_tokens("access-auth", "refresh-auth")
+        else:
+            other.clear_tokens()
+
+    sent = _rotating_token_endpoint(monkeypatch, before_answering=another_process)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    daemon = ShimDaemon(config, token_store=store, audit=MagicMock(spec=AuditWriter))
+
+    token = await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+
+    assert sent == ["refresh-0"]
+    if meanwhile == "auth":
+        assert token == "access-auth"
+        assert await store.get_refresh_token() == "refresh-auth"
+    else:
+        assert token is None
+        assert await store.get_refresh_token() is None
+    assert store.unsaved_refresh is None
+
+
+@pytest.mark.asyncio
+async def test_a_kept_pair_does_not_replace_a_sign_in_stored_after_the_retry_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retry storing a kept pair compared the keychain's refresh token with
+    the one its exchange used up, then wrote: a sign-in stored after that
+    read was replaced by the kept pair."""
+    import keyring.errors
+
+    from autogpt_local_executor.daemon import KeychainUnavailableError
+
+    sent = _rotating_token_endpoint(monkeypatch)
+    failures = _keychain_failing_writes(monkeypatch)
+    config = _refresh_config(tmp_path)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    daemon = ShimDaemon(config, token_store=store, audit=MagicMock(spec=AuditWriter))
+    failures.append(keyring.errors.PasswordSetError("the keychain is locked"))
+    with pytest.raises(KeychainUnavailableError):
+        await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+    assert store.unsaved_refresh is not None
+    read_refresh_token = store.get_refresh_token
+
+    async def read_then_sign_in() -> str | None:
+        refresh = await read_refresh_token()
+        await KeychainTokenStore(config).store_tokens("access-auth", "refresh-auth")
+        return refresh
+
+    monkeypatch.setattr(store, "get_refresh_token", read_then_sign_in)
+    token = await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+
+    assert sent == ["refresh-0"]
+    assert token == "access-auth"
+    assert await read_refresh_token() == "refresh-auth"
+    assert store.unsaved_refresh is None
+
+
+@pytest.mark.asyncio
+async def test_a_refresh_outlives_the_session_stopped_while_it_waited_for_the_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chat's session stopped (its task cancelled, _stop_child_session)
+    while its refresh waited for the token endpoint dropped the answer, though
+    the platform had rotated the refresh token already: the keychain kept the
+    used-up one, and the next session's refresh sent it again, was refused,
+    and ended the sign-in."""
+    _keychain_failing_writes(monkeypatch)
+    config = _refresh_config(tmp_path)
+    exchanged = asyncio.Event()
+    answer = asyncio.Event()
+
+    async def hold_the_answer() -> None:
+        exchanged.set()
+        await answer.wait()
+
+    sent = _rotating_token_endpoint(monkeypatch, before_answering=hold_the_answer)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    lock = asyncio.Lock()
+    stopped = ShimDaemon(
+        config, token_store=store, audit=MagicMock(spec=AuditWriter), token_refresh_lock=lock
+    )
+    other = ShimDaemon(
+        config, token_store=store, audit=MagicMock(spec=AuditWriter), token_refresh_lock=lock
+    )
+    refresh = asyncio.create_task(
+        stopped._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+    )
+    await asyncio.wait_for(exchanged.wait(), timeout=10)
+    refresh.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await refresh
+    answer.set()
+
+    token = await asyncio.wait_for(
+        other._get_access_token(refresh_on_fail=True, rejected_token="access-0"), timeout=10
+    )
+
+    assert sent == ["refresh-0"]
+    assert token == "access-1"
+    assert await store.get_refresh_token() == "refresh-1"
 
 
 @pytest.mark.parametrize(

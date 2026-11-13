@@ -14,6 +14,7 @@ import sys
 import threading
 import types
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -419,6 +420,43 @@ def test_a_chord_that_types_a_character_is_redacted(
     )
     assert details["keys"] == expected
     assert details["steps"][0]["args"]["keys"] == expected
+
+
+@pytest.mark.parametrize(
+    ("platform", "arguments", "expected"),
+    [
+        ("linux", {"key": "shift+a"}, {"key": ["shift", {"redacted_chars": 1}]}),
+        ("linux", {"key": " Shift + A "}, {"key": ["Shift", {"redacted_chars": 1}]}),
+        ("linux", {"key": " p "}, {"key": {"redacted_chars": 3}}),
+        ("linux", {"keys": "shift+a"}, {"keys": ["shift", {"redacted_chars": 1}]}),
+        ("linux", {"keys": "a"}, {"keys": [{"redacted_chars": 1}]}),
+        ("darwin", {"key": "option+l"}, {"key": ["option", {"redacted_chars": 1}]}),
+        ("win32", {"keys": "ctrl+alt+q"}, {"keys": ["ctrl", "alt", {"redacted_chars": 1}]}),
+        # Command chords, named keys, and what the driver takes whole stay.
+        ("linux", {"key": "ctrl+c"}, {"key": "ctrl+c"}),
+        ("linux", {"keys": "cmd+s"}, {"keys": "cmd+s"}),
+        ("linux", {"key": "shift+Right"}, {"key": "shift+Right"}),
+        ("win32", {"keys": "alt+f"}, {"keys": "alt+f"}),
+        ("linux", {"key": "a+"}, {"key": "a+"}),
+    ],
+)
+def test_a_chord_written_as_one_string_is_redacted(
+    platform: str, arguments: dict[str, str], expected: dict[str, Any]
+) -> None:
+    """cua-driver 0.38 takes a chord written as one string, splitting it at
+    "+" (`press_key` key "shift+a", `hotkey` keys "shift+a"), and trims a
+    key. The audit log redacted only a `keys` list and a `key` of exactly
+    one character, so those kept the character they typed: a secret typed
+    with Shift went into the log a chord at a time, inside run_steps too."""
+    from autogpt_local_executor.handlers import _audit_arguments
+
+    details = _audit_arguments(
+        {**arguments, "steps": [{"tool": "press_key", "args": dict(arguments)}]},
+        platform=platform,
+    )
+
+    assert {name: details[name] for name in arguments} == expected
+    assert details["steps"][0]["args"] == expected
 
 
 # ── verify-all across multiple rotated files ─────────────────────────────────
@@ -2176,6 +2214,54 @@ def test_a_file_key_made_while_waiting_for_the_lock_is_the_one_used(
         key = get_or_create_audit_key(tmp_path / "audit.log")
 
     assert key == other_key
+    assert stored == []
+
+
+@pytest.mark.parametrize("when", ["before", "while-waiting"])
+def test_a_file_key_that_cant_be_read_is_not_replaced_by_a_keychain_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, when: str
+) -> None:
+    """The file fallback's key signed a deployment's log while there was no
+    keychain. Another deployment, starting with a new log and without the
+    passphrase, skipped the file key it couldn't read and stored a new key
+    in the keychain, which every start then finds first: the first
+    deployment's log stopped verifying, and that start stopped for good."""
+    import secrets
+
+    import keyring
+
+    from autogpt_local_executor.audit import AuditKeyError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+
+    def make_file_key() -> None:
+        salt = secrets.token_bytes(16)
+        ciphertext = audit_module._xor_encrypt("passphrase", salt, secrets.token_bytes(32))
+        audit_module._fallback_path().write_text(
+            f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8"
+        )
+
+    if when == "before":
+        make_file_key()
+    else:
+        real_lock = audit_module._holding_key_lock
+
+        @contextlib.contextmanager
+        def after_a_start_without_a_keychain():
+            with real_lock():
+                make_file_key()
+                yield
+
+        monkeypatch.setattr(audit_module, "_holding_key_lock", after_a_start_without_a_keychain)
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", return_value=None),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        with pytest.raises(AuditKeyError, match="AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            get_or_create_audit_key(tmp_path / "another-deployment" / "audit.log")
+
     assert stored == []
 
 

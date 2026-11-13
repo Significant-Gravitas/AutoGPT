@@ -133,6 +133,17 @@ def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
     return True
 
 
+def computer_use_waits_for_a_display() -> bool:
+    """Whether computer use is off only until the desktop exports its
+    display: the Linux systemd service, started without one, that has none
+    yet (SessionDisplay). The daemon then says HELLO again once it is up."""
+    return (
+        detect_platform() == "linux"
+        and session_display.following()
+        and linux_display_problem() is not None
+    )
+
+
 def linux_display_problem(environ: Mapping[str, str] | None = None) -> str | None:
     """Why cua-driver can't drive this Linux session's display, or None.
 
@@ -213,6 +224,17 @@ class SessionDisplay:
         self._own: frozenset[str] | None = None
         self._taken: set[str] = set()
         self._read_at: float | None = None
+
+    def following(self) -> bool:
+        """Whether `follow` takes this process's display from the manager:
+        the systemd service, started without one."""
+        with self._lock:
+            if self._env.get("AUTOGPT_SHIM_SUPERVISOR") != "systemd":
+                return False
+            own = self._own
+            if own is None:
+                own = frozenset(k for k in SESSION_DISPLAY_VARIABLES if self._env.get(k))
+            return not {"DISPLAY", "WAYLAND_DISPLAY"} & own
 
     def follow(self) -> bool:
         """Bring this process's display variables in line with the

@@ -124,7 +124,7 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 
 | Dimension | macOS | Linux | Windows |
 |---|---|---|---|
-| Driver runtime | the driver process the shim starts (`--direct`), never CuaDriver.app's service | the driver process | the driver process |
+| Driver runtime | the driver process the shim starts (`--direct`), never CuaDriver.app's service | the driver process (`--direct`), never a `cua-driver serve` daemon | the driver process (`--direct`), never a `cua-driver serve` daemon |
 | Reading windows | Accessibility (AX) tree + ScreenCaptureKit | AT-SPI over the session bus + X11/Wayland capture | UI Automation tree + window capture |
 | Acting | AX actions in the background, pixel and foreground input as fallbacks | AT-SPI actions, XSendEvent on X11; foreground input on Wayland | UIA patterns and window messages in the background, foreground input as fallback |
 | Permissions | Accessibility + Screen Recording, for the app that runs the shim; `doctor` asks for them; a missing one makes the daemon exit 78 and launchd retry | none | a non-elevated shim can't drive elevated windows |

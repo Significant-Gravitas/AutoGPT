@@ -141,12 +141,15 @@ async def test_every_approval_argument_is_one_the_driver_takes(bridge: CuaDriver
 
 async def test_batches_reach_only_catalog_tools(bridge: CuaDriverBridge) -> None:
     """run_steps and run_script call other tools inside the driver, where
-    the shim can't look; the driver limits them to these, all reviewed."""
+    the shim can't look; the driver limits them to these, all reviewed. None
+    is a clipboard tool: the shim's clipboard rules (--enable-clipboard, and
+    what clipboard_read may return) see only the calls it relays itself."""
     snapshot = await bridge.snapshot()
     steps = snapshot.tool("run_steps")
     assert steps is not None
     step_tools = steps["inputSchema"]["properties"]["steps"]["items"]["properties"]["tool"]
     assert set(step_tools["enum"]) <= OFFERED
+    assert not set(step_tools["enum"]) & catalog.CLIPBOARD_TOOLS
 
     result = await bridge.call_tool(
         "run_script",
@@ -158,3 +161,4 @@ async def test_batches_reach_only_catalog_tools(bridge: CuaDriverBridge) -> None
     assert match, value
     script_tools = {name.strip() for name in match.group(1).split(",")}
     assert script_tools and script_tools <= OFFERED
+    assert not script_tools & catalog.CLIPBOARD_TOOLS

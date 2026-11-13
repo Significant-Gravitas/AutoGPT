@@ -522,8 +522,12 @@ so no other account can open it, and read the new contents, before then. An exis
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
-write does replace gets a new inode, extended attributes and ACLs on the
-old file don't carry over. Where the directory takes no new entries, (on
+write does replace gets a new inode, extended attributes and POSIX ACLs on
+the old file don't carry over. On Windows the new file would take the
+folder's inherited permissions, so a file whose owner or DACL differs from
+what the folder gives a new file (inheritance turned off, entries of its
+own) is written in place, keeping its own; the shim compares the two
+before any content is written. Where the directory takes no new entries, (on
 Windows) another program has the file open, or the shim may not give the new
 file the old one's owner and group (a file another account owns, a group the
 shim isn't in), the shim overwrites the file in place instead:
@@ -712,9 +716,10 @@ A symlink `src` is moved itself, and with `overwrite` a symlink `dst` is
 replaced itself; neither target changes. Without `overwrite`, the rename
 itself refuses an existing `dst` (`renameat2` with `RENAME_NOREPLACE` on
 Linux, `renamex_np` with `RENAME_EXCL` on macOS, a plain rename on
-Windows), so a file created there after the shim's check is never
-replaced; a filesystem without that flag gets a check followed by the
-rename.
+Windows), so there a file created after the shim's check is never
+replaced. A filesystem without that flag gets a check followed by the
+rename, and there a file another program creates at `dst` between the two
+is replaced.
 
 ---
 
@@ -1293,4 +1298,10 @@ session that completed its handshake has stayed up for a minute, so a
 session that drops after running reconnects promptly, while one the
 platform ends right after `HELLO_ACK` (closing with 1011 while
 overloaded, say, or cleanly) counts as a failed connect and the backoff keeps growing. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
+The shim also closes a connection itself (1000) to send a new `HELLO`
+when one it sent left `computer_use` out only for want of the desktop's
+display (a Linux systemd service started at login, before the desktop
+exported it) and the display is up now. It waits until nothing is under
+way on that connection, and on the machine connection, whose next session
+stops every chat's, until no chat's work is either.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.
