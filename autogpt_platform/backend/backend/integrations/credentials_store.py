@@ -307,9 +307,9 @@ DEFAULT_CREDENTIALS = [
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
 
 
-def available_system_credentials() -> list[APIKeyCredentials]:
+def available_system_credentials() -> list[Credentials]:
     """The built-in system credentials whose platform key is configured."""
-    credentials: list[APIKeyCredentials] = []
+    credentials: list[Credentials] = []
 
     # These will always be added
     credentials.append(ollama_credentials)
