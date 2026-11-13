@@ -595,11 +595,7 @@ class ShimDaemon:
                         break
                     if not self._running:
                         break
-                    if (
-                        self._session_up_at is not None
-                        and asyncio.get_running_loop().time() - self._session_up_at
-                        >= STABLE_SESSION_SECONDS
-                    ):
+                    if self._session_was_stable():
                         # The drop ended a working session, not a run of failed
                         # connects, so reconnect promptly.
                         attempt = 0
@@ -615,13 +611,18 @@ class ShimDaemon:
                 else:
                     if not self._running or self._disable_reconnect:
                         break
-                    delay = self._backoff_delay(0)
+                    # A clean close (1000, 1001) counts as any other: one right
+                    # after HELLO_ACK is a failed connect, and the delay grows.
+                    if self._session_was_stable():
+                        attempt = 0
+                    delay = self._backoff_delay(attempt)
                     logger.warning(
-                        "Connection closed cleanly. Reconnecting in %.1fs",
+                        "Connection closed cleanly. Reconnecting in %.1fs (attempt %d)",
                         delay,
+                        attempt + 1,
                     )
                     await asyncio.sleep(delay)
-                    attempt = 0
+                    attempt += 1
         finally:
             if self._control_mode:
                 await self._shutdown_children()
@@ -663,6 +664,15 @@ class ShimDaemon:
             logger.debug("SHIM_STOP audit emit failed", exc_info=True)
 
     # ── Connection lifecycle ──────────────────────────────────────────────
+
+    def _session_was_stable(self) -> bool:
+        """Whether the session that just ended got through its handshake and
+        stayed up STABLE_SESSION_SECONDS: a working session, after which the
+        reconnect backoff starts over, rather than a failed connect."""
+        return (
+            self._session_up_at is not None
+            and asyncio.get_running_loop().time() - self._session_up_at >= STABLE_SESSION_SECONDS
+        )
 
     def _backoff_delay(self, attempt: int) -> float:
         """Per docs/PROTOCOL.md Reconnection: 2^attempt * 1s, capped at 60s,
