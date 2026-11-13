@@ -70,38 +70,68 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
   matrix passes on mac/Linux/Windows × py3.11/py3.12).
 - `pyproject.toml` `version` field bumped to the target tag — the
   release workflow's `verify pyproject version matches tag` step
-  will fail loudly if not.
+  will fail loudly if not — and `SOURCE_TREE_VERSION` in
+  `autogpt_local_executor/_version.py` with it, which
+  `tests/test_packaging.py` checks. An installed shim reports the
+  distribution's version (`--version`, HELLO, the audit log); the
+  constant is for a source tree that isn't installed.
 - `CHANGELOG.md` (if/when added) updated.
 - Every change made to the monorepo copy (`local_executor/` in
   AutoGPT) is in this repository too. Fixes usually land here first and
   reach the monorepo with `git subtree pull`, but a change made only in
-  the monorepo has to come back the other way before you tag. Push it to
-  the branch you will tag, the release branch (`experimental/local-pc-executor`
-  until there is another), from an AutoGPT checkout:
+  the monorepo has to come back the other way before you tag. Don't
+  `git subtree push` it onto the release branch (`experimental/local-pc-executor`
+  until there is another): the branch it writes matches `local_executor/`,
+  which has none of this repository's `.github/workflows/` (`release.yml`
+  would be gone before the tag) and has the monorepo's own `README.md`,
+  `AGENTS.md`, `CLAUDE.md` and `pyproject.toml`. Push it to a branch of its
+  own, from an AutoGPT checkout:
+
+  ```bash
+  git subtree push --prefix=local_executor \
+    git@github.com:Significant-Gravitas/autogpt-local-executor.git \
+    sync/from-monorepo  # a branch only this step writes
+  ```
+
+  Then merge that into the release branch, from a checkout of this
+  repository:
 
   ```bash
   RELEASE_BRANCH=experimental/local-pc-executor  # the branch step 1 tags
-  git subtree push --prefix=local_executor \
-    git@github.com:Significant-Gravitas/autogpt-local-executor.git \
-    "$RELEASE_BRANCH"
+  git checkout "$RELEASE_BRANCH" && git pull
+  git fetch origin sync/from-monorepo
+  git merge --no-ff --no-commit FETCH_HEAD  # "Already up to date": nothing to bring back
+  git restore --source=HEAD --staged --worktree -- .github README.md pyproject.toml
+  git rm -rqf --ignore-unmatch -- AGENTS.md CLAUDE.md
+  git commit --no-edit
   ```
 
-  It fails if that branch has commits the monorepo doesn't; pull them in
-  first (`git subtree pull`, same prefix, URL and branch). Then check that
-  the branch holds the monorepo's code:
+  `--no-ff` stops the merge before a fast-forward could take the
+  monorepo's tree whole. `git restore` puts back this repository's
+  `.github/`, `README.md` and `pyproject.toml`, conflicted or not, and
+  `git rm` leaves out the monorepo's `AGENTS.md` and `CLAUDE.md`, which
+  this repository doesn't have (only the first sync brings them in, so
+  they aren't named to `git restore`, which refuses a path it can't find).
+  A change the monorepo made to one of those files for both copies (a new
+  dependency in `pyproject.toml`, say) has to be made here by hand before
+  the commit: `git diff HEAD...FETCH_HEAD -- README.md pyproject.toml`
+  shows what the monorepo changed. Then check the release branch and push
+  it:
 
   ```bash
-  git fetch git@github.com:Significant-Gravitas/autogpt-local-executor.git "$RELEASE_BRANCH"
-  git diff --stat FETCH_HEAD HEAD:local_executor
+  git diff --stat FETCH_HEAD HEAD
+  ls .github/workflows/release.yml
+  git push origin "$RELEASE_BRANCH"
   ```
 
-  It should list only the files the monorepo keeps its own way: its
-  `README.md`, `AGENTS.md`, `CLAUDE.md` and `pyproject.toml`, and this
-  repository's `.github/workflows/`, which the monorepo doesn't carry.
+  The diff should list only the files the monorepo keeps its own way
+  (`.github/workflows/` as its two workflows, `AGENTS.md`, `CLAUDE.md`,
+  `README.md` and `pyproject.toml`), and any commit of this repository's
+  the monorepo hasn't pulled in yet.
 
 ### 1. Tag + push
 
-On the branch the pre-flight pushed to, and checked:
+On the release branch, once the pre-flight's merge is pushed:
 
 ```bash
 git checkout experimental/local-pc-executor  # the release branch, as above

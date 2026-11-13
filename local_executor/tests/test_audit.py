@@ -449,7 +449,10 @@ async def test_verify_all_reports_only_tampered_file(tmp_path: Path) -> None:
 # ── Keyring round-trip (mocked) ──────────────────────────────────────────────
 
 
-def test_get_or_create_audit_key_round_trips_via_keyring() -> None:
+def test_get_or_create_audit_key_round_trips_via_keyring(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))  # the key's lock
     store: dict[tuple[str, str], str] = {}
 
     def fake_get(svc: str, user: str) -> str | None:
@@ -1496,7 +1499,9 @@ async def test_an_audit_command_never_stores_a_keychain_key(tmp_path: Path) -> N
     assert stored == []
 
 
-def test_an_empty_keychain_gets_no_new_key_for_a_signed_log(tmp_path: Path) -> None:
+def test_an_empty_keychain_gets_no_new_key_for_a_signed_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """With the keychain up but its audit key gone, the daemon stored a new
     key, failed to verify its log with it, and stopped as if the log were
     corrupt, leaving the new key behind in place of the one that signed it."""
@@ -1504,6 +1509,7 @@ def test_an_empty_keychain_gets_no_new_key_for_a_signed_log(tmp_path: Path) -> N
 
     from autogpt_local_executor.audit import AuditKeyError
 
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))  # the key's lock
     log = tmp_path / "audit.log"
     log.write_text('{"seq": 1}\n')
     stored: list[str] = []
@@ -1563,6 +1569,94 @@ def test_a_keychain_that_turns_up_later_keeps_the_file_key_that_signed_the_log(
         assert cli._audit_verify(log) != 2  # the audit commands read it too
 
     assert stored == []
+
+
+def _start_meanwhile(log: Path) -> tuple[threading.Thread, list[object]]:
+    """A second start, in a thread, finding its audit key for `log`: what
+    get_or_create_audit_key returned or raised."""
+    outcome: list[object] = []
+
+    def start() -> None:
+        try:
+            outcome.append(get_or_create_audit_key(log))
+        except Exception as exc:
+            outcome.append(exc)
+
+    return threading.Thread(target=start, daemon=True), outcome
+
+
+def test_a_start_that_finds_no_key_while_another_makes_one_uses_that_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two starts at once with no key stored (the service, and a `start` run
+    by hand) each made a key and stored it; the keychain kept the last one,
+    and the log signed with the other never verified again. A key is made
+    under a lock that every start takes, whatever its log, and one that
+    waited for it looks again."""
+    import keyring
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    store: dict[tuple[str, str], str] = {}
+    looked = threading.Event()
+
+    def fake_get(service: str, user: str) -> str | None:
+        looked.set()
+        return store.get((service, user))
+
+    def fake_set(service: str, user: str, value: str) -> None:
+        store[(service, user)] = value
+
+    the_other_starts = b"o" * 32
+    start, outcome = _start_meanwhile(tmp_path / "another-deployment" / "audit.log")
+    with (
+        patch.object(keyring, "get_password", side_effect=fake_get),
+        patch.object(keyring, "set_password", side_effect=fake_set),
+    ):
+        # The other start, for a log of its own, is making its key.
+        with audit_module._file_lock(tmp_path / ".audit-key.lock"):
+            start.start()
+            assert looked.wait(timeout=30)
+            start.join(timeout=1)
+            assert start.is_alive(), f"made a key while another start made one: {outcome}"
+            store[("autogpt-local-executor", "audit_key")] = the_other_starts.hex()
+        start.join(timeout=30)
+
+    assert outcome == [the_other_starts]
+    assert store == {("autogpt-local-executor", "audit_key"): the_other_starts.hex()}
+
+
+def test_a_file_key_is_made_and_read_under_the_same_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no keychain and the passphrase set, two first starts each wrote
+    a file key of their own, the file kept the last, and one start could
+    read the other's half written, which stopped it for good as malformed."""
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    looked = threading.Event()
+
+    def no_keychain(_service: str, _user: str) -> str | None:
+        looked.set()
+        raise keyring.errors.NoKeyringError("none")
+
+    the_other_starts = b"o" * 32
+    salt = b"s" * 16
+    start, outcome = _start_meanwhile(tmp_path / "audit.log")
+    with patch.object(keyring, "get_password", side_effect=no_keychain):
+        with audit_module._file_lock(tmp_path / ".audit-key.lock"):
+            start.start()
+            assert looked.wait(timeout=30)
+            start.join(timeout=1)
+            assert start.is_alive(), f"made a file key while another start made one: {outcome}"
+            ciphertext = audit_module._xor_encrypt("passphrase", salt, the_other_starts)
+            (tmp_path / "audit-key.enc").write_text(f"{salt.hex()}:{ciphertext.hex()}")
+        start.join(timeout=30)
+
+    assert outcome == [the_other_starts]
 
 
 # ── Export: descriptors, a prune meanwhile, the default name ───────────

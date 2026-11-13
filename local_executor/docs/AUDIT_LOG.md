@@ -62,7 +62,7 @@ single JSON object with this shape:
 | `ts` | float (unix epoch seconds) | Record timestamp, monotonic-rounded |
 | `session_id` | string | The platform session that issued the op |
 | `machine_id` | string | This shim's stable machine identifier |
-| `shim_version` | string | semver of the shim writing the line |
+| `shim_version` | string | version of the shim writing the line, as `autogpt-shim --version` prints it |
 | `request_id` | string \| null | Wire envelope `id` for traceability (null for shim-internal events) |
 | `op` | string | One of the message types from PROTOCOL.md plus a few shim-internal events (see below) |
 | `details` | object | Op-specific payload (see "Per-op fields") |
@@ -157,6 +157,12 @@ saying to restore the key or move the log aside, rather than signing on with
 a new key the log can't verify with. The `audit` commands (`verify`,
 `verify-all`, `rotate`, `export`) read the stored key and stop when there is
 none.
+
+Two starts at once that find no key (the service, and a `start` run by
+hand) make one between them: a key is made, and the file fallback's is
+read, under a lock every start takes, `.audit-key.lock` in
+`AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`), and a
+start that waited for it uses the key the other stored.
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using

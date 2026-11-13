@@ -36,7 +36,9 @@ too. See the "Packaging & install" table in `docs/CROSS_PLATFORM.md`.
 The copy of this package in the AutoGPT monorepo (`local_executor/`) has
 no release workflow yet, so run these steps in `autogpt-local-executor`:
 
-1. Bump `version` in `pyproject.toml` to match the tag you're about to push.
+1. Bump `version` in `pyproject.toml` to match the tag you're about to push,
+   and `SOURCE_TREE_VERSION` in `autogpt_local_executor/_version.py` with it
+   (a test checks that they match).
 2. Tag + push: `git tag v0.0.1 && git push --tags`.
 3. The workflow builds sdist + wheel, publishes to PyPI via trusted-publisher
    OIDC (no `PYPI_API_TOKEN` secret needed — register the

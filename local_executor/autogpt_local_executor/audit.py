@@ -600,6 +600,8 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
     log. A new one is made only while `audit_log` (the log the key is for)
     doesn't exist yet, since a log another key signed would never verify
     with it. With `create` false no key is made at all (load_audit_key).
+    A key is made under a lock all starts share, after a second look for
+    one another start stored meanwhile (_holding_key_lock).
     """
     try:
         import keyring
@@ -614,26 +616,22 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
         _load_keyring_backend(keyring)
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
         if stored is not None:
-            try:
-                key = bytes.fromhex(stored)
-            except ValueError:
-                raise AuditKeyError(
-                    "Stored audit key is malformed; refusing to replace it"
-                ) from None
-            if len(key) != 32:
-                raise AuditKeyError(
-                    "Stored audit key has an invalid length; refusing to replace it"
-                )
-            return key
+            return _stored_audit_key(stored)
         if _fallback_path().exists() and os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
             # The file fallback made the key while there was no keychain, so
             # it signed the log; a new keychain key couldn't verify it.
             logger.info("The keychain holds no audit key; using the file fallback's.")
             return _fallback_audit_key()
         _refuse_a_new_key(audit_log, create, "The OS keychain")
-        key = secrets.token_bytes(32)
-        keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
-        return key
+        with _holding_key_lock():
+            # Another start (the service, and a `start` run by hand) may have
+            # stored one while this one waited: the log is signed with one key.
+            stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
+            if stored is not None:
+                return _stored_audit_key(stored)
+            key = secrets.token_bytes(32)
+            keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
+            return key
     except AuditKeyError:
         raise
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
@@ -646,6 +644,39 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
             "it may still be locked"
         ) from exc
+
+
+def _stored_audit_key(stored: str) -> bytes:
+    """The keychain's audit key, or AuditKeyError for a value that isn't
+    one, which is left in place."""
+    try:
+        key = bytes.fromhex(stored)
+    except ValueError:
+        raise AuditKeyError("Stored audit key is malformed; refusing to replace it") from None
+    if len(key) != 32:
+        raise AuditKeyError("Stored audit key has an invalid length; refusing to replace it")
+    return key
+
+
+@contextmanager
+def _holding_key_lock() -> Iterator[None]:
+    """Hold, across processes, the lock that a new audit key is made under
+    and the file fallback's key is read under. Two starts that each found no
+    key would each make one, and the log signed with one would never verify
+    with the key the other left stored. The lock sits by the file fallback's
+    key, in the person's own folder, so every deployment's start, whatever
+    its log, takes the same one, as they share the keychain's key. One that
+    can't be taken raises AuditKeyError."""
+    lock = _fallback_path().with_name(".audit-key.lock")
+    with contextlib.ExitStack() as stack:
+        try:
+            lock.parent.mkdir(parents=True, exist_ok=True)
+            stack.enter_context(_file_lock(lock))
+        except OSError as exc:
+            raise AuditKeyError(
+                f"The lock the audit key is made under, {lock}, couldn't be taken ({exc})"
+            ) from exc
+        yield
 
 
 def _load_keyring_backend(keyring: Any) -> None:
@@ -729,25 +760,28 @@ def _fallback_audit_key() -> bytes:
             "Either install a keyring backend or set the env var to enable the "
             "encrypted-file fallback."
         )
-    if fallback_path.exists():
-        try:
-            blob = fallback_path.read_text(encoding="utf-8").strip()
-            salt_hex, ct_hex = blob.split(":", 1)
-            salt = bytes.fromhex(salt_hex)
-            ciphertext = bytes.fromhex(ct_hex)
-            if len(salt) != 16 or len(ciphertext) != 32:
-                raise ValueError("Invalid audit key envelope length")
-            return _xor_decrypt(passphrase, salt, ciphertext)
-        except (OSError, ValueError) as exc:
-            raise AuditKeyError(
-                "Stored audit key fallback is malformed; refusing to replace it"
-            ) from exc
-    key = secrets.token_bytes(32)
-    salt = secrets.token_bytes(16)
-    ct = _xor_encrypt(passphrase, salt, key)
-    fallback_path.write_text(f"{salt.hex()}:{ct.hex()}", encoding="utf-8")
-    _chmod_owner_only(fallback_path)
-    return key
+    # Under the lock a new key is made under: two starts would each write
+    # their own, and one could read the other's half written.
+    with _holding_key_lock():
+        if fallback_path.exists():
+            try:
+                blob = fallback_path.read_text(encoding="utf-8").strip()
+                salt_hex, ct_hex = blob.split(":", 1)
+                salt = bytes.fromhex(salt_hex)
+                ciphertext = bytes.fromhex(ct_hex)
+                if len(salt) != 16 or len(ciphertext) != 32:
+                    raise ValueError("Invalid audit key envelope length")
+                return _xor_decrypt(passphrase, salt, ciphertext)
+            except (OSError, ValueError) as exc:
+                raise AuditKeyError(
+                    "Stored audit key fallback is malformed; refusing to replace it"
+                ) from exc
+        key = secrets.token_bytes(32)
+        salt = secrets.token_bytes(16)
+        ct = _xor_encrypt(passphrase, salt, key)
+        fallback_path.write_text(f"{salt.hex()}:{ct.hex()}", encoding="utf-8")
+        _chmod_owner_only(fallback_path)
+        return key
 
 
 def _fallback_path() -> Path:

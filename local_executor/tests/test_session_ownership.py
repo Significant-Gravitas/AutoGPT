@@ -521,6 +521,48 @@ async def test_sessions_the_platform_ends_right_away_keep_the_backoff_growing(
     assert attempts == [0, 1, 2]
 
 
+@pytest.mark.parametrize(("stable_after", "expected"), [(60.0, [0, 1, 2]), (0.0, [0, 0, 0])])
+async def test_sessions_the_platform_closes_cleanly_count_as_the_others_do(
+    daemon: ShimDaemon,
+    monkeypatch: pytest.MonkeyPatch,
+    stable_after: float,
+    expected: list[int],
+) -> None:
+    """A clean close (1000, 1001) ends the socket's iteration with no error,
+    and that path reconnected after the base delay and started the count
+    over every time, so a platform that closed right after HELLO_ACK had
+    every shim reconnect every few seconds. Only a session that stayed up
+    starts the backoff over."""
+    import autogpt_local_executor.daemon as daemon_module
+
+    monkeypatch.setattr(daemon_module, "STABLE_SESSION_SECONDS", stable_after)
+    attempts: list[int] = []
+    calls = 0
+
+    async def handshake(_ws: Any) -> None:
+        return None
+
+    async def session() -> None:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            await daemon._run_session(_FakeWebSocket([]))  # closed cleanly
+            return
+        daemon._running = False
+
+    def backoff(attempt: int) -> float:
+        attempts.append(attempt)
+        return 0
+
+    monkeypatch.setattr(daemon, "_handshake", handshake)
+    monkeypatch.setattr(daemon, "_session", session)
+    monkeypatch.setattr(daemon, "_backoff_delay", backoff)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert attempts == expected
+
+
 def test_the_backoff_survives_any_number_of_failed_attempts(daemon: ShimDaemon) -> None:
     """2 ** attempt times a float delay overflows at attempt 1024."""
     delay = daemon._backoff_delay(5000)

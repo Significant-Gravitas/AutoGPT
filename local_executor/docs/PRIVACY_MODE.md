@@ -95,10 +95,14 @@ fingerprint stays in the shim's per-process stub registry, where
 `stub_id` is the same shim-minted-UUID pattern locked in Q2: never
 reused, wiped on HELLO. Subsequent `LOCAL_LLM_TURN` ops reference the
 stub_id rather than re-sending the path, so the path never reaches the
-platform again. When `verify_sha256` is true (the default), the shim
-re-hashes the file on each turn and refuses it with `STUB_STALE` if its
-fingerprint differs from the one in the registry, so a change between
-turns (TOCTOU) isn't read as the file the stub described.
+platform again. On each turn the shim reads the file once, into one
+snapshot no larger than `max_file_size_bytes`, and only that snapshot
+reaches the local model. When `verify_sha256` is true (the default), the
+shim fingerprints that snapshot and refuses the turn with `STUB_STALE` if
+the fingerprint differs from the one in the registry, so a change between
+turns (TOCTOU) isn't read as the file the stub described. It never hashes
+the file and then reads it again: a change between the two would reach the
+model unchecked.
 
 ### `LOCAL_LLM_TURN` (platform → shim) — NEW v2 op
 
@@ -122,9 +126,12 @@ turns (TOCTOU) isn't read as the file the stub described.
 The shim:
 1. Looks up each `stub_id` in its per-process stub registry; refuses
    unknown / stale with `STUB_STALE`.
-2. If `verify_sha256`, re-hashes the file; refuses if drifted.
-3. Resolves stubs to actual file content (still local — never leaves
-   the machine).
+2. Reads each stubbed file once, into a snapshot no larger than
+   `max_file_size_bytes` (a larger file is refused with `FILE_TOO_LARGE`,
+   as `FILE_READ` refuses it). If `verify_sha256`, fingerprints the
+   snapshot and refuses with `STUB_STALE` if it differs from the stub's.
+3. Passes those snapshots on as the files' content (still local — never
+   leaves the machine). The files aren't read again.
 4. Constructs the local-LLM prompt: `{system: <task>, user:
    {context}, file_attachments: [<content>]}`. Exact prompt shape
    depends on the local backend (Ollama chat vs llama.cpp vs LM
@@ -159,7 +166,8 @@ frames with `{delta: "..."}` payloads, then a final
 ### `STUB_STALE` (new error code)
 
 The `stub_id` doesn't exist, was wiped on HELLO, or `verify_sha256` is
-true and the file's sha256 has drifted since the stub was minted.
+true and the turn's snapshot of the file has a different fingerprint from
+the one taken when the stub was minted.
 Caller re-issues `FILE_READ(mode="stub")` to mint a fresh one.
 
 ---
