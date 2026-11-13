@@ -7,6 +7,7 @@ import {
   getNextSessionListOffset,
   useDeletingSessionIds,
 } from "@/app/(platform)/copilot/useSessionList";
+import { useSidebar } from "@/components/molecules/Sidebar/Sidebar";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -15,6 +16,7 @@ import {
   isGroupCollapsed,
   mergeGroupSessions,
   olderPagesMatchGroup,
+  openingChatCount,
   setGroupCollapsed,
 } from "../../helpers";
 
@@ -35,20 +37,23 @@ export function useExpertChatGroup({
   activeSessionId,
 }: Args) {
   const [isOpen, setIsOpen] = useState(() => !isGroupCollapsed(expertId));
-  // Chats asked for past the ones the grouped read lists. That read decides
-  // how many each group shows on its own, and can change it on any poll.
+  // Chats asked for past the ones the group opens on. The grouped read
+  // decides how many that is, and can change it on any poll.
   const [extraCount, setExtraCount] = useState(0);
+  const { isMobile } = useSidebar();
+  const visibleCount =
+    openingChatCount(previewSessions.length, isMobile) + extraCount;
   const olderPages = useOlderPages({
     expertId,
     pinnedSeparately,
-    enabled: extraCount > 0,
+    // On a phone the first presses show chats the grouped read already has.
+    enabled: visibleCount > previewSessions.length,
   });
   const deletingIds = useDeletingSessionIds();
   const sessions = mergeGroupSessions(
     previewSessions,
     flattenSessions(olderPages.data),
   ).filter((session) => !deletingIds.includes(session.id));
-  const visibleCount = previewSessions.length + extraCount;
   const visibleSessions = sessions.slice(0, visibleCount);
 
   useReadPagesToShow(olderPages, sessions.length < visibleCount);

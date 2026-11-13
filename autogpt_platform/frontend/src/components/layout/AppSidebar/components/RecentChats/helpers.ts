@@ -13,6 +13,10 @@ export const GROUP_MIN_CHATS = 3;
  *  portrait screen fits: past each group's minimum, the newest fill it, so
  *  the experts in use show the most. */
 export const SIDEBAR_CHAT_LIMIT = 30;
+/** The most chats a group opens on in the phone menu, where the whole budget
+ *  would push every other group off the screen. A desktop sidebar has room
+ *  for it. */
+export const PHONE_GROUP_CHATS = 4;
 /** Chats each press of a group's "Show more" adds. */
 export const GROUP_SHOW_MORE_STEP = 10;
 /** Chats per request when a group pages in its older chats; above the
@@ -78,6 +82,12 @@ export function withoutDeletingSessions(
     const total = group.total - removed;
     return total > 0 ? [{ ...group, total, sessions }] : [];
   });
+}
+
+/** How many chats a group opens on: every one the grouped read lists for it,
+ *  or on a phone at most `PHONE_GROUP_CHATS`. */
+export function openingChatCount(listed: number, isPhone: boolean) {
+  return isPhone ? Math.min(listed, PHONE_GROUP_CHATS) : listed;
 }
 
 /** A group's chats, newest first: its preview, which the sidebar's poll keeps
