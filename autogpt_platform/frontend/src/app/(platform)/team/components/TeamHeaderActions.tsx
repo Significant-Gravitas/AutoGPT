@@ -14,7 +14,7 @@ export function TeamHeaderActions() {
         variant="primary"
         size="small"
       >
-        Hire expert
+        Hire an Expert
       </Button>
     </div>
   );
