@@ -78,7 +78,7 @@ async def test_both_reads_apply_the_same_visibility_rules_as_the_list():
     raw = _raw_reads([], [])
     with patch(_RAW_QUERY_TARGET, raw):
         await get_user_chat_session_groups(
-            "u1", 3, organization_id="org-1", pinned=False
+            "u1", 3, 30, organization_id="org-1", pinned=False
         )
 
     totals_call, rows_call = sorted(
@@ -95,8 +95,11 @@ async def test_both_reads_apply_the_same_visibility_rules_as_the_list():
         'PARTITION BY "expertId" ORDER BY "updatedAt" DESC, "id" DESC'
         in rows_call.args[0]
     )
-    assert '"rank" <= $3' in rows_call.args[0]
-    assert rows_call.args[1:] == ("u1", "org-1", 3)
+    assert 'ROW_NUMBER() OVER (ORDER BY "updatedAt" DESC, "id" DESC)' in (
+        rows_call.args[0]
+    )
+    assert '"groupRank" <= $3 OR "overallRank" <= $4' in rows_call.args[0]
+    assert rows_call.args[1:] == ("u1", "org-1", 3, 30)
 
 
 @pytest.mark.asyncio
@@ -109,7 +112,7 @@ async def test_groups_keep_real_totals_with_newest_chats_and_most_active_first()
     ]
     totals = [{"expertId": None, "total": 29}, {"expertId": "maria", "total": 17}]
     with patch(_RAW_QUERY_TARGET, _raw_reads(totals, rows)):
-        groups = await get_user_chat_session_groups("u1", 2)
+        groups = await get_user_chat_session_groups("u1", 2, 30)
 
     assert [(group.expert_id, group.total) for group in groups] == [
         ("maria", 17),
@@ -124,9 +127,44 @@ async def test_a_group_emptied_between_the_two_reads_is_dropped():
     totals = [{"expertId": None, "total": 1}, {"expertId": "clip", "total": 1}]
     rows = [_row("otto-1", None, minutes_ago=1)]
     with patch(_RAW_QUERY_TARGET, _raw_reads(totals, rows)):
-        groups = await get_user_chat_session_groups("u1", 3)
+        groups = await get_user_chat_session_groups("u1", 3, 30)
 
     assert [group.expert_id for group in groups] == [None]
+
+
+@pytest.mark.asyncio
+async def test_the_newest_chats_past_each_minimum_fill_the_budget():
+    """Each group keeps its one newest chat, and the one slot left goes to
+    the newest of the rest: Otto's second chat, not Maria's older one."""
+    rows = [
+        _row("otto-1", None, minutes_ago=1),
+        _row("otto-2", None, minutes_ago=2),
+        _row("otto-3", None, minutes_ago=3),
+        _row("maria-1", "maria", minutes_ago=10),
+        _row("maria-2", "maria", minutes_ago=20),
+    ]
+    totals = [{"expertId": None, "total": 3}, {"expertId": "maria", "total": 2}]
+    with patch(_RAW_QUERY_TARGET, _raw_reads(totals, rows)):
+        groups = await get_user_chat_session_groups("u1", 1, 3)
+
+    assert [
+        (group.expert_id, [s.session_id for s in group.sessions]) for group in groups
+    ] == [(None, ["otto-1", "otto-2"]), ("maria", ["maria-1"])]
+
+
+@pytest.mark.asyncio
+async def test_every_group_keeps_its_minimum_past_the_budget():
+    rows = [
+        _row("otto-1", None, minutes_ago=1),
+        _row("otto-2", None, minutes_ago=2),
+        _row("maria-1", "maria", minutes_ago=3),
+        _row("maria-2", "maria", minutes_ago=4),
+    ]
+    totals = [{"expertId": None, "total": 2}, {"expertId": "maria", "total": 2}]
+    with patch(_RAW_QUERY_TARGET, _raw_reads(totals, rows)):
+        groups = await get_user_chat_session_groups("u1", 2, 1)
+
+    assert [len(group.sessions) for group in groups] == [2, 2]
 
 
 @pytest.mark.asyncio
@@ -189,7 +227,8 @@ async def _session(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_each_group_matches_paging_through_that_experts_chats(server):
-    """A fresh user, so other tests' sessions can't move the counts."""
+    """A fresh user, so other tests' sessions can't move the counts. The
+    sessions and the expert it makes are removed again afterwards."""
     user_id = str(uuid4())
     await get_or_create_user_with_status(
         {"sub": user_id, "email": f"{user_id}@example.com"}
@@ -202,6 +241,14 @@ async def test_each_group_matches_paging_through_that_experts_chats(server):
             "identity": "Grows the brand.",
         }
     )
+    try:
+        await _check_groups_against_paging(user_id, expert.id)
+    finally:
+        await PrismaChatSession.prisma().delete_many(where={"userId": user_id})
+        await Expert.prisma().delete(where={"id": expert.id})
+
+
+async def _check_groups_against_paging(user_id: str, expert_id: str) -> None:
     otto_ids = [
         await _session(user_id, None, minutes_ago=minutes)
         for minutes in (10, 20, 30, 40)
@@ -211,26 +258,31 @@ async def test_each_group_matches_paging_through_that_experts_chats(server):
     # make Otto's group the most recently active.
     await _session(user_id, None, minutes_ago=1, dream=True)
     maria_ids = [
-        await _session(user_id, expert.id, minutes_ago=minutes) for minutes in (5, 15)
+        await _session(user_id, expert_id, minutes_ago=minutes) for minutes in (5, 15)
     ]
 
-    groups = await get_user_chat_session_groups(user_id, 3)
-    assert [(group.expert_id, group.total) for group in groups] == [
-        (expert.id, 2),
-        (None, 5),
-    ]
-    assert [s.session_id for s in groups[0].sessions] == maria_ids
-    assert [s.session_id for s in groups[1].sessions] == otto_ids[:3]
+    # One each, then one more for the newest of the rest: Maria's second.
+    groups = await get_user_chat_session_groups(user_id, 1, 3)
+    assert [
+        (group.expert_id, group.total, [s.session_id for s in group.sessions])
+        for group in groups
+    ] == [(expert_id, 2, maria_ids), (None, 5, otto_ids[:1])]
 
-    unpinned = await get_user_chat_session_groups(user_id, 3, pinned=False)
-    assert [(group.expert_id, group.total) for group in unpinned] == [
-        (expert.id, 2),
-        (None, 4),
-    ]
+    unpinned = await get_user_chat_session_groups(user_id, 3, 30, pinned=False)
+    assert [
+        (group.expert_id, group.total, [s.session_id for s in group.sessions])
+        for group in unpinned
+    ] == [(expert_id, 2, maria_ids), (None, 4, otto_ids)]
     for group in unpinned:
+        listed = len(group.sessions)
         if group.expert_id is None:
             page = await get_user_chat_sessions(
-                user_id, 3, 0, autopilot_only=True, pinned_first=False, pinned=False
+                user_id,
+                listed,
+                0,
+                autopilot_only=True,
+                pinned_first=False,
+                pinned=False,
             )
             total = await get_user_session_count(
                 user_id, autopilot_only=True, pinned=False
@@ -238,7 +290,7 @@ async def test_each_group_matches_paging_through_that_experts_chats(server):
         else:
             page = await get_user_chat_sessions(
                 user_id,
-                3,
+                listed,
                 0,
                 expert_id=group.expert_id,
                 pinned_first=False,

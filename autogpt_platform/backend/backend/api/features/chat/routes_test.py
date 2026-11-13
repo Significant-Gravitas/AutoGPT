@@ -4009,7 +4009,9 @@ def test_list_session_groups_returns_each_group_with_its_real_total(
         return_value=mock_redis,
     )
 
-    response = client.get("/session-groups?per_group=5&pinned_separately=true")
+    response = client.get(
+        "/session-groups?min_per_group=5&limit=40&pinned_separately=true"
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -4023,7 +4025,7 @@ def test_list_session_groups_returns_each_group_with_its_real_total(
     assert [(s["id"], s["is_pinned"]) for s in data["pinned"]] == [
         ("sess-pinned", True)
     ]
-    assert mock_groups.await_args.args[1] == 5
+    assert mock_groups.await_args.args[1:] == (5, 40)
     assert mock_groups.await_args.kwargs["pinned_separately"] is True
 
 
@@ -4047,16 +4049,18 @@ def test_list_session_groups_with_no_chats_skips_redis(
     mock_redis.assert_not_awaited()
 
 
-@pytest.mark.parametrize("per_group", [0, 21])
-def test_list_session_groups_rejects_a_per_group_out_of_range(
-    mocker: pytest_mock.MockerFixture, per_group: int
+@pytest.mark.parametrize(
+    "query", ["min_per_group=0", "min_per_group=21", "limit=0", "limit=101"]
+)
+def test_list_session_groups_rejects_sizes_out_of_range(
+    mocker: pytest_mock.MockerFixture, query: str
 ) -> None:
     mock_groups = mocker.patch(
         "backend.api.features.chat.routes.get_user_session_groups",
         new_callable=AsyncMock,
     )
 
-    response = client.get(f"/session-groups?per_group={per_group}")
+    response = client.get(f"/session-groups?{query}")
 
     assert response.status_code == 422
     mock_groups.assert_not_awaited()

@@ -753,7 +753,21 @@ async def list_sessions(
 async def list_session_groups(
     user_id: Annotated[str, Security(auth.get_user_id)],
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
-    per_group: int = Query(default=3, ge=1, le=20),
+    min_per_group: int = Query(
+        default=3,
+        ge=1,
+        le=20,
+        description="The newest chats every group lists, however old.",
+    ),
+    limit: int = Query(
+        default=30,
+        ge=1,
+        le=100,
+        description=(
+            "Chats to list in all: the newest beyond each group's minimum "
+            "fill up to this. The minimums alone can pass it."
+        ),
+    ),
     pinned_separately: bool = Query(
         default=False,
         description=(
@@ -766,13 +780,16 @@ async def list_session_groups(
     List the user's chats grouped by expert, for the sidebar.
 
     Every group, Otto's own (``expert_id`` null) included, carries its real
-    chat count and its newest ``per_group`` chats; the most recently active
-    group comes first. Page further into a group with ``GET /sessions`` and
-    ``expert_id``, or ``autopilot_only`` for Otto's.
+    chat count and at least its ``min_per_group`` newest chats; the newest of
+    the rest fill the list up to ``limit``, so the groups in use show more.
+    The most recently active group comes first. Page further into a group
+    with ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for
+    Otto's.
     """
     groups, pinned = await get_user_session_groups(
         user_id,
-        per_group,
+        min_per_group,
+        limit,
         organization_id=ctx.org_id,
         pinned_separately=pinned_separately,
     )

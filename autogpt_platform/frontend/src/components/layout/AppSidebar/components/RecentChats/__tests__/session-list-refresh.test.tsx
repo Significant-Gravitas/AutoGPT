@@ -54,7 +54,7 @@ async function showOlderOttoChats() {
   fireEvent.click(
     await screen.findByRole("button", { name: "Show more Otto chats" }),
   );
-  await screen.findByText("autopilot chat 13");
+  await screen.findByText("autopilot chat 40");
   await settle();
 }
 
@@ -63,7 +63,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-06-30T12:00:00Z"));
   useCopilotUIStore.setState({ sessionToDelete: null });
   storage.clean(Key.RECENT_CHATS_COLLAPSED_GROUPS);
-  chats = groupChats(30);
+  chats = groupChats(60);
   requests = [];
   server.use(...sidebarBackend(() => chats, requests));
 });
@@ -81,7 +81,7 @@ describe("RecentChats — 10-second refresh", () => {
     chats[1] = { ...chats[1], title: "Renamed on the server" };
     await nextRefresh();
 
-    expect(screen.getByText("Renamed on the server")).toBeDefined();
+    expect(await screen.findByText("Renamed on the server")).toBeDefined();
   });
 
   it("refreshes the grouped read alone, not a group's older pages", async () => {
@@ -92,7 +92,7 @@ describe("RecentChats — 10-second refresh", () => {
     await nextRefresh();
 
     expect(reads("sessions")).toBe(pagesBefore);
-    expect(screen.getByText("autopilot chat 13")).toBeDefined();
+    expect(screen.getByText("autopilot chat 40")).toBeDefined();
   });
 
   it("re-reads a group's older pages when another device deletes one of its chats", async () => {
@@ -101,7 +101,7 @@ describe("RecentChats — 10-second refresh", () => {
     const pagesBefore = reads("sessions");
 
     // Deleted elsewhere: every offset after it moves up by one, so reading
-    // the next page from the stale ones would skip chat 21.
+    // the next page from the stale ones would skip chat 41.
     chats = chats.filter((chat) => chat.id !== "autopilot-5");
     await nextRefresh();
     await waitFor(() => expect(reads("sessions")).toBeGreaterThan(pagesBefore));
@@ -110,8 +110,8 @@ describe("RecentChats — 10-second refresh", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Show more Otto chats" }),
     );
-    expect(await screen.findByText("autopilot chat 24")).toBeDefined();
-    expect(screen.getByText("autopilot chat 21")).toBeDefined();
+    expect(await screen.findByText("autopilot chat 51")).toBeDefined();
+    expect(screen.getByText("autopilot chat 41")).toBeDefined();
     expect(screen.queryByText("autopilot chat 5")).toBeNull();
   });
 
@@ -122,8 +122,8 @@ describe("RecentChats — 10-second refresh", () => {
     chats = [{ id: "new", title: "Brand new chat" }, ...chats];
     await nextRefresh();
 
-    expect(screen.getByText("Brand new chat")).toBeDefined();
-    for (let i = 1; i <= 12; i++) {
+    expect(await screen.findByText("Brand new chat")).toBeDefined();
+    for (let i = 1; i <= 39; i++) {
       expect(screen.getAllByText(`autopilot chat ${i}`)).toHaveLength(1);
     }
   });

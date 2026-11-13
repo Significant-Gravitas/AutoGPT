@@ -4564,21 +4564,37 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Session Groups",
-        "description": "List the user's chats grouped by expert, for the sidebar.\n\nEvery group, Otto's own (``expert_id`` null) included, carries its real\nchat count and its newest ``per_group`` chats; the most recently active\ngroup comes first. Page further into a group with ``GET /sessions`` and\n``expert_id``, or ``autopilot_only`` for Otto's.",
+        "description": "List the user's chats grouped by expert, for the sidebar.\n\nEvery group, Otto's own (``expert_id`` null) included, carries its real\nchat count and at least its ``min_per_group`` newest chats; the newest of\nthe rest fill the list up to ``limit``, so the groups in use show more.\nThe most recently active group comes first. Page further into a group\nwith ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for\nOtto's.",
         "operationId": "getV2ListSessionGroups",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "per_group",
+            "name": "min_per_group",
             "in": "query",
             "required": false,
             "schema": {
               "type": "integer",
               "maximum": 20,
               "minimum": 1,
+              "description": "The newest chats every group lists, however old.",
               "default": 3,
-              "title": "Per Group"
-            }
+              "title": "Min Per Group"
+            },
+            "description": "The newest chats every group lists, however old."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Chats to list in all: the newest beyond each group's minimum fill up to this. The minimums alone can pass it.",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "Chats to list in all: the newest beyond each group's minimum fill up to this. The minimums alone can pass it."
           },
           {
             "name": "pinned_separately",

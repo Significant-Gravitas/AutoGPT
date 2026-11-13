@@ -1844,13 +1844,15 @@ MAX_PINNED_SESSIONS = 100
 
 async def get_user_session_groups(
     user_id: str,
-    per_group: int,
+    min_per_group: int,
+    fill_to: int,
     organization_id: str | None = None,
     pinned_separately: bool = False,
 ) -> tuple[list[ChatSessionGroup], list[ChatSessionInfo]]:
-    """The sidebar's sessions: one group per expert, Otto's own included, each
-    with its real total and newest ``per_group`` sessions, most recently
-    active first.
+    """The sidebar's sessions: one group per expert, Otto's own included, most
+    recently active first, each with its real total. Every group shows its
+    ``min_per_group`` newest sessions, and the newest of the rest fill the
+    read up to ``fill_to`` in all.
 
     With ``pinned_separately`` the pinned sessions come back on their own,
     newest first, and are left out of the groups and their totals; without
@@ -1859,12 +1861,16 @@ async def get_user_session_groups(
     db = chat_db()
     if not pinned_separately:
         groups = await db.get_user_chat_session_groups(
-            user_id, per_group, organization_id=organization_id
+            user_id, min_per_group, fill_to, organization_id=organization_id
         )
         return groups, []
     groups, pinned = await asyncio.gather(
         db.get_user_chat_session_groups(
-            user_id, per_group, organization_id=organization_id, pinned=False
+            user_id,
+            min_per_group,
+            fill_to,
+            organization_id=organization_id,
+            pinned=False,
         ),
         db.get_user_chat_sessions(
             user_id,

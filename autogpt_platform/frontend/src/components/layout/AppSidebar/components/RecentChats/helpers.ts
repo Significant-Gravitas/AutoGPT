@@ -7,13 +7,17 @@ import type { SessionGroupResponse } from "@/app/api/__generated__/models/sessio
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { Key, storage } from "@/services/storage/local-storage";
 
-/** Chats a group shows before its "Show more", which is also how many the
- *  sidebar asks the server for per group. */
-export const GROUP_PREVIEW_COUNT = 3;
+/** The newest chats every group shows, however old they are. */
+export const GROUP_MIN_CHATS = 3;
+/** Chats the sidebar shows before any "Show more", about what a tall
+ *  portrait screen fits: past each group's minimum, the newest fill it, so
+ *  the experts in use show the most. */
+export const SIDEBAR_CHAT_LIMIT = 30;
 /** Chats each press of a group's "Show more" adds. */
 export const GROUP_SHOW_MORE_STEP = 10;
-/** Chats per request when a group pages in its older chats. */
-export const GROUP_PAGE_LIMIT = 20;
+/** Chats per request when a group pages in its older chats; above the
+ *  sidebar limit, so the first "Show more" needs one request. */
+export const GROUP_PAGE_LIMIT = 40;
 
 // The key Otto's own group is remembered under; experts use their id.
 const OTTO_GROUP_KEY = "autopilot";

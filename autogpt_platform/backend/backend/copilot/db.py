@@ -907,13 +907,18 @@ async def get_user_session_count(
 
 async def get_user_chat_session_groups(
     user_id: str,
-    per_group: int,
+    min_per_group: int,
+    fill_to: int,
     organization_id: str | None = None,
     pinned: bool | None = None,
 ) -> list[ChatSessionGroup]:
     """The user's sessions grouped by expert, Otto's own (``expert_id`` None)
-    included: each group's real total and its ``per_group`` newest sessions,
-    the most recently active group first.
+    included, the most recently active group first, each with its real total.
+
+    Every group gets its ``min_per_group`` newest sessions. The newest of the
+    rest then fill the read up to ``fill_to`` sessions in all, so the groups
+    in use show more. With many groups the minimums alone can pass
+    ``fill_to``.
 
     Same visibility rules as :func:`get_user_chat_sessions`, so a group's
     total matches what paging through it with ``expert_id`` (or
@@ -926,21 +931,33 @@ async def get_user_chat_session_groups(
             'FROM {schema_prefix}"ChatSession" WHERE ' + where + ' GROUP BY "expertId"',
             *params,
         ),
+        # Ranks the user's sessions on narrow columns only, then reads the few
+        # kept by primary key. Measured on a 10,000-session account: ranking
+        # whole rows costs a third more, and joining the ids back (`IN` or
+        # `JOIN`) has Postgres scan the whole table, about five times more.
         db.query_raw_with_schema(
-            'SELECT * FROM {schema_prefix}"ChatSession" WHERE "id" IN ('
-            'SELECT "id" FROM (SELECT "id", ROW_NUMBER() OVER ('
-            'PARTITION BY "expertId" ORDER BY "updatedAt" DESC, "id" DESC'
-            ') AS "rank" FROM {schema_prefix}"ChatSession" WHERE '
+            "SELECT "
+            + _SESSION_INFO_COLUMNS
+            + ' FROM {schema_prefix}"ChatSession" WHERE "id" = ANY(ARRAY('
+            'SELECT "id" FROM (SELECT "id", '
+            'ROW_NUMBER() OVER (PARTITION BY "expertId" '
+            'ORDER BY "updatedAt" DESC, "id" DESC) AS "groupRank", '
+            'ROW_NUMBER() OVER (ORDER BY "updatedAt" DESC, "id" DESC) '
+            'AS "overallRank" FROM {schema_prefix}"ChatSession" WHERE '
             + where
-            + f') AS "ranked" WHERE "rank" <= ${len(params) + 1})',
+            + f') AS "ranked" WHERE "groupRank" <= ${len(params) + 1}'
+            + f' OR "overallRank" <= ${len(params) + 2}))',
             *params,
-            per_group,
+            min_per_group,
+            fill_to,
             model=PrismaChatSession,
         ),
     )
     return _group_newest_sessions(
         {row["expertId"]: row["total"] for row in totals},
         [ChatSessionInfo.from_db(row) for row in rows],
+        min_per_group,
+        fill_to,
     )
 
 
@@ -990,7 +1007,10 @@ def _visible_sessions_where(
 
 
 def _group_newest_sessions(
-    totals: dict[str | None, int], sessions: list[ChatSessionInfo]
+    totals: dict[str | None, int],
+    sessions: list[ChatSessionInfo],
+    min_per_group: int,
+    fill_to: int,
 ) -> list[ChatSessionGroup]:
     """Builds one group per expert in ``totals``, newest session first, the
     group with the newest session first. The totals and the rows are two
@@ -1000,11 +1020,16 @@ def _group_newest_sessions(
     newest_first = sorted(
         sessions, key=lambda s: (s.updated_at, s.session_id), reverse=True
     )
+    kept = _within_budget(newest_first, min_per_group, fill_to)
     groups = [
         ChatSessionGroup(
             expert_id=expert_id,
             total=total,
-            sessions=[s for s in newest_first if s.expert_id == expert_id],
+            sessions=[
+                s
+                for s in newest_first
+                if s.expert_id == expert_id and s.session_id in kept
+            ],
         )
         for expert_id, total in totals.items()
     ]
@@ -1013,6 +1038,25 @@ def _group_newest_sessions(
         key=lambda g: (g.sessions[0].updated_at, g.sessions[0].session_id),
         reverse=True,
     )
+
+
+def _within_budget(
+    newest_first: list[ChatSessionInfo], min_per_group: int, fill_to: int
+) -> set[str]:
+    """Ids of the sessions the grouped read keeps: each group's
+    ``min_per_group`` newest, then the newest of the rest until ``fill_to``
+    sessions are kept in all."""
+    per_group: dict[str | None, int] = {}
+    guaranteed: list[str] = []
+    rest: list[str] = []
+    for session in newest_first:
+        taken = per_group.get(session.expert_id, 0)
+        if taken < min_per_group:
+            per_group[session.expert_id] = taken + 1
+            guaranteed.append(session.session_id)
+        else:
+            rest.append(session.session_id)
+    return {*guaranteed, *rest[: max(0, fill_to - len(guaranteed))]}
 
 
 async def user_has_any_session(user_id: str) -> bool:
@@ -1070,7 +1114,9 @@ async def clear_session_pending_question(session_id: str, user_id: str) -> None:
     )
 
 
-#  Columns selected below = every field ``ChatSessionInfo.from_db`` reads
+#  The columns the grouped sidebar read and the pending-question read select
+#  (they read through subqueries, not straight from the table) = every field
+#  ``ChatSessionInfo.from_db`` reads
 #  ("id", "userId", "title", "credentials", "createdAt", "updatedAt",
 #  "successfulAgentRuns", "successfulAgentSchedules", "metadata",
 #  "totalPromptTokens", "totalCompletionTokens", "chatStatus",
@@ -1080,7 +1126,7 @@ async def clear_session_pending_question(session_id: str, user_id: str) -> None:
 #  ``query_raw_with_schema(..., model=PrismaChatSession)`` raises a pydantic
 #  validation error if they're left out of the row. "shareToken" and
 #  "sharedAt" are the only columns safely dropped (both default to None).
-_PENDING_QUESTION_SESSION_COLUMNS = (
+_SESSION_INFO_COLUMNS = (
     '"id", "userId", "title", "credentials", "createdAt", "updatedAt", '
     '"successfulAgentRuns", "successfulAgentSchedules", "metadata", '
     '"totalPromptTokens", "totalCompletionTokens", "chatStatus", '
@@ -1108,7 +1154,7 @@ async def get_sessions_with_pending_question(
     back to the user, so hiding it is how a handed-off request dies in silence.
     """
     sessions = await db.query_raw_with_schema(
-        f"SELECT {_PENDING_QUESTION_SESSION_COLUMNS} "
+        f"SELECT {_SESSION_INFO_COLUMNS} "
         'FROM {schema_prefix}"ChatSession" WHERE "userId" = $1 AND '
         + _EXCLUDE_DREAM_SESSIONS_SQL
         # jsonb_typeof, not IS NOT NULL: a session created after this field

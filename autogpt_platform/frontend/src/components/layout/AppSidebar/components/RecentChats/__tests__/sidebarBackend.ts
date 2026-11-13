@@ -56,14 +56,18 @@ export function toSummary(chat: SidebarChat, index: number) {
   };
 }
 
-/** The grouped read's body, for a test that answers it itself. */
+/** The grouped read's body, for a test that answers it itself: each group's
+ *  `min_per_group` newest chats, then the newest of the rest up to `limit`
+ *  chats in all, as the backend picks them. */
 export function groupedRead(chats: SidebarChat[], params: URLSearchParams) {
-  const perGroup = Number(params.get("per_group") ?? "3");
+  const minPerGroup = Number(params.get("min_per_group") ?? "3");
+  const limit = Number(params.get("limit") ?? "30");
   const pinnedApart = params.get("pinned_separately") === "true";
   const summaries = chats.map(toSummary);
   const grouped = pinnedApart
     ? summaries.filter((chat) => !chat.is_pinned)
     : summaries;
+  const kept = keptIds(grouped, minPerGroup, limit);
   const byExpert = new Map<string | null, typeof summaries>();
   for (const chat of grouped) {
     byExpert.set(chat.expert_id, [
@@ -75,10 +79,33 @@ export function groupedRead(chats: SidebarChat[], params: URLSearchParams) {
     groups: [...byExpert.entries()].map(([expertId, groupChats]) => ({
       expert_id: expertId,
       total: groupChats.length,
-      sessions: groupChats.slice(0, perGroup),
+      sessions: groupChats.filter((chat) => kept.has(chat.id)),
     })),
     pinned: pinnedApart ? summaries.filter((chat) => chat.is_pinned) : [],
   };
+}
+
+function keptIds(
+  newestFirst: { id: string; expert_id: string | null }[],
+  minPerGroup: number,
+  limit: number,
+) {
+  const taken = new Map<string | null, number>();
+  const guaranteed: string[] = [];
+  const rest: string[] = [];
+  for (const chat of newestFirst) {
+    const count = taken.get(chat.expert_id) ?? 0;
+    if (count < minPerGroup) {
+      taken.set(chat.expert_id, count + 1);
+      guaranteed.push(chat.id);
+    } else {
+      rest.push(chat.id);
+    }
+  }
+  return new Set([
+    ...guaranteed,
+    ...rest.slice(0, Math.max(0, limit - guaranteed.length)),
+  ]);
 }
 
 function listRead(chats: SidebarChat[], params: URLSearchParams) {

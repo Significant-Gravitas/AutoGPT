@@ -97,7 +97,8 @@ describe("RecentChats — expert groups", () => {
     expect(await screen.findByText("autopilot chat 1")).toBeDefined();
     expect(screen.getByText("expert-maria chat 1")).toBeDefined();
 
-    fireEvent.click(groupHeader("Maria"));
+    // The header's name comes from the expert list, a separate request.
+    fireEvent.click(await screen.findByRole("button", { name: "Maria chats" }));
     await waitFor(() =>
       expect(screen.queryByText("expert-maria chat 1")).toBeNull(),
     );
@@ -124,38 +125,57 @@ describe("RecentChats — expert groups", () => {
     expect(screen.getByText("running chat")).toBeDefined();
   });
 
-  it("previews three chats per group and pages ten more per Show more", async () => {
-    serve(groupChats(15));
+  it("fills the sidebar to 30 chats and pages ten more per Show more", async () => {
+    serve(groupChats(45));
     renderRecentChats();
 
-    expect(await screen.findByText("autopilot chat 3")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 4")).toBeNull();
+    expect(await screen.findByText("autopilot chat 30")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 31")).toBeNull();
 
     await showMore("Otto");
-    expect(await screen.findByText("autopilot chat 13")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 14")).toBeNull();
+    expect(await screen.findByText("autopilot chat 40")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 41")).toBeNull();
     const page = requests.find((request) => request.path === "sessions");
     expect(page?.params.get("autopilot_only")).toBe("true");
     expect(page?.params.get("pinned_first")).toBe("false");
     expect(page?.params.has("expert_id")).toBe(false);
 
     await showMore("Otto");
-    expect(await screen.findByText("autopilot chat 15")).toBeDefined();
+    expect(await screen.findByText("autopilot chat 45")).toBeDefined();
     expect(
       screen.queryByRole("button", { name: "Show more Otto chats" }),
     ).toBeNull();
   });
 
+  it("gives the experts in use more of the sidebar, but every expert three", async () => {
+    // Otto's 40 chats are the newest, Maria's 10 and Clip's 5 older: each
+    // keeps three, and the 21 slots left go to the newest of the rest.
+    serve([
+      ...groupChats(40),
+      ...groupChats(10, mariaExpert.id),
+      ...groupChats(5, "expert-clip"),
+    ]);
+    renderRecentChats();
+
+    expect(await screen.findByText("autopilot chat 24")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 25")).toBeNull();
+    expect(screen.getByText("expert-maria chat 3")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 4")).toBeNull();
+    expect(screen.getByText("expert-clip chat 3")).toBeDefined();
+    expect(screen.queryByText("expert-clip chat 4")).toBeNull();
+  });
+
   it("counts every chat in a group, not just the ones listed", async () => {
-    serve([...groupChats(3), ...groupChats(11, mariaExpert.id)]);
+    serve([...groupChats(3), ...groupChats(40, mariaExpert.id)]);
     renderRecentChats();
 
     const mariaHeader = await screen.findByRole("button", {
       name: "Maria chats",
     });
-    expect(within(mariaHeader).getByText("11")).toBeDefined();
+    expect(within(mariaHeader).getByText("40")).toBeDefined();
     expect(within(groupHeader("Otto")).getByText("3")).toBeDefined();
-    expect(screen.queryByText("expert-maria chat 4")).toBeNull();
+    expect(screen.getByText("expert-maria chat 27")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 28")).toBeNull();
   });
 
   it("lists an expert whose chats are all older than everyone else's", async () => {
@@ -170,18 +190,22 @@ describe("RecentChats — expert groups", () => {
   });
 
   it("pages an expert's older chats from that expert alone", async () => {
-    serve([...groupChats(12), ...groupChats(11, mariaExpert.id)]);
+    // Otto's 12 are the newest, so Maria shows 18 of her 40 at first.
+    serve([...groupChats(12), ...groupChats(40, mariaExpert.id)]);
     renderRecentChats();
 
     expect(await screen.findByText("Marketing Manager")).toBeDefined();
+    expect(screen.getByText("expert-maria chat 18")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 19")).toBeNull();
     expect(
       screen.getByText("Marketing Manager").classList.contains("opacity-70"),
     ).toBe(true);
     expect(screen.queryByText(mariaExpert.role)).toBeNull();
 
     await showMore("Maria");
-    expect(await screen.findByText("expert-maria chat 11")).toBeDefined();
-    expect(screen.queryByText("autopilot chat 4")).toBeNull();
+    expect(await screen.findByText("expert-maria chat 28")).toBeDefined();
+    expect(screen.queryByText("expert-maria chat 29")).toBeNull();
+    expect(screen.queryByText("autopilot chat 13")).toBeNull();
     const page = requests.find((request) => request.path === "sessions");
     expect(page?.params.get("expert_id")).toBe(mariaExpert.id);
     expect(page?.params.has("autopilot_only")).toBe(false);
@@ -198,7 +222,9 @@ describe("RecentChats — expert groups", () => {
 
     renderRecentChats();
     expect(await screen.findByText("autopilot chat 1")).toBeDefined();
-    expect(groupHeader("Maria")).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: "Maria chats" }),
+    ).toBeDefined();
     expect(screen.queryByText("expert-maria chat 1")).toBeNull();
   });
 
@@ -236,12 +262,12 @@ describe("RecentChats — expert groups", () => {
   });
 
   it("keeps a group's shown chats and collapse across the 10-second refresh", async () => {
-    serve([...groupChats(15), ...groupChats(2, mariaExpert.id)]);
+    serve([...groupChats(45), ...groupChats(2, mariaExpert.id)]);
     renderRecentChats();
 
     fireEvent.click(await screen.findByRole("button", { name: "Maria chats" }));
     await showMore("Otto");
-    expect(await screen.findByText("autopilot chat 13")).toBeDefined();
+    expect(await screen.findByText("autopilot chat 38")).toBeDefined();
 
     const reads = () =>
       requests.filter((request) => request.path === "session-groups").length;
@@ -251,7 +277,7 @@ describe("RecentChats — expert groups", () => {
     });
     await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore));
 
-    expect(screen.getByText("autopilot chat 13")).toBeDefined();
+    expect(screen.getByText("autopilot chat 38")).toBeDefined();
     expect(screen.queryByText("expert-maria chat 1")).toBeNull();
   });
 

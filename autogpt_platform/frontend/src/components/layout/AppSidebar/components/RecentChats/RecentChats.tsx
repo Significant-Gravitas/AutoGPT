@@ -7,6 +7,7 @@ import type { SessionGroupResponse } from "@/app/api/__generated__/models/sessio
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { PinIcon } from "@hugeicons/core-free-icons";
@@ -30,6 +31,8 @@ export function RecentChats() {
     groups,
     pinnedSessions,
     isLoading,
+    loadError,
+    retryLoad,
     activeSessionId,
     togglePin,
     editingSessionId,
@@ -55,6 +58,20 @@ export function RecentChats() {
       <div className="flex justify-center py-4">
         <LoadingSpinner size="small" className="text-foreground-tertiary" />
       </div>
+    );
+  }
+
+  // A failed read must not pass for an empty history.
+  if (loadError) {
+    return (
+      <ErrorCard
+        className="mt-2"
+        context="your chats"
+        responseError={{
+          message: loadError instanceof Error ? loadError.message : undefined,
+        }}
+        onRetry={() => void retryLoad()}
+      />
     );
   }
 

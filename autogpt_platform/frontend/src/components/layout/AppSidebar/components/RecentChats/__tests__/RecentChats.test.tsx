@@ -2,7 +2,6 @@ import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endp
 import { server } from "@/mocks/mock-server";
 import { Key, storage } from "@/services/storage/local-storage";
 import {
-  act,
   fireEvent,
   render,
   screen,
@@ -81,6 +80,24 @@ describe("RecentChats — empty + loading", () => {
     renderRecentChats();
     expect(await screen.findByText(/no conversations yet/i)).toBeDefined();
   });
+
+  it("says the chats failed to load, not that there are none, and retries", async () => {
+    serve(groupChats(2));
+    server.use(
+      http.get(
+        "*/api/chat/session-groups",
+        () => HttpResponse.json({ detail: "Unavailable" }, { status: 503 }),
+        { once: true },
+      ),
+    );
+    renderRecentChats();
+
+    const retry = await screen.findByRole("button", { name: /try again/i });
+    expect(screen.queryByText(/no conversations yet/i)).toBeNull();
+
+    fireEvent.click(retry);
+    expect(await screen.findByText("autopilot chat 1")).toBeDefined();
+  });
 });
 
 describe("RecentChats — grouped list", () => {
@@ -98,14 +115,15 @@ describe("RecentChats — grouped list", () => {
     expect(screen.queryByText("Yesterday")).toBeNull();
   });
 
-  it("asks the server for each group's newest three chats in one read", async () => {
+  it("asks for three chats per group and 30 in all, in one read", async () => {
     serve(groupChats(2));
     renderRecentChats();
     await screen.findByText("autopilot chat 1");
 
     const reads = requests.filter((r) => r.path === "session-groups");
     expect(reads.length).toBeGreaterThan(0);
-    expect(reads[0].params.get("per_group")).toBe("3");
+    expect(reads[0].params.get("min_per_group")).toBe("3");
+    expect(reads[0].params.get("limit")).toBe("30");
     expect(requests.some((r) => r.path === "sessions")).toBe(false);
   });
 });
@@ -165,7 +183,7 @@ describe("RecentChats — show more", () => {
   });
 
   it("keeps Show more there to retry a read of older chats that failed", async () => {
-    serve(groupChats(5));
+    serve(groupChats(35));
     let failures = 0;
     server.use(
       http.get(
@@ -182,16 +200,14 @@ describe("RecentChats — show more", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Show more Otto chats" }),
     );
-    await waitFor(() => expect(failures).toBe(1));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    const retry = await screen.findByRole("button", {
+      name: "Couldn't load more Otto chats. Try again",
     });
-    expect(screen.queryByText("autopilot chat 4")).toBeNull();
+    expect(failures).toBe(1);
+    expect(screen.queryByText("autopilot chat 31")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show more Otto chats" }),
-    );
-    expect(await screen.findByText("autopilot chat 5")).toBeDefined();
+    fireEvent.click(retry);
+    expect(await screen.findByText("autopilot chat 35")).toBeDefined();
     expect(
       screen.queryByRole("button", { name: "Show more Otto chats" }),
     ).toBeNull();
@@ -199,13 +215,13 @@ describe("RecentChats — show more", () => {
 
   it("asks only for the group's unpinned chats when pinned ones sit apart", async () => {
     mockEnabledFlags.add("chat-pinning");
-    serve(groupChats(5));
+    serve(groupChats(35));
     renderRecentChats();
 
     fireEvent.click(
       await screen.findByRole("button", { name: "Show more Otto chats" }),
     );
-    expect(await screen.findByText("autopilot chat 5")).toBeDefined();
+    expect(await screen.findByText("autopilot chat 35")).toBeDefined();
     const page = requests.find((r) => r.path === "sessions");
     expect(page?.params.get("pinned")).toBe("false");
   });
@@ -246,41 +262,49 @@ describe("RecentChats — delete flow", () => {
     if (!row) throw new Error("row not found");
 
     // Every grouped read after this point waits, so what the sidebar shows
-    // once the delete succeeds comes from its own cache.
+    // once the delete has succeeded comes from its own cache.
     let release = () => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let heldReads = 0;
+    let answeredReads = 0;
     server.use(
       http.get("*/api/chat/session-groups", async ({ request }) => {
+        heldReads += 1;
         await held;
+        answeredReads += 1;
         return HttpResponse.json(
           groupedRead(chats, new URL(request.url).searchParams),
         );
       }),
     );
-    fireEvent.pointerDown(
-      within(row).getByRole("button", { name: /chat actions/i }),
-      { button: 0 },
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /delete chat/i }),
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(deletes).toBe(1));
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
+    try {
+      fireEvent.pointerDown(
+        within(row).getByRole("button", { name: /chat actions/i }),
+        { button: 0 },
+      );
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: /delete chat/i }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+      // The refetch after the delete starts once the delete has settled, so
+      // from here the chat is no longer hidden as "being deleted".
+      await waitFor(() => expect(heldReads).toBeGreaterThan(0));
+      expect(deletes).toBe(1);
 
-    expect(screen.queryByText("autopilot chat 1")).toBeNull();
-    expect(screen.getByText("autopilot chat 2")).toBeDefined();
-    expect(
-      within(screen.getByRole("button", { name: "Otto chats" })).getByText("1"),
-    ).toBeDefined();
-
-    release();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    });
+      await waitFor(() => {
+        expect(screen.queryByText("autopilot chat 1")).toBeNull();
+        expect(
+          within(screen.getByRole("button", { name: "Otto chats" })).getByText(
+            "1",
+          ),
+        ).toBeDefined();
+      });
+      expect(screen.getByText("autopilot chat 2")).toBeDefined();
+    } finally {
+      release();
+      await waitFor(() => expect(answeredReads).toBe(heldReads));
+    }
   });
 });

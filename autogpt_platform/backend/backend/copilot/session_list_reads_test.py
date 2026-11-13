@@ -79,12 +79,12 @@ async def test_pinned_chats_are_read_beside_the_groups_and_kept_out_of_them(
     mocker.patch.object(chat_model, "chat_db", return_value=db)
 
     groups, pinned = await chat_model.get_user_session_groups(
-        "user-1", 3, organization_id="org-1", pinned_separately=True
+        "user-1", 3, 30, organization_id="org-1", pinned_separately=True
     )
 
     assert (groups, pinned) == (["group"], ["pinned"])
     db.get_user_chat_session_groups.assert_awaited_once_with(
-        "user-1", 3, organization_id="org-1", pinned=False
+        "user-1", 3, 30, organization_id="org-1", pinned=False
     )
     assert db.get_user_chat_sessions.await_args.kwargs["pinned"] is True
 
@@ -99,10 +99,10 @@ async def test_without_a_pinned_section_the_groups_keep_every_chat(
     )
     mocker.patch.object(chat_model, "chat_db", return_value=db)
 
-    groups, pinned = await chat_model.get_user_session_groups("user-1", 3)
+    groups, pinned = await chat_model.get_user_session_groups("user-1", 3, 30)
 
     assert (groups, pinned) == (["group"], [])
     db.get_user_chat_session_groups.assert_awaited_once_with(
-        "user-1", 3, organization_id=None
+        "user-1", 3, 30, organization_id=None
     )
     db.get_user_chat_sessions.assert_not_awaited()

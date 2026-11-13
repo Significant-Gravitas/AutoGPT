@@ -77,6 +77,7 @@ export function ExpertChatGroup({
     collapsedSessions,
     hasMore,
     isLoadingMore,
+    loadFailed,
     showMore,
   } = useExpertChatGroup({
     expertId,
@@ -147,6 +148,7 @@ export function ExpertChatGroup({
             <ShowMoreButton
               label={label}
               isLoading={isLoadingMore}
+              loadFailed={loadFailed}
               onClick={showMore}
             />
           )}
@@ -159,20 +161,31 @@ export function ExpertChatGroup({
 interface ShowMoreProps {
   label: string;
   isLoading: boolean;
+  /** The last read of older chats failed; pressing again retries it. */
+  loadFailed: boolean;
   onClick: () => void;
 }
 
-function ShowMoreButton({ label, isLoading, onClick }: ShowMoreProps) {
+function ShowMoreButton({
+  label,
+  isLoading,
+  loadFailed,
+  onClick,
+}: ShowMoreProps) {
   return (
     <button
       type="button"
-      aria-label={`Show more ${label} chats`}
+      aria-label={
+        loadFailed
+          ? `Couldn't load more ${label} chats. Try again`
+          : `Show more ${label} chats`
+      }
       aria-busy={isLoading}
       onClick={onClick}
       className="mt-0.5 flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-emphasis max-md:py-2.5"
     >
       <Text as="span" variant="small-medium-tight-touch" tone="inherit">
-        Show more
+        {loadFailed ? "Couldn't load. Try again" : "Show more"}
       </Text>
       {isLoading && <LoadingSpinner size="small" />}
     </button>

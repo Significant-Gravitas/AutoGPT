@@ -23,7 +23,7 @@ interface Args {
 
 export function useRecentChats({ pinnedSeparately = false }: Args = {}) {
   const queryClient = useQueryClient();
-  const { groups, pinnedSessions, isLoading } =
+  const { groups, pinnedSessions, isLoading, loadError, retryLoad } =
     useSessionGroups(pinnedSeparately);
 
   const pathname = usePathname();
@@ -161,6 +161,8 @@ export function useRecentChats({ pinnedSeparately = false }: Args = {}) {
     groups,
     pinnedSessions,
     isLoading,
+    loadError,
+    retryLoad,
     activeSessionId,
     togglePin,
     editingSessionId,

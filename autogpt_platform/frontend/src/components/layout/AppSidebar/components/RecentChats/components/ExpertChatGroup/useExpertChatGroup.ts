@@ -11,7 +11,6 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   GROUP_PAGE_LIMIT,
-  GROUP_PREVIEW_COUNT,
   GROUP_SHOW_MORE_STEP,
   isGroupCollapsed,
   mergeGroupSessions,
@@ -36,17 +35,20 @@ export function useExpertChatGroup({
   activeSessionId,
 }: Args) {
   const [isOpen, setIsOpen] = useState(() => !isGroupCollapsed(expertId));
-  const [visibleCount, setVisibleCount] = useState(GROUP_PREVIEW_COUNT);
+  // Chats asked for past the ones the grouped read lists. That read decides
+  // how many each group shows on its own, and can change it on any poll.
+  const [extraCount, setExtraCount] = useState(0);
   const olderPages = useOlderPages({
     expertId,
     pinnedSeparately,
-    enabled: visibleCount > GROUP_PREVIEW_COUNT,
+    enabled: extraCount > 0,
   });
   const deletingIds = useDeletingSessionIds();
   const sessions = mergeGroupSessions(
     previewSessions,
     flattenSessions(olderPages.data),
   ).filter((session) => !deletingIds.includes(session.id));
+  const visibleCount = previewSessions.length + extraCount;
   const visibleSessions = sessions.slice(0, visibleCount);
 
   useReadPagesToShow(olderPages, sessions.length < visibleCount);
@@ -66,7 +68,7 @@ export function useExpertChatGroup({
   function showMore() {
     if (olderPages.isFetchNextPageError) void olderPages.fetchNextPage();
     else if (olderPages.isError) void olderPages.refetch();
-    else setVisibleCount((count) => count + GROUP_SHOW_MORE_STEP);
+    else setExtraCount((count) => count + GROUP_SHOW_MORE_STEP);
   }
 
   return {
@@ -83,6 +85,7 @@ export function useExpertChatGroup({
     isLoadingMore:
       (olderPages.isFetching && olderPages.data === undefined) ||
       olderPages.isFetchingNextPage,
+    loadFailed: olderPages.isError && !olderPages.isFetching,
     showMore,
   };
 }
