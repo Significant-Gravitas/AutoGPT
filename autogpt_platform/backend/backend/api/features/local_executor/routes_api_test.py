@@ -8,7 +8,11 @@ from fastapi.testclient import TestClient
 
 from backend.api.features.local_executor.routes import _require_owned_shim, router
 from backend.api.features.local_executor.state import RecordingState
-from backend.copilot.model import ChatSessionMetadata, LocalExecutionTargetMetadata
+from backend.copilot.model import (
+    CHAT_STATUS_RUNNING,
+    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+)
 from backend.copilot.tools.local_pc_machine import (
     MachineConnectionStaleError,
     MachineNotConnectedError,
@@ -1170,3 +1174,80 @@ def test_recording_review_validation_error_returns_422() -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "RECORDING_REVIEW_INVALID"
+
+
+@pytest.mark.parametrize(
+    "failure", ["different_binding", "no_data_channel", "mismatched_data_channel"]
+)
+def test_a_failed_restore_detaches_the_session_it_attached(failure: str) -> None:
+    """A review route with no shim restores the chat on its machine, which
+    attaches it there. A failure after that left the attachment behind."""
+    detach, shim, response = _restore_and_fail(failure, chat_status="idle")
+
+    assert response.status_code == 409
+    detach.assert_awaited_once_with(_PRESENCE, "session-1")
+    if failure == "mismatched_data_channel":
+        shim.kill.assert_awaited_once()
+
+
+def test_a_failed_restore_leaves_a_running_turns_attachment() -> None:
+    """A running turn shares the attachment and detaches it when it ends."""
+    detach, _shim, response = _restore_and_fail(
+        "no_data_channel", chat_status=CHAT_STATUS_RUNNING
+    )
+
+    assert response.status_code == 409
+    detach.assert_not_awaited()
+
+
+_PRESENCE = object()
+
+
+def _restore_and_fail(failure: str, *, chat_status: str):
+    session = _local_owned_session()
+    session.chat_status = chat_status
+    mismatched = SimpleNamespace(
+        machine_id="machine-2",
+        allowed_root="C:\\Users\\Ada\\Projects",
+        kill=AsyncMock(),
+    )
+
+    async def restore(_presence, binding):
+        if failure == "different_binding":
+            return binding.model_copy(update={"revision": binding.revision + 1})
+        return binding
+
+    async def lookup(_session_id: str, *, timeout: float):
+        if timeout == 1.0 or failure == "no_data_channel":
+            raise TimeoutError("not connected")
+        return mismatched
+
+    manager = MagicMock()
+    manager.get_or_create_shim_for_session = AsyncMock(side_effect=lookup)
+    detach = AsyncMock()
+    with (
+        patch(
+            "backend.api.features.local_executor.routes.get_chat_session_metadata",
+            AsyncMock(return_value=session),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_machine_presence",
+            AsyncMock(return_value=_PRESENCE),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.restore_machine_session",
+            AsyncMock(side_effect=restore),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.detach_machine_session",
+            detach,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.get_shim_manager",
+            return_value=manager,
+        ),
+    ):
+        response = _make_client().post(
+            "/api/copilot/sessions/session-1/executor/recording/start", json={}
+        )
+    return detach, mismatched, response

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Annotated, NoReturn
 
@@ -63,6 +64,7 @@ from backend.copilot.tools.local_pc_machine import (
     machine_rpc,
     restore_machine_session,
 )
+from backend.copilot.tools.local_pc_relay_protocol import RelayPresence
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimHello,
@@ -414,17 +416,50 @@ async def _restore_owned_local_shim(
         root_grant=target.root_grant,
     )
     restored = await restore_machine_session(presence, binding)
-    if restored != binding:
-        raise ConnectionError("The Local PC executor restored a different binding")
-    shim = await get_shim_manager().get_or_create_shim_for_session(
-        session.session_id, timeout=8.0
-    )
-    if shim.machine_id != target.machine_id or shim.allowed_root != target.allowed_root:
-        await shim.kill()
-        raise ConnectionError(
-            "The Local PC executor data channel does not match the session binding"
+    try:
+        if restored != binding:
+            raise ConnectionError("The Local PC executor restored a different binding")
+        shim = await get_shim_manager().get_or_create_shim_for_session(
+            session.session_id, timeout=8.0
         )
-    return shim
+        if (
+            shim.machine_id != target.machine_id
+            or shim.allowed_root != target.allowed_root
+        ):
+            await shim.kill()
+            raise ConnectionError(
+                "The Local PC executor data channel does not match the session binding"
+            )
+        return shim
+    except BaseException:
+        # The restore attached the chat on the machine: undo that, as a failed
+        # create does, even while the request is being cancelled.
+        cleanup = asyncio.create_task(
+            _detach_restored_session(presence, session.session_id, user_id)
+        )
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            await cleanup
+        raise
+
+
+async def _detach_restored_session(
+    presence: RelayPresence, session_id: str, user_id: str
+) -> None:
+    """Detach a session a failed restore attached, best effort, unless a turn
+    is running: it shares the attachment and detaches it when it ends."""
+    try:
+        session = await get_chat_session_metadata(session_id, user_id)
+        if session is not None and session.chat_status == CHAT_STATUS_RUNNING:
+            return
+        await detach_machine_session(presence, session_id)
+    except Exception:
+        logger.warning(
+            "[LocalPC] Failed to detach restored session %s",
+            session_id[:12],
+            exc_info=True,
+        )
 
 
 async def _release_reviewed_local_shim(
