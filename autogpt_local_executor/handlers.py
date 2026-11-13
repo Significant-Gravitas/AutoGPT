@@ -6,7 +6,9 @@ from `protocol`) and returns the response message — never raises (any
 internal error becomes an ERROR message with INTERNAL_ERROR).
 
 Every FILE_* handler MUST call `assert_inside_jail()` before touching
-the filesystem.
+the filesystem, in a worker thread like every other filesystem call
+(`_jailed`, `_read_in_a_thread`): a stalled mount holds a stat for as long
+as it stalls, and the event loop carries every session.
 """
 
 from __future__ import annotations
@@ -308,6 +310,12 @@ def _is_link(path: Path) -> bool:
     return path.is_symlink() or bool(isjunction and isjunction(path))
 
 
+def _is_own_directory(path: Path) -> bool:
+    """A directory itself. FILE_DELETE removes a link to one as a file,
+    leaving the directory it links to."""
+    return path.is_dir() and not _is_link(path)
+
+
 _T = TypeVar("_T")
 
 
@@ -391,10 +399,20 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
                 task.uncancel()
 
 
+async def _jailed(
+    requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]
+) -> Path:
+    """`assert_inside_jail`, in a worker thread: resolving a path stats each
+    folder on the way, and a mount that stalls (NFS, FUSE, a cloud-synced
+    folder) holds a stat for as long as it stalls. On the event loop it would
+    hold every session's work and keepalive with it."""
+    return await _read_in_a_thread(assert_inside_jail, requested_path, allowed_root)
+
+
 async def _read_in_a_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
-    """Run a read (FILE_READ, FILE_STAT, FILE_LIST) in a worker thread, and
-    keep its task until the thread is done even if the task is cancelled
-    meanwhile, then let the cancel go on. The thread can't be stopped, and a
+    """Run a read (FILE_READ, FILE_STAT, FILE_LIST, a request's path checks)
+    in a worker thread, and keep its task until the thread is done even if
+    the task is cancelled meanwhile, then let the cancel go on. The thread can't be stopped, and a
     request holds its machine slot until its task ends: one let go as the
     cancel landed, with its read still blocked (on a network filesystem,
     say), let repeated disconnects pile up reads past the limit, holding the
@@ -579,7 +597,7 @@ class CommandHandler:
             # No cwd is the root itself, `.` from it: the jail takes a relative
             # path from the root, so a relative root named again would be joined
             # to itself (workspace/workspace).
-            cwd = assert_inside_jail(payload.cwd or ".", self.config.allowed_root)
+            cwd = await _jailed(payload.cwd or ".", self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "EXECUTE_COMMAND", cwd_str, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -879,7 +897,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            path = assert_inside_jail(payload.path, self.config.allowed_root)
+            path = await _jailed(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_READ", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -978,7 +996,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            path = assert_inside_jail(payload.path, self.config.allowed_root)
+            path = await _jailed(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_WRITE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1052,13 +1070,18 @@ class FileHandler:
     async def handle_stat(self, msg: FileStatMessage) -> FileStatResponseMessage | ErrorMessage:
         payload = msg.payload
         start = time.monotonic()
-        try:
+
+        def jailed() -> Path:
             path = assert_inside_jail(payload.path, self.config.allowed_root)
             # Without following, describe the entry the path names, a symlink
             # included. The root has no entry inside itself, so it is
             # described as resolved.
             if not payload.follow_symlinks and path != _resolved_root(self.config):
-                path = assert_entry_inside_jail(payload.path, self.config.allowed_root)
+                return assert_entry_inside_jail(payload.path, self.config.allowed_root)
+            return path
+
+        try:
+            path = await _read_in_a_thread(jailed)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_STAT", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1144,7 +1167,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            base = assert_inside_jail(payload.path, self.config.allowed_root)
+            base = await _jailed(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_LIST", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1157,7 +1180,7 @@ class FileHandler:
             "max_entries": payload.max_entries,
         }
 
-        if not base.exists():
+        if not await _read_in_a_thread(base.exists):
             await self._emit(
                 "FILE_LIST",
                 msg.id,
@@ -1165,7 +1188,7 @@ class FileHandler:
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{base} does not exist")
-        if not base.is_dir():
+        if not await _read_in_a_thread(base.is_dir):
             await self._emit(
                 "FILE_LIST",
                 msg.id,
@@ -1320,10 +1343,14 @@ class FileHandler:
     async def handle_delete(self, msg: FileDeleteMessage) -> AckMessage | ErrorMessage:
         payload = msg.payload
         start = time.monotonic()
-        try:
+
+        def jailed() -> Path:
             assert_inside_jail(payload.path, self.config.allowed_root)
             # A symlink is removed itself; its target is left alone.
-            path = assert_entry_inside_jail(payload.path, self.config.allowed_root)
+            return assert_entry_inside_jail(payload.path, self.config.allowed_root)
+
+        try:
+            path = await _read_in_a_thread(jailed)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_DELETE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1334,7 +1361,7 @@ class FileHandler:
             "missing_ok": payload.missing_ok,
         }
 
-        if not os.path.lexists(path):
+        if not await _read_in_a_thread(os.path.lexists, path):
             if payload.missing_ok:
                 await self._emit("FILE_DELETE", msg.id, details, _ok_result(_elapsed_ms(start)))
                 return make_ack(msg.id)
@@ -1347,7 +1374,7 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{path} does not exist")
 
         try:
-            if path.is_dir() and not _is_link(path):
+            if await _read_in_a_thread(_is_own_directory, path):
                 if payload.recursive:
                     await _run_to_completion(shutil.rmtree, str(path))
                 else:
@@ -1381,13 +1408,19 @@ class FileHandler:
     async def handle_move(self, msg: FileMoveMessage) -> AckMessage | ErrorMessage:
         payload = msg.payload
         start = time.monotonic()
-        try:
+
+        def jailed() -> tuple[Path, Path]:
             assert_inside_jail(payload.src, self.config.allowed_root)
             assert_inside_jail(payload.dst, self.config.allowed_root)
             # Renaming moves a symlink itself, and overwriting replaces one,
             # never its target.
-            src = assert_entry_inside_jail(payload.src, self.config.allowed_root)
-            dst = assert_entry_inside_jail(payload.dst, self.config.allowed_root)
+            return (
+                assert_entry_inside_jail(payload.src, self.config.allowed_root),
+                assert_entry_inside_jail(payload.dst, self.config.allowed_root),
+            )
+
+        try:
+            src, dst = await _read_in_a_thread(jailed)
         except PathJailError as exc:
             await _audit_jail_violation(
                 self.audit, "FILE_MOVE", f"{payload.src} -> {payload.dst}", exc
@@ -1396,7 +1429,7 @@ class FileHandler:
 
         details = {"src": str(src), "dst": str(dst), "overwrite": payload.overwrite}
 
-        if not os.path.lexists(src):
+        if not await _read_in_a_thread(os.path.lexists, src):
             await self._emit(
                 "FILE_MOVE",
                 msg.id,
@@ -1404,7 +1437,7 @@ class FileHandler:
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{src} does not exist")
-        if os.path.lexists(dst) and not payload.overwrite:
+        if not payload.overwrite and await _read_in_a_thread(os.path.lexists, dst):
             await self._emit(
                 "FILE_MOVE",
                 msg.id,
