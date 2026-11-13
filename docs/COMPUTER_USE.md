@@ -29,10 +29,14 @@ If your install command named a revision (`...autogpt-local-executor.git@<revisi
 add the same `@<revision>` at the end of the URL here. The command works as
 it is in Windows `cmd.exe` and PowerShell too: both take the double quotes.
 
-Then start the shim with `--enable-computer-use` (or set
-`enable_computer_use = true` in the config), and run `autogpt-shim doctor`.
-The platform still has to grant the `computer_use` capability to each chat
-session; the shim advertises it only once cua-driver has started.
+Then turn computer use on in the config, `enable_computer_use = true` (or
+`AUTOGPT_SHIM_ENABLE_COMPUTER_USE=true` in the environment), and run
+`autogpt-shim doctor`. Doctor reads only those: `--enable-computer-use` is a
+flag of `start`, so with the flag alone doctor skips the driver, display
+and permission checks (it reports computer use "not requested in config")
+and can pass. The platform still has to grant the `computer_use` capability
+to each chat session; the shim advertises it only once cua-driver has
+started.
 
 | Setting | Default | Effect |
 |---|---|---|
