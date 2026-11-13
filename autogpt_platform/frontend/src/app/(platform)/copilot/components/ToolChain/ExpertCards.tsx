@@ -114,7 +114,7 @@ function headerFor(
     icon,
     title:
       kind === "hire"
-        ? "Hire an expert"
+        ? "Hire an Expert"
         : kind === "update"
           ? "Update an expert"
           : "Create an Expert",
