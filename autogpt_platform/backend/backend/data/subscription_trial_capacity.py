@@ -1,6 +1,6 @@
 """Global seat cap for concurrent introductory trials.
 
-LaunchDarkly can hold the *number*, but not enforce it: a cap on how many
+A feature flag can hold the *number*, but not enforce it: a cap on how many
 people are on trial at once is a count over our own rows, so the count and
 the reservation have to happen together, here.
 
@@ -39,6 +39,7 @@ CHECKOUT_RESERVATION = timedelta(minutes=30)
 
 _CAPACITY_LOCK = "trial-capacity"
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 TRIAL_FULL = "The trial is full right now. Please check back later."
 
 # One definition of "holding a seat", so the cap and the holder check can

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useGetV1ManagePaymentMethods } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/models/getV1ManagePaymentMethods200";
+import { trackBillingPortalOpened } from "@/services/analytics/monetization-analytics";
 
 export function usePaymentMethodCard() {
   const [isOpening, setIsOpening] = useState(false);
@@ -28,6 +29,7 @@ export function usePaymentMethodCard() {
       // browser starting the cross-origin navigation to Stripe — without
       // it the button looks unresponsive on slower networks.
       setIsOpening(true);
+      trackBillingPortalOpened("billing_payment_method");
       window.location.href = portalUrl;
     },
   };

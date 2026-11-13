@@ -1,7 +1,9 @@
+import { toastIfPlanRequired } from "@/components/contextual/PaywallToast/helpers";
 import { useState, useRef, useEffect } from "react";
 import { postV2GenerateSubmissionImage } from "@/app/api/__generated__/endpoints/store/store";
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   isFileTooLarge,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
@@ -118,6 +120,8 @@ export function useThumbnailImages({
         setSelectedImage(imageUrl);
       }
     } catch (error) {
+      if (toastIfPlanRequired(error, "Uploading images needs an active plan"))
+        return;
       const detail =
         error instanceof Error ? error.message : "Please try again.";
       toast({
@@ -136,7 +140,7 @@ export function useThumbnailImages({
     setIsGenerating(true);
     try {
       if (!agentId) {
-        throw new Error("Agent ID is required");
+        throw new Error("Workflow ID is required");
       }
       const { image_url } = await resolveResponse(
         postV2GenerateSubmissionImage({ graph_id: agentId }),
@@ -145,7 +149,20 @@ export function useThumbnailImages({
       if (!selectedImage) {
         setSelectedImage(image_url);
       }
-    } catch (_error) {
+    } catch (error) {
+      if (
+        toastIfPlanRequired(error, "Generating an image needs an active plan")
+      )
+        return;
+      if (error instanceof ApiError && error.status === 429) {
+        toast({
+          title: "Daily image limit reached",
+          description:
+            "You can generate more within 24 hours. Until then, upload an image instead.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Generation failed",
         description: "Failed to generate image. Please try again.",

@@ -41,10 +41,14 @@ export function getIntroLine(
   expert: { name: string; role: string | null } | null,
 ) {
   if (!expert) return AUTOPILOT_INTRO;
-  const role = expert.role?.trim();
-  return role
-    ? `I'm ${expert.name}, your ${getExpertRoleLabel(role)}. What should I take on?`
-    : `I'm ${expert.name}. What should I take on?`;
+  return `I'm ${expert.name}${getExpertIntroSuffix(expert.role)}`;
+}
+
+export function getExpertIntroSuffix(role: string | null) {
+  const trimmedRole = role?.trim();
+  return trimmedRole
+    ? `, your ${getExpertRoleLabel(trimmedRole)}. What should I take on?`
+    : ". What should I take on?";
 }
 
 export function getExpertInputPlaceholder(expertName: string) {
@@ -63,108 +67,19 @@ export function getInputPlaceholder(width?: number) {
   return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }
 
-export interface SuggestionTheme {
-  name: string;
-  prompts: string[];
-}
-
-export const DEFAULT_THEMES: SuggestionTheme[] = [
-  {
-    name: "Learn",
-    prompts: [
-      "What can AutoGPT do for me?",
-      "Show me how agents work",
-      "What integrations are available?",
-      "How do I schedule an agent?",
-      "What are the most popular agents?",
-    ],
-  },
-  {
-    name: "Create",
-    prompts: [
-      "Draft a weekly status report",
-      "Generate social media posts for my business",
-      "Create a competitive analysis summary",
-      "Write onboarding emails for new hires",
-      "Build a content calendar for next month",
-    ],
-  },
-  {
-    name: "Automate",
-    prompts: [
-      "Monitor relevant websites for changes",
-      "Send me a daily news digest on my industry",
-      "Auto-reply to common customer questions",
-      "Track price changes on products I sell",
-      "Summarize my emails every morning",
-    ],
-  },
-  {
-    name: "Organize",
-    prompts: [
-      "Summarize my unread emails",
-      "Create a project timeline from my notes",
-      "Prioritize my task list by urgency",
-      "Build a decision matrix for vendor selection",
-      "Organize my meeting notes into action items",
-    ],
-  },
-];
-
-export function getSuggestionThemes(
-  apiThemes?: SuggestionTheme[],
-): SuggestionTheme[] {
-  if (!apiThemes?.length) {
-    return DEFAULT_THEMES;
-  }
-
-  const promptsByTheme = new Map(
-    apiThemes.map((theme) => [theme.name, theme.prompts] as const),
-  );
-
-  // Legacy users have prompts under "General" — distribute them across themes
-  const generalPrompts = (promptsByTheme.get("General") ?? []).filter(
-    (p) => p.trim().length > 0,
-  );
-
-  return DEFAULT_THEMES.map((theme, idx) => {
-    const personalized = (promptsByTheme.get(theme.name) ?? []).filter(
-      (p) => p.trim().length > 0,
-    );
-
-    // Spread legacy "General" prompts round-robin across themes
-    const legacySlice = generalPrompts.filter(
-      (_, i) => i % DEFAULT_THEMES.length === idx,
-    );
-
-    return {
-      name: theme.name,
-      prompts: Array.from(
-        new Set([...personalized, ...legacySlice, ...theme.prompts]),
-      ).slice(0, theme.prompts.length),
-    };
-  });
-}
-
-export function getGreetingName(user?: User | null) {
-  if (!user) return "there";
+export function getGreetingName(user?: User | null): string | null {
+  if (!user) return null;
   const metadata = user.user_metadata as Record<string, unknown> | undefined;
-  // preferred_name is what the user answered to onboarding's "What should I
-  // call you?" — it wins over provider-supplied names, and is used verbatim.
+  // preferred_name is the name the user set with the hero's edit-name button —
+  // it wins over provider-supplied names, and is used verbatim.
   const preferredName = metadata?.preferred_name;
-  const fullName = metadata?.full_name;
-  const name = metadata?.name;
   if (typeof preferredName === "string" && preferredName.trim()) {
     return preferredName.trim();
   }
-  if (typeof fullName === "string" && fullName.trim()) {
-    return fullName.split(" ")[0];
-  }
-  if (typeof name === "string" && name.trim()) {
-    return name.split(" ")[0];
-  }
-  if (user.email) {
-    return user.email.split("@")[0];
-  }
-  return "there";
+  // Email sign-up stores the address's local part as the name; that one was never given.
+  const emailName = user.email?.split("@")[0].toLowerCase();
+  const givenName = [metadata?.full_name, metadata?.name]
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .find((value) => value && value.toLowerCase() !== emailName);
+  return givenName ? givenName.split(/\s+/)[0] : null;
 }

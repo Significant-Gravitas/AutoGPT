@@ -1,6 +1,7 @@
 import base64
 import json
 
+import pytest
 from pydantic import SecretStr
 
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
@@ -10,6 +11,7 @@ from backend.integrations.codex.http_client import (
     account_id_for,
     account_snapshot,
     parse_rate_limits,
+    usage_limit_resets_at,
 )
 
 
@@ -196,3 +198,63 @@ def test_unparseable_numbers_do_not_raise() -> None:
         }
     )
     assert limits.primary is None
+
+
+# --------------------------------------------------------------------------- #
+# When a spent quota lifts
+#
+# A 429 from ChatGPT names its own reset; a guessed one is worse than none,
+# because the user plans around it.
+# --------------------------------------------------------------------------- #
+
+
+def _window(scope: str, used: str, resets_at: str) -> dict[str, str]:
+    return {
+        f"x-codex-{scope}-used-percent": used,
+        f"x-codex-{scope}-window-minutes": "300",
+        f"x-codex-{scope}-reset-at": resets_at,
+    }
+
+
+def test_the_error_body_names_the_reset() -> None:
+    # The OpenAI SDK hands over the inner ``error`` object; a raw body wraps it.
+    inner = {"type": "usage_limit_reached", "resets_at": 1788452827}
+    assert usage_limit_resets_at({}, inner) == 1788452827
+    assert usage_limit_resets_at({}, {"error": inner}) == 1788452827
+
+
+def test_the_body_wins_over_the_quota_headers() -> None:
+    headers = _window("primary", "100", "1788400000")
+    assert usage_limit_resets_at(headers, {"resets_at": 1788452827}) == 1788452827
+
+
+def test_without_a_body_the_full_window_names_the_reset() -> None:
+    headers = {
+        **_window("primary", "100", "1788400000"),
+        **_window("secondary", "40", "1789000000"),
+    }
+    assert usage_limit_resets_at(headers, None) == 1788400000
+
+
+def test_with_both_windows_full_the_later_reset_is_the_real_wait() -> None:
+    headers = {
+        **_window("primary", "100", "1788400000"),
+        **_window("secondary", "100", "1789000000"),
+    }
+    assert usage_limit_resets_at(headers, "not json") == 1789000000
+
+
+def test_no_reset_is_invented_when_no_window_is_full() -> None:
+    headers = _window("primary", "64", "1788400000")
+    assert usage_limit_resets_at(headers, {"type": "usage_limit_reached"}) is None
+
+
+@pytest.mark.parametrize("raw", ["soon", float("inf"), float("nan")])
+def test_an_unreadable_body_reset_falls_back_to_the_headers(raw: object) -> None:
+    headers = _window("primary", "100", "1788400000")
+    assert usage_limit_resets_at(headers, {"resets_at": raw}) == 1788400000
+
+
+@pytest.mark.parametrize("raw", ["-1", "0"])
+def test_a_non_positive_header_reset_is_not_a_time(raw: str) -> None:
+    assert usage_limit_resets_at(_window("primary", "100", raw), None) is None

@@ -5,7 +5,6 @@ import {
   getGetV1GetNotificationPreferencesMockHandler,
   getGetV1GetUserTimezoneMockHandler,
   getPostV1UpdateNotificationPreferencesMockHandler,
-  getPostV1UpdateUserEmailMockHandler,
   getPostV1UpdateUserTimezoneMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import type { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
@@ -107,7 +106,6 @@ function setupBaseHandlers(
     getGetV1GetUserTimezoneMockHandler({
       timezone: options.timezone ?? "Asia/Kolkata",
     }),
-    getPostV1UpdateUserEmailMockHandler({}),
     getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
     getPostV1UpdateUserTimezoneMockHandler({
       timezone: "Europe/London",
@@ -198,7 +196,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
@@ -255,6 +252,11 @@ describe("SettingsPreferencesPage", () => {
 
     // One click, not two: the design calls these "live one-click links".
     await waitFor(() => expect(applied).toBeDefined());
+    // Must reach the backend through the proxy, not the Next.js
+    // /api/auth/* (Better Auth) catch-all, which 404s.
+    expect(applied?.pathname).toBe(
+      "/api/proxy/api/auth/user/preferences/from-email",
+    );
     expect(applied?.searchParams.get("choice")).toBe("alerts");
     // Token-authenticated, so a bare ?f= from a third-party link is inert.
     expect(applied?.searchParams.get("token")).toBe("signed-token");
@@ -288,7 +290,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
       getPostV1UpdateNotificationPreferencesMockHandler(async ({ request }) => {
         submitted = (await request.json()) as NotificationPreferenceDTO;
@@ -348,7 +349,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
       getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
         const body = (await request.json()) as { timezone: string };
@@ -393,7 +393,6 @@ describe("SettingsPreferencesPage", () => {
     server.use(
       getGetV1GetNotificationPreferencesMockHandler(defaultPreferences),
       getGetV1GetUserTimezoneMockHandler({ timezone: "not-set" }),
-      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler(defaultPreferences),
       getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
         const body = (await request.json()) as { timezone: string };
@@ -469,6 +468,28 @@ describe("SettingsPreferencesPage", () => {
 
     vi.unstubAllGlobals();
   });
+  test("renders the Browser notifications card regardless of the flag", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    Object.defineProperty(globalThis, "Notification", {
+      value: { permission: "default", requestPermission: vi.fn() },
+      configurable: true,
+      writable: true,
+    });
+    setupBaseHandlers();
+
+    try {
+      render(<SettingsPreferencesPage />);
+
+      expect(await screen.findByText("Browser")).toBeDefined();
+      expect(
+        screen.getByRole("switch", { name: "Notifications" }),
+      ).toBeDefined();
+      expect(screen.getByRole("switch", { name: "Sound" })).toBeDefined();
+    } finally {
+      delete (globalThis as { Notification?: unknown }).Notification;
+    }
+  });
+
   test("hides the notifications card when settings-notifications is off", async () => {
     mockUseGetFlag.mockReturnValue(false);
     setupBaseHandlers();

@@ -32,6 +32,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -101,17 +102,20 @@ function renderWithInitialParams(
     defaultOptions: { queries: { retry: false } },
   }),
 ) {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <NuqsTestingAdapter searchParams={searchParams}>
-        <BackendAPIProvider>
-          <OnboardingProvider>
-            <TooltipProvider>{ui}</TooltipProvider>
-          </OnboardingProvider>
-        </BackendAPIProvider>
-      </NuqsTestingAdapter>
-    </QueryClientProvider>,
-  );
+  function Providers({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <NuqsTestingAdapter searchParams={searchParams}>
+          <BackendAPIProvider>
+            <OnboardingProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+            </OnboardingProvider>
+          </BackendAPIProvider>
+        </NuqsTestingAdapter>
+      </QueryClientProvider>
+    );
+  }
+  return render(ui, { wrapper: Providers });
 }
 
 function baseHandlers(
@@ -223,7 +227,7 @@ describe("Library agent view — trigger agents", () => {
       ).toBeDefined();
       expect(screen.getByRole("button", { name: /try again/i })).toBeDefined();
       const newTaskButton = screen.getByRole("button", {
-        name: "New agent task",
+        name: "New workflow task",
       });
       await waitFor(() => {
         expect(newTaskButton.hasAttribute("disabled")).toBe(false);
@@ -319,7 +323,7 @@ describe("Library agent view — trigger agents", () => {
     expect(screen.queryByRole("tab", { name: /triggers/i })).toBeNull();
   });
 
-  test("shows trigger agent in 'Trigger Agents' subsection when one exists", async () => {
+  test("shows trigger agent in 'Trigger Workflows' subsection when one exists", async () => {
     const triggerAgent = getGetV2GetLibraryAgentResponseMock({
       id: TRIGGER_ID,
       graph_id: TRIGGER_GRAPH_ID,
@@ -338,13 +342,13 @@ describe("Library agent view — trigger agents", () => {
     renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
 
     await screen.findByText("Parent Agent");
-    await screen.findByText("Trigger Agents");
+    await screen.findByText("Trigger Workflows");
     const rows = await screen.findAllByText("Email Watcher");
     expect(rows.length).toBeGreaterThan(0);
     expect(screen.queryByText("Webhook Triggers")).toBeNull();
   });
 
-  test("shows both 'Webhook Triggers' and 'Trigger Agents' subsections when both exist", async () => {
+  test("shows both 'Webhook Triggers' and 'Trigger Workflows' subsections when both exist", async () => {
     const triggerAgent = getGetV2GetLibraryAgentResponseMock({
       id: TRIGGER_ID,
       graph_id: TRIGGER_GRAPH_ID,
@@ -363,7 +367,7 @@ describe("Library agent view — trigger agents", () => {
 
     await screen.findByText("Parent Agent");
     await screen.findByText("Webhook Triggers");
-    await screen.findByText("Trigger Agents");
+    await screen.findByText("Trigger Workflows");
     expect((await screen.findAllByText("RSS Watcher")).length).toBeGreaterThan(
       0,
     );
@@ -1036,10 +1040,10 @@ describe("Library agent view — trigger agents", () => {
 
     // On the Templates tab the shared preset query's error must still
     // surface — the tab guard only suppresses it elsewhere.
-    await screen.findByText(/when retrieving agent/i);
+    await screen.findByText(/when retrieving workflow/i);
   });
 
-  test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {
+  test("when generic-trigger-agents flag is off, hides 'Trigger Workflows' subsection and skips the trigger-agents fetch", async () => {
     mockUseGetFlag.mockReturnValue(false);
 
     let triggerAgentsCallCount = 0;
@@ -1067,11 +1071,78 @@ describe("Library agent view — trigger agents", () => {
 
     await screen.findByText("Parent Agent");
     await screen.findByText("Webhook Triggers");
-    // The "Trigger Agents" subsection must not render and the row name
+    // The "Trigger Workflows" subsection must not render and the row name
     // must be absent.
-    expect(screen.queryByText("Trigger Agents")).toBeNull();
+    expect(screen.queryByText("Trigger Workflows")).toBeNull();
     expect(screen.queryByText("Hidden Watcher")).toBeNull();
     // And the GET .../triggers request never fires.
     expect(triggerAgentsCallCount).toBe(0);
+  });
+
+  // The sidebar's run modal is seeded from the active template, which
+  // NewAgentLibraryView splits in render. Unmemoised, every parent re-render
+  // (the runs list's execution polling, a tab count update) hands the modal
+  // fresh objects and its seed effect wipes what the user is typing.
+  test("a parent re-render keeps what the user typed into the run modal", async () => {
+    const template = makeWebhookPreset({
+      webhook_id: null,
+      inputs: { topic: "weather", _node_input_mask_abc: { events: "push" } },
+    });
+
+    server.use(
+      ...baseHandlers({
+        has_external_trigger: true,
+        credentials_input_schema: { properties: {}, required: [] },
+        trigger_setup_info: {
+          provider: "github",
+          credentials_input_name: null,
+          config_schema: {
+            type: "object",
+            properties: { events: { type: "string", title: "Events" } },
+            required: [],
+          },
+        },
+        input_schema: {
+          type: "object",
+          properties: { topic: { type: "string", title: "Topic" } },
+          required: ["topic"],
+        },
+      }),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([]),
+      getGetV2GetASpecificPresetMockHandler(
+        getGetV2GetASpecificPresetResponseMock(template),
+      ),
+    );
+
+    const user = userEvent.setup();
+    const { rerender } = renderWithInitialParams(
+      <NewAgentLibraryView />,
+      "activeTab=templates&activeItem=preset-1",
+    );
+
+    const openButton = await screen.findByRole("button", {
+      name: /new workflow task/i,
+    });
+    await waitFor(() =>
+      expect((openButton as HTMLButtonElement).disabled).toBe(false),
+    );
+    await user.click(openButton);
+
+    // Scoped to the dialog: the Templates detail view behind it shows the same
+    // stored values.
+    const dialog = await screen.findByRole("dialog");
+    const topic = await within(dialog).findByDisplayValue("weather");
+    await user.clear(topic);
+    await user.type(topic, "sports");
+    expect(within(dialog).getByDisplayValue("sports")).toBeTruthy();
+
+    rerender(<NewAgentLibraryView />);
+
+    expect(within(dialog).getByDisplayValue("sports")).toBeTruthy();
+    expect(within(dialog).queryByDisplayValue("weather")).toBeNull();
+    // The trigger config half of the split is seeded the same way.
+    expect(within(dialog).getByDisplayValue("push")).toBeTruthy();
   });
 });

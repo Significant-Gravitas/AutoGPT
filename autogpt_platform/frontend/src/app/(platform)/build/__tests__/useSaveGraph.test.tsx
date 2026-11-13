@@ -21,20 +21,33 @@ vi.mock("nuqs", () => ({
 let mockCurrentGraph: unknown;
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
+let mockUpdateOptions: {
+  mutation: {
+    onSuccess: (response: unknown, variables: unknown) => Promise<void>;
+  };
+};
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   useGetV1GetSpecificGraph: () => ({ data: mockCurrentGraph }),
   usePostV1CreateNewGraph: () => ({
     mutateAsync: mockCreate,
     isPending: false,
   }),
-  usePutV1UpdateGraphVersion: () => ({
-    mutateAsync: mockUpdate,
-    isPending: false,
-  }),
+  usePutV1UpdateGraphVersion: (options: typeof mockUpdateOptions) => {
+    mockUpdateOptions = options;
+    return { mutateAsync: mockUpdate, isPending: false };
+  },
 }));
 
+const mockSetNodeErrorsForBackendId = vi.fn();
+const mockClearAllNodeErrors = vi.fn();
 vi.mock("@/app/(platform)/build/stores/nodeStore", () => ({
-  useNodeStore: { getState: () => ({ getBackendNodes: () => [] }) },
+  useNodeStore: {
+    getState: () => ({
+      getBackendNodes: () => [],
+      setNodeErrorsForBackendId: mockSetNodeErrorsForBackendId,
+      clearAllNodeErrors: mockClearAllNodeErrors,
+    }),
+  },
 }));
 vi.mock("@/app/(platform)/build/stores/edgeStore", () => ({
   useEdgeStore: { getState: () => ({ getBackendLinks: () => [] }) },
@@ -60,6 +73,8 @@ vi.mock("@/services/builder-draft/draft-service", () => ({
   clearTempFlowId: vi.fn(),
 }));
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { draftService } from "@/services/builder-draft/draft-service";
 import { useSaveGraph } from "../hooks/useSaveGraph";
 
 describe("useSaveGraph", () => {
@@ -97,6 +112,25 @@ describe("useSaveGraph", () => {
     });
     expect(mockSetGraphSchemas).toHaveBeenCalled();
     expect(returned).toBe(updated);
+  });
+
+  it("clears the draft under the sent ID when the save answers with a copy", async () => {
+    mockCurrentGraph = { id: "graph-1", name: "Agent", version: 1 };
+    const copy = { id: "graph-2", version: 1 };
+    mockUpdate.mockImplementation(async (variables) => {
+      const response = { data: { graph: copy, skipped_webhook_presets: [] } };
+      await mockUpdateOptions.mutation.onSuccess(response, variables);
+      return response;
+    });
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+    await act(async () => {
+      await result.current.saveGraph();
+    });
+
+    expect(
+      vi.mocked(draftService.deleteDraft).mock.calls.flat().sort(),
+    ).toEqual(["graph-1", "graph-2"]);
   });
 
   it("warns the user when a trigger swap leaves webhook presets behind", async () => {
@@ -190,5 +224,62 @@ describe("useSaveGraph", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
     expect(returned).toBe(mockCurrentGraph);
+  });
+
+  it("names the invalid field and marks it on its node when the backend refuses the graph", async () => {
+    mockCreate.mockRejectedValue(
+      new ApiError("Agent Output › Name: This field is required", 400, {
+        detail: {
+          type: "validation_error",
+          message: "Agent Output › Name: This field is required",
+          node_errors: { "node-2": { name: "This field is required" } },
+        },
+      }),
+    );
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: true }));
+
+    let returned: unknown;
+    await act(async () => {
+      returned = await result.current.saveGraph();
+    });
+
+    expect(returned).toBeNull();
+    expect(mockClearAllNodeErrors).toHaveBeenCalledBefore(
+      mockSetNodeErrorsForBackendId,
+    );
+    expect(mockSetNodeErrorsForBackendId).toHaveBeenCalledWith("node-2", {
+      name: "This field is required",
+    });
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't save your workflow",
+        description: expect.stringContaining(
+          "Agent Output › Name: This field is required",
+        ),
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("reports any other failed save instead of throwing it", async () => {
+    mockCurrentGraph = { id: "graph-1", name: "Agent", version: 1 };
+    mockUpdate.mockRejectedValue(new Error("Network unreachable"));
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+
+    let returned: unknown;
+    await act(async () => {
+      returned = await result.current.saveGraph();
+    });
+
+    expect(returned).toBeNull();
+    expect(mockSetNodeErrorsForBackendId).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Error saving workflow",
+        description: "Network unreachable",
+      }),
+    );
   });
 });

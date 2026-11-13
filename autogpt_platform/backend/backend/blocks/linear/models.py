@@ -13,18 +13,9 @@ class Comment(BaseModel):
     user: User | None = None
 
 
-class CreateCommentInput(BaseModel):
-    body: str
-    issueId: str
-
-
 class CreateCommentResponse(BaseModel):
     success: bool
     comment: Comment
-
-
-class CreateCommentResponseWrapper(BaseModel):
-    commentCreate: CreateCommentResponse
 
 
 class Project(BaseModel):

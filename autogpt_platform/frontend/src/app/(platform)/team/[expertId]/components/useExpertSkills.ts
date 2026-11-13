@@ -10,14 +10,14 @@ import {
   useGetV2ListMarketplaceSkills,
   usePostV2InstallMarketplaceSkill,
 } from "@/app/api/__generated__/endpoints/store/store";
-import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { CopilotSkillInfo } from "@/app/api/__generated__/models/copilotSkillInfo";
 import { Expert } from "@/app/api/__generated__/models/expert";
+import { ExpertSkillsUpdate } from "@/app/api/__generated__/models/expertSkillsUpdate";
+import { MarketplaceSkill } from "@/app/api/__generated__/models/marketplaceSkill";
 import { okData } from "@/app/api/helpers";
-import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -36,12 +36,12 @@ export function useExpertSkills(expert: Expert) {
   const [source, setSource] = useState<"library" | "marketplace">("library");
   const [marketQuery, setMarketQuery] = useState("");
   const debouncedMarketQuery = useDebouncedValue(marketQuery, 250);
-  const hub = useFlagStatus(Flag.SKILLS_HUB);
+
   const marketplaceSkills = useGetV2ListMarketplaceSkills(
     { search_query: debouncedMarketQuery.trim(), page_size: 20 },
     {
       query: {
-        enabled: hub.enabled && isAddOpen && source === "marketplace",
+        enabled: isAddOpen && source === "marketplace",
         select: (res) => okData(res)?.skills ?? [],
       },
     },
@@ -88,9 +88,9 @@ export function useExpertSkills(expert: Expert) {
       )
     : attached;
 
-  async function save(skills: string[], successTitle: string) {
+  async function save(data: ExpertSkillsUpdate, successTitle: string) {
     try {
-      await updateSkills({ expertId: expert.id, data: { skills } });
+      await updateSkills({ expertId: expert.id, data });
       await refreshExpert();
       toast({ title: successTitle, variant: "success" });
       return true;
@@ -105,7 +105,7 @@ export function useExpertSkills(expert: Expert) {
   }
 
   async function addSkill(name: string) {
-    const saved = await save([...expert.skills, name], `Added ${name}`);
+    const saved = await save({ skills: [name] }, `Added ${name}`);
     if (saved) setIsAddOpen(false);
   }
 
@@ -143,10 +143,7 @@ export function useExpertSkills(expert: Expert) {
   }
 
   function removeSkill(name: string) {
-    return save(
-      expert.skills.filter((skill) => skill !== name),
-      `Removed ${name}`,
-    );
+    return save({ remove: [name] }, `Removed ${name}`);
   }
 
   return {
@@ -165,7 +162,6 @@ export function useExpertSkills(expert: Expert) {
     setMarketQuery,
     marketplaceSkills: marketplaceSkills.data ?? [],
     isMarketplaceLoading: marketplaceSkills.isFetching,
-    hasMarketplace: hub.enabled,
     addSkill,
     addMarketplaceSkill,
     removeSkill,

@@ -4,11 +4,16 @@ FastAPI dependency functions for JWT-based authentication and authorization.
 These are the high-level dependency functions used in route definitions.
 """
 
+import asyncio
 import logging
+import time
+from collections import OrderedDict
+from typing import Annotated
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from .closed_accounts import AccountState, get_account_state, reject_closed_account
 from .jwt_utils import get_jwt_payload, verify_user
 from .models import RequestContext, User
 from .permissions import (
@@ -23,13 +28,95 @@ optional_bearer = HTTPBearer(auto_error=False)
 # Header name for admin impersonation
 IMPERSONATION_HEADER_NAME = "X-Act-As-User-Id"
 
+# The frontend signs the user out on this code (`account-banned.ts`).
+ACCOUNT_BANNED_DETAIL = {
+    "code": "account_banned",
+    "message": "This account has been banned.",
+}
+
 logger = logging.getLogger(__name__)
 
+# Recently settled self-heals, id -> monotonic expiry: a confirmed row for the
+# TTL, a failed heal (e.g. an email owned by another User) only for the
+# backoff, so it can't storm.
+_PROVISIONED_USER_IDS: "OrderedDict[str, float]" = OrderedDict()
+_PROVISIONED_USER_IDS_MAX = 10_000
+_PROVISIONED_USER_TTL_SECS = 15 * 60
+_FAILED_HEAL_BACKOFF_SECS = 60
+# Heals still running, id -> task: concurrent first requests for one user wait
+# on the same probe instead of each running their own.
+_HEALS_IN_FLIGHT: "dict[str, asyncio.Task[None]]" = {}
 
-def get_optional_user_id(
-    credentials: HTTPAuthorizationCredentials | None = fastapi.Security(
-        optional_bearer
-    ),
+
+def _is_heal_settled(user_id: str) -> bool:
+    """True while a recent heal outcome for *user_id* is still fresh."""
+    expires_at = _PROVISIONED_USER_IDS.get(user_id)
+    if expires_at is None:
+        return False
+    if expires_at <= time.monotonic():
+        del _PROVISIONED_USER_IDS[user_id]
+        return False
+    return True
+
+
+def _remember_heal(user_id: str, ttl: float) -> None:
+    _PROVISIONED_USER_IDS[user_id] = time.monotonic() + ttl
+    _PROVISIONED_USER_IDS.move_to_end(user_id)
+    while len(_PROVISIONED_USER_IDS) > _PROVISIONED_USER_IDS_MAX:
+        _PROVISIONED_USER_IDS.popitem(last=False)
+
+
+async def _heal_platform_user(jwt_payload: dict) -> None:
+    """Best-effort ``_ensure_platform_user`` for routes that authenticate
+    through ``get_user_id`` alone, which ``get_request_context`` doesn't heal.
+
+    Never raises, and is a no-op without the backend package or a connected DB.
+    """
+    user_id = jwt_payload.get("sub")
+    if not user_id or _is_heal_settled(user_id):
+        return
+
+    heal = _HEALS_IN_FLIGHT.get(user_id)
+    # A heal left behind by another event loop can't be awaited from this one.
+    if heal is None or heal.get_loop() is not asyncio.get_running_loop():
+        try:
+            from backend.data.db import prisma  # deferred -- only needed at runtime
+        except ImportError:
+            return
+        if not prisma.is_connected():
+            return
+
+        heal = asyncio.ensure_future(_settle_heal(user_id, jwt_payload))
+        _HEALS_IN_FLIGHT[user_id] = heal
+        heal.add_done_callback(lambda done: _forget_heal(user_id, done))
+    # Shielded: a request that is cancelled must not cancel the heal that the
+    # other requests for this user are waiting on.
+    await asyncio.shield(heal)
+
+
+def _forget_heal(user_id: str, heal: "asyncio.Future[None]") -> None:
+    if _HEALS_IN_FLIGHT.get(user_id) is heal:
+        del _HEALS_IN_FLIGHT[user_id]
+
+
+async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
+    try:
+        provisioned = await _ensure_platform_user(user_id, jwt_payload)
+    except Exception:
+        # A heal must never turn a request that would have worked into a 500.
+        logger.warning(f"Platform user self-heal failed for {user_id}", exc_info=True)
+        provisioned = False
+    _remember_heal(
+        user_id,
+        _PROVISIONED_USER_TTL_SECS if provisioned else _FAILED_HEAL_BACKOFF_SECS,
+    )
+
+
+async def get_optional_user_id(
+    request: fastapi.Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, fastapi.Security(optional_bearer)
+    ] = None,
 ) -> str | None:
     """
     Attempts to extract the user ID ("sub" claim) from a Bearer JWT if provided.
@@ -38,50 +125,111 @@ def get_optional_user_id(
     supplied, it parses the JWT and extracts the user ID. If the token is missing or invalid, it returns None,
     treating the request as anonymous.
 
+    Authentication-service failures propagate for token-bearing requests; an unavailable
+    verifier is not treated as an invalid token. Requests without a token remain anonymous.
+
     Args:
         credentials: Optional HTTPAuthorizationCredentials object from FastAPI Security dependency.
 
     Returns:
-        The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present.
+        The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present
+        or its account is banned or closed.
     """
     if not credentials:
         return None
 
     try:
-        # Parse JWT token to get user ID
-        from autogpt_libs.auth.jwt_utils import parse_jwt_token
-
-        payload = parse_jwt_token(credentials.credentials)
-        return payload.get("sub")
-    except Exception as e:
+        payload = await get_jwt_payload(request, credentials)
+    except fastapi.HTTPException as e:
+        if e.status_code >= 500:
+            raise
         logger.debug(f"Auth token validation failed (anonymous access): {e}")
         return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    # A banned account, or one whose ban can't be read, reads these routes as
+    # someone signed out would; they stay up either way.
+    try:
+        banned = await _is_banned(user_id)
+    except Exception:
+        logger.warning(f"Ban lookup failed for {user_id}; answering as anonymous")
+        return None
+    if banned:
+        return None
+    # A closed account is not banned (its owner signs in to keep it), so it is
+    # checked on its own. Like a failed ban lookup, a failed check answers as
+    # someone signed out: these routes are read-only, so that costs little.
+    if await get_account_state(user_id) is not AccountState.OPEN:
+        return None
+    return user_id
 
 
-async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -> User:
+async def get_unbanned_jwt_payload(
+    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+) -> dict:
+    """``get_jwt_payload``, refused with 403 when the token's subject is banned.
+
+    The resolvers below all read it, and FastAPI resolves it once per request.
+    Under impersonation the subject is the admin, who may act as a banned user.
+    Deleting an account does not ban it (its owner signs in to reopen it), so
+    only the account deletion routes skip this check: a banned person may
+    still delete their account (``get_user_id_allowing_closed``).
+    """
+    user_id = jwt_payload.get("sub")
+    if user_id and await _is_banned(user_id):
+        raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    return jwt_payload
+
+
+async def _is_banned(user_id: str) -> bool:
+    """False without the backend package or a connected DB, as the self-heal is:
+    every process that serves these routes has both."""
+    try:
+        from backend.data import db  # deferred -- only needed at runtime
+        from backend.data.user import is_user_banned  # deferred
+    except ImportError:
+        return False
+    if not db.is_connected():
+        return False
+    return await is_user_banned(user_id)
+
+
+async def requires_user(
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
+) -> User:
     """
     FastAPI dependency that requires a valid authenticated user.
 
     Raises:
-        HTTPException: 401 for authentication failures
+        HTTPException: 401 for authentication failures, or for a user who
+            closed their account
     """
-    return verify_user(jwt_payload, admin_only=False)
+    user = verify_user(jwt_payload, admin_only=False)
+    # No heal here: routes guarded only by requires_user (POST /auth/user)
+    # provision the row themselves.
+    await reject_closed_account(user.user_id)
+    return user
 
 
 async def requires_admin_user(
-    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> User:
     """
     FastAPI dependency that requires a valid admin user.
 
     Raises:
-        HTTPException: 401 for authentication failures, 403 for insufficient permissions
+        HTTPException: 401 for authentication failures, or for an admin who
+            closed their account; 403 for insufficient permissions
     """
-    return verify_user(jwt_payload, admin_only=True)
+    user = verify_user(jwt_payload, admin_only=True)
+    await reject_closed_account(user.user_id)
+    return user
 
 
 async def get_user_id(
-    request: fastapi.Request, jwt_payload: dict = fastapi.Security(get_jwt_payload)
+    request: fastapi.Request,
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> str:
     """
     FastAPI dependency that returns the ID of the authenticated user.
@@ -92,35 +240,81 @@ async def get_user_id(
     - Logs all impersonation actions for audit trail
 
     Raises:
-        HTTPException: 401 for authentication failures or missing user ID
+        HTTPException: 401 for authentication failures, a missing user ID, or
+            a token whose own subject closed their account
         HTTPException: 403 if non-admin tries to use impersonation
     """
-    # Get the authenticated user's ID from JWT
+    return await _resolve_user_id(request, jwt_payload, allow_closed=False)
+
+
+async def get_user_id_allowing_closed(
+    request: fastapi.Request,
+    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+) -> str:
+    """``get_user_id`` that still resolves a closed or a banned account.
+
+    Only for the account deletion routes: a repeat request for an account
+    already closed still answers, and its owner can see when it will be erased
+    and reopen it. A closed account is never self-healed: that would re-create
+    the User row its erasure removes. A session-bound token for a banned
+    account never reaches this dependency: a ban ends every session, so the
+    session check answers it with 403 ``account_banned`` first, as on every
+    other authenticated route.
+    """
+    return await _resolve_user_id(request, jwt_payload, allow_closed=True)
+
+
+async def _resolve_user_id(
+    request: fastapi.Request, jwt_payload: dict, *, allow_closed: bool
+) -> str:
+    subject = _token_subject(jwt_payload)
+    check = get_account_state if allow_closed else reject_closed_account
+    state = await check(subject)
+
+    if state is AccountState.OPEN:
+        # Self-heal a missing platform User row for the token's own subject.
+        # Under impersonation that is the admin, never the target: the claims
+        # describe the admin, and provisioning the target from them would be
+        # wrong. Never for an account that is or may be closed: that would
+        # re-create the User row its erasure removes.
+        await _heal_platform_user(jwt_payload)
+
+    return _impersonated_user_id(request, jwt_payload) or subject
+
+
+def _token_subject(jwt_payload: dict) -> str:
+    """The authenticated user's own ID, from the token's ``sub`` claim."""
     user_id = jwt_payload.get("sub")
     if not user_id:
         raise fastapi.HTTPException(
             status_code=401, detail="User ID not found in token"
         )
+    return user_id
 
-    # Check for admin impersonation header
+
+def _impersonated_user_id(request: fastapi.Request, jwt_payload: dict) -> str | None:
+    """The user an admin acts as via the impersonation header, if any.
+
+    Raises:
+        HTTPException: 403 if a non-admin sends the header
+    """
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
-        # Verify the authenticated user is an admin
-        authenticated_user = verify_user(jwt_payload, admin_only=False)
-        if authenticated_user.role != "admin":
-            raise fastapi.HTTPException(
-                status_code=403, detail="Only admin users can impersonate other users"
-            )
+    if not impersonate_header:
+        return None
 
-        # Log the impersonation for audit trail
-        logger.info(
-            f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
+    # Verify the authenticated user is an admin
+    authenticated_user = verify_user(jwt_payload, admin_only=False)
+    if authenticated_user.role != "admin":
+        raise fastapi.HTTPException(
+            status_code=403, detail="Only admin users can impersonate other users"
         )
 
-        return impersonate_header
-
-    return user_id
+    # Log the impersonation for audit trail
+    logger.info(
+        f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
+        f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
+    )
+    return impersonate_header
 
 
 # ---------------------------------------------------------------------------
@@ -131,8 +325,12 @@ ORG_HEADER_NAME = "X-Org-Id"
 TEAM_HEADER_NAME = "X-Team-Id"
 
 
-async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
+async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> bool:
     """Provision the platform ``User`` row for a valid token that has none.
+
+    Returns ``True`` when the row is known to exist afterwards (found, created,
+    or created by a concurrent request), ``False`` when it declined to try or
+    the attempt failed.
 
     The auth provider and the platform keep separate user tables, bridged only
     by the client calling ``POST /api/v1/auth/user`` after sign-in. Better Auth
@@ -159,16 +357,16 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     # under the admin's email.
     if user_id != jwt_payload.get("sub"):
         logger.debug("Not provisioning %s from an impersonator's claims", user_id)
-        return
+        return False
     if not jwt_payload.get("email"):
         # Nothing to provision with, so this account stays broken. Say so —
         # a silent return here is the exact failure mode this function exists
         # to end: bricked and invisible.
         logger.warning(f"Cannot provision user {user_id}: token carries no email claim")
-        return
+        return False
 
     if await prisma.user.find_unique(where={"id": user_id}) is not None:
-        return
+        return True
 
     from backend.data.user import get_or_create_user_with_status  # deferred
 
@@ -195,16 +393,16 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
                 "exists; the caller's org bootstrap will finish or report",
                 exc_info=True,
             )
-            return
+            return True
         logger.error(f"On-demand provisioning failed for user {user_id}", exc_info=True)
-        return
+        return False
 
     if not result.was_created:
         # Returning without raising is not proof we created anything: a
         # concurrent request can land its row between our probe and the
         # get-or-create's own lookup, which then simply reads it back. That
         # request reports the breach; this one would only double-count it.
-        return
+        return True
 
     # ERROR, not WARNING: LoggingIntegration reports this to Sentry, and a
     # token with no platform user is an invariant breach worth seeing. Gated
@@ -213,17 +411,41 @@ async def _ensure_platform_user(user_id: str, jwt_payload: dict) -> None:
     logger.error(
         f"Provisioned a missing platform User row for {user_id} on first touch"
     )
+    return True
+
+
+async def _finish_account_bootstrap(jwt_payload: dict) -> None:
+    """Run ``POST /auth/user``'s bootstrap for a row that never got one.
+
+    The auth hook inserts a bare ``User`` row when the identity is created. If
+    that session never reaches ``POST /auth/user`` (the OAuth flow lost its
+    redirect), the org bootstrap below would leave the account without its
+    marketplace Profile, and without the PostHog lifecycle sync.
+    Only reached once ``_ensure_platform_user`` has confirmed the row for the
+    token's own subject, and best-effort: the org bootstrap still runs after it.
+    """
+    from backend.data.user import get_or_create_user_with_status  # deferred
+
+    try:
+        await get_or_create_user_with_status(jwt_payload)
+    except Exception:
+        logger.warning(
+            f"Account bootstrap failed for {jwt_payload.get('sub')}; "
+            "falling back to the org bootstrap",
+            exc_info=True,
+        )
 
 
 async def get_request_context(
     request: fastapi.Request,
-    jwt_payload: dict = fastapi.Security(get_jwt_payload),
+    jwt_payload: dict = fastapi.Security(get_unbanned_jwt_payload),
 ) -> RequestContext:
     """
     FastAPI dependency that resolves the full org/workspace context for a request.
 
     Resolution order:
       1. Extract user_id from JWT (supports admin impersonation via X-Act-As-User-Id).
+         401 when the token's own subject closed their account.
       2. Read X-Org-Id header; fall back to the user's personal org; fail if none.
       3. Validate that the user has an ACTIVE OrgMember row for that org.
       4. Read X-Team-Id header (optional). If set, validate that the
@@ -234,42 +456,32 @@ async def get_request_context(
     from backend.data.db import prisma  # deferred -- only needed at runtime
 
     # --- 1. user_id (reuse existing impersonation logic) ----------------------
-    user_id = jwt_payload.get("sub")
-    if not user_id:
-        raise fastapi.HTTPException(
-            status_code=401, detail="User ID not found in token"
-        )
-
-    impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
-        authenticated_user = verify_user(jwt_payload, admin_only=False)
-        if authenticated_user.role != "admin":
-            raise fastapi.HTTPException(
-                status_code=403,
-                detail="Only admin users can impersonate other users",
-            )
-        logger.info(
-            f"Admin impersonation: {authenticated_user.user_id} ({authenticated_user.email}) "
-            f"acting as user {impersonate_header} for requesting {request.method} {request.url}"
-        )
-        user_id = impersonate_header
+    subject = _token_subject(jwt_payload)
+    # Before anything below can self-heal the account's User row.
+    account_state = await reject_closed_account(subject)
+    user_id = _impersonated_user_id(request, jwt_payload) or subject
 
     # --- 2. org_id ------------------------------------------------------------
     org_id = request.headers.get(ORG_HEADER_NAME, "").strip() or None
+    org_member = None
 
     if org_id is None:
         # Fall back to the user's personal org (an org where the user is the
-        # sole owner, typically created at sign-up).
+        # sole owner, typically created at sign-up). The row found is the
+        # user's membership of that org, so step 3 validates it as it is
+        # rather than reading the same row again.
         personal_org = await prisma.orgmember.find_first(
             where={
                 "userId": user_id,
                 "isOwner": True,
                 "Org": {"isPersonal": True, "deletedAt": None},
             },
+            include={"Org": True},
             order={"createdAt": "asc"},
         )
         if personal_org is not None:
             org_id = personal_org.orgId
+            org_member = personal_org
         else:
             # Self-heal: bootstrap the personal org. Sign-up and the startup
             # backfill cover normal accounts, but users created outside
@@ -281,7 +493,10 @@ async def get_request_context(
             # recoverable: the personal org, or the platform User row the org
             # would hang off. Provision the user first so the bootstrap below
             # has something to work with.
-            await _ensure_platform_user(user_id, jwt_payload)
+            if account_state is AccountState.OPEN and await _ensure_platform_user(
+                user_id, jwt_payload
+            ):
+                await _finish_account_bootstrap(jwt_payload)
 
             org_id, _ = await get_user_default_team(user_id)
             if org_id is None:
@@ -305,12 +520,13 @@ async def get_request_context(
                 )
 
     # --- 3. validate OrgMember ------------------------------------------------
-    org_member = await prisma.orgmember.find_unique(
-        where={
-            "orgId_userId": {"orgId": org_id, "userId": user_id},
-        },
-        include={"Org": True},
-    )
+    if org_member is None:
+        org_member = await prisma.orgmember.find_unique(
+            where={
+                "orgId_userId": {"orgId": org_id, "userId": user_id},
+            },
+            include={"Org": True},
+        )
     if org_member is None or org_member.status != "ACTIVE":
         raise fastapi.HTTPException(
             status_code=403,
@@ -351,6 +567,7 @@ async def get_request_context(
             or ws_member.status != "ACTIVE"
             or ws_member.Team is None
             or ws_member.Team.orgId != org_id
+            or ws_member.Team.archivedAt is not None
         ):
             logger.debug(
                 "Workspace %s not valid for user %s in org %s; falling back to org-home",

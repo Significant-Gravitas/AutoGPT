@@ -1,0 +1,38 @@
+[
+  {
+    "id": "row-0",
+    "role": "user",
+    "content": "Count to three",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 0,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:00Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-1",
+    "role": "assistant",
+    "content": "I counted: 1... 2... 3. All done!",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 1,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:01Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  }
+]

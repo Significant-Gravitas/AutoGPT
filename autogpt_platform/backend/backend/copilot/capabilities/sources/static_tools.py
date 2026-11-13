@@ -32,8 +32,16 @@ EAGER_CORE: frozenset[str] = frozenset(
         "run_agent",
         "find_library_agent",
         "ask_question",
+        # A presentation tool: Otto would never go searching for one.
+        "render_ui",
         "web_search",
         "web_fetch",
+        # The three go together: read and write take a file id or path that
+        # only a listing hands over, and a model asked where the user's files
+        # are calls ``list_workspace_files`` by name. Deferred, that call was
+        # refused, and the model fell back to ``ls`` on the sandbox, a
+        # different store, and told the user their files were gone.
+        "list_workspace_files",
         "read_workspace_file",
         "write_workspace_file",
         "run_sub_session",
@@ -57,6 +65,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # the card it exists to open is unreachable, and so is the
         # ``run_capability`` that would reach it.
         "expert_onboarding",
+        # Both open a chat card, and a deferred tool renders as a generic
+        # tool row instead of its card.
+        "request_work_check",
+        "flag_mistake",
     }
 )
 
@@ -83,6 +95,7 @@ def _tool_entry(name: str, tool: "BaseTool", group: str | None) -> CapabilityEnt
     tags = sorted(set(tokenize(name)))
     if group:
         tags.append(group)
+    tags += tool.search_keywords
     return CapabilityEntry(
         id=f"tool:{name}",
         kind="tool",

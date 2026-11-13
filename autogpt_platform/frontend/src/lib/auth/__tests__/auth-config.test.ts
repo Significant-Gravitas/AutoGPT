@@ -9,6 +9,7 @@ vi.mock("better-auth/next-js", () => ({
 }));
 vi.mock("better-auth/plugins", () => ({
   admin: vi.fn(() => ({ id: "admin" })),
+  bearer: vi.fn(() => ({ id: "bearer", hooks: { before: [], after: [] } })),
   jwt: vi.fn((opts: unknown) => ({ id: "jwt", opts })),
 }));
 vi.mock("../supabase-bridge", () => ({
@@ -18,6 +19,11 @@ const sendAuthEmailMock = vi.fn();
 vi.mock("../email", () => ({
   sendAuthEmail: (...args: unknown[]) => sendAuthEmailMock(...args),
 }));
+const provisionPlatformUserMock = vi.fn();
+vi.mock("../provision-platform-user", () => ({
+  provisionPlatformUser: (...args: unknown[]) =>
+    provisionPlatformUserMock(...args),
+}));
 
 interface JwtPluginOptions {
   jwt: {
@@ -25,10 +31,12 @@ interface JwtPluginOptions {
     expirationTime: string;
     definePayload: (args: {
       user: { id: string; email: string; name: string; role?: string };
+      session: { id: string };
     }) => {
       email: string;
       role: string;
       user_metadata: { name: string };
+      sid: string;
     };
   };
 }
@@ -39,6 +47,18 @@ interface AuthEmailArgs {
 }
 
 interface CapturedAuthOptions {
+  databaseHooks: {
+    user: {
+      create: {
+        after: (user: {
+          id: string;
+          email: string;
+          name: string;
+          emailVerified?: boolean;
+        }) => Promise<void>;
+      };
+    };
+  };
   emailAndPassword: {
     minPasswordLength: number;
     revokeSessionsOnPasswordReset: boolean;
@@ -64,6 +84,7 @@ interface CapturedAuthOptions {
     };
   };
   advanced: { database: { generateId: () => string } };
+  database: { type: string; transaction?: boolean };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
 }
@@ -80,16 +101,24 @@ async function loadAuthOptions(): Promise<CapturedAuthOptions> {
 }
 
 const PROVIDER_ENV_KEYS = [
+  "AUTH_APPLE_APP_BUNDLE_IDENTIFIER",
+  "AUTH_APPLE_CLIENT_ID",
+  "AUTH_APPLE_TEAM_ID",
+  "AUTH_APPLE_KEY_ID",
+  "AUTH_APPLE_PRIVATE_KEY",
   "AUTH_GOOGLE_CLIENT_ID",
   "AUTH_GOOGLE_CLIENT_SECRET",
   "AUTH_GITHUB_CLIENT_ID",
   "AUTH_GITHUB_CLIENT_SECRET",
   "AUTH_DISCORD_CLIENT_ID",
   "AUTH_DISCORD_CLIENT_SECRET",
+  "AUTH_MICROSOFT_CLIENT_ID",
+  "AUTH_MICROSOFT_CLIENT_SECRET",
 ];
 
 beforeEach(() => {
   sendAuthEmailMock.mockReset();
+  provisionPlatformUserMock.mockReset();
   for (const key of PROVIDER_ENV_KEYS) {
     vi.stubEnv(key, "");
   }
@@ -141,6 +170,7 @@ describe("auth config", () => {
     expect(definePayload).toBeDefined();
     expect(
       definePayload?.({
+        session: { id: "session-1" },
         user: {
           id: "u1",
           email: "admin@example.com",
@@ -149,12 +179,14 @@ describe("auth config", () => {
         },
       }),
     ).toEqual({
+      sid: "session-1",
       email: "admin@example.com",
       role: "admin",
       user_metadata: { name: "Admin" },
     });
     expect(
       definePayload?.({
+        session: { id: "session-2" },
         user: {
           id: "u2",
           email: "user@example.com",
@@ -163,9 +195,21 @@ describe("auth config", () => {
         },
       }),
     ).toEqual({
+      sid: "session-2",
       email: "user@example.com",
       role: "authenticated",
       user_metadata: { name: "Regular" },
+    });
+  });
+
+  it("runs the database without transactions", async () => {
+    // Better Auth would hold a pool connection for a whole sign-up while the
+    // session hook waits on the same pool for another (see auth.ts).
+    const options = await loadAuthOptions();
+
+    expect(options.database).toMatchObject({
+      type: "postgres",
+      transaction: false,
     });
   });
 
@@ -196,6 +240,27 @@ describe("auth config", () => {
         clientId: "google-client-id",
         clientSecret: "google-client-secret",
       },
+    });
+  });
+
+  it("registers microsoft for sign-in only, letting the person pick an account", async () => {
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_ID", "microsoft-client-id");
+    vi.stubEnv("AUTH_MICROSOFT_CLIENT_SECRET", "microsoft-client-secret");
+
+    const options = await loadAuthOptions();
+    const microsoft = (
+      options.socialProviders as Record<string, Record<string, unknown>>
+    ).microsoft;
+
+    expect(microsoft).toMatchObject({
+      clientId: "microsoft-client-id",
+      clientSecret: "microsoft-client-secret", // pragma: allowlist secret
+      tenantId: "common",
+      prompt: "select_account",
+      disableDefaultScope: true,
+      scope: ["openid", "profile", "email"],
+      // Only the redirect flow, which the sign-up policy guards, signs in.
+      disableIdTokenSignIn: true,
     });
   });
 
@@ -235,10 +300,96 @@ describe("auth config", () => {
 
     expect(pluginIds).toEqual([
       "admin",
+      "bearer",
       "jwt",
       "supabase-bridge",
       "next-cookies",
     ]);
+  });
+});
+
+describe("email verification", () => {
+  it("is off unless AUTH_REQUIRE_EMAIL_VERIFICATION is exactly true", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "");
+    const off = (await loadAuthOptions()) as unknown as {
+      emailAndPassword: { requireEmailVerification: boolean };
+    };
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const on = (await loadAuthOptions()) as unknown as {
+      emailAndPassword: { requireEmailVerification: boolean };
+    };
+
+    expect(off.emailAndPassword.requireEmailVerification).toBe(false);
+    expect(on.emailAndPassword.requireEmailVerification).toBe(true);
+  });
+
+  it("re-sends the link to an unverified sign-in and signs the user in from it", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const options = (await loadAuthOptions()) as unknown as {
+      emailVerification: Record<string, unknown>;
+    };
+
+    // Without sendOnSignIn, accounts created before the flag was flipped
+    // would hit a 403 with no way to get a link.
+    expect(options.emailVerification.sendOnSignIn).toBe(true);
+    expect(options.emailVerification.autoSignInAfterVerification).toBe(true);
+    expect(options.emailVerification.expiresIn).toBe(60 * 60 * 24);
+    // Sign-up sends the link only when verification is required (Better
+    // Auth's default), so leaving the flag off changes nothing.
+    expect(options.emailVerification.sendOnSignUp).toBeUndefined();
+  });
+
+  it("does not sign in from a verify link with the flag off", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
+    const options = (await loadAuthOptions()) as unknown as {
+      emailVerification: Record<string, unknown>;
+    };
+
+    expect(options.emailVerification.autoSignInAfterVerification).toBe(false);
+  });
+});
+
+describe("team email sign-up", () => {
+  type CreateUserHook = (
+    user: { email: string },
+    ctx: { path?: string } | null,
+  ) => Promise<void>;
+
+  async function loadCreateUserHook() {
+    const options = (await loadAuthOptions()) as unknown as {
+      databaseHooks: { user: { create: { before: CreateUserHook } } };
+    };
+    return options.databaseHooks.user.create.before;
+  }
+
+  it("refuses a password sign-up as an @agpt.co address", async () => {
+    const createUser = await loadCreateUserHook();
+
+    await expect(
+      createUser({ email: "made-up@agpt.co" }, { path: "/sign-up/email" }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      body: { code: "TEAM_EMAIL_REQUIRES_GOOGLE" },
+    });
+  });
+
+  it("lets Google create an @agpt.co account", async () => {
+    const createUser = await loadCreateUserHook();
+
+    await expect(
+      createUser({ email: "someone@agpt.co" }, { path: "/callback/google" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("leaves other password sign-ups to the signup gate", async () => {
+    const createUser = await loadCreateUserHook();
+
+    await expect(
+      createUser({ email: "qa@previews.agpt.co" }, { path: "/sign-up/email" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      createUser({ email: "new@example.com" }, { path: "/sign-up/email" }),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -259,6 +410,7 @@ describe("change email", () => {
       to: "old@example.com",
       type: "change_email",
       url: "https://app/approve?token=t",
+      newEmail: "new@example.com",
     });
   });
 
@@ -306,5 +458,62 @@ describe("auth table names", () => {
 
     const jwtPlugin = options.plugins.find((plugin) => plugin.id === "jwt");
     expect(jwtPlugin?.opts?.schema?.jwks?.modelName).toBe("UserAuthJwks");
+  });
+
+  it("provisions the platform User row from the user.create.after hook", async () => {
+    const options = await loadAuthOptions();
+    const user = { id: "user-1", email: "new@example.com", name: "new" };
+
+    await options.databaseHooks.user.create.after(user);
+
+    expect(provisionPlatformUserMock).toHaveBeenCalledTimes(1);
+    const [pool, provisionedUser] = provisionPlatformUserMock.mock.calls[0];
+    // Reuses the shared auth pool rather than opening a second connection.
+    expect(pool).toBeDefined();
+    expect(provisionedUser).toEqual(user);
+  });
+
+  it("defers an unverified password sign-up's User row to the verification link when verification is required", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const options = await loadAuthOptions();
+
+    await options.databaseHooks.user.create.after({
+      id: "user-1",
+      email: "new@example.com",
+      name: "new",
+      emailVerified: false,
+    });
+
+    expect(provisionPlatformUserMock).not.toHaveBeenCalled();
+  });
+
+  it("still provisions a Google identity at creation when verification is required", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "true");
+    const options = await loadAuthOptions();
+    const user = {
+      id: "user-1",
+      email: "new@gmail.com",
+      name: "new",
+      emailVerified: true,
+    };
+
+    await options.databaseHooks.user.create.after(user);
+
+    expect(provisionPlatformUserMock).toHaveBeenCalledTimes(1);
+    expect(provisionPlatformUserMock.mock.calls[0][1]).toEqual(user);
+  });
+
+  it("provisions an unverified password sign-up at creation when verification is off", async () => {
+    vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
+    const options = await loadAuthOptions();
+
+    await options.databaseHooks.user.create.after({
+      id: "user-1",
+      email: "new@example.com",
+      name: "new",
+      emailVerified: false,
+    });
+
+    expect(provisionPlatformUserMock).toHaveBeenCalledTimes(1);
   });
 });

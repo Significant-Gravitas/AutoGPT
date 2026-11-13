@@ -1,7 +1,10 @@
-import { isUsageExhausted } from "../usageHelpers";
-import { useCopilotUsage } from "./useCopilotUsage";
+import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
+import { spendsPlatformBudget } from "../usageHelpers";
 
-export function useIsUsageLimitReached() {
-  const { data: usage } = useCopilotUsage();
-  return isUsageExhausted(usage);
+/** The connection the chat runs on decides: only a platform chat waits for
+ *  the AutoPilot budget. */
+export function useIsUsageLimitReached(authProvider?: string | null) {
+  const state = useUsageExperience();
+  if (!spendsPlatformBudget(authProvider)) return false;
+  return state.experience.blocked || state.isError;
 }

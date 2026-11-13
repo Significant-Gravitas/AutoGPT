@@ -258,7 +258,80 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Bumped 77_014 -> 77_401 for memory_forget_search's `include_forgotten`
+# argument (#14972): a soft forget left a fact the chat could no longer find,
+# so it could never be made permanent with hard_delete. No tool was added.
+# Measured on this branch merged with dev 8432f734f5:
+#     merged tree, before                         76,975 (89 tools)
+#     + include_forgotten              +126       77,101 (89 tools)
+#     + headroom                       +300       77,401
+# The same deliberate margin as the line above, for the same reason.
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one.
+# Both bumps met in the memory-core stack's merge with dev f05d2d7393;
+# re-measured on that merged tree (89 tools), with the stack's margin:
+#     merged tree                                 77,301 (89 tools)
+#     + headroom                       +300       77,601
+# Raised 77_176 -> 77_653 for #11220's `constant_inputs`
+# (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
+# agent carrying both a trigger node and input nodes needs to configure the two
+# separately. Measured on that branch merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              77,175 (89 tools)
+#     + #11220's two arguments        +178        77,353 (89 tools)
+#     + headroom                      +300        77,653
+# Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
+#     merged tree                                 77,464 (89 tools)
+# Re-measured on #11220 merged with dev 36d5f2e8af, where dev's growth no
+# longer fits under it:
+#     merged tree                                 77,679 (89 tools)
+#     + headroom                       +300       77,979
+# Bumped 77_601 -> 77_720 for hire_expert's `handoff_title` and `handoff_task`
+# (SECRT-3138): a hire proposed for a task already in the chat carries it, so
+# the card's Approve hires and hands it off in one click. The rule itself
+# lives in the team-building prompt, so the schema only names the fields and
+# the rest of hire_expert's description was cut to pay for them; no tool was
+# added. Measured on this branch, which is dev f0ae7dfd4 plus this PR:
+#     dev f0ae7dfd4                               77,501 (89 tools)
+#     + handoff_title / handoff_task   +218       77,719 (89 tools)
+# Plus one.
+# Re-measured on the v2 External API root merged with dev 8df80022bc, which
+# brings the MCP tools' external schemas and the preset tools back:
+#     merged tree                                 77,510 (89 tools)
+#     + headroom                       +300       77,810
+# Both met merging dev into #16101 (SECRT-3138); re-measured on that merged
+# tree, which is under dev's ceiling, so the higher value stands:
+#     merged tree                                 77,728 (89 tools)
+# Re-measured on #11220 merged with dev b7b75494f4, where the two meet:
+#     merged tree                                 77,688 (89 tools)
+#     + headroom                       +300       77,988
+# Re-measured on #11220 merged with dev 7ca3671f6a, where dev's growth left
+# 84 of the 300 headroom:
+#     dev 7ca3671f6a                              77,726 (89 tools)
+#     + #11220's two arguments        +178        77,904 (89 tools)
+#     + headroom                      +300        78,204
+# render_ui's block schema adds its whole size. Only sessions with
+# copilot-visual-answers on declare it:
+#     dev + render_ui                 +4,402      82,606
+# Raised for request_work_check and flag_mistake, the two tools this PR adds:
+# both open a chat card, so they must be eager. Measured on this branch,
+# 2285c61736 plus this PR (91 tools):
+#     merged tree                                 78,567
+#     + headroom                       +300       78,867
+#     + flag_mistake's reason argument +150       79,017
+# Raised again after merging with dev ac4e888 (2026-11-11): other PRs
+# merged to dev added tool schema content, pushing the total higher.
+# Measured on PR #16677 merged with latest dev:
+#     merged tree                                 83,410
+#     + headroom                       +300       83,710
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_CHAR_BUDGET = 83_710
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +521,65 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+#
+# Re-measured on the memory-core stack merged with dev f05d2d7393. Neither
+# side moved this line, but each grew the largest session under it: the
+# stack's memory_forget_search `include_forgotten` (69,609 alone) and dev's
+# connect_integration `ayrshare` (69,687 alone). Together they measure 20
+# over it. Same headroom, for the same reason.
+#     merged tree                                 69,808
+#     + headroom                       +300       70,108
+#
+# #11220's `constant_inputs` and `trigger_config`, the same two arguments as
+# ``_CHAR_BUDGET`` above, ride the largest session. Dev grew 199 past the
+# fab04d6ac9 measurement, so they no longer fit under that headroom.
+# Measured on #11220 merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              69,687
+#     + #11220's two arguments        +164        69,851
+#     + headroom                      +300        70,151
+# Re-measured on #11220 merged with dev 6ab436bf0e, where the two meet:
+#     merged tree                                 69,962
+# The higher value still covers it.
+# Re-measured on #11220 merged with dev 7ca3671f6a, where dev's growth no
+# longer fits under it:
+#     dev 7ca3671f6a                              70,062
+#     + #11220's two arguments        +164        70,226
+#     + headroom                      +300        70,526
+# render_ui, in compact separators:
+#     dev + render_ui                 +4,028      74,554
+#
+# Raised for raise_expert's `handoff_title` and `handoff_task` (SECRT-3401),
+# the same two fields hire_expert carries, so a new expert created for a task
+# already in the chat is created and handed it in one click. raise_expert is
+# in the largest session. Measured on that branch merged with dev e6a3d35514
+# (2026-11-09); the registry total (77,971) still fits under _CHAR_BUDGET:
+#     dev e6a3d35514                              70,416
+#     + raise_expert's two fields     +240        70,656
+#     + headroom                      +300        70,956
+#
+# request_work_check and flag_mistake, the same two tools as ``_CHAR_BUDGET``
+# above, ride the largest session. Measured on this branch, 2285c61736 plus
+# this PR:
+#     merged tree                                 70,773
+#     + headroom                       +300       71,073
+#     + flag_mistake's reason argument +150       71,223
+#
+# Re-measured on the SECRT-3401 branch merged with dev 83f6ce57 (2026-11-10),
+# where raise_expert's two fields no longer fit under the line above:
+#     merged tree                                 71,391
+#     + headroom                       +300       71,691
+# Raised again after merging with dev ac4e888 (2026-11-11): other PRs
+# merged to dev added tool schema content, pushing the largest session higher.
+# Measured on PR #16677 merged with latest dev:
+#     merged tree                                 75,382
+#     + headroom                       +300       75,682
+# On conflict keep the higher value: this line must cover every in-flight PR.
+_SESSION_WIRE_BUDGET = 75_682
 
 
 def test_largest_declared_session_wire_budget() -> None:

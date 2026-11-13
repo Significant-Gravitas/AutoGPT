@@ -1,4 +1,5 @@
-"""Rating an AutoPilot reply: the thumbs up/down and copy actions under it.
+"""Rating an AutoPilot reply: thumbs up/down, copy, and the work check and
+mistake cards.
 
 Served under ``/api/chat`` next to the other session routes; the rating
 logic lives in ``backend.copilot.feedback``.
@@ -7,16 +8,20 @@ logic lives in ``backend.copilot.feedback``.
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Request, Security
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend.copilot.feedback import (
     MAX_FEEDBACK_COMMENT_CHARS,
+    MAX_FEEDBACK_REASON_CHARS,
+    REASONS_BY_SCORE_NAME,
+    SCORE_VALUES_BY_NAME,
     FeedbackScoreName,
     FeedbackScoreValue,
     MessageFeedbackResponse,
     record_message_feedback,
 )
+from backend.copilot.llm_attribution import is_impersonated_request
 
 router = APIRouter(tags=["chat"])
 
@@ -34,15 +39,21 @@ class MessageFeedbackRequest(BaseModel):
     )
     score_name: FeedbackScoreName = Field(
         description='"user-feedback" for thumbs up/down, "copy" when the '
-        "user copied the reply.",
+        'user copied the reply, "work_check" and "otto_mistake" for those cards.',
     )
     score_value: FeedbackScoreValue = Field(
-        description="1 for thumbs up or a copy, 0 for thumbs down.",
+        description="1 for thumbs up or a copy, 0 for thumbs down; a work check "
+        "is 0 bad, 1 okay, 2 great; a mistake is always 0.",
     )
     comment: str | None = Field(
         default=None,
         max_length=MAX_FEEDBACK_COMMENT_CHARS,
         description="What the user said was wrong, from the thumbs-down form.",
+    )
+    reason: str | None = Field(
+        default=None,
+        max_length=MAX_FEEDBACK_REASON_CHARS,
+        description="The option picked on a work check or mistake card.",
     )
 
     @field_validator("comment")
@@ -53,9 +64,13 @@ class MessageFeedbackRequest(BaseModel):
         return comment.strip() or None
 
     @model_validator(mode="after")
-    def copy_scores_one(self) -> "MessageFeedbackRequest":
-        if self.score_name == "copy" and self.score_value != 1:
-            raise ValueError("A copy is always scored 1")
+    def score_and_reason_fit_the_name(self) -> "MessageFeedbackRequest":
+        if self.score_value not in SCORE_VALUES_BY_NAME[self.score_name]:
+            raise ValueError(f"{self.score_name} cannot be scored {self.score_value}")
+        if self.reason is None:
+            return self
+        if self.reason not in REASONS_BY_SCORE_NAME.get(self.score_name, frozenset()):
+            raise ValueError(f"{self.score_name} does not offer this reason")
         return self
 
 
@@ -71,14 +86,13 @@ async def submit_message_feedback(
     session_id: str,
     request: MessageFeedbackRequest,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    http_request: Request,
 ) -> MessageFeedbackResponse:
     """Rate a reply in one of the caller's chats.
 
     Saves the rating, one per reply and score name so rating again
-    overwrites it, and scores it in Langfuse on the trace of the turn that
-    wrote the reply, or on the chat's Langfuse session when that trace is
-    not known. Langfuse being down does not fail the request; the response
-    says where the score went.
+    overwrites it, and sends it to PostHog LLM analytics as an
+    ``$ai_metric`` event. PostHog being down does not fail the request.
     """
     feedback = await record_message_feedback(
         user_id=user_id,
@@ -87,6 +101,8 @@ async def submit_message_feedback(
         score_name=request.score_name,
         score_value=request.score_value,
         comment=request.comment,
+        impersonated=is_impersonated_request(http_request),
+        reason=request.reason,
     )
     if feedback is None:
         raise HTTPException(

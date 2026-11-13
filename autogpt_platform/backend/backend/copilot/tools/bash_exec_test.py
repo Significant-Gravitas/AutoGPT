@@ -1,12 +1,35 @@
 """Tests for BashExecTool — E2B path with token injection."""
 
+import asyncio
+import itertools
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from e2b import CommandExitException
+from connectrpc.code import Code
+from connectrpc.errors import ConnectError
+from e2b import AsyncSandbox, CommandExitException, CommandResult
+from e2b.envd.rpc import handle_rpc_exception
+from e2b.exceptions import NotFoundException, TimeoutException
+from pydantic import SecretStr
+
+from backend.copilot import integration_creds
+from backend.copilot.context import bash_command_as_written
+from backend.copilot.sdk.file_ref import text_outside_file_refs
+from backend.data.model import APIKeyCredentials
 
 from ._test_data import make_session
-from .bash_exec import BashExecTool
+from .bash_exec import _KILL_TREE_SCRIPT, BashExecTool
+from .e2b_sandbox import SandboxOwner
 from .models import BashExecResponse, ErrorResponse
 
 _USER = "user-bash-exec-test"
@@ -23,18 +46,73 @@ def picked_credentials():
         yield
 
 
+@pytest.fixture(autouse=True)
+def proxy_off():
+    """No swap proxy unless a test says so: the behaviour before it existed."""
+    with patch("backend.copilot.tools.bash_exec.proxy_address", return_value=None):
+        yield
+
+
+class _FakeRedisLock:
+    """redis-py's ``Lock``, held in-process: one holder per name at a time."""
+
+    _held: dict[str, asyncio.Lock] = {}
+
+    def __init__(self, name: str, **kwargs):
+        self._lock = self._held.setdefault(name, asyncio.Lock())
+
+    async def acquire(self) -> bool:
+        await self._lock.acquire()
+        return True
+
+    async def release(self) -> None:
+        self._lock.release()
+
+
+@pytest.fixture(autouse=True)
+def stream_password_store():
+    """Where the screen's stream password expiry lives, Redis in production."""
+    _FakeRedisLock._held.clear()
+    redis = MagicMock()
+    redis.expire = AsyncMock()
+    redis.lock = MagicMock(side_effect=_FakeRedisLock)
+    with patch(
+        "backend.copilot.tools.e2b_sandbox.get_redis_async",
+        new=AsyncMock(return_value=redis),
+    ):
+        yield redis
+
+
 def _make_tool() -> BashExecTool:
     return BashExecTool()
 
 
 def _make_sandbox(exit_code: int = 0, stdout: str = "", stderr: str = "") -> MagicMock:
-    result = MagicMock()
-    result.exit_code = exit_code
-    result.stdout = stdout
-    result.stderr = stderr
+    """A box whose command prints *stdout*/*stderr* and exits *exit_code*."""
+
+    async def run(*args, on_stdout=None, on_stderr=None, **kwargs):
+        if stdout and on_stdout:
+            on_stdout(stdout)
+        if stderr and on_stderr:
+            on_stderr(stderr)
+        handle = MagicMock(pid=1)
+        if exit_code:
+            handle.wait = AsyncMock(
+                side_effect=CommandExitException(
+                    stdout=stdout, stderr=stderr, exit_code=exit_code, error=None
+                )
+            )
+        else:
+            handle.wait = AsyncMock(
+                return_value=CommandResult(
+                    stdout=stdout, stderr=stderr, exit_code=0, error=None
+                )
+            )
+        return handle
 
     sandbox = MagicMock()
-    sandbox.commands.run = AsyncMock(return_value=result)
+    sandbox.set_timeout = AsyncMock()
+    sandbox.commands.run = AsyncMock(side_effect=run)
     return sandbox
 
 
@@ -66,10 +144,12 @@ class TestBashExecE2BTokenInjection:
             )
 
         # The session's picks reach the token lookup, not just its scopes.
-        mock_get_env.assert_awaited_once_with(_USER, None, _PICKED)
+        mock_get_env.assert_awaited_once_with(
+            _USER, None, _PICKED, None, allowed_ids=None
+        )
         # And the commit identity comes from that same GitHub account, so a
         # commit made with one account's token is not signed as another's.
-        mock_identity.assert_awaited_once_with(_USER, "cred-picked")
+        mock_identity.assert_awaited_once_with(_USER, "cred-picked", allowed_ids=None)
         call_kwargs = sandbox.commands.run.call_args[1]
         assert call_kwargs["envs"]["GH_TOKEN"] == "gh-secret"
         assert call_kwargs["envs"]["GITHUB_TOKEN"] == "gh-secret"
@@ -147,14 +227,8 @@ class TestBashExecE2BTokenInjection:
         tool = _make_tool()
         session = make_session(user_id=_USER)
 
-        sandbox = MagicMock()
-        sandbox.commands.run = AsyncMock(
-            side_effect=CommandExitException(
-                stdout="not logged in gh-secret",
-                stderr="oops gh-secret",
-                exit_code=1,
-                error=None,
-            )
+        sandbox = _make_sandbox(
+            exit_code=1, stdout="not logged in gh-secret", stderr="oops gh-secret"
         )
 
         with (
@@ -252,6 +326,106 @@ class TestBashExecSdkToolResultRedirect:
         sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            (
+                "cd /root/.claude/projects/-tmp-copilot-abc/abc/tool-results/ && "
+                "python3 -c \"open('toolu_x.json')\""
+            ),
+            "ls -t /root/.claude/projects/*/*/tool-results/",
+        ],
+    )
+    async def test_redirect_on_sdk_dir_without_file_name(self, cmd):
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox()
+        with patch(
+            "backend.copilot.tools.bash_exec.get_current_sandbox",
+            return_value=sandbox,
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command=cmd,
+                timeout=10,
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        assert "/root/.claude/projects/" in result.message
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "written",
+        [
+            "echo @@agptfile:/home/user/notes.md | wc -l",
+            # The route the redirect hint itself suggests.
+            (
+                "echo @@agptfile:/root/.claude/projects/-tmp-x/"
+                "0f8fad5b-d9cb-469f-a165-70867728950e/tool-results/"
+                "toolu_01.json[1-200] | wc -l"
+            ),
+        ],
+    )
+    async def test_no_redirect_from_agptfile_ref_or_its_content(self, written):
+        """An ``@@agptfile:`` ref, and the text it expands to, are not a
+        sandbox file access: the check reads the command as the model wrote
+        it, minus its refs."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox(stdout="ok")
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+            bash_command_as_written(text_outside_file_refs(written)),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="echo 'See /root/.claude/projects' | wc -l",
+                timeout=10,
+            )
+        assert isinstance(result, BashExecResponse)
+        sandbox.commands.run.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_redirect_on_script_expanded_from_bare_ref(self):
+        """A command that is only an ``@@agptfile:`` ref runs the file it
+        names, so the expanded script is what gets checked."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox()
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_current_sandbox",
+                return_value=sandbox,
+            ),
+            bash_command_as_written(
+                text_outside_file_refs("@@agptfile:/home/user/run.sh")
+            ),
+        ):
+            result = await tool._execute(
+                user_id=_USER,
+                session=session,
+                command="cat /root/.claude/projects/-tmp-x/a/tool-results/x.json",
+                timeout=10,
+            )
+        assert isinstance(result, ErrorResponse)
+        assert "read_tool_result" in result.message
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_no_redirect_on_user_path_containing_tool_outputs(self):
         """Regression: a user repo path that happens to contain a
         ``tool-outputs`` directory must NOT trigger the redirect, since
@@ -328,3 +502,1159 @@ class TestBashExecSdkToolResultRedirect:
             )
         assert isinstance(result, BashExecResponse)
         sandbox.commands.run.assert_called_once()
+
+
+class TestBashExecOnAnExpertsBox:
+    """An expert's box is handed only the accounts its owner granted that
+    expert, with or without the swap proxy; a personal chat's box keeps every
+    account the user connected."""
+
+    _GRANTED = "ghp_the_granted_value"
+    _UNGRANTED = "ghp_the_ungranted_value"
+
+    @pytest.fixture(autouse=True)
+    def stored_and_granted(self):
+        # Stored first, so it is the default pick when nothing narrows the lookup.
+        stored = [
+            APIKeyCredentials(
+                id="cred-ungranted",
+                provider="github",
+                api_key=SecretStr(self._UNGRANTED),
+                title="GitHub",
+            ),
+            APIKeyCredentials(
+                id="cred-granted",
+                provider="github",
+                api_key=SecretStr(self._GRANTED),
+                title="GitHub",
+            ),
+        ]
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(
+            side_effect=lambda _user, provider: stored if provider == "github" else []
+        )
+        self.db = MagicMock()
+        self.db.expert_allowed_credential_ids = AsyncMock(return_value=["cred-granted"])
+        caches = (
+            integration_creds._token_cache,
+            integration_creds._null_cache,
+            integration_creds._credential_id_cache,
+        )
+        with (
+            patch.object(integration_creds, "_manager", manager),
+            patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+            patch.object(integration_creds, "experts_db", return_value=self.db),
+            patch(
+                "backend.copilot.tools.bash_exec.selected_credentials",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()
+            ) as grant,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ) as identity,
+        ):
+            self.grant, self.identity = grant, identity
+            for cache in caches:
+                cache.clear()
+            yield
+            for cache in caches:
+                cache.clear()
+
+    async def _envs(self, owner: SandboxOwner) -> dict[str, str]:
+        sandbox = _make_sandbox(stdout="ok")
+        sandbox.sandbox_id = "sb-1"
+        await _make_tool()._execute_on_e2b(
+            sandbox=sandbox,
+            command="gh repo list",
+            timeout=10,
+            session_id="session-of-an-expert",
+            user_id=_USER,
+            owner=owner,
+        )
+        return sandbox.commands.run.call_args[1]["envs"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_without_the_proxy_only_the_granted_token_is_injected(self):
+        envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == self._GRANTED
+        assert all(self._UNGRANTED not in value for value in envs.values())
+        self.db.expert_allowed_credential_ids.assert_awaited_once_with(
+            _USER, "expert-1"
+        )
+        self.identity.assert_awaited_once_with(
+            _USER, None, allowed_ids=frozenset({"cred-granted"})
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_behind_the_proxy_only_the_granted_credential_is_granted(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.proxy_address", return_value="proxy:1080"
+        ):
+            envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert envs["GH_TOKEN"] == "hsurr:github:cred-granted"
+        self.grant.assert_awaited_once_with("sb-1", {"github": "cred-granted"})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_expert_with_no_grant_gets_no_account(self):
+        self.db.expert_allowed_credential_ids.return_value = []
+        envs = await self._envs(SandboxOwner(kind="expert", id="expert-1"))
+        assert "GH_TOKEN" not in envs
+        assert all(self._UNGRANTED not in value for value in envs.values())
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_personal_chats_box_is_not_narrowed(self):
+        envs = await self._envs(SandboxOwner(kind="session", id="session-1"))
+        assert envs["GH_TOKEN"] == self._UNGRANTED
+        self.db.expert_allowed_credential_ids.assert_not_awaited()
+
+
+class TestBashExecBehindTheSwapProxy:
+    """With the box's egress through the swap proxy, the command gets
+    placeholders: the stored value never reaches the box."""
+
+    _REAL = "ghp_the_real_stored_value"
+
+    @pytest.fixture(autouse=True)
+    def proxy_on(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.proxy_address", return_value="proxy:1080"
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    def stored_github_credential(self):
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(
+            return_value=[
+                APIKeyCredentials(
+                    id="cred-picked",
+                    provider="github",
+                    api_key=SecretStr(self._REAL),
+                    title="GitHub",
+                )
+            ]
+        )
+        with (
+            patch.object(integration_creds, "_manager", manager),
+            patch.object(integration_creds, "_ensure_cache_invalidation_listener"),
+        ):
+            integration_creds._token_cache.clear()
+            integration_creds._null_cache.clear()
+            integration_creds._credential_id_cache.clear()
+            yield
+            integration_creds._token_cache.clear()
+            integration_creds._null_cache.clear()
+            integration_creds._credential_id_cache.clear()
+
+    @pytest.fixture(autouse=True)
+    def grants(self):
+        with patch(
+            "backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()
+        ) as grant:
+            self.grant = grant
+            yield grant
+
+    async def _run(self, sandbox: MagicMock) -> BashExecResponse:
+        session = make_session(user_id=_USER)
+        sandbox.sandbox_id = "sb-1"
+        with patch(
+            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+            new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "Ada"}),
+        ) as identity:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh repo list",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+        # Commits stay attributed to the picked account.
+        identity.assert_awaited_once_with(_USER, "cred-picked", allowed_ids=None)
+        assert isinstance(result, BashExecResponse)
+        return result
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_command_gets_placeholders_and_no_token(self):
+        sandbox = _make_sandbox(stdout="ok")
+        with patch(
+            "backend.copilot.tools.bash_exec.get_integration_env_vars"
+        ) as real_tokens:
+            await self._run(sandbox)
+        real_tokens.assert_not_called()
+        envs = sandbox.commands.run.call_args[1]["envs"]
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == "hsurr:github:cred-picked"
+        assert envs["GIT_CONFIG_KEY_0"] == "credential.https://github.com.helper"
+        assert envs["GIT_AUTHOR_NAME"] == "Ada"
+        assert all(self._REAL not in value for value in envs.values())
+        # Nothing in the box may drive E2B itself (read its rules, reconnect it).
+        assert not any("E2B" in name for name in envs)
+        # Granted to this box before the command ran, or it would not resolve.
+        self.grant.assert_awaited_once_with("sb-1", {"github": "cred-picked"})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_deleted_pick_blanks_the_variables_instead_of_falling_back(
+        self,
+    ):
+        """The box's own environment may hold the default account's
+        placeholder; left unset, the command would quietly act as it."""
+        sandbox = _make_sandbox(stdout="ok")
+        with patch(
+            "backend.copilot.tools.bash_exec.selected_credentials",
+            new=AsyncMock(return_value={"github": "cred-deleted"}),
+        ):
+            session = make_session(user_id=_USER)
+            sandbox.sandbox_id = "sb-1"
+            with patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ):
+                await _make_tool()._execute_on_e2b(
+                    sandbox=sandbox,
+                    command="git push",
+                    timeout=10,
+                    session_id=session.session_id,
+                    user_id=_USER,
+                )
+        envs = sandbox.commands.run.call_args[1]["envs"]
+        assert envs["GH_TOKEN"] == envs["GITHUB_TOKEN"] == ""
+        assert envs["GIT_CONFIG_COUNT"] == "0"
+        self.grant.assert_awaited_once_with("sb-1", {})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_grant_lands_before_the_command_starts(self):
+        """The proxy resolves a placeholder only once it is granted, so the
+        command's first request would be refused if the grant came after."""
+        order: list[str] = []
+        sandbox = _make_sandbox(stdout="ok")
+        run = sandbox.commands.run.side_effect
+
+        async def started(*args, **kwargs):
+            order.append("run")
+            return await run(*args, **kwargs)
+
+        self.grant.side_effect = lambda *_: order.append("grant")
+        sandbox.commands.run = AsyncMock(side_effect=started)
+        await self._run(sandbox)
+        assert order[:2] == ["grant", "run"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_grant_that_fails_does_not_stop_the_command(self):
+        sandbox = _make_sandbox(stdout="ok")
+        self.grant.side_effect = ConnectionError("redis down")
+        result = await self._run(sandbox)
+        assert result.exit_code == 0
+        sandbox.commands.run.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_placeholder_in_the_output_is_not_redacted(self):
+        sandbox = _make_sandbox(stdout="GH_TOKEN=hsurr:github:cred-picked")
+        result = await self._run(sandbox)
+        assert result.stdout == "GH_TOKEN=hsurr:github:cred-picked"
+
+
+class TestBashExecWithoutTheSwapProxy:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_real_token_is_injected_as_before(self):
+        sandbox = _make_sandbox(stdout="ok")
+        session = make_session(user_id=_USER)
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={"GH_TOKEN": "gh-secret"}),
+            ),
+            patch("backend.copilot.tools.bash_exec.placeholder_grants") as placeholders,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            await _make_tool()._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh repo list",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+        placeholders.assert_not_called()
+        envs = sandbox.commands.run.call_args[1]["envs"]
+        assert envs["GH_TOKEN"] == "gh-secret"
+        assert "GIT_CONFIG_COUNT" not in envs
+
+
+class TestBashExecUnderAProviderCeiling:
+    """A run whose permissions leave GitHub out gets no GitHub variable,
+    with or without the proxy."""
+
+    @pytest.fixture(autouse=True)
+    def no_github(self):
+        from backend.copilot.permissions import CopilotPermissions
+
+        with patch(
+            "backend.copilot.tools.bash_exec.get_current_permissions",
+            return_value=CopilotPermissions(
+                providers=["github"], providers_exclude=True
+            ),
+        ):
+            yield
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("proxy", [None, "proxy:1080"])
+    async def test_github_is_left_out(self, proxy):
+        sandbox = _make_sandbox(stdout="ok")
+        session = make_session(user_id=_USER)
+        with (
+            patch("backend.copilot.tools.bash_exec.proxy_address", return_value=proxy),
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ) as real,
+            patch(
+                "backend.copilot.tools.bash_exec.placeholder_grants",
+                new=AsyncMock(return_value={}),
+            ) as placeholders,
+            patch("backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "Ada"}),
+            ) as identity,
+        ):
+            await _make_tool()._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh repo list",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+        called = placeholders if proxy else real
+        assert called.await_args.args[3] == ()
+        # Nor is the GitHub account read for the commit identity.
+        identity.assert_not_awaited()
+        assert "GIT_AUTHOR_NAME" not in sandbox.commands.run.call_args[1]["envs"]
+
+
+# ---------------------------------------------------------------------------
+# Timeouts against a box that behaves like E2B's
+# ---------------------------------------------------------------------------
+
+_TICK = 0.02
+
+
+def _sdk_error(code: Code, message: str) -> Exception:
+    """The exception the E2B SDK raises for an envd stream ending with *code*."""
+    return handle_rpc_exception(ConnectError(code, message))
+
+
+class _FakeProcess:
+    def __init__(self, output: list[tuple[float, str, str]], runtime: float, code: int):
+        self.output = output  # (seconds of run time, "stdout"/"stderr", text)
+        self.runtime = runtime
+        self.exit_code = code
+        self.ran = 0.0
+        self.printed = 0
+        self.ended = False
+        self.killed = False
+
+
+class _FakeHandle:
+    """``AsyncCommandHandle``: streams one process until it ends, the stream's
+    own deadline (the command ``timeout``) passes, or the box stops answering.
+    At the deadline of the stream that started it, envd kills the process and
+    forgets it; a reattached stream's deadline only ends the stream."""
+
+    def __init__(
+        self,
+        box: "_FakeBox",
+        pid: int,
+        timeout: float,
+        on_stdout,
+        on_stderr,
+        started: bool = False,
+    ):
+        self.pid = pid
+        self._started = started
+        self._box = box
+        self._proc = box.processes[pid]
+        self._timeout = timeout
+        self._on = {"stdout": on_stdout, "stderr": on_stderr}
+        self._seen: dict[str, list[str]] = {"stdout": [], "stderr": []}
+        self._task = asyncio.create_task(self._stream())
+
+    async def _stream(self) -> CommandResult:
+        loop = asyncio.get_running_loop()
+        opened = last = loop.time()
+        proc = self._proc
+        while True:
+            await asyncio.sleep(_TICK)
+            if self._box.reached_limit():
+                raise self._box.limit_error()
+            if proc.killed:
+                raise _sdk_error(Code.UNKNOWN, "process killed")
+            # Runs on the same clock as the deadlines, however late the sleep.
+            now = loop.time()
+            proc.ran += now - last
+            last = now
+            while (
+                proc.printed < len(proc.output)
+                and proc.output[proc.printed][0] <= proc.ran
+            ):
+                _, stream, text = proc.output[proc.printed]
+                proc.printed += 1
+                self._seen[stream].append(text)
+                if self._on[stream]:
+                    self._on[stream](text)
+            if proc.ran >= proc.runtime:
+                proc.ended = True
+                return CommandResult(
+                    stdout="".join(self._seen["stdout"]),
+                    stderr="".join(self._seen["stderr"]),
+                    exit_code=proc.exit_code,
+                    error=None,
+                )
+            if self._timeout and loop.time() - opened >= self._timeout:
+                if self._started:
+                    proc.killed = proc.ended = True
+                raise _sdk_error(Code.DEADLINE_EXCEEDED, "deadline exceeded")
+
+    async def wait(self) -> CommandResult:
+        result = await self._task
+        if result.exit_code:
+            raise CommandExitException(
+                stdout=result.stdout,
+                stderr=result.stderr,
+                exit_code=result.exit_code,
+                error=None,
+            )
+        return result
+
+    async def disconnect(self) -> None:
+        self._task.cancel()
+        self._box.disconnects += 1
+
+
+class _FakeCommands:
+    def __init__(self, box: "_FakeBox"):
+        self._box = box
+        self._pids = itertools.count(100)
+
+    async def run(
+        self,
+        cmd,
+        background=None,
+        envs=None,
+        cwd=None,
+        on_stdout=None,
+        on_stderr=None,
+        stdin=None,
+        timeout=60,
+        request_timeout=None,
+    ):
+        self._box.answer()
+        pid = next(self._pids)
+        self._box.processes[pid] = self._box.next_process
+        handle = _FakeHandle(
+            self._box, pid, timeout, on_stdout, on_stderr, started=True
+        )
+        return handle if background else await handle.wait()
+
+    async def connect(
+        self, pid, timeout=60, request_timeout=None, on_stdout=None, on_stderr=None
+    ):
+        self._box.answer()
+        proc = self._box.processes.get(pid)
+        if proc is None or proc.ended or proc.killed:
+            raise NotFoundException(f"process with pid {pid} not found")
+        return _FakeHandle(self._box, pid, timeout, on_stdout, on_stderr)
+
+    async def kill(self, pid, request_timeout=None) -> bool:
+        self._box.answer()
+        proc = self._box.processes.get(pid)
+        if proc is None or proc.ended:
+            return False
+        proc.killed = True
+        return True
+
+
+class _FakeBox:
+    """``AsyncSandbox`` with E2B's running-time limit: when it passes, the box
+    is paused (``on_timeout="pause"``) with its processes frozen, and any open
+    command stream breaks with the SDK's ``TimeoutException``.  Like
+    ``auto_resume``, the next request resumes it for another *limit*
+    seconds; with *gone_at_limit* it was killed instead and never answers."""
+
+    def __init__(
+        self, limit: float, process: _FakeProcess, gone_at_limit: bool = False
+    ):
+        self._loop = asyncio.get_running_loop()
+        self._limit = limit
+        self.end_at = self._loop.time() + limit
+        self.gone_at_limit = gone_at_limit
+        self.paused = False
+        self.next_process = process
+        self.processes: dict[int, _FakeProcess] = {}
+        self.disconnects = 0
+        self.sandbox_id = "box-under-test"
+        self.set_timeout = AsyncMock(side_effect=self._set_timeout)
+        self.get_info = AsyncMock(side_effect=self._get_info)
+        self.commands = _FakeCommands(self)
+
+    async def _set_timeout(self, seconds: int) -> None:
+        self.end_at = self._loop.time() + seconds
+
+    async def _get_info(self) -> SimpleNamespace:
+        left = self.end_at - self._loop.time()
+        return SimpleNamespace(
+            end_at=datetime.now(timezone.utc) + timedelta(seconds=left)
+        )
+
+    def seconds_left(self) -> float:
+        return self.end_at - self._loop.time()
+
+    def reached_limit(self) -> bool:
+        if self._loop.time() >= self.end_at:
+            self.paused = True
+        return self.paused
+
+    def limit_error(self) -> Exception:
+        if self.gone_at_limit:
+            return _sdk_error(Code.UNAVAILABLE, "sandbox not found")
+        return _sdk_error(Code.CANCELED, "stream cancelled")
+
+    def answer(self) -> None:
+        if not self.reached_limit():
+            return
+        if self.gone_at_limit:
+            raise self.limit_error()
+        self.paused = False
+        self.end_at = self._loop.time() + self._limit
+
+
+async def _run(box: _FakeBox, timeout: int) -> BashExecResponse | ErrorResponse:
+    result = await _make_tool()._execute_on_e2b(
+        sandbox=box,  # type: ignore[arg-type]
+        command="./long-job.sh",
+        timeout=timeout,
+        session_id="session-under-test",
+        user_id=None,
+    )
+    assert isinstance(result, (BashExecResponse, ErrorResponse))
+    return result
+
+
+def _counting(runtime: float, every: float = 0.1) -> _FakeProcess:
+    """A process that prints one numbered line every *every* seconds."""
+    steps = int(runtime / every)
+    output = [
+        (every * (i + 1) - _TICK / 2, "stdout", f"{i + 1}\n") for i in range(steps)
+    ]
+    return _FakeProcess(output, runtime, 0)
+
+
+class TestBashExecE2BTimeouts:
+    """The SDK raises ``TimeoutException`` for the command's own deadline and
+    also for the box pausing or dying under the command, at whatever moment
+    that happens.  Only the first may be reported as the command timing out."""
+
+    @pytest.fixture(autouse=True)
+    def kill_tree(self):
+        """The script that kills a timed-out command's children, run on the box."""
+        with patch(
+            "backend.copilot.tools.bash_exec.run_internal",
+            new=AsyncMock(return_value=SimpleNamespace(exit_code=0)),
+        ) as run:
+            yield run
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_command_outlives_the_box_running_time_limit(self):
+        # The turn's connect armed the limit long ago: 0.3s of it is left,
+        # and the command needs 0.8s of its 5s timeout.
+        box = _FakeBox(limit=0.3, process=_counting(0.8))
+
+        result = await _run(box, timeout=5)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is False
+        assert result.exit_code == 0
+        assert result.stdout == "".join(f"{i}\n" for i in range(1, 9))
+        assert "Timed out" not in result.stderr
+        # Re-armed to the configured safety net (420s), which covers the
+        # whole 5s timeout.
+        box.set_timeout.assert_awaited_once_with(420)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_long_timeout_extends_the_limit_past_it(self):
+        box = _FakeBox(limit=30, process=_counting(0.1))
+
+        await _run(box, timeout=3600)
+
+        box.set_timeout.assert_awaited_once_with(3660)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_timeout_past_the_hung_tool_cap_is_capped_below_it(self):
+        # The turn gives up on a pending tool after two hours and pauses the
+        # box, so a longer timeout would only bill a box nobody is following.
+        # The cap sits below the watchdog so the tool's own timeout lands first.
+        from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
+
+        from .bash_exec import _HUNG_CAP_MARGIN_SECONDS
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+
+        await _run(box, timeout=7 * 24 * 60 * 60)
+
+        box.set_timeout.assert_awaited_once_with(
+            HUNG_TOOL_CAP_SECONDS - _HUNG_CAP_MARGIN_SECONDS + 60
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_short_command_leaves_a_longer_limit_alone(self):
+        # Another command on the box (a parallel call, or another session of
+        # the same expert) already pushed the limit out to an hour.
+        box = _FakeBox(limit=3660, process=_counting(0.1))
+
+        result = await _run(box, timeout=30)
+
+        assert isinstance(result, BashExecResponse)
+        box.set_timeout.assert_not_awaited()
+        assert box.seconds_left() > 3600
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_commands_started_together_cannot_shorten_the_limit(self):
+        from .e2b_sandbox import keep_sandbox_running
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+        set_limit = box._set_timeout
+
+        async def slow_read():
+            await asyncio.sleep(0.01)
+            return await box._get_info()
+
+        async def short_lands_last(seconds: int) -> None:
+            # Both read the old limit; the short call's set reaches E2B last.
+            await asyncio.sleep(0.05 if seconds < 1000 else 0)
+            await set_limit(seconds)
+
+        box.get_info = AsyncMock(side_effect=slow_read)
+        box.set_timeout = AsyncMock(side_effect=short_lands_last)
+
+        assert await asyncio.gather(
+            keep_sandbox_running(box, 3660),  # type: ignore[arg-type]
+            keep_sandbox_running(box, 420),  # type: ignore[arg-type]
+        ) == [True, True]
+
+        assert box.seconds_left() > 3600
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_an_unreadable_limit_is_still_extended(self):
+        from .e2b_sandbox import keep_sandbox_running
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+        box.get_info = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        assert await keep_sandbox_running(box, 900) is True  # type: ignore[arg-type]
+
+        box.set_timeout.assert_awaited_once_with(900)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_box_paused_mid_command_is_reattached(self):
+        # E2B refuses the new limit, so the box still pauses under the
+        # command; the command is frozen, not gone.
+        box = _FakeBox(limit=0.3, process=_counting(0.8))
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        result = await _run(box, timeout=5)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is False
+        assert result.exit_code == 0
+        assert result.stdout == "".join(f"{i}\n" for i in range(1, 9))
+        assert "and was resumed" in result.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_box_gone_mid_command_is_not_reported_as_a_timeout(self):
+        box = _FakeBox(limit=0.3, process=_counting(0.8), gone_at_limit=True)
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        result = await _run(box, timeout=120)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is False
+        assert result.exit_code == -1
+        assert "Timed out after 120s" not in result.stderr
+        assert "Timed out after 120s" not in result.message
+        # What it printed before the box went away is kept.
+        assert result.stdout.startswith("1\n2\n")
+        assert "8\n" not in result.stdout
+        assert re.match(
+            r"Lost the connection to the sandbox after 0\.\d+s \(timeout 120s\)",
+            result.stderr,
+        )
+        assert "may still be running" in result.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_box_pausing_past_the_reconnect_cap_gives_up_following(self):
+        # Every reattach works, but the box pauses again 0.2s later, so the
+        # 2s command is still running when the reattaches run out.
+        from .bash_exec import _MAX_RECONNECTS
+
+        proc = _counting(2.0)
+        box = _FakeBox(limit=0.2, process=proc)
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+        box.commands.connect = AsyncMock(wraps=box.commands.connect)
+
+        result = await _run(box, timeout=30)
+
+        assert isinstance(result, BashExecResponse)
+        assert box.commands.connect.await_count == _MAX_RECONNECTS
+        assert result.timed_out is False
+        assert result.exit_code == -1
+        assert result.stdout.startswith("1\n2\n")
+        assert "Timed out" not in result.stderr
+        assert "may still be running" in result.message
+        assert proc.killed is False
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_box_pausing_in_the_last_second_is_not_the_timeout(self):
+        # The box pauses 1.2s into a 2s timeout; the command needs 1.6s.
+        box = _FakeBox(limit=1.2, process=_counting(1.6))
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        result = await _run(box, timeout=2)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is False
+        assert result.exit_code == 0
+        assert result.stdout == "".join(f"{i}\n" for i in range(1, 17))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_reattach_failing_past_the_deadline_is_the_timeout(self):
+        # The box pauses just before the deadline and the reattach only
+        # fails once the deadline has passed.
+        proc = _counting(60)
+        box = _FakeBox(limit=1.8, process=proc)
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+
+        async def slow_failing_connect(*args, **kwargs):
+            await asyncio.sleep(0.4)
+            raise TimeoutException("deadline exceeded while reconnecting")
+
+        box.commands.connect = AsyncMock(side_effect=slow_failing_connect)
+
+        result = await _run(box, timeout=2)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is True
+        assert (
+            result.message
+            == "Timed out after 2s; it was killed, with every process it started."
+        )
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_real_timeout_keeps_partial_output_and_kills_the_command(self):
+        proc = _FakeProcess(
+            [(0.1, "stdout", "partial\n"), (0.2, "stderr", "warning: slow\n")],
+            runtime=60,
+            code=0,
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        result = await _run(box, timeout=1)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is True
+        assert result.exit_code == -1
+        assert result.stdout == "partial\n"
+        assert result.stderr == "Timed out after 1s\nwarning: slow"
+        assert (
+            result.message
+            == "Timed out after 1s; it was killed, with every process it started."
+        )
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize("stream", ["stdout", "stderr"])
+    async def test_command_that_keeps_printing_is_killed(self, kill_tree, stream):
+        proc = _FakeProcess(
+            [(0.1 * i, stream, "123456") for i in range(1, 100)], runtime=60, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.timed_out, result.exit_code) == (False, -1)
+        kept = {"stdout": "", "stderr": "", stream: "1234561234"}
+        assert result.stdout == kept["stdout"]
+        note = (
+            "Printed more than 10 characters; redirect output to a file and read "
+            "parts of it"
+        )
+        assert result.stderr == f"{note}\n{kept['stderr']}".rstrip("\n")
+        assert (
+            result.message == f"{note}; it was killed, with every process it started."
+        )
+        # Stopped at the chunk that did not fit, not at the timeout.
+        assert proc.printed == 2
+        assert box.disconnects == 1
+        kill_tree.assert_awaited_once()
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_detach_that_fails_still_stops_the_command(self, kill_tree):
+        proc = _FakeProcess(
+            [(0.1 * i, "stdout", "123456") for i in range(1, 100)], runtime=60, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with (
+            patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10),
+            patch.object(
+                _FakeHandle, "disconnect", AsyncMock(side_effect=RuntimeError("gone"))
+            ),
+        ):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.exit_code == -1
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_output_up_to_the_limit_is_returned_whole(self):
+        proc = _FakeProcess(
+            [(0.1, "stdout", "12345"), (0.2, "stdout", "67890")], runtime=0.3, code=0
+        )
+        box = _FakeBox(limit=30, process=proc)
+
+        with patch("backend.copilot.tools.bash_exec.MAX_OUTPUT_SIZE", 10):
+            result = await _run(box, timeout=20)
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.stdout, result.exit_code) == ("1234567890", 0)
+        assert proc.killed is False
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_children_that_could_not_be_killed_are_reported(self, kill_tree):
+        proc = _FakeProcess([], runtime=60, code=0)
+        box = _FakeBox(limit=30, process=proc)
+        kill_tree.side_effect = RuntimeError("login files changed")
+
+        result = await _run(box, timeout=1)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is True
+        assert result.message == (
+            "Timed out after 1s; the shell was killed, but processes it "
+            "started may still be running."
+        )
+        assert proc.killed is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_command_ending_while_detached_is_reported_unseen(self):
+        # Paused under the command, and the box's own process table no
+        # longer has it when we come back.
+        box = _FakeBox(limit=0.3, process=_counting(0.8))
+        box.set_timeout = AsyncMock(side_effect=RuntimeError("E2B API down"))
+        box.commands.connect = AsyncMock(
+            side_effect=NotFoundException("process with pid 100 not found")
+        )
+
+        result = await _run(box, timeout=120)
+
+        assert isinstance(result, BashExecResponse)
+        assert result.timed_out is False
+        assert result.exit_code == -1
+        assert "exit code unknown" in result.stderr
+        assert "Timed out" not in result.stderr
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_stream_not_opening_is_not_the_command_timeout(self):
+        box = _FakeBox(limit=30, process=_counting(0.1))
+        box.commands.run = AsyncMock(
+            side_effect=TimeoutException(
+                "Request timed out: the stream didn't open within "
+                "'request_timeout' (60 seconds)."
+            )
+        )
+
+        result = await _run(box, timeout=120)
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "e2b_start_timeout"
+        assert "Timed out after 120s" not in result.message
+        assert "may or may not have run" in result.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_limit_extension_pushes_out_the_stream_password(
+        self, stream_password_store
+    ):
+        from .e2b_sandbox import SandboxOwner, keep_sandbox_running
+
+        box = _FakeBox(limit=30, process=_counting(0.1))
+        owner = SandboxOwner(kind="session", id="session-under-test")
+
+        assert await keep_sandbox_running(box, 900, owner) is True  # type: ignore[arg-type]
+
+        box.set_timeout.assert_awaited_once_with(900)
+        stream_password_store.expire.assert_awaited_once_with(
+            owner.stream_key(), 900, gt=True
+        )
+
+
+def _children(pid: int) -> list[int]:
+    found = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(") ", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if int(fields[1]) == pid:
+            found.append(int(stat.parent.name))
+    return found
+
+
+def _alive(pid: int) -> bool:
+    """Running or stopped; a killed child its stopped parent hasn't reaped is not."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1].split()[0]
+    except (OSError, IndexError):
+        return False
+    return state not in ("Z", "X")
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_kill_tree_script_kills_a_compound_commands_children():
+    # The reviewer's repro: killing the shell of `sleep 30 && echo done` left
+    # sleep running under a new parent.
+    _kill_tree_of_sleep_then_echo()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_kill_tree_script_holds_while_other_processes_exit():
+    # A process exiting between the /proc glob and awk reading its stat file
+    # aborted awk, so the listing came back empty and the child was left
+    # running, or stopped and orphaned once the shell was killed.
+    churn = subprocess.Popen(["bash", "-c", "while :; do /bin/true; done"])
+    try:
+        for _ in range(10):
+            _kill_tree_of_sleep_then_echo()
+    finally:
+        churn.kill()
+        churn.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+def test_kill_tree_script_kills_children_forked_while_it_stops_them():
+    # A child forked between a listing and its STOP outlived a single pass; the
+    # outer shell's `; :` keeps the forking loop a child rather than p itself.
+    shell = subprocess.Popen(
+        ["bash", "-c", 'bash -c "while :; do sleep 30 & sleep 0.005; done"; :'],
+        start_new_session=True,
+    )
+    try:
+        time.sleep(0.3)
+        subprocess.run(
+            ["bash", "-c", _KILL_TREE_SCRIPT.replace("__PID__", str(shell.pid))],
+            check=True,
+            timeout=10,
+        )
+        assert [p for p in _session(shell.pid) if p != shell.pid and _alive(p)] == []
+    finally:
+        os.killpg(shell.pid, signal.SIGKILL)
+        shell.wait(timeout=10)
+
+
+def _session(sid: int) -> list[int]:
+    found = []
+    for stat in Path("/proc").glob("[0-9]*/stat"):
+        try:
+            fields = stat.read_text().rsplit(") ", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if int(fields[3]) == sid:
+            found.append(int(stat.parent.name))
+    return found
+
+
+def _kill_tree_of_sleep_then_echo() -> None:
+    shell = subprocess.Popen(["bash", "-c", "sleep 30 && echo done"])
+    try:
+        for _ in range(50):
+            if _children(shell.pid):
+                break
+            time.sleep(0.05)
+        (sleeper,) = _children(shell.pid)
+
+        subprocess.run(
+            ["bash", "-c", _KILL_TREE_SCRIPT.replace("__PID__", str(shell.pid))],
+            check=True,
+            timeout=10,
+        )
+
+        assert not _alive(sleeper)
+        # The shell is stopped, not killed: envd's kill does that, and the
+        # shell must not start `echo done` in between.
+        assert _alive(shell.pid)
+    finally:
+        shell.kill()
+        shell.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="reads /proc")
+class TestBashExecTimeoutOnARealShell:
+    """The command runs as real processes, under what envd does at a command's
+    deadline (``_LocalCommands``)."""
+
+    @pytest.fixture(autouse=True)
+    def box_here(self):
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.keep_sandbox_running", new=AsyncMock()
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.run_internal", side_effect=_run_here
+            ),
+        ):
+            yield
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cd /tmp && sleep {length} && echo done",
+            # The shell exits at once; sleep keeps its output open.
+            "sleep {length} & echo started",
+        ],
+        ids=["compound", "backgrounded"],
+    )
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_timeout_leaves_nothing_the_command_started(self, command: str):
+        length = f"30.{time.time_ns() % 10**9:09d}"
+        try:
+            result = await _make_tool()._execute_on_e2b(
+                sandbox=_local_box(),
+                command=command.format(length=length),
+                timeout=1,
+                session_id=None,
+                user_id=None,
+            )
+
+            assert isinstance(result, BashExecResponse)
+            assert result.timed_out is True
+            assert result.message == (
+                "Timed out after 1s; it was killed, with every process it started."
+            )
+            assert _sleeping(length) == []
+        finally:
+            for pid in _sleeping(length):
+                os.kill(pid, signal.SIGKILL)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_command_that_ends_keeps_its_output_and_exit_code(self):
+        result = await _make_tool()._execute_on_e2b(
+            sandbox=_local_box(),
+            command="echo out; echo err >&2; exit 3",
+            timeout=10,
+            session_id=None,
+            user_id=None,
+        )
+
+        assert isinstance(result, BashExecResponse)
+        assert (result.stdout, result.stderr) == ("out\n", "err\n")
+        assert (result.exit_code, result.timed_out) == (3, False)
+
+
+def _local_box() -> AsyncSandbox:
+    return cast(AsyncSandbox, SimpleNamespace(commands=_LocalCommands()))
+
+
+class _LocalCommands:
+    """``sandbox.commands`` on real local processes.  As on a live E2B box, a
+    command's stream ends once its shell has exited and both its pipes are at
+    EOF, and at the deadline envd SIGKILLs the shell alone, reaps it and
+    forgets its pid, leaving what the shell started running."""
+
+    def __init__(self):
+        self.running: dict[int, subprocess.Popen] = {}
+
+    async def run(self, cmd, timeout, on_stdout, on_stderr, **_):
+        shell = await asyncio.to_thread(
+            subprocess.Popen,
+            ["/bin/bash", "-c", cmd],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.running[shell.pid] = shell
+        return _LocalHandle(self, shell, timeout, on_stdout, on_stderr)
+
+    async def kill(self, pid, request_timeout=None) -> bool:
+        shell = self.running.pop(pid, None)
+        if shell is None:
+            return False
+        shell.kill()
+        shell.wait()
+        return True
+
+
+class _LocalHandle:
+    def __init__(self, commands: _LocalCommands, shell, timeout, on_stdout, on_stderr):
+        self.pid = shell.pid
+        self._commands = commands
+        self._shell = shell
+        self._timeout = timeout
+        self._callbacks = {shell.stdout: on_stdout, shell.stderr: on_stderr}
+
+    async def wait(self) -> CommandResult:
+        loop = asyncio.get_running_loop()
+        at_eof = loop.create_future()
+        open_pipes = set(self._callbacks)
+
+        def read(pipe) -> None:
+            if data := os.read(pipe.fileno(), 65536):
+                self._callbacks[pipe](data.decode())
+                return
+            loop.remove_reader(pipe.fileno())
+            open_pipes.discard(pipe)
+            if not open_pipes:
+                at_eof.set_result(None)
+
+        for pipe in open_pipes:
+            loop.add_reader(pipe.fileno(), read, pipe)
+        try:
+            await asyncio.wait_for(at_eof, self._timeout)
+        except TimeoutError:
+            self._shell.kill()
+            self._shell.wait()
+            raise _sdk_error(Code.DEADLINE_EXCEEDED, "deadline exceeded")
+        finally:
+            self._commands.running.pop(self.pid, None)
+            for pipe in open_pipes:
+                loop.remove_reader(pipe.fileno())
+            for pipe in self._callbacks:
+                pipe.close()
+        exit_code = await asyncio.to_thread(self._shell.wait)
+        if exit_code:
+            raise CommandExitException(
+                stdout="", stderr="", exit_code=exit_code, error=None
+            )
+        return CommandResult(stdout="", stderr="", exit_code=0, error=None)
+
+
+async def _run_here(sandbox, script: str, **_) -> SimpleNamespace:
+    done = await asyncio.to_thread(subprocess.run, ["bash", "-c", script], timeout=10)
+    return SimpleNamespace(exit_code=done.returncode)
+
+
+def _sleeping(length: str) -> list[int]:
+    found = []
+    for cmdline in Path("/proc").glob("[0-9]*/cmdline"):
+        try:
+            argv = cmdline.read_bytes().split(b"\0")
+        except OSError:
+            continue
+        pid = int(cmdline.parent.name)
+        if argv[:2] == [b"sleep", length.encode()] and _alive(pid):
+            found.append(pid)
+    return found

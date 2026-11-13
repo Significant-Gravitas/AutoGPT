@@ -39,7 +39,9 @@ vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
   postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
 }));
 
+import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredentials from "@/hooks/useCredentials";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   openOAuthPopup,
@@ -94,11 +96,11 @@ function makeCredentialsReturn(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function renderCard() {
+function renderCard({ onSelectCredentials = vi.fn() } = {}) {
   render(
     <CredentialsInput
       schema={schema}
-      onSelectCredentials={vi.fn()}
+      onSelectCredentials={onSelectCredentials}
       showTitle
       variant="node"
     />,
@@ -205,6 +207,69 @@ describe("credential connect failures the card reports instead of throwing", () 
         },
       ),
     );
+  });
+
+  it("names the missing scope and does not select a reconnect that came back just as narrow", async () => {
+    const onSelectCredentials = vi.fn();
+    mockUseCredentials.mockReturnValue(
+      makeCredentialsReturn({
+        oAuthCallback: vi.fn().mockResolvedValue({
+          id: "same-narrow-cred",
+          type: "oauth2",
+          title: "Connected Google",
+          provider: "google",
+          scopes: ["drive.file"],
+        }),
+      }),
+    );
+    mockOpenOAuthPopup.mockReturnValue({
+      promise: Promise.resolve({ code: "code-1", state: "state-xyz" }),
+      cleanup: { abort: vi.fn() },
+      popupBlocked: false,
+      fallbackBlocked: false,
+    });
+
+    renderCard({ onSelectCredentials });
+
+    expect(
+      await screen.findByText(
+        /the permission drive\.metadata was not granted\. Reconnect and approve it/i,
+      ),
+    ).toBeDefined();
+    expect(onSelectCredentials).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: "same-narrow-cred" }),
+    );
+  });
+
+  it("points a missing plan to the plans and counts no failed connection", async () => {
+    mockUseBackendAPI.mockReturnValue({
+      oAuthLogin: vi.fn(
+        () =>
+          new Promise<never>((_resolve, reject) =>
+            setTimeout(
+              () =>
+                reject(new ApiError("A subscription is required.", 402, null)),
+              0,
+            ),
+          ),
+      ),
+      onWebSocketMessage: vi.fn().mockReturnValue(() => {}),
+      connectWebSocket: vi.fn().mockResolvedValue(undefined),
+      sendWebSocketMessage: vi.fn(),
+    });
+
+    renderCard();
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Connecting a service needs an active plan",
+        }),
+      ),
+    );
+    expect(mockOpenOAuthPopup).not.toHaveBeenCalled();
+    expect(screen.queryByText(/OAuth error/)).toBeNull();
+    expect(capturedFailures()).toHaveLength(0);
   });
 
   it("counts nothing when the sign-in completes with the scopes it asked for", async () => {

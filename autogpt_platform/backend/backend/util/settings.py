@@ -1,9 +1,10 @@
+import functools
 import json
 import logging
 import os
 import re
 from enum import Enum
-from typing import Any, Dict, Generic, List, Literal, Set, Tuple, Type, TypeVar
+from typing import Any, Dict, Generic, List, Literal, Self, Set, Tuple, Type, TypeVar
 
 from pydantic import (
     AliasChoices,
@@ -12,6 +13,7 @@ from pydantic import (
     PrivateAttr,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import (
     BaseSettings,
@@ -23,6 +25,16 @@ from pydantic_settings import (
 from backend.util.data import get_data_path
 
 logger = logging.getLogger(__name__)
+
+
+@functools.cache
+def _warn_single_bucket() -> None:
+    logger.warning(
+        "Private user data and public media share the legacy "
+        "MEDIA_GCS_BUCKET_NAME bucket. Configure PRIVATE_USER_DATA_BUCKET and "
+        "PUBLIC_SITE_MEDIA_BUCKET to keep user data out of the public bucket."
+    )
+
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -49,18 +61,11 @@ class BehaveAs(str, Enum):
     CLOUD = "cloud"
 
 
-class FeatureFlagBackend(str, Enum):
-    """Which vendor answers a feature flag read.
+class UserNotificationsAudience(str, Enum):
+    """Who product mail (Briefings, Alerts, Verdicts) may reach."""
 
-    ``DUAL`` evaluates both and serves LaunchDarkly's answer, so a
-    disagreement is measurable before the switch. The backend always serves
-    LaunchDarkly in this mode; the frontend falls back to PostHog where
-    LaunchDarkly is not configured, because there its answer never arrives.
-    """
-
-    LAUNCHDARKLY = "launchdarkly"
-    POSTHOG = "posthog"
-    DUAL = "dual"
+    SUBSCRIBERS = "subscribers"
+    EVERYONE = "everyone"
 
 
 class FlagDefinitionCacheBackend(str, Enum):
@@ -102,6 +107,7 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
 class Config(UpdateTrackingModel["Config"], BaseSettings):
     """Config for the server."""
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     num_graph_workers: int = Field(
         default=10,
         ge=1,
@@ -109,9 +115,35 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum number of workers to use for graph execution.",
     )
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    max_graph_workers_per_user: int = Field(
+        default=5,
+        ge=1,
+        le=1000,
+        description=(
+            "How many of an executor's graph workers one user's runs may hold "
+            "at once; kept below `num_graph_workers` when that is 2 or more, "
+            "and 1 when it is 1. Sub-workflow runs may hold one more per level "
+            "of nesting, up to 4 more, so a run waiting on a sub-workflow never "
+            "keeps it from starting; keep this at most `num_graph_workers` "
+            "minus 5 for one user's runs never to hold every worker."
+        ),
+    )
+
     requeue_by_republishing: bool = Field(
         default=True,
         description="Send rate-limited messages to back of queue by republishing instead of front requeue to prevent blocking other users.",
+    )
+
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    graph_run_requeue_delay_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+        description=(
+            "How long a run refused for want of a worker waits in the delay "
+            "queue before it is offered to an executor again."
+        ),
     )
 
     # FastAPI Thread Pool Configuration
@@ -223,9 +255,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
-    enable_auth: bool = Field(
-        default=True,
-        description="If authentication is enabled or not",
+    auth_legacy_token_deadline: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
+            "during auth rollout. Unset preserves legacy signature/expiry validation; "
+            "zero rejects them immediately. Tokens with sid always require an active session."
+        ),
     )
     enable_subscription_credit_grant: bool = Field(
         default=False,
@@ -242,6 +279,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If user credit system is enabled or not",
     )
+    enable_platform_payment: bool = Field(
+        default=False,
+        description="Whether the platform is paid for: an account without a plan "
+        "is paywalled and the billing pages offer plans. Off for self-hosted "
+        "installs; the hosted platform sets it.",
+    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -250,16 +293,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=500,
         description="Credit threshold for low balance notifications (100 = $1, default 500 = $5)",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_weekly_credit_budget_default: int = Field(
         default=500,
         ge=0,
         description="Default weekly credit budget per hired expert when the expert has no explicit budget (100 = $1). 0 disables the guardrail.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_spend_approval_threshold_default: int = Field(
         default=250,
         ge=0,
         description="Credits an expert may spend per window on her own; at this amount new work waits for the user's approval (100 = $1). 0 disables the check.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     expert_spend_approval_window: Literal["week", "day"] = Field(
         default="week",
         description="Accounting window for the spend-approval threshold: the ISO week the weekly budget also uses, or the UTC day.",
@@ -296,12 +342,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_concurrent_graph_executions_per_user: int = Field(
         default=25,
         ge=1,
         le=1000,
         description="Maximum number of concurrent graph executions allowed per user per graph.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_inflight_copilot_turns_per_user: int = Field(
         default=15,
         ge=1,
@@ -316,6 +364,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "schedule_turn and share this cap."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_running_copilot_turns_per_user: int = Field(
         default=5,
         ge=1,
@@ -326,7 +375,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
             "Must be <= the in-flight cap; default 5 keeps shared-infra "
-            "concurrency predictable while letting users batch-submit."
+            "concurrency predictable while letting users batch-submit. "
+            "Turns another session started (sub-sessions, delegations, "
+            "handoffs) are admitted only below this cap minus one, so one "
+            "slot is always left for the user's own message."
         ),
     )
 
@@ -341,6 +393,83 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     block_error_include_top_blocks: int = Field(
         default=3,
         description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
+
+    # Account erasure (SECRT-2854): erases accounts closed from Settings
+    account_erasure_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the job that erases closed accounts (every AccountDeletionRequest "
+            "past its 14 days and not completed yet). Off by default. It runs in "
+            "the database manager, which then needs the bucket, FalkorDB, PostHog "
+            "personal key, MailerLite and Stripe settings and BAN_RECORD_HASH_KEY "
+            "(docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_sweep_interval_secs: int = Field(
+        default=60 * 60,
+        ge=5 * 60,
+        description="Interval in seconds between account erasure sweeps.",
+    )
+    account_erasure_stall_check_interval_secs: int = Field(
+        default=60 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between checks for account erasures that "
+            "started and did not finish. Runs whether or not the erasure job is "
+            "on, since the erase-account CLI claims requests too."
+        ),
+    )
+    account_erasure_stall_alert_secs: int = Field(
+        default=3 * 60 * 60,
+        ge=30 * 60,
+        description=(
+            "Age in seconds of an erasure's claim (startedAt) with no completedAt "
+            "after which it pages: a failed step, a service left unset or a "
+            "crashed run (docs/engineering/account-deletion.md)."
+        ),
+    )
+    account_erasure_unused_services: List[str] = Field(
+        default=[],
+        description=(
+            "Outside services this stack does not use, so the account erasure "
+            "may skip their step: a JSON list of any of buckets, falkordb, "
+            'posthog, mailerlite, stripe, e.g. \'["posthog", "mailerlite"]\'. '
+            "A step skipped for a service not listed stops the erasure before "
+            "the account's rows go, and the request stays open."
+        ),
+    )
+
+    # Auth identity <-> platform User invariant monitoring
+    auth_identity_orphan_sweep_enabled: bool = Field(
+        default=False,
+        description=(
+            "Run the sweep that heals auth identities with no platform User row. "
+            "Off by default: its first run backfills every such identity, and "
+            "each heal counts as a sign-up in PostHog."
+        ),
+    )
+    auth_identity_orphan_check_interval_secs: int = Field(
+        default=15 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between sweeps for auth identities that have no "
+            "platform User row. Each sweep heals what it finds and alerts."
+        ),
+    )
+    auth_identity_orphan_grace_secs: int = Field(
+        default=5 * 60,
+        ge=0,
+        description=(
+            "Age in seconds an auth identity must reach before it counts as "
+            "orphaned, so a sign-up still in flight is not flagged or healed early."
+        ),
+    )
+    auth_identity_orphan_check_limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Maximum orphaned auth identities healed per sweep.",
     )
 
     # Execution Accuracy Monitoring
@@ -360,6 +489,27 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "emit 1536-dim vectors to match the hardcoded pgvector column."
         ),
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    public_search_requests_per_minute: int = Field(
+        default=30,
+        ge=1,
+        description="Store search requests one signed-out client may make per minute.",
+    )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    public_search_user_requests_per_minute: int = Field(
+        default=120,
+        ge=1,
+        description="Store search requests one signed-in account may make per minute.",
+    )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    public_search_embeddings_per_minute: int = Field(
+        default=1000,
+        ge=0,
+        description=(
+            "New query embeddings store search may request per minute across all "
+            "clients; past it, store search ranks by text match alone."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -374,6 +524,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     websocket_server_port: int = Field(
         default=8001,
         description="The port for the websocket server to run on",
+    )
+
+    websocket_server_metrics_port: int = Field(
+        default=8014,
+        description="The port the websocket server serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public websocket port, so a "
+        "client of the server can't read them.",
     )
 
     execution_manager_port: int = Field(
@@ -403,6 +560,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for database server API to run on",
     )
 
+    swap_credential_service_port: int = Field(
+        default=8012,
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
+    )
+
     agent_api_host: str = Field(
         default="0.0.0.0",
         description="The host for agent server API to run on",
@@ -411,6 +574,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     agent_api_port: int = Field(
         default=8006,
         description="The port for agent server API to run on",
+    )
+
+    agent_api_metrics_port: int = Field(
+        default=8013,
+        description="The port the agent server API serves its Prometheus metrics "
+        "on when ENABLE_METRICS is set: never the public API port, so a client of "
+        "the API can't read them.",
     )
 
     notification_service_port: int = Field(
@@ -448,6 +618,20 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "This is necessary to make sure webhooks find their way.",
     )
 
+    # Documented in docs/platform/client-ip.md: update it with any change here.
+    trusted_proxy_count: int = Field(
+        # Prod is Cloudflare -> Google LB -> pod, so the client is 3rd from the
+        # right; 1 keys every anonymous caller on the LB's address, one bucket.
+        default=3,
+        ge=0,
+        description="How many X-Forwarded-For entries our own proxies append. "
+        "The client IP is that many entries from the right; everything further "
+        "left is caller-controlled and must not be trusted. The default is the "
+        "hosted platform: Cloudflare appends the client, Google's load balancer "
+        "appends Cloudflare's address and its own. 0 ignores the header and uses "
+        "the socket peer.",
+    )
+
     e2b_egress_proxy_address: str = Field(
         default="",
         description="host:port of the SOCKS5 credential swap proxy every E2B box "
@@ -455,11 +639,38 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "direct. Do not set it before the proxy exists: E2B fails closed, so a "
         "box pointed at nothing has no egress at all.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    e2b_deployment_sandbox_limit: int = Field(
+        default=0,
+        ge=0,
+        description="Most E2B boxes this deployment (its APP_ENV) may have running "
+        "at once on the platform's E2B key; a start past it is refused. 0 sets no "
+        "ceiling of its own.",
+    )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    e2b_account_sandbox_limit: int = Field(
+        # Twice the running-turn cap, so a user at that cap can still open
+        # desktops and run sandboxed blocks beside it.
+        default=10,
+        ge=0,
+        description="Most E2B boxes one account may have running at once in this "
+        "deployment on the platform's E2B key; a start past it is refused. 0 turns "
+        "the cap off.",
+    )
 
     frontend_base_url: str = Field(
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    microsoft_browser_sign_in: bool = Field(
+        default=False,
+        description="Offer browser sign-in for Microsoft connections. Turn it on "
+        "once the Entra app in MICROSOFT_CLIENT_ID has a secret, the Web redirect "
+        "{frontend_base_url}/auth/integrations/oauth_callback, access token "
+        "version 2 and personal accounts in its audience. Until then Microsoft "
+        "connects with sign-in codes.",
     )
 
     trusted_frontend_origins: List[str] = Field(
@@ -481,8 +692,65 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
 
     media_gcs_bucket_name: str = Field(
         default="",
-        description="The name of the Google Cloud Storage bucket for media files",
+        description="Legacy single GCS bucket for public media and private user "
+        "data. Split deployments should configure public_site_media_bucket and "
+        "private_user_data_bucket.",
     )
+
+    public_site_media_bucket: str = Field(
+        default="",
+        description="GCS bucket for approved marketplace media and OAuth app logos",
+    )
+
+    private_user_data_bucket: str = Field(
+        default="",
+        description="Private GCS bucket for user media, workspaces, transcripts, "
+        "and temporary uploads",
+    )
+
+    @property
+    def resolved_public_site_media_bucket(self) -> str:
+        return self.public_site_media_bucket or self.media_gcs_bucket_name
+
+    @property
+    def resolved_private_user_data_bucket(self) -> str:
+        return self.private_user_data_bucket or self.media_gcs_bucket_name
+
+    @model_validator(mode="after")
+    def validate_cloud_storage_bucket_separation(self) -> Self:
+        split_configured = bool(
+            self.public_site_media_bucket or self.private_user_data_bucket
+        )
+        if not split_configured:
+            if self.media_gcs_bucket_name:
+                _warn_single_bucket()
+            return self
+        if self.behave_as != BehaveAs.CLOUD:
+            return self
+        if not self.public_site_media_bucket or not self.private_user_data_bucket:
+            raise ValueError(
+                "Cloud deployments must configure both PUBLIC_SITE_MEDIA_BUCKET "
+                "and PRIVATE_USER_DATA_BUCKET"
+            )
+        if self.public_site_media_bucket == self.private_user_data_bucket:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET and PRIVATE_USER_DATA_BUCKET must be different"
+            )
+        if self.public_site_media_bucket == self.media_gcs_bucket_name:
+            raise ValueError(
+                "PUBLIC_SITE_MEDIA_BUCKET must not be the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket, which holds private user data"
+            )
+        if (
+            self.media_gcs_bucket_name
+            and self.private_user_data_bucket != self.media_gcs_bucket_name
+        ):
+            raise ValueError(
+                "PRIVATE_USER_DATA_BUCKET must remain the legacy "
+                "MEDIA_GCS_BUCKET_NAME bucket until stored bucket-qualified "
+                "paths are migrated; clear MEDIA_GCS_BUCKET_NAME after migration"
+            )
+        return self
 
     workspace_storage_dir: str = Field(
         default="",
@@ -498,6 +766,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    max_schedules_per_user: int = Field(
+        default=200,
+        ge=1,
+        description="How many schedules one user may hold on the scheduler.",
+    )
+
+    schedule_read_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description=(
+            "How long a page read (library agents, Home) waits for the scheduler "
+            "before rendering without schedule badges. Healthy reads take well "
+            "under a second; the Vercel proxy gives up at 30s."
+        ),
     )
 
     # Prefer the cluster env var so the new image can co-exist with old-image
@@ -544,6 +829,41 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    # Auth mail (verify email, reset password, change email) is not gated by
+    # this: it always sends, so sign-in keeps working with notifications off.
+    enable_user_notifications: bool = Field(
+        default=True,
+        description=(
+            "Send notification emails to users: Briefings, Alerts, Verdicts, "
+            "subscription and trial mail. When false they are dropped, not "
+            "deferred. Auth emails and internal ops mail are unaffected."
+        ),
+    )
+    user_notifications_audience: UserNotificationsAudience = Field(
+        default=UserNotificationsAudience.SUBSCRIBERS,
+        description=(
+            "Who gets Briefings, Alerts and Verdicts: subscribers (a plan or "
+            "trial, or one that ended in the last 7 days) or everyone. "
+            "Subscription and trial mail is sent either way."
+        ),
+    )
+    user_notifications_allowlist: str = Field(
+        default="",
+        description=(
+            "Comma-separated email addresses. When set, only these addresses "
+            "get Briefings, Alerts and Verdicts, whatever the audience: for a "
+            "canary run with team inboxes."
+        ),
+    )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
+    owner_email_daily_limit: int = Field(
+        default=20,
+        description=(
+            "Most emails a user's own runs may send to that user's account "
+            "address in a UTC day, through SendEmailToMeBlock."
+        ),
+    )
+
     # Separated so each kind carries its own reputation. Marketing mail goes
     # from MailerLite as hello@news.agpt.co and has no sender here.
     billing_sender_email: str = Field(
@@ -554,6 +874,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="AutoGPT <notify@agpt.co>",
         description="Sender for the Briefing, Alert and Verdict families",
     )
+    billing_reply_to_email: str = Field(
+        default="contact@agpt.co",
+        description="Shared inbox for replies to billing and account service messages",
+    )
+    product_reply_to_email: str = Field(
+        default="hello@agpt.co",
+        description="Reply-to address for Briefing, Alert and Verdict notifications",
+    )
     ops_sender_email: str = Field(
         default="AutoGPT Platform <platform@agpt.co>",
         description="Sender for internal ops mail to the refunds team",
@@ -563,6 +891,17 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description=(
             "Postmark message stream for Alerts, Briefings and account mail. "
             "Must be a transactional stream, separate from marketing mail."
+        ),
+    )
+    # Off until the privacy policy names email tracking. Auth mail is never
+    # tracked: its links carry sign-in tokens.
+    postmark_track_opens_and_clicks: bool = Field(
+        default=False,
+        description=(
+            "Ask Postmark to track opens (a tracking pixel) and clicks (links "
+            "rewritten through Postmark) in notification emails. Postmark "
+            "reports them to the webhook, which sends email_opened and "
+            "email_clicked to PostHog. Overrides the stream's own setting."
         ),
     )
     email_asset_base_url: str = Field(
@@ -598,6 +937,36 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     mailerlite_changelog_group_id: str = Field(
         default="",
         description="MailerLite group that receives the monthly changelog campaign",
+    )
+    mailerlite_trial_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding customers in a card-required trial. "
+            "Blank leaves trial customers out of MailerLite."
+        ),
+    )
+    mailerlite_checkout_group_id: str = Field(
+        default="",
+        description=(
+            "MailerLite group holding everyone who opened Stripe checkout, "
+            "which GTM segments for outreach. Blank leaves checkout openers "
+            "out of MailerLite."
+        ),
+    )
+    mailerlite_api_url: str = Field(
+        default="https://connect.mailerlite.com/api",
+        description=(
+            "MailerLite API base URL. Only a test stack changes it, to point "
+            "at a stub."
+        ),
+    )
+
+    expert_avatar_model: str = Field(
+        default="gpt-image-2-2026-04-21",
+        description=(
+            "OpenAI image-edit model for brand-constrained Expert avatar candidates; "
+            "the design system pins this dated snapshot"
+        ),
     )
 
     use_agent_image_generation_v2: bool = Field(
@@ -688,6 +1057,44 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between platform link token cleanup runs (1-24 hours)",
     )
 
+    auth_ip_event_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days the sign-up and sign-in IP of an account is kept for the admin "
+            "users page before the daily retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_pass_retention_days: int = Field(
+        default=90,
+        ge=1,
+        le=3650,
+        description=(
+            "Days a finished dream pass's record is kept before the weekly "
+            "retention job deletes it (1-3650 days)"
+        ),
+    )
+
+    dream_demotion_protect_days: int = Field(
+        default=30,
+        ge=0,
+        le=3650,
+        description=(
+            "The dream pass's deterministic recall guard: days after a fact "
+            "was last recalled during which its demotion writes, and the "
+            "ratification sweep's supersession of an unratified proposal, "
+            "leave it alone, unless the demotion is a contradiction or the "
+            "user's own retraction. 0 turns this guard off; it does not change the "
+            "sanitize prompt's own, stricter rule against demoting recalled "
+            "facts for staleness. The default of 30 is a floor, not a tuned "
+            "value: long enough that a few weeks away never makes a relied-on "
+            "memory look unused, to be tuned from the eval driver's "
+            "demotion-damage data (0-3650 days)"
+        ),
+    )
+
     stripe_tier_reconcile_interval_hours: int = Field(
         default=6,
         ge=1,
@@ -720,6 +1127,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Maximum file size in MB for workspace files (1-1024 MB)",
     )
 
+    max_total_file_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10240,
+        description="Maximum combined size in MB of the files a block run loads (1-10240 MB)",
+    )
+
+    max_request_body_mb: int = Field(
+        default=10,
+        ge=1,
+        le=1024,
+        description=(
+            "Maximum request body in MiB the platform API accepts, file uploads"
+            " and routes with their own limit excepted"
+        ),
+    )
+
     # AutoMod configuration
     automod_enabled: bool = Field(
         default=False,
@@ -743,7 +1167,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
     automod_fail_open: bool = Field(
         default=False,
-        description="If True, allow execution to continue if AutoMod fails",
+        description="If True, allow execution to continue if AutoMod fails or "
+        "times out; if False, the execution fails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -765,44 +1190,37 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the app environment: local or dev or prod",
     )
 
-    feature_flag_backend: FeatureFlagBackend = Field(
-        default=FeatureFlagBackend.LAUNCHDARKLY,
-        description="Which vendor answers feature flag reads: launchdarkly "
-        "(default), posthog, or dual (evaluate both, serve LaunchDarkly, log "
-        "every disagreement).",
-    )
-
-    @field_validator("feature_flag_backend", mode="before")
+    @field_validator("user_notifications_audience", mode="before")
     @classmethod
-    def _default_unknown_flag_backend(cls, v):
-        """A typo here must not stop the process from booting.
-
-        Settings is built at import of every module that reads a flag, so a
-        rejected value is a boot crash rather than a misconfigured flag read.
-        """
+    def _default_unknown_notifications_audience(cls, v):
+        """A typo falls back to the narrower audience rather than stopping
+        the process from booting."""
         if not isinstance(v, str):
             return v
         try:
-            return FeatureFlagBackend(v.strip().lower())
+            return UserNotificationsAudience(v.strip().lower())
         except ValueError:
             logger.warning(
-                f"Unknown FEATURE_FLAG_BACKEND {v!r}, "
-                f"falling back to {FeatureFlagBackend.LAUNCHDARKLY.value}"
+                f"Unknown USER_NOTIFICATIONS_AUDIENCE {v!r}, falling back to "
+                f"{UserNotificationsAudience.SUBSCRIBERS.value}"
             )
-            return FeatureFlagBackend.LAUNCHDARKLY
+            return UserNotificationsAudience.SUBSCRIBERS
 
     posthog_flag_definition_cache: FlagDefinitionCacheBackend = Field(
         default=FlagDefinitionCacheBackend.REDIS,
         description="Where PostHog flag definitions are shared: redis "
         "(default; one elected refresher, every other process reads its copy), "
-        "memory (process-local), or none (every process polls PostHog itself). "
-        "Only read when PostHog answers flag reads.",
+        "memory (process-local), or none (every process polls PostHog itself).",
     )
 
     @field_validator("posthog_flag_definition_cache", mode="before")
     @classmethod
     def _default_unknown_definition_cache(cls, v):
-        """Same reasoning as ``_default_unknown_flag_backend`` above."""
+        """A typo here must not stop the process from booting.
+
+        Settings is built at import of every module that reads a flag, so a
+        rejected value is a boot crash rather than a misconfigured flag read.
+        """
         if not isinstance(v, str):
             return v
         try:
@@ -832,6 +1250,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     behave_as: BehaveAs = Field(
         default=BehaveAs.LOCAL,
         description="What environment to behave as: local or cloud",
+    )
+
+    sentry_release: str = Field(
+        default="",
+        description="Git sha of the deployed build, reported to Sentry as the "
+        "release. Blank reports no release.",
+    )
+
+    sentry_environment: str = Field(
+        default="",
+        description="Environment name Sentry events are tagged with, replacing "
+        "the one computed from app_env and behave_as (a PR preview names itself "
+        "pr-<n>). Blank keeps the computed one.",
     )
 
     autopilot_bot_teams_allow_unverified: bool = Field(
@@ -971,6 +1402,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     encryption_key: str = Field(default="", description="Encryption key")
 
+    internal_api_key: str = Field(
+        default="",
+        description="Key every internal service sends on its RPC calls and "
+        "requires on the methods it exposes; every backend service of one "
+        "deployment must have the same value. Setup generates it along with "
+        "the other secrets. Blank derives one from ENCRYPTION_KEY, so an "
+        "install set up before it existed keeps working.",
+    )
+
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(
         default="", description="RabbitMQ default password"
@@ -989,10 +1429,25 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="MailerLite API token used to manage tour and changelog audiences",
     )
+    mailerlite_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Signing secret of the MailerLite webhook that reports unsubscribes. "
+            "Blank refuses every call to that webhook."
+        ),
+    )
 
     unsubscribe_secret_key: str = Field(
         default="",
         description="The secret key to use for the unsubscribe user by token",
+    )
+
+    ban_record_hash_key: str = Field(
+        default="",
+        description="Key of the hash that ban records (account erasure) keep "
+        "of a banned address. Never rotate it: the records kept under the old "
+        "one stop matching. Blank keeps no ban record, so erasing a banned "
+        "account fails, and sign-up matches none.",
     )
 
     vapid_private_key: str = Field(
@@ -1037,6 +1492,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    typesafe_jev_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("TYPESAFE_API_KEY", "TYPESAFE_JEV_API_KEY"),
+        description="TypeSafe Jev key: the first stage of the action supervisor and the content judge",
+    )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(
@@ -1164,8 +1624,35 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Linear team ID used when creating feature request issues",
     )
+    hubspot_client_id: str = Field(
+        default="", description="Client ID of the HubSpot app used for OAuth sign-in"
+    )
+    hubspot_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot OAuth sign-in app"
+    )
+
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    slack_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the Slack app used to sign in to Slack's MCP "
+        "server (mcp.slack.com). Slack does not support dynamic client "
+        "registration, so MCP sign-in to Slack is unavailable until this is set.",
+    )
+    slack_mcp_client_secret: str = Field(
+        default="", description="Client secret of the Slack MCP sign-in app"
+    )
+    hubspot_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the HubSpot MCP auth app used to sign in to "
+        "HubSpot's MCP server (mcp.hubspot.com). HubSpot does not support "
+        "dynamic client registration, so MCP sign-in to HubSpot is unavailable "
+        "until this is set.",
+    )
+    hubspot_mcp_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot MCP auth app"
+    )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")
@@ -1207,25 +1694,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     # AutoMod API credentials
     automod_api_key: str = Field(default="", description="AutoMod API key")
 
-    # LaunchDarkly feature flags
-    launch_darkly_sdk_key: str = Field(
-        default="",
-        description="The LaunchDarkly SDK key for feature flag management",
-    )
-
     agentmail_api_key: str = Field(default="", description="AgentMail API Key")
 
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
 
-    # Langfuse prompt management
+    # Langfuse prompt management (no tracing, see backend/util/langfuse_prompts.py)
     langfuse_public_key: str = Field(default="", description="Langfuse public key")
     langfuse_secret_key: str = Field(default="", description="Langfuse secret key")
     langfuse_host: str = Field(
         default="https://cloud.langfuse.com", description="Langfuse host URL"
-    )
-    langfuse_tracing_environment: str = Field(
-        default="local", description="Tracing environment tag (local/dev/production)"
     )
 
     # PostHog analytics
@@ -1233,10 +1711,28 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
+    posthog_secret_key: str = Field(
+        default="",
+        description="PostHog Feature Flags Secure API Key (project settings > "
+        "Feature Flags), for local flag evaluation; without it flag reads fall back "
+        "to a remote /flags call. A personal API key also works, but PostHog is "
+        "deprecating that use.",
+    )
+    # Account deletion removes the PostHog person through the private API,
+    # which the project key above cannot call.
     posthog_personal_api_key: str = Field(
         default="",
-        description="PostHog personal API key. Only used for local feature-flag "
-        "evaluation; without it flag reads fall back to a remote /flags call.",
+        description="PostHog personal API key with the person:write scope, used "
+        "only to delete a deleted account's person. Blank stops the erasure "
+        "at that step, with the request left open, unless 'posthog' is in "
+        "ACCOUNT_ERASURE_UNUSED_SERVICES.",
+    )
+    posthog_project_id: str = Field(
+        default="", description="PostHog project ID the persons live in"
+    )
+    posthog_app_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog private API host (not the i. ingestion host)",
     )
 
     # Add more secret fields as needed

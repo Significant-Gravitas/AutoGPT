@@ -69,6 +69,8 @@ _SECRET_KEY_RE = re.compile(
     + r")(?![a-z0-9])",
     re.IGNORECASE,
 )
+_CAMEL_CASE_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+_NON_ALNUM_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 class SharedChatLinkedExecution(BaseModel):
@@ -233,7 +235,11 @@ def _redact_secret_keys(value: Any) -> Any:
 
 
 def _is_secret_key(key: str) -> bool:
-    return _SECRET_KEY_RE.search(key) is not None
+    # One spelling for every word boundary, so ``X-Api-Key`` and ``api key``
+    # match the two-word hints the way ``api_key`` and ``apiKey`` do.
+    normalized_key = _CAMEL_CASE_BOUNDARY_RE.sub("_", key)
+    normalized_key = _NON_ALNUM_RE.sub("_", normalized_key)
+    return _SECRET_KEY_RE.search(normalized_key) is not None
 
 
 def _redact_secret_keys_in_json_string(value: str) -> str:
@@ -244,7 +250,7 @@ def _redact_secret_keys_in_json_string(value: str) -> str:
     (``agent_output``, ``view_agent_output``, dry-run ``node_executions``
     with block I/O, MCP tool returns) as JSON-serialised strings.  The
     public viewer reads these verbatim, so a tool response payload
-    containing ``{"api_key": "sk-..."}`` would leak the key.  Non-JSON
+    carrying an ``api_key`` field would leak the key.  Non-JSON
     content passes through untouched to preserve the posture documented
     on :func:`sanitize_chat_message`.
     """

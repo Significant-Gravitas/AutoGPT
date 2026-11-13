@@ -1,10 +1,10 @@
 """Human review for MCP calls made through ``run_capability``.
 
-MCP tool annotations are untrusted and, on the servers we see today, mostly
-absent, so the gate is conservative: a call to a server that is not in the
-official catalog pauses for review when the tool looks like a write.  Catalog
-servers run without a pause; their tools go through the same review record
-once the per-user tool cache carries ``destructiveHint``.
+With the auto-mode gate off, MCP tool annotations are untrusted and mostly
+absent, so a call to a server that is not in the official catalog pauses for
+review when the tool looks like a write; catalog servers run without a pause.
+With the gate on, none of this runs: the server's effect map decides, or the
+tool asks on first use (``gate/subject.py``).
 
 Records reuse the block review table with a synthetic node id so the
 existing approval UI, the pending-review feed and ``resume_capability`` all
@@ -22,6 +22,7 @@ from backend.copilot.constants import (
     COPILOT_SYNTHETIC_ID_PREFIX,
 )
 from backend.data.db_accessors import review_db
+from backend.util.json import same_json
 
 COPILOT_MCP_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}mcp-"
 
@@ -86,7 +87,7 @@ async def open_mcp_review(
         if (
             review.node_id == node_id
             and review.status.value == "WAITING"
-            and review.payload == data
+            and same_json(review.payload, data)
         ):
             return review.node_exec_id
     review_id = f"{node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"

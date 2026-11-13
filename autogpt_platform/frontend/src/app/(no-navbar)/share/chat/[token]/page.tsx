@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
+import { CookieSettingsLink } from "@/components/molecules/CookieSettingsLink/CookieSettingsLink";
 import { sharedChatFilePattern, sharedChatFileUrl } from "@/lib/share/routes";
 import { cn } from "@/lib/utils";
 import { ShareActions } from "../../components/ShareHeader/ShareActions";
@@ -20,7 +21,7 @@ import { useSharedChatArtifacts } from "./useSharedChatArtifacts";
 // + CTAs.  Matches ``ExecutionShareChrome`` on the execution share
 // page so the two routes feel like the same surface.
 //
-// Uses ``bg-background`` (theme-aware) on the chrome wrappers so dark
+// Uses ``bg-canvas`` (theme-aware) on the chrome wrappers so dark
 // mode renders correctly.  Inner success-state wrappers still use the
 // owner-side copilot's hardcoded ``#f8f8f9`` so the in-chat surface
 // matches the owner experience pixel-for-pixel — see the
@@ -35,15 +36,16 @@ function SharedChatChrome({
   children: ReactNode;
 }) {
   return (
-    <div className="flex h-screen w-full flex-col bg-background">
+    <div className="flex h-screen w-full flex-col bg-canvas">
       <ShareHeader
         title={title}
         subtitle={subtitle}
         actions={<ShareActions />}
       />
-      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-background">
+      <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden bg-canvas">
         {children}
       </div>
+      <CookieSettingsLink className="mb-1 shrink-0 self-center" />
     </div>
   );
 }
@@ -145,24 +147,24 @@ export default function SharedChatPage() {
 
   return (
     <SharedChatChrome title={title} subtitle={`Shared ${sharedOn}`}>
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-surface-muted">
         {messagesError && (
           // Session loaded but messages failed — transient 5xx, not a
           // revoked link.  Keep the chrome (so the viewer knows the
           // share is real) and show an inline retry instead of the
           // permanent not-found card.
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-warning-border bg-warning-surface px-4 py-2 text-caption text-warning-foreground">
             <span>Couldn&apos;t load messages. The share link is valid.</span>
             <button
               onClick={retry}
-              className="rounded border border-amber-300 bg-white px-2 py-0.5 font-medium hover:bg-amber-100"
+              className="rounded border border-warning-border bg-surface px-2 py-0.5 font-medium hover:bg-warning-surface"
             >
               Try again
             </button>
           </div>
         )}
         {hasMore && (
-          <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-center text-xs text-zinc-600">
+          <div className="shrink-0 border-b border-border-base bg-surface-muted px-4 py-2 text-center text-caption text-foreground-secondary">
             Showing the most recent {uiMessages.length} messages — older history
             is not visible in this shared view.
           </div>
@@ -170,7 +172,7 @@ export default function SharedChatPage() {
         <div
           data-testid="shared-chat-content-column"
           className={cn(
-            "mx-auto flex min-h-0 w-full flex-1 flex-col bg-[#f8f8f9] px-2 lg:px-0",
+            "mx-auto flex min-h-0 w-full flex-1 flex-col bg-surface-muted px-2 lg:px-0",
             !isArtifactPanelOpen && "max-w-3xl",
           )}
         >
@@ -185,6 +187,7 @@ export default function SharedChatPage() {
               error={undefined}
               isLoading={false}
               turnStats={turnStats}
+              isTurnSettling={false}
               readOnly
               filePattern={filePattern}
               fileUrlBuilder={fileUrlBuilder}

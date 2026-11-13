@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # 60 requests / minute / user — roughly 4x the heaviest realistic legitimate
 # burst (a multi-tab simultaneous hard-reload is ~15/min); the shared React
 # Query entry plus 60s staleTime keep steady-state use near ~1/min per tab.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 SUBSCRIPTION_STATUS_WINDOW_SECONDS = 60
 SUBSCRIPTION_STATUS_MAX_REQUESTS = 60
 

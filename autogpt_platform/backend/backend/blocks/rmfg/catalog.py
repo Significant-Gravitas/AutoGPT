@@ -5,6 +5,7 @@ from typing import Optional
 from backend.sdk import (
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -61,6 +62,7 @@ class RMFGListMaterialsBlock(Block):
                 ("material_ids", [TEST_MATERIAL.id]),
             ],
             test_mock={"list_materials": lambda *args, **kwargs: [TEST_MATERIAL]},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -108,6 +110,7 @@ class RMFGListTubeProfilesBlock(Block):
             test_mock={
                 "list_tube_profiles": lambda *args, **kwargs: [TEST_TUBE_PROFILE]
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -159,6 +162,7 @@ class RMFGListFinishesBlock(Block):
                 ("finish_ids", [TEST_FINISH.id]),
             ],
             test_mock={"list_finishes": lambda *args, **kwargs: [TEST_FINISH]},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -204,6 +208,7 @@ class RMFGListPowderCoatColorsBlock(Block):
                 ("color_ids", [TEST_POWDER_COAT_COLOR.id]),
             ],
             test_mock={"list_colors": lambda *args, **kwargs: [TEST_POWDER_COAT_COLOR]},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -258,6 +263,7 @@ class RMFGListHardwareBlock(Block):
                 ("option_ids", [TEST_HARDWARE_OPTION.id]),
             ],
             test_mock={"list_hardware": lambda *args, **kwargs: [TEST_HARDWARE_OPTION]},
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

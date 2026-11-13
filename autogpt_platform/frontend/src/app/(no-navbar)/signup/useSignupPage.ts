@@ -1,15 +1,24 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import {
+  getAuthDeepLink,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "@/lib/auth-redirect";
+import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
+import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
 import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
@@ -22,13 +31,32 @@ export function useSignupPage() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
+    null,
+  );
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(
+    null,
+  );
   const isCloudEnv = environment.isCloud();
+  const loadingResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMounted = useRef(false);
 
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  const rawNext = searchParams.get("next");
+  const nextUrl = getAuthDeepLink(rawNext);
+  // Round trips (Google, the verification email) carry the whole safe `next`;
+  // /auth/callback decides from it, tracking params included.
+  const safeNext = sanitizeAuthNext(rawNext);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      if (loadingResetTimer.current) clearTimeout(loadingResetTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isUserLoading) {
@@ -47,26 +75,38 @@ export function useSignupPage() {
     }
   }, [isLoggedIn, isSigningUp, nextUrl, router]);
 
-  const form = useForm<z.infer<typeof signupFormSchema>>({
+  const form = useForm<
+    z.input<typeof signupFormSchema>,
+    unknown,
+    z.output<typeof signupFormSchema>
+  >({
     resolver: zodResolver(signupFormSchema),
     defaultValues: {
       email: "",
       password: "",
       confirmPassword: "",
-      agreeToTerms: false,
+      marketingOptOut: false,
     },
   });
 
+  function handleToggleMarketingOptOut() {
+    if (isSigningUp) return;
+    const optOut = !form.getValues("marketingOptOut");
+    form.setValue("marketingOptOut", optOut, { shouldDirty: true });
+    if (optOut) trackSignupMarketingOptOut();
+  }
+
   async function handleProviderSignup(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setLoadingProvider(provider);
     setIsSigningUp(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
-        : `/auth/callback`;
-      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+      const fullCallbackUrl = `${window.location.origin}${providerCallbackPath(provider, safeNext)}`;
+
+      setMarketingOptOutFlag(form.getValues("marketingOptOut") ?? false);
 
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
@@ -89,7 +129,7 @@ export function useSignupPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setLoadingProvider(null);
       setIsSigningUp(false);
       toast({
         title:
@@ -99,10 +139,14 @@ export function useSignupPage() {
     }
   }
 
-  async function handleSignup(data: z.infer<typeof signupFormSchema>) {
+  async function handleSignup(data: z.output<typeof signupFormSchema>) {
+    // The server action records this signup's choice; the cookie is only for
+    // the Google round trip. Clear it so neither this choice nor one left from
+    // an abandoned Google attempt is applied to a later Google sign-in.
+    setMarketingOptOutFlag(false);
     setIsLoading(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title:
           "Please use Google SSO to create an account using an AutoGPT email.",
@@ -114,13 +158,15 @@ export function useSignupPage() {
     }
 
     setIsSigningUp(true);
+    clearImpersonationEverywhere();
 
     try {
       const result = await signupAction(
         data.email,
         data.password,
         data.confirmPassword,
-        data.agreeToTerms,
+        data.marketingOptOut,
+        safeNext,
       );
 
       if (!result.success) {
@@ -143,8 +189,19 @@ export function useSignupPage() {
         return;
       }
 
+      if (result.verificationRequired) {
+        // There is no session yet, so the action recorded nothing. The emailed
+        // link carries the refusal and lands on /auth/callback, which records
+        // it with the terms.
+        setVerificationEmail(result.email);
+        setIsLoading(false);
+        setIsSigningUp(false);
+        return;
+      }
+
       // Prefer the URL's next parameter, then result.next (for onboarding), then default
-      const redirectTo = nextUrl || result.next || "/";
+      const redirectTo =
+        nextUrl || withAuthTracking(result.next || "/", rawNext);
       router.replace(redirectTo);
     } catch (error) {
       setIsLoading(false);
@@ -157,24 +214,41 @@ export function useSignupPage() {
         variant: "destructive",
       });
     } finally {
-      setTimeout(() => {
-        setIsLoading(false);
-      }, 3000);
+      if (loadingResetTimer.current) clearTimeout(loadingResetTimer.current);
+      // A signup that settles after unmount must not leave a timer behind.
+      if (isMounted.current) {
+        loadingResetTimer.current = setTimeout(() => {
+          setIsLoading(false);
+        }, 3000);
+      }
     }
+  }
+
+  function handleStartAgain() {
+    setVerificationEmail(null);
+    form.resetField("email");
   }
 
   return {
     form,
     feedback,
+    nextUrl: safeNext,
+    verificationEmail,
     isLoggedIn: !!user,
     hasInitializedAuth,
     isLoading,
-    isGoogleLoading,
+    isGoogleLoading: loadingProvider === "google",
+    isMicrosoftLoading: loadingProvider === "microsoft",
+    isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
+    isSigningUp,
     isCloudEnv,
     isUserLoading,
     showNotAllowedModal,
+    optedOut: form.watch("marketingOptOut") ?? false,
     handleSubmit: form.handleSubmit(handleSignup),
+    handleToggleMarketingOptOut,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
+    handleStartAgain,
   };
 }

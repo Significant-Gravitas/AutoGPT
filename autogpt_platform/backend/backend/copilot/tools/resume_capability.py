@@ -12,6 +12,7 @@ from typing import Any
 
 from prisma.enums import ReviewStatus
 
+from backend.blocks import get_block
 from backend.blocks.mcp.helpers import server_host
 from backend.copilot.capabilities.mcp_review import (
     MCPReviewPayload,
@@ -26,11 +27,14 @@ from backend.copilot.constants import (
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 from backend.data.db_accessors import review_db
+from backend.util.json import same_json
 
 from .base import BaseTool
 from .capability_gates import gate_denied, gate_denied_error
-from .continue_run_block import ContinueRunBlockTool
+from .continue_run_block import ContinueRunBlockTool, refuse_disabled_block, run_claimed
+from .helpers import block_run_refusal
 from .models import ErrorResponse, ReviewRequiredResponse, ToolResponseBase
+from .review_card import review_card_location
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 
@@ -86,15 +90,15 @@ class ResumeCapabilityTool(BaseTool):
         if not review_id:
             return ErrorResponse(
                 message="Please provide a review_id", session_id=session_id
-            )
+            ).from_outside()
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
-            )
+            ).from_outside()
         if input_overrides is not None and not isinstance(input_overrides, dict):
             return ErrorResponse(
                 message="input_overrides must be an object", session_id=session_id
-            )
+            ).from_outside()
         if SPEND_REVIEW_MARKER in review_id:
             # A spend approval releases an expert's budget; there is no block
             # behind it to re-run, and parsing one out of the id fails.
@@ -105,7 +109,7 @@ class ResumeCapabilityTool(BaseTool):
                     "and there is nothing here to resume."
                 ),
                 session_id=session.session_id,
-            )
+            ).from_outside()
         # Resuming runs the capability, so it answers to the gate the run
         # would have. Permissions, hidden tools and the turn envelope are all
         # rebuilt per turn, and an approval from an earlier turn is not a
@@ -136,21 +140,21 @@ async def _load_approved_review(
                 "been consumed by an earlier resume_capability call."
             ),
             session_id=session_id,
-        )
+        ).from_outside()
     if review.session_id != session_id:
         return ErrorResponse(
             message="Review does not belong to this session.", session_id=session_id
-        )
+        ).from_outside()
     if review.status == ReviewStatus.WAITING:
         return ErrorResponse(
             message="Review has not been approved yet. Wait for the user to approve it.",
             session_id=session_id,
-        )
+        ).from_outside()
     if review.status == ReviewStatus.REJECTED:
         return ErrorResponse(
             message="Review was rejected. The capability will not run.",
             session_id=session_id,
-        )
+        ).from_outside()
     return review
 
 
@@ -170,9 +174,9 @@ async def _resume_mcp(
         return ErrorResponse(
             message="Stored review payload is not an MCP call.",
             session_id=session.session_id,
-        )
+        ).from_outside()
     arguments = {**payload.arguments, **(input_overrides or {})}
-    if arguments != payload.arguments:
+    if not same_json(arguments, payload.arguments):
         # The user approved one call, not a family of them. This review only
         # exists because the original call needed approving, so the changed
         # call needs approving too. Re-deriving that from the live catalog
@@ -196,26 +200,27 @@ async def _resume_mcp(
                 f"The arguments changed since the user approved "
                 f"'{payload.tool}' on {host}, so it needs approving again. "
                 f"Tell the user what changed; after they approve, call "
-                f"resume_capability(review_id='{new_id}')."
+                f"resume_capability(review_id='{new_id}'). "
+                f"{review_card_location(session.metadata)}"
             ),
             session_id=session.session_id,
             block_id=payload.server_url,
             block_name=f"{host}/{payload.tool}",
             review_id=new_id,
             input_data=fresh.model_dump(),
-        )
-    result = await RunMCPToolTool()._execute(
+        ).from_outside()
+    return await run_claimed(
+        review_id,
         user_id,
         session,
-        server_url=payload.server_url,
-        tool_name=payload.tool,
-        tool_arguments=arguments,
+        lambda: RunMCPToolTool()._execute(
+            user_id,
+            session,
+            server_url=payload.server_url,
+            tool_name=payload.tool,
+            tool_arguments=arguments,
+        ),
     )
-    # A sign-in card or a fresh review means the call has not run, so the
-    # approval must survive for the retry that follows.
-    if result.type not in ("error", "setup_requirements", "review_required"):
-        await review_db().delete_review_by_node_exec_id(review_id, user_id)
-    return result
 
 
 async def _rerun_block(
@@ -228,12 +233,26 @@ async def _rerun_block(
     if isinstance(review, ErrorResponse):
         return review
     block_id = parse_node_id_from_exec_id(review_id).removeprefix(COPILOT_NODE_PREFIX)
+    block = get_block(block_id)
+    if block is not None and block.disabled:
+        return await refuse_disabled_block(
+            block_id, review_id, user_id, session.session_id
+        )
+    # Before the claim, as on the plain resume: a refusal keeps the approval,
+    # and a parallel resume never finds it held by a run that won't happen.
+    if block is not None and (
+        refusal := block_run_refusal(block, block_id, session.session_id)
+    ):
+        return refusal
     stored = review.payload if isinstance(review.payload, dict) else {}
-    result = await RunBlockTool()._execute(
-        user_id, session, block_id=block_id, input_data={**stored, **input_overrides}
+    return await run_claimed(
+        review_id,
+        user_id,
+        session,
+        lambda: RunBlockTool()._execute(
+            user_id,
+            session,
+            block_id=block_id,
+            input_data={**stored, **input_overrides},
+        ),
     )
-    # Delete only once the run has actually happened: dropping the review
-    # first left a failed run with nothing to retry from.
-    if result.type not in ("error", "setup_requirements", "review_required"):
-        await review_db().delete_review_by_node_exec_id(review_id, user_id)
-    return result
