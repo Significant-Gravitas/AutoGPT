@@ -35568,6 +35568,11 @@
               { "$ref": "#/components/schemas/CredentialRejection" },
               { "type": "null" }
             ]
+          },
+          "create_hint": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Create Hint",
+            "description": "For the model only: the capability that creates a new one of what the card's picker would pick. The card never shows it."
           }
         },
         "type": "object",
