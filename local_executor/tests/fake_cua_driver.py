@@ -20,6 +20,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
   FAKE_CUA_TOOLS_LIST    JSON object merged into tools/list's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
+  FAKE_CUA_SCREEN_SLOW_SECONDS  how long get_screen_size takes to answer (default at once)
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
   FAKE_CUA_APPS          JSON list of installed app names list_apps returns
   FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
@@ -146,6 +147,8 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
         ] + [{"pid": 77, "name": "logoff", "running": True, "kind": "desktop", "launch_path": None}]
         return text_result(f"Found {len(apps)} app(s).", {"apps": apps, "processes": []})
     if name == "get_screen_size":
+        if os.environ.get("FAKE_CUA_SCREEN_SLOW_SECONDS"):
+            time.sleep(float(os.environ["FAKE_CUA_SCREEN_SLOW_SECONDS"]))
         if os.environ.get("FAKE_CUA_SCREEN_ERROR"):
             return text_result(os.environ["FAKE_CUA_SCREEN_ERROR"], error=True)
         size = json.loads(
