@@ -28,6 +28,10 @@ from pydantic import (
 )
 
 from backend.api.features.chat.local_create_lock import client_named_local_create
+from backend.api.features.chat.removed_chat import (
+    CHAT_REMOVED_RESPONSE,
+    chat_removed_error,
+)
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.api.features.local_executor.gating import is_local_executor_enabled
@@ -87,6 +91,7 @@ from backend.copilot.model import (
     get_or_create_builder_session,
     get_or_create_client_chat_session,
     get_or_create_expert_kickoff_session,
+    get_user_session_groups,
     get_user_sessions,
     update_session_autopilot_mode,
     update_session_llm_route,
@@ -342,6 +347,12 @@ async def _validate_and_get_session(
     return session
 
 
+def _refuse_archived_session(session: ChatSessionInfo) -> None:
+    """A reset expert's archived chat cannot be continued."""
+    if session.archived_at is not None:
+        raise NotFoundError(f"Session {session.session_id} not found.")
+
+
 async def _validate_session_expert_writable_by_user(
     session: ChatSessionInfo,
     user_id: str,
@@ -364,6 +375,7 @@ async def _validate_and_get_writable_session(
     user_id: str,
 ) -> ChatSessionInfo:
     session = await _validate_and_get_session(session_id, user_id)
+    _refuse_archived_session(session)
     await _validate_session_expert_writable_by_user(session, user_id)
     return session
 
@@ -686,6 +698,26 @@ class ListSessionsResponse(BaseModel):
     total: int
 
 
+class SessionGroupResponse(BaseModel):
+    """One expert's chats in the sidebar; Otto's own when ``expert_id`` is null."""
+
+    expert_id: str | None = None
+    total: int = Field(description="Every chat in the group, not just those listed.")
+    sessions: list[SessionSummaryResponse] = Field(
+        description="The group's newest chats, newest first."
+    )
+
+
+class ListSessionGroupsResponse(BaseModel):
+    """The sidebar's chats, grouped by expert, most recently active first."""
+
+    groups: list[SessionGroupResponse]
+    pinned: list[SessionSummaryResponse] = Field(
+        default_factory=list,
+        description="Pinned chats, newest first, when asked for separately.",
+    )
+
+
 class CancelSessionResponse(BaseModel):
     """Response model for the cancel session endpoint."""
 
@@ -951,6 +983,16 @@ async def list_sessions(
             "strict recency when adopting the latest expert thread."
         ),
     ),
+    autopilot_only: bool = Query(
+        default=False,
+        description="Only Otto's own chats, those with no expert.",
+    ),
+    pinned: bool | None = Query(
+        default=None,
+        description=(
+            "Only pinned (true) or only unpinned (false) chats; both when " "left out."
+        ),
+    ),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
@@ -964,10 +1006,17 @@ async def list_sessions(
         offset: Number of sessions to skip for pagination.
         expert_id: Restrict the listing to sessions scoped to this expert.
         pinned_first: Whether pinned sessions precede strict recency ordering.
+        autopilot_only: Restrict the listing to sessions with no expert.
+        pinned: Restrict the listing to pinned or to unpinned sessions.
 
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
+    if expert_id is not None and autopilot_only:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass expert_id or autopilot_only, not both.",
+        )
     sessions, total_count = await get_user_sessions(
         user_id,
         limit,
@@ -975,49 +1024,121 @@ async def list_sessions(
         organization_id=ctx.org_id,
         expert_id=expert_id,
         pinned_first=pinned_first,
+        autopilot_only=autopilot_only,
+        pinned=pinned,
+    )
+    running = await _running_session_ids(sessions)
+    return ListSessionsResponse(
+        sessions=[_session_summary(session, running) for session in sessions],
+        total=total_count,
     )
 
-    # Batch-check Redis for active stream status on each session
-    processing_set: set[str] = set()
-    if sessions:
-        try:
-            redis = await get_redis_async()
-            pipe = redis.pipeline(transaction=False)
-            for session in sessions:
-                # Use the canonical helper so the hash-tag braces match every
-                # other writer; building the key inline drops the braces and
-                # silently misses every running session on cluster mode.
-                pipe.hget(
-                    stream_registry.get_session_meta_key(session.session_id),
-                    "status",
-                )
-            statuses = await pipe.execute()
-            processing_set = {
-                session.session_id
-                for session, st in zip(sessions, statuses)
-                if st == "running"
-            }
-        except Exception:
-            logger.warning(
-                "Failed to fetch processing status from Redis; defaulting to empty"
-            )
 
-    return ListSessionsResponse(
-        sessions=[
-            SessionSummaryResponse(
-                id=session.session_id,
-                created_at=session.started_at.isoformat(),
-                updated_at=session.updated_at.isoformat(),
-                title=session.title,
-                chat_status=session.chat_status,
-                is_processing=session.session_id in processing_set,
-                source_platform=session.metadata.source_platform,
-                is_pinned=session.is_pinned,
-                expert_id=session.expert_id,
+@router.get(
+    "/session-groups",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_session_groups(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
+    min_per_group: int = Query(
+        default=3,
+        ge=1,
+        le=20,
+        description="The newest chats every group lists, however old.",
+    ),
+    limit: int = Query(
+        default=30,
+        ge=1,
+        le=100,
+        description=(
+            "Chats to list in all: the newest beyond each group's minimum "
+            "fill up to this. The minimums alone can pass it."
+        ),
+    ),
+    pinned_separately: bool = Query(
+        default=False,
+        description=(
+            "Return pinned chats in `pinned` and leave them out of the groups "
+            "and their totals."
+        ),
+    ),
+) -> ListSessionGroupsResponse:
+    """
+    List the user's chats grouped by expert, for the sidebar.
+
+    Every group, Otto's own (``expert_id`` null) included, carries its real
+    chat count and at least its ``min_per_group`` newest chats; the newest of
+    the rest fill the list up to ``limit``, so the groups in use show more.
+    The most recently active group comes first. Page further into a group
+    with ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for
+    Otto's.
+    """
+    groups, pinned = await get_user_session_groups(
+        user_id,
+        min_per_group,
+        limit,
+        organization_id=ctx.org_id,
+        pinned_separately=pinned_separately,
+    )
+    running = await _running_session_ids(
+        [*pinned, *(session for group in groups for session in group.sessions)]
+    )
+    return ListSessionGroupsResponse(
+        groups=[
+            SessionGroupResponse(
+                expert_id=group.expert_id,
+                total=group.total,
+                sessions=[_session_summary(s, running) for s in group.sessions],
             )
-            for session in sessions
+            for group in groups
         ],
-        total=total_count,
+        pinned=[_session_summary(session, running) for session in pinned],
+    )
+
+
+async def _running_session_ids(sessions: list[ChatSessionInfo]) -> set[str]:
+    """Which of these sessions have a turn streaming right now, read from
+    Redis in one batch. A Redis failure counts every session as idle."""
+    if not sessions:
+        return set()
+    try:
+        redis = await get_redis_async()
+        pipe = redis.pipeline(transaction=False)
+        for session in sessions:
+            # Use the canonical helper so the hash-tag braces match every
+            # other writer; building the key inline drops the braces and
+            # silently misses every running session on cluster mode.
+            pipe.hget(
+                stream_registry.get_session_meta_key(session.session_id),
+                "status",
+            )
+        statuses = await pipe.execute()
+    except Exception:
+        logger.warning(
+            "Failed to fetch processing status from Redis; defaulting to empty"
+        )
+        return set()
+    return {
+        session.session_id
+        for session, status in zip(sessions, statuses)
+        if status == "running"
+    }
+
+
+def _session_summary(
+    session: ChatSessionInfo, running: set[str]
+) -> SessionSummaryResponse:
+    return SessionSummaryResponse(
+        id=session.session_id,
+        created_at=session.started_at.isoformat(),
+        updated_at=session.updated_at.isoformat(),
+        title=session.title,
+        chat_status=session.chat_status,
+        is_processing=session.session_id in running,
+        source_platform=session.metadata.source_platform,
+        is_pinned=session.is_pinned,
+        expert_id=session.expert_id,
     )
 
 
@@ -1787,6 +1908,7 @@ async def update_session_pinned_route(
 
 @router.get(
     "/sessions/{session_id}",
+    responses=CHAT_REMOVED_RESPONSE,
 )
 async def get_session(
     session_id: str,
@@ -1810,6 +1932,10 @@ async def get_session(
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
+    # A reset expert's chats are archived: kept, but no longer opened. Old
+    # links still reach them, so the page says why rather than "not found".
+    if page.session.archived_at is not None:
+        raise await chat_removed_error(page.session)
 
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
@@ -2968,6 +3094,12 @@ async def resume_session_stream(
     when nothing is running: the AI SDK's parser cannot continue a block it
     did not see start.
     """
+    # The stream of a chat a reset removed is still in Redis until it
+    # expires; it must not replay what the chat page no longer shows.
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is not None and session.archived_at is not None:
+        raise await chat_removed_error(session)
+
     if turn is not None:
         try:
             subscriber_queue = await stream_registry.subscribe_to_turn(

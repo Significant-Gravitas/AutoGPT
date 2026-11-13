@@ -182,6 +182,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/builder/suggestions",
     "GET /api/chat/connections",
     "GET /api/chat/model-tiers",
+    "GET /api/chat/session-groups",
     "GET /api/chat/sessions",
     "GET /api/chat/sessions/{session_id}",
     "GET /api/chat/sessions/{session_id}/at-reset",
@@ -269,6 +270,8 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/copilot/sessions/{session_id}/executor/recording/{recording_id}/review",
     "DELETE /api/executions/{graph_exec_id}",
     "DELETE /api/experts/{expert_id}",
+    # Erases what an expert learned, like DELETE /api/memory; runs nothing.
+    "POST /api/experts/{expert_id}/reset",
     "DELETE /api/experts/{expert_id}/credentials/{credential_id}",
     "DELETE /api/experts/{expert_id}/workflows/{workflow_id}",
     "DELETE /api/graphs/{graph_id}",

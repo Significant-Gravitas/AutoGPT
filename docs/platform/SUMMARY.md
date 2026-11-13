@@ -85,6 +85,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Your plan before your trial, Wix for your team, and Otto replies on a short brain dump](changelog/november-6-november-11-2026.md)
   * [Connect tools from the chat, a login page that shows what's new, and a friendlier first email](changelog/november-4-2026.md)
   * [A brain dump that helps you answer, a calmer trial welcome, and a guided first run](changelog/october-27-2026.md)
   * [Expert pages with an Overview, an app that fits your phone, and a lighter login](changelog/october-23-2026.md)

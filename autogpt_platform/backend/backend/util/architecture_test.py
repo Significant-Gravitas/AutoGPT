@@ -239,7 +239,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "integrations/oauth/todoist_test.py time.time": 1,
     "monitoring/auth_identity_monitor_test.py time.monotonic": 1,
     "notifications/checkout_backfill_test.py asyncio.sleep": 6,
-    "notifications/consumer_test.py asyncio.sleep": 5,
     "notifications/mailerlite_backfill_test.py asyncio.sleep": 1,
     "notifications/mailerlite_field_backfill_test.py asyncio.sleep": 1,
     "notifications/role_backfill_test.py asyncio.sleep": 1,

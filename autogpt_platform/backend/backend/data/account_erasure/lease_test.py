@@ -1,7 +1,9 @@
 """The per-account erasure lease: taken once, refused while another run
-holds it, an error when Redis can't tell, renewed and released through the
-lock."""
+holds it, an error when Redis can't tell, short-lived so a crashed run frees
+it within minutes, kept alive by a heartbeat while a run lives, renewed and
+released through the lock."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -93,3 +95,81 @@ async def test_renewal_and_release_go_through_the_lock(locks):
     await lease.release_erasure_lease(held)
 
     made[0].release.assert_awaited_once_with()
+
+
+def test_a_crashed_runs_lease_lapses_within_minutes():
+    """Nobody renews a killed run's lease: a rerun gets through once it
+    lapses, not an hour later. A live run's heartbeat renews it several times
+    per lifetime, each time past the lock's rate limit (a tenth of it), under
+    which a renewal only checks the owner and extends nothing."""
+    assert lease.LEASE_TTL_SECONDS <= 5 * 60
+    assert lease.HEARTBEAT_SECONDS * 3 <= lease.LEASE_TTL_SECONDS
+    assert lease.HEARTBEAT_SECONDS > lease.LEASE_TTL_SECONDS // 10
+
+
+def _renewals(lock, *, needed: int, answers=None) -> asyncio.Event:
+    """Make `lock.refresh` answer in turn from `answers` (True once they run
+    out; an exception is raised) and set the event once it has been called `needed` times, so a test
+    waits for the beats rather than for a fixed time."""
+    reached = asyncio.Event()
+    queue = list(answers or [])
+
+    async def refresh():
+        if lock.refresh.await_count >= needed:
+            reached.set()
+        answer = queue.pop(0) if queue else True
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    lock.refresh.side_effect = refresh
+    return reached
+
+
+@pytest.mark.asyncio
+async def test_the_heartbeat_renews_the_lease_during_a_long_step(locks, monkeypatch):
+    """One step can outlast the lifetime: the heartbeat keeps the lease while
+    it runs, and stops with the erasure."""
+    made, _ = locks
+    monkeypatch.setattr(lease, "HEARTBEAT_SECONDS", 0.01)
+    held = await lease.acquire_erasure_lease(USER_ID)
+    assert held is not None
+    reached = _renewals(made[0], needed=3)
+
+    async with lease.renew_in_background(held):
+        await asyncio.wait_for(reached.wait(), timeout=30)
+
+    renewals = made[0].refresh.await_count
+    await asyncio.sleep(0.05)
+    assert made[0].refresh.await_count == renewals
+
+
+@pytest.mark.asyncio
+async def test_a_failed_beat_is_retried(locks, monkeypatch):
+    """A Redis blip loses a beat, not the lease: the next beat tries again,
+    whether the renewal said no or raised. The check before each step decides
+    whether the erasure goes on."""
+    made, _ = locks
+    monkeypatch.setattr(lease, "HEARTBEAT_SECONDS", 0.01)
+    held = await lease.acquire_erasure_lease(USER_ID)
+    assert held is not None
+    reached = _renewals(made[0], needed=3, answers=[False, RuntimeError("blip")])
+
+    async with lease.renew_in_background(held):
+        await asyncio.wait_for(reached.wait(), timeout=30)
+
+
+@pytest.mark.asyncio
+async def test_the_heartbeat_stops_when_the_erasure_raises(locks, monkeypatch):
+    made, _ = locks
+    monkeypatch.setattr(lease, "HEARTBEAT_SECONDS", 0.01)
+    held = await lease.acquire_erasure_lease(USER_ID)
+    assert held is not None
+
+    with pytest.raises(RuntimeError):
+        async with lease.renew_in_background(held):
+            raise RuntimeError("a step outside the report failed")
+
+    renewals = made[0].refresh.await_count
+    await asyncio.sleep(0.05)
+    assert made[0].refresh.await_count == renewals

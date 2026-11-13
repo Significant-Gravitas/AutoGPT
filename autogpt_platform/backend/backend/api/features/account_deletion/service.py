@@ -25,7 +25,18 @@ owner can sign in and keep it (``restore.py``).
    and the chat platforms unlinked, in one transaction. Sign-in is not
    banned: signing in is how the owner keeps the account. This worker
    rejects the user at once; the others within their cache TTL.
-7. Send the confirmation email (with the last day to keep the account) and
+7. Cancel the plan, expire the open Checkouts, revoke the API keys and
+   OAuth grants and switch auto top-up off again, best effort, unless the owner has kept the account
+   by then. Until the other workers' cache runs out, a token issued before
+   the close can still reach them, and so can a request that was already
+   past its auth check: a key or Checkout made that way before this step is
+   caught here. Making a key, authorizing an app, starting a Checkout and
+   setting auto top-up also read the closed state from the database (``refuse_closed_account``);
+   a key made after this step is revoked when the owner keeps the account
+   (``reopen_account``), a Checkout Stripe returns after the close is
+   expired (``expire_if_account_closed``), and the erasure cancels the
+   account's own subscriptions again (``account_erasure/subscriptions.py``).
+8. Send the confirmation email (with the last day to keep the account) and
    record one anonymous count.
 
 Every step before the close must succeed or raise, so the account never
@@ -86,6 +97,7 @@ Neither the typed email nor the account's email is ever logged.
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 import stripe
@@ -94,6 +106,7 @@ from prisma.enums import AccountDeletionSource
 from prisma.models import AccountDeletionRequest
 
 from backend.api.features.account_deletion.analytics import plan_state
+from backend.api.features.account_deletion.best_effort import attempt_step
 from backend.api.features.account_deletion.connected_apps import revoke_connected_apps
 from backend.api.features.account_deletion.email_opt_out import stop_account_emails
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
@@ -103,6 +116,7 @@ from backend.data.account_deletion import (
     GRACE_PERIOD,
     close_account,
     get_deletion_request,
+    is_account_closed,
     mark_confirmation_sent,
 )
 from backend.data.credit import cancel_all_subscriptions_now, set_auto_top_up
@@ -142,9 +156,12 @@ async def delete_account(
     source: AccountDeletionSource,
     *,
     grace: timedelta = GRACE_PERIOD,
+    send_confirmation: bool = True,
 ) -> datetime:
     """Close the account, in the order the module docstring gives, and return
-    when its data may be erased: until then its owner can keep it.
+    when its data may be erased: until then its owner can keep it. Without
+    ``send_confirmation`` (the CLI's ``--no-email``) no confirmation email is
+    sent, and the request records that, so the erasure sends none either.
 
     Raises EmailMismatchError, having changed nothing, for a different email,
     and PlanCancellationError when Stripe refuses or times out on the cancel:
@@ -160,12 +177,18 @@ async def delete_account(
     await _cancel_plan(user_id)
     await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
     await _revoke_and_stop(user_id)
-    request = await _close(user_id, source, grace)
+    request = await _close(user_id, source, grace, send_confirmation)
     if request is None:
         return await _winners_erase_after(user_id)
-    await _send_confirmation(
-        user_id, user.email, source, request.eraseAfter, erase_now=grace < GRACE_PERIOD
-    )
+    await _sweep_after_close(user_id)
+    if send_confirmation:
+        await _send_confirmation(
+            user_id,
+            user.email,
+            source,
+            request.eraseAfter,
+            erase_now=grace < GRACE_PERIOD,
+        )
     capture_anonymous(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": plan, "surface": _SURFACES[source]},
@@ -206,10 +229,15 @@ async def _revoke_and_stop(user_id: str) -> None:
 
 
 async def _close(
-    user_id: str, source: AccountDeletionSource, grace: timedelta
+    user_id: str,
+    source: AccountDeletionSource,
+    grace: timedelta,
+    send_confirmation: bool,
 ) -> AccountDeletionRequest | None:
     """Close the account; None when a concurrent call closed it first."""
-    request = await close_account(user_id, source, grace=grace)
+    request = await close_account(
+        user_id, source, grace=grace, confirmation_skipped=not send_confirmation
+    )
     # Closed either way, so this worker rejects the user from now on, no
     # background work starts for it, and its listings and creator page leave
     # the store at once (the transaction has committed).
@@ -224,6 +252,38 @@ async def _close(
             f"request, which closed the account and sends the confirmation"
         )
     return request
+
+
+async def _sweep_after_close(user_id: str) -> None:
+    """Step 7, best effort: the account is closed, so nothing here may fail
+    the call. What it misses is refused while the account is closed, revoked
+    again on Keep and cancelled again by the erasure."""
+    await attempt_step(
+        "revoke the API keys and OAuth grants again",
+        user_id,
+        _while_closed(user_id, revoke_issued_access),
+    )
+    await attempt_step(
+        "cancel the plan and expire the Checkouts again",
+        user_id,
+        _while_closed(user_id, cancel_all_subscriptions_now),
+    )
+    await attempt_step(
+        "switch auto top-up off again",
+        user_id,
+        _while_closed(user_id, _auto_top_up_off),
+    )
+
+
+async def _auto_top_up_off(user_id: str) -> None:
+    await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
+
+
+async def _while_closed(user_id: str, step: Callable[[str], Awaitable[object]]) -> None:
+    """Keep works the moment the close commits: once the owner has kept the
+    account, its keys and plan are theirs again and stay."""
+    if await is_account_closed(user_id):
+        await step(user_id)
 
 
 async def _winners_erase_after(user_id: str) -> datetime:

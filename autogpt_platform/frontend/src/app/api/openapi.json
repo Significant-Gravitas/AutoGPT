@@ -138,7 +138,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "403": {
-            "description": "Account deletion isn't available while impersonating a user."
+            "description": "Account deletion isn't available while impersonating a user. Or the account is banned (`account_banned`)."
           },
           "409": {
             "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
@@ -4560,11 +4560,85 @@
         }
       }
     },
+    "/api/chat/session-groups": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Session Groups",
+        "description": "List the user's chats grouped by expert, for the sidebar.\n\nEvery group, Otto's own (``expert_id`` null) included, carries its real\nchat count and at least its ``min_per_group`` newest chats; the newest of\nthe rest fill the list up to ``limit``, so the groups in use show more.\nThe most recently active group comes first. Page further into a group\nwith ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for\nOtto's.",
+        "operationId": "getV2ListSessionGroups",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "min_per_group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "description": "The newest chats every group lists, however old.",
+              "default": 3,
+              "title": "Min Per Group"
+            },
+            "description": "The newest chats every group lists, however old."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Chats to list in all: the newest beyond each group's minimum fill up to this. The minimums alone can pass it.",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "Chats to list in all: the newest beyond each group's minimum fill up to this. The minimums alone can pass it."
+          },
+          {
+            "name": "pinned_separately",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Return pinned chats in `pinned` and leave them out of the groups and their totals.",
+              "default": false,
+              "title": "Pinned Separately"
+            },
+            "description": "Return pinned chats in `pinned` and leave them out of the groups and their totals."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionGroupsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n    autopilot_only: Restrict the listing to sessions with no expert.\n    pinned: Restrict the listing to pinned or to unpinned sessions.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4614,6 +4688,29 @@
               "title": "Pinned First"
             },
             "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread."
+          },
+          {
+            "name": "autopilot_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only Otto's own chats, those with no expert.",
+              "default": false,
+              "title": "Autopilot Only"
+            },
+            "description": "Only Otto's own chats, those with no expert."
+          },
+          {
+            "name": "pinned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Only pinned (true) or only unpinned (false) chats; both when left out.",
+              "title": "Pinned"
+            },
+            "description": "Only pinned (true) or only unpinned (false) chats; both when left out."
           }
         ],
         "responses": {
@@ -4766,6 +4863,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "410": {
+            "description": "The chat was removed when its expert was reset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatRemovedResponse" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -9100,6 +9205,51 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/reset": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Reset Expert",
+        "description": "Factory-reset a hired expert. Cannot be undone, unlike firing.",
+        "operationId": "reset_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertResetResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "409": {
+            "description": "The expert has a turn running; reset once it ends"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "The reset did not finish; it is safe to retry"
           }
         }
       }
@@ -23075,6 +23225,38 @@
         "required": ["name", "values"],
         "title": "ChartSeries"
       },
+      "ChatRemovedDetail": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "chat_removed",
+            "title": "Type",
+            "default": "chat_removed"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ChatRemovedDetail",
+        "description": "Why the chat cannot be opened, and whose reset removed it."
+      },
+      "ChatRemovedResponse": {
+        "properties": {
+          "detail": { "$ref": "#/components/schemas/ChatRemovedDetail" }
+        },
+        "type": "object",
+        "required": ["detail"],
+        "title": "ChatRemovedResponse",
+        "description": "The 410 body; FastAPI wraps an HTTPException's detail like this."
+      },
       "ChatRequest": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -27425,6 +27607,33 @@
         "title": "ExpertRecommendations",
         "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
       },
+      "ExpertResetResult": {
+        "properties": {
+          "memory_nodes_erased": {
+            "type": "integer",
+            "title": "Memory Nodes Erased"
+          },
+          "computer_erased": { "type": "boolean", "title": "Computer Erased" },
+          "soul_reset": { "type": "boolean", "title": "Soul Reset" },
+          "routines_reset": { "type": "integer", "title": "Routines Reset" },
+          "chats_archived": { "type": "integer", "title": "Chats Archived" },
+          "approvals_cleared": {
+            "type": "integer",
+            "title": "Approvals Cleared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "memory_nodes_erased",
+          "computer_erased",
+          "soul_reset",
+          "routines_reset",
+          "chats_archived",
+          "approvals_cleared"
+        ],
+        "title": "ExpertResetResult",
+        "description": "What one reset did."
+      },
       "ExpertRun": {
         "properties": {
           "execution_id": { "type": "string", "title": "Execution Id" },
@@ -31190,6 +31399,25 @@
         "type": "object",
         "required": ["files"],
         "title": "ListFilesResponse"
+      },
+      "ListSessionGroupsResponse": {
+        "properties": {
+          "groups": {
+            "items": { "$ref": "#/components/schemas/SessionGroupResponse" },
+            "type": "array",
+            "title": "Groups"
+          },
+          "pinned": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Pinned",
+            "description": "Pinned chats, newest first, when asked for separately."
+          }
+        },
+        "type": "object",
+        "required": ["groups"],
+        "title": "ListSessionGroupsResponse",
+        "description": "The sidebar's chats, grouped by expert, most recently active first."
       },
       "ListSessionsResponse": {
         "properties": {
@@ -36432,6 +36660,29 @@
         "required": ["id", "created_at", "updated_at", "user_id", "messages"],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
+      },
+      "SessionGroupResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Every chat in the group, not just those listed."
+          },
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions",
+            "description": "The group's newest chats, newest first."
+          }
+        },
+        "type": "object",
+        "required": ["total", "sessions"],
+        "title": "SessionGroupResponse",
+        "description": "One expert's chats in the sidebar; Otto's own when ``expert_id`` is null."
       },
       "SessionRow": {
         "properties": {

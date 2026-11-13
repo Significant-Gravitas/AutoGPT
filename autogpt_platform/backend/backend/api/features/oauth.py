@@ -44,6 +44,7 @@ from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.copilot.tools.local_pc_shim import get_shim_manager
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
@@ -385,6 +386,8 @@ async def authorize(
                 "Local PC isn't available for this account yet.",
             )
 
+        # Auth's closed-account cache can lag the close by a few seconds.
+        await refuse_closed_account(user_id)
         # Create authorization code
         auth_code = await create_authorization_code(
             application_id=app.id,

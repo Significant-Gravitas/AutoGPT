@@ -52,6 +52,7 @@ import {
   setStreamShadowRate,
 } from "./stream/turnShadow";
 import { ReportedSendError } from "./helpers/reportedSendError";
+import { getRemovedChat } from "./helpers/removedChat";
 import { backgroundRefreshInterval } from "./helpers/backgroundSubtasks";
 
 interface UseChatSessionOptions {
@@ -605,6 +606,7 @@ export function useChatSession({
     isSessionError: sessionQuery.isError,
     // Another account's session and a missing one are the same 404 by design.
     isSessionNotFound: isDefinitiveSessionFailure(sessionQuery.error),
+    removedChat: getRemovedChat(sessionQuery.error),
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
@@ -663,6 +665,7 @@ function isLocalTargetConflict(error: unknown) {
 
 function isDefinitiveSessionFailure(error: unknown) {
   return (
-    error instanceof ApiError && (error.status === 403 || error.status === 404)
+    error instanceof ApiError &&
+    (error.status === 403 || error.status === 404 || error.status === 410)
   );
 }

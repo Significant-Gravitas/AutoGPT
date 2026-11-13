@@ -105,6 +105,7 @@ async def test_only_the_local_pc_rollout_can_link_a_computer(in_rollout: bool):
     with (
         patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)),
         patch.object(oauth, "is_local_executor_enabled", gate),
+        patch.object(oauth, "refuse_closed_account", AsyncMock()),
         patch.object(oauth, "create_authorization_code", issue),
     ):
         response = await oauth.authorize(
@@ -138,6 +139,7 @@ async def test_other_scopes_never_read_the_local_pc_flag():
             AsyncMock(return_value=_app(is_active=True)),
         ),
         patch.object(oauth, "is_local_executor_enabled", gate),
+        patch.object(oauth, "refuse_closed_account", AsyncMock()),
         patch.object(oauth, "create_authorization_code", issue),
     ):
         response = await oauth.authorize(request=_request(REGISTERED), user_id="user")
@@ -146,9 +148,37 @@ async def test_other_scopes_never_read_the_local_pc_flag():
     gate.assert_not_awaited()
 
 
-async def _authorize(app_state: str, redirect_uri: str, *, response_type: str):
+@pytest.mark.asyncio
+async def test_a_closed_account_gets_no_code():
+    """Asked of the database: for a few seconds after the close, another
+    worker's cache can still let an old token through."""
+    closed = HTTPException(status_code=401, detail="This account is closed.")
+    issue = AsyncMock()
+    with patch.object(oauth, "create_authorization_code", issue), pytest.raises(
+        HTTPException
+    ) as error:
+        await _authorize(
+            "active",
+            REGISTERED,
+            response_type="code",
+            closed_check=AsyncMock(side_effect=closed),
+        )
+
+    assert error.value.status_code == 401
+    issue.assert_not_awaited()
+
+
+async def _authorize(
+    app_state: str,
+    redirect_uri: str,
+    *,
+    response_type: str,
+    closed_check: AsyncMock | None = None,
+):
     app = None if app_state == "unknown" else _app(is_active=app_state == "active")
-    with patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)):
+    with patch.object(
+        oauth, "get_oauth_application", AsyncMock(return_value=app)
+    ), patch.object(oauth, "refuse_closed_account", closed_check or AsyncMock()):
         return await oauth.authorize(
             request=_request(redirect_uri, response_type=response_type),
             user_id="user",
