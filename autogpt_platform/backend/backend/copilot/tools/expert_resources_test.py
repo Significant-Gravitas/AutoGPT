@@ -283,16 +283,24 @@ async def test_expert_cannot_grant_itself(experts):
     experts.grant_expert_credentials.assert_not_awaited()
 
 
-@pytest.mark.parametrize(*_NOBODY_TYPING)
+@pytest.mark.parametrize(
+    "origin, scheduled, refusal",
+    [
+        ("automation", False, "started by an automation"),
+        (None, False, "started by an automation"),
+        ("interactive", True, "did not start this turn"),
+    ],
+)
 @pytest.mark.parametrize(
     "tool",
     [GrantExpertCredentialTool(), RevokeExpertCredentialTool()],
     ids=["grant", "revoke"],
 )
 async def test_grants_change_only_in_a_chat_the_user_is_typing_in(
-    experts, tool, origin, scheduled
+    experts, tool, origin, scheduled, refusal
 ):
-    """``test_autopilot_grants_and_revokes`` is the arm the user types in."""
+    """Each case meets its own refusal, the origin guard's or the scheduled
+    turn's. ``test_autopilot_grants_and_revokes`` is the arm the user types in."""
     session = _session(None)
     session.metadata.origin = origin
     set_turn_unattended(session, scheduled=scheduled)
@@ -300,6 +308,7 @@ async def test_grants_change_only_in_a_chat_the_user_is_typing_in(
         "user-1", session, expert_id="expert-a", credential_id="cred-1"
     )
     assert isinstance(result, ErrorResponse)
+    assert refusal in result.message
     experts.grant_expert_credentials.assert_not_awaited()
     experts.revoke_expert_credential.assert_not_awaited()
 
