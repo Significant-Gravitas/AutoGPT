@@ -17,6 +17,12 @@ import pytest
 from autogpt_local_executor.auth import KeychainTokenStore, OAuthFlow
 from autogpt_local_executor.config import ShimConfig
 
+# Every request here goes to the callback server on this computer, never
+# through a proxy: an http_proxy in the environment whose no_proxy leaves
+# out an address used here ([::1], say, next to localhost,127.0.0.1) would
+# take it elsewhere, and the server would wait out its timeout for it.
+_open_callback = urllib.request.build_opener(urllib.request.ProxyHandler({})).open
+
 
 def _config(tmp_path: Path, *, callback_port: int = 41899) -> ShimConfig:
     return ShimConfig(
@@ -244,7 +250,7 @@ def test_callback_validates_state_without_logging_code(
     server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
 
     def send_callback() -> None:
-        with urllib.request.urlopen(
+        with _open_callback(
             f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state",
             timeout=2,
         ):
@@ -279,7 +285,7 @@ def test_a_redirect_the_browser_sends_to_ipv6_loopback_reaches_the_shim(tmp_path
     server, codes, errors, port = flow._bind_callback_server(expected_state="right-state")
 
     def send_callback() -> None:
-        with urllib.request.urlopen(
+        with _open_callback(
             f"http://[::1]:{port}/callback?code=the-code&state=right-state", timeout=30
         ):
             pass
@@ -324,10 +330,10 @@ def test_callback_wait_outlasts_requests_for_other_paths(tmp_path: Path) -> None
 
     def browse() -> None:
         try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/favicon.ico", timeout=30)
+            _open_callback(f"http://127.0.0.1:{port}/favicon.ico", timeout=30)
         except urllib.error.HTTPError as exc:
             statuses.append(exc.code)
-        with urllib.request.urlopen(
+        with _open_callback(
             f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=30
         ) as response:
             statuses.append(response.status)
@@ -368,10 +374,10 @@ def test_a_callback_for_another_sign_in_is_refused_without_ending_the_wait(
             "code=planted&state=%C3%A9",  # compare_digest refuses non-ASCII str
         ):
             try:
-                urllib.request.urlopen(f"http://127.0.0.1:{port}/callback?{query}", timeout=30)
+                _open_callback(f"http://127.0.0.1:{port}/callback?{query}", timeout=30)
             except urllib.error.HTTPError as exc:
                 statuses.append(exc.code)
-        with urllib.request.urlopen(
+        with _open_callback(
             f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=30
         ) as response:
             statuses.append(response.status)
@@ -392,7 +398,7 @@ def test_a_denial_for_this_sign_in_still_ends_the_wait(tmp_path: Path) -> None:
 
     def deny() -> None:
         try:
-            urllib.request.urlopen(
+            _open_callback(
                 f"http://127.0.0.1:{port}/callback?error=access_denied&state=right-state",
                 timeout=30,
             )
@@ -418,7 +424,7 @@ def test_a_denial_says_why_when_the_platform_does(tmp_path: Path) -> None:
 
     def deny() -> None:
         try:
-            urllib.request.urlopen(
+            _open_callback(
                 f"http://127.0.0.1:{port}/callback?error=access_denied"
                 f"&error_description={reason}&state=right-state",
                 timeout=30,
@@ -718,7 +724,7 @@ def test_a_connection_that_sends_nothing_cannot_block_the_callback(
     idle = socket.create_connection(("127.0.0.1", port), timeout=30)
 
     def redirect() -> None:
-        with urllib.request.urlopen(
+        with _open_callback(
             f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=30
         ):
             pass
@@ -762,7 +768,7 @@ def test_a_request_that_trickles_in_cannot_hold_the_callback(
             pass
 
     def redirect() -> None:
-        with urllib.request.urlopen(
+        with _open_callback(
             f"http://127.0.0.1:{port}/callback?code=the-code&state=right-state", timeout=90
         ):
             pass
