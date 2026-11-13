@@ -1,8 +1,11 @@
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import click
+
+from backend.util.logging import configure_logging
 
 if TYPE_CHECKING:
     from backend.data.account_erasure.models import ErasureReport
@@ -82,8 +85,7 @@ def erase_account_command(
         raise click.UsageError("--now goes with --close.")
     if no_email and not (close and now):
         raise click.UsageError(_NO_EMAIL_ONLY_WITH)
-    # Keep Prisma and client chatter out of the report.
-    logging.disable(logging.INFO)
+    _log_the_erasure_only()
     if pending:
         asyncio.run(_with_db(_run_pending(apply=apply, yes=yes)))
     elif close and now:
@@ -98,6 +100,18 @@ def erase_account_command(
         asyncio.run(_with_db(_run_close(account or "", apply=apply, yes=yes)))
     else:
         asyncio.run(_with_db(_run_one(account or "", apply=apply, yes=yes)))
+
+
+def _log_the_erasure_only() -> None:
+    """The backend's logging, so each run leaves the erasure's own lines
+    ("Account erasure of <user ID>: ...", IDs only) in the log, and only
+    warnings from everything else, which keeps Prisma and client chatter out
+    of the report."""
+    # The handlers take LOG_LEVEL; above INFO they would drop those lines.
+    os.environ["LOG_LEVEL"] = "INFO"
+    configure_logging()
+    logging.getLogger().setLevel(logging.WARNING)
+    logging.getLogger("backend.data.account_erasure").setLevel(logging.INFO)
 
 
 async def _with_db(work):

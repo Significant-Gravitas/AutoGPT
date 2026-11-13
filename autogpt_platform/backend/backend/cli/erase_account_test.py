@@ -5,12 +5,14 @@ account the way Settings does (its owner then has 14 days to keep it), and
 --pending erases every closed account whose 14 days are over."""
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import click
 import pytest
+from autogpt_libs.logging.config import LoggingConfig
 from click.testing import CliRunner
 
 from backend.api.features.account_deletion.service import PlanCancellationError
@@ -69,9 +71,27 @@ def _run_on_a_private_loop(coro):
 
 
 @pytest.fixture
-def run(monkeypatch):
+def log_levels():
+    """The command sets the root and the erasure's log levels; put them back,
+    so tests after these log as before."""
+    loggers = [logging.getLogger(), logging.getLogger("backend.data.account_erasure")]
+    levels = [logger.level for logger in loggers]
+    yield
+    for logger, level in zip(loggers, levels):
+        logger.setLevel(level)
+
+
+@pytest.fixture
+def run(monkeypatch, log_levels):
     """The command against a fake routine and no database."""
     monkeypatch.setattr(cli.asyncio, "run", _run_on_a_private_loop)
+    # A pod's level above INFO; the command must not keep it for its handlers.
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+    handler_levels: list[str] = []
+    configured = MagicMock(
+        side_effect=lambda: handler_levels.append(LoggingConfig().level)
+    )
+    monkeypatch.setattr(cli, "configure_logging", configured)
     monkeypatch.setattr(db, "connect", AsyncMock())
     monkeypatch.setattr(db, "disconnect", AsyncMock())
     monkeypatch.setattr(cli, "_resolve", AsyncMock(return_value=(USER_ID, EMAIL)))
@@ -97,6 +117,8 @@ def run(monkeypatch):
         closed=closed,
         closing=closing,
         ending=ending,
+        configured=configured,
+        handler_levels=handler_levels,
         skipping=skipping,
     )
 
@@ -122,6 +144,28 @@ def test_apply_runs_the_dry_run_first_then_erases(run):
     assert _dry_runs(run.erasing) == [True, False]
     run.closing.assert_not_awaited()
     assert "Done." in result.output
+
+
+def test_a_run_logs_the_erasures_own_line_and_no_chatter(run, caplog):
+    """The routine's "Account erasure of <user ID>" line is the run's
+    record in the pod's log; the database's and the clients' INFO lines stay
+    out of the report."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        logging.getLogger("backend.data.db").info("chatter")
+        routine.logger.info(f"Account erasure of {user_id}: dry_run={dry_run}")
+        return _report(dry_run=dry_run)
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(USER_ID, "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.configured.assert_called_once_with()
+    assert run.handler_levels == ["INFO"]
+    messages = [record.getMessage() for record in caplog.records]
+    assert f"Account erasure of {USER_ID}: dry_run=False" in messages
+    assert "chatter" not in messages
 
 
 def test_apply_asks_first_and_stops_on_no(run):

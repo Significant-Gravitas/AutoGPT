@@ -55,6 +55,23 @@ async def test_pending_requests_are_the_unfinished_ones_past_their_erase_date(
     assert kwargs["order"] == {"eraseAfter": "asc"}
 
 
+@pytest.mark.asyncio
+async def test_stalled_requests_are_claimed_long_ago_and_not_finished(
+    requests_table,
+):
+    """Whichever ran the erasure, the job or the CLI, it claimed the request:
+    a claim older than the threshold with no completedAt is stalled."""
+    ids = await request.stalled_user_ids(older_than_secs=3 * 3600, now=NOW)
+
+    assert ids == ["a", "b"]
+    kwargs = requests_table.find_many.await_args.kwargs
+    assert kwargs["where"] == {
+        "completedAt": None,
+        "startedAt": {"lte": NOW - timedelta(hours=3)},
+    }
+    assert kwargs["order"] == {"startedAt": "asc"}
+
+
 @pytest.fixture
 def claim_query(monkeypatch):
     query = AsyncMock(return_value=[{"id": REQUEST_ID}])
