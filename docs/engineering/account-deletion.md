@@ -78,6 +78,13 @@ Every command is a dry run unless it has `--apply`, and prints counts only, neve
    poetry run cli erase-account sam@example.com --close --now --apply
    ```
 
+   **Without the email**, when nobody should hear from us about it (`--no-email`, only with `--close --now`): closing sends no confirmation and records that on the request (`confirmationSkipped`), so the erasure sends none late either. On an account closed already whose confirmation has not gone out, it marks the request the same way. If the owner closed it themselves seconds before, their own confirmation may still be on its way, so the CLI says only that the erasure sends none. Everything else runs as above:
+
+   ```sh
+   poetry run cli erase-account sam@example.com --close --now --no-email
+   poetry run cli erase-account sam@example.com --close --now --no-email --apply
+   ```
+
    The owner can no longer keep the account after that. Then go on to step 5.
 4. **Erase**, after the 14 days. The job does it within the hour. To run it by hand:
 
@@ -116,7 +123,7 @@ Before any step, the erasure claims the request (`startedAt`, above). The accoun
 3. **Org subscriptions**: expires the open Checkouts and cancels the subscriptions of the organizations that go with the account, when their Stripe customer is not the account's own (closing cancelled that one).
 4. **Shared agents**: hands the agents other accounts use to the "deleted user" account (below), with their marketplace listings.
 5. **Marketplace**: its reviews, its other listings (which closing took down) with their versions and search embeddings, and every skill listing it published, with its versions and files. A skill listing is never handed over: an install copies the skill into the installer's own skills folder, so people who installed it keep their copy. Left to the account row's delete, the listing would stay with no owner, which marks a skill the platform wrote.
-6. **Files**: everything under its prefixes in every bucket (private, public and legacy): `workspaces/{workspace id}/` (workspace files), `workspaces/cli-sessions/{user id}/` (AutoPilot transcripts), `uploads/users/{user id}/` (uploads, onboarding voice recordings), `users/{user id}/` (marketplace media and avatars, including their public copies) and `oauth-apps/{app id}/` for OAuth apps it owns. A self-hosted stack's folders on disk likewise. Media a listing that stays still shows is kept (below).
+6. **Files**: everything under its prefixes in every bucket (private, public and legacy): `workspaces/{workspace id}/` (workspace files), `workspaces/cli-sessions/{user id}/` and, from before April 2026, `workspaces/chat-transcripts/{user id}/` (AutoPilot transcripts), `uploads/users/{user id}/` (uploads, onboarding voice recordings), `users/{user id}/` (marketplace media and avatars, including their public copies) and `oauth-apps/{app id}/` for OAuth apps it owns. A self-hosted stack's folders on disk likewise. Media a listing that stays still shows is kept (below).
 7. **Memory**: AutoPilot's memory graphs in FalkorDB, Otto's and one per expert it owns. Skipped on a stack with no FalkorDB host configured (above).
 8. **PostHog**: the person, with its events and recordings (PostHog deletes events in a weekly batch).
 9. **MailerLite**: "forgets" the subscriber, which removes them now and erases their data within 30 days.
