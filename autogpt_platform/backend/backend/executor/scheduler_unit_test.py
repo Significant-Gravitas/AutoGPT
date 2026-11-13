@@ -2073,6 +2073,26 @@ def test_no_plan_activity_report_fires_daily_at_a_fixed_utc_time(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_stalled_erasure_check_runs_whether_the_erasure_job_is_on_or_not(
+    monkeypatch, enabled
+):
+    """The erase-account CLI claims requests too, so a stalled erasure is
+    checked for even while the hourly job is off."""
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.account_erasure_sweep_enabled", enabled
+    )
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    match = [
+        c for c in calls if c.kwargs.get("id") == "report_stalled_account_erasures"
+    ]
+    assert len(match) == 1
+    assert (
+        match[0].kwargs["seconds"] == Config().account_erasure_stall_check_interval_secs
+    )
+
+
 def test_startup_embedding_backfill_defaults_on():
     assert Config.model_fields["scheduler_startup_embedding_backfill"].default is True
 

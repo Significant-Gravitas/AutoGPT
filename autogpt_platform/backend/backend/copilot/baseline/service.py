@@ -175,6 +175,11 @@ from backend.copilot.tools.e2b_sandbox import (
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
+from backend.copilot.tools.render_ui import (
+    RENDER_UI_TOOL,
+    render_ui_disabled_tools,
+    shows_cards,
+)
 from backend.copilot.tools.seen_capabilities import build_seen_capabilities_notice
 from backend.copilot.tools.session_context import build_session_context
 from backend.copilot.tools.skill_matching import build_matched_skills_notice
@@ -306,11 +311,16 @@ def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
     return _BUDGET_EXHAUSTED_FALLBACK_TEXT
 
 
-def _natural_finish_empty_notice_text(terminal_round_text: str) -> str | None:
+def _natural_finish_empty_notice_text(
+    terminal_round_text: str, *, presented_cards: bool = False
+) -> str | None:
     """Return the fallback notice when a naturally-finishing turn produced
     no visible text, or ``None`` when the model already summarised itself.
+
+    Cards ``render_ui`` showed this turn are an answer: its description asks
+    the model not to repeat them in text, so a silent last round is expected.
     """
-    if terminal_round_text.strip():
+    if presented_cards or terminal_round_text.strip():
         return None
     return EMPTY_COMPLETION_NOTICE
 
@@ -331,7 +341,7 @@ def _build_budget_exhausted_fallback_events(
 
 
 def _build_natural_finish_empty_fallback_events(
-    terminal_round_text: str,
+    terminal_round_text: str, *, presented_cards: bool = False
 ) -> tuple[list[StreamBaseResponse], str]:
     """Build the fallback stream events surfaced when a naturally-finishing
     turn left the terminal round with no visible text.
@@ -340,7 +350,9 @@ def _build_natural_finish_empty_fallback_events(
     no fallback is needed.
     """
     return _silent_finish_fallback_events(
-        _natural_finish_empty_notice_text(terminal_round_text)
+        _natural_finish_empty_notice_text(
+            terminal_round_text, presented_cards=presented_cards
+        )
     )
 
 
@@ -580,6 +592,9 @@ class _BaselineStreamState:
     # iteration.  ``None`` means "not yet computed" (or the first message
     # wasn't a system role, so no marking applies).
     cached_system_message: dict[str, Any] | None = None
+    # Set once ``render_ui`` shows cards this turn, so a last round with no
+    # text still counts as an answer.
+    presented_cards: bool = False
 
     def __post_init__(self) -> None:
         # Wire the reasoning emitter to ``session_messages`` so it can
@@ -1280,6 +1295,8 @@ async def _baseline_tool_executor(
                 disabled_tools=disabled_tools,
             )
         _emit(state, result)
+        if called_name == RENDER_UI_TOOL and shows_cards(result.output):
+            state.presented_cards = True
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
@@ -2579,6 +2596,7 @@ async def stream_chat_completion_baseline(
         kickoff_turn_disabled_tools()
         if is_expert_kickoff_turn(session)
         else origin_disabled_tools(session.metadata.origin)
+        | await render_ui_disabled_tools(session)
     )
     tools = get_available_tools(
         disabled_groups=disabled_tool_groups, disabled_tools=disabled_tools
@@ -2962,7 +2980,9 @@ async def stream_chat_completion_baseline(
             # mirrors SDK's empty_completion surface — prevents blank bubble on thinking-only turns
             terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
             fallback_events, fallback_text = (
-                _build_natural_finish_empty_fallback_events(terminal_round_text)
+                _build_natural_finish_empty_fallback_events(
+                    terminal_round_text, presented_cards=state.presented_cards
+                )
             )
             if fallback_events:
                 logger.warning(
