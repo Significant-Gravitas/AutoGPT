@@ -370,6 +370,10 @@ def load_config(
             # without a word. (Without --config, a missing default file
             # means defaults.)
             raise ConfigFileError(f"{path}: no such config file") from None
+        if path.is_symlink():
+            # A config.toml left linking to a file that was moved or deleted:
+            # its settings would be dropped for the defaults.
+            raise ConfigFileError(f"{path}: a link whose target doesn't exist") from None
         # Windows reports a file where one of the path's folders belongs as a
         # missing path, where POSIX raises NotADirectoryError (below).
         blocker = _non_directory_ancestor(path)

@@ -40,6 +40,7 @@ from websockets.asyncio.client import connect
 
 from . import handlers, platform_info
 from .audit import (
+    AuditKeyStorageError,
     AuditKeyUnavailableError,
     AuditLogCorruptError,
     AuditWriter,
@@ -499,6 +500,11 @@ class ShimDaemon:
             raise DaemonPreflightError(
                 f"{exc}; refusing to run without a mandatory audit log, which that key signs",
                 transient=True,
+            ) from exc
+        except AuditKeyStorageError as exc:
+            # A full disk clears; a read-only one doesn't: the errno says.
+            raise _audit_storage_failure(
+                "The lock the audit key is made under couldn't be taken", exc.error
             ) from exc
         except Exception as exc:
             # A malformed stored key, or no keychain and no file fallback.

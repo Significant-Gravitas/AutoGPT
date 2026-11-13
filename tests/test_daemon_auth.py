@@ -953,3 +953,42 @@ async def test_run_ends_for_a_restart_when_no_keychain_is_up(
 
     assert raised.value.transient is True
     assert reads == 1
+
+
+@pytest.mark.parametrize(
+    ("code", "permanent", "transient"), [("ENOSPC", False, True), ("EROFS", True, False)]
+)
+def test_an_audit_key_lock_that_cannot_be_taken_says_whether_a_restart_can_fix_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, permanent: bool, transient: bool
+) -> None:
+    """The lock a new audit key is made under failed as AuditKeyError, which
+    startup takes for permanent, so a full disk stopped a supervised shim for
+    good instead of exiting for a restart once space was freed."""
+    import contextlib
+    import errno
+    import os
+
+    import keyring
+
+    from autogpt_local_executor import audit as audit_module
+
+    config = ShimConfig(
+        session_id="session-1", allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"
+    )
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path / "fallback"))
+    monkeypatch.setattr(keyring, "get_password", lambda *_args: None)
+    number = getattr(errno, code)
+
+    @contextlib.contextmanager
+    def refuse(_path: Path, **_kwargs: object):
+        raise OSError(number, os.strerror(number))
+        yield
+
+    monkeypatch.setattr(audit_module, "_file_lock", refuse)
+
+    with pytest.raises(daemon_module.DaemonPreflightError) as raised:
+        ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.permanent is permanent
+    assert getattr(raised.value, "transient", False) is transient

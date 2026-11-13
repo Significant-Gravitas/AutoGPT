@@ -569,6 +569,16 @@ class AuditKeyError(RuntimeError):
     pass
 
 
+class AuditKeyStorageError(AuditKeyError):
+    """The lock a new audit key is made under couldn't be taken: a storage
+    error, which a restart may fix (a full disk) or not (a read-only one).
+    `error` is the OSError that says which."""
+
+    def __init__(self, message: str, error: OSError) -> None:
+        super().__init__(message)
+        self.error = error
+
+
 class AuditKeyUnavailableError(RuntimeError):
     """The OS keychain holding the audit key couldn't be used just now:
     still locked at login, or not started yet. Either can clear on its own,
@@ -666,15 +676,15 @@ def _holding_key_lock() -> Iterator[None]:
     with the key the other left stored. The lock sits by the file fallback's
     key, in the person's own folder, so every deployment's start, whatever
     its log, takes the same one, as they share the keychain's key. One that
-    can't be taken raises AuditKeyError."""
+    can't be taken raises AuditKeyStorageError."""
     lock = _fallback_path().with_name(".audit-key.lock")
     with contextlib.ExitStack() as stack:
         try:
             lock.parent.mkdir(parents=True, exist_ok=True)
             stack.enter_context(_file_lock(lock))
         except OSError as exc:
-            raise AuditKeyError(
-                f"The lock the audit key is made under, {lock}, couldn't be taken ({exc})"
+            raise AuditKeyStorageError(
+                f"The lock the audit key is made under, {lock}, couldn't be taken ({exc})", exc
             ) from exc
         yield
 

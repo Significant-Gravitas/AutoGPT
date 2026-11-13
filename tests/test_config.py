@@ -488,3 +488,23 @@ def test_a_home_that_cant_be_found_is_a_configuration_error(
 
     assert exited.value.code == 78
     assert "Configuration error (allowed_root)" in capsys.readouterr().err
+
+
+def test_a_default_config_link_whose_target_is_gone_is_an_error(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A config.toml left linking to a file that was moved or deleted read as
+    a missing config, so the shim ran on the defaults, without the platform,
+    paths and capabilities it set."""
+    import autogpt_local_executor.config as config_module
+    from autogpt_local_executor.config import ConfigFileError
+
+    link = tmp_path / "config.toml"
+    try:
+        link.symlink_to(tmp_path / "moved.toml")
+    except OSError:
+        pytest.skip("this system can't make a symbolic link")
+    monkeypatch.setattr(config_module, "_default_config_path", lambda: link)
+
+    with pytest.raises(ConfigFileError, match="target doesn't exist"):
+        load_config()
