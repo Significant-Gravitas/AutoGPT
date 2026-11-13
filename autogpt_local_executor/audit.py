@@ -654,7 +654,7 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
         if not _fallback_path().exists():
             _no_keychain_yet(exc, audit_log, create=create)
         logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
-        return _fallback_audit_key()
+        return _fallback_audit_key(keyring)
     except Exception as exc:
         raise AuditKeyUnavailableError(
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
@@ -761,11 +761,13 @@ def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = T
         ) from exc
 
 
-def _fallback_audit_key() -> bytes:
+def _fallback_audit_key(keyring: Any = None) -> bytes:
     """Legacy audit-only obfuscation; the existing log authenticates the key.
 
     This format has no authentication tag or slow password KDF. OAuth tokens
     require an OS keychain, so this is not a headless token-storage solution.
+    With `keyring` (the module), a start that found no keychain looks in it
+    again under the lock before it makes a file key (_keychain_key_meanwhile).
     """
     fallback_path = _fallback_path()
     fallback_path.parent.mkdir(parents=True, exist_ok=True)
@@ -779,7 +781,32 @@ def _fallback_audit_key() -> bytes:
     # Under the lock a new key is made under: two starts would each write
     # their own, and one could read the other's half written.
     with _holding_key_lock():
+        if keyring is not None and not fallback_path.exists():
+            stored = _keychain_key_meanwhile(keyring)
+            if stored is not None:
+                return stored
         return _fallback_key_held(fallback_path, passphrase)
+
+
+def _keychain_key_meanwhile(keyring: Any) -> bytes | None:
+    """The keychain's audit key, read with the lock held by a start that found
+    no keychain and no file key: one that came up meanwhile may hold a key
+    another start stored while this one waited. A file key made then would
+    be a second key, and the log signed with it would fail verification at
+    the next start, which finds the keychain's first. None while there is
+    still no keychain, or it holds no key. A keychain that came up but can't
+    be read (locked, say) may hold one: AuditKeyUnavailableError, which the
+    start waits out as it does a keychain locked at its first look."""
+    try:
+        stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
+    except (keyring.errors.NoKeyringError, keyring.errors.InitError):
+        return None
+    except Exception as exc:
+        raise AuditKeyUnavailableError(
+            f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
+            "it may still be locked"
+        ) from exc
+    return _stored_audit_key(stored) if stored is not None else None
 
 
 def _fallback_key_held(fallback_path: Path, passphrase: str) -> bytes:

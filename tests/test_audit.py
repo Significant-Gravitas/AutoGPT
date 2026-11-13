@@ -2177,3 +2177,76 @@ def test_a_file_key_made_while_waiting_for_the_lock_is_the_one_used(
 
     assert key == other_key
     assert stored == []
+
+
+@pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
+def test_a_keychain_key_stored_while_waiting_for_the_lock_is_the_one_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """A start whose keychain wasn't up yet waited for the lock, then made a
+    file key without looking in the keychain again. A start that stored the
+    keychain's key meanwhile left two keys: this start signed its log with
+    the file key, and its next start, finding the keychain's key first,
+    failed that log's verification and stopped for good."""
+    import secrets
+
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    other_key = secrets.token_bytes(32)
+    keychain: dict[tuple[str, str], str] = {}
+    real_lock = audit_module._holding_key_lock
+
+    def read(service: str, user: str) -> str | None:
+        if not keychain:
+            # A Secret Service still starting, say: InitError, or no backend.
+            raise getattr(keyring.errors, error)("not up yet")
+        return keychain.get((service, user))
+
+    @contextlib.contextmanager
+    def after_the_other_start():
+        with real_lock():
+            keychain[(audit_module.KEYCHAIN_SERVICE, audit_module.KEYCHAIN_AUDIT_KEY_USERNAME)] = (
+                other_key.hex()
+            )
+            yield
+
+    monkeypatch.setattr(audit_module, "_holding_key_lock", after_the_other_start)
+    with patch.object(keyring, "get_password", side_effect=read):
+        key = get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert key == other_key
+    assert not (tmp_path / "audit-key.enc").exists()
+
+
+def test_a_keychain_that_comes_up_locked_while_waiting_makes_no_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A keychain that came up while this start waited for the lock, but
+    locked, may hold a key another start stored: a file key made then would
+    be a second one. The start waits for the keychain instead, as it does
+    for one locked at its first look."""
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    reads = 0
+
+    def read(_service: str, _user: str) -> str | None:
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            raise keyring.errors.InitError("not up yet")
+        raise keyring.errors.KeyringLocked("the keychain is locked")
+
+    with patch.object(keyring, "get_password", side_effect=read):
+        with pytest.raises(AuditKeyUnavailableError, match="locked"):
+            get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert reads == 2
+    assert not (tmp_path / "audit-key.enc").exists()
