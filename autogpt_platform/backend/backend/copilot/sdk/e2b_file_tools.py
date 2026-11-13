@@ -15,6 +15,7 @@ by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 import asyncio
 import base64
 import collections
+import contextlib
 import functools
 import hashlib
 import itertools
@@ -22,6 +23,8 @@ import json
 import logging
 import os
 import shlex
+import threading
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 if TYPE_CHECKING:
@@ -69,14 +72,17 @@ logger = logging.getLogger(__name__)
 # bridge copy is worthwhile).
 _DEFAULT_READ_LIMIT = 2000
 
-# Per-path lock for edit operations to prevent parallel lost updates.
+# Per-file lock for edit operations to prevent parallel lost updates.
 # When MCP tools are dispatched in parallel (readOnlyHint=True annotation),
 # two Edit calls on the same file could race through read-modify-write
-# and silently drop one change.  Keyed by resolved absolute path.
+# and silently drop one change.  Keyed by the file: its resolved absolute
+# path, or its executor and path there (see _executor_file_key).
 # Bounded to _EDIT_LOCKS_MAX entries (LRU eviction) to prevent unbounded
 # memory growth across long-running server processes.
 _EDIT_LOCKS_MAX = 1_000
-_edit_locks: collections.OrderedDict[str, asyncio.Lock] = collections.OrderedDict()
+_EDIT_LOCK_POLL_SECONDS = 0.02
+_edit_locks: collections.OrderedDict[str, threading.Lock] = collections.OrderedDict()
+_edit_locks_guard = threading.Lock()
 
 # Inline content above this threshold triggers a warning — it survived this
 # time but is dangerously close to the API output-token truncation limit.
@@ -774,17 +780,38 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     return _mcp(f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})")
 
 
-def _edit_lock(key: str) -> asyncio.Lock:
-    """The lock edits of one file take turns on, so parallel edits can't race
-    through the read-modify-write and drop a change. LRU-bounded, so the
-    locks don't grow without limit in a long-running server process."""
-    if key not in _edit_locks:
-        if len(_edit_locks) >= _EDIT_LOCKS_MAX:
-            _edit_locks.popitem(last=False)
-        _edit_locks[key] = asyncio.Lock()
-    else:
-        _edit_locks.move_to_end(key)
-    return _edit_locks[key]
+@contextlib.asynccontextmanager
+async def _edit_lock(key: str) -> AsyncIterator[None]:
+    """Edits of one file take turns, so parallel edits can't race through the
+    read-modify-write and drop a change.
+
+    Each copilot worker thread runs its own event loop, and chats bound to one
+    Local PC machine share its files across workers. So this is a thread lock,
+    polled without blocking the loop: an asyncio.Lock binds to the first loop
+    that waits on it and refuses every other, and a release from another
+    thread doesn't wake its waiter.
+    """
+    lock = _file_lock(key)
+    while not lock.acquire(blocking=False):
+        await asyncio.sleep(_EDIT_LOCK_POLL_SECONDS)
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def _file_lock(key: str) -> threading.Lock:
+    """One file's edit lock. LRU-bounded, so the locks don't grow without
+    limit in a long-running server process."""
+    with _edit_locks_guard:
+        lock = _edit_locks.get(key)
+        if lock is None:
+            if len(_edit_locks) >= _EDIT_LOCKS_MAX:
+                _edit_locks.popitem(last=False)
+            lock = _edit_locks[key] = threading.Lock()
+        else:
+            _edit_locks.move_to_end(key)
+        return lock
 
 
 def _executor_file_key(sandbox: Any, remote: str) -> str:

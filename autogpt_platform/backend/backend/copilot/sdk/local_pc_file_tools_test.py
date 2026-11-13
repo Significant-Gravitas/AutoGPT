@@ -7,6 +7,9 @@ import base64
 import contextlib
 import io
 import json
+import threading
+from collections.abc import Coroutine
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,6 +17,7 @@ from PIL import Image
 
 from backend.copilot.context import resolve_executor_path
 from backend.copilot.sdk.e2b_file_tools import (
+    _edit_lock,
     _handle_edit_file,
     _handle_glob,
     _handle_grep,
@@ -433,6 +437,94 @@ class TestLocalPCEditsTakeTurns:
 
         assert first["isError"] is False and second["isError"] is False
         assert stored["/Users/test/ws/notes.txt"] == b"1 2"
+
+
+class TestEditsTakeTurnsAcrossWorkers:
+    """Each copilot worker thread runs its own event loop, and chats bound to
+    one Local PC machine share its files, so edits of one file meet across
+    loops and threads."""
+
+    def test_a_lock_contended_on_one_worker_still_works_on_another(self):
+        key = "local_pc:machine-1:/Users/test/ws/contended.txt"
+        _Worker(_contend(key)).join()
+        # An asyncio.Lock binds to the first loop that waits on it, so this
+        # wait raised "bound to a different event loop".
+        _Worker(_contend(key)).join()
+
+    def test_two_workers_editing_one_file_take_turns(self):
+        key = "local_pc:machine-1:/Users/test/ws/turns.txt"
+        order: list[str] = []
+        first_in = threading.Event()
+        second_waiting = threading.Event()
+
+        async def first() -> None:
+            async with _edit_lock(key):
+                order.append("first in")
+                first_in.set()
+                await asyncio.to_thread(second_waiting.wait, 30)
+                # The second worker's chance to get in while this edit holds
+                # the file, which it must not take.
+                await asyncio.sleep(0.2)
+                order.append("first out")
+
+        async def second() -> None:
+            await asyncio.to_thread(first_in.wait, 30)
+            second_waiting.set()
+            async with _edit_lock(key):
+                order.append("second in")
+
+        workers = [_Worker(first()), _Worker(second())]
+        for worker in workers:
+            worker.join()
+
+        assert order == ["first in", "first out", "second in"]
+
+
+async def _contend(key: str) -> None:
+    """Hold the file's edit lock while another edit waits for it."""
+    holding = asyncio.Event()
+    release = asyncio.Event()
+
+    async def hold() -> None:
+        async with _edit_lock(key):
+            holding.set()
+            await release.wait()
+
+    async def take_turn() -> None:
+        async with _edit_lock(key):
+            pass
+
+    holder = asyncio.create_task(hold())
+    await holding.wait()
+    waiter = asyncio.create_task(take_turn())
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.wait_for(asyncio.gather(holder, waiter), timeout=30)
+
+
+class _Worker:
+    """Runs a coroutine as a copilot worker does: on its own event loop, in
+    its own thread."""
+
+    def __init__(self, coro: Coroutine[Any, Any, None]) -> None:
+        self.errors: list[BaseException] = []
+        self._thread = threading.Thread(target=self._run, args=(coro,), daemon=True)
+        self._thread.start()
+
+    def _run(self, coro: Coroutine[Any, Any, None]) -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(coro)
+        except BaseException as exc:
+            self.errors.append(exc)
+        finally:
+            loop.close()
+
+    def join(self) -> None:
+        self._thread.join(timeout=60)
+        assert not self._thread.is_alive(), "the worker's edit never finished"
+        if self.errors:
+            raise self.errors[0]
 
 
 class TestLocalPCEditResultSize:
