@@ -1293,4 +1293,10 @@ session that completed its handshake has stayed up for a minute, so a
 session that drops after running reconnects promptly, while one the
 platform ends right after `HELLO_ACK` (closing with 1011 while
 overloaded, say, or cleanly) counts as a failed connect and the backoff keeps growing. On reconnect, shim sends a new `HELLO`. Platform re-issues `HELLO_ACK` with same session.
+The shim also closes a connection itself (1000) to send a new `HELLO`
+when one it sent left `computer_use` out only for want of the desktop's
+display (a Linux systemd service started at login, before the desktop
+exported it) and the display is up now. It waits until nothing is under
+way on that connection, and on the machine connection, whose next session
+stops every chat's, until no chat's work is either.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.

@@ -92,8 +92,13 @@ them, and lets them go when the session ends. GNOME and KDE export them, as
 do the Xsession and xinit scripts of most distributions. A session that
 doesn't, such as some standalone window managers, needs
 `dbus-update-activation-environment --systemd DISPLAY XAUTHORITY` (or
-`WAYLAND_DISPLAY`) in its startup. A shim started by hand, or a service that
-started with a display, keeps its own. The service has
+`WAYLAND_DISPLAY`) in its startup. HELLO is the only place the platform
+learns that computer use is on offer, so a connection whose HELLO came
+before the display (the service's, at login) closes once the display is up
+and nothing is under way on it (on the machine's connection, nothing in
+any chat either), and the reconnect's HELLO offers computer use. A shim
+started by hand, or a service that started with a display, keeps its own.
+The service has
 `AUTOGPT_SHIM_SUPERVISOR=systemd` in its unit; an install from before
 2026-11-09 picks it up with `autogpt-shim install`.
 
