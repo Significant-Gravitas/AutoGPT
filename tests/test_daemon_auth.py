@@ -836,6 +836,52 @@ async def test_a_kept_pair_does_not_replace_a_sign_in_stored_after_the_retry_rea
     assert store.unsaved_refresh is None
 
 
+@pytest.mark.asyncio
+async def test_a_refresh_outlives_the_session_stopped_while_it_waited_for_the_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chat's session stopped (its task cancelled, _stop_child_session)
+    while its refresh waited for the token endpoint dropped the answer, though
+    the platform had rotated the refresh token already: the keychain kept the
+    used-up one, and the next session's refresh sent it again, was refused,
+    and ended the sign-in."""
+    _keychain_failing_writes(monkeypatch)
+    config = _refresh_config(tmp_path)
+    exchanged = asyncio.Event()
+    answer = asyncio.Event()
+
+    async def hold_the_answer() -> None:
+        exchanged.set()
+        await answer.wait()
+
+    sent = _rotating_token_endpoint(monkeypatch, before_answering=hold_the_answer)
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    lock = asyncio.Lock()
+    stopped = ShimDaemon(
+        config, token_store=store, audit=MagicMock(spec=AuditWriter), token_refresh_lock=lock
+    )
+    other = ShimDaemon(
+        config, token_store=store, audit=MagicMock(spec=AuditWriter), token_refresh_lock=lock
+    )
+    refresh = asyncio.create_task(
+        stopped._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+    )
+    await asyncio.wait_for(exchanged.wait(), timeout=10)
+    refresh.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await refresh
+    answer.set()
+
+    token = await asyncio.wait_for(
+        other._get_access_token(refresh_on_fail=True, rejected_token="access-0"), timeout=10
+    )
+
+    assert sent == ["refresh-0"]
+    assert token == "access-1"
+    assert await store.get_refresh_token() == "refresh-1"
+
+
 @pytest.mark.parametrize(
     ("failure", "permanent", "transient"),
     [

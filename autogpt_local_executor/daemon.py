@@ -265,6 +265,13 @@ def _keychain_not_up_yet(exc: Exception) -> KeychainNotUpError:
     return KeychainNotUpError(exc)
 
 
+def _retrieve_outcome(task: asyncio.Future[Any]) -> None:
+    """Take a shielded task's exception, so one whose caller stopped waiting
+    isn't logged as never retrieved; the caller still waiting gets it too."""
+    if not task.cancelled():
+        task.exception()
+
+
 # RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
 # close code. A longer reason fails to send, and the close code with it.
 MAX_CLOSE_REASON_BYTES = 123
@@ -897,6 +904,16 @@ class ShimDaemon:
         self._ensure_credential_scope()
         if not refresh_on_fail:
             return await self._read_access_token()
+        # In a task of its own, which stopping this session (its task
+        # cancelled, _stop_child_session) leaves running: the platform may
+        # have rotated the refresh token already, and only the exchange's
+        # answer holds the new pair. The task holds the refresh lock until it
+        # ends, so no other session sends the used-up token meanwhile.
+        refresh = asyncio.ensure_future(self._refresh_access_token(rejected_token))
+        refresh.add_done_callback(_retrieve_outcome)
+        return await asyncio.shield(refresh)
+
+    async def _refresh_access_token(self, rejected_token: str | None) -> str | None:
         async with self._token_refresh_lock:
             # Another machine/session socket may already have rotated the
             # refresh family while this connection was receiving its 401.
