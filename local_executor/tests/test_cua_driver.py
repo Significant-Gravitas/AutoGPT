@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -614,6 +615,64 @@ async def test_the_driver_restarts_after_it_stops_then_gives_up(fake_log, monkey
     assert len(_records(fake_log, "initialize")) == 2
 
 
+async def test_a_restart_after_the_temp_cleaner_purged_the_policy_folder(fake_log) -> None:
+    """The policy folder was made once, at the first start, so after a
+    temporary-file cleaner (systemd-tmpfiles, macOS's) purged it while the
+    shim ran, every later start failed to write its policy. Each start now
+    makes a folder of its own: the purged one's name, once free, could be
+    another user's folder."""
+    bridge = _bridge()
+    try:
+        await bridge.snapshot()
+        [first] = _records(fake_log, "initialize")
+        first_folder = Path(first["env"]["CUA_DRIVER_POLICY_FILE"]).parent
+        shutil.rmtree(first_folder)
+        with pytest.raises(DriverUnavailable, match="stopped during the call"):
+            await bridge.call_tool("drag", {"pid": -3}, timeout=10)
+
+        result = await bridge.call_tool("click", {"pid": 7}, timeout=10)
+    finally:
+        await bridge.close()
+
+    assert result["structuredContent"] == {"arguments": {"pid": 7}}
+    second = _records(fake_log, "initialize")[1]
+    assert Path(second["env"]["CUA_DRIVER_POLICY_FILE"]).parent != first_folder
+
+
+async def test_a_driver_of_another_version_is_named_on_every_start(fake_log, monkeypatch) -> None:
+    """Each start of a driver of another minor version counted against the
+    restart budget, so after three the shim reported that the driver had
+    stopped three times instead of the version it needs."""
+    monkeypatch.setenv("FAKE_CUA_VERSION", "0.39.0")
+    bridge = _bridge()
+    try:
+        for _ in range(driver.MAX_STARTS_PER_WINDOW + 1):
+            with pytest.raises(DriverUnavailable) as raised:
+                await bridge.snapshot()
+            assert raised.value.code == ErrorCode.DEPENDENCY_MISSING
+    finally:
+        await bridge.close()
+
+
+async def test_a_driver_that_cannot_be_run_is_named_on_every_start(tmp_path: Path) -> None:
+    """A driver that was found but couldn't be run (gone by then, or on a
+    noexec mount) counted against the restart budget the same way."""
+
+    def missing(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        return StdioMcpClient([str(tmp_path / "gone"), *argv[1:]], **kwargs)
+
+    bridge = CuaDriverBridge(
+        tools=frozenset({"click"}), binary=FAKE, platform="linux", client_factory=missing
+    )
+    try:
+        for _ in range(driver.MAX_STARTS_PER_WINDOW + 1):
+            with pytest.raises(DriverUnavailable) as raised:
+                await bridge.snapshot()
+            assert raised.value.code == ErrorCode.DEPENDENCY_MISSING
+    finally:
+        await bridge.close()
+
+
 @pytest.mark.parametrize(
     ("platform", "argv"),
     [("darwin", ["mcp", "--direct"]), ("linux", ["mcp"]), ("win32", ["mcp"])],
@@ -658,6 +717,20 @@ def test_an_explicit_driver_in_the_current_folder_runs_from_there(
     assert found is not None and found.is_absolute()
     assert found.samefile(tmp_path / name)
     assert Path(driver.driver_argv(found, "direct")[0]).is_absolute()
+
+
+def test_an_explicit_driver_path_that_cannot_be_expanded_is_not_found(monkeypatch) -> None:
+    """Path.expanduser raises RuntimeError for `~someone` with no such
+    account, or a home it can't find, and no caller of find_driver_binary
+    caught it: the shim stopped at start instead of reporting cua-driver
+    missing."""
+
+    def no_home(self: Path) -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(driver.Path, "expanduser", no_home)
+
+    assert driver.find_driver_binary("~nobody-here/cua-driver") is None
 
 
 # ── Catalog ──────────────────────────────────────────────────────────────
