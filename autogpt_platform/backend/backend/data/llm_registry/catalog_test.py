@@ -435,6 +435,27 @@ def test_gemini_4_argon_bills_at_authored_rates():
     assert entry.supports_reasoning is True
 
 
+def test_gemini_4_hydrogen_bills_at_authored_rates():
+    """Gemini 4 Hydrogen (OpenRouter, $1.50/$7.50 per 1M, $0.075/1M cached
+    read) must match the authored catalog entry."""
+    hydrogen = LLMModel("google/gemini-4-hydrogen")
+    assert hydrogen is LLMModel.GEMINI_4_HYDROGEN
+    assert MODEL_COST[hydrogen] == 4
+    assert TOKEN_COST[hydrogen].model_dump() == {
+        "input": 225.0,
+        "output": 1125.0,
+        "cache_read": 11.25,
+        "cache_creation": 12.5,
+    }
+    assert MODEL_METADATA[hydrogen].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-hydrogen")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_gemini_3_8_flash_bills_at_authored_rates():
     """Gemini 3.8 Flash (OpenRouter, live rate $0.825/$4.125
     per 1M as of 2026-10-17) — flat tier and per-1M projections must
