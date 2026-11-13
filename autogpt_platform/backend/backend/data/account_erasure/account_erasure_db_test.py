@@ -795,6 +795,7 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
         assert (await routine.erase_account(user_id, dry_run=False)).complete
 
     assert await ban_record.is_banned_address(banned_email.upper())
+    assert await ban_record.is_banned_address(banned_email.replace("@", "+again@"))
     assert not await ban_record.is_banned_address(not_banned_email)
     record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
         where={"emailHash": ban_record.email_hash(banned_email) or ""}
@@ -808,6 +809,44 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
     assert not await prisma.models.AccountBanRecord.prisma().count(
         where={"id": record.id}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_longer_ban_on_another_spelling_outlasts_the_shared_record(
+    server: SpinTestServer, monkeypatch
+):
+    """Two accounts on one mailbox share a record: the second, banned for
+    good, moves its end out to 3 years, and a rerun of it changes nothing."""
+    monkeypatch.setattr(ban_record.settings.secrets, "ban_record_hash_key", "test-key")
+    mailbox = f"ban-{uuid.uuid4().hex[:8]}@example.com"
+    first = Subject(
+        user_id=str(uuid.uuid4()),
+        email=mailbox.replace("@", "+one@"),
+        banned=True,
+        ban_expires=datetime.now(UTC) + timedelta(days=30),
+    )
+    second = Subject(
+        user_id=str(uuid.uuid4()), email=mailbox.replace("@", "+two@"), banned=True
+    )
+    digest = ban_record.email_hash(mailbox) or ""
+
+    try:
+        await ban_record.keep_ban_record(first, dry_run=False)
+        await ban_record.keep_ban_record(second, dry_run=False)
+        record = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+            where={"emailHash": digest}
+        )
+        assert record.deleteAfter - record.recordedAt == ban_record.BAN_RECORD_RETENTION
+
+        await ban_record.keep_ban_record(second, dry_run=False)
+        again = await prisma.models.AccountBanRecord.prisma().find_unique_or_raise(
+            where={"emailHash": digest}
+        )
+        assert again.deleteAfter == record.deleteAfter
+    finally:
+        await prisma.models.AccountBanRecord.prisma().delete_many(
+            where={"emailHash": digest}
+        )
 
 
 @pytest.mark.asyncio(loop_scope="session")
