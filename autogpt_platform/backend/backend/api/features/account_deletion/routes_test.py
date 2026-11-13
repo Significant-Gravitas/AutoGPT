@@ -5,7 +5,8 @@ Each test gets a throwaway account of its own, removed afterwards with its
 deletion request and this process's closed-account answer for it. Only the
 edges are mocked, each where it is used: Stripe (in credit.py), the providers
 behind the connected apps, the scheduler, the AutoPilot turn and chat-link
-lookups, the MailerLite queue, the email client and the PostHog client. The app runs on the session event loop through httpx's ASGI transport;
+lookups, the MailerLite queue, the email client and the PostHog client.
+The app runs on the session event loop through httpx's ASGI transport;
 TestClient's own loop would strand the Prisma connection the next test needs.
 """
 
