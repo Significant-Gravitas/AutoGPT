@@ -192,10 +192,12 @@ class PrivacyRouter:
 ```
 
 The router also strips file-content references from the conversation
-history that flows to Claude. For a privacy-mode file, the cloud LLM sees
-only the stub the platform passes on, `{path, size, mime_type, stub_id}`:
-never the file body, any part of it, or a hash of it. The path itself is
-visible, and a path can say a lot (`/Users/alice/medical-records.pdf`).
+history that flows to Claude. In place of a privacy-mode file, the
+platform passes the cloud LLM only a stub, `{path, size, mime_type,
+stub_id}`, which holds no part of the file body and no hash of it. That
+limits the stub, not what the cloud can receive: the local model's answers
+can carry the body (below). The path itself is visible, and a path can say
+a lot (`/Users/alice/medical-records.pdf`).
 
 That doesn't keep the content secret. `local_llm_query` returns the local
 model's output to Claude unfiltered, and a task such as "extract dates" or
