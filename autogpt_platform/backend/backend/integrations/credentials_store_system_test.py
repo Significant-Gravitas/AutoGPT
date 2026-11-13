@@ -12,6 +12,7 @@ from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials
 from backend.integrations.credentials_store import (
+    DEFAULT_CREDENTIALS,
     SYSTEM_CREDENTIAL_IDS,
     is_system_credential,
     is_system_provider,
@@ -60,20 +61,21 @@ def test_providers_with_a_runnable_sdk_key_count_as_supplied():
 
 
 class _Secrets:
-    """Settings secrets with only the given keys set."""
+    """Settings secrets with only the given keys set, or every key if ``all_set``."""
 
-    def __init__(self, **keys: str) -> None:
+    def __init__(self, all_set: bool = False, **keys: str) -> None:
+        self._all_set = all_set
         self._keys = keys
 
     def __getattr__(self, name: str) -> str:
-        return self._keys.get(name, "")
+        return "configured" if self._all_set else self._keys.get(name, "")
 
 
-def _system_providers_with(**keys: str) -> set[str]:
+def _system_providers_with(secrets: _Secrets) -> set[str]:
     with (
         patch(
             "backend.integrations.credentials_store.settings",
-            SimpleNamespace(secrets=_Secrets(**keys)),
+            SimpleNamespace(secrets=secrets),
         ),
         patch(
             "backend.sdk.registry.AutoRegistry.get_all_credentials",
@@ -86,8 +88,17 @@ def _system_providers_with(**keys: str) -> set[str]:
 def test_a_built_in_provider_without_a_platform_key_is_not_supplied():
     """A keyless install supplies only the always-available Ollama credential,
     the same set ``get_all_creds`` hands out (#16772)."""
-    assert _system_providers_with() == {"ollama"}
+    assert _system_providers_with(_Secrets()) == {"ollama"}
 
 
 def test_a_built_in_provider_with_a_platform_key_is_supplied():
-    assert _system_providers_with(openai_api_key="sk-test") == {"ollama", "openai"}
+    assert _system_providers_with(_Secrets(openai_api_key="sk-test")) == {
+        "ollama",
+        "openai",
+    }
+
+
+def test_every_built_in_provider_is_supplied_once_its_key_is_set():
+    assert _system_providers_with(_Secrets(all_set=True)) == {
+        cred.provider for cred in DEFAULT_CREDENTIALS
+    }
