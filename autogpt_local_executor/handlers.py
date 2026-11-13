@@ -1474,6 +1474,9 @@ def _session_ended(raw: dict[str, Any]) -> bool:
 
 # How long the installed apps' names are kept for checking Windows launches.
 INSTALLED_APPS_SECONDS = 60.0
+# How many chats' driver label renewals a machine keeps (session_label): a
+# chat renewed less recently than that many others starts from its first.
+MAX_RENEWED_LABELS = 1024
 
 
 class ComputerUseHandler:
@@ -1502,8 +1505,11 @@ class ComputerUseHandler:
         self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
         self.clipboard_writeback = ClipboardWritebackRegistry()
-        # How many times cua-driver ended this session's label (session_label).
-        self._label_renewals = 0
+        # How many times cua-driver ended each chat's label, by the label the
+        # chat started from (session_label). The machine's, shared like the
+        # driver (share_with): a chat's later sessions use the same driver,
+        # which refuses the labels it ended until it restarts.
+        self._label_renewals: dict[str, int] = {}
         # Windows: the installed apps' names, and when they were listed.
         self._installed_apps: tuple[list[str], float] | None = None
 
@@ -1554,13 +1560,14 @@ class ComputerUseHandler:
 
     def share_with(self, other: ComputerUseHandler) -> None:
         """Make `other`, a child session's handler, use this one's driver
-        process, turn, screenshot budget and clipboard record: they are the
-        machine's, not the session's."""
+        process, turn, screenshot budget, clipboard record and label
+        renewals: they are the machine's, not the session's."""
         other._driver = self.driver
         other._machine_turn = self._machine_turn
         other._owns_driver = False
         other._screenshot_rate = self._screenshot_rate
         other.clipboard_writeback = self.clipboard_writeback
+        other._label_renewals = self._label_renewals
 
     async def screen_size(self) -> tuple[int, int] | None:
         """The main display's logical size, from the driver, for HELLO."""
@@ -1597,10 +1604,25 @@ class ComputerUseHandler:
     def session_label(self) -> str:
         """The cua-driver session every call from this shim session carries,
         so each gets its own agent cursor and cleanup. A new one each time
-        cua-driver ends the last (call_driver)."""
+        cua-driver ends the last (call_driver), which the chat's later
+        sessions on this machine go on from: the driver they share refuses
+        an ended label until it restarts."""
+        label = self._first_label
+        renewals = self._label_renewals.get(label, 0)
+        return f"{label}.{renewals}" if renewals else label
+
+    @property
+    def _first_label(self) -> str:
         session_id = self.config.session_id or "default"
-        label = "autogpt-" + hashlib.sha256(session_id.encode()).hexdigest()[:12]
-        return f"{label}.{self._label_renewals}" if self._label_renewals else label
+        return "autogpt-" + hashlib.sha256(session_id.encode()).hexdigest()[:12]
+
+    def _renew_label(self) -> None:
+        """Move this chat to its next label, as the machine's most recently
+        renewed (MAX_RENEWED_LABELS)."""
+        label = self._first_label
+        self._label_renewals[label] = self._label_renewals.pop(label, 0) + 1
+        while len(self._label_renewals) > MAX_RENEWED_LABELS:
+            del self._label_renewals[next(iter(self._label_renewals))]
 
     async def call_driver(
         self,
@@ -1625,7 +1647,7 @@ class ComputerUseHandler:
         )
         if arguments.get("session") != self.session_label or not _session_ended(raw):
             return raw
-        self._label_renewals += 1
+        self._renew_label()
         arguments["session"] = self.session_label
         logger.info(
             f"cua-driver ended this session's driver session; going on as {arguments['session']}"
