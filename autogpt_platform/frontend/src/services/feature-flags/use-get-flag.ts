@@ -35,7 +35,6 @@ const defaultFlags = {
   [Flag.COPILOT_STREAM_RUNTIME]: false,
   // Empty keeps the default onboarding order (`resolveStepOrder`).
   [Flag.ONBOARDING_STEP_ORDER]: [] as string[],
-  [Flag.SELF_SERVE_ACCOUNT_DELETION]: false,
 } satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;
@@ -85,8 +84,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
     case Flag.COPILOT_STREAM_RUNTIME:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
-    case Flag.SELF_SERVE_ACCOUNT_DELETION:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
     case Flag.ONBOARDING_STEP_ORDER:

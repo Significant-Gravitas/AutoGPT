@@ -61,9 +61,6 @@
           "403": {
             "description": "Account deletion isn't available while impersonating a user."
           },
-          "404": {
-            "description": "The self-serve-account-deletion flag is off"
-          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -101,9 +98,6 @@
           },
           "403": {
             "description": "Account deletion isn't available while impersonating a user."
-          },
-          "404": {
-            "description": "The self-serve-account-deletion flag is off"
           },
           "422": {
             "description": "Validation Error",
@@ -27625,8 +27619,7 @@
           "copilot-auto-mode",
           "copilot-stream-shadow",
           "copilot-stream-runtime",
-          "onboarding-step-order",
-          "self-serve-account-deletion"
+          "onboarding-step-order"
         ],
         "title": "FrontendFlag",
         "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
@@ -27646,8 +27639,7 @@
           "COPILOT_AUTO_MODE",
           "COPILOT_STREAM_SHADOW",
           "COPILOT_STREAM_RUNTIME",
-          "ONBOARDING_STEP_ORDER",
-          "SELF_SERVE_ACCOUNT_DELETION"
+          "ONBOARDING_STEP_ORDER"
         ]
       },
       "FrontendFlagValues": {

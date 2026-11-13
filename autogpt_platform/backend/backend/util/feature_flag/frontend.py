@@ -59,7 +59,6 @@ class FrontendFlag(str, Enum):
     # The onboarding steps in the order an experiment wants them: the named
     # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
     ONBOARDING_STEP_ORDER = "onboarding-step-order"
-    SELF_SERVE_ACCOUNT_DELETION = Flag.SELF_SERVE_ACCOUNT_DELETION.value
 
     @classmethod
     def __get_pydantic_json_schema__(
