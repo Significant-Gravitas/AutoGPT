@@ -846,3 +846,32 @@ async def test_a_longer_ban_on_another_spelling_outlasts_the_shared_record(
         await prisma.models.AccountBanRecord.prisma().delete_many(
             where={"emailHash": digest}
         )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_closed_without_the_email_is_erased_without_one(
+    server: SpinTestServer, outside_services: AsyncMock
+):
+    """`--close --now --no-email`: three closed accounts whose confirmation
+    did not go out. One was closed with it skipped, one closed earlier and
+    marked before the erasure, one left as it is: only that last one gets the
+    late email."""
+    skipped, marked, emailed = [await _account() for _ in range(3)]
+    source = prisma.enums.AccountDeletionSource.EMAIL
+    assert await close_account(skipped, source, confirmation_skipped=True)
+    assert await close_account(marked, source)
+    assert await close_account(emailed, source)
+    assert await request.skip_confirmation(marked)
+    for user_id in (skipped, marked, emailed):
+        await _past_the_14_days(user_id)
+        assert (await routine.erase_account(user_id, dry_run=False)).complete
+
+    outside_services.assert_awaited_once()
+    assert outside_services.await_args.args[0] == f"deletion-{emailed[:8]}@example.com"
+    rows = await prisma.models.AccountDeletionRequest.prisma().find_many(
+        where={"userId": {"in": [skipped, marked]}}
+    )
+    assert [(row.confirmationSkipped, row.confirmationSentAt) for row in rows] == [
+        (True, None),
+        (True, None),
+    ]
