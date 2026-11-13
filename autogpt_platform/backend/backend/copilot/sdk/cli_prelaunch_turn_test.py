@@ -69,6 +69,7 @@ def _patched_turn(client_factory, session, *, resolve=None, persist=None):
             ("active_mode", None),
             ("build_builder_system_prompt_suffix", ""),
             ("build_session_context", ""),
+            ("first_message_expert_context", ""),
             ("build_turn_budget_block", ""),
             ("persist_and_record_usage", None),
             ("capture_chat_turn", None),

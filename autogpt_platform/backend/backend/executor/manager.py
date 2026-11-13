@@ -948,7 +948,13 @@ async def _enqueue_next_nodes(
         next_data = parse_execution_output(
             output, next_output_name, next_node_id, next_input_name
         )
-        if next_data is None and output_name != next_output_name:
+        if (
+            next_data is None
+            and output_name != next_output_name
+            and not (
+                output[1] is None and output_name == sanitize_pin_name(next_output_name)
+            )
+        ):
             return enqueued_executions
         next_node = await db_client.get_node(next_node_id)
 
