@@ -25,21 +25,24 @@ from pydantic import BaseModel, Field
 from .recording_models import (
     DESTRUCTIVE_VERBS,
     MUTATING_VERBS,
+    VALUE_TYPES,
     TrajectoryStep,
     WorkflowRecording,
 )
-
-# Field types whose value is, by §8 prior, more likely to vary per run.
-# This is a PRIOR that seeds a clarifying question — never a basis for
-# auto-save. The only things that auto-confirm a parameter are: a value
-# that changed across ≥2 demonstration rows, an explicit co-pilot answer,
-# or a data-source column join (all in `clarifications`).
-_PARAMETER_PRIOR_TYPES: frozenset[str] = frozenset({"text", "email", "number", "date"})
 
 # Field types that should never be carried as a constant in the skill even
 # if they didn't vary — secrets stay on the machine (§7 value-stripping +
 # §9 secret hygiene).
 _SECRET_TYPES: frozenset[str] = frozenset({"secret"})
+
+# Field types whose value, by §8 prior, may vary per run: every type but a
+# secret. One demonstration can't show a value to be fixed, and a file
+# field's value is a path on the person's machine. This is a PRIOR that
+# seeds a clarifying question — never a basis for auto-save. The only things
+# that auto-confirm a parameter are: a value that changed across ≥2
+# demonstration rows, an explicit co-pilot answer, or a data-source column
+# join (all in `clarifications`).
+_PARAMETER_PRIOR_TYPES: frozenset[str] = VALUE_TYPES - _SECRET_TYPES
 
 
 class SkillParameter(BaseModel):

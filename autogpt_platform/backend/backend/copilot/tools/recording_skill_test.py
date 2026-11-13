@@ -151,6 +151,44 @@ class TestSingleRowGate:
         assert email and email[0].confirmed is False
         assert skill.needs_confirmation is True
 
+    @pytest.mark.parametrize(
+        ("vtype", "action", "raw"),
+        [
+            ("file", "fill", "/Users/alice/Documents/tax-return-2025.pdf"),
+            ("enum", "select", "Express shipping"),
+        ],
+    )
+    def test_a_single_row_file_or_choice_is_asked_about_not_kept(
+        self, vtype, action, raw
+    ):
+        """Only text, email, number and date fields were candidates, so a
+        file field's local path, or a choice from a list, became a constant
+        without a question. With no candidate left, the gate let the
+        single-row skill save, the path written into it."""
+        recording = WorkflowRecording.from_payload(
+            {
+                "recording_id": "rec_file",
+                "steps": [
+                    _step(
+                        1,
+                        action,
+                        label="Attachment",
+                        raw=raw,
+                        vtype=vtype,
+                        selectors=[{"strategy": "id", "value": "#attachment"}],
+                    ),
+                    _step(2, "submit", label="Save", selectors=None),
+                ],
+            }
+        )
+
+        skill = generate_skill_from_recording(recording)
+
+        [attachment] = [p for p in skill.parameters if p.label == "Attachment"]
+        assert attachment.confirmed is False
+        assert skill.needs_confirmation is True
+        assert raw not in skill.skill_md
+
 
 class TestCoPilotConfirmation:
     def test_explicit_confirmation_unblocks(self):
