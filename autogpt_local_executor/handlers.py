@@ -2375,13 +2375,14 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "- Screenshots come back in results, at most "
         f"{config.max_screenshots_per_minute} images a minute.",
         "- Arguments that read or write this computer's disk (each tool's "
-        "`approval_arguments`) wait for the person's approval on every call. Use one only "
-        "when the task needs that file. A `run_script` script waits too, since its calls "
-        "can save a screenshot to a file: use `run_steps` or single calls unless the flow "
-        "needs a script's logic.",
+        "`approval_arguments`) need approval on every call: the platform asks the person, "
+        "unless the chat runs Unsupervised or a standing rule the person set approves the "
+        "call without asking. Use one only when the task needs that file. A `run_script` "
+        "script needs approval too, since its calls can save a screenshot to a file: use "
+        "`run_steps` or single calls unless the flow needs a script's logic.",
         "- Open an app with `launch_app` by its `name` (or `bundle_id`) alone. A command "
-        "line, a path, links or files to open, extra arguments or an inspector port wait "
-        "for the person's approval, since the program they start runs out of sight.",
+        "line, a path, links or files to open, extra arguments or an inspector port need "
+        "the same approval, since the program they start runs out of sight.",
         f"- {clipboard}",
         "- Only the tools listed are available. Driver configuration, sessions, "
         "recording, process control, downloads and page JavaScript are not.",

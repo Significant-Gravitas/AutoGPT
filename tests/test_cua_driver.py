@@ -1052,7 +1052,22 @@ async def test_the_tool_list_carries_the_drivers_guidance_and_this_machines_rule
     assert "session" not in zoom.input_schema["properties"]
     assert zoom.input_schema["required"] == []
     assert zoom.approval_arguments == {}
-    assert "wait for the person's approval" in payload.instructions
+    assert "need approval on every call" in payload.instructions
+
+
+async def test_the_tool_list_promises_no_prompt_for_an_approval(make_handler) -> None:
+    """The guidance said disk arguments, scripts and launch arguments wait for
+    the person's approval on every call. A chat that runs Unsupervised, or a
+    standing rule the person set on an earlier card, approves without asking,
+    so the model could tell the person to expect a prompt that never came."""
+    handler = make_handler()
+
+    response = await handler.handle(ComputerToolsRequestMessage(id=new_id(), ts=now_ts()))
+
+    assert isinstance(response, ComputerToolsResponseMessage)
+    instructions = response.payload.instructions
+    assert "wait for the person's approval" not in instructions
+    assert "unless the chat runs Unsupervised or a standing rule" in instructions
 
 
 async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler) -> None:
