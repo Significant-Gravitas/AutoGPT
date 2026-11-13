@@ -22,7 +22,7 @@ export function LocalExecutorSetup({ isRefreshing, onRefresh }: Props) {
       title:
         "Install the Local PC executor (Python 3.11+, pipx, and Git required)",
       command:
-        "pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@d1594054d1325aa81f5f783d0ed9a5af9c717e73",
+        "pipx install git+https://github.com/Significant-Gravitas/autogpt-local-executor.git@8e36c776abb2aaeab1f52a4e6bd4884c1b22217c",
     },
     {
       title: "Sign in to this AutoGPT deployment",
