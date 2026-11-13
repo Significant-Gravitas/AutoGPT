@@ -687,6 +687,39 @@ async def test_a_driver_reporting_a_version_too_long_to_pass_on_is_stopped(
         await bridge.close()
 
 
+@pytest.mark.parametrize("tools", [1, True, "click", {"name": "click"}])
+async def test_a_driver_whose_tool_list_is_not_a_list_is_stopped(
+    fake_log, monkeypatch, tools: object
+) -> None:
+    """A tools/list answer of `{"tools": 1}` raised TypeError, which the
+    start's cleanup doesn't catch: the driver it had started kept running,
+    held by no one, so the bridge's close() couldn't stop it. A string or an
+    object was read as an empty list."""
+    monkeypatch.setenv("FAKE_CUA_TOOLS_LIST", json.dumps({"tools": tools}))
+    started: list[StdioMcpClient] = []
+
+    def factory(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = fake_client(argv, **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=factory,
+    )
+    try:
+        with pytest.raises(DriverUnavailable, match="isn't a list") as raised:
+            await bridge.snapshot()
+        assert raised.value.code == ErrorCode.INTERNAL_ERROR
+        assert started and not any(client.alive for client in started)
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
+
+
 async def test_a_driver_that_cannot_be_run_is_named_on_every_start(tmp_path: Path) -> None:
     """A driver that was found but couldn't be run (gone by then, or on a
     noexec mount) counted against the restart budget the same way."""

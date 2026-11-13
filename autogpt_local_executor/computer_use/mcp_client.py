@@ -238,7 +238,12 @@ class StdioMcpClient:
             result = await self.request(
                 "tools/list", {"cursor": cursor} if cursor else {}, timeout=remaining
             )
-            tools.extend(t for t in result.get("tools") or [] if isinstance(t, dict))
+            page = result.get("tools") or []
+            if not isinstance(page, list):
+                # Iterating a number raised TypeError, which the bridge's start
+                # doesn't catch, so the driver it had started went on running.
+                raise McpError(INTERNAL_ERROR, "tools/list answered with tools that isn't a list")
+            tools.extend(t for t in page if isinstance(t, dict))
             next_cursor = result.get("nextCursor")
             if next_cursor is None or next_cursor == "":
                 return tools
