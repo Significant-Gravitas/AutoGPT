@@ -203,7 +203,7 @@ async def test_get_store_creator(mocker):
 async def test_a_closed_accounts_creator_page_is_not_found(mocker):
     """Closing an account hides its creator page until it is reopened."""
     creator = mocker.patch("prisma.models.Creator.prisma")
-    creator.return_value.find_unique = AsyncMock(return_value=MagicMock())
+    creator.return_value.find_unique = AsyncMock(return_value=MagicMock(num_agents=1))
     profile = mocker.patch("prisma.models.Profile.prisma")
     profile.return_value.find_unique = AsyncMock(
         return_value=MagicMock(userId="closed-user")

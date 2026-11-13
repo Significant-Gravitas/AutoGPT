@@ -16,7 +16,7 @@ export function LoginWhatsNew() {
     <section
       aria-labelledby={headingID}
       aria-busy={isLoading}
-      className="flex max-w-lg flex-col gap-3"
+      className="flex min-h-0 max-w-lg flex-col gap-3"
     >
       <div className="flex items-center justify-between gap-4">
         <h2

@@ -79,6 +79,10 @@ class Flag(str, Enum):
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
+    # Offers Otto the render_ui tool. The chat draws stored cards either way,
+    # so turning this off never breaks an old conversation.
+    COPILOT_VISUAL_ANSWERS = "copilot-visual-answers"
+
     # --- Dream-system gates (P0) ---
     #
     # No "enabled-users list" flag — per-flag targeting natively
