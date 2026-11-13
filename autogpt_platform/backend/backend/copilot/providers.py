@@ -77,6 +77,9 @@ SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
         "name": "Stripe Link",
         "env_vars": [],
         "default_scopes": ["payment_methods.agentic", "userinfo:read"],
+        # And for the same reason the swap proxy never sends it anywhere.
+        "swap_hosts": [],
+        "content_hosts": [],
     },
     "github": {
         "name": "GitHub",
