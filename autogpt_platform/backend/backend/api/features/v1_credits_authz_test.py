@@ -217,6 +217,11 @@ def credit_stubs(mocker: pytest_mock.MockFixture) -> CreditStubs:
         "backend.api.features.billing.subscriptions.routes.get_credit_model",
         return_value=model,
     )
+    # Auto top-up asks the database whether the account is closed.
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.refuse_closed_account",
+        new_callable=AsyncMock,
+    )
     return CreditStubs(
         get_credit_model=mocker.patch(
             "backend.api.features.billing.credits.routes.get_credit_model",

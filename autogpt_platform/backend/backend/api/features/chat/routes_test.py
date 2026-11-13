@@ -317,6 +317,7 @@ def _mock_stream_internals(
         organization_id=None,
         team_id=None,
         expert_id=None,
+        archived_at=None,
     )
     mock_session.metadata.llm_auth_provider = llm_auth_provider
     mock_session.metadata.llm_credential_id = (
@@ -3169,6 +3170,7 @@ def _mock_stream_queue_internals(
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
         mock_session.expert_id = None
+        mock_session.archived_at = None
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
             new_callable=AsyncMock,
@@ -3532,7 +3534,7 @@ def test_get_pending_messages_returns_200_with_empty_buffer(
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(),
+        return_value=mocker.MagicMock(archived_at=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
@@ -3555,7 +3557,7 @@ def test_get_pending_messages_returns_queued_messages(
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(),
+        return_value=mocker.MagicMock(archived_at=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
@@ -4775,8 +4777,51 @@ def test_reset_usage_refunds_on_redis_failure(
 # ─── resume_session_stream ───────────────────────────────────────────
 
 
+@pytest.fixture
+def resumed_chat(mocker: pytest_mock.MockerFixture):
+    """The chat a resume reads, still open; a test archives it to reset it."""
+    chat = _make_session_info(expert_id="expert-1")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=chat),
+    )
+    return chat
+
+
+@pytest.mark.parametrize("query", ["", "?turn=turn-1&after=0-0"])
+def test_resume_session_stream_of_a_reset_experts_chat_says_it_was_removed(
+    mocker: pytest_mock.MockerFixture, resumed_chat, query: str
+) -> None:
+    """A finished turn of a chat a reset removed stays in Redis until it
+    expires; resuming it answers like opening the chat, not with the turn."""
+    resumed_chat.archived_at = datetime.now(UTC)
+    mock_registry = MagicMock()
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    find = mocker.patch(
+        "backend.api.features.chat.removed_chat.prisma.models.Expert.prisma"
+    )
+    expert = MagicMock(id="expert-1", isArchived=False)
+    expert.name = "Remy"
+    find.return_value.find_first = AsyncMock(return_value=expert)
+
+    response = client.get(f"/sessions/sess-1/stream{query}")
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {
+            "type": "chat_removed",
+            "expert_id": "expert-1",
+            "expert_name": "Remy",
+            "message": "This chat was removed when Remy was reset.",
+        }
+    }
+    mock_registry.subscribe_to_turn.assert_not_called()
+    mock_registry.get_active_session.assert_not_called()
+    mock_registry.subscribe_to_session.assert_not_called()
+
+
 def test_resume_session_stream_no_active_session(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, resumed_chat
 ) -> None:
     """GET /sessions/{id}/stream returns 204 when no active session."""
     mock_registry = MagicMock()
@@ -4789,7 +4834,7 @@ def test_resume_session_stream_no_active_session(
 
 
 def test_resume_session_stream_no_subscriber_queue(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, resumed_chat
 ) -> None:
     """GET /sessions/{id}/stream returns 204 when subscribe_to_session returns None."""
     from backend.copilot.stream_registry import ActiveSession
@@ -4945,6 +4990,76 @@ def test_get_session_reports_background_state_from_the_durable_record(
     data = response.json()
     assert data["background_outcome"] == "completed"
     assert data["background_pending"] is True
+
+
+@pytest.mark.parametrize(
+    "expert_name, is_fired, expert_id, message",
+    [
+        ("Remy", False, "expert-1", "This chat was removed when Remy was reset."),
+        # Fired since: still named, but there is no chat with them to offer.
+        ("Remy", True, None, "This chat was removed when Remy was reset."),
+        (None, False, None, "This chat was removed when its expert was reset."),
+    ],
+)
+def test_get_session_of_a_reset_experts_chat_says_it_was_removed(
+    mocker: pytest_mock.MockerFixture,
+    expert_name: str | None,
+    is_fired: bool,
+    expert_id: str | None,
+    message: str,
+) -> None:
+    """Resetting an expert archives its chats: an old link no longer opens
+    one, though the row is kept, and the page is told why and, while the
+    expert is still on the team, which expert to chat with instead."""
+    page, _ = _make_paginated_messages(mocker)
+    page.session.archived_at = datetime.now(UTC)
+    page.session.expert_id = "expert-1"
+    find = mocker.patch(
+        "backend.api.features.chat.removed_chat.prisma.models.Expert.prisma"
+    )
+    find.return_value.find_first = AsyncMock(
+        return_value=MagicMock(name="expert") if expert_name else None
+    )
+    if expert_name:
+        expert = find.return_value.find_first.return_value
+        expert.name = expert_name
+        expert.id = "expert-1"
+        expert.isArchived = is_fired
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {
+            "type": "chat_removed",
+            "expert_id": expert_id,
+            "expert_name": expert_name,
+            "message": message,
+        }
+    }
+    find.return_value.find_first.assert_awaited_once_with(
+        where={"id": "expert-1", "ownerUserId": TEST_USER_ID}
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_reset_experts_chat_cannot_be_continued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    archived = _make_session_info(expert_id="expert-1")
+    archived.archived_at = datetime.now(UTC)
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new=AsyncMock(return_value=archived),
+    )
+    owns = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new=AsyncMock(return_value=True),
+    )
+
+    with pytest.raises(NotFoundError):
+        await chat_routes._validate_and_get_writable_session("sess-1", TEST_USER_ID)
+    owns.assert_not_awaited()
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(
@@ -5420,7 +5535,9 @@ def test_standard_tier_is_not_gated(
 
 
 def _session_like(expert_id: str | None):
-    return MagicMock(session_id="sess-1", user_id="u1", expert_id=expert_id)
+    return MagicMock(
+        session_id="sess-1", user_id="u1", expert_id=expert_id, archived_at=None
+    )
 
 
 def test_get_session_computer_uses_the_expert_owner_for_expert_chats(

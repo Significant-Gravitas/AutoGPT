@@ -20,6 +20,10 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
+from backend.api.features.chat.removed_chat import (
+    CHAT_REMOVED_RESPONSE,
+    chat_removed_error,
+)
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.blocks.desktop._api import DesktopStream
@@ -187,6 +191,7 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.tools.render_ui_models import UIBlocksResponse
 from backend.copilot.transports import (
     ChatTransportsResponse,
     DefaultChatRoute,
@@ -317,6 +322,12 @@ async def _validate_and_get_session(
     return session
 
 
+def _refuse_archived_session(session: ChatSessionInfo) -> None:
+    """A reset expert's archived chat cannot be continued."""
+    if session.archived_at is not None:
+        raise NotFoundError(f"Session {session.session_id} not found.")
+
+
 async def _validate_session_expert_writable_by_user(
     session: ChatSessionInfo,
     user_id: str,
@@ -339,6 +350,7 @@ async def _validate_and_get_writable_session(
     user_id: str,
 ) -> ChatSessionInfo:
     session = await _validate_and_get_session(session_id, user_id)
+    _refuse_archived_session(session)
     await _validate_session_expert_writable_by_user(session, user_id)
     return session
 
@@ -1442,6 +1454,7 @@ async def update_session_pinned_route(
 
 @router.get(
     "/sessions/{session_id}",
+    responses=CHAT_REMOVED_RESPONSE,
 )
 async def get_session(
     session_id: str,
@@ -1465,6 +1478,10 @@ async def get_session(
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
+    # A reset expert's chats are archived: kept, but no longer opened. Old
+    # links still reach them, so the page says why rather than "not found".
+    if page.session.archived_at is not None:
+        raise await chat_removed_error(page.session)
 
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
@@ -2623,6 +2640,12 @@ async def resume_session_stream(
     when nothing is running: the AI SDK's parser cannot continue a block it
     did not see start.
     """
+    # The stream of a chat a reset removed is still in Redis until it
+    # expires; it must not replay what the chat page no longer shows.
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is not None and session.archived_at is not None:
+        raise await chat_removed_error(session)
+
     if turn is not None:
         try:
             subscriber_queue = await stream_registry.subscribe_to_turn(
@@ -2860,6 +2883,7 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | UIBlocksResponse
     | FeedbackPromptToolResponse
 )
 

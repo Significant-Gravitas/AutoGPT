@@ -95,7 +95,12 @@ from backend.copilot.limit_tracking import (
     track_turn_cap,
     track_turn_refusal,
 )
-from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
+from backend.copilot.model import (
+    ChatSessionInfo,
+    create_chat_session,
+    get_chat_session,
+    get_chat_session_metadata,
+)
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.scheduled_chats.notices import (
@@ -125,6 +130,7 @@ from backend.monitoring import (
     report_execution_accuracy_alerts,
     report_late_executions,
     report_orphaned_auth_identities,
+    report_stalled_account_erasures,
     send_due_briefings,
 )
 from backend.monitoring.instrumentation import SCHEDULER_JOBS
@@ -642,10 +648,21 @@ async def _execute_copilot_turn(**kwargs):
             )
         else:
             session = await get_chat_session(args.session_id, args.user_id)
-            if session is None:
+            # A reset evicts the cached chat only best-effort, so a stale copy
+            # can still say it is open: read whether it is archived from the
+            # database instead.
+            stored = (
+                await get_chat_session_metadata(args.session_id, args.user_id)
+                if session is not None
+                else None
+            )
+            if session is None or stored is None or stored.archived_at is not None:
+                # An archived chat belongs to an expert that was reset: it is
+                # closed, so a follow-up aimed at it retires with it.
                 logger.info(
                     f"Copilot turn schedule {args.schedule_id} skipped — session "
-                    f"{args.session_id[:12]} no longer exists; removing schedule"
+                    f"{args.session_id[:12]} no longer exists or is archived; "
+                    "removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
                 return
@@ -1284,10 +1301,16 @@ async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None
         if args.session_id
         else None
     )
-    if chat is None or chat.session.expert_id != args.expert_id:
+    if (
+        chat is None
+        or chat.session.expert_id != args.expert_id
+        # Archived by an expert reset: closed, so its turns retire with it.
+        or chat.session.archived_at is not None
+    ):
         logger.info(
             f"At-reset turn {args.schedule_id} skipped — session "
-            f"{_session_id_label(args)} is gone or out of scope; removing it"
+            f"{_session_id_label(args)} is gone, archived or out of scope; "
+            "removing it"
         )
         await _self_delete_copilot_turn_schedule(args)
         return None
@@ -3243,6 +3266,18 @@ class Scheduler(AppService):
                     jobstore=Jobstores.EXECUTION.value,
                 )
 
+            # Account erasures that started and did not finish, from the job
+            # or the CLI. Runs whether the job is on or not.
+            system_jobs.add_job(
+                report_stalled_account_erasures,
+                id="report_stalled_account_erasures",
+                trigger="interval",
+                replace_existing=True,
+                max_instances=1,
+                seconds=config.account_erasure_stall_check_interval_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
             # Cloud Storage Cleanup - configurable interval
             system_jobs.add_job(
                 cleanup_expired_files,
@@ -4506,6 +4541,11 @@ class Scheduler(AppService):
     def execute_report_orphaned_auth_identities(self):
         """Manually trigger the auth-identity invariant check and heal."""
         return report_orphaned_auth_identities()
+
+    @expose
+    def execute_report_stalled_account_erasures(self):
+        """Manually trigger the check for stalled account erasures."""
+        return report_stalled_account_erasures()
 
     @expose
     def execute_cleanup_expired_files(self):

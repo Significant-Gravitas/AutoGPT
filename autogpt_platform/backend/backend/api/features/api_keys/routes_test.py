@@ -4,9 +4,16 @@ Operation IDs are built from each route's summary and first tag, so renaming
 either silently renames the generated frontend client's method.
 """
 
-import pytest
-from fastapi.routing import APIRoute
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+from fastapi import HTTPException
+from fastapi.routing import APIRoute
+from prisma.enums import APIKeyPermission
+from pytest_mock import MockerFixture
+
+from backend.api.features.api_keys import routes
+from backend.api.features.api_keys.model import CreateAPIKeyRequest
 from backend.api.rest_api import app
 
 EXPECTED_OPERATIONS = {
@@ -50,3 +57,29 @@ def test_api_key_path_is_served_by_this_module(path: str):
         if isinstance(route, APIRoute) and route.path == path
     }
     assert handlers == {"backend.api.features.api_keys.routes"}
+
+
+@pytest.mark.asyncio
+async def test_a_closed_account_gets_no_api_key(mocker: MockerFixture):
+    """Asked of the database: for a few seconds after the close, another
+    worker's cache can still let an old token through."""
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=True),
+    )
+    create = mocker.patch.object(routes.api_key_db, "create_api_key", AsyncMock())
+
+    with pytest.raises(HTTPException) as error:
+        await routes.create_api_key(
+            request=CreateAPIKeyRequest(
+                name="late", permissions=[APIKeyPermission.IDENTITY]
+            ),
+            user_id="user-1",
+            ctx=MagicMock(org_id="org-1"),
+        )
+
+    assert (error.value.status_code, error.value.detail) == (
+        401,
+        "This account is closed.",
+    )
+    create.assert_not_awaited()

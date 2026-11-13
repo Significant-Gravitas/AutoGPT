@@ -138,7 +138,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "403": {
-            "description": "Account deletion isn't available while impersonating a user."
+            "description": "Account deletion isn't available while impersonating a user. Or the account is banned (`account_banned`)."
           },
           "409": {
             "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
@@ -4547,6 +4547,7 @@
                       "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
                     },
                     { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/UIBlocksResponse" },
                     {
                       "$ref": "#/components/schemas/FeedbackPromptToolResponse"
                     }
@@ -4765,6 +4766,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "410": {
+            "description": "The chat was removed when its expert was reset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatRemovedResponse" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -8744,6 +8753,51 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/internal/experts/{expert_id}/reset": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Reset Expert",
+        "description": "Factory-reset a hired expert. Cannot be undone, unlike firing.",
+        "operationId": "reset_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertResetResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "409": {
+            "description": "The expert has a turn running; reset once it ends"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "The reset did not finish; it is safe to retry"
           }
         }
       }
@@ -22456,6 +22510,129 @@
         "required": ["version", "changes_summary", "date"],
         "title": "ChangelogEntry"
       },
+      "ChartAnnotation": {
+        "properties": {
+          "x": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "X",
+            "description": "One of x_labels."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["x", "label"],
+        "title": "ChartAnnotation"
+      },
+      "ChartBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "chart", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["line", "area", "bar"],
+            "title": "Kind"
+          },
+          "x_labels": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "X Labels"
+          },
+          "series": {
+            "items": { "$ref": "#/components/schemas/ChartSeries" },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Series"
+          },
+          "unit": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Unit"
+          },
+          "annotation": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartAnnotation" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "kind", "x_labels", "series"],
+        "title": "ChartBlock",
+        "description": "A trend or comparison over labelled points."
+      },
+      "ChartSeries": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "values": {
+            "items": { "type": "number" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name", "values"],
+        "title": "ChartSeries"
+      },
+      "ChatRemovedDetail": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "chat_removed",
+            "title": "Type",
+            "default": "chat_removed"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ChatRemovedDetail",
+        "description": "Why the chat cannot be opened, and whose reset removed it."
+      },
+      "ChatRemovedResponse": {
+        "properties": {
+          "detail": { "$ref": "#/components/schemas/ChatRemovedDetail" }
+        },
+        "type": "object",
+        "required": ["detail"],
+        "title": "ChatRemovedResponse",
+        "description": "The 410 body; FastAPI wraps an HTTPException's detail like this."
+      },
       "ChatRequest": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -22508,6 +22685,11 @@
           "source_platform": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Source Platform"
+          },
+          "text_only_result": {
+            "type": "boolean",
+            "title": "Text Only Result",
+            "default": false
           },
           "origin": {
             "anyOf": [
@@ -23844,6 +24026,7 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
+              "text_only_result": false,
               "kind": "normal"
             }
           },
@@ -26583,6 +26766,33 @@
         "title": "ExpertRecommendations",
         "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
       },
+      "ExpertResetResult": {
+        "properties": {
+          "memory_nodes_erased": {
+            "type": "integer",
+            "title": "Memory Nodes Erased"
+          },
+          "computer_erased": { "type": "boolean", "title": "Computer Erased" },
+          "soul_reset": { "type": "boolean", "title": "Soul Reset" },
+          "routines_reset": { "type": "integer", "title": "Routines Reset" },
+          "chats_archived": { "type": "integer", "title": "Chats Archived" },
+          "approvals_cleared": {
+            "type": "integer",
+            "title": "Approvals Cleared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "memory_nodes_erased",
+          "computer_erased",
+          "soul_reset",
+          "routines_reset",
+          "chats_archived",
+          "approvals_cleared"
+        ],
+        "title": "ExpertResetResult",
+        "description": "What one reset did."
+      },
       "ExpertRun": {
         "properties": {
           "execution_id": { "type": "string", "title": "Execution Id" },
@@ -27570,6 +27780,50 @@
         "type": "object",
         "required": ["flags", "configured"],
         "title": "FrontendFlagValues"
+      },
+      "GalleryBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "gallery", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "images": {
+            "items": { "$ref": "#/components/schemas/GalleryImage" },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Images"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "images"],
+        "title": "GalleryBlock",
+        "description": "Images from the user's workspace."
+      },
+      "GalleryImage": {
+        "properties": {
+          "src": {
+            "type": "string",
+            "pattern": "^workspace://[A-Za-z0-9_-]+(#image/[a-z0-9.+-]+)?$",
+            "title": "Src",
+            "description": "workspace://<file_id> image."
+          },
+          "caption": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Caption"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["src", "caption"],
+        "title": "GalleryImage"
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -31995,6 +32249,55 @@
         "required": ["items"],
         "title": "OpenDecisionsResponse"
       },
+      "OptionItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Sent as the user's reply when clicked."
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "OptionItem"
+      },
+      "OptionsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "options", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/OptionItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "OptionsBlock",
+        "description": "Next steps the user can pick with one click."
+      },
       "OrgAliasResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -34412,6 +34715,7 @@
           "expert_chat_list",
           "expert_chat_transcript",
           "expert_onboarding",
+          "ui_blocks",
           "feedback_prompt",
           "team_consult",
           "session_list",
@@ -35189,6 +35493,7 @@
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
+              "text_only_result": false,
               "kind": "normal"
             }
           },
@@ -36031,6 +36336,43 @@
         "required": ["text"],
         "title": "SpeechRequest"
       },
+      "StatItem": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "change": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Change"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "value"],
+        "title": "StatItem"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -36101,6 +36443,23 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StatsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "stats", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/StatItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "StatsBlock",
+        "description": "Headline numbers."
       },
       "StopExecutionRequest": {
         "properties": {
@@ -37371,6 +37730,40 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TableBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "table", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "columns": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": { "type": "string", "maxLength": 200, "minLength": 1 },
+              "type": "array"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "columns", "rows"],
+        "title": "TableBlock",
+        "description": "Rows of exact values, when nothing more visual fits."
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -37477,6 +37870,65 @@
         "enum": ["full", "e2e"],
         "title": "TestDataScriptType",
         "description": "Available test data generation scripts."
+      },
+      "TimelineBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "timeline", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/TimelineItem" },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "TimelineBlock",
+        "description": "Events or plan steps over time."
+      },
+      "TimelineItem": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Date"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "anyOf": [
+              { "type": "string", "enum": ["ok", "warning", "error", "idle"] },
+              { "type": "null" }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "TimelineItem"
       },
       "TimezoneResponse": {
         "properties": {
@@ -38585,6 +39037,50 @@
         "required": ["entry_id", "rows", "sequence"],
         "title": "TurnCheckpoint",
         "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
+      "UIBlocksResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "ui_blocks"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "blocks": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/StatsBlock" },
+                { "$ref": "#/components/schemas/ChartBlock" },
+                { "$ref": "#/components/schemas/WorkflowDiagramBlock" },
+                { "$ref": "#/components/schemas/GalleryBlock" },
+                { "$ref": "#/components/schemas/TimelineBlock" },
+                { "$ref": "#/components/schemas/OptionsBlock" },
+                { "$ref": "#/components/schemas/TableBlock" }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "gallery": "#/components/schemas/GalleryBlock",
+                  "options": "#/components/schemas/OptionsBlock",
+                  "stats": "#/components/schemas/StatsBlock",
+                  "table": "#/components/schemas/TableBlock",
+                  "timeline": "#/components/schemas/TimelineBlock",
+                  "workflow_diagram": "#/components/schemas/WorkflowDiagramBlock"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "UIBlocksResponse",
+        "description": "The cards the chat draws for this call."
       },
       "UnderstandingUpdatedResponse": {
         "properties": {
@@ -40358,6 +40854,61 @@
         ],
         "title": "WebhookWithoutSecrets",
         "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
+      },
+      "WorkflowDiagramBlock": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "workflow_diagram",
+            "title": "Type"
+          },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/WorkflowStep" },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "steps"],
+        "title": "WorkflowDiagramBlock",
+        "description": "Steps of a workflow in order, showing where things stand."
+      },
+      "WorkflowStep": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "warning", "error", "idle"],
+            "title": "Status",
+            "default": "idle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label"],
+        "title": "WorkflowStep"
       },
       "WorkspaceFile": {
         "properties": {

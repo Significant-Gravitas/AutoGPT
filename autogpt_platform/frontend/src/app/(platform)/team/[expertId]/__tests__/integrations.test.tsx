@@ -137,6 +137,19 @@ async function openIntegrationsTab() {
   );
 }
 
+/** The button stays disabled until the credentials list loads. */
+async function openUseExistingDialog() {
+  await waitFor(() =>
+    expect(
+      screen
+        .getByRole("button", { name: /Use existing/ })
+        .hasAttribute("disabled"),
+    ).toBe(false),
+  );
+  await userEvent.click(screen.getByRole("button", { name: /Use existing/ }));
+  return screen.findByRole("dialog");
+}
+
 describe("managing an expert's integrations", () => {
   it("lists what the expert can reach", async () => {
     server.use(getListExpertCredentialsMockHandler([linkedin]));
@@ -378,6 +391,151 @@ describe("managing an expert's integrations", () => {
     );
 
     await waitFor(() => expect(granted).toEqual(["cred-notion-2"]));
+  });
+
+  it("names untitled accounts by their email when choosing one", async () => {
+    // A Google sign-in stores no title, only the account's email.
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/internal/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-google-work",
+            provider: "google",
+            type: "oauth2",
+            title: null,
+            username: "work@example.com",
+          },
+          {
+            id: "cred-google-personal",
+            provider: "google",
+            type: "oauth2",
+            title: null,
+            username: "me@example.com",
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    const dialog = await openUseExistingDialog();
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /Google/ }),
+    );
+
+    const choices = await within(dialog).findByRole("list", {
+      name: "Google connections",
+    });
+    expect(
+      within(choices).getByRole("button", {
+        name: "Let Maria use work@example.com",
+      }),
+    ).toBeDefined();
+    expect(
+      within(choices).getByRole("button", {
+        name: "Let Maria use me@example.com",
+      }),
+    ).toBeDefined();
+  });
+
+  it("searches untitled accounts by their email", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/internal/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-google-work",
+            provider: "google",
+            type: "oauth2",
+            title: null,
+            username: "work@example.com",
+          },
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "oauth2",
+            title: null,
+            username: "personal@example.com",
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    const dialog = await openUseExistingDialog();
+    const search = within(dialog).getByPlaceholderText("Search connections");
+    await userEvent.type(search, "work@");
+
+    expect(
+      within(dialog).getByRole("button", { name: /Google/ }),
+    ).toBeDefined();
+    expect(within(dialog).queryByRole("button", { name: /Notion/ })).toBeNull();
+  });
+
+  it("searches titled accounts by their email too", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/internal/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-google-work",
+            provider: "google",
+            type: "oauth2",
+            title: "Work",
+            username: "work@example.com",
+          },
+          {
+            id: "cred-notion",
+            provider: "notion",
+            type: "oauth2",
+            title: null,
+            username: "personal@example.com",
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    const dialog = await openUseExistingDialog();
+    const search = within(dialog).getByPlaceholderText("Search connections");
+    await userEvent.type(search, "work@");
+
+    expect(
+      within(dialog).getByRole("button", { name: /Google/ }),
+    ).toBeDefined();
+    expect(within(dialog).queryByRole("button", { name: /Notion/ })).toBeNull();
+  });
+
+  it("shows an untitled account by its email when it is the only one for that provider", async () => {
+    server.use(
+      getListExpertCredentialsMockHandler([linkedin]),
+      http.get("*/api/internal/integrations/credentials", () =>
+        HttpResponse.json([
+          {
+            id: "cred-google-single",
+            provider: "google",
+            type: "oauth2",
+            title: null,
+            username: "solo@example.com",
+          },
+        ]),
+      ),
+    );
+
+    render(<ExpertDetailPage />);
+
+    await openIntegrationsTab();
+    const dialog = await openUseExistingDialog();
+
+    expect(
+      within(dialog).getByText("solo@example.com", { exact: false }),
+    ).toBeDefined();
   });
 
   it("opens a separate dialog for each header button", async () => {

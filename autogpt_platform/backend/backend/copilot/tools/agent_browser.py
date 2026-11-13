@@ -51,6 +51,7 @@ from .models import (
     ErrorResponse,
     ToolResponseBase,
 )
+from .refused_pages import PAGE_CHECK_JS, refused_page_notice
 
 logger = logging.getLogger(__name__)
 
@@ -689,9 +690,13 @@ class BrowserNavigateTool(BaseTool):
             logger.warning(
                 "[browser_navigate] open failed for %s: %s", url, stderr[:300]
             )
+            # X answers a headless browser with an error status.
+            notice = refused_page_notice(
+                url, content_withheld="ERR_HTTP_RESPONSE_CODE_FAILURE" in stderr
+            )
             return ErrorResponse(
-                message="Failed to navigate to URL.",
-                error="navigation_failed",
+                message=notice or "Failed to navigate to URL.",
+                error="page_refused" if notice else "navigation_failed",
                 session_id=session_name,
             ).from_outside()
 
@@ -702,21 +707,30 @@ class BrowserNavigateTool(BaseTool):
                 "[browser_navigate] wait(%s) failed: %s", wait_for, wait_err[:300]
             )
 
-        # Get current title and URL in parallel
-        (_, title_out, _), (_, url_out, _) = await asyncio.gather(
+        (_, title_out, _), (_, url_out, _), (_, check_out, _) = await asyncio.gather(
             _run(session_name, "get", "title"),
             _run(session_name, "get", "url"),
+            _run(session_name, "eval", PAGE_CHECK_JS),
+        )
+        final_url = url_out.strip() or url
+        page_check = check_out.strip().strip('"')
+        notice = refused_page_notice(
+            final_url,
+            bot_check=page_check == "bot_check",
+            content_withheld=page_check == "sign_in_form",
         )
 
         snapshot = await _snapshot(session_name)
 
         result = BrowserNavigateResponse(
-            message=f"Navigated to {url}",
-            url=url_out.strip() or url,
+            message=(
+                f"Navigated to {url}. {notice}" if notice else f"Navigated to {url}"
+            ),
+            url=final_url,
             title=title_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        ).from_outside(snapshot, title_out.strip(), url_out.strip() or url)
+        ).from_outside(snapshot, title_out.strip(), final_url)
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:

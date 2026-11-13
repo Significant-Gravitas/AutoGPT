@@ -264,6 +264,8 @@ OPEN_WHILE_PAYWALLED = {
     "DELETE /api/internal/chat/sessions/{session_id}/stream",
     "DELETE /api/internal/executions/{graph_exec_id}",
     "DELETE /api/internal/experts/{expert_id}",
+    # Erases what an expert learned, like DELETE /api/internal/memory; runs nothing.
+    "POST /api/internal/experts/{expert_id}/reset",
     "DELETE /api/internal/experts/{expert_id}/credentials/{credential_id}",
     "DELETE /api/internal/experts/{expert_id}/workflows/{workflow_id}",
     "DELETE /api/internal/graphs/{graph_id}",
