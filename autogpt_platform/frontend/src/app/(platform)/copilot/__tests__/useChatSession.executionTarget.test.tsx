@@ -192,13 +192,18 @@ describe("useChatSession execution target", () => {
         });
       });
       // The created session reads back as bound to that machine and folder.
-      await waitFor(() => {
-        expect(session.result.current.sessionExecutionTarget).toEqual({
-          kind: "local",
-          machine_id: "machine-1",
-          allowed_root: "C:\\Users\\Ada\\Projects",
-        });
-      });
+      // That takes the create and then the session read, so a loaded runner
+      // gets more than Testing Library's 3 s default.
+      await waitFor(
+        () => {
+          expect(session.result.current.sessionExecutionTarget).toEqual({
+            kind: "local",
+            machine_id: "machine-1",
+            allowed_root: "C:\\Users\\Ada\\Projects",
+          });
+        },
+        { timeout: 10_000 },
+      );
     },
   );
 
