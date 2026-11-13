@@ -22,7 +22,7 @@ import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import Link, { useLinkStatus } from "next/link";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { useExpertChatGroup } from "./useExpertChatGroup";
 
 // The chevron, the slot the header reserves next to it, and the new-chat link
@@ -70,6 +70,7 @@ export function ExpertChatGroup({
   activeSessionId,
   renderItem,
 }: Props) {
+  const countID = useId();
   const {
     isOpen,
     setIsOpen,
@@ -99,6 +100,7 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-surface-hover">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
+          aria-describedby={countID}
           // The size and weight reach ManagedExpertImage's fallback initials (a
           // span that sets its colour, not its size or weight), and the weight
           // ExpertAvatar's initial; every other piece of copy is a toned Text.
@@ -110,7 +112,7 @@ export function ExpertChatGroup({
             avatarUrl={avatarUrl}
             color={color}
             isAutopilot={isAutopilot}
-            nameAccessory={<SessionCount count={total} />}
+            nameAccessory={<SessionCount id={countID} count={total} />}
           />
           {newChatHref && (
             <span
@@ -240,10 +242,12 @@ export function ExpertGroupIdentity({
   );
 }
 
-function SessionCount({ count }: { count: number }) {
+// The header's description, so a screen reader hears the count after the
+// group's name.
+function SessionCount({ id, count }: { id: string; count: number }) {
   return (
     <span
-      aria-hidden
+      id={id}
       className="shrink-0 rounded-full bg-surface-active/70 px-1.5 text-caption-sm leading-4.5 font-medium text-foreground-secondary tabular-nums"
     >
       {count}

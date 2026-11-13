@@ -75,9 +75,13 @@ export function RecentChats() {
     );
   }
 
+  // A pinned chat counts too: with pinning on it sits outside the groups.
   const newExperts = getNewExpertsWithoutChats(
     activeExperts,
-    groups.map((group) => group.expert_id),
+    [
+      ...groups.map((group) => group.expert_id),
+      ...pinnedSessions.map((session) => session.expert_id),
+    ],
     mountedAt,
   );
 

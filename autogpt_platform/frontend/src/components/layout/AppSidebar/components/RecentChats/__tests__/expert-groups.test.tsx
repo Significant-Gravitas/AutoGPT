@@ -173,6 +173,10 @@ describe("RecentChats — expert groups", () => {
       name: "Maria chats",
     });
     expect(within(mariaHeader).getByText("40")).toBeDefined();
+    const description = mariaHeader.getAttribute("aria-describedby");
+    expect(
+      description && document.getElementById(description)?.textContent,
+    ).toBe("40");
     expect(within(groupHeader("Otto")).getByText("3")).toBeDefined();
     expect(screen.getByText("expert-maria chat 27")).toBeDefined();
     expect(screen.queryByText("expert-maria chat 28")).toBeNull();

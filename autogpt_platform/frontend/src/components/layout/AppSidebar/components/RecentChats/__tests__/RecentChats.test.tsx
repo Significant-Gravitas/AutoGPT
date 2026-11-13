@@ -153,6 +153,49 @@ describe("RecentChats — pinned split", () => {
     expect(read?.params.get("pinned_separately")).toBe("true");
   });
 
+  it("does not greet a new expert as chat-less when their only chat is pinned", async () => {
+    mockEnabledFlags.add("chat-pinning");
+    server.use(
+      getListExpertIdentitiesMockHandler([
+        {
+          id: "expert-nadia",
+          name: "Nadia",
+          avatar_url: null,
+          role: "Researcher",
+          is_archived: false,
+          created_at: new Date("2026-06-30T11:00:00"),
+        },
+        {
+          id: "expert-maria",
+          name: "Maria",
+          avatar_url: null,
+          role: "Marketing",
+          is_archived: false,
+          created_at: new Date("2026-01-01T00:00:00"),
+        },
+      ]),
+    );
+    serve([
+      {
+        id: "nadia-1",
+        title: "Nadia's pinned chat",
+        expert_id: "expert-nadia",
+        is_pinned: true,
+      },
+      { id: "maria-1", title: "Maria chat", expert_id: "expert-maria" },
+    ]);
+    renderRecentChats();
+
+    expect(await screen.findByText("Nadia's pinned chat")).toBeDefined();
+    // Maria's header is named from the expert list, so it is loaded by now.
+    expect(
+      await screen.findByRole("button", { name: "Maria chats" }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("link", { name: "Say hello to Nadia" }),
+    ).toBeNull();
+  });
+
   it("keeps pinned sessions in their expert group when the pinning flag is off", async () => {
     serve(pinnedAndLoose);
     renderRecentChats();
