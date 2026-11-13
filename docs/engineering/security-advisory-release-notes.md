@@ -190,7 +190,8 @@ fixed list that fits. As the last step before publishing, a maintainer names the
 ecosystem in the web UI: Other, then "GitHub release" for the Platform row and
 "Docker" for an image row. GitHub stores its own form of the typed name, so read
 the rows back and use those strings. From then on nothing sends `vulnerabilities`
-through the API: a write that carries the renamed rows fails with 422.
+through the API: a write that carries the renamed rows fails with 422, while one
+that leaves them out succeeds and keeps the names.
 
 ## Identify Docker distributions
 
