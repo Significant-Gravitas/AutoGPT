@@ -85,7 +85,7 @@ class BrowserRequestLinkPaymentTool(BaseTool):
         try:
             if not kwargs.get("credentials_id"):
                 kwargs["credentials_id"] = await chat_link_credential(
-                    principal.user_id, principal.session_id
+                    principal.user_id, principal.session_id, expert_id=session.expert_id
                 )
             plan = CheckoutPlan.model_validate(kwargs)
         except CheckoutRefused as refused:
@@ -102,7 +102,9 @@ class BrowserRequestLinkPaymentTool(BaseTool):
             return failure(session, LIVE_PAYMENTS_DISABLED)
         try:
             await validate_url_host(plan.checkout_url)
-            async with link_credentials(principal.user_id, plan.credentials_id) as c:
+            async with link_credentials(
+                principal.user_id, plan.credentials_id, expert_id=session.expert_id
+            ) as c:
                 in_app = await in_app_approval_allowed(
                     c.access_token.get_secret_value(), plan
                 )
@@ -184,7 +186,7 @@ class BrowserCompleteLinkPaymentTool(BaseTool):
                 if approval is None or approval.state != "approved":
                     return _not_approved(current, approval, session)
             async with link_credentials(
-                principal.user_id, current.credentials_id
+                principal.user_id, current.credentials_id, expert_id=session.expert_id
             ) as credentials:
                 view = await engine.complete(
                     AuthorizedCheckout(

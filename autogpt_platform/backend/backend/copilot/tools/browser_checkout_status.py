@@ -20,6 +20,7 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutReference,
 )
 from backend.util.link_checkout.models import CompleteCheckout
+from backend.util.link_checkout.refusals import CheckoutRefused
 
 
 class BrowserLinkPaymentStatusTool(BaseTool):
@@ -63,7 +64,7 @@ class BrowserLinkPaymentStatusTool(BaseTool):
                 )
                 return checkout_response(current, session, approval)
             async with link_credentials(
-                principal.user_id, current.credentials_id
+                principal.user_id, current.credentials_id, expert_id=session.expert_id
             ) as credentials:
                 view = await engine.status(
                     AuthorizedCheckout(
@@ -71,6 +72,8 @@ class BrowserLinkPaymentStatusTool(BaseTool):
                     )
                 )
             return checkout_response(view, session)
+        except CheckoutRefused as refused:
+            return failure(session, str(refused))
         except Exception as error:
             log_failure("status", error)
             return failure(

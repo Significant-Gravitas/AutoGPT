@@ -22,12 +22,16 @@ from backend.util.link_checkout.refusals import (
     DUPLICATE_REQUEST,
     LINK_ACCOUNT_NOT_CHOSEN,
     LINK_NOT_CONNECTED,
+    LINK_NOT_GRANTED,
+    CheckoutRefused,
 )
 from backend.util.settings import BehaveAs
 
 
 @asynccontextmanager
-async def fake_link_credentials(user_id: str, credentials_id: str):
+async def fake_link_credentials(
+    user_id: str, credentials_id: str, *, expert_id: str | None
+):
     yield MagicMock(access_token=SecretStr("synthetic-token"))
 
 
@@ -44,19 +48,26 @@ def tools(local_broker, fake_redis, monkeypatch):
     return local_broker
 
 
-def session():
+def session(expert_id: str | None = None):
     # Not interactive, so the AutoPilot approval gate stays out of the way; the
     # checkout tools carry their own approval (see gate/policy.py).
     return MagicMock(
         spec=ChatSession,
         session_id="chat",
         user_id="owner",
+        expert_id=expert_id,
+        organization_id=None,
+        external_caller=False,
         metadata=MagicMock(origin="scheduled"),
     )
 
 
-async def run(name: str, user_id: str = "owner", **arguments):
-    return await TOOL_REGISTRY[name].execute(user_id, session(), "call", **arguments)
+async def run(
+    name: str, user_id: str = "owner", expert_id: str | None = None, **arguments
+):
+    return await TOOL_REGISTRY[name].execute(
+        user_id, session(expert_id), "call", **arguments
+    )
 
 
 def parsed(result) -> CheckoutResponse:
@@ -290,7 +301,7 @@ async def test_hosted_payment_refuses_device_other_client_and_unscoped_tokens(
         support._credentials, "acquire_lease", AsyncMock(return_value=lease)
     )
     with pytest.raises(ValueError):
-        async with support.link_credentials("owner", "wallet"):
+        async with support.link_credentials("owner", "wallet", expert_id=None):
             pytest.fail("Token accepted")
     lease.release.assert_awaited_once()
 
@@ -331,9 +342,9 @@ def link_account(credential_id: str, scopes=("payment_methods.agentic",)):
 
 @pytest.fixture
 def link_accounts(tools, monkeypatch):
-    """The user's stored Link connections, the account picked in the chat, and
-    the credential each checkout leased."""
-    state = SimpleNamespace(stored=[], picked={}, leased=[])
+    """The user's stored Link connections, the account picked in the chat, the
+    ids granted to the chat's expert, and the credential each checkout leased."""
+    state = SimpleNamespace(stored=[], picked={}, granted=frozenset(), leased=[])
 
     async def by_provider(user_id, provider):
         assert (user_id, provider) == ("owner", "stripe_link")
@@ -343,8 +354,14 @@ def link_accounts(tools, monkeypatch):
         assert session_id == "chat"
         return state.picked
 
+    async def grants(user_id, expert_id):
+        assert user_id == "owner"
+        return None if expert_id is None else state.granted
+
     @asynccontextmanager
-    async def leased_link_credentials(user_id: str, credentials_id: str):
+    async def leased_link_credentials(
+        user_id: str, credentials_id: str, *, expert_id: str | None
+    ):
         state.leased.append(credentials_id)
         yield MagicMock(access_token=SecretStr("synthetic-token"))
 
@@ -354,6 +371,7 @@ def link_accounts(tools, monkeypatch):
         MagicMock(store=MagicMock(get_creds_by_provider=by_provider)),
     )
     monkeypatch.setattr(support, "selected_credentials", picks)
+    monkeypatch.setattr(support, "expert_allowed_ids", grants)
     monkeypatch.setattr(request_tools, "link_credentials", leased_link_credentials)
     return state
 
@@ -410,6 +428,99 @@ async def test_without_one_link_wallet_the_agent_is_sent_to_the_connect_card(
     assert ErrorResponse.model_validate_json(result.output).message == refusal
     assert link_accounts.leased == []
     assert tools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_an_expert_chat_pays_only_with_a_link_wallet_granted_to_it(
+    link_accounts, plan
+):
+    # Unfiltered, two wallets and no pick would refuse as unchosen.
+    link_accounts.stored = [link_account("personal"), link_account("work")]
+    link_accounts.granted = frozenset({"work"})
+
+    await run(
+        "browser_request_link_payment",
+        expert_id="expert-1",
+        **plan.model_dump(exclude={"credentials_id"}),
+    )
+
+    assert link_accounts.leased == ["work"]
+
+
+@pytest.mark.asyncio
+async def test_an_expert_with_no_granted_link_wallet_is_sent_to_ask_for_one(
+    tools, link_accounts, plan
+):
+    link_accounts.stored = [link_account("personal")]
+    link_accounts.picked = {"stripe_link": "personal"}
+
+    result = await run(
+        "browser_request_link_payment",
+        expert_id="expert-1",
+        **plan.model_dump(exclude={"credentials_id"}),
+    )
+
+    assert ErrorResponse.model_validate_json(result.output).message == LINK_NOT_GRANTED
+    assert link_accounts.leased == []
+    assert tools.calls == []
+
+
+@pytest.mark.asyncio
+async def test_an_expert_cannot_lease_a_link_wallet_it_was_not_granted(monkeypatch):
+    monkeypatch.setattr(
+        support, "expert_allowed_ids", AsyncMock(return_value=frozenset({"work"}))
+    )
+    acquire = AsyncMock()
+    monkeypatch.setattr(support._credentials, "acquire_lease", acquire)
+
+    with pytest.raises(CheckoutRefused, match="request_credential_grant"):
+        async with support.link_credentials("owner", "personal", expert_id="expert-1"):
+            pytest.fail("An ungranted wallet was leased")
+    support.expert_allowed_ids.assert_awaited_once_with("owner", "expert-1")
+    acquire.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_grant_revoked_after_the_request_stops_the_payment(
+    tools, plan, monkeypatch
+):
+    """Complete and status lease the wallet the request stored, so they check
+    the expert's grant again: a revoked grant pays nothing."""
+    granted = {"wallet"}
+
+    async def grants(user_id, expert_id):
+        assert (user_id, expert_id) == ("owner", "expert-1")
+        return frozenset(granted)
+
+    lease = MagicMock(
+        credentials=OAuth2Credentials(
+            provider="stripe_link",
+            access_token="synthetic",
+            scopes=["payment_methods.agentic"],
+        ),
+        validate=AsyncMock(),
+        release=AsyncMock(),
+    )
+    monkeypatch.setattr(support, "expert_allowed_ids", grants)
+    monkeypatch.setattr(
+        support._credentials, "acquire_lease", AsyncMock(return_value=lease)
+    )
+    for module in (request_tools, status_tools):
+        monkeypatch.setattr(module, "link_credentials", support.link_credentials)
+    created = parsed(
+        await run(
+            "browser_request_link_payment", expert_id="expert-1", **plan.model_dump()
+        )
+    )
+    assert tools.calls == ["create"]
+
+    granted.clear()
+    for tool in ("browser_complete_link_payment", "browser_link_payment_status"):
+        result = await run(tool, expert_id="expert-1", checkout_id=created.checkout_id)
+        assert (
+            ErrorResponse.model_validate_json(result.output).message == LINK_NOT_GRANTED
+        )
+    assert tools.calls == ["create"]
 
 
 @pytest.mark.asyncio

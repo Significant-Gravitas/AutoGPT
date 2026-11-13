@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from backend.copilot.credential_selection import selected_credentials
+from backend.copilot.integration_creds import expert_allowed_ids
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
 from backend.data.model import OAuth2Credentials
@@ -26,6 +27,7 @@ from backend.util.link_checkout.models import WorkerReceipt
 from backend.util.link_checkout.refusals import (
     LINK_ACCOUNT_NOT_CHOSEN,
     LINK_NOT_CONNECTED,
+    LINK_NOT_GRANTED,
     CheckoutRefused,
 )
 from backend.util.settings import BehaveAs, Settings
@@ -163,9 +165,18 @@ def principal_for(user_id: str | None, session: ChatSession) -> Principal:
 
 @asynccontextmanager
 async def link_credentials(
-    user_id: str, credentials_id: str
+    user_id: str, credentials_id: str, *, expert_id: str | None
 ) -> AsyncIterator[OAuth2Credentials]:
-    """A leased Link credential that can create spend requests."""
+    """A leased Link credential that can create spend requests.
+
+    In an expert's chat (*expert_id* is the session's trusted attribution)
+    only an account granted to that expert, checked before anything is leased,
+    so a named or stored id cannot reach a wallet the expert was denied or has
+    since lost.
+    """
+    allowed = await expert_allowed_ids(user_id, expert_id)
+    if allowed is not None and credentials_id not in allowed:
+        raise CheckoutRefused(LINK_NOT_GRANTED)
     lease = await _credentials.acquire_lease(user_id, credentials_id)
     try:
         await lease.validate()
@@ -188,10 +199,13 @@ async def link_credentials(
         await lease.release()
 
 
-async def chat_link_credential(user_id: str, session_id: str) -> str:
+async def chat_link_credential(
+    user_id: str, session_id: str, *, expert_id: str | None
+) -> str:
     """The Link account a chat pays with when the agent names none: the one
     the user picked in this chat (a connect card records the pick), else their
-    only Link connection that can pay. Never a guess between several."""
+    only Link connection that can pay. Never a guess between several. In an
+    expert's chat, only among the accounts granted to that expert."""
     connected = [
         credential
         for credential in await _credentials.store.get_creds_by_provider(
@@ -200,8 +214,12 @@ async def chat_link_credential(user_id: str, session_id: str) -> str:
         if isinstance(credential, OAuth2Credentials)
         and LINK_PAYMENT_SCOPE in credential.scopes
     ]
+    allowed = await expert_allowed_ids(user_id, expert_id)
+    granted = [c for c in connected if allowed is None or c.id in allowed]
+    if connected and not granted:
+        raise CheckoutRefused(LINK_NOT_GRANTED)
     picked = (await selected_credentials(session_id)).get("stripe_link")
-    candidates = [c for c in connected if c.id == picked] or connected
+    candidates = [c for c in granted if c.id == picked] or granted
     if len(candidates) == 1:
         return candidates[0].id
     raise CheckoutRefused(LINK_ACCOUNT_NOT_CHOSEN if candidates else LINK_NOT_CONNECTED)
