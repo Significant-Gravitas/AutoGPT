@@ -60,6 +60,15 @@ function groupByProvider(
     .sort((a, b) => a.provider.name.localeCompare(b.provider.name));
 }
 
+/** Most OAuth sign-ins (Google among them) store no title, only the
+ *  account's email, which is what tells two accounts for one service apart. */
+function accountName(
+  credential: CredentialsMetaResponse,
+  fallback: string = credential.provider,
+) {
+  return credential.title ?? credential.username ?? fallback;
+}
+
 /** Credentials already on your account that this expert cannot use yet,
  *  grouped like the connect picker. A provider with one credential grants
  *  on click; with several, a second step asks which one. */
@@ -88,8 +97,10 @@ export function UseExistingCredentialsDialog({
     (group) =>
       !needle ||
       group.provider.name.toLowerCase().includes(needle) ||
-      group.credentials.some((credential) =>
-        (credential.title ?? "").toLowerCase().includes(needle),
+      group.credentials.some(
+        (credential) =>
+          accountName(credential).toLowerCase().includes(needle) ||
+          credential.username?.toLowerCase().includes(needle),
       ),
   );
   const selected = groups.find(
@@ -125,7 +136,7 @@ export function UseExistingCredentialsDialog({
               <button
                 type="button"
                 onClick={() => setSelectedProvider(null)}
-                className="flex w-fit items-center gap-1 text-sm text-foreground-tertiary hover:text-foreground-emphasis"
+                className="flex w-fit items-center gap-1 text-body text-foreground-tertiary hover:text-foreground-emphasis"
               >
                 <Icon icon={ArrowLeft02Icon} size={14} />
                 All connections
@@ -140,7 +151,7 @@ export function UseExistingCredentialsDialog({
               >
                 {selected.credentials.map((credential) => {
                   const name = formatCredentialName(
-                    credential.title ?? credential.provider,
+                    accountName(credential),
                     credential.provider,
                   );
                   return (
@@ -209,8 +220,10 @@ export function UseExistingCredentialsDialog({
                           description={
                             group.credentials.length === 1
                               ? formatCredentialName(
-                                  group.credentials[0].title ??
+                                  accountName(
+                                    group.credentials[0],
                                     group.provider.name,
+                                  ),
                                   group.credentials[0].provider,
                                 )
                               : `${group.credentials.length} connections · choose one`

@@ -108,8 +108,7 @@ export function ExpertSkillsSection({
       {!hasAny ? (
         <SectionEmptyState
           tiles={[
-            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-            <span key="book" className="inline-flex text-sky-500">
+            <span key="book" className="inline-flex text-sky">
               <Icon icon={BookOpen01Icon} size={22} />
             </span>,
             <span key="bulb" className="inline-flex text-warning">

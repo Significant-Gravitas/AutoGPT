@@ -34,6 +34,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.copilot.context import get_workspace_manager
@@ -50,6 +51,7 @@ from .models import (
     ErrorResponse,
     ToolResponseBase,
 )
+from .refused_pages import PAGE_CHECK_JS, refused_page_notice
 
 logger = logging.getLogger(__name__)
 
@@ -537,10 +539,15 @@ async def close_browser_daemon(session_name: str) -> bool:
 
 
 async def close_browser_session(session_name: str, user_id: str | None = None) -> None:
-    """Shut down the local agent-browser daemon and clean up stored state.
+    """Clean up a deleted session's stored browser state, and close its
+    browser if this process runs one.
 
     Deletes ``._browser_state.json`` from workspace storage so cookies and
     other credentials do not linger after the session is deleted.
+
+    The daemon is closed only for a session in ``_touched_sessions``. For any
+    other session, ``close`` would start a daemon and launch Chromium just to
+    shut them down again.
 
     Best-effort: errors are logged but never raised.
     """
@@ -562,6 +569,8 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
                 exc_info=True,
             )
 
+    if session_name not in _touched_sessions:
+        return
     try:
         rc, _, stderr = await _run(session_name, "close", timeout=10)
         if rc != 0:
@@ -681,9 +690,13 @@ class BrowserNavigateTool(BaseTool):
             logger.warning(
                 "[browser_navigate] open failed for %s: %s", url, stderr[:300]
             )
+            # X answers a headless browser with an error status.
+            notice = refused_page_notice(
+                url, content_withheld="ERR_HTTP_RESPONSE_CODE_FAILURE" in stderr
+            )
             return ErrorResponse(
-                message="Failed to navigate to URL.",
-                error="navigation_failed",
+                message=notice or "Failed to navigate to URL.",
+                error="page_refused" if notice else "navigation_failed",
                 session_id=session_name,
             ).from_outside()
 
@@ -694,21 +707,30 @@ class BrowserNavigateTool(BaseTool):
                 "[browser_navigate] wait(%s) failed: %s", wait_for, wait_err[:300]
             )
 
-        # Get current title and URL in parallel
-        (_, title_out, _), (_, url_out, _) = await asyncio.gather(
+        (_, title_out, _), (_, url_out, _), (_, check_out, _) = await asyncio.gather(
             _run(session_name, "get", "title"),
             _run(session_name, "get", "url"),
+            _run(session_name, "eval", PAGE_CHECK_JS),
+        )
+        final_url = url_out.strip() or url
+        page_check = check_out.strip().strip('"')
+        notice = refused_page_notice(
+            final_url,
+            bot_check=page_check == "bot_check",
+            content_withheld=page_check == "sign_in_form",
         )
 
         snapshot = await _snapshot(session_name)
 
         result = BrowserNavigateResponse(
-            message=f"Navigated to {url}",
-            url=url_out.strip() or url,
+            message=(
+                f"Navigated to {url}. {notice}" if notice else f"Navigated to {url}"
+            ),
+            url=final_url,
             title=title_out.strip(),
             snapshot=snapshot,
             session_id=session_name,
-        ).from_outside(snapshot, title_out.strip(), url_out.strip() or url)
+        ).from_outside(snapshot, title_out.strip(), final_url)
 
         # Persist browser state to cloud for cross-pod continuity
         if user_id:
@@ -959,8 +981,7 @@ class BrowserScreenshotTool(BaseTool):
                 },
                 "filename": {
                     "type": "string",
-                    "default": "screenshot.png",
-                    "description": "Workspace filename (default: screenshot.png).",
+                    "description": "Workspace filename (default: a new unique name).",
                 },
             },
         }
@@ -978,7 +999,7 @@ class BrowserScreenshotTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         annotate: bool | str = True,
-        filename: str = "screenshot.png",
+        filename: str = "",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Capture a PNG screenshot and upload it to the workspace.
@@ -993,7 +1014,11 @@ class BrowserScreenshotTool(BaseTool):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}
         else:
             annotate = bool(raw_annotate)
-        filename = filename.strip()
+        # A chat's workspace refuses a repeated path, so an unnamed capture gets its own.
+        filename = (
+            filename.strip()
+            or f"screenshot-{datetime.now(UTC):%Y%m%d-%H%M%S}-{os.urandom(3).hex()}.png"
+        )
         session_name = session.session_id
 
         # Restore browser state from cloud if this is a different pod
@@ -1040,8 +1065,11 @@ class BrowserScreenshotTool(BaseTool):
         )
 
         if not isinstance(write_resp, WorkspaceWriteResponse):
+            logger.warning(
+                f"[browser_screenshot] failed to save {filename}: {write_resp.message}"
+            )
             return ErrorResponse(
-                message="Screenshot taken but failed to save to workspace.",
+                message=f"Screenshot taken but failed to save to workspace: {write_resp.message}",
                 error="workspace_write_failed",
                 session_id=session_name,
             ).from_outside()

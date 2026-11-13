@@ -307,7 +307,12 @@ class NotificationManager(AppService):
 
     @expose
     async def send_email_or_raise(
-        self, to: str, subject: str, body: str, text_body: str | None = None
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        text_body: str | None = None,
+        reply_to: str | None = None,
     ):
         """One-off transactional email (e.g. Better Auth password-reset links
         forwarded by the REST API). A delivery failure reaches the RPC caller;
@@ -315,7 +320,12 @@ class NotificationManager(AppService):
         EmailUndeliverableError."""
         try:
             await asyncio.to_thread(
-                self.email_sender.send_email_or_raise, to, subject, body, text_body
+                self.email_sender.send_email_or_raise,
+                to,
+                subject,
+                body,
+                text_body,
+                reply_to,
             )
         except ClientError as e:
             if e.error_code != INACTIVE_RECIPIENT_ERROR_CODE:
@@ -565,11 +575,12 @@ class NotificationManager(AppService):
             AUDIENCE_QUEUE: (self._process_audience_change, Ordering.AS_PUBLISHED),
             PASS_WORK_QUEUE: (self._process_pass_work, Ordering.COMMUTATIVE),
         }
+        # Declared before any consumer starts: a cancel or a failed declaration
+        # midway would leave the consumers already started outside `tasks`.
+        queues = {name: await channel.get_queue(name) for name in consumers}
         tasks = [
             asyncio.create_task(
-                self._consume_queue(
-                    await channel.get_queue(name), handler, name, ordering
-                )
+                self._consume_queue(queues[name], handler, name, ordering)
             )
             for name, (handler, ordering) in consumers.items()
         ]
@@ -578,6 +589,9 @@ class NotificationManager(AppService):
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             logger.info("Service shutdown requested")
+            # gather raises once the first consumer finishes; cancelling the rest
+            # in the `finally` would cut short the grace they give their handlers.
+            await asyncio.wait(tasks)
             raise
         finally:
             # The four consumers share one channel, so they live and die

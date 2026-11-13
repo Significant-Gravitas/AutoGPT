@@ -26,13 +26,15 @@ from datetime import UTC
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.copilot import stream_registry
-from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.active_turns import ConcurrentTurnLimitError, SessionNotIdle
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.constants import AUTOPILOT_BLOCK_TOOL_NAME
 from backend.copilot.executor.utils import (
     TurnPublishUnconfirmed,
     queue_spawned_turn,
     schedule_turn,
 )
+from backend.copilot.limit_tracking import BlockedSurface, track_turn_cap
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
@@ -43,11 +45,13 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
 )
+from backend.copilot.pending_messages import PENDING_BUFFER_FULL_REFUSAL
 from backend.copilot.response_model import StreamError, StreamFinish
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_pause import TurnPause
-from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
+from backend.copilot.turn_queue import queued_turn_refusal
 from backend.data.db_accessors import chat_db
+from backend.data.redis_helpers import RedisListCapacityExceeded
 
 from .stream_accumulator import EventAccumulator, ToolCallEntry, process_event
 
@@ -134,6 +138,7 @@ async def wait_for_session_result(
     queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
+        include_suppressed_errors=True,
     )
     result = SessionResult()
     if queue is None:
@@ -274,7 +279,32 @@ async def run_copilot_turn_via_queue(
 
     if already_waiting:
         return "refused", SessionResult(refusal=_ALREADY_WAITING)
-    if in_flight:
+    # Same per-user concurrent-turn cap as the HTTP chat route via the
+    # shared ``schedule_turn`` helper — without this a graph spawning N
+    # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
+    # out unbounded copilot turns past the user's cap.
+    turn_id = str(uuid.uuid4())
+    delegated = session.metadata.delegated_by_session_id is not None
+    try:
+        if in_flight:
+            raise SessionNotIdle(session_id)
+        await schedule_turn(
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            message=message,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            llm_auth_provider=session.metadata.llm_auth_provider,
+            llm_credential_id=session.metadata.llm_credential_id,
+            permissions=permissions,
+            spawn=spawn,
+            message_metadata=message_metadata,
+            delegated=delegated,
+            # A child of an impersonated turn is the admin's work too.
+            impersonated=is_turn_impersonated(),
+        )
+    except SessionNotIdle:
         if not allow_queue:
             return "refused", SessionResult(
                 refusal=(
@@ -289,9 +319,12 @@ async def run_copilot_turn_via_queue(
             session_id[:12],
             tool_name,
         )
-        state = await queue_user_message(
-            session_id=session_id, message=message, metadata=message_metadata
-        )
+        try:
+            state = await queue_user_message(
+                session_id=session_id, message=message, metadata=message_metadata
+            )
+        except RedisListCapacityExceeded:
+            return "refused", SessionResult(refusal=PENDING_BUFFER_FULL_REFUSAL)
         if timeout <= 0:
             # Fire-and-forget: caller explicitly asked not to wait.
             return "queued", SessionResult(
@@ -313,35 +346,11 @@ async def run_copilot_turn_via_queue(
         observed.queued = True
         observed.pending_buffer_length = state.buffer_length
         return outcome, observed
-
-    # Same per-user concurrent-turn cap as the HTTP chat route via the
-    # shared ``schedule_turn`` helper — without this a graph spawning N
-    # AutoPilotBlocks or a tool-loop firing run_sub_session could fan
-    # out unbounded copilot turns past the user's cap.
-    turn_id = str(uuid.uuid4())
-    delegated = session.metadata.delegated_by_session_id is not None
-    try:
-        await schedule_turn(
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=message,
-            tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            llm_auth_provider=session.metadata.llm_auth_provider,
-            llm_credential_id=session.metadata.llm_credential_id,
-            permissions=permissions,
-            spawn=spawn,
-            message_metadata=message_metadata,
-            delegated=delegated,
-            # A child of an impersonated turn is the admin's work too.
-            impersonated=is_turn_impersonated(),
-        )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
     except TurnPublishUnconfirmed:
         raise
-    except ConcurrentTurnLimitError:
+    except ConcurrentTurnLimitError as exc:
         if delegated:
             return await _queue_for_slot(
                 session_id=session_id,
@@ -355,7 +364,9 @@ async def run_copilot_turn_via_queue(
                 message_metadata=message_metadata,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
+                running_cap=exc,
             )
+        track_turn_cap(user_id, exc, surface=_cap_surface(tool_name), outcome="refused")
         # Sub-Otto / run_sub_session caller is at the cap (this is
         # the graph-block / tool path, not the HTTP route). Use a
         # distinct ``rejected_concurrent_turn_cap`` outcome so callers
@@ -401,6 +412,11 @@ async def _nothing_queued(session_id: str) -> bool:
         return False
 
 
+def _cap_surface(tool_name: str) -> BlockedSurface:
+    """The AutoPilot block's turn, or a subtask a turn started."""
+    return "block" if tool_name == AUTOPILOT_BLOCK_TOOL_NAME else "background"
+
+
 async def wait_for_queued_session(
     *, session_id: str, user_id: str, timeout: float
 ) -> tuple[SessionOutcome, SessionResult]:
@@ -439,9 +455,11 @@ async def _queue_for_slot(
     message_metadata: dict[str, Any] | None,
     llm_auth_provider: CopilotLlmAuthProvider,
     llm_credential_id: str | None,
+    running_cap: ConcurrentTurnLimitError,
 ) -> tuple[SessionOutcome, SessionResult]:
     """A spawn the reserve refused waits in the queue instead, up to the
-    inflight cap; past it the spawn is refused as before."""
+    inflight cap; past it the spawn is refused as before. ``running_cap`` is
+    the refusal that sent it here."""
     try:
         await queue_spawned_turn(
             session_id=session_id,
@@ -460,7 +478,8 @@ async def _queue_for_slot(
         return "refused", SessionResult(refusal=refused.message)
     except SessionNotIdle:
         return "refused", SessionResult(refusal=_ALREADY_WAITING)
-    except ConcurrentTurnLimitError:
+    except ConcurrentTurnLimitError as exc:
+        track_turn_cap(user_id, exc, surface=_cap_surface(tool_name), outcome="refused")
         logger.warning(
             f"[queue] session={session_id[:12]} user={user_id[:8]} rejected at the "
             f"inflight cap (tool={tool_name})"
@@ -470,6 +489,9 @@ async def _queue_for_slot(
         if await _nothing_queued(session_id):
             raise TurnNotDispatched(f"The turn could not be queued: {e}") from e
         raise
+    track_turn_cap(
+        user_id, running_cap, surface=_cap_surface(tool_name), outcome="queued"
+    )
     if timeout <= 0:
         # Stored, so it runs when a slot frees; as after a dispatch, a read
         # with nothing to wait for could only fail and read as "not queued".

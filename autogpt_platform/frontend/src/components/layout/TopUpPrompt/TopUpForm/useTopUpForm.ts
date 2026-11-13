@@ -1,6 +1,5 @@
 import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
-import useCredits from "@/hooks/useCredits";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -13,9 +12,10 @@ const topUpSchema = z.object({
     .min(5, "Top-ups start at $5. Please enter a higher amount."),
 });
 
-export function useTopUpForm() {
+export function useTopUpForm(
+  requestTopUp: (creditAmount: number) => Promise<boolean>,
+) {
   const toastOnFail = useToastOnFail();
-  const { requestTopUp } = useCredits();
 
   const [isRequesting, setIsRequesting] = useState(false);
   const checkoutRedirect = useCheckoutRedirect();
@@ -29,7 +29,9 @@ export function useTopUpForm() {
     if (isLoading || checkoutRedirect.isRedirecting) return;
     setIsRequesting(true);
     await requestTopUp(Math.round(data.amount * 100))
-      .then(() => checkoutRedirect.markRedirecting())
+      .then((isRedirecting) => {
+        if (isRedirecting) checkoutRedirect.markRedirecting();
+      })
       .catch(toastOnFail("request top-up"))
       .finally(() => setIsRequesting(false));
   }

@@ -39,7 +39,7 @@ from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import is_skill_package_path
 from backend.util.feature_flag import Flag, get_flag_variant
 
-from . import answerable, held, resolve_mode
+from . import answered_from_chat_of_origin, held, resolve_mode
 from . import review as review_store
 from . import shadow
 from .content import ContentVerdict, Image, judge_content
@@ -61,6 +61,8 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
+        # Only a graph it returns that another user owns, or a copy, reaches the judge.
+        "find_library_agent",
         "get_sub_session_result",
         "read_expert_chat",
         "read_skill",
@@ -97,12 +99,16 @@ _SOURCE_KINDS = {
     "grep": "file",
     "read_file": "file",
     "read_tool_result": "file",
+    "find_library_agent": "workflow",
     "run_agent": "workflow",
     "view_agent_output": "workflow",
     "search_feature_requests": "platform",
     "web_fetch": "web",
     "web_search": "web",
 }
+
+# What a card calls a read no argument names, where the tool's name is not copy.
+_READ_LABELS = {"find_library_agent": "the library search"}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
@@ -315,7 +321,7 @@ async def screen_mode(user_id: str | None, session: ChatSession) -> ScreenMode:
     """``copilot-read-screen``: true or "enforce" holds a flagged read, "shadow"
     judges and records without holding, anything else is off. It runs only
     where a signed-in user can answer the card, as the action gate does."""
-    if not answerable(user_id, session):
+    if not user_id or not await answered_from_chat_of_origin(user_id, session):
         return "off"
     value = await get_flag_variant(Flag.COPILOT_READ_SCREEN, user_id)
     if value is True or value == "enforce":
@@ -592,8 +598,7 @@ def read_headline(tool_name: str, args: dict[str, Any], actor: str) -> Headline:
     """``actor`` is who reads it: the chat's Expert, or Otto in a plain chat."""
     headline = named(f"Let {actor} read", _SOURCE_KEYS, args)
     if headline.object is None:
-        label = tool_name.replace("_", " ")
-        return Headline(ask=f"Let {actor} read what {label} returned")
+        return Headline(ask=f"Let {actor} read what {_label(tool_name)} returned")
     return headline
 
 
@@ -695,10 +700,10 @@ def _stub(
         reason=reason,
         review_id=review_id,
         # The chain row's words; the card asks from ``read_headline``.
-        ask=(
-            "Read"
-            if named_source
-            else f"Read what {tool_name.replace('_', ' ')} returned"
-        ),
+        ask="Read" if named_source else f"Read what {_label(tool_name)} returned",
         object=named_source or None,
     ).model_dump_json()
+
+
+def _label(tool_name: str) -> str:
+    return _READ_LABELS.get(tool_name, tool_name.replace("_", " "))

@@ -22,7 +22,7 @@ from backend.copilot.gate.subject import (
     workflow_subject,
 )
 from backend.copilot.gate.workflow import awaiting_whom, card_chat_for_run
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, pauses_irreversible_actions
 from backend.copilot.permissions import denied_graph_providers
 from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.copilot.tool_display import emit_tool_display_name
@@ -49,8 +49,10 @@ from backend.util.exceptions import (
     DatabaseError,
     ExpertNotFoundError,
     GraphValidationError,
+    InvalidInputError,
     MissingConfigError,
     NotFoundError,
+    UserPaywalledError,
 )
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -70,6 +72,7 @@ from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
     require_installed_workflow,
+    resolve_credential_scope,
     ungranted_credential_hint,
 )
 from .external_scope import external_tenancy
@@ -481,10 +484,12 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Workflow '{graph.name}' runs on a webhook trigger, so it "
                         "can't be run or scheduled directly. Set it up with "
-                        "tool:setup_agent_webhook_trigger using the trigger block's "
-                        "config (see trigger_info.config_schema). For provider "
-                        "webhooks (e.g. GitHub), ask the user which connected "
-                        "account to register the webhook under — never auto-pick."
+                        "tool:setup_agent_webhook_trigger using the trigger "
+                        "block's config (see trigger_info.config_schema), plus "
+                        "constant_inputs for any workflow inputs it has (see "
+                        "agent.inputs). For provider webhooks (e.g. GitHub), ask "
+                        "the user which connected account to register the "
+                        "webhook under — never auto-pick."
                     ),
                     session_id=session_id,
                     agent=self._build_agent_details(graph, credentials),
@@ -537,13 +542,18 @@ class RunAgentTool(BaseTool):
             # after the run/schedule actually started, so a failed operation
             # (e.g. schedule validation, credential race) doesn't orphan a preset.
             if isinstance(result, ExecutionStartedResponse):
-                saved_preset_id = await self._maybe_save_preset(
-                    user_id=user_id,
-                    graph=graph,
-                    graph_credentials=graph_credentials,
-                    params=params,
-                    expert_id=session.expert_id,
-                )
+                try:
+                    saved_preset_id = await self._maybe_save_preset(
+                        user_id=user_id,
+                        graph=graph,
+                        graph_credentials=graph_credentials,
+                        params=params,
+                        expert_id=session.expert_id,
+                    )
+                except InvalidInputError as e:
+                    # The run has started; reporting an error would invite a rerun.
+                    result.message += f" The preset was not saved: {e}"
+                    saved_preset_id = None
                 if saved_preset_id:
                     result.saved_preset_id = saved_preset_id
             return result
@@ -756,8 +766,19 @@ class RunAgentTool(BaseTool):
         Returns:
             (graph_credentials, error_response) — error_response is None when ready.
         """
+        credential_scope = (
+            await resolve_credential_scope(user_id, expert_id)
+            if graph.regular_credentials_inputs
+            else None
+        )
         graph_credentials, missing_creds = await match_user_credentials_to_graph(
-            user_id, graph, expert_id, session_id=session_id
+            user_id,
+            graph,
+            expert_id,
+            session_id=session_id,
+            available_credentials=(
+                credential_scope.available if credential_scope is not None else None
+            ),
         )
 
         # --- Reject unknown input fields (always, even for dry runs) ---
@@ -789,6 +810,7 @@ class RunAgentTool(BaseTool):
                 user_id,
                 expert_id,
                 build_missing_credentials_from_graph(graph, graph_credentials),
+                credential_scope=credential_scope,
             )
             if is_unattended_turn():
                 return graph_credentials, await unattended_missing_credentials_error(
@@ -797,6 +819,7 @@ class RunAgentTool(BaseTool):
                     session_id,
                     user_id,
                     expert_id,
+                    credential_scope=credential_scope,
                 )
             return (
                 graph_credentials,
@@ -811,6 +834,7 @@ class RunAgentTool(BaseTool):
                         }
                         - {""},
                         missing_credentials_dict.values(),
+                        credential_scope=credential_scope,
                     ),
                     session_id=session_id,
                     setup_info=SetupInfo(
@@ -1087,7 +1111,7 @@ class RunAgentTool(BaseTool):
                 pause_irreversible_actions=(
                     not dry_run
                     and not gate_approved
-                    and session.metadata.pauses_irreversible_actions
+                    and await pauses_irreversible_actions(session.metadata)
                 ),
             )
         except GraphValidationError as e:
@@ -1100,6 +1124,13 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
                 inputs=inputs,
             )
+        except UserPaywalledError as e:
+            logger.info(f"run_agent refused for user {user_id}: no subscription")
+            return ErrorResponse(
+                message=str(e),
+                error="subscription_required",
+                session_id=session_id,
+            ).from_outside()
 
         library_agent_link = f"/library/agents/{library_agent.id}"
         if execution.status == ExecutionStatus.REVIEW:
@@ -1415,7 +1446,7 @@ class RunAgentTool(BaseTool):
             result = await get_scheduler_client().add_execution_schedule(
                 user_id=user_id,
                 graph_id=library_agent.graph_id,
-                graph_version=library_agent.graph_version,
+                graph_version=graph.version,
                 name=schedule_name,
                 cron=cron,
                 input_data=inputs,

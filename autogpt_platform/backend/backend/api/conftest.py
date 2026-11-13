@@ -11,11 +11,10 @@ import pytest
 from prisma.enums import SubscriptionTier
 from pytest_snapshot.plugin import Snapshot
 
-from backend.copilot import rate_limit
 from backend.copilot.rate_limit import is_user_paywalled as _REAL_IS_USER_PAYWALLED
 from backend.data.pro_activation import UsageActivationState
 from backend.data.user import is_user_banned as _REAL_IS_USER_BANNED
-from backend.util.feature_flag import Flag
+from backend.data.user import is_user_refused as _REAL_IS_USER_REFUSED
 
 # Every module that imports the check by name.
 _PAYWALL_CHECK_SITES = (
@@ -28,10 +27,15 @@ _PAYWALL_CHECK_SITES = (
 _BAN_CHECK_SITES = (
     "backend.data.user.is_user_banned",
     "backend.api.external.middleware.is_user_banned",
-    "backend.api.features.integrations.router.is_user_banned",
     "backend.api.ws_api.is_user_banned",
     "backend.data.auth.oauth.is_user_banned",
-    "backend.executor.utils.is_user_banned",
+    "backend.api.features.account_deletion.restore.is_user_banned",
+)
+# Background work is refused for a banned or a closed account.
+_REFUSAL_CHECK_SITES = (
+    "backend.api.features.integrations.router.is_user_refused",
+    "backend.api.ws_api.is_user_refused",
+    "backend.executor.utils.is_user_refused",
 )
 
 
@@ -123,11 +127,11 @@ def _bypass_paywall(mocker):
 
 
 @pytest.fixture
-def paywalled_user(mocker, test_user_id):
+def paywalled_user(mocker, set_platform_payment, test_user_id):
     """Make the signed-in test user one without a plan, judged by the real check.
 
-    Undoes ``_bypass_paywall`` and stubs only the stored tier and the payments
-    flag, so a 402 comes from the same ``is_user_paywalled`` production runs.
+    Undoes ``_bypass_paywall``, stubs the stored tier and turns payment on, so a
+    402 comes from the same ``is_user_paywalled`` production runs.
     """
 
     async def no_plan(user_id: str) -> UsageActivationState:
@@ -135,16 +139,13 @@ def paywalled_user(mocker, test_user_id):
             user_id=user_id, tier=SubscriptionTier.NO_TIER, ready=True
         )
 
-    async def payments_on(flag: Flag, *args, **kwargs) -> bool:
-        return flag == Flag.ENABLE_PLATFORM_PAYMENT
-
     for site in _PAYWALL_CHECK_SITES:
         mocker.patch(site, new=_REAL_IS_USER_PAYWALLED)
     mocker.patch(
         "backend.copilot.usage_activation.pro_activation_db",
         return_value=SimpleNamespace(get_usage_activation_state=no_plan),
     )
-    mocker.patch.object(rate_limit, "is_feature_enabled", new=payments_on)
+    set_platform_payment(True)
     return test_user_id
 
 
@@ -154,7 +155,7 @@ def _no_bans(mocker):
     session test has connected Prisma, the real lookup would query it from
     TestClient's own event loop."""
     ban_off = mocker.AsyncMock(return_value=False)
-    for site in _BAN_CHECK_SITES:
+    for site in _BAN_CHECK_SITES + _REFUSAL_CHECK_SITES:
         mocker.patch(site, new=ban_off)
 
 
@@ -163,6 +164,8 @@ def real_ban_lookup(mocker):
     """Undoes ``_no_bans``."""
     for site in _BAN_CHECK_SITES:
         mocker.patch(site, new=_REAL_IS_USER_BANNED)
+    for site in _REFUSAL_CHECK_SITES:
+        mocker.patch(site, new=_REAL_IS_USER_REFUSED)
 
 
 @pytest.fixture

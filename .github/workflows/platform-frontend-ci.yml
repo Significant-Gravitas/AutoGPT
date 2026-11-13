@@ -12,6 +12,8 @@ on:
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
+      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
+      - "autogpt_platform/backend/schema.prisma"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
@@ -25,6 +27,8 @@ on:
       - ".github/scripts/test_frontend_cobertura_contract.py"
       - ".github/scripts/run_unittest_junit.py"
       - "autogpt_platform/frontend/**"
+      # The Better Auth tables are Prisma's; auth-schema.test.ts checks them.
+      - "autogpt_platform/backend/schema.prisma"
       - "autogpt_platform/backend/Dockerfile"
       - "autogpt_platform/docker-compose.yml"
       - "autogpt_platform/docker-compose.platform.yml"
@@ -42,11 +46,12 @@ defaults:
 
 jobs:
   tooltip-browser:
-    runs-on: ubuntu-latest
+    # Pinned: Playwright has no Chromium build for ubuntu-latest's 26.04 image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 11
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -95,7 +100,7 @@ jobs:
           if-no-files-found: error
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -124,7 +129,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -162,7 +167,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 
@@ -201,7 +206,7 @@ jobs:
           submodules: recursive
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: autogpt_platform/frontend/package.json
 

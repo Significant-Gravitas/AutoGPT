@@ -11,15 +11,16 @@ interface Props {
 export function MarketingHeader({ headingLines, description }: Props) {
   return (
     <>
-      <AutoGPTLogo className="h-auto w-28" />
-      <div className="flex flex-col gap-6">
+      <AutoGPTLogo className="h-auto w-28 shrink-0" />
+      <div className="flex shrink-0 flex-col gap-6">
         <TeamAvatars />
         <div className="flex flex-col gap-4">
           <Text
             variant="h1"
             as="h1"
             tone="primary"
-            className="!w-full !text-display !leading-tight !font-semibold tracking-heading"
+            tracking="heading"
+            className="!w-full !leading-tight"
           >
             {headingLines.map((line, i) => (
               <span key={i} className="block">

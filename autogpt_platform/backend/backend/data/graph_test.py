@@ -1,7 +1,8 @@
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import UUID, uuid4
 
 import fastapi.exceptions
@@ -9,7 +10,14 @@ import prisma
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from prisma.enums import ResourceVisibility, SubmissionStatus
-from prisma.models import AgentGraph, AgentNode, LibraryAgent, User
+from prisma.models import (
+    AgentGraph,
+    AgentNode,
+    LibraryAgent,
+    StoreListing,
+    StoreListingVersion,
+    User,
+)
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.library.db as library_db
@@ -17,7 +25,7 @@ import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
 from backend.blocks import _all_subclasses, load_all_blocks
-from backend.blocks._base import Block, BlockSchema, BlockSchemaInput
+from backend.blocks._base import Block, BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
@@ -30,6 +38,7 @@ from backend.blocks.io import (
     AgentOutputBlock,
 )
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
@@ -39,21 +48,33 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+    copy_graph,
+)
+from backend.data.graph import create_graph as db_create_graph
+from backend.data.graph import (
     delete_graph,
     fork_graph,
+    get_copied_graph_ids,
     get_graph,
     get_graph_all_versions,
+    get_graph_at_version,
     get_graph_settings,
     get_store_listed_graphs,
     graph_in_library_filter,
+    graph_owner_id,
+    is_graph_version_owner,
     make_graph_model,
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsFieldInfo, SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -233,10 +254,6 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         create_graph, DEFAULT_USER_ID
     )
 
-    class ExpectedInputSchema(BlockSchemaInput):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
-
     class ExpectedOutputSchema(BlockSchema):
         # Note: Graph output schemas are dynamically generated and don't inherit
         # from BlockSchemaOutput, so we use BlockSchema as the base instead
@@ -248,7 +265,21 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    assert input_schema == ExpectedInputSchema.jsonschema()
+    # Both inputs are advanced, so both are optional, with or without a default.
+    assert input_schema == {
+        "title": "ExpectedInputSchema",
+        "type": "object",
+        "properties": {
+            "in_key_a": {
+                "advanced": True,
+                "default": "A",
+                "secret": False,
+                "title": "Key A",
+            },
+            "in_key_b": {"advanced": True, "secret": False, "title": "in_key_b"},
+        },
+        "required": [],
+    }
 
     # Add snapshot testing for the schemas
     snapshot.snapshot_dir = "snapshots"
@@ -374,6 +405,28 @@ def test_stripped_for_export_drops_declared_credentials_field():
     assert "credentials" not in stripped.input_default
     assert stripped.input_default["code"] == "print('hi')"
     assert stripped.webhook_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_is_graph_version_owner(server: SpinTestServer):
+    """A graph version is owned by the user who saved it, by no one else, and a
+    missing version is owned by no one."""
+    graph = Graph(
+        name="Owned graph",
+        description="",
+        nodes=[Node(block_id=StoreValueBlock().id, input_default={})],
+        links=[],
+    )
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), DEFAULT_USER_ID
+    )
+    other_user = await create_test_user(alt_user=True)
+
+    assert await is_graph_version_owner(created.id, created.version, DEFAULT_USER_ID)
+    assert not await is_graph_version_owner(created.id, created.version, other_user.id)
+    assert not await is_graph_version_owner(
+        created.id, created.version + 1, DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -890,6 +943,7 @@ def test_only_known_block_fields_are_marked_secret():
     assert secret_fields == {
         ("AllQuietIncidentTriggerBlock", "signing_secret"),
         ("AutoPilotBlock", "codex_credentials"),
+        ("ExaSearchMonitorTriggerBlock", "webhook_secret"),
         ("GenericWebhookTriggerBlock", "secret_token"),
         ("PublishToMediumBlock", "author_id"),
         ("SQLQueryBlock", "host"),
@@ -1051,6 +1105,147 @@ async def test_fork_graph_clears_picked_files(
         await delete_graph(forked.id, user_id=DEFAULT_USER_ID)
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_duplicate_saved_again_in_the_builder_is_still_a_copy(
+    server: SpinTestServer,
+):
+    original = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "greeting"})),
+        DEFAULT_USER_ID,
+    )
+    entry = await library_db.get_library_agent_by_graph_id(DEFAULT_USER_ID, original.id)
+    assert entry is not None
+    duplicate = await library_db.fork_library_agent(entry.id, DEFAULT_USER_ID)
+    copy = await get_graph(duplicate.graph_id, None, DEFAULT_USER_ID)
+    assert copy is not None
+    value_node, output_node = sorted(
+        copy.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    # The builder sends the graph back without ``forked_from_id``.
+    edited = _value_to_output_graph({"name": "hello"}, value_node.id, output_node.id)
+    edited.id = copy.id
+    await graphs_routes.update_graph(
+        copy.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    latest = await get_graph(copy.id, None, DEFAULT_USER_ID)
+    assert latest is not None and latest.version > copy.version
+    assert latest.forked_from_id is None
+
+    assert await get_copied_graph_ids([original.id, copy.id]) == [copy.id]
+
+
+@pytest.mark.parametrize("copy_with", [fork_graph, copy_graph], ids=["dup", "copy"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflow_copied_with_its_workflow_is_a_copy(
+    server: SpinTestServer, copy_with: Callable[..., Awaitable[GraphModel]]
+):
+    owner = await create_test_user()
+    workflow = await _workflow_with_a_sub_workflow(owner.id)
+
+    copy = await copy_with(workflow.id, workflow.version, owner.id)
+
+    [sub_copy] = copy.sub_graphs
+    copies = await get_copied_graph_ids([copy.id, sub_copy.id])
+    assert set(copies) == {copy.id, sub_copy.id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflow_saved_with_another_users_workflow_is_a_copy(
+    server: SpinTestServer,
+):
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    workflow = await _workflow_with_a_sub_workflow(owner.id)
+    await _in_library_from_the_marketplace(workflow, other.id)
+    stored = await get_graph(
+        workflow.id, workflow.version, owner.id, include_subgraphs=True
+    )
+    assert stored is not None and len(stored.sub_graphs) == 1
+    unrelated = await db_create_graph(_graph("Not a sub-workflow"), owner.id)
+    sent = Graph.model_validate(stored.model_dump())
+    sent.sub_graphs += [
+        BaseGraph(
+            id=unrelated.id,
+            version=unrelated.version,
+            name="Sent along",
+            description="",
+        ),
+        BaseGraph(name="Never stored", description=""),
+    ]
+
+    copy, _ = await library_db.fork_graph_in_library(
+        sent, other.id, forked_from_version=workflow.version
+    )
+
+    [sub_copy_id] = [
+        node.input_default["graph_id"]
+        for node in copy.nodes
+        if node.block_id == AgentExecutorBlock().id
+    ]
+    copies = await get_copied_graph_ids([copy.id, sub_copy_id])
+    assert set(copies) == {copy.id, sub_copy_id}
+    assert not await AgentGraph.prisma().find_many(where={"forkedFromId": unrelated.id})
+
+
+async def _workflow_with_a_sub_workflow(user_id: str) -> GraphModel:
+    child = await db_create_graph(
+        _value_to_output_graph({"name": "greeting"}, str(uuid4()), str(uuid4())),
+        user_id,
+    )
+    return await db_create_graph(
+        Graph(
+            name=f"Calls a sub-workflow {uuid4()}",
+            description="",
+            nodes=[
+                Node(
+                    block_id=AgentExecutorBlock().id,
+                    input_default={
+                        "user_id": user_id,
+                        "graph_id": child.id,
+                        "graph_version": child.version,
+                        "inputs": {},
+                        "input_schema": child.input_schema,
+                        "output_schema": child.output_schema,
+                    },
+                )
+            ],
+        ),
+        user_id,
+    )
+
+
+async def _in_library_from_the_marketplace(graph: GraphModel, user_id: str) -> None:
+    listing = await StoreListing.prisma().create(
+        data={
+            "slug": f"sub-workflow-{uuid4()}",
+            "agentGraphId": graph.id,
+            "owningUserId": graph.user_id,
+            "hasApprovedVersion": True,
+        }
+    )
+    await StoreListingVersion.prisma().create(
+        data={
+            "storeListingId": listing.id,
+            "version": 1,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "name": graph.name,
+            "subHeading": "",
+            "description": "",
+            "imageUrls": [],
+            "categories": [],
+            "submissionStatus": SubmissionStatus.APPROVED,
+        }
+    )
+    await LibraryAgent.prisma().create(
+        data={
+            "userId": user_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+        }
+    )
+
+
 def _value_to_output_graph(
     output_input: dict[str, Any], value_id: str = "value", output_id: str = "output"
 ) -> Graph:
@@ -1135,6 +1330,36 @@ async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
     }
     versions = await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
     assert [version.version for version in versions] == [created.version]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_at_version_reads_the_version_asked_for(
+    server: SpinTestServer,
+):
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "first"})),
+        DEFAULT_USER_ID,
+    )
+    value_node, output_node = sorted(
+        created.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    edited = _value_to_output_graph({"name": "second"}, value_node.id, output_node.id)
+    edited.id = created.id
+    await graphs_routes.update_graph(
+        created.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    versions = sorted(
+        v.version
+        for v in await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
+    )
+    assert len(versions) == 2
+
+    read = [await get_graph_at_version(created.id, v, client=None) for v in versions]
+
+    assert [(g.version, list(g.output_schema["properties"])) for g in read if g] == [
+        (versions[0], ["first"]),
+        (versions[1], ["second"]),
+    ]
 
 
 def _owner_context(user_id: str) -> RequestContext:
@@ -1265,6 +1490,63 @@ def test_credentials_input_schema_excludes_auto_creds():
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names
+
+
+class _CountedProviders(frozenset):
+    """A provider set that counts how often it is compared with another."""
+
+    comparisons = 0
+
+    def __eq__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__ne__(self, other)
+
+    __hash__ = frozenset.__hash__
+
+
+def test_credentials_input_schema_groups_each_input_by_provider_once():
+    """Each credentials input is grouped by its provider once."""
+    count = 300
+    inputs = {
+        f"provider_{i}_credentials": (
+            CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": [f"provider_{i}"],
+                    "credentials_types": ["api_key"],
+                },
+                by_alias=True,
+            ).model_copy(update={"provider": _CountedProviders({f"provider_{i}"})}),
+            {(f"node-{i}", "credentials")},
+            True,
+        )
+        for i in range(count)
+    }
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[],
+        links=[],
+    )
+    _CountedProviders.comparisons = 0
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=inputs,
+    ):
+        schema = graph.credentials_input_schema
+
+    assert len(schema["properties"]) == count
+    assert _CountedProviders.comparisons <= count
 
 
 # ============================================================================
@@ -3088,6 +3370,44 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
     )
 
 
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4.1", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-opus-4-0", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-sonnet-4-0", LLMModel.CLAUDE_4_6_SONNET),
+        ("anthropic/claude-sonnet-4", LLMModel.CLAUDE_4_6_SONNET),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
+    stored_value: str, replacement: LLMModel
+):
+    """Anthropic retired these aliases with their snapshots. A stored one
+    lands on its family's successor in nodes and presets, and the enum keeps
+    refusing it, which is what keeps the copilot's registry gate from sending it."""
+    with pytest.raises(ValueError):
+        LLMModel(stored_value)
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
+
+
 @pytest.mark.asyncio
 async def test_migrate_llm_models_covers_preset_overrides():
     """Regression: migrate_llm_models must also rewrite legacy values stored
@@ -3645,3 +3965,294 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
         "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True
+
+
+def _graph(name: str, graph_id: str | None = None, **kwargs) -> Graph:
+    return Graph(
+        id=graph_id or str(uuid4()),
+        name=name,
+        description="",
+        nodes=[],
+        links=[],
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_refuses_a_version_under_another_users_graph_id(
+    server: SpinTestServer,
+):
+    """A graph ID belongs to whoever created it, for the graph and its sub-graphs."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+
+    with pytest.raises(NotFoundError):
+        await db_create_graph(_graph("other's", graph_id=owned.id), other.id)
+
+    with pytest.raises(NotFoundError):
+        await db_create_graph(
+            _graph(
+                "their own graph",
+                sub_graphs=[BaseGraph(id=owned.id, name="other's", description="")],
+            ),
+            other.id,
+        )
+
+    rows = await AgentGraph.prisma().find_many(where={"id": owned.id})
+    assert [(row.version, row.userId) for row in rows] == [(1, owner.id)]
+
+    # The owner's own next save still lands, as the next version.
+    second = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
+    assert second.version == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_graph_ids_owner_is_the_owner_of_its_first_version(
+    server: SpinTestServer,
+):
+    """A graph ID stays its creator's, whoever owns a later version of it."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+    await AgentGraph.prisma().create(
+        data={
+            "id": owned.id,
+            "version": 2,
+            "name": "owned",
+            "description": "",
+            "isActive": True,
+            "userId": other.id,
+        }
+    )
+
+    assert await graph_owner_id(owned.id) == owner.id
+    saved = await db_create_graph(_graph("owned v3", graph_id=owned.id), owner.id)
+    assert (saved.version, saved.user_id) == (3, owner.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_appends_after_the_latest_version_it_finds(
+    server: SpinTestServer,
+):
+    """The stored version number is the database's, never the request's."""
+    owner = await create_test_user()
+    first = await db_create_graph(_graph("versioned"), owner.id)
+
+    requested = _graph("versioned", graph_id=first.id, version=7)
+    saved = await db_create_graph(requested, owner.id)
+
+    assert saved.version == first.version + 1
+    assert requested.version == first.version + 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_graph_in_library_forks_another_users_graph(
+    server: SpinTestServer,
+):
+    """Editing a workflow the caller does not own saves the caller's own copy."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("installed"), owner.id)
+
+    edited = _graph("installed, edited", graph_id=owned.id, version=owned.version)
+    forked, library_agent = await library_db.update_graph_in_library(edited, other.id)
+
+    assert forked.id != owned.id
+    assert forked.user_id == other.id
+    assert forked.forked_from_id == owned.id
+    assert forked.forked_from_version == owned.version
+    assert library_agent.graph_id == forked.id
+
+    rows = await AgentGraph.prisma().find_many(where={"id": owned.id})
+    assert [(row.version, row.userId) for row in rows] == [(1, owner.id)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_rejects_unsafe_pin_names(server: SpinTestServer):
+    """The store path refuses a graph whose node input-default key or link name
+    carries an unsafe dynamic object-attribute token, so one never persists.
+
+    The base of each token is a real input field, so graph validation — which
+    inspects base names, not the flattened tokens — would pass it on.
+    """
+    # Local import: the module-level name `create_graph` is taken by a
+    # CreateGraph request object throughout this file.
+    from backend.data.graph import create_graph as create_graph_db
+
+    value_block = StoreValueBlock().id
+    node_a, node_b = str(uuid4()), str(uuid4())
+
+    # Unsafe token in a node input-default key.
+    bad_input = Graph(
+        name="bad-input",
+        description="",
+        nodes=[
+            Node(
+                id=node_a,
+                block_id=value_block,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+        links=[],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_input, DEFAULT_USER_ID)
+
+    # Unsafe token in a link sink name.
+    bad_link = Graph(
+        name="bad-link",
+        description="",
+        nodes=[
+            Node(id=node_a, block_id=value_block),
+            Node(id=node_b, block_id=value_block),
+        ],
+        links=[
+            Link(
+                source_id=node_a,
+                sink_id=node_b,
+                source_name="output",
+                sink_name="input_@___class__",
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_link, DEFAULT_USER_ID)
+
+    # Nothing was written by either refusal.
+    for refused in (bad_input, bad_link):
+        assert (
+            await get_graph(refused.id, refused.version, user_id=DEFAULT_USER_ID)
+        ) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_checks_pin_names_and_the_owner_before_any_write(
+    server: SpinTestServer,
+):
+    """A re-save of an existing graph ID passes both checks before anything is
+    written, sub-graphs included, and the owner's clean save still lands."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+    sub_graph = BaseGraph(
+        id=str(uuid4()),
+        name="sub",
+        description="",
+        nodes=[
+            Node(
+                id=str(uuid4()),
+                block_id=StoreValueBlock().id,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await db_create_graph(
+            _graph("owned v2", graph_id=owned.id, sub_graphs=[sub_graph]), owner.id
+        )
+    with pytest.raises(NotFoundError):
+        await db_create_graph(_graph("other's", graph_id=owned.id), other.id)
+
+    rows = await AgentGraph.prisma().find_many(
+        where={"id": {"in": [owned.id, sub_graph.id]}}
+    )
+    assert [(row.id, row.version, row.userId) for row in rows] == [
+        (owned.id, 1, owner.id)
+    ]
+    saved = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
+    assert saved.version == 2
+
+
+# ============================================================================
+# A link into an MCP tool's argument
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "sink_name,argument",
+    [
+        ("query", "query"),
+        ("createRequest_#_objects", "createRequest"),
+        ("tool_arguments_#_query", "query"),
+    ],
+)
+def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str):
+    """The builder and AutoPilot name a link into a tool argument after the
+    argument, and validation refused that name, so the workflow could neither
+    be saved nor run. A `tool_arguments_#_` link saved, but its argument still
+    read as missing at run time. Either form now provides the argument."""
+    graph = make_graph_model(
+        _value_to_mcp_tool_graph(sink_name, required=[argument]), user_id="user-1"
+    )
+
+    graph.validate_graph(for_run=False)
+    assert graph.validate_graph_get_errors(for_run=True) == {}
+
+
+def test_a_nested_link_into_a_tool_that_declares_tool_arguments_provides_nothing():
+    """Such a tool's executor passes `tool_arguments_#_query` into its own
+    `tool_arguments` parameter, so a run must still find `query` missing."""
+    graph = _value_to_mcp_tool_graph("tool_arguments_#_query", required=["query"])
+    schema = graph.nodes[1].input_default["tool_input_schema"]
+    schema["properties"]["tool_arguments"] = {"type": "object"}
+
+    errors = make_graph_model(graph, user_id="user-1").validate_graph_get_errors(
+        for_run=True
+    )
+
+    assert errors == {"tool": {"query": "This field is required"}}
+
+
+@pytest.mark.parametrize(
+    "tool_input_schema",
+    [None, "not a schema", {"type": "object", "properties": 5}],
+)
+def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
+    tool_input_schema: Any,
+):
+    """A malformed schema is a 400 (`ValueError`), not an `AttributeError` 500."""
+    graph = _value_to_mcp_tool_graph("query", required=[])
+    graph.nodes[1].input_default["tool_input_schema"] = tool_input_schema
+
+    with pytest.raises(ValueError):
+        make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+
+def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:
+    return Graph(
+        name="Value to MCP tool",
+        description="",
+        nodes=[
+            Node(
+                id="value",
+                block_id=StoreValueBlock().id,
+                input_default={"input": "hi"},
+            ),
+            Node(
+                id="tool",
+                block_id=MCPToolBlock().id,
+                input_default={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "add_lead",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "createRequest": {"type": "object"},
+                        },
+                        "required": required,
+                    },
+                },
+            ),
+        ],
+        links=[
+            Link(
+                source_id="value",
+                sink_id="tool",
+                source_name="output",
+                sink_name=sink_name,
+            )
+        ],
+    )

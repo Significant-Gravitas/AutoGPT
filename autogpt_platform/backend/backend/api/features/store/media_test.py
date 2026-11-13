@@ -410,15 +410,21 @@ async def test_upload_media_webm_success(mock_settings, mock_storage_client):
     assert result.endswith(".webm")
 
 
-async def test_upload_media_mismatched_signature(mock_settings, mock_storage_client):
+async def test_upload_media_mismatched_signature_auto_corrects(
+    mock_settings, mock_storage_client
+):
     test_file = fastapi.UploadFile(
         filename="test.jpeg",
         file=io.BytesIO(b"\x89PNG\r\n\x1a\n"),  # PNG signature with JPEG content type
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
-    with pytest.raises(store_exceptions.InvalidFileTypeError):
-        await store_media.upload_media("test-user", test_file)
+    result = await store_media.upload_media("test-user", test_file)
+
+    mock_storage_client.upload.assert_awaited_once()
+    assert mock_storage_client.upload.await_args.kwargs["content_type"] == "image/png"
+    assert mock_storage_client.upload.await_args.args[1].endswith(".png")
+    assert result.endswith(".png")
 
 
 async def test_upload_media_invalid_signature(mock_settings, mock_storage_client):

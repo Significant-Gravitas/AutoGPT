@@ -173,7 +173,7 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
 # - 'extended_thinking': route to the Claude Agent SDK path with the default
 #   (opus) model.
 # ``None`` means "no override"; the server falls back to the Claude Code
-# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
+# subscription flag → the COPILOT_SDK flag → config.use_claude_agent_sdk.
 CopilotMode = Literal["fast", "extended_thinking"]
 
 # Per-request model tier set by the frontend model toggle.
@@ -363,7 +363,9 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
     )
@@ -426,21 +428,23 @@ class ChatConfig(BaseSettings):
     # User.subscriptionTier DB column and resolved inside
     # get_global_rate_limits().
     #
-    # These defaults act as the ceiling when LaunchDarkly is unreachable;
+    # These defaults act as the ceiling when PostHog is unreachable;
     # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
     #
     # A negative value disables that window's cap. Self-hosted distributions
     # (the single-container image and the unraid template) export -1 for both
     # because the operator pays the model provider directly and, without
-    # LaunchDarkly, every account resolves to NO_TIER → BASIC multiplier and
+    # PostHog, every account resolves to NO_TIER → BASIC multiplier and
     # would otherwise inherit these cloud ceilings. The defaults here stay
-    # positive so a LaunchDarkly outage on cloud never removes the cap.
+    # positive so a PostHog outage on cloud never removes the cap.
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
         "0 means no spend allowed (will block); a negative value disables the "
         "daily cap (the self-hosted default).",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
         description="Max cost per week in microdollars, resets Monday 00:00 UTC. "
@@ -451,11 +455,13 @@ class ChatConfig(BaseSettings):
     # Cost (in credits / cents) to reset the daily rate limit using credits.
     # When a user hits their daily limit, they can spend this amount to reset
     # the daily counter and keep working.  Set to 0 to disable the feature.
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     rate_limit_reset_cost: int = Field(
         default=500,
         ge=0,
         description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_daily_resets: int = Field(
         default=5,
         ge=0,
@@ -761,6 +767,23 @@ class ChatConfig(BaseSettings):
         description="Use dummy service instead of real LLM calls. "
         "Send __test_transient_error__, __test_fatal_error__, or "
         "__test_slow_response__ to trigger specific scenarios.",
+    )
+    load_test_email_domain: str = Field(
+        default="",
+        description="Email domain of the accounts a load test sends chat turns "
+        "from. An account named loadtest-dummy-…@<domain> runs its turns on the "
+        "dummy engine, and loadtest-scripted-…@<domain> on the SDK engine "
+        "against load_test_model_url; every other account keeps its usual "
+        "engine and model (backend/copilot/load_test.py). Empty, the default, "
+        "routes no account and looks nothing up.",
+    )
+    load_test_model_url: str = Field(
+        default="",
+        description="Base URL, ending in /v1, of the scripted model that plays "
+        "the provider for loadtest-scripted accounts (autogpt_platform/"
+        "scripted_model). Their CLI gets it without /v1 as ANTHROPIC_BASE_URL, "
+        "with a placeholder token rather than the deployment's key. Unset, "
+        "their turns fail rather than reach a real model.",
     )
 
     # E2B Sandbox Configuration

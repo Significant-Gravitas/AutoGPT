@@ -4,6 +4,7 @@ import uuid
 from typing import TYPE_CHECKING, Literal, Optional
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
+from e2b import SandboxState
 from pydantic import SecretStr
 
 from backend.blocks._base import (
@@ -17,7 +18,6 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
-    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.credentials_store import is_system_credential
@@ -26,13 +26,17 @@ from backend.util.e2b_network import (
     EgressOwner,
     connect_sandbox,
     create_sandbox,
+    hold_sandbox,
     kill_sandbox,
+    release_sandbox,
+    uses_platform_e2b_key,
 )
 from backend.util.sandbox_files import (
     SandboxFileOutput,
     extract_and_store_sandbox_files,
 )
 from backend.util.sandbox_metadata import SandboxMetadata, owned_by_user
+from backend.util.sandbox_output import run_sandbox_command
 
 if TYPE_CHECKING:
     from backend.executor.utils import ExecutionContext
@@ -135,9 +139,8 @@ class ClaudeCodeBlock(Block):
             description=(
                 "Sandbox timeout in seconds. Claude Code tasks can take "
                 "a while, so set this appropriately for your task complexity. "
-                "Note: This only applies when creating a new sandbox. "
-                "When reconnecting to an existing sandbox via sandbox_id, "
-                "the original timeout is retained."
+                "When reconnecting via sandbox_id, the sandbox runs for at "
+                "least this long."
             ),
             default=300,  # 5 minutes default
             advanced=True,
@@ -318,9 +321,14 @@ class ClaudeCodeBlock(Block):
         conversation_history: str,
         dispose_sandbox: bool,
         execution_context: "ExecutionContext",
+        pause_when_kept: bool = False,
     ) -> tuple[str, list[SandboxFileOutput], str, str, str]:
         """
         Execute Claude Code in an E2B sandbox.
+
+        With pause_when_kept, a sandbox that is not disposed is paused when
+        this returns, unless another run still holds it; resuming the session
+        reconnects and resumes it.
 
         Returns:
             Tuple of (response, files, conversation_history, session_id, sandbox_id)
@@ -337,6 +345,8 @@ class ClaudeCodeBlock(Block):
 
         sandbox = None
         sandbox_id = ""
+        # The box this run is counted on (``hold_sandbox``) while it keeps it.
+        held = ""
         egress_owner = EgressOwner(
             kind="block",
             id=execution_context.user_id or "anonymous",
@@ -355,15 +365,27 @@ class ClaudeCodeBlock(Block):
                 info = await BaseAsyncSandbox.get_info(
                     existing_sandbox_id, api_key=e2b_api_key
                 )
-                if not owned_by_user(info.metadata, execution_context.user_id):
+                if not owned_by_user(
+                    info.metadata, execution_context.user_id, kind="claude_code"
+                ):
                     raise PermissionError(
-                        f"Sandbox {existing_sandbox_id} does not belong to this user"
+                        f"Sandbox {existing_sandbox_id} does not belong to this "
+                        "user, or is not a Claude Code sandbox"
                     )
+                if pause_when_kept and not dispose_sandbox:
+                    # Counted before the connect: a run on this box returning
+                    # meanwhile must leave it running for this one.
+                    held = existing_sandbox_id
+                    await hold_sandbox(held)
                 sandbox = await connect_sandbox(
                     BaseAsyncSandbox,
                     existing_sandbox_id,
                     egress_owner,
+                    # A box read as running can be paused by another run's
+                    # release before our hold, so a held connect may wake it.
+                    resumes=bool(held) or info.state != SandboxState.RUNNING,
                     api_key=e2b_api_key,
+                    timeout=timeout,
                 )
             else:
                 # Create new sandbox
@@ -378,9 +400,13 @@ class ClaudeCodeBlock(Block):
                         execution_context, "claude_code", self.id, self.DEFAULT_TEMPLATE
                     ).as_e2b(),
                 )
+                if pause_when_kept and not dispose_sandbox:
+                    held = sandbox.sandbox_id
+                    await hold_sandbox(held)
 
                 # Install Claude Code from npm (ensures we get the latest version)
-                install_result = await sandbox.commands.run(
+                install_result = await run_sandbox_command(
+                    sandbox,
                     "npm install -g @anthropic-ai/claude-code@latest",
                     timeout=120,  # 2 min timeout for install
                 )
@@ -391,7 +417,7 @@ class ClaudeCodeBlock(Block):
 
                 # Run any user-provided setup commands
                 for cmd in setup_commands:
-                    setup_result = await sandbox.commands.run(cmd)
+                    setup_result = await run_sandbox_command(sandbox, cmd)
                     if setup_result.exit_code != 0:
                         raise Exception(
                             f"Setup command failed: {cmd}\n"
@@ -442,8 +468,8 @@ class ClaudeCodeBlock(Block):
 
             # Capture timestamp before running Claude Code to filter files later
             # Capture timestamp 1 second in the past to avoid race condition with file creation
-            timestamp_result = await sandbox.commands.run(
-                "date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%S"
+            timestamp_result = await run_sandbox_command(
+                sandbox, "date -u -d '1 second ago' +%Y-%m-%dT%H:%M:%S"
             )
             if timestamp_result.exit_code != 0:
                 raise RuntimeError(
@@ -453,7 +479,8 @@ class ClaudeCodeBlock(Block):
                 timestamp_result.stdout.strip() if timestamp_result.stdout else None
             )
 
-            result = await sandbox.commands.run(
+            result = await run_sandbox_command(
+                sandbox,
                 claude_command,
                 # The key picked for this run, also on a resumed box that was
                 # created with another one.
@@ -479,7 +506,6 @@ class ClaudeCodeBlock(Block):
                 # The JSON output contains the result
                 output_data = json.loads(raw_output)
                 response = output_data.get("result", raw_output)
-                self._record_cli_cost(output_data)
 
                 # Build conversation history entry
                 turn_entry = f"User: {prompt}\nClaude: {response}"
@@ -528,29 +554,14 @@ class ClaudeCodeBlock(Block):
         finally:
             if dispose_sandbox and sandbox:
                 await kill_sandbox(sandbox)
+            elif held:
+                await release_sandbox(held, sandbox, api_key=e2b_api_key)
 
     def _escape_prompt(self, prompt: str) -> str:
         """Escape the prompt for safe shell execution."""
         # Use single quotes and escape any single quotes in the prompt
         escaped = prompt.replace("'", "'\"'\"'")
         return f"'{escaped}'"
-
-    def _record_cli_cost(self, output_data: dict) -> None:
-        """Feed Claude Code CLI's `total_cost_usd` to the COST_USD resolver.
-
-        The CLI rolls up Anthropic LLM + internal tool-call spend into
-        ``total_cost_usd`` on its JSON response; piping it through
-        ``merge_stats`` lets the wallet reflect real spend.
-        """
-        total_cost_usd = output_data.get("total_cost_usd")
-        if total_cost_usd is None:
-            return
-        self.merge_stats(
-            NodeExecutionStats(
-                provider_cost=float(total_cost_usd),
-                provider_cost_type="cost_usd",
-            )
-        )
 
     async def run(
         self,
@@ -586,6 +597,7 @@ class ClaudeCodeBlock(Block):
                 conversation_history=input_data.conversation_history,
                 dispose_sandbox=input_data.dispose_sandbox,
                 execution_context=execution_context,
+                pause_when_kept=uses_platform_e2b_key(e2b_credentials),
             )
 
             yield "response", response

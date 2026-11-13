@@ -9,6 +9,7 @@ type SavedCredential = {
   provider: string;
   type: string;
   title?: string | null;
+  username?: string | null;
 };
 
 function hasRequiredScopes(

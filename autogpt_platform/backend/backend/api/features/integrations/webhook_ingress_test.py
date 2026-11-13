@@ -8,6 +8,9 @@ signature checks to each manager's `verify_signature`. This file pins:
   missing/invalid sigs and accept valid ones, including correct use of the
   platform-issued signing secret (Exa's `config["exa_secret"]`, Airtable's
   base64-decoded `config["mac_secret"]`).
+* Exa refuses a correctly signed delivery whose timestamp is far from now, and
+  a Search Monitor trigger set up as a preset enforces the monitor secret kept
+  in the preset's trigger config.
 * Generic webhook honors an optional `secret_token` on the triggered block:
   passes through when unset, enforces when set.
 * Unsigned Compass and legacy Slant3D subscriptions pass through; Slant3D v2 verifies signatures.
@@ -20,15 +23,20 @@ signature checks to each manager's `verify_signature`. This file pins:
 import base64
 import hashlib
 import hmac
+import json
 import time
 from contextlib import ExitStack
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
 import fastapi.testclient
 import pytest
+from prisma.models import IntegrationWebhook
 
 from backend.api.features.integrations.router import router
+from backend.api.features.library.model import node_input_mask_key
+from backend.api.middleware.body_limit import RequestBodyTooLarge
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NotFoundError
@@ -176,6 +184,30 @@ def _stub_registry(manager):
     ]
 
 
+def _run_counting_preset_runs(webhook, provider_path: str, **kwargs):
+    """`_run`, also returning the stand-in that starts each attached preset's run."""
+    preset_runs = AsyncMock()
+    patches = (
+        _patch_ingress(webhook)
+        + _stub_registry(_manager(webhook.provider))
+        + [
+            patch(
+                "backend.api.features.integrations.router."
+                "_execute_webhook_preset_trigger",
+                preset_runs,
+            )
+        ]
+    )
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        return _post(provider_path, **kwargs), preset_runs
+
+
+def _fresh_timestamp() -> str:
+    return str(int(time.time()))
+
+
 # ---------------------------------------------------------------------------
 # Unsigned providers: default no-op verify, ingress passes through.
 # ---------------------------------------------------------------------------
@@ -304,7 +336,6 @@ class TestExaSignature:
     See https://docs.exa.ai/websets/api/webhooks/verifying-signatures"""
 
     EXA_SECRET = "exa-signing-secret-deadbeef"
-    TS = "1234567890"
 
     def _webhook(self):
         return _make_webhook(
@@ -312,7 +343,7 @@ class TestExaSignature:
         )
 
     def _header(self, body: bytes, ts: str | None = None) -> str:
-        ts = ts or self.TS
+        ts = ts or _fresh_timestamp()
         sig = hmac.new(
             self.EXA_SECRET.encode(), f"{ts}.".encode() + body, hashlib.sha256
         ).hexdigest()
@@ -330,9 +361,10 @@ class TestExaSignature:
         resp = _run(
             self._webhook(),
             "exa",
-            headers={"Exa-Signature": f"t={self.TS},v1=deadbeef"},
+            headers={"Exa-Signature": f"t={_fresh_timestamp()},v1=deadbeef"},
         )
         assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"] == "Invalid webhook signature"
 
     def test_signature_over_body_only_rejected(self):
         """A signature computed over the raw body WITHOUT the `<ts>.` prefix
@@ -345,7 +377,22 @@ class TestExaSignature:
             self._webhook(),
             "exa",
             body=body,
-            headers={"Exa-Signature": f"t={self.TS},v1={body_only_sig}"},
+            headers={"Exa-Signature": f"t={_fresh_timestamp()},v1={body_only_sig}"},
+        )
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"] == "Invalid webhook signature"
+
+    @pytest.mark.parametrize("offset", [-3600, 3600])
+    def test_correctly_signed_delivery_an_hour_off_403(self, offset: int):
+        """A delivery signed with the right secret is refused when its timestamp
+        is far from now, so an old delivery can't be sent again."""
+        body = b'{"eventType":"webset.created"}'
+        ts = str(int(time.time()) + offset)
+        resp = _run(
+            self._webhook(),
+            "exa",
+            body=body,
+            headers={"Exa-Signature": self._header(body, ts)},
         )
         assert resp.status_code == 403, resp.text
 
@@ -364,8 +411,120 @@ class TestExaSignature:
         (e.g. legacy DB row), we must fail-closed rather than silently
         accept."""
         wh = _make_webhook(ProviderName("exa"), config={})
-        resp = _run(wh, "exa", headers={"Exa-Signature": f"t={self.TS},v1=anything"})
+        resp = _run(
+            wh, "exa", headers={"Exa-Signature": f"t={_fresh_timestamp()},v1=anything"}
+        )
         assert resp.status_code == 403, resp.text
+
+
+class TestExaSearchMonitorPresetTrigger:
+    """A Search Monitor trigger set up as a preset keeps the monitor's secret in
+    the trigger config the preset stores beside its graph inputs. Once the secret
+    is pasted there, only a recent delivery signed with it starts the workflow."""
+
+    MONITOR_SECRET = "whsec-monitor-secret"  # pragma: allowlist secret
+    TRIGGER_NODE_ID = "5b0f3c1e-7d2a-4e8f-9a6b-2c4d6e8f0a1b"
+    BODY = b'{"id":"evt_1","type":"monitor.run.completed","data":{}}'
+
+    def _webhook(self) -> WebhookWithRelations:
+        """The webhook as ``get_webhook(..., include_relations=True)`` loads it
+        once trigger setup has stored the preset's rows."""
+        now = datetime.now(UTC)
+        webhook_row = {
+            "id": WEBHOOK_ID,
+            "createdAt": now,
+            "userId": USER_ID,
+            "provider": "exa",
+            "credentialsId": "",
+            "webhookType": "search_monitor",
+            "resource": "",
+            "events": ["monitor_run_completed"],
+            "config": "{}",
+            "secret": WEBHOOK_SECRET,
+            "providerWebhookId": "",
+            "visibility": "PRIVATE",
+        }
+        trigger_config = {
+            "webhook_secret": self.MONITOR_SECRET,
+            "events": {"monitor_run_completed": True},
+        }
+        preset_row = {
+            "id": "preset-1",
+            "createdAt": now,
+            "updatedAt": now,
+            "name": "Monitor alerts",
+            "description": "",
+            "isActive": True,
+            "userId": USER_ID,
+            "agentGraphId": "graph-1",
+            "agentGraphVersion": 1,
+            "webhookId": WEBHOOK_ID,
+            "Webhook": webhook_row,
+            "deactivatedByExpertArchive": False,
+            "isDeleted": False,
+            "visibility": "PRIVATE",
+            "InputPresets": [
+                {
+                    "id": "in-1",
+                    "time": now,
+                    "name": "topic",
+                    "data": json.dumps("news"),
+                },
+                {
+                    "id": "in-2",
+                    "time": now,
+                    "name": node_input_mask_key(self.TRIGGER_NODE_ID),
+                    "data": json.dumps(trigger_config),
+                },
+            ],
+        }
+        return WebhookWithRelations.from_db(
+            IntegrationWebhook.model_validate(
+                {**webhook_row, "AgentNodes": [], "AgentPresets": [preset_row]}
+            )
+        )
+
+    def _signed(self, secret: str, ts: str) -> dict[str, str]:
+        sig = hmac.new(
+            secret.encode(), f"{ts}.".encode() + self.BODY, hashlib.sha256
+        ).hexdigest()
+        return {"Exa-Signature": f"t={ts},v1={sig}"}
+
+    def test_a_recent_signed_delivery_runs_the_preset(self):
+        resp, preset_runs = _run_counting_preset_runs(
+            self._webhook(),
+            "exa",
+            body=self.BODY,
+            headers=self._signed(self.MONITOR_SECRET, _fresh_timestamp()),
+        )
+
+        assert resp.status_code == 200, resp.text
+        preset_runs.assert_awaited_once()
+        preset, _, webhook_id, event_type, payload = preset_runs.await_args.args
+        assert (preset.id, webhook_id) == ("preset-1", WEBHOOK_ID)
+        assert event_type == "monitor_run_completed"
+        assert payload == json.loads(self.BODY)
+
+    @pytest.mark.parametrize(
+        "signing_secret, age",
+        [
+            pytest.param(None, 0, id="unsigned"),
+            pytest.param("some-other-secret", 0, id="other-secret"),
+            pytest.param(MONITOR_SECRET, 3600, id="signed-an-hour-ago"),
+        ],
+    )
+    def test_any_other_delivery_runs_nothing(self, signing_secret, age):
+        headers = (
+            self._signed(signing_secret, str(int(time.time()) - age))
+            if signing_secret
+            else {}
+        )
+        resp, preset_runs = _run_counting_preset_runs(
+            self._webhook(), "exa", body=self.BODY, headers=headers
+        )
+
+        assert resp.status_code == 403, resp.text
+        preset_runs.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -449,7 +608,7 @@ class TestGenericWebhookOptionalToken:
     `secret_token` on the trigger block, the manager requires inbound
     requests to echo it in `X-Webhook-Secret`."""
 
-    def _webhook(self, secret_token: str | None = None):
+    def _webhook(self, secret_token: object = None):
         nodes = []
         if secret_token is not None:
             n = MagicMock()
@@ -486,6 +645,13 @@ class TestGenericWebhookOptionalToken:
             headers={"X-Webhook-Secret": "t0ken"},
         )
         assert resp.status_code != 403, resp.text
+
+    @pytest.mark.parametrize("secret_token", [1234, 0, ["t0ken"]])
+    def test_token_configured_but_not_text_403(self, secret_token):
+        """A stored token that is not text is refused, not read as 'not set'."""
+        resp = _run(self._webhook(secret_token=secret_token), "generic_webhook")
+        assert resp.status_code == 403, resp.text
+        assert "could not be read" in resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -626,7 +792,9 @@ class TestVerificationOrder:
             creds_manager.get.assert_not_called()
             return
         assert resp.status_code == 200, resp.text
-        creds_manager.get.assert_awaited_once_with(USER_ID, "creds-1")
+        creds_manager.get.assert_awaited_once_with(
+            USER_ID, "creds-1", allow_sdk_default=True
+        )
         assert mock_manager.validate_payload.await_args.args[2] is credentials
 
     def test_a_banned_owners_credentials_are_not_loaded(self):
@@ -639,7 +807,7 @@ class TestVerificationOrder:
             creds_manager.get = AsyncMock(return_value=MagicMock())
             for p in _stub_registry(_manager(ProviderName.COMPASS)) + [
                 patch(
-                    "backend.api.features.integrations.router.is_user_banned",
+                    "backend.api.features.integrations.router.is_user_refused",
                     AsyncMock(return_value=True),
                 )
             ]:
@@ -648,6 +816,34 @@ class TestVerificationOrder:
 
         assert resp.status_code == 200
         creds_manager.get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# A body over the platform's size limit, raised while a manager reads it
+# inside verify_signature, must not be relabelled as a bad signature.
+# ---------------------------------------------------------------------------
+
+
+def test_oversized_body_during_verify_signature_is_not_logged_as_a_bad_signature(
+    caplog,
+):
+    webhook = _make_webhook(ProviderName.GITHUB)
+    mock_manager = MagicMock()
+    mock_manager.verify_signature = AsyncMock(side_effect=RequestBodyTooLarge())
+
+    patches = _patch_ingress(webhook) + [
+        patch(
+            "backend.api.features.integrations.router.get_webhook_manager",
+            return_value=mock_manager,
+        )
+    ]
+    with ExitStack() as stack:
+        for p in patches:
+            stack.enter_context(p)
+        resp = _post("github")
+
+    assert resp.status_code == 413, resp.text
+    assert "Signature verification failed" not in caplog.text
 
 
 async def test_preset_trigger_refuses_foreign_owner(mocker):
@@ -726,7 +922,9 @@ def _make_expert_preset(
         team_id=team_id,
         graph_id="graph-1",
         graph_version=1,
-        inputs={},
+        # Trigger config nests under the per-node mask key (trigger node id
+        # "trigger-node" -> "trigger"); without it the run is skipped.
+        inputs={"_node_input_mask_trigger": {}},
         credentials={},
     )
 
@@ -877,6 +1075,54 @@ def test_a_webhook_runs_only_for_an_owner_with_a_plan(paywalled: bool, request):
     assert run_node.await_count == expected
 
 
+@pytest.mark.parametrize("paywalled", [True, False])
+def test_a_triggered_preset_runs_only_for_an_owner_with_a_plan(
+    paywalled: bool, request
+):
+    """A paywalled owner's delivery stops before the preset runs; an allowed one
+    reaches it with the graph inputs and the nested trigger config apart."""
+    if paywalled:
+        request.getfixturevalue("paywalled_user")
+    preset = _make_expert_preset()
+    preset.expert_id = None
+    preset.inputs = {"count": 3, "_node_input_mask_trigger": {"constants": {"k": 1}}}
+    webhook = _make_webhook(ProviderName("generic_webhook"), triggered_presets=[preset])
+    router_path = "backend.api.features.integrations.router"
+    with ExitStack() as stack:
+        # Every ingress stub but the two trigger runners, so the real preset path runs.
+        _, _, publish, reward = [
+            stack.enter_context(p) for p in _patch_ingress(webhook)[:4]
+        ]
+        stack.enter_context(
+            patch(
+                f"{router_path}.get_webhook_manager",
+                return_value=_manager(webhook.provider),
+            )
+        )
+        stack.enter_context(
+            patch(
+                f"{router_path}.get_graph",
+                AsyncMock(return_value=_make_trigger_graph()),
+            )
+        )
+        add_exec = stack.enter_context(
+            patch(f"{router_path}.add_graph_execution", AsyncMock())
+        )
+        resp = _post("generic_webhook", body=b'{"event": "push"}')
+
+    assert resp.status_code == 200, resp.text
+    if paywalled:
+        publish.assert_not_awaited()
+        reward.assert_not_awaited()
+        add_exec.assert_not_awaited()
+        return
+    add_exec.assert_awaited_once()
+    assert add_exec.await_args.kwargs["inputs"] == {"count": 3}
+    assert add_exec.await_args.kwargs["nodes_input_masks"] == {
+        "trigger-node": {"constants": {"k": 1}, "payload": {"event": "push"}}
+    }
+
+
 def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
     """200, so the provider doesn't retry; nothing is published or run."""
     from backend.api.features.integrations import router as ingress_router
@@ -891,7 +1137,7 @@ def test_a_banned_owners_delivery_is_acknowledged_and_dropped():
                 return_value=_manager(ProviderName.COMPASS),
             ),
             patch.object(
-                ingress_router, "is_user_banned", AsyncMock(return_value=True)
+                ingress_router, "is_user_refused", AsyncMock(return_value=True)
             ),
             patch.object(ingress_router, "publish_webhook_event", publish),
             patch.object(ingress_router, "complete_onboarding_step", onboarding),

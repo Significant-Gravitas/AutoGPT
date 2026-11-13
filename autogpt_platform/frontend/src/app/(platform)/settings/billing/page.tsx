@@ -21,6 +21,7 @@ import {
   usePatchV1FulfillCheckoutSession,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 
 import {
   trackCheckoutAbandoned,
@@ -28,6 +29,11 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
+import { CheckoutAbandonedPrompt } from "./components/CheckoutAbandonedPrompt/CheckoutAbandonedPrompt";
+import {
+  readAbandonedPlan,
+  type AbandonedPlan,
+} from "./components/CheckoutAbandonedPrompt/helpers";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
 type BillingTab = "subscription" | "automation-credits";
@@ -57,12 +63,18 @@ function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const identityKey = useAuthStore((state) => state.user?.id ?? null);
   const topupStatus = searchParams.get("topup");
   const subscriptionStatus = searchParams.get("subscription");
   const trialStatus = searchParams.get("trial");
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
   const handledSubscriptionRef = useRef<string | null>(null);
+  // Set on return from an upgrade checkout left unpaid; the plan is null when
+  // the cancel URL did not name one.
+  const [abandonedCheckout, setAbandonedCheckout] = useState<{
+    plan: AbandonedPlan | null;
+  } | null>(null);
   const [isExplainerOpen, setIsExplainerOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
@@ -83,6 +95,7 @@ function SettingsBillingPage() {
   useEffect(
     function handleTopupRedirect() {
       if (!topupStatus) return;
+      if (topupStatus === "success" && identityKey === null) return;
       // Stripe re-renders the page after redirect — guard so we don't
       // fire fulfillCheckout twice or stack duplicate toasts.
       if (handledTopupRef.current === topupStatus) return;
@@ -109,7 +122,7 @@ function SettingsBillingPage() {
 
       router.replace("/settings/billing");
     },
-    [topupStatus, fulfillCheckout, router],
+    [topupStatus, fulfillCheckout, identityKey, router],
   );
 
   useEffect(
@@ -135,16 +148,12 @@ function SettingsBillingPage() {
           checkout_kind: "subscription",
           surface: "billing",
         });
-        toast({
-          title: "Checkout cancelled",
-          description: "Your plan was not changed.",
-          variant: "destructive",
-        });
+        setAbandonedCheckout({ plan: readAbandonedPlan(searchParams) });
       }
 
       router.replace("/settings/billing");
     },
-    [subscriptionStatus, queryClient, router],
+    [subscriptionStatus, queryClient, router, searchParams],
   );
 
   useEffect(
@@ -167,9 +176,8 @@ function SettingsBillingPage() {
             size="icon-sm"
             leadingIcon={InformationCircleIcon}
             aria-label="How usage and credits work"
+            tone="muted"
             onClick={() => setIsExplainerOpen(true)}
-            // oxlint-disable-next-line design-system/no-restyle -- the info button is a quiet grey glyph beside the title
-            className="text-foreground-tertiary"
           />
         </div>
         <Text variant="body" tone="secondary">
@@ -199,6 +207,9 @@ function SettingsBillingPage() {
         onOpenChange={setIsExplainerOpen}
         showBillingLink={false}
       />
+      {abandonedCheckout ? (
+        <CheckoutAbandonedPrompt plan={abandonedCheckout.plan} />
+      ) : null}
     </div>
   );
 }

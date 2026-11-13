@@ -25,6 +25,8 @@ this module can cover.
 from enum import IntEnum
 from typing import Any, cast
 
+from redis.crc import key_slot
+
 from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 # ---------------------------------------------------------------------------
@@ -41,37 +43,45 @@ from backend.data.redis_client import AsyncRedisClient, RedisClient
 #   ARGV[2]  expected current value
 #   ARGV[3]  new value
 #   ARGV[4]  optional guard field which, when set and non-empty, must equal ARGV[5]
+#   KEYS[2]  optional companion string key (must share the hash's cluster slot)
+#   ARGV[6]  companion string value
+#   ARGV[7]  companion string TTL in seconds
+#   ARGV[8:] companion field/value pairs written only on a successful swap
 _HASH_CAS_LUA = """
 if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
     return 0
 end
-if #ARGV > 3 then
+if ARGV[4] and ARGV[4] ~= '' then
     local guard = redis.call('HGET', KEYS[1], ARGV[4])
     if guard and guard ~= '' and guard ~= ARGV[5] then
         return 0
     end
 end
+if #KEYS == 2 then
+    redis.call('SET', KEYS[2], ARGV[6], 'EX', ARGV[7])
+end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+for i = 8, #ARGV, 2 do
+    redis.call('HSET', KEYS[1], ARGV[i], ARGV[i + 1])
+end
 return 1
 """
 
-# Push to a capped list only when a hash field currently matches the expected
-# value. Returns the new list length, or -1 when the guard fails.
-#
-#   KEYS[1]  hash key
-#   KEYS[2]  list key
-#   ARGV[1]  hash field
-#   ARGV[2]  expected current value
-#   ARGV[3]  list value
-#   ARGV[4]  max list length
-#   ARGV[5]  list TTL seconds
+_HASH_COMPARE_DELETE_LUA = """
+if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then
+    return 0
+end
+return redis.call('DEL', KEYS[1])
+"""
+
 # Compare-and-set on a string key.  Returns 1 if swapped, 0 otherwise.
 #
 #   KEYS[1]  key
 #   ARGV[1]  expected current value
 #   ARGV[2]  new value, or "" to delete the key
-#   ARGV[3]  TTL in seconds for the new value
+#   ARGV[3]  expiry value for the new value
 #   ARGV[4]  "1" to also swap when the key is missing
+#   ARGV[5]  "EX" for relative seconds or "PXAT" for an absolute millisecond deadline
 _STRING_CAS_LUA = """
 local current = redis.call('GET', KEYS[1])
 if current ~= ARGV[1] and not (current == false and ARGV[4] == '1') then
@@ -80,7 +90,7 @@ end
 if ARGV[2] == '' then
     redis.call('DEL', KEYS[1])
 else
-    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+    redis.call('SET', KEYS[1], ARGV[2], ARGV[5], ARGV[3])
 end
 return 1
 """
@@ -95,16 +105,63 @@ redis.call('LTRIM', KEYS[1], #ARGV, -1)
 return current
 """
 
+# Push to a capped list only when a hash field currently matches the expected
+# value. Returns the list length, -1 on a failed guard, or -2 at capacity.
+# A queued ID with an expired receipt restores that receipt from the list's PTTL.
+#
+#   KEYS[1]  hash key
+#   KEYS[2]  list key
+#   KEYS[3]  optional receipt key, retained after the list is drained
+#   ARGV[1]  hash field
+#   ARGV[2]  expected current value
+#   ARGV[3]  list value
+#   ARGV[4]  max list length
+#   ARGV[5]  list TTL seconds
+#   ARGV[6]  message ID used to recover an expired receipt
 _GATED_CAPPED_RPUSH_LUA = """
+if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
+    return redis.call('LLEN', KEYS[2])
+end
+if #KEYS == 3 then
+    for _, entry in ipairs(redis.call('LRANGE', KEYS[2], 0, -1)) do
+        local ok, decoded = pcall(cjson.decode, entry)
+        if ok and type(decoded) == 'table' and decoded.id == ARGV[6] then
+            local remaining = redis.call('PTTL', KEYS[2])
+            if remaining > 0 then
+                redis.call('SET', KEYS[3], '1', 'PX', remaining)
+            end
+            return redis.call('LLEN', KEYS[2])
+        end
+    end
+end
 local current = redis.call('HGET', KEYS[1], ARGV[1])
 if current ~= ARGV[2] then
     return -1
 end
+if redis.call('LLEN', KEYS[2]) >= tonumber(ARGV[4]) then
+    return -2
+end
 redis.call('RPUSH', KEYS[2], ARGV[3])
-redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
 redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+if #KEYS == 3 then
+    redis.call('SET', KEYS[3], '1', 'EX', tonumber(ARGV[5]))
+end
 return redis.call('LLEN', KEYS[2])
 """
+
+_BOUNDED_RPUSH_LUA = """
+if redis.call('LLEN', KEYS[1]) >= tonumber(ARGV[2]) then
+    return -2
+end
+local length = redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+return length
+"""
+
+
+class RedisListCapacityExceeded(Exception):
+    """The list is at capacity; the new item was not admitted."""
+
 
 # Exactly-once batch-dispatch claim. Used by the BatchExecutor's walk
 # to transition a finished provider batch from ``pending → dispatched``
@@ -284,6 +341,25 @@ async def capped_rpush(
     return int(results[-1])
 
 
+async def bounded_rpush(
+    redis: AsyncRedisClient,
+    key: str,
+    value: str,
+    *,
+    max_len: int,
+    ttl_seconds: int,
+) -> int:
+    """Push without evicting accepted items; reject a full list atomically."""
+    length = int(
+        await cast(
+            "Any", redis.eval(_BOUNDED_RPUSH_LUA, 1, key, value, max_len, ttl_seconds)
+        )
+    )
+    if length == -2:
+        raise RedisListCapacityExceeded("Pending buffer is at capacity")
+    return length
+
+
 async def capped_rpush_if_hash_field(
     redis: AsyncRedisClient,
     *,
@@ -294,27 +370,38 @@ async def capped_rpush_if_hash_field(
     value: str,
     max_len: int,
     ttl_seconds: int,
+    receipt_key: str | None = None,
+    message_id: str | None = None,
 ) -> int | None:
     """Atomically RPUSH to a bounded list iff a hash field matches.
 
     Returns the new list length when the push happens, or ``None`` when the
-    hash field does not currently match ``expected``.
+    hash field does not currently match ``expected``. With a receipt key,
+    retries return the current length without pushing. A matching JSON
+    ``id`` in the list restores an expired receipt. Full lists raise
+    ``RedisListCapacityExceeded`` without evicting an accepted item.
+    All keys must share a Redis Cluster hash tag.
     """
+    keys = [hash_key, list_key]
+    if receipt_key is not None:
+        keys.append(receipt_key)
     result = await cast(
         "Any",
         redis.eval(
             _GATED_CAPPED_RPUSH_LUA,
-            2,
-            hash_key,
-            list_key,
+            len(keys),
+            *keys,
             hash_field,
             expected,
             value,
             str(max_len),
             str(ttl_seconds),
+            message_id or "",
         ),
     )
     length = int(result)
+    if length == -2:
+        raise RedisListCapacityExceeded("Pending buffer is at capacity")
     return None if length < 0 else length
 
 
@@ -448,10 +535,15 @@ async def hash_compare_and_set(
     expected: str,
     new: str,
     guard: tuple[str, str] | None = None,
+    updates: dict[str, str] | None = None,
+    record: tuple[str, str, int] | None = None,
 ) -> bool:
     """Atomically set ``HSET key field new`` iff current value == *expected*
     (and, with ``guard=(field, value)``, that field is unset, empty or value).
 
+    ``updates`` writes companion fields in the same atomic transition.
+    ``record=(key, value, ttl_seconds)`` writes an expiring string alongside it.
+    Its key must differ from the hash key and share its Redis Cluster slot.
     Returns ``True`` if the swap happened, ``False`` otherwise.
 
     Use this for idempotent state transitions (e.g. mark a task as
@@ -460,9 +552,38 @@ async def hash_compare_and_set(
     because the write is conditional on the read result — MULTI/EXEC
     cannot branch on intermediate replies.
     """
+    if updates and field in updates:
+        raise ValueError("Companion updates cannot replace the compared field")
+    if record and (record[0] == key or record[2] <= 0):
+        raise ValueError("Companion record requires a separate key and positive TTL")
+    if record and key_slot(key.encode()) != key_slot(record[0].encode()):
+        raise ValueError("Companion record must share the hash's Redis Cluster slot")
+    companions = [item for pair in (updates or {}).items() for item in pair]
+    keys = [key, record[0]] if record else [key]
     result = await cast(
         "Any",
-        redis.eval(_HASH_CAS_LUA, 1, key, field, expected, new, *(guard or ())),
+        redis.eval(
+            _HASH_CAS_LUA,
+            len(keys),
+            *keys,
+            field,
+            expected,
+            new,
+            *(guard or ("", "")),
+            record[1] if record else "",
+            str(record[2]) if record else "",
+            *companions,
+        ),
+    )
+    return int(result) == 1
+
+
+async def hash_compare_and_delete(
+    redis: AsyncRedisClient, key: str, field: str, *, expected: str
+) -> bool:
+    """Delete a hash atomically only while the named field still identifies its owner."""
+    result = await cast(
+        "Any", redis.eval(_HASH_COMPARE_DELETE_LUA, 1, key, field, expected)
     )
     return int(result) == 1
 
@@ -485,13 +606,15 @@ async def string_compare_and_set(
     new: str | None,
     ttl_seconds: int = 0,
     or_missing: bool = False,
+    expires_at_ms: int | None = None,
 ) -> bool:
     """Atomically replace *key* with *new* (``None`` deletes it) iff it still
     holds *expected*, or is missing and *or_missing* is set.
 
     Returns ``True`` if the swap happened.  Use it when a value names its
     owner, so a holder whose key expired and was taken over cannot overwrite
-    or delete its successor's value.
+    or delete its successor's value. An absolute ``expires_at_ms`` overrides
+    ``ttl_seconds`` without extending the deadline by the request latency.
     """
     result = await cast(
         "Any",
@@ -501,8 +624,9 @@ async def string_compare_and_set(
             key,
             expected,
             new or "",
-            ttl_seconds,
+            expires_at_ms if expires_at_ms is not None else ttl_seconds,
             "1" if or_missing else "0",
+            "PXAT" if expires_at_ms is not None else "EX",
         ),
     )
     return int(result) == 1

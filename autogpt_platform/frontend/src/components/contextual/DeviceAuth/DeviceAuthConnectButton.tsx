@@ -52,7 +52,7 @@ export function DeviceAuthConnectButton({
           Requesting a code from {providerName}…
         </Text>
         <div className="flex items-center gap-2 text-foreground-tertiary">
-          <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+          <Icon icon={Loading03Icon} size={16} spin />
           <Text variant="small">Starting device authorization…</Text>
         </div>
       </div>
@@ -85,14 +85,18 @@ export function DeviceAuthConnectButton({
           and Sentry masks the code, as it does all text. */}
       <div className="ph-no-capture flex flex-col gap-3 rounded-lg border border-border-base bg-surface-muted p-4">
         <div className="flex flex-col gap-1">
-          <Text variant="small" tone="muted" className="font-medium">
+          <Text variant="small" tone="muted" weight="medium">
             Your code
           </Text>
           <Text
-            variant="h3"
+            variant="heading-md"
             as="p"
+            align="center"
             tone="emphasis"
-            className="text-center font-mono text-2xl tracking-widest select-all"
+            weight="medium"
+            mono
+            tracking="widest"
+            className="select-all"
           >
             {userCode}
           </Text>
@@ -102,7 +106,7 @@ export function DeviceAuthConnectButton({
           href={verificationUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-2 rounded-md bg-action-hover px-4 py-2.5 text-sm font-medium text-action-foreground transition-colors hover:bg-action"
+          className="inline-flex items-center justify-center gap-2 rounded-md bg-action-hover px-4 py-2.5 text-body font-medium text-action-foreground transition-colors hover:bg-action"
         >
           Open {providerName}
           <Icon icon={LinkSquare01Icon} size={16} />
@@ -111,7 +115,7 @@ export function DeviceAuthConnectButton({
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-foreground-tertiary">
-          <Icon icon={Loading03Icon} size={16} className="animate-spin" />
+          <Icon icon={Loading03Icon} size={16} spin />
           <Text variant="small">Waiting for approval…</Text>
         </div>
         <Button

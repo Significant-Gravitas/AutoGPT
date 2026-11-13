@@ -58,9 +58,37 @@ async def test_an_unexpected_failure_once_the_redirect_uri_checks_out_goes_back_
     assert parse_qs(sent_to.query)["error"] == ["server_error"]
 
 
-async def _authorize(app_state: str, redirect_uri: str, *, response_type: str):
+@pytest.mark.asyncio
+async def test_a_closed_account_gets_no_code():
+    """Asked of the database: for a few seconds after the close, another
+    worker's cache can still let an old token through."""
+    closed = HTTPException(status_code=401, detail="This account is closed.")
+    issue = AsyncMock()
+    with patch.object(oauth, "create_authorization_code", issue), pytest.raises(
+        HTTPException
+    ) as error:
+        await _authorize(
+            "active",
+            REGISTERED,
+            response_type="code",
+            closed_check=AsyncMock(side_effect=closed),
+        )
+
+    assert error.value.status_code == 401
+    issue.assert_not_awaited()
+
+
+async def _authorize(
+    app_state: str,
+    redirect_uri: str,
+    *,
+    response_type: str,
+    closed_check: AsyncMock | None = None,
+):
     app = None if app_state == "unknown" else _app(is_active=app_state == "active")
-    with patch.object(oauth, "get_oauth_application", AsyncMock(return_value=app)):
+    with patch.object(
+        oauth, "get_oauth_application", AsyncMock(return_value=app)
+    ), patch.object(oauth, "refuse_closed_account", closed_check or AsyncMock()):
         return await oauth.authorize(
             request=_request(redirect_uri, response_type=response_type),
             user_id="user",

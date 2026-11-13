@@ -38,14 +38,21 @@ class PostHogEvent(StrEnum):
     WRITING_STYLE_ADDED = "writing_style_added"
     WORKFLOW_INSTALLED_ON_EXPERT = "workflow_installed_on_expert"
     EXPERT_FIRED = "expert_fired"
+    # backend/api/features/experts/reset.py
+    EXPERT_RESET = "expert_reset"
     EXPERT_MODE_SET_UNSUPERVISED = "expert_mode_set_unsupervised"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
+    # backend/api/features/onboarding_dump/plan_hire.py
+    PLAN_EXPERTS_HIRED = "plan_experts_hired"
 
     # Chat (Autopilot): backend/copilot/tracking.py
     CHAT_TOOL_CALLED = "chat_tool_called"
     CHAT_OUTCOME = "chat_outcome"
     CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
+    # backend/copilot/limit_tracking.py (SECRT-3411): a usage limit refused,
+    # paused or queued work, from any surface.
+    CHAT_BLOCKED = "chat_blocked"
     # backend/copilot/gate/shadow.py
     CHAT_READ_SCREEN_SHADOW_DECISION = "chat_read_screen_shadow_decision"
 
@@ -59,6 +66,8 @@ class PostHogEvent(StrEnum):
     # Trial lifecycle: backend/notifications/trial.py
     TRIAL_STARTED = "trial_started"
     TRIAL_ENDING = "trial_ending"
+    TRIAL_EXPIRING = "trial_expiring"
+    TRIAL_LAST_CALL = "trial_last_call"
     TRIAL_CANCELED = "trial_canceled"
     TRIAL_RESUMED = "trial_resumed"
     TRIAL_ENDED = "trial_ended"
@@ -80,6 +89,12 @@ class PostHogEvent(StrEnum):
     AI_TRACE = "$ai_trace"
     AI_SPAN = "$ai_span"
 
+    # In-app feedback prompts: backend/api/features/feedback_prompts/analytics.py
+    FEEDBACK_PROMPT_SHOWN = "feedback_prompt_shown"
+    FEEDBACK_PROMPT_ANSWERED = "feedback_prompt_answered"
+    # backend/copilot/tools/feedback_prompts.py
+    OTTO_MISTAKE_FLAGGED = "otto_mistake_flagged"
+
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
@@ -88,6 +103,13 @@ class PostHogEvent(StrEnum):
     LISTING_ADDED_TO_LIBRARY = "listing_added_to_library"
     LISTING_DOWNLOADED = "listing_downloaded"
 
+    # Account deletion (SECRT-2877): backend/api/features/account_deletion/.
+    # Anonymous: sent with capture_anonymous, never with the user's id.
+    ACCOUNT_DELETION_STARTED = "account_deletion_started"
+    ACCOUNT_DELETION_FEEDBACK = "account_deletion_feedback"
+    ACCOUNT_DELETION_ALTERNATIVE_CLICKED = "account_deletion_alternative_clicked"
+    ACCOUNT_DELETION_COMPLETED = "account_deletion_completed"
+    ACCOUNT_DELETION_KEPT = "account_deletion_kept"
     # Email (SECRT-2735): backend/api/features/postmark/, from Postmark's
     # webhooks for the mail the platform sends itself.
     EMAIL_DELIVERED = "email_delivered"

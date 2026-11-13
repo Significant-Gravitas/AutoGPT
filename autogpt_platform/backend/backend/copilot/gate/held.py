@@ -31,6 +31,7 @@ from backend.copilot.google_data_redaction import (
     is_google_output,
     remember_google_output,
 )
+from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
@@ -78,7 +79,9 @@ _RESEND = (
 def is_answer_row(message: "ChatMessage") -> bool:
     """A user row the gate wrote for an answered card, not something the user typed."""
     return bool(message.metadata) and (
-        _WAKE_KEY in message.metadata or _RESULT_KEY in message.metadata
+        _WAKE_KEY in message.metadata
+        or _RESULT_KEY in message.metadata
+        or message.metadata.get("background_task_stage") == "followup"
     )
 
 
@@ -298,7 +301,8 @@ async def wake(
             )
         )
         info = await chat_db().get_chat_session_metadata(session_id)
-        if info is None or info.user_id != user_id:
+        # A reset removed the chat: nothing runs in it again.
+        if info is None or info.user_id != user_id or info.archived_at is not None:
             return True
         waiting = await _waiting(user_id, session_id)
         # A running turn's end carries the answers whatever still waits.
@@ -367,7 +371,7 @@ async def wake(
                     await woken_turns.record(
                         session_id, [c.review_id for c in calls], turn_id
                     )
-            except ConcurrentTurnLimitError:
+            except ConcurrentTurnLimitError as running_cap:
                 await try_enqueue_turn(
                     user_id=user_id,
                     inflight_cap=get_inflight_turn_limit(),
@@ -384,11 +388,15 @@ async def wake(
                     ),
                     envelope=envelope,
                 )
+                track_turn_cap(
+                    user_id, running_cap, surface="background", outcome="queued"
+                )
             except TreeRefusal as refused:
                 await post_refusal(
                     session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
                 )
-    except InflightCapExceeded:
+    except InflightCapExceeded as inflight_cap:
+        track_turn_cap(user_id, inflight_cap, surface="background", outcome="refused")
         logger.info(f"Held calls in {session_id} wait for the user's next turn")
     except Exception:
         logger.warning(f"Could not wake session {session_id}", exc_info=True)
