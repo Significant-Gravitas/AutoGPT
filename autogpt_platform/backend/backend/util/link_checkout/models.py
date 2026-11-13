@@ -39,7 +39,10 @@ class FieldTarget(StrictModel):
     """One payment control: a selector, inside a frame when ``frame_url`` is set."""
 
     selector: Selector
-    frame_url: str = Field(default="", max_length=2048)
+    # As long as ``PayToken.frame_url``, which the Pay Token field is built
+    # from: Stripe's inner frames carry long fragments. What the agent names
+    # stays within ``CheckoutPlan.frame_urls``'s own 2,048.
+    frame_url: str = Field(default="", max_length=4096)
 
 
 # "card": the agent names the card fields and the worker fills a single-use
