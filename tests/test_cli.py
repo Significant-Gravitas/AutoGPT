@@ -558,6 +558,56 @@ def test_audit_prune_keeps_a_file_with_a_timestamp_that_is_not_a_finite_number(
     assert "Kept" in capsys.readouterr().out
 
 
+def test_audit_prune_prints_once_it_lets_go_of_the_writers_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Prune printed each file it deleted while it held the lock every audit
+    write takes, so a terminal or pipe that stopped reading held off the
+    daemon's audit writes, and the work they record, until it read again."""
+    import autogpt_local_executor.audit as audit_module
+
+    current = tmp_path / "audit.log"
+    current.write_text("")
+    deleted = tmp_path / "audit.log.20240101-000000"
+    deleted.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    replaced = tmp_path / "audit.log.20240102-000000"
+    replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    real_lock = audit_module.holding_log_lock
+    held = False
+
+    @contextlib.contextmanager
+    def watched_lock(log: Path) -> Iterator[None]:
+        nonlocal held
+        with real_lock(log):
+            # A file changed since prune read it: it's kept.
+            replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 2.5}\n')
+            held = True
+            try:
+                yield
+            finally:
+                held = False
+
+    printed_while_held: list[bool] = []
+    real_print = print
+
+    def watched_print(*args, **kwargs) -> None:
+        printed_while_held.append(held)
+        real_print(*args, **kwargs)
+
+    monkeypatch.setattr(audit_module, "holding_log_lock", watched_lock)
+    monkeypatch.setattr(cli, "print", watched_print, raising=False)
+
+    assert cli._prune_rotated(current, cutoff=10.0) == 0
+
+    output = capsys.readouterr().out
+    assert not deleted.exists()
+    assert replaced.exists()
+    assert f"Deleted {deleted.name}" in output
+    assert f"Kept {replaced.name}" in output
+    assert "Pruned 1 of 2" in output
+    assert printed_while_held and not any(printed_while_held)
+
+
 def test_version_prints_the_installed_version(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

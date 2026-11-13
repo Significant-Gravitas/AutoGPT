@@ -1009,24 +1009,28 @@ def _prune_rotated(current: Path, cutoff: float) -> int:
     # reading every line of every one under it held off every audit write.
     # The deletes run under the lock, so verify-all and show, which read each
     # file under it, never lose a file part way, and only of files that are
-    # still the ones read.
+    # still the ones read. What they did is printed after the lock is let go:
+    # a terminal or pipe that stops reading would hold off the audit writes.
     expired: list[tuple[Path, tuple[int, int, int], float]] = []
     for path in rotated:
         newest = _newest_record_ts(path)
         if newest is not None and newest[1] < cutoff:
             expired.append((path, *newest))
     deleted = 0
+    report: list[str] = []
     with holding_log_lock(current) if expired else contextlib.nullcontext():
         for path, identity, newest_ts in expired:
             if _file_identity(path) != identity:
-                print(f"Kept {path.name}: it changed after it was read.")
+                report.append(f"Kept {path.name}: it changed after it was read.")
                 continue
             try:
                 path.unlink()
                 deleted += 1
-                print(f"Deleted {path.name} (newest_ts={newest_ts:.0f})")
+                report.append(f"Deleted {path.name} (newest_ts={newest_ts:.0f})")
             except OSError as exc:
-                print(f"Could not delete {path.name}: {exc}")
+                report.append(f"Could not delete {path.name}: {exc}")
+    for line in report:
+        print(line)
     print(f"\nPruned {deleted} of {len(rotated)} rotated files.")
     return 0
 
