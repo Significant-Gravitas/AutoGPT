@@ -10,13 +10,13 @@ sign-in: for 14 days the owner can sign in and keep the account.
 Once those 14 days are over, `erase_account` claims the request
 (`request.claim_request`), so a late Keep is refused, and then removes the
 data: it reruns the work stop and removes the memory crons, sends the
-confirmation closing could not, cancels the subscriptions of the orgs that go
-with the account, hands the agents other accounts still use to the "deleted
-user" account, removes what lives outside the account's rows (marketplace,
-files, memory, MailerLite), keeps a ban record if the account is banned, and
-deletes its rows, then the PostHog person, then marks the request done. The
-rows go late because they are how the earlier steps find their data, so a
-step that fails leaves the account in place for a rerun to finish. PostHog
+confirmation closing could not, cancels the subscriptions of the account and
+of the orgs that go with it, hands the agents other accounts still use to the
+"deleted user" account, removes what lives outside the account's rows
+(marketplace, files, memory, MailerLite), keeps a ban record if the account is
+banned, and deletes its rows, then the PostHog person, then marks the request
+done. The rows go late because they are how the earlier steps find their data,
+so a step that fails leaves the account in place for a rerun to finish. PostHog
 needs only the user ID, so it goes after the rows: until they are gone, an
 email webhook or a Stripe event can still capture an event for the account
 and bring the person back. One captured just before the rows went can still
@@ -62,7 +62,7 @@ from backend.data.account_erasure.shared_agents import (
     transfer_shared_agents,
 )
 from backend.data.account_erasure.storage import delete_files
-from backend.data.account_erasure.subscriptions import cancel_org_subscriptions
+from backend.data.account_erasure.subscriptions import cancel_subscriptions
 from backend.data.account_erasure.third_parties import (
     delete_posthog_person,
     forget_mailerlite_subscriber,
@@ -81,7 +81,7 @@ Step = Callable[..., Awaitable[StepReport]]
 # memory graphs); PostHog needs only the user ID. A stack that doesn't use a
 # service says so in `account_erasure_unused_services`.
 _SERVICE_OF_STEP = {
-    "org_subscriptions": "stripe",
+    "subscriptions": "stripe",
     "files": "buckets",
     "memory": "falkordb",
     "posthog": "posthog",
@@ -97,7 +97,7 @@ KeepAlive = Callable[[], Awaitable[bool]]
 # address.
 _TRACEBACK_STEPS = {
     "stop_work",
-    "org_subscriptions",
+    "subscriptions",
     "shared_agents",
     "marketplace",
     "files",
@@ -258,7 +258,7 @@ def _erasure_steps() -> list[tuple[str, Step]]:
     return [
         ("stop_work", stop_work),
         ("confirmation", send_confirmation),
-        ("org_subscriptions", cancel_org_subscriptions),
+        ("subscriptions", cancel_subscriptions),
         ("shared_agents", transfer_shared_agents),
         ("marketplace", delete_marketplace),
         ("files", delete_files),
