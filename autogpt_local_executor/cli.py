@@ -674,6 +674,7 @@ def _audit_show(current: Path, seq: int) -> int:
     import json
 
     from .audit import holding_log_lock
+    from .doctor import _printable
 
     found = False
     # The listing and the current log's contents share one hold of the
@@ -699,11 +700,14 @@ def _audit_show(current: Path, seq: int) -> int:
             except (ValueError, RecursionError):  # past Python's int or nesting limit
                 continue
             if isinstance(rec, dict) and rec.get("seq") == seq:
-                print(f"# from {path.name}")
-                print(json.dumps(rec, indent=2, ensure_ascii=False))
+                # Escaped where stdout can't carry a character (a Windows code
+                # page, redirected), and the record as JSON's ASCII escapes,
+                # which a lone surrogate from a non-UTF-8 path needs anywhere.
+                print(_printable(f"# from {path.name}"))
+                print(json.dumps(rec, indent=2))
                 found = True
     if not found:
-        print(f"No record with seq={seq} in {current} or rotated files.")
+        print(_printable(f"No record with seq={seq} in {current} or rotated files."))
         return 1
     return 0
 

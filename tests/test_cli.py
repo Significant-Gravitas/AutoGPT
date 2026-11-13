@@ -496,6 +496,35 @@ async def test_audit_show_prints_every_record_with_that_seq(
     assert "after-rotation" in output
 
 
+@pytest.mark.asyncio
+async def test_audit_show_prints_a_record_stdout_cant_encode(
+    tmp_path: Path, audit_key: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record of a file named 未来.txt, shown to a stdout whose encoding
+    can't carry it (a Windows code page, once redirected to a file), raised
+    UnicodeEncodeError instead of showing the record."""
+    import io
+    import json
+
+    from autogpt_local_executor.audit import AuditWriter
+
+    writer = AuditWriter(path=tmp_path / "审计.log", audit_key=audit_key)
+    await writer.write("FILE_READ", request_id="r", details={"path": "未来.txt"})
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    found = cli._audit_show(writer.path, 1)
+    missing = cli._audit_show(writer.path, 99)
+
+    stdout.flush()
+    output = stdout.buffer.getvalue().decode("cp1252")
+    assert (found, missing) == (0, 1)
+    assert "\\u672a\\u6765.txt" in output
+    record = output.split("\n", 1)[1].split("\nNo record", 1)[0]
+    assert json.loads(record)["details"]["path"] == "未来.txt"
+    assert "# from \\u5ba1\\u8ba1.log" in output
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX directory permissions")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores modes")
 @pytest.mark.asyncio
