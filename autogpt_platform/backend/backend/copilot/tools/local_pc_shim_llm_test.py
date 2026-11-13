@@ -227,9 +227,11 @@ async def test_silent_llm_stream_times_out_and_unregisters(monkeypatch):
     monkeypatch.setattr(llm_module, "_LLM_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
     shim = _make_shim_for_streaming()
     with pytest.raises(LocalLLMError) as error:
+        # Only a guard against a hang. A tight one raced the 10 ms idle timer:
+        # after a pause past both, its TimeoutError replaced the stream's.
         await asyncio.wait_for(
             shim.local_llm.complete_blocking(model="llama3.2:3b", messages=[]),
-            timeout=0.2,
+            timeout=30,
         )
     assert error.value.code == "LOCAL_LLM_TIMEOUT"
     assert shim._streaming == {}

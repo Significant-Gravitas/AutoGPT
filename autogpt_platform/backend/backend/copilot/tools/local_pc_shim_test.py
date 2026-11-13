@@ -306,7 +306,7 @@ class TestShimConnectionManager:
     @pytest.mark.asyncio
     async def test_wait_for_observes_concurrent_direct_registration(self):
         manager = ShimConnectionManager(relay=self.NoPresenceRelay())
-        waiter = asyncio.create_task(manager.wait_for("direct", timeout=0.2))
+        waiter = asyncio.create_task(manager.wait_for("direct", timeout=30))
         await asyncio.sleep(0.01)
         websocket = MagicMock()
         manager.register("direct", websocket, ShimHello(machine_id="m1"))
@@ -466,14 +466,14 @@ class TestShimConnectionManager:
         stale_transport.close = AsyncMock()
         manager._relay_transports["direct"] = stale_transport
         manager._relay_connection_ids["direct"] = "old-connection"
-        waiter = asyncio.create_task(manager.wait_for("direct", timeout=0.2))
+        waiter = asyncio.create_task(manager.wait_for("direct", timeout=30))
         await lookup_started.wait()
 
         direct = MagicMock()
         manager.register("direct", direct, ShimHello(machine_id="new"))
         release_lookup.set()
 
-        assert await asyncio.wait_for(waiter, 0.1) is direct
+        assert await asyncio.wait_for(waiter, 30) is direct
         stale_transport.close.assert_awaited_once()
 
     @pytest.mark.asyncio
