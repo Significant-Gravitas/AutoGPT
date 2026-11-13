@@ -160,8 +160,12 @@ def _session(
 ) -> list:
     """A machine of `platform_name` with `env` set, and cua-driver installed
     or not. Returns the paths the driver lookup was asked for."""
-    for name in _SESSION_VARIABLES:
-        monkeypatch.delenv(name, raising=False)
+    for name in dict.fromkeys(_SESSION_VARIABLES + platform_info.SESSION_DISPLAY_VARIABLES):
+        # Set first, so the test's end restores the variable even when it
+        # wasn't set: delenv records nothing for one that isn't there, and a
+        # SessionDisplay writes os.environ itself, outside monkeypatch.
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(platform_info, "detect_platform", lambda: platform_name)
