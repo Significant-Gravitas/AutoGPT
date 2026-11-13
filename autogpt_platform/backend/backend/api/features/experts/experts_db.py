@@ -157,6 +157,10 @@ _WORKFLOW_ORDER: list[prisma.types.ExpertWorkflowOrderByInput] = [
     {"createdAt": "asc"},
     {"id": "asc"},
 ]
+# A row whose library agent the owner deleted would link to a page that 404s.
+LIVE_WORKFLOWS: prisma.types.ExpertWorkflowWhereInput = {
+    "OR": [{"libraryAgentId": None}, {"LibraryAgent": {"is": {"isDeleted": False}}}]
+}
 
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     # AgentGraph carries the name/description of a user-created library agent;
@@ -165,10 +169,15 @@ _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     "StoreListingVersion": True,
 }
 _WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
-    "Workflows": {"include": _WORKFLOW_ROW_INCLUDE, "order_by": _WORKFLOW_ORDER}
+    "Workflows": {
+        "where": LIVE_WORKFLOWS,
+        "include": _WORKFLOW_ROW_INCLUDE,
+        "order_by": _WORKFLOW_ORDER,
+    }
 }
 _ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
+        "where": LIVE_WORKFLOWS,
         "include": {
             "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": True,
@@ -2318,7 +2327,10 @@ async def _install_marketplace_workflow(
         include=_WORKFLOW_ROW_INCLUDE,
     )
     if existing is not None:
-        return _to_workflow_ref(existing)
+        if existing.LibraryAgent is not None and not existing.LibraryAgent.isDeleted:
+            return _to_workflow_ref(existing)
+        # Its library copy was deleted: drop the stale row and its job, install afresh.
+        await remove_workflow(user_id, expert_id, existing.id)
 
     library_agent = await library_db.add_store_agent_to_library(
         store_listing_version_id, user_id, track_listing_added=False

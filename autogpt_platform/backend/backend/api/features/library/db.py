@@ -608,6 +608,7 @@ async def create_library_agent(
         user_id: The user to whom the agent will be added.
         hitl_safe_mode: Whether HITL blocks require manual review (default True).
         sensitive_action_safe_mode: Whether sensitive action blocks require review.
+            Both seed a new entry only; an existing entry keeps its settings.
         create_library_agents_for_sub_graphs: If True, creates LibraryAgent records for sub-graphs as well.
 
     Returns:
@@ -709,12 +710,8 @@ async def create_library_agent(
                                 if organization_id
                                 else {}
                             ),
-                            "settings": SafeJson(
-                                GraphSettings(
-                                    human_in_the_loop_safe_mode=hitl_safe_mode,
-                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
-                                ).model_dump()
-                            ),
+                            # Settings are the user's: restoring an entry keeps
+                            # them, as the marketplace re-add does.
                             **(
                                 {"Folder": {"connect": {"id": folder_id}}}
                                 if folder_id and graph_entry is graph
