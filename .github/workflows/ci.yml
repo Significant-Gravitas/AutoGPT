@@ -85,6 +85,27 @@ jobs:
       - name: ruff format --check
         run: ruff format --check .
 
+  typecheck:
+    name: typecheck (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # pyproject.toml's [tool.mypy] is the package's type gate (AGENTS.md).
+      # Pinned: a newer mypy can fail code this one passed.
+      - name: Install the package and mypy
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . "mypy==2.4.1"
+
+      - name: mypy
+        run: python -m mypy autogpt_local_executor
+
   coverage:
     name: coverage (ubuntu / py3.12)
     runs-on: ubuntu-latest
