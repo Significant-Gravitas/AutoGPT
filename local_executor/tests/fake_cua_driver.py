@@ -18,6 +18,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
   FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
   FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
+  FAKE_CUA_TOOLS_LIST    JSON object merged into tools/list's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
   FAKE_CUA_APPS          JSON list of installed app names list_apps returns
@@ -241,6 +242,7 @@ def handle(message: dict) -> None:
         paging = os.environ.get("FAKE_CUA_NEXT_CURSOR")
         if paging:
             result["nextCursor"] = "page" if paging == "same" else f"page-{request_id}"
+        result.update(json.loads(os.environ.get("FAKE_CUA_TOOLS_LIST") or "{}"))
         send({"jsonrpc": "2.0", "id": request_id, "result": result})
     elif method == "tools/call":
         params = message["params"]

@@ -687,6 +687,39 @@ async def test_a_driver_reporting_a_version_too_long_to_pass_on_is_stopped(
         await bridge.close()
 
 
+@pytest.mark.parametrize("tools", [1, True, "click", {"name": "click"}])
+async def test_a_driver_whose_tool_list_is_not_a_list_is_stopped(
+    fake_log, monkeypatch, tools: object
+) -> None:
+    """A tools/list answer of `{"tools": 1}` raised TypeError, which the
+    start's cleanup doesn't catch: the driver it had started kept running,
+    held by no one, so the bridge's close() couldn't stop it. A string or an
+    object was read as an empty list."""
+    monkeypatch.setenv("FAKE_CUA_TOOLS_LIST", json.dumps({"tools": tools}))
+    started: list[StdioMcpClient] = []
+
+    def factory(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = fake_client(argv, **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=factory,
+    )
+    try:
+        with pytest.raises(DriverUnavailable, match="isn't a list") as raised:
+            await bridge.snapshot()
+        assert raised.value.code == ErrorCode.INTERNAL_ERROR
+        assert started and not any(client.alive for client in started)
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
+
+
 async def test_a_driver_that_cannot_be_run_is_named_on_every_start(tmp_path: Path) -> None:
     """A driver that was found but couldn't be run (gone by then, or on a
     noexec mount) counted against the restart budget the same way."""
@@ -1196,6 +1229,83 @@ async def test_a_refusal_for_another_reason_is_not_sent_again(
 
 async def test_sessions_get_their_own_labels(make_handler) -> None:
     assert make_handler(session_id="a").session_label != make_handler(session_id="b").session_label
+
+
+def _ended_refusal(session: str) -> dict[str, Any]:
+    """cua-driver 0.38's refusal of a call naming a session it ended."""
+    message = f"session '{session}' has ended"
+    return {
+        "isError": True,
+        "content": [{"type": "text", "text": message}],
+        "structuredContent": {
+            "refusal": {"code": "session_ended", "message": message},
+            "status": "refused",
+        },
+    }
+
+
+def _ending_sessions(bridge: CuaDriverBridge, monkeypatch) -> set[str]:
+    """Have the bridge's driver refuse, as ended, the labels in the returned
+    set, which a test adds to as the driver would end them: one that stays
+    up keeps refusing them until it restarts."""
+    ended: set[str] = set()
+    real_call_tool = bridge.call_tool
+
+    async def call_tool(name: str, arguments: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        if arguments.get("session") in ended:
+            return _ended_refusal(arguments["session"])
+        return await real_call_tool(name, arguments, **kwargs)
+
+    monkeypatch.setattr(bridge, "call_tool", call_tool)
+    return ended
+
+
+async def test_a_chats_next_session_goes_on_from_the_label_its_last_one_reached(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """Each child session's handler counted its label's renewals from zero,
+    though the driver it shares outlives it. After two idle detaches the
+    driver had ended both a chat's label and its `.1`; the chat's next
+    session tried those two in turn, and the second refusal came back,
+    since call_driver renews once."""
+    parent = make_handler(session_id=None)
+    ended = _ending_sessions(parent.driver, monkeypatch)
+    labels: list[str] = []
+    for _ in range(3):
+        chat = make_handler(session_id="chat")  # the chat's session, attached again
+        parent.share_with(chat)
+        raw = await chat.call_driver("get_screen_size", {"session": chat.session_label}, timeout=60)
+        assert not raw.get("isError"), raw
+        labels.append(chat.session_label)
+        # Left idle: the driver ends the label, then the session is detached.
+        ended.add(chat.session_label)
+
+    assert labels == [labels[0], f"{labels[0]}.1", f"{labels[0]}.2"]
+
+
+async def test_the_machine_keeps_the_renewals_of_its_latest_renewed_chats(
+    make_handler, monkeypatch
+) -> None:
+    """The renewals last as long as the driver, so they are bounded: a chat
+    renewed less recently than MAX_RENEWED_LABELS others starts from its
+    first label again."""
+    from autogpt_local_executor import handlers
+
+    monkeypatch.setattr(handlers, "MAX_RENEWED_LABELS", 2)
+    parent = make_handler(session_id=None)
+    chats = [make_handler(session_id=name) for name in ("a", "b", "c")]
+    firsts = [chat.session_label for chat in chats]
+    for chat in chats:
+        parent.share_with(chat)
+
+    for renewed in (0, 1, 0, 2):  # b is then the least recently renewed
+        chats[renewed]._renew_label()
+
+    assert [chat.session_label for chat in chats] == [
+        f"{firsts[0]}.2",
+        firsts[1],
+        f"{firsts[2]}.1",
+    ]
 
 
 async def test_the_drivers_own_error_comes_back_as_a_result(make_handler) -> None:
@@ -2327,6 +2437,35 @@ async def test_a_child_session_waits_only_briefly_for_a_busy_shared_driver(
     finally:
         starting.cancel()
         driver._turn.release()
+        await parent._computer_handler.close()
+
+
+async def test_a_chat_attached_again_after_two_idle_detaches_passes_its_permission_check(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """On macOS a chat's session checks the app's grants through the shared
+    driver as it starts. Its third session, after two idle detaches, got the
+    driver's second session_ended refusal back from that check and took it
+    for missing grants, so it exited before it connected, as every later one
+    did until the driver restarted."""
+    from autogpt_local_executor import handlers, platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    # A child's check waits briefly for the shared driver; a slow runner
+    # must not skip it.
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 60.0, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    driver = parent._computer_handler.driver
+    ended = _ending_sessions(driver, monkeypatch)
+    try:
+        await driver.snapshot()
+        for _ in range(3):
+            child = _daemon(tmp_path, session_id="child-1")
+            parent._computer_handler.share_with(child._computer_handler)
+            await child._preflight_computer_use()
+            # Left idle: the driver ends the label, then the session is detached.
+            ended.add(child._computer_handler.session_label)
+    finally:
         await parent._computer_handler.close()
 
 

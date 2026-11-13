@@ -48,7 +48,8 @@ dev = [
     "pytest-asyncio>=0.23",
     "pytest-mock>=3.12",
     "ruff>=0.4",
-    "mypy>=1.10",
+    # The mypy CI's typecheck job pins: another can fail code this one passed.
+    "mypy==2.4.1",
     # tests/test_packaging.py builds the wheel `pipx install` builds.
     "hatchling",
 ]

@@ -1167,11 +1167,15 @@ slots. A request waits up to ten seconds for one, then gets
 `SHIM_OVERLOADED` with `details.reason: "machine_busy"`. A slot stays taken
 until its work ends, including work still running in a thread after its
 session ended.
-`COMPUTER_TOOL_CALL`s take no slot: those from every session on a machine
-take turns, since they share one screen, so calls waiting their turn would
-otherwise hold every slot while a long one ran. Each waits for its turn no
-longer than its own deadline; one whose deadline comes first gets
-`COMMAND_TIMEOUT` with `details.started: false`.
+`COMPUTER_TOOL_CALL`s take no machine slot: those from every session on a
+machine take turns, since they share one screen, so calls waiting their turn
+would otherwise hold every slot while a long one ran. They still count
+against their own session's `max_concurrent`, while they wait for their turn
+too: a call that arrives with its session at that limit gets
+`SHIM_OVERLOADED` (`details.max_concurrent`) at once, before it reaches the
+computer's queue. Each waits for its turn no longer than its own deadline;
+one whose deadline comes first gets `COMMAND_TIMEOUT` with
+`details.started: false`.
 
 ---
 
