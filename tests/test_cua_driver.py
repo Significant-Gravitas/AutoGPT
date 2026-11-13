@@ -1994,6 +1994,49 @@ async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_
     assert [r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"] == []
 
 
+@pytest.mark.parametrize("stuck_look", ["before", "after"])
+async def test_a_look_at_the_clipboard_not_back_by_the_deadline_ends_the_call(
+    make_handler, tmp_path, fake_log, monkeypatch, stuck_look: str
+) -> None:
+    """The looks for a password manager's marker ran in a worker thread with
+    no deadline on the wait: one queued behind threads that file work held,
+    or one that hung, kept the call, and the computer's turn that every
+    chat's calls share, past its deadline. A look not back by then ends the
+    call: before the driver's read nothing ran, and after it what was read
+    is withheld."""
+    import threading
+
+    from autogpt_local_executor import handlers
+
+    released = threading.Event()
+    looks = 0
+
+    def look(_timeout: float | None = None) -> concealed.ClipboardState:
+        nonlocal looks
+        looks += 1
+        if looks == (1 if stuck_look == "before" else 2):
+            released.wait(timeout=60)
+        return concealed.ClipboardState(None, 7)
+
+    monkeypatch.setattr(handlers, "clipboard_state", look)
+    handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    await handler.driver.snapshot()  # started, so the call's second goes to the look
+    try:
+        response = await asyncio.wait_for(
+            handler.handle(_call("clipboard_read", timeout_seconds=1)), timeout=30
+        )
+    finally:
+        released.set()
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+    assert response.payload.details["started"] is (stuck_look == "after")
+    assert "a copied paragraph" not in response.model_dump_json()
+    reads = [r for r in _records(fake_log, "call") if r["tool"] == "clipboard_read"]
+    assert len(reads) == (1 if stuck_look == "after" else 0)
+
+
 async def test_each_look_at_a_foreign_clipboard_gets_only_the_time_left(
     make_handler, tmp_path, monkeypatch
 ) -> None:

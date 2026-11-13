@@ -55,7 +55,7 @@ from .computer_use.catalog import (
     windows_app_name_matches,
     without_session,
 )
-from .computer_use.concealed import clipboard_state, marker_in
+from .computer_use.concealed import ClipboardState, clipboard_state, marker_in
 from .computer_use.mcp_client import INVALID_PARAMS, McpError
 from .config import ShimConfig
 from .directory_browser import _is_reparse_point
@@ -315,6 +315,15 @@ class _ClipboardCheckOutOfTime(TimeoutError):
     """A foreign clipboard read whose deadline passed before its checks for
     a password manager's mark were done: what it read is withheld. The
     driver ran nothing past the deadline, so it isn't stopped."""
+
+
+async def _clipboard_state_by(deadline: float, timeout: float) -> ClipboardState:
+    """The clipboard's marker, from a worker thread, by `deadline` (loop
+    time), else TimeoutError. `timeout` bounds the look once a thread runs
+    it; the deadline also bounds the wait for a free one, which file work
+    can hold, while the call holds the computer's turn."""
+    async with asyncio.timeout_at(deadline):
+        return await asyncio.to_thread(clipboard_state, timeout)
 
 
 class _NeverStarted(Exception):
@@ -1915,7 +1924,14 @@ class ComputerUseHandler:
         # Each look at the OS gets what is left of the deadline (xclip and
         # wl-paste can take seconds), and so does each read: the call holds
         # the computer's turn throughout, which every chat's calls share.
-        before = await asyncio.to_thread(clipboard_state, timeout) if foreign else None
+        before = None
+        if foreign:
+            try:
+                before = await _clipboard_state_by(deadline, timeout)
+            except TimeoutError:
+                raise CallNotStarted(
+                    "clipboard_read's deadline passed in the marker check"
+                ) from None
         timeout = deadline - loop.time()
         if timeout <= 0:
             # None left means the read never starts.
@@ -1958,7 +1974,10 @@ class ComputerUseHandler:
             left = deadline - loop.time()
             if left <= 0:
                 raise _ClipboardCheckOutOfTime
-            after = await asyncio.to_thread(clipboard_state, left)
+            try:
+                after = await _clipboard_state_by(deadline, left)
+            except TimeoutError:
+                raise _ClipboardCheckOutOfTime from None
             if loop.time() >= deadline:
                 raise _ClipboardCheckOutOfTime
             if after.marker:
