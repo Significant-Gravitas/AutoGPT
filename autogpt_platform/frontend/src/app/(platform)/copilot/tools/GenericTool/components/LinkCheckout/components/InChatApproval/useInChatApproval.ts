@@ -36,8 +36,13 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
     approval.error instanceof ApiError && approval.error.status === 404;
 
   async function tellAgent(approved: boolean) {
+    if (!actions) {
+      setUnsent(null);
+      return;
+    }
+    const message = continueAfterDecision({ checkoutId, approved });
     try {
-      await actions?.onSend(continueAfterDecision({ checkoutId, approved }));
+      await actions.onSend(message);
       setUnsent(null);
     } catch {
       setUnsent(approved);
@@ -47,11 +52,9 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
   async function decide(approved: boolean) {
     if (readOnly || pending) return;
     setError("");
+    const mutation = approved ? approve : decline;
     try {
-      await (approved ? approve : decline).mutateAsync({
-        sessionId,
-        checkoutId,
-      });
+      await mutation.mutateAsync({ sessionId, checkoutId });
     } catch {
       setError(
         "Your decision was not recorded. The purchase is shown as it stands.",
