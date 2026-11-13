@@ -489,7 +489,7 @@
     "no-restyle": 6
   },
   "src/components/layout/AppSidebar/components/RecentChats/RecentChats.tsx": {
-    "no-restyle": 2
+    "no-restyle": 1
   },
   "src/components/layout/AppSidebar/components/RecentChats/components/ExpertChatGroup/ExpertChatGroup.tsx": {
     "no-restyle": 27
