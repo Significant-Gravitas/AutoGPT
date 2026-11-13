@@ -1198,6 +1198,31 @@ async def test_command_neither_argv_nor_command(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_command_with_no_cwd_runs_in_a_relative_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A command that named no cwd gave the jail the root itself as its
+    path, and the jail takes a relative path from the root, so with a
+    relative allowed_root (a legacy session's, as typed) the command ran in
+    workspace/workspace, or failed where there was none."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "workspace").mkdir()
+    config = make_config(tmp_path)
+    config.allowed_root = Path("workspace")
+    captured: dict[str, object] = {}
+
+    async def fake_exec(*args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProc(stdout=b"", stderr=b"", returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        response = await CommandHandler(config).handle(_cmd_msg(argv=["echo", "hi"]))
+
+    assert isinstance(response, CommandResultMessage)
+    assert Path(str(captured["cwd"])).resolve() == (tmp_path / "workspace").resolve()
+
+
+@pytest.mark.asyncio
 async def test_command_cwd_outside_jail(tmp_path: Path) -> None:
     h = CommandHandler(make_config(tmp_path))
     msg = _cmd_msg(argv=["echo", "hi"], cwd="/etc")

@@ -381,7 +381,21 @@ def test_the_systemd_service_advertises_computer_use_once_the_desktop_exports_it
 
 
 def test_reading_the_manager_environment_parses_systemctl(monkeypatch: pytest.MonkeyPatch) -> None:
-    printed = b"DISPLAY=:0\nXAUTHORITY=/run/user/1000/a b\nODD=$'x y'\nnotavariable\n"
+    """systemctl quotes a value holding spaces or shell characters as $'...',
+    and those were dropped: an XAUTHORITY under a home folder with a space
+    in its name went missing, so the driver had a DISPLAY it couldn't use.
+    They are decoded now, without a shell. An older systemctl prints such a
+    value bare."""
+    printed = (
+        b"DISPLAY=:0\n"
+        b"XAUTHORITY=$'/home/first last/.Xauthority'\n"
+        b"QUOTES=$'it\\'s a \\\\ and a \"'\n"
+        b"BYTES=$'caf\\303\\251\\ttab'\n"
+        b"OLDER=/run/user/1000/a b\n"
+        b"UNFINISHED=$'x y\n"
+        b"UNKNOWN=$'\\q'\n"
+        b"notavariable\n"
+    )
     monkeypatch.setattr(platform_info.shutil, "which", lambda name: "/usr/bin/systemctl")
 
     def run(argv, **kwargs):
@@ -393,7 +407,10 @@ def test_reading_the_manager_environment_parses_systemctl(monkeypatch: pytest.Mo
 
     assert platform_info._manager_environment() == {
         "DISPLAY": ":0",
-        "XAUTHORITY": "/run/user/1000/a b",
+        "XAUTHORITY": "/home/first last/.Xauthority",
+        "QUOTES": "it's a \\ and a \"",
+        "BYTES": "café\ttab",
+        "OLDER": "/run/user/1000/a b",
     }
 
 

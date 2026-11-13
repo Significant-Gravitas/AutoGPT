@@ -293,11 +293,62 @@ def _manager_environment() -> dict[str, str] | None:
     env: dict[str, str] = {}
     for line in completed.stdout.decode("utf-8", "replace").splitlines():
         key, sep, value = line.partition("=")
-        # systemctl writes a value holding spaces or shell characters as
-        # $'...'; no display variable needs that, so those are skipped.
-        if sep and key and not value.startswith("$'"):
-            env[key] = value
+        decoded = _manager_value(value) if sep and key else None
+        if decoded is not None:
+            env[key] = decoded
     return env
+
+
+# What a backslash and the character after it stand for in a value
+# systemctl quotes.
+_QUOTED_ESCAPES = {
+    "a": 7,
+    "b": 8,
+    "f": 12,
+    "n": 10,
+    "r": 13,
+    "t": 9,
+    "v": 11,
+    "\\": 92,
+    "'": 39,
+    '"': 34,
+}
+
+
+def _manager_value(value: str) -> str | None:
+    """A value as `systemctl show-environment` prints it: as it is, or, when
+    it holds spaces or shell characters (an XAUTHORITY under a home folder
+    with a space in its name, say), quoted as $'...' (systemd's
+    shell_maybe_quote). Inside, a backslash escapes `\\`, `'` and control
+    characters, and three octal digits stand for any other byte. Decoded
+    here, without a shell; None for quoting systemctl doesn't write."""
+    if not value.startswith("$'"):
+        return value
+    if len(value) < 3 or not value.endswith("'"):
+        return None
+    body = value[2:-1]
+    out = bytearray()
+    i = 0
+    while i < len(body):
+        char = body[i]
+        if char == "'":
+            return None
+        if char != "\\":
+            out += char.encode("utf-8")
+            i += 1
+            continue
+        escaped = body[i + 1 : i + 2]
+        octal = body[i + 1 : i + 4]
+        if escaped and escaped in _QUOTED_ESCAPES:
+            out.append(_QUOTED_ESCAPES[escaped])
+            i += 2
+        elif len(octal) == 3 and octal[0] in "0123" and all(d in "01234567" for d in octal):
+            out.append(int(octal, 8))
+            i += 4
+        else:
+            return None
+    # As Linux reads an environment's bytes, whatever the OS running this.
+    return bytes(out).decode("utf-8", "surrogateescape")
 
 
 session_display = SessionDisplay()

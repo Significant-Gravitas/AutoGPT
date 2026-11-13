@@ -581,13 +581,17 @@ async def test_a_refresh_that_could_not_reach_the_server_is_retried(
         ("refresh", "NoKeyringError", True),
         ("refresh", "InitError", True),
         ("reread", "KeyringLocked", False),
+        ("reread", "NoKeyringError", True),
+        ("reread", "InitError", True),
     ],
 )
 async def test_a_keychain_failure_during_a_refresh_is_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str, error: str, restart: bool
 ) -> None:
     """The refresh's catch-all took a keychain that locked during the refresh
-    for a refused refresh token, which ended the session for good."""
+    for a refused refresh token, which ended the session for good. So it
+    did a keychain gone by the read after a refresh that worked: the shim
+    said to sign in again, where a restart finds the keychain."""
     import keyring.errors
 
     from autogpt_local_executor.auth import OAuthFlow

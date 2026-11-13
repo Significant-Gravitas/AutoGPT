@@ -576,7 +576,10 @@ class CommandHandler:
 
         cwd_str = payload.cwd or str(self.config.allowed_root)
         try:
-            cwd = assert_inside_jail(cwd_str, self.config.allowed_root)
+            # No cwd is the root itself, `.` from it: the jail takes a relative
+            # path from the root, so a relative root named again would be joined
+            # to itself (workspace/workspace).
+            cwd = assert_inside_jail(payload.cwd or ".", self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "EXECUTE_COMMAND", cwd_str, exc)
             return _jail_error_to_message(msg.id, exc)

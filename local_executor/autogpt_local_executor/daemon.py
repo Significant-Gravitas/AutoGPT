@@ -912,7 +912,9 @@ class ShimDaemon:
                     except Exception:
                         logger.debug("TOKEN_REFRESHED audit emit failed", exc_info=True)
                 return await self._read_access_token()
-            except (DaemonAuthenticationError, KeychainUnavailableError):
+            except (DaemonAuthenticationError, KeychainUnavailableError, KeychainNotUpError):
+                # The re-read's own errors: a keychain gone since the refresh
+                # stored the new pair is waited for, not a sign-in to redo.
                 raise
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
