@@ -12,6 +12,7 @@ https://docs.stripe.com/agentic-commerce/link-agent-wallet/use-link-wallet-pay-o
 import asyncio
 import time
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from backend.util.link_checkout.cdp_models import FrameContext, Result
 from backend.util.link_checkout.models import BrowserBinding, PayToken
@@ -55,8 +56,12 @@ class Browser(Protocol):
 
 async def enable_pay_token(cdp: Browser, binding: BrowserBinding) -> PayToken:
     """Tick the page's agent option and return where its token goes. Refused
-    unless exactly one frame of the tab carries the option."""
-    frames = [f for f in await cdp.frames(binding) if await _steers(cdp, f)]
+    unless exactly one frame that may name the payee carries the option."""
+    frames = [
+        f
+        for f in await cdp.frames(binding)
+        if _may_name_the_payee(f, binding) and await _steers(cdp, f)
+    ]
     if len(frames) != 1:
         raise CheckoutRefused(PAY_TOKEN_UNAVAILABLE)
     context = frames[0]
@@ -72,6 +77,19 @@ async def enable_pay_token(cdp: Browser, binding: BrowserBinding) -> PayToken:
         if time.monotonic() >= deadline:
             raise CheckoutRefused(PAY_TOKEN_UNAVAILABLE)
         await asyncio.sleep(0.25)
+
+
+def _may_name_the_payee(context: FrameContext, binding: BrowserBinding) -> bool:
+    """The tab's own page, which the customer approved paying, or a Stripe
+    frame. A frame from anywhere else (an ad, a widget) could carry a steering
+    block of its own and name its own account as the payee."""
+    if context.target_id == binding.target_id and not context.frame.parentId:
+        return True
+    url = urlsplit(context.frame.url)
+    host = (url.hostname or "").lower()
+    return url.scheme == "https" and (
+        host == "stripe.com" or host.endswith(".stripe.com")
+    )
 
 
 async def _steers(cdp: Browser, context: FrameContext) -> bool:
