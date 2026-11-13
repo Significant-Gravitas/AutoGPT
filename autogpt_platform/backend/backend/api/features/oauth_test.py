@@ -905,6 +905,28 @@ async def test_a_client_registered_without_refresh_cannot_refresh(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "body",
+    [b'{"grant_type": "authorization_code", "code": "sentinel-code', b"\xff\xfe\x00"],
+    ids=["truncated-json", "not-utf8"],
+)
+async def test_a_token_request_body_that_is_not_json_is_refused_with_422(
+    client: httpx.AsyncClient, body: bytes
+):
+    """The JSON branch read the body without catching a parse error, so a
+    malformed body, or one that isn't UTF-8, came back as a 500."""
+    response = await client.post(
+        "/api/oauth/token",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == "json_invalid"
+    assert "sentinel-code" not in response.text
+
+
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("encoding", ["form", "json"])
 async def test_invalid_token_request_does_not_echo_or_log_secrets(
     client: httpx.AsyncClient,

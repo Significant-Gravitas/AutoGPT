@@ -681,7 +681,20 @@ async def _parse_token_request(http_request: Request) -> OAuthTokenRequest:
     if content_type == "application/x-www-form-urlencoded":
         payload = dict(await http_request.form())
     elif content_type == "application/json" or content_type.endswith("+json"):
-        payload = await http_request.json()
+        try:
+            payload = await http_request.json()
+        except ValueError as exc:
+            # JSONDecodeError and UnicodeDecodeError are both ValueErrors: a
+            # body that isn't JSON, or isn't UTF-8, is the client's error.
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "json_invalid",
+                        "loc": ["body"],
+                        "msg": "Invalid OAuth token request",
+                    }
+                ]
+            ) from exc
     else:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
