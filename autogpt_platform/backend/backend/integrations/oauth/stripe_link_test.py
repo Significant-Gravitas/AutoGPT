@@ -12,7 +12,10 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
+from backend.integrations.oauth.stripe_link import (
+    DEVICE_GRANT_METADATA,
+    StripeLinkDeviceAuthHandler,
+)
 
 
 def mock_http(status_code: int, payload: dict, text: str = ""):
@@ -111,6 +114,9 @@ async def test_poll_returns_credentials_once_approved():
     assert result.credentials.access_token.get_secret_value() == "new-access"
     assert result.credentials.provider == "stripe_link"
     assert result.credentials.access_token_expires_at is not None
+    # Names its own client, so a reconnect that replaces a hosted grant
+    # overwrites the hosted marker (see router_test's merge test).
+    assert result.credentials.metadata == DEVICE_GRANT_METADATA
 
 
 @pytest.mark.asyncio
