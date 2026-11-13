@@ -366,7 +366,7 @@ async def test_the_driver_runs_under_the_shims_policy_and_without_telemetry(
         await bridge.close()
 
     [started] = _records(fake_log, "initialize")
-    assert started["argv"] == ["mcp"]
+    assert started["argv"] == ["mcp", "--direct"]
     assert started["policy"] == sorted(catalog.offered_tools(enable_clipboard=False))
     env = started["env"]
     assert env["CUA_DRIVER_PERMISSION_MODE"] == "standard"
@@ -739,16 +739,15 @@ async def test_a_driver_that_cannot_be_run_is_named_on_every_start(tmp_path: Pat
         await bridge.close()
 
 
-@pytest.mark.parametrize(
-    ("platform", "argv"),
-    [("darwin", ["mcp", "--direct"]), ("linux", ["mcp"]), ("win32", ["mcp"])],
-)
-def test_the_shim_always_owns_the_drivers_runtime(platform: str, argv: list[str]) -> None:
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_the_shim_always_owns_the_drivers_runtime(platform: str) -> None:
     """macOS's default relays to CuaDriver.app, a daemon the person installs,
     updates and shares with other clients, under its own policy; the shim
-    runs its pinned driver itself instead."""
+    runs its pinned driver itself instead. Linux and Windows relay to such a
+    daemon too once the person has let the driver's Computer History preview
+    in (a preference file cua-driver reads), so `--direct` goes everywhere."""
     assert driver.driver_runtime(platform) == "direct"
-    assert driver.driver_argv(Path("cua-driver"), "direct", platform)[1:] == argv
+    assert driver.driver_argv(Path("cua-driver"), "direct", platform)[1:] == ["mcp", "--direct"]
 
 
 def test_the_wheels_binary_is_found_without_importing_the_package(

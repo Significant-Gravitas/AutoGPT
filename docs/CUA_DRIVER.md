@@ -41,10 +41,12 @@ minor version this document reviews
 or arguments nobody has looked at.
 
 **Which runtime.** The driver process the shim starts always owns the
-runtime (`HELLO.computer_use_driver.runtime` is `direct`): `cua-driver mcp`
-on Windows and Linux, `cua-driver mcp --direct` on macOS, where cua-driver's
-default would relay to CuaDriver.app's service instead. The shim doesn't use
-that service:
+runtime (`HELLO.computer_use_driver.runtime` is `direct`): it runs
+`cua-driver mcp --direct` on every OS. Without `--direct`, cua-driver's
+default on macOS relays to CuaDriver.app's service, and on Windows and Linux
+it relays to a `cua-driver serve` daemon once the person has let the
+driver's Computer History preview in (a preference file the driver reads at
+start). The shim doesn't use that service:
 
 - It is installed and updated by the person, not pinned with the shim, so it
   can be another release than the one this catalog was reviewed against,
