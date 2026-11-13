@@ -16,7 +16,10 @@ publish its private advisories.
    `description` field, and the repository advisory API has no references field,
    so the link goes in the description.
    Use numeric versions in package metadata; explain the corresponding Git tag
-   in the description. Do not replace the first fixed version with the latest
+   in the description. Code that never reached a release is the exception: its
+   range is `>= <introducing commit, 7 characters> (unreleased)`, a newline, then
+   `<= <fixing commit, 7 characters>`, and its patched version is the first
+   release whose tag carries the fix. Do not replace the first fixed version with the latest
    release used for validation.
 3. Preserve researcher names, consent and duplicate-report contributions. Use
    GitHub's Credits field and the researcher's chosen handle/profile link. Do not
