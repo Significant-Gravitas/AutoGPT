@@ -654,6 +654,39 @@ async def test_a_driver_of_another_version_is_named_on_every_start(fake_log, mon
         await bridge.close()
 
 
+async def test_a_driver_reporting_a_version_too_long_to_pass_on_is_stopped(
+    fake_log, monkeypatch
+) -> None:
+    """A version past ComputerDriverInfo's 64 characters that still matched
+    the reviewed minor raised ValidationError after the start's cleanup: the
+    driver it had started kept running, and its start stayed on the restart
+    budget."""
+    monkeypatch.setenv("FAKE_CUA_VERSION", "0.38." + "9" * 70)
+    started: list[StdioMcpClient] = []
+
+    def factory(argv: list[str], **kwargs: Any) -> StdioMcpClient:
+        client = fake_client(argv, **kwargs)
+        started.append(client)
+        return client
+
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        binary=FAKE,
+        platform="linux",
+        client_factory=factory,
+    )
+    try:
+        for _ in range(driver.MAX_STARTS_PER_WINDOW + 1):
+            with pytest.raises(DriverUnavailable) as raised:
+                await bridge.snapshot()
+            assert raised.value.code == ErrorCode.DEPENDENCY_MISSING
+        assert started and not any(client.alive for client in started)
+    finally:
+        for client in started:
+            await client.close()
+        await bridge.close()
+
+
 async def test_a_driver_that_cannot_be_run_is_named_on_every_start(tmp_path: Path) -> None:
     """A driver that was found but couldn't be run (gone by then, or on a
     noexec mount) counted against the restart budget the same way."""

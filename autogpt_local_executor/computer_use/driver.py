@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from pydantic import ValidationError
+
 from .. import platform_info
 from ..protocol import ComputerDriverInfo, ErrorCode
 from .catalog import REVIEWED_DRIVER_VERSION, policy_document, same_minor
@@ -457,6 +459,24 @@ class CuaDriverBridge:
                         },
                     )
                 listed = await client.list_tools(timeout=LIST_TIMEOUT_SECONDS)
+                try:
+                    info = ComputerDriverInfo(
+                        name=initialized.server_name or DRIVER_NAME,
+                        version=initialized.server_version,
+                        runtime=runtime,
+                    )
+                except ValidationError as exc:
+                    # A name or version HELLO can't carry, from a build the
+                    # shim wasn't made for: like another version, off the
+                    # restart budget, and stopped by the cleanup below.
+                    self._starts.pop()
+                    raise DriverUnavailable(
+                        "cua-driver reported a name or version this local executor can't "
+                        f"pass on: {initialized.server_name[:80]!r}, "
+                        f"{initialized.server_version[:80]!r}",
+                        code=ErrorCode.DEPENDENCY_MISSING,
+                        details={"dependency": DRIVER_NAME},
+                    ) from exc
             except (DriverUnavailable, asyncio.CancelledError):
                 # The bridge doesn't hold this client yet, so close() can't
                 # stop it: a cancelled start (shutdown) stops it here.
@@ -480,11 +500,7 @@ class CuaDriverBridge:
                 if isinstance(tool.get("name"), str) and tool["name"] in self._offered
             )
             self._snapshot = DriverSnapshot(
-                info=ComputerDriverInfo(
-                    name=initialized.server_name or DRIVER_NAME,
-                    version=initialized.server_version,
-                    runtime=runtime,
-                ),
+                info=info,
                 instructions=initialized.instructions,
                 tools=tools,
             )
