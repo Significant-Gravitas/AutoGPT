@@ -54,6 +54,22 @@ async def pending_user_ids(*, now: datetime | None = None) -> list[str]:
     return [row.userId for row in rows]
 
 
+async def stalled_user_ids(
+    *, older_than_secs: int, now: datetime | None = None
+) -> list[str]:
+    """The accounts whose erasure started more than `older_than_secs` ago and
+    has not finished, oldest first: a step that keeps failing, a service left
+    unset, or a CLI run that crashed and was not run again. Whichever ran it,
+    the job or the CLI, the claim (`startedAt`) is set and `completedAt` is
+    not."""
+    cutoff = (now or datetime.now(UTC)) - timedelta(seconds=older_than_secs)
+    rows = await AccountDeletionRequest.prisma().find_many(
+        where={"completedAt": None, "startedAt": {"lte": cutoff}},
+        order={"startedAt": "asc"},
+    )
+    return [row.userId for row in rows]
+
+
 async def claim_request(user_id: str) -> str | None:
     """Claim the account's request for the erasure, in one short statement of
     its own, before any step runs: from then on Keep refuses (it deletes only
@@ -77,22 +93,49 @@ async def claim_request(user_id: str) -> str | None:
     return rows[0]["id"] if rows else None
 
 
-async def close_for_email_request(user_id: str, *, erase_now: bool = False) -> datetime:
+async def close_for_email_request(
+    user_id: str, *, erase_now: bool = False, send_email: bool = True
+) -> datetime:
     """Close the account for a request made by email, exactly as the Settings
     button does (`delete_account`): Stripe cancelled, apps disconnected, work
     stopped, email switched off, sessions ended, listings taken down, the
     request row written and the confirmation sent. Returns when the 14 days
     to keep the account end; the erasure follows after that. With
     `erase_now`, for an owner who asked to be erased at once, there are no
-    14 days, and the confirmation says the account is being erased. A no-op
-    for an account already closed. Raises `PlanCancellationError`, with the
-    account still open, when Stripe refuses the cancel."""
+    14 days, and the confirmation says the account is being erased. Without
+    `send_email` (`--no-email`, only with `erase_now`) no confirmation is sent, and the request
+    records that, so the erasure sends none either. A no-op for an account
+    already closed. Raises `PlanCancellationError`, with the account still
+    open, when Stripe refuses the cancel."""
+    if not (send_email or erase_now):
+        raise ValueError("Closing without the email goes only with erase_now.")
     user = await get_user_by_id(user_id)
     if not erase_now:
-        return await delete_account(user_id, user.email, AccountDeletionSource.EMAIL)
+        return await delete_account(
+            user_id,
+            user.email,
+            AccountDeletionSource.EMAIL,
+            send_confirmation=send_email,
+        )
     return await delete_account(
-        user_id, user.email, AccountDeletionSource.EMAIL, grace=timedelta(0)
+        user_id,
+        user.email,
+        AccountDeletionSource.EMAIL,
+        grace=timedelta(0),
+        send_confirmation=send_email,
     )
+
+
+async def skip_confirmation(user_id: str) -> bool:
+    """For an account closed already, record that the erasure must not send
+    the confirmation closing could not (`--no-email`). False when there is
+    nothing to skip: no request, the email went out already, or the erasure
+    finished."""
+    count = await AccountDeletionRequest.prisma().update_many(
+        where={"userId": user_id, "confirmationSentAt": None, "completedAt": None},
+        data={"confirmationSkipped": True},
+    )
+    return count > 0
 
 
 async def end_grace_now(user_id: str) -> bool:
@@ -133,6 +176,8 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
                 else "closing the account sends it"
             ),
         )
+    if subject.confirmation_skipped:
+        return _skipped_confirmation(dry_run)
     if not subject.email or subject.erase_after is None:
         # Not a skip: the address goes only with the rows, which an earlier
         # run deleted, so there is no one left to send it to.
@@ -150,6 +195,8 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
             note="this stack sends no email (postmark is an unused service)",
         )
     if not dry_run:
+        if await _skipped_since_loaded(subject.user_id):
+            return _skipped_confirmation(dry_run)
         try:
             await _send_late_confirmation(subject)
         except EmailUndeliverableError:
@@ -171,6 +218,23 @@ async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
         status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
         counts={"emails": 1},
     )
+
+
+def _skipped_confirmation(dry_run: bool) -> StepReport:
+    return StepReport(
+        name="confirmation",
+        status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+        counts={"emails": 0},
+        note="--no-email: the erasure sends none",
+    )
+
+
+async def _skipped_since_loaded(user_id: str) -> bool:
+    """Read again just before sending: an operator's `--no-email` may have
+    marked the request (`skip_confirmation`) after this run loaded it, while
+    the job was already erasing the account."""
+    row = await AccountDeletionRequest.prisma().find_unique(where={"userId": user_id})
+    return bool(row and row.confirmationSkipped)
 
 
 async def _send_late_confirmation(subject: Subject) -> None:

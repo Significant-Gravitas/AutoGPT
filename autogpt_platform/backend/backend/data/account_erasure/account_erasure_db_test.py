@@ -560,14 +560,15 @@ async def test_a_closed_account_is_erased_and_its_shared_agents_keep_working(
         where={"reviewByUserId": user_id}
     )
 
-    # A rerun finds nothing, can't claim the finished request, changes
-    # nothing and sends nothing.
+    # A rerun finds nothing, can't claim the finished request and sends
+    # nothing: it only repeats the PostHog delete.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
     assert await plan_transfer(user_id) == type(plan)()
     rerun = await routine.erase_account(user_id, dry_run=False)
     assert rerun.not_claimed == "erased already"
-    assert rerun.steps == []
+    assert [step.status for step in rerun.steps] == [StepStatus.DONE]
+    assert not rerun.failed
     outside_services.assert_awaited_once()
     after = await prisma.models.AccountDeletionRequest.prisma().find_unique_or_raise(
         where={"userId": user_id}
@@ -807,3 +808,32 @@ async def test_a_banned_account_erased_leaves_a_ban_record(
     assert not await prisma.models.AccountBanRecord.prisma().count(
         where={"id": record.id}
     )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_account_closed_without_the_email_is_erased_without_one(
+    server: SpinTestServer, outside_services: AsyncMock
+):
+    """`--close --now --no-email`: three closed accounts whose confirmation
+    did not go out. One was closed with it skipped, one closed earlier and
+    marked before the erasure, one left as it is: only that last one gets the
+    late email."""
+    skipped, marked, emailed = [await _account() for _ in range(3)]
+    source = prisma.enums.AccountDeletionSource.EMAIL
+    assert await close_account(skipped, source, confirmation_skipped=True)
+    assert await close_account(marked, source)
+    assert await close_account(emailed, source)
+    assert await request.skip_confirmation(marked)
+    for user_id in (skipped, marked, emailed):
+        await _past_the_14_days(user_id)
+        assert (await routine.erase_account(user_id, dry_run=False)).complete
+
+    outside_services.assert_awaited_once()
+    assert outside_services.await_args.args[0] == f"deletion-{emailed[:8]}@example.com"
+    rows = await prisma.models.AccountDeletionRequest.prisma().find_many(
+        where={"userId": {"in": [skipped, marked]}}
+    )
+    assert [(row.confirmationSkipped, row.confirmationSentAt) for row in rows] == [
+        (True, None),
+        (True, None),
+    ]

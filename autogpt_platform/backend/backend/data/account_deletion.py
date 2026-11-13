@@ -50,6 +50,7 @@ async def close_account(
     source: AccountDeletionSource,
     *,
     grace: timedelta = GRACE_PERIOD,
+    confirmation_skipped: bool = False,
 ) -> AccountDeletionRequest | None:
     """Record the deletion request, end every session, take the user's
     Marketplace listings and reviews down, turn off their share links and
@@ -62,6 +63,8 @@ async def close_account(
     (including by a concurrent call that won the race); the new request when
     this call closed it. ``grace`` is the time the owner has to keep it: zero
     only for an owner who asked by email to be erased at once.
+    ``confirmation_skipped`` records that no confirmation email goes out, so
+    the erasure does not send it late either.
     """
     now = datetime.now(timezone.utc)
     try:
@@ -72,6 +75,7 @@ async def close_account(
                     "source": source,
                     "requestedAt": now,
                     "eraseAfter": now + grace,
+                    "confirmationSkipped": confirmation_skipped,
                 }
             )
             await tx.authsession.delete_many(where={"userId": user_id})
