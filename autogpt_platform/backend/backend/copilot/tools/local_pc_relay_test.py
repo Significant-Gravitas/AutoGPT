@@ -10,18 +10,18 @@ import pytest
 from backend.copilot.tools import local_pc_machine
 from backend.copilot.tools import local_pc_relay_routing as relay_routing
 from backend.copilot.tools.local_pc_relay import RedisShimRelay
+from backend.copilot.tools.local_pc_relay_backlog import (
+    append_request,
+    append_response,
+    append_stream_envelope,
+)
 from backend.copilot.tools.local_pc_relay_protocol import (
     response_stream_key,
     status_stream_key,
     stream_key,
 )
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis, FakeWebSocket
-from backend.copilot.tools.local_pc_relay_transport import (
-    RedisRelayTransport,
-    append_request,
-    append_response,
-    append_stream_envelope,
-)
+from backend.copilot.tools.local_pc_relay_transport import RedisRelayTransport
 from backend.copilot.tools.local_pc_shim import (
     LocalPCShim,
     ShimConnectionManager,

@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 
 from backend.copilot.tools import local_pc_relay_routing as relay_routing
+from backend.copilot.tools.local_pc_relay_backlog import STREAM_TTL_SECONDS
 from backend.copilot.tools.local_pc_relay_protocol import (
     MAX_STATUS_BYTES,
     RelayBacklogExceeded,
@@ -12,7 +13,6 @@ from backend.copilot.tools.local_pc_relay_protocol import (
 )
 from backend.copilot.tools.local_pc_relay_routing import RelayResponseRouter
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis
-from backend.copilot.tools.local_pc_relay_transport import STREAM_TTL_SECONDS
 
 
 def _message(

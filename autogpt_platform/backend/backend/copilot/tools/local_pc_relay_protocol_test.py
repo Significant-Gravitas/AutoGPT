@@ -3,7 +3,12 @@ from typing import Any
 
 import pytest
 
-from backend.copilot.tools import local_pc_relay_transport as relay_transport
+from backend.copilot.tools import local_pc_relay_backlog as relay_backlog
+from backend.copilot.tools.local_pc_relay_backlog import (
+    acknowledge_stream_entry,
+    append_request,
+    append_response,
+)
 from backend.copilot.tools.local_pc_relay_protocol import (
     EXPECTED_RESPONSE_TYPES,
     PLATFORM_REQUEST_TYPES,
@@ -13,11 +18,6 @@ from backend.copilot.tools.local_pc_relay_protocol import (
     validate_response_correlation,
 )
 from backend.copilot.tools.local_pc_relay_test_support import FakeRedis
-from backend.copilot.tools.local_pc_relay_transport import (
-    acknowledge_stream_entry,
-    append_request,
-    append_response,
-)
 
 
 def _message(message_type: str, message_id: str = "request-1") -> dict[str, Any]:
@@ -61,7 +61,7 @@ async def test_stream_append_is_atomic_and_consumed_response_releases_backlog(
 ) -> None:
     redis = FakeRedis()
     key = "responses"
-    monkeypatch.setattr(relay_transport, "MAX_RESPONSE_BACKLOG_BYTES", 5)
+    monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_BYTES", 5)
 
     await append_response(redis, key, "12345")
     message_id, fields = redis.streams[key][0]
@@ -77,13 +77,13 @@ async def test_response_backlog_has_strict_entry_and_byte_limits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     redis = FakeRedis()
-    monkeypatch.setattr(relay_transport, "MAX_RESPONSE_BACKLOG_ENTRIES", 1)
+    monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_ENTRIES", 1)
     await append_response(redis, "entry-limit", "one")
     with pytest.raises(RelayBacklogExceeded):
         await append_response(redis, "entry-limit", "two")
 
-    monkeypatch.setattr(relay_transport, "MAX_RESPONSE_BACKLOG_ENTRIES", 128)
-    monkeypatch.setattr(relay_transport, "MAX_RESPONSE_BACKLOG_BYTES", 5)
+    monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_ENTRIES", 128)
+    monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_BYTES", 5)
     await append_response(redis, "byte-limit", "1234")
     with pytest.raises(RelayBacklogExceeded):
         await append_response(redis, "byte-limit", "56")
@@ -107,7 +107,7 @@ async def test_request_backlog_has_a_strict_byte_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     redis = FakeRedis()
-    monkeypatch.setattr(relay_transport, "MAX_REQUEST_BACKLOG_BYTES", 5)
+    monkeypatch.setattr(relay_backlog, "MAX_REQUEST_BACKLOG_BYTES", 5)
 
     await append_request(redis, "requests", "1234", reply_id="a" * 32)
     with pytest.raises(RelayBacklogExceeded):
@@ -119,7 +119,7 @@ async def test_concurrent_appends_cannot_overshoot_byte_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     redis = FakeRedis()
-    monkeypatch.setattr(relay_transport, "MAX_RESPONSE_BACKLOG_BYTES", 5)
+    monkeypatch.setattr(relay_backlog, "MAX_RESPONSE_BACKLOG_BYTES", 5)
 
     results = await asyncio.gather(
         append_response(redis, "responses", "1234"),

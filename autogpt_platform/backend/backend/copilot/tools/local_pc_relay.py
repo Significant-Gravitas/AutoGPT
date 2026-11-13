@@ -12,6 +12,11 @@ from typing import Any
 
 from backend.data.redis_client import get_redis_async
 
+from .local_pc_relay_backlog import (
+    acknowledge_stream_entry,
+    append_stream_envelope,
+    delete_stream_entry,
+)
 from .local_pc_relay_presence import (
     clear_presence,
     owner_presences,
@@ -30,13 +35,7 @@ from .local_pc_relay_protocol import (
     validate_envelope,
 )
 from .local_pc_relay_routing import RelayResponseRouter
-from .local_pc_relay_transport import (
-    POLL_BLOCK_MS,
-    RedisRelayTransport,
-    acknowledge_stream_entry,
-    append_stream_envelope,
-    delete_stream_entry,
-)
+from .local_pc_relay_transport import POLL_BLOCK_MS, RedisRelayTransport
 
 logger = logging.getLogger(__name__)
 

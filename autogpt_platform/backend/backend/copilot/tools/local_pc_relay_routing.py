@@ -7,6 +7,7 @@ import logging
 from time import monotonic, time
 from typing import Any
 
+from .local_pc_relay_backlog import append_response, append_stream_envelope
 from .local_pc_relay_protocol import (
     MAX_STATUS_BYTES,
     NONTERMINAL_RESPONSE_TYPES,
@@ -20,7 +21,6 @@ from .local_pc_relay_protocol import (
     validate_envelope,
     validate_response_correlation,
 )
-from .local_pc_relay_transport import append_response, append_stream_envelope
 
 _REQUEST_CORRELATION_SECONDS = 15 * 60.0
 _MAX_PENDING_REQUESTS = 256
