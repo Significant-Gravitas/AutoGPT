@@ -1,6 +1,7 @@
 """The client is named only by the proxies TRUSTED_PROXIES lists, the same way
 for every reader."""
 
+import ipaddress
 import json
 import logging
 from pathlib import Path
@@ -199,7 +200,8 @@ def test_the_list_parses_once_per_value() -> None:
 def test_parses_the_shared_vectors_the_container_parser_also_meets(vector) -> None:
     networks = parse_trusted_proxies(vector["value"])
 
-    assert [str(network) for network in networks] == vector["networks"]
+    # Compared as networks: Python patch releases spell IPv4-mapped ranges differently.
+    assert list(networks) == [ipaddress.ip_network(n) for n in vector["networks"]]
 
 
 @pytest.mark.parametrize("vector", VECTORS["rejected"], ids=lambda v: repr(v["value"]))

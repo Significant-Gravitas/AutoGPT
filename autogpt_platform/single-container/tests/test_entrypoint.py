@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import ipaddress
 import json
 import os
 import subprocess
@@ -410,7 +411,11 @@ class TrustedProxiesTest(unittest.TestCase):
                 result = _validate_trusted_proxies(vector["value"])
 
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout.split(), vector["networks"])
+                # Python patch releases spell IPv4-mapped ranges differently.
+                self.assertEqual(
+                    [ipaddress.ip_network(n) for n in result.stdout.split()],
+                    [ipaddress.ip_network(n) for n in vector["networks"]],
+                )
         for vector in vectors["rejected"]:
             with self.subTest(value=vector["value"]):
                 result = _validate_trusted_proxies(vector["value"])
