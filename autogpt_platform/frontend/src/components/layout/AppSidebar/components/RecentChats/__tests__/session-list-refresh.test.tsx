@@ -95,6 +95,26 @@ describe("RecentChats — 10-second refresh", () => {
     expect(screen.getByText("autopilot chat 13")).toBeDefined();
   });
 
+  it("re-reads a group's older pages when another device deletes one of its chats", async () => {
+    renderRecentChats();
+    await showOlderOttoChats();
+    const pagesBefore = reads("sessions");
+
+    // Deleted elsewhere: every offset after it moves up by one, so reading
+    // the next page from the stale ones would skip chat 21.
+    chats = chats.filter((chat) => chat.id !== "autopilot-5");
+    await nextRefresh();
+    await waitFor(() => expect(reads("sessions")).toBeGreaterThan(pagesBefore));
+    await settle();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show more Otto chats" }),
+    );
+    expect(await screen.findByText("autopilot chat 24")).toBeDefined();
+    expect(screen.getByText("autopilot chat 21")).toBeDefined();
+    expect(screen.queryByText("autopilot chat 5")).toBeNull();
+  });
+
   it("puts a new chat on top of a group whose older chats are shown", async () => {
     renderRecentChats();
     await showOlderOttoChats();

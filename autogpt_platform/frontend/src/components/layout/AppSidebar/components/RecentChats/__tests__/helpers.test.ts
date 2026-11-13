@@ -5,6 +5,7 @@ import {
   getNewChatHref,
   isGroupCollapsed,
   mergeGroupSessions,
+  olderPagesMatchGroup,
   setGroupCollapsed,
   withoutDeletingSessions,
 } from "../helpers";
@@ -12,6 +13,19 @@ import { toSummary } from "./sidebarBackend";
 
 function summaries(...ids: string[]) {
   return ids.map((id, index) => toSummary({ id, title: id }, index));
+}
+
+function pages(total: number, ...ids: string[]) {
+  return {
+    pages: [
+      {
+        status: 200 as const,
+        headers: new Headers(),
+        data: { sessions: summaries(...ids), total },
+      },
+    ],
+    pageParams: [0],
+  };
 }
 
 describe("getNewChatHref", () => {
@@ -64,6 +78,36 @@ describe("mergeGroupSessions", () => {
   it("hands back the preview itself before any older page is read", () => {
     const preview = summaries("a", "b");
     expect(mergeGroupSessions(preview, [])).toBe(preview);
+  });
+
+  it("lists a chat once when two older pages overlap", () => {
+    const [a, b, c] = summaries("a", "b", "c");
+
+    expect(
+      mergeGroupSessions([a], [a, b, c, c]).map((session) => session.id),
+    ).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("olderPagesMatchGroup", () => {
+  const preview = summaries("a", "b");
+
+  it("matches pages that start with the preview and share its total", () => {
+    expect(olderPagesMatchGroup(pages(5, "a", "b", "c"), preview, 5)).toBe(
+      true,
+    );
+  });
+
+  it("stops matching once the group's total moves", () => {
+    expect(olderPagesMatchGroup(pages(5, "a", "b", "c"), preview, 4)).toBe(
+      false,
+    );
+  });
+
+  it("stops matching once a newer chat tops the group", () => {
+    expect(
+      olderPagesMatchGroup(pages(5, "a", "b", "c"), summaries("new", "a"), 5),
+    ).toBe(false);
   });
 });
 

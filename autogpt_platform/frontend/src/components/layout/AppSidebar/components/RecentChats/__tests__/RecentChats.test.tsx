@@ -164,6 +164,39 @@ describe("RecentChats — show more", () => {
     expect(screen.queryByRole("button", { name: /load all/i })).toBeNull();
   });
 
+  it("keeps Show more there to retry a read of older chats that failed", async () => {
+    serve(groupChats(5));
+    let failures = 0;
+    server.use(
+      http.get(
+        "*/api/chat/sessions",
+        () => {
+          failures += 1;
+          return HttpResponse.json({ detail: "Unavailable" }, { status: 503 });
+        },
+        { once: true },
+      ),
+    );
+    renderRecentChats();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show more Otto chats" }),
+    );
+    await waitFor(() => expect(failures).toBe(1));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.queryByText("autopilot chat 4")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show more Otto chats" }),
+    );
+    expect(await screen.findByText("autopilot chat 5")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Show more Otto chats" }),
+    ).toBeNull();
+  });
+
   it("asks only for the group's unpinned chats when pinned ones sit apart", async () => {
     mockEnabledFlags.add("chat-pinning");
     serve(groupChats(5));

@@ -8,13 +8,14 @@ import {
   useDeletingSessionIds,
 } from "@/app/(platform)/copilot/useSessionList";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   GROUP_PAGE_LIMIT,
   GROUP_PREVIEW_COUNT,
   GROUP_SHOW_MORE_STEP,
   isGroupCollapsed,
   mergeGroupSessions,
+  olderPagesMatchGroup,
   setGroupCollapsed,
 } from "../../helpers";
 
@@ -46,41 +47,97 @@ export function useExpertChatGroup({
     previewSessions,
     flattenSessions(olderPages.data),
   ).filter((session) => !deletingIds.includes(session.id));
+  const visibleSessions = sessions.slice(0, visibleCount);
 
-  // The first "Show more" turns the older pages on, which reads their first
-  // page by itself; after that, the next page is read whenever the ones
-  // loaded hold fewer chats than the group is asked to show.
-  const needsNextPage =
-    olderPages.data !== undefined &&
-    olderPages.hasNextPage &&
-    !olderPages.isFetchingNextPage &&
-    sessions.length < visibleCount;
-  const { fetchNextPage } = olderPages;
-  useEffect(() => {
-    if (needsNextPage) void fetchNextPage();
-  }, [needsNextPage, fetchNextPage]);
+  useReadPagesToShow(olderPages, sessions.length < visibleCount);
+  useRereadShiftedPages({
+    olderPages,
+    previewSessions,
+    total,
+    isDeleting: deletingIds.length > 0,
+  });
 
   function changeOpen(open: boolean) {
     setIsOpen(open);
     setGroupCollapsed(expertId, !open);
   }
 
+  // A read that failed is retried by the next press rather than skipped.
   function showMore() {
-    setVisibleCount((count) => count + GROUP_SHOW_MORE_STEP);
+    if (olderPages.isFetchNextPageError) void olderPages.fetchNextPage();
+    else if (olderPages.isError) void olderPages.refetch();
+    else setVisibleCount((count) => count + GROUP_SHOW_MORE_STEP);
   }
 
   return {
     isOpen,
     setIsOpen: changeOpen,
-    visibleSessions: sessions.slice(0, visibleCount),
+    visibleSessions,
     // A collapsed group still shows where the user is and what is running.
     collapsedSessions: sessions.filter(
       (session) => session.is_processing || session.id === activeSessionId,
     ),
-    hasMore: visibleCount < total,
-    isLoadingMore: olderPages.isLoading || olderPages.isFetchingNextPage,
+    // Counted on the chats on screen, so the button stays until the ones it
+    // asked for have arrived, and is there to retry a read that failed.
+    hasMore: visibleSessions.length < total,
+    isLoadingMore:
+      (olderPages.isFetching && olderPages.data === undefined) ||
+      olderPages.isFetchingNextPage,
     showMore,
   };
+}
+
+type OlderPages = ReturnType<typeof useOlderPages>;
+
+/** The first "Show more" turns the older pages on, which reads their first
+ *  page by itself; after that, the next page is read whenever the ones
+ *  loaded hold fewer chats than the group is asked to show. */
+function useReadPagesToShow(olderPages: OlderPages, wantsMore: boolean) {
+  const needsNextPage =
+    olderPages.data !== undefined &&
+    olderPages.hasNextPage &&
+    !olderPages.isFetchingNextPage &&
+    !olderPages.isFetchNextPageError &&
+    wantsMore;
+  const { fetchNextPage } = olderPages;
+  useEffect(() => {
+    if (needsNextPage) void fetchNextPage();
+  }, [needsNextPage, fetchNextPage]);
+}
+
+interface RereadArgs {
+  olderPages: OlderPages;
+  previewSessions: SessionSummaryResponse[];
+  total: number;
+  isDeleting: boolean;
+}
+
+/** Re-reads the older pages, once per change, when the polled total or
+ *  newest chats stop matching them: a chat added or deleted since, on
+ *  another device say, shifts every offset after it. */
+function useRereadShiftedPages({
+  olderPages,
+  previewSessions,
+  total,
+  isDeleting,
+}: RereadArgs) {
+  const { data, isFetching, refetch } = olderPages;
+  const groupState = `${total}:${previewSessions.map((s) => s.id).join(",")}`;
+  const checkedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data || isFetching || isDeleting) return;
+    if (checkedFor.current === groupState) return;
+    checkedFor.current = groupState;
+    if (!olderPagesMatchGroup(data, previewSessions, total)) void refetch();
+  }, [
+    data,
+    isFetching,
+    isDeleting,
+    groupState,
+    previewSessions,
+    total,
+    refetch,
+  ]);
 }
 
 interface OlderPagesArgs {

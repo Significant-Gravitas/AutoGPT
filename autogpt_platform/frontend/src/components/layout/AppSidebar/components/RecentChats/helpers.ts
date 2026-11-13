@@ -1,4 +1,8 @@
 import type { ExpertIdentity } from "@/app/(platform)/copilot/useExpertMap";
+import {
+  flattenSessions,
+  type SessionListInfiniteData,
+} from "@/app/(platform)/copilot/useSessionList";
 import type { SessionGroupResponse } from "@/app/api/__generated__/models/sessionGroupResponse";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { Key, storage } from "@/services/storage/local-storage";
@@ -74,17 +78,35 @@ export function withoutDeletingSessions(
 
 /** A group's chats, newest first: its preview, which the sidebar's poll keeps
  *  fresh, over the older pages read when "Show more" was pressed, each chat
- *  once. */
+ *  once even when two pages overlap. */
 export function mergeGroupSessions(
   preview: SessionSummaryResponse[],
   older: SessionSummaryResponse[],
 ) {
   if (!older.length) return preview;
-  const inPreview = new Set(preview.map((session) => session.id));
-  return [
-    ...preview,
-    ...older.filter((session) => !inPreview.has(session.id)),
-  ].sort(newestFirst);
+  const seen = new Set(preview.map((session) => session.id));
+  const rest = older.filter((session) => {
+    if (seen.has(session.id)) return false;
+    seen.add(session.id);
+    return true;
+  });
+  return [...preview, ...rest].sort(newestFirst);
+}
+
+/** Whether a group's older pages still line up with what the poll says the
+ *  group holds: the same total, and the same chats at the top. A chat added
+ *  or deleted since they were read shifts every offset after it, so the
+ *  next page would repeat or skip one. */
+export function olderPagesMatchGroup(
+  pages: SessionListInfiniteData,
+  preview: SessionSummaryResponse[],
+  total: number,
+) {
+  const lastPage = pages.pages.at(-1);
+  if (lastPage?.status !== 200) return true;
+  if (lastPage.data.total !== total) return false;
+  const loaded = flattenSessions(pages);
+  return preview.every((session, index) => loaded[index]?.id === session.id);
 }
 
 function newestFirst(a: SessionSummaryResponse, b: SessionSummaryResponse) {
