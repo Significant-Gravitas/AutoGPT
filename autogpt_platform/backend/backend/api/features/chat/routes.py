@@ -713,13 +713,6 @@ class UpdateSessionPinnedRequest(BaseModel):
     is_pinned: bool
 
 
-def _bindings_match(
-    expected: MachineSessionBinding,
-    actual: MachineSessionBinding,
-) -> bool:
-    return expected == actual
-
-
 async def _best_effort_detach_local_session(
     presence: RelayPresence,
     session_id: str,
@@ -874,7 +867,7 @@ async def _create_local_chat_session(
         )
         saved_organization_id = session.organization_id
         activated = await activate_machine_session(presence, attached)
-        if not _bindings_match(attached, activated):
+        if attached != activated:
             raise MachineControlError(
                 "INVALID_SESSION_BINDING",
                 "The Local PC executor activated a different session binding",

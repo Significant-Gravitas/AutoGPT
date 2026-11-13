@@ -138,12 +138,10 @@ class RelayResponseRouter:
     async def _publish_status(self, raw: str) -> None:
         """Keep the shim's latest STATUS once for the whole connection.
 
-        Every transport on the connection reads this one entry beside its own
-        reply stream, so a worker holding back a request until the shim has a
-        free slot hears about it with nothing outstanding. Copying the frame
-        into each recent reply stream instead also filled the streams of
-        requests that had been answered and were read no more: one frame was
-        held in Redis as many times as the connection had recent requests.
+        The connection's STATUS stream holds only the newest frame, and every
+        transport reads it beside its own reply stream, so a worker holding
+        back a request until the shim has a free slot hears about it with
+        nothing outstanding. A frame over ``MAX_STATUS_BYTES`` is dropped.
         """
         # The character count is a lower bound on the byte count, so a long
         # frame is refused without encoding it.

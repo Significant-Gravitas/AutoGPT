@@ -19,13 +19,13 @@ from backend.copilot.tools.local_pc_shim import (
     ShimHello,
     ShimRecordingError,
 )
-
-_DRIVER = ComputerUseDriver(name="cua-driver", version="0.38.0", runtime="direct")
 from backend.copilot.tools.recording_models import (
     RecordingReviewApplied,
     RecordingSummary,
     WorkflowRecording,
 )
+
+_DRIVER = ComputerUseDriver(name="cua-driver", version="0.38.0", runtime="direct")
 
 
 @pytest.fixture(autouse=True)
