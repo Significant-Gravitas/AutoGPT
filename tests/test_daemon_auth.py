@@ -620,6 +620,127 @@ async def test_a_keychain_failure_during_a_refresh_is_retried(
         await daemon._get_access_token(refresh_on_fail=True, rejected_token="stale")
 
 
+def _rotating_token_endpoint(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """A token endpoint that rotates the refresh token as the platform's
+    does: each one works once, and one used already gets 400. Returns the
+    refresh tokens it was sent, in order."""
+    import urllib.parse
+
+    import httpx
+
+    sent: list[str] = []
+
+    def token_endpoint(request: httpx.Request) -> httpx.Response:
+        token = urllib.parse.parse_qs(request.content.decode())["refresh_token"][0]
+        used = token in sent
+        sent.append(token)
+        if used:
+            return httpx.Response(400, json={"detail": "refresh token has been revoked"})
+        tokens = {"access_token": f"access-{len(sent)}", "refresh_token": f"refresh-{len(sent)}"}
+        return httpx.Response(200, json=tokens)
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "autogpt_local_executor.auth.httpx.AsyncClient",
+        lambda: real_client(transport=httpx.MockTransport(token_endpoint)),
+    )
+    return sent
+
+
+def _keychain_failing_writes(monkeypatch: pytest.MonkeyPatch) -> list[Exception]:
+    """An in-memory keychain whose next writes raise what the returned list
+    holds, one each, in order."""
+    passwords: dict[tuple[str, str], str] = {}
+    failures: list[Exception] = []
+
+    def set_password(service: str, user: str, value: str) -> None:
+        if failures:
+            raise failures.pop(0)
+        passwords[(service, user)] = value
+
+    monkeypatch.setattr(
+        "autogpt_local_executor.auth.keyring.get_password",
+        lambda service, user: passwords.get((service, user)),
+    )
+    monkeypatch.setattr("autogpt_local_executor.auth.keyring.set_password", set_password)
+    return failures
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error", ["PasswordSetError", "KeyringLocked", "InitError", "RuntimeError"]
+)
+async def test_a_refreshed_sign_in_the_keychain_failed_to_store_is_stored_on_the_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """The platform rotates the refresh token on every exchange and refuses a
+    used one. A refresh whose new pair the keychain failed to store (locked
+    meanwhile, say) left the used-up token in the keychain: the retry sent
+    it again, the platform refused it, and the shim stopped, asking for
+    `autogpt-shim auth`. An InitError exited for a restart, which lost the
+    pair just the same, and another error (Windows' CredWrite raises its
+    own) asked for the sign-in at once."""
+    import keyring.errors
+
+    from autogpt_local_executor.daemon import KeychainUnavailableError
+
+    sent = _rotating_token_endpoint(monkeypatch)
+    failures = _keychain_failing_writes(monkeypatch)
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    daemon = ShimDaemon(config, token_store=store, audit=MagicMock(spec=AuditWriter))
+    failure = RuntimeError if error == "RuntimeError" else getattr(keyring.errors, error)
+    failures.append(failure("the keychain did not store it"))
+
+    with pytest.raises(KeychainUnavailableError):
+        await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+    token = await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+
+    assert token == "access-1"
+    assert sent == ["refresh-0"]
+    assert await store.get_refresh_token() == "refresh-1"
+    assert store.unsaved_refresh is None
+
+
+@pytest.mark.asyncio
+async def test_a_sign_in_stored_after_a_failed_refresh_goes_ahead_of_the_kept_pair(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pair kept from a refresh the keychain failed to store is stored only
+    while the keychain still holds the refresh token that exchange used up.
+    A sign-in stored since (`autogpt-shim auth`) is newer: the next refresh
+    exchanges its token, and the kept pair is dropped."""
+    import keyring.errors
+
+    from autogpt_local_executor.daemon import KeychainUnavailableError
+
+    sent = _rotating_token_endpoint(monkeypatch)
+    failures = _keychain_failing_writes(monkeypatch)
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    store = KeychainTokenStore(config)
+    await store.store_tokens("access-0", "refresh-0")
+    daemon = ShimDaemon(config, token_store=store, audit=MagicMock(spec=AuditWriter))
+    failures.append(keyring.errors.PasswordSetError("the keychain is locked"))
+    with pytest.raises(KeychainUnavailableError):
+        await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-0")
+    await store.store_tokens("access-auth", "refresh-auth")  # `autogpt-shim auth`, meanwhile
+
+    token = await daemon._get_access_token(refresh_on_fail=True, rejected_token="access-auth")
+
+    assert sent == ["refresh-0", "refresh-auth"]
+    assert token == "access-2"
+    assert await store.get_refresh_token() == "refresh-2"
+
+
 @pytest.mark.parametrize(
     ("failure", "permanent", "transient"),
     [

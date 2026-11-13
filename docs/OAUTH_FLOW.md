@@ -181,6 +181,12 @@ retry returns 401 or 403, startup terminates instead of entering the reconnect
 loop. The refresh is forced even while the rejected access token remains in the
 keychain.
 - On refresh failure (expired refresh token), prompt user to re-auth via CLI: `autogpt-shim auth`
+- The platform rotates the refresh token on every exchange, so once one goes
+  through, the token the keychain holds is used up. A new pair the keychain
+  then fails to store (locked meanwhile, say) is kept in memory and stored by
+  the next try, which doesn't exchange again. The shim retries in the same
+  process, since a restart would lose the pair. A sign-in stored meanwhile
+  (`autogpt-shim auth`) goes ahead of the kept pair.
 
 Tokens stored in OS keychain:
 - macOS: Keychain Services via `keyring` library

@@ -925,7 +925,7 @@ class ShimDaemon:
             except CredentialScopeError as exc:
                 raise DaemonAuthenticationError(str(exc)) from None
             except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
-                raise _keychain_not_up_yet(exc) from None
+                raise self._keychain_not_up(exc) from None
             except keyring.errors.KeyringError as exc:
                 # Reading the refresh token or storing the new pair failed: a
                 # keychain that locked, say, which can clear on its own.
@@ -949,12 +949,38 @@ class ShimDaemon:
                     "Token refresh was refused (HTTP %s). Run `autogpt-shim auth` again.", status
                 )
                 return None
-            except Exception:
+            except Exception as exc:
+                if self._holding_unsaved_tokens():
+                    # Storing a pair the exchange returned failed some other
+                    # way (Windows' CredWrite raises its own error).
+                    raise KeychainUnavailableError(
+                        f"The OS keychain could not store the refreshed sign-in "
+                        f"({type(exc).__name__}); it is kept for the next try. Retrying."
+                    ) from None
                 logger.warning(
                     "Token refresh failed. Check the deployment configuration and OS keychain, "
                     "then run `autogpt-shim auth` again."
                 )
                 return None
+
+    def _holding_unsaved_tokens(self) -> bool:
+        """Whether a refresh exchange went through but its new pair isn't
+        stored yet (OAuthFlow.refresh_token). The keychain then holds a
+        refresh token the platform has used up, so a restart, or a stop that
+        asks for `autogpt-shim auth`, would lose the sign-in: the refresh is
+        retried in this process instead."""
+        return getattr(self.token_store, "unsaved_refresh", None) is not None
+
+    def _keychain_not_up(self, exc: Exception) -> KeychainNotUpError | KeychainUnavailableError:
+        """KeychainNotUpError, for a new process to look for the keychain
+        again, unless a refreshed pair waits to be stored, which a new
+        process wouldn't have."""
+        if self._holding_unsaved_tokens():
+            return KeychainUnavailableError(
+                f"The OS keychain could not be used ({type(exc).__name__}) while a refreshed "
+                "sign-in waits to be stored; it is kept for the next try. Retrying."
+            )
+        return _keychain_not_up_yet(exc)
 
     async def _read_access_token(self) -> str | None:
         self._ensure_credential_scope()
@@ -963,7 +989,7 @@ class ShimDaemon:
         except CredentialScopeError as exc:
             raise DaemonAuthenticationError(str(exc)) from None
         except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
-            raise _keychain_not_up_yet(exc) from None
+            raise self._keychain_not_up(exc) from None
         except Exception as exc:
             raise KeychainUnavailableError(
                 f"The OS keychain could not be read ({type(exc).__name__}); "

@@ -161,6 +161,15 @@ class CredentialScope:
             )
 
 
+@dataclass(frozen=True)
+class RefreshedTokens:
+    """The pair a refresh exchange returned, and the refresh token it used up."""
+
+    used_refresh_token: str
+    access_token: str
+    refresh_token: str
+
+
 class KeychainTokenStore:
     """
     Stores OAuth tokens in the OS keychain using the `keyring` library.
@@ -175,6 +184,9 @@ class KeychainTokenStore:
         self.scope = CredentialScope.from_config(config)
         identity = json.dumps(asdict(self.scope), sort_keys=True, separators=(",", ":"))
         self._record_key = "oauth_v1_" + hashlib.sha256(identity.encode()).hexdigest()
+        # A refreshed pair not stored yet (OAuthFlow.refresh_token), kept for
+        # every session of this process: they share the store.
+        self.unsaved_refresh: RefreshedTokens | None = None
 
     async def get_access_token(self) -> str | None:
         record = await asyncio.to_thread(self._read_record)
@@ -296,11 +308,30 @@ class OAuthFlow:
         print("Authentication successful. Tokens stored in OS keychain.")
 
     async def refresh_token(self) -> None:
-        """Use the stored refresh token to obtain a new access token."""
+        """Use the stored refresh token to obtain a new access token.
+
+        The platform rotates the refresh token on every exchange, so once one
+        goes through the token the keychain holds is used up, and sending it
+        again ends the sign-in. A new pair the keychain then fails to store
+        (locked meanwhile, say) is kept on the token store until a later
+        refresh stores it, without exchanging again, for as long as the
+        keychain still holds the token that exchange used up: a sign-in
+        stored since (`autogpt-shim auth`) goes ahead of it. A restart loses
+        it, so the daemon retries in the same process."""
         self._ensure_scope()
         refresh = await self.token_store.get_refresh_token()
-        if not refresh:
-            raise ValueError("No refresh token stored. Run `autogpt-shim auth` first.")
+        tokens = self.token_store.unsaved_refresh
+        if tokens is not None and tokens.used_refresh_token != refresh:
+            tokens = self.token_store.unsaved_refresh = None
+        if tokens is None:
+            if not refresh:
+                raise ValueError("No refresh token stored. Run `autogpt-shim auth` first.")
+            tokens = self.token_store.unsaved_refresh = await self._exchange_refresh_token(refresh)
+        self._ensure_scope()
+        await self.token_store.store_tokens(tokens.access_token, tokens.refresh_token)
+        self.token_store.unsaved_refresh = None
+
+    async def _exchange_refresh_token(self, refresh: str) -> RefreshedTokens:
         async with httpx.AsyncClient() as client:
             self._ensure_scope()
             resp = await client.post(
@@ -313,10 +344,10 @@ class OAuthFlow:
             )
             resp.raise_for_status()
             tokens = resp.json()
-        self._ensure_scope()
-        await self.token_store.store_tokens(
-            tokens["access_token"],
-            tokens.get("refresh_token", refresh),
+        return RefreshedTokens(
+            used_refresh_token=refresh,
+            access_token=tokens["access_token"],
+            refresh_token=tokens.get("refresh_token", refresh),
         )
 
     async def revoke_tokens(self) -> None:
