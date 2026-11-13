@@ -85,12 +85,19 @@ def run(monkeypatch):
     monkeypatch.setattr(request, "close_for_email_request", closing)
     ending = AsyncMock(return_value=True)
     monkeypatch.setattr(request, "end_grace_now", ending)
+    skipping = AsyncMock(return_value=True)
+    monkeypatch.setattr(request, "skip_confirmation", skipping)
 
     def invoke(*args: str, input: str | None = None):
         return CliRunner().invoke(cli.erase_account_command, [*args], input=input)
 
     return SimpleNamespace(
-        invoke=invoke, erasing=erasing, closed=closed, closing=closing, ending=ending
+        invoke=invoke,
+        erasing=erasing,
+        closed=closed,
+        closing=closing,
+        ending=ending,
+        skipping=skipping,
     )
 
 
@@ -202,8 +209,9 @@ def test_close_now_closes_with_no_14_days_and_erases_in_the_same_run(run):
     result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
-    run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=True)
     run.ending.assert_awaited_once_with(USER_ID)
+    run.skipping.assert_not_awaited()
     # A dry run for the blockers before closing, then the usual dry run and
     # the erasure.
     assert _dry_runs(run.erasing) == [True, True, False]
@@ -217,6 +225,96 @@ def test_close_now_on_a_closed_account_ends_its_14_days_and_erases(run):
     run.closing.assert_not_awaited()
     run.ending.assert_awaited_once_with(USER_ID)
     assert _dry_runs(run.erasing) == [True, True, False]
+
+
+def test_close_now_with_no_email_closes_and_erases_sending_none(run):
+    """The account is closed with no confirmation, recorded on the request,
+    so the erasure that follows sends none either."""
+    run.closed.return_value = None
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=False)
+    # Marked again in case another close won the race and wrote no mark.
+    run.skipping.assert_awaited_once_with(USER_ID)
+    run.ending.assert_awaited_once_with(USER_ID)
+    assert _dry_runs(run.erasing) == [True, True, False]
+    assert "The erasure sends the owner no email" in result.output
+
+
+def test_no_email_says_so_when_the_confirmation_went_out_already(run):
+    run.skipping.return_value = False
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert "The confirmation went out when the account was closed" in result.output
+    assert "The erasure sends the owner no email" not in result.output
+
+
+def test_a_no_email_dry_run_shows_no_late_confirmation(run):
+    """The dry run reads the request before it is marked; it shows what the
+    apply will do."""
+
+    def erasing(user_id, *, dry_run, **kw):
+        report = _report(dry_run=dry_run)
+        report.steps.insert(
+            0,
+            StepReport(
+                name="confirmation",
+                status=StepStatus.WOULD_DO,
+                counts={"emails": 1},
+            ),
+        )
+        return report
+
+    run.erasing.side_effect = erasing
+
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email")
+
+    assert result.exit_code == 0, result.output
+    assert "emails=1" not in result.output
+    assert "emails=0  (--no-email: none sent" in result.output
+
+
+def test_close_now_with_no_email_on_a_closed_account_skips_the_late_one(run):
+    """Closed earlier and its confirmation not sent yet: the erasure would
+    send it late, so the request is marked first."""
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    run.closing.assert_not_awaited()
+    run.skipping.assert_awaited_once_with(USER_ID)
+    assert _dry_runs(run.erasing) == [True, True, False]
+
+
+def test_close_now_with_no_email_and_no_apply_marks_nothing(run):
+    result = run.invoke(EMAIL, "--close", "--now", "--no-email")
+
+    assert result.exit_code == 0, result.output
+    run.skipping.assert_not_awaited()
+    run.ending.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        [EMAIL, "--no-email"],
+        [EMAIL, "--close", "--no-email"],
+        ["--pending", "--no-email"],
+        [EMAIL, "--no-email", "--apply", "--yes"],
+    ],
+)
+def test_no_email_goes_only_with_close_now(run, args):
+    """Only an owner erased at once may get no email: their account is gone
+    before an email could be any use to them."""
+    result = run.invoke(*args)
+
+    assert result.exit_code == 2
+    assert "--no-email goes with --close --now" in result.output
+    run.erasing.assert_not_awaited()
+    run.closing.assert_not_awaited()
 
 
 def test_close_now_without_apply_changes_nothing(run):
@@ -281,7 +379,7 @@ def test_close_now_goes_ahead_while_only_closing_stands_in_the_way(run):
     result = run.invoke(EMAIL, "--close", "--now", "--apply", "--yes")
 
     assert result.exit_code == 0, result.output
-    run.closing.assert_awaited_once_with(USER_ID, erase_now=True)
+    run.closing.assert_awaited_once_with(USER_ID, erase_now=True, send_email=True)
     assert _dry_runs(run.erasing) == [True, True, False]
 
 
