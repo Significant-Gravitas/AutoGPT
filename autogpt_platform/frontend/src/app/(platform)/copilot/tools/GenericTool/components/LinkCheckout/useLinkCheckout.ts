@@ -39,18 +39,16 @@ export function useLinkCheckout(output: Record<string, unknown>) {
     if (!canContinue || sending) return;
     setSending(true);
     setError("");
+    const message = checkOnly
+      ? `Use run_capability with id "tool:browser_link_payment_status" and input {"checkout_id":"${checkoutId}"}. This is a read-only status check; do not retrieve a card, submit payment, or create another request.`
+      : `Check Link approval using run_capability with id "tool:browser_complete_link_payment" and input {"checkout_id":"${checkoutId}"}. Continue only if Link confirms approval; do not create another payment request.`;
     try {
-      await actions.onSend(
-        checkOnly
-          ? `Use run_capability with id "tool:browser_link_payment_status" and input {"checkout_id":"${checkoutId}"}. This is a read-only status check; do not retrieve a card, submit payment, or create another request.`
-          : `Check Link approval using run_capability with id "tool:browser_complete_link_payment" and input {"checkout_id":"${checkoutId}"}. Continue only if Link confirms approval; do not create another payment request.`,
-      );
+      await actions.onSend(message);
       setSent(true);
     } catch {
       setError("Could not send the approval check. Please try again.");
-    } finally {
-      setSending(false);
     }
+    setSending(false);
   }
 
   return {
