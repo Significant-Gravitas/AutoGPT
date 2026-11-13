@@ -179,17 +179,24 @@ closed record to its canonical advisory and preserve the original evidence and
 discussion. Closing a duplicate does not mean the vulnerability is fixed. Do
 not put private report IDs, attachments or discussion into a public advisory.
 
-## Name the Platform package
+## Name the packages
 
-Name the Platform source package `autogpt-platform-beta`, in the `other`
-ecosystem. It matches the release tags, `autogpt-platform-beta-v<VERSION>`; the
-releases before 0.2.1 are tagged `agpt-platform-beta-v<VERSION>`, and 0.6.44 is
-tagged `v0.6.44`.
+Name the Platform source package `autogpt-platform-beta`. It matches the release
+tags, `autogpt-platform-beta-v<VERSION>`; the releases before 0.2.1 are tagged
+`agpt-platform-beta-v<VERSION>`, and 0.6.44 is tagged `v0.6.44`.
+
+Write each package row with the `other` ecosystem, the one value in the API's
+fixed list that fits. As the last step before publishing, a maintainer names the
+ecosystem in the web UI: Other, then "GitHub release" for the Platform row and
+"Docker" for an image row. GitHub stores its own form of the typed name, so read
+the rows back and use those strings. From then on nothing sends `vulnerabilities`
+through the API: a write that carries the renamed rows fails with 422.
 
 ## Identify Docker distributions
 
 GitHub's [repository advisory API](https://docs.github.com/en/rest/security-advisories/repository-advisories#update-a-repository-security-advisory)
-has no Docker ecosystem option. Use `other` and the image's repository name:
+has no Docker ecosystem option. Write the row with `other` and the image's
+repository name, and name the ecosystem "Docker" before publishing, as above:
 
 | Distribution | Package name | Registry |
 | --- | --- | --- |
@@ -226,11 +233,12 @@ source and its Docker image both patched in 0.9.0, the release link and that
 version are enough. When the rows report different patched versions, for
 example a Classic row and a Platform row fixed in different releases, the
 description needs an explicit package-to-release mapping. Add one comment for
-each patched package, using the exact ecosystem and name from that row,
+each patched package, using the ecosystem and name exactly as the API reads that
+row back,
 alongside the human-readable release link:
 
 ```html
-<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "other", "name": "significantgravitas/autogpt"}} -->
+<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "docker", "name": "significantgravitas/autogpt"}} -->
 ```
 
 The helper then requires the mapped row's patched version to match the release.
