@@ -103,7 +103,7 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
   git merge --no-ff --no-commit FETCH_HEAD  # "Already up to date": nothing to bring back
   git restore --source=HEAD --staged --worktree -- .github README.md pyproject.toml
   git rm -rqf --ignore-unmatch -- AGENTS.md CLAUDE.md
-  git commit --no-edit
+  git diff HEAD...FETCH_HEAD -- README.md pyproject.toml  # what the monorepo changed there
   ```
 
   `--no-ff` stops the merge before a fast-forward could take the
@@ -113,10 +113,18 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
   this repository doesn't have (only the first sync brings them in, so
   they aren't named to `git restore`, which refuses a path it can't find).
   A change the monorepo made to one of those files for both copies (a new
-  dependency in `pyproject.toml`, say) has to be made here by hand before
-  the commit: `git diff HEAD...FETCH_HEAD -- README.md pyproject.toml`
-  shows what the monorepo changed. Then check the release branch and push
-  it:
+  dependency in `pyproject.toml`, say) has to be made here by hand: the
+  last command shows what the monorepo changed. It compares with where the
+  two branches last met, so it only works before the commit; once the
+  merge is committed, `FETCH_HEAD` is part of `HEAD` and it shows nothing.
+  Make those edits, stage them, and commit the merge:
+
+  ```bash
+  git add README.md pyproject.toml  # with any edits made by hand
+  git commit --no-edit
+  ```
+
+  Then check the release branch and push it:
 
   ```bash
   git diff --stat FETCH_HEAD HEAD
