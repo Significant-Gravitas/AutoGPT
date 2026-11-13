@@ -1,6 +1,7 @@
 # OAuth Flow — Shim Authentication
 
-> **Status**: Implemented
+> **Status**: Implemented in the shim. The platform's public-client support it
+> needs is on PR #13050 ([Public-client support](#public-client-support-a-platform-prerequisite)).
 
 The shim authenticates using AutoGPT's **existing OAuth 2.0 provider infrastructure** —
 the same system used by third-party app integrations. No new auth infrastructure needed.
@@ -61,7 +62,9 @@ and the next one is tried.
 ### Operator setup (per-environment)
 
 Each platform deployment registers the app once via the existing
-`oauth-tool` CLI inside the backend container:
+`oauth-tool` CLI inside the backend container. The registration, the sign-in
+and the refresh all need the platform's public-client support, which isn't on
+`dev` yet (see [Public-client support](#public-client-support-a-platform-prerequisite)):
 
 ```bash
 poetry run oauth-tool generate-app \
@@ -84,7 +87,15 @@ The command prints SQL containing the well-known public client ID and an
 environment, and keep every callback URI in the registration. Self-hosters
 that choose another ID configure it with `AUTOGPT_SHIM_OAUTH_CLIENT_ID`.
 
-### True public-client support (implemented)
+### Public-client support (a platform prerequisite)
+
+The shim's client has no secret, and the platform side that accepts such a
+client is written but not merged: it is on PR #13050
+(https://github.com/Significant-Gravitas/AutoGPT/pull/13050), not on `dev`.
+A deployment without it has no `OAuthApplication.isPublic`, its
+`validate_client_credentials` always checks a client secret, and its
+`oauth-tool` has no `--public`: there the client above can't be registered,
+and the shim can neither sign in with it nor refresh. With that change:
 
 `OAuthApplication.isPublic` (added in migration
 `20260604120000_add_oauth_application_is_public`) and the
@@ -179,7 +190,8 @@ initial WebSocket upgrade returns 401. An initial 403 is treated as a terminal
 session-authorization denial and never rotates credentials. If the post-refresh
 retry returns 401 or 403, startup terminates instead of entering the reconnect
 loop. The refresh is forced even while the rejected access token remains in the
-keychain.
+keychain. Like the sign-in, it sends no client secret, so it too needs the
+platform's [public-client support](#public-client-support-a-platform-prerequisite).
 - On refresh failure (expired refresh token), prompt user to re-auth via CLI: `autogpt-shim auth`
 - The platform rotates the refresh token on every exchange, so once one goes
   through, the token the keychain holds is used up. A new pair the keychain
