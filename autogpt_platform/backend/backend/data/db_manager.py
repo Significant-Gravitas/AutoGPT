@@ -1,7 +1,8 @@
 import logging
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar, cast
 
 from prisma.enums import ContentType
 
@@ -82,6 +83,7 @@ from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
 from backend.data.account_deletion import is_account_closed
+from backend.data.account_erasure.request import stalled_user_ids
 from backend.data.account_erasure.sweep import start_account_erasure_sweep
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
@@ -100,6 +102,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth.session import is_auth_session_active
 from backend.data.auth_ip_events import delete_expired_ip_events
 from backend.data.block import (
     get_blocks_needing_optimization,
@@ -151,6 +154,7 @@ from backend.data.execution import (
 from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
 from backend.data.graph import (
     get_connected_output_nodes,
+    get_copied_graph_ids,
     get_graph,
     get_graph_metadata,
     get_graph_settings,
@@ -391,6 +395,8 @@ class DatabaseManager(AppService):
             f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
+    is_auth_session_active = _(is_auth_session_active)
+
     # ============ Graph Executions ============ #
     get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
@@ -419,6 +425,7 @@ class DatabaseManager(AppService):
     get_node = _(get_node)
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
+    get_copied_graph_ids = _(get_copied_graph_ids)
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
     get_store_listed_graphs = _(get_store_listed_graphs)
@@ -614,6 +621,7 @@ class DatabaseManager(AppService):
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
     start_account_erasure_sweep = _(start_account_erasure_sweep)
+    stalled_account_erasures = _(stalled_user_ids, name="stalled_account_erasures")
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
     send_trial_last_calls = _(send_trial_last_calls)
 
@@ -825,6 +833,7 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    get_chat_messages_by_ids = _(chat_db.get_chat_messages_by_ids)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
@@ -945,6 +954,8 @@ class DatabaseManagerClient(AppServiceClient):
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
     # Auth identity invariant monitoring
     heal_orphaned_auth_identities = _(d.heal_orphaned_auth_identities)
+    # Account erasures that started and did not finish
+    stalled_account_erasures = _(d.stalled_account_erasures)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
@@ -997,6 +1008,7 @@ class DatabaseManagerClient(AppServiceClient):
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
+    is_auth_session_active = d.is_auth_session_active
 
     @classmethod
     def get_service_type(cls):
@@ -1023,6 +1035,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Graphs ============ #
     get_graph = d.get_graph
+    get_copied_graph_ids = d.get_copied_graph_ids
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
     is_graph_version_owner = d.is_graph_version_owner
@@ -1390,6 +1403,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    get_chat_messages_by_ids = d.get_chat_messages_by_ids
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions

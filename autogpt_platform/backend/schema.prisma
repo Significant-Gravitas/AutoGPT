@@ -426,22 +426,26 @@ enum AccountDeletionSource {
 // the data erasure routine (SECRT-2854) processes rows with completedAt null.
 // No relation to User: the row must outlive the erasure of the User it names.
 model AccountDeletionRequest {
-  id                 String                @id @default(uuid())
-  userId             String                @unique
-  requestedAt        DateTime              @default(now())
+  id                  String                @id @default(uuid())
+  userId              String                @unique
+  requestedAt         DateTime              @default(now())
   // requestedAt plus 14 days: the account can be restored before this, and
   // its data is erased only after it.
-  eraseAfter         DateTime
+  eraseAfter          DateTime
   // Set by the erasure routine when it claims the request, before it erases
   // anything. From then on the account can no longer be kept, whatever the
   // clock says.
-  startedAt          DateTime?
-  source             AccountDeletionSource
+  startedAt           DateTime?
+  source              AccountDeletionSource
   // Set once the confirmation email went out. The erasure routine sends it
   // for a row where this is still null, before it erases the User.
-  confirmationSentAt DateTime?
+  confirmationSentAt  DateTime?
+  // Closed and erased without the confirmation email, at the operator's
+  // choice (`erase-account --close --now --no-email`): neither closing nor
+  // the erasure sends it.
+  confirmationSkipped Boolean               @default(false)
   // Set by the erasure routine once the user's data is gone.
-  completedAt        DateTime?
+  completedAt         DateTime?
 
   @@index([completedAt])
 }
@@ -2762,7 +2766,7 @@ model Profile {
 view Creator {
   username    String @unique
   name        String
-  avatar_url  String
+  avatar_url  String?
   description String
 
   top_categories String[]
@@ -2867,7 +2871,7 @@ view StoreSubmission {
 view StoreCreator {
   username    String @unique
   name        String
-  avatar_url  String
+  avatar_url  String?
   description String
 
   top_categories String[]

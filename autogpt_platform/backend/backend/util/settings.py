@@ -255,6 +255,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "this is the only per-call wall-clock bound."
         ),
     )
+    auth_legacy_token_deadline: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Exclusive Unix timestamp cutoff for accepting user JWTs without sid "
+            "during auth rollout. Unset preserves legacy signature/expiry validation; "
+            "zero rejects them immediately. Tokens with sid always require an active session."
+        ),
+    )
     enable_subscription_credit_grant: bool = Field(
         default=False,
         description=(
@@ -401,6 +410,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         ge=5 * 60,
         description="Interval in seconds between account erasure sweeps.",
+    )
+    account_erasure_stall_check_interval_secs: int = Field(
+        default=60 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between checks for account erasures that "
+            "started and did not finish. Runs whether or not the erasure job is "
+            "on, since the erase-account CLI claims requests too."
+        ),
+    )
+    account_erasure_stall_alert_secs: int = Field(
+        default=3 * 60 * 60,
+        ge=30 * 60,
+        description=(
+            "Age in seconds of an erasure's claim (startedAt) with no completedAt "
+            "after which it pages: a failed step, a service left unset or a "
+            "crashed run (docs/engineering/account-deletion.md)."
+        ),
     )
     account_erasure_unused_services: List[str] = Field(
         default=[],

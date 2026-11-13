@@ -2627,6 +2627,9 @@ class TestNaturalFinishEmptyNoticeText:
     def test_non_empty_text_returns_none(self):
         assert _natural_finish_empty_notice_text("Here is the answer.") is None
 
+    def test_cards_shown_this_turn_count_as_an_answer(self):
+        assert _natural_finish_empty_notice_text("", presented_cards=True) is None
+
     def test_fallback_text_is_user_facing(self):
         """Guard against shipping an empty / internal string."""
         assert EMPTY_COMPLETION_NOTICE.strip()
