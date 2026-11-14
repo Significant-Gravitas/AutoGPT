@@ -1009,6 +1009,50 @@ async def test_command_argv_form_calls_create_subprocess_exec(tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("plat", ["linux", "darwin", "windows"])
+async def test_a_command_gets_its_own_session_without_a_preexec_fn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, plat: str
+) -> None:
+    """A command got its own session from preexec_fn=os.setsid, Python code
+    run in the forked child before exec. Python documents that as unsafe in
+    a process with threads, which the shim has (a request's path checks run
+    in worker threads just before the spawn): the child can deadlock before
+    exec, where the command's timeout, which starts once the spawn returns,
+    never reaches it. start_new_session makes the same setsid() call in C."""
+    monkeypatch.setattr(handlers_module.platform_info, "detect_platform", lambda: plat)
+    h = CommandHandler(make_config(tmp_path))
+    captured: dict[str, Any] = {}
+
+    async def fake_exec(*args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProc(stdout=b"", stderr=b"", returncode=0)
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        resp = await h.handle(_cmd_msg(argv=["echo", "hi"], cwd=str(tmp_path)))
+
+    assert isinstance(resp, CommandResultMessage)
+    assert captured.get("preexec_fn") is None
+    assert captured.get("start_new_session", False) is (plat != "windows")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX sessions and process groups")
+@pytest.mark.asyncio
+async def test_a_command_leads_its_own_session_and_process_group(tmp_path: Path) -> None:
+    """A timeout or a revoked session signals the command's process group by
+    the command's PID (_terminate_tree), so the command leads a new session
+    and the group in it."""
+    h = CommandHandler(make_config(tmp_path))
+    probe = "import os; print(os.getsid(0) == os.getpgid(0) == os.getpid())"
+
+    resp = await h.handle(
+        _cmd_msg(argv=[sys.executable, "-c", probe], cwd=str(tmp_path), timeout_seconds=30)
+    )
+
+    assert isinstance(resp, CommandResultMessage)
+    assert resp.payload.stdout.strip() == "True"
+
+
+@pytest.mark.asyncio
 async def test_command_output_is_drained_and_truncated_to_shared_limit(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     config.max_file_size_bytes = 1024
