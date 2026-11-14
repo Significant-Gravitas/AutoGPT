@@ -1235,6 +1235,57 @@ async def test_a_cancelled_command_is_still_audited(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_command_cancelled_again_while_it_stops_is_still_stopped_and_audited(
+    tmp_path: Path,
+) -> None:
+    """A second cancel while a cancelled command was being stopped (a detach
+    and a revocation both stopping its chat) ended the stop where it waited,
+    in the grace period before SIGKILL, and the CANCELLED record was never
+    written."""
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    handler = CommandHandler(make_config(tmp_path), Audit())
+    fake = _FakeProc(stdout=b"", stderr=b"", returncode=None)
+    running = asyncio.Event()
+    in_grace = asyncio.Event()
+    grace_over = asyncio.Event()
+    killed = False
+
+    async def collect(_proc, *, timeout: float):
+        running.set()
+        await asyncio.Future()
+        raise AssertionError("unreachable")
+
+    async def terminate(_proc):
+        nonlocal killed
+        in_grace.set()
+        await grace_over.wait()
+        killed = True
+
+    with patch("asyncio.create_subprocess_exec", return_value=fake):
+        with patch.object(handler, "_collect_process_output", side_effect=collect):
+            with patch.object(handler, "_terminate_tree", side_effect=terminate):
+                task = asyncio.create_task(
+                    handler.handle(_cmd_msg(argv=["ignores-sigterm"], cwd=str(tmp_path)))
+                )
+                await running.wait()
+                task.cancel()
+                await in_grace.wait()
+                task.cancel()
+                grace_over.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+    assert killed
+    [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+    assert result["ok"] is False and result["error_code"] == "CANCELLED"
+
+
+@pytest.mark.asyncio
 async def test_command_shell_form_picks_shell(tmp_path: Path) -> None:
     h = CommandHandler(make_config(tmp_path))
     fake = _FakeProc(stdout=b"out\n", stderr=b"", returncode=0)
@@ -1411,6 +1462,116 @@ async def test_terminating_a_command_kills_descendants_that_ignore_sigterm(
         if pid_path.exists():
             with contextlib.suppress(ProcessLookupError):
                 os.kill(int(pid_path.read_text()), signal.SIGKILL)
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+
+
+def _watch_for_sigterm(monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
+    """Set once a process group is sent SIGTERM: its grace period has begun."""
+    sent = asyncio.Event()
+    signal_group = handlers_module._signal_process_group
+
+    def watched(pgid: int, sig: int) -> bool:
+        if sig == signal.SIGTERM:
+            sent.set()
+        return signal_group(pgid, sig)
+
+    monkeypatch.setattr(handlers_module, "_signal_process_group", watched)
+    return sent
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals and process groups")
+@pytest.mark.asyncio
+async def test_a_command_ignoring_sigterm_cancelled_twice_while_it_stops_is_killed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cancelled command is sent SIGTERM, then SIGKILL once its grace period
+    is out. A second cancel in that period ended its stop before SIGKILL, so
+    a command that ignores SIGTERM ran on after its session ended, and its
+    CANCELLED record was never written."""
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    spawned: list[asyncio.subprocess.Process] = []
+    spawn = CommandHandler._spawn_argv
+
+    async def spawn_and_keep(argv, **kwargs):
+        proc = await spawn(argv, **kwargs)
+        spawned.append(proc)
+        return proc
+
+    monkeypatch.setattr(handler, "_spawn_argv", spawn_and_keep)
+    sigterm_sent = _watch_for_sigterm(monkeypatch)
+    ignoring = tmp_path / "ignoring-sigterm"
+    script = textwrap.dedent(
+        f"""
+        import signal, time
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        open({str(ignoring)!r}, "w").close()
+        time.sleep(120)
+        """
+    )
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", script], cwd=str(tmp_path)))
+    )
+    try:
+        assert await _wait_until(ignoring.exists, timeout=60)
+        task.cancel()
+        await asyncio.wait_for(sigterm_sent.wait(), timeout=60)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+        assert result["exit_code"] == -signal.SIGKILL
+        [proc] = spawned
+        await asyncio.wait_for(proc.wait(), timeout=30)
+        assert proc.returncode == -signal.SIGKILL
+    finally:
+        if not task.done():
+            task.cancel()
+        for proc in spawned:
+            if proc.returncode is None:
+                proc.kill()
+                await proc.wait()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
+async def test_a_group_stop_cut_short_in_its_grace_period_kills_the_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stop whose own task was cancelled in its grace period (the shim's
+    event loop ending) never sent SIGKILL, and left the group running."""
+    sigterm_sent = _watch_for_sigterm(monkeypatch)
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "print('ignoring', flush=True); time.sleep(120)",
+        stdout=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        assert proc.stdout is not None
+        assert await asyncio.wait_for(proc.stdout.readline(), timeout=60) == b"ignoring\n"
+        stopping = asyncio.create_task(handlers_module._terminate_process_group(proc.pid))
+        await asyncio.wait_for(sigterm_sent.wait(), timeout=60)
+        stopping.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await stopping
+
+        await asyncio.wait_for(proc.wait(), timeout=30)
+        assert proc.returncode == -signal.SIGKILL
+    finally:
         if proc.returncode is None:
             proc.kill()
             await proc.wait()

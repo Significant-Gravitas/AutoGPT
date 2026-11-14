@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import contextlib
 import contextvars
 import hashlib
 import json
@@ -279,14 +280,21 @@ async def _terminate_process_group(pgid: int) -> None:
 
     The group is signalled by its ID, never through the command's own process,
     which may exit on SIGTERM while members that ignore it live on.
+
+    Cancelled during the grace period (its own task cancelled, as the shim's
+    event loop ends), it sends SIGKILL then rather than never.
     """
     if not _signal_process_group(pgid, signal.SIGTERM):
         return
     deadline = time.monotonic() + _TERMINATE_GRACE_SECONDS
-    while time.monotonic() < deadline:
-        await asyncio.sleep(0.05)
-        if not _signal_process_group(pgid, 0):
-            return
+    try:
+        while time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+            if not _signal_process_group(pgid, 0):
+                return
+    except asyncio.CancelledError:
+        _signal_process_group(pgid, signal.SIGKILL)
+        raise
     _signal_process_group(pgid, signal.SIGKILL)
 
 
@@ -690,24 +698,13 @@ class CommandHandler:
                 timeout=timeout,
             )
         except asyncio.CancelledError:
-            await self._terminate_tree(proc)
-            wait = getattr(proc, "wait", None)
-            if callable(wait):
-                try:
-                    await asyncio.wait_for(wait(), timeout=2.0)
-                except (TimeoutError, ProcessLookupError):
-                    pass
-            # Its session ended or was revoked, but the command ran, so it is
-            # recorded as one that was stopped. The write finishes through a
-            # further cancel (_finish_then_cancel).
-            await self._audit(
-                msg.id,
-                payload,
-                cwd=str(cwd),
-                result=_err_result(
-                    _elapsed_ms(start), _CANCELLED_ERROR_CODE, exit_code=proc.returncode
-                ),
-                env=env,
+            # Its session ended or was revoked. The stop runs as one task that
+            # a further cancel (a detach and a revocation both stopping the
+            # chat) waits for: one landing in the grace period ended the stop
+            # before SIGKILL, and a command that ignores SIGTERM ran on after
+            # its session, with no record.
+            await _finish_then_cancel(
+                self._stop_cancelled(proc, msg.id, payload, cwd=str(cwd), env=env, start=start)
             )
             raise
         exit_code = proc.returncode if proc.returncode is not None else -1
@@ -803,6 +800,35 @@ class CommandHandler:
         kept_stdout, kept_stderr, truncated = output.finish()
         return kept_stdout, kept_stderr, timed_out, truncated
 
+    async def _stop_cancelled(
+        self,
+        proc: asyncio.subprocess.Process,
+        request_id: str,
+        payload,
+        *,
+        cwd: str,
+        env: dict[str, str],
+        start: float,
+    ) -> None:
+        """Stop a cancelled request's command, wait for it to exit, and
+        record it as one that was stopped: it ran."""
+        await self._terminate_tree(proc)
+        wait = getattr(proc, "wait", None)
+        if callable(wait):
+            try:
+                await asyncio.wait_for(wait(), timeout=2.0)
+            except (TimeoutError, ProcessLookupError):
+                pass
+        await self._audit(
+            request_id,
+            payload,
+            cwd=cwd,
+            result=_err_result(
+                _elapsed_ms(start), _CANCELLED_ERROR_CODE, exit_code=proc.returncode
+            ),
+            env=env,
+        )
+
     @staticmethod
     async def _spawn_argv(
         argv: list[str],
@@ -835,7 +861,14 @@ class CommandHandler:
                     proc.send_signal(getattr(__import__("signal"), "CTRL_BREAK_EVENT"))
                 except (AttributeError, OSError):
                     pass
-                await asyncio.sleep(2.0)
+                try:
+                    await asyncio.sleep(2.0)
+                except asyncio.CancelledError:
+                    # Cut short, as _terminate_process_group is: killed now.
+                    if proc.returncode is None:
+                        with contextlib.suppress(OSError):
+                            proc.kill()
+                    raise
                 if proc.returncode is None:
                     proc.kill()
             else:
