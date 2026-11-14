@@ -10,7 +10,7 @@ vi.mock("../../../../components/ArtifactCard/ArtifactCard", () => ({
 
 const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
 
-const FILE_URL = `/api/proxy/api/workspace/files/${FILE_ID}/download`;
+const FILE_URL = `/api/proxy/api/internal/workspace/files/${FILE_ID}/download`;
 
 function filePart(
   url: string,
@@ -33,7 +33,11 @@ describe("MessageAttachments", () => {
   it("renders ArtifactCards without a feature flag", () => {
     render(
       <MessageAttachments
-        files={[filePart(`/api/proxy/api/workspace/files/${FILE_ID}/download`)]}
+        files={[
+          filePart(
+            `/api/proxy/api/internal/workspace/files/${FILE_ID}/download`,
+          ),
+        ]}
       />,
     );
     expect(screen.getByTestId("artifact-card")).toBeDefined();

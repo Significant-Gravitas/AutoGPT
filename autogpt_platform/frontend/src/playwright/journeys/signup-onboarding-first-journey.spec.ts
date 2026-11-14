@@ -78,7 +78,7 @@ test.describe("a new account goes to onboarding first", () => {
       data: user,
     });
     expect(signUp.ok(), `sign-up failed: ${signUp.status()}`).toBe(true);
-    const setup = await page.request.post("/api/proxy/api/auth/user");
+    const setup = await page.request.post("/api/proxy/api/internal/auth/user");
     expect(setup.ok(), `account setup failed: ${setup.status()}`).toBe(true);
 
     const seen = await watchTheWayIn(context, page);
@@ -100,12 +100,12 @@ test.describe("a new account goes to onboarding first", () => {
   });
 });
 
-const ONBOARDING_CHECK = "/api/proxy/api/onboarding/completed";
+const ONBOARDING_CHECK = "/api/proxy/api/internal/onboarding/completed";
 const HOME_INPUTS = {
-  credits: "/api/proxy/api/credits",
-  autoTopUp: "/api/proxy/api/credits/auto-top-up",
-  config: "/api/proxy/api/platform-config",
-  subscription: "/api/proxy/api/credits/subscription",
+  credits: "/api/proxy/api/internal/credits",
+  autoTopUp: "/api/proxy/api/internal/credits/auto-top-up",
+  config: "/api/proxy/api/internal/platform-config",
+  subscription: "/api/proxy/api/internal/credits/subscription",
 };
 // Counted from the held request, and well inside the 15 s URL assertion so a
 // missing input fails by name rather than as a slow redirect.

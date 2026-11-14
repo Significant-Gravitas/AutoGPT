@@ -135,7 +135,7 @@ describe("AuthorizePage", () => {
     openWith(REGISTERED);
     serveAppInfo();
     server.use(
-      http.post("/api/proxy/api/oauth/authorize/deny", () =>
+      http.post("/api/proxy/api/internal/oauth/authorize/deny", () =>
         HttpResponse.json({ detail: "Invalid redirect_uri" }, { status: 400 }),
       ),
     );
@@ -159,7 +159,7 @@ describe("AuthorizePage", () => {
     );
     serveAppInfo();
     server.use(
-      http.post("/api/proxy/api/oauth/authorize/deny", () =>
+      http.post("/api/proxy/api/internal/oauth/authorize/deny", () =>
         HttpResponse.json({ detail: "Invalid redirect_uri" }, { status: 400 }),
       ),
     );
@@ -186,7 +186,9 @@ describe("AuthorizePage", () => {
     render(<AuthorizePage />);
     await screen.findByRole("button", { name: "Deny" });
 
-    expect(requested?.pathname).toBe("/api/proxy/api/oauth/app/client%231");
+    expect(requested?.pathname).toBe(
+      "/api/proxy/api/internal/oauth/app/client%231",
+    );
     expect(requested?.searchParams.get("redirect_uri")).toBe(REGISTERED);
   });
 });

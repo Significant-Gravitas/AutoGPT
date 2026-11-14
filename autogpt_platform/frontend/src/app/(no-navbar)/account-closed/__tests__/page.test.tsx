@@ -29,8 +29,8 @@ vi.mock("../helpers", async (importOriginal) => ({
   OPEN_PROBE: { intervalMS: 5, streak: 2, minWaitMS: 0, maxProbes: 20 },
 }));
 
-const RESTORE_PATH = "/api/proxy/api/account/deletion/restore";
-const PROBE_PATH = "/api/proxy/api/auth/user/timezone";
+const RESTORE_PATH = "/api/proxy/api/internal/account/deletion/restore";
+const PROBE_PATH = "/api/proxy/api/internal/auth/user/timezone";
 const ERASE_AFTER = new Date("2099-11-13T12:00:00Z");
 const CLOSED = { detail: "This account is closed." };
 

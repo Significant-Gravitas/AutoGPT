@@ -20,7 +20,7 @@ const RESET_MARKER = "marker-r-4f1c";
 const LINK_MARKER = "marker-l-9a2e";
 const RESET_PAGE = `/reset-password?token=${RESET_MARKER}`;
 const LINK_PAGE = `/link/${LINK_MARKER}?platform=discord`;
-const LINK_INFO_CALL = `/api/proxy/api/platform-linking/tokens/${LINK_MARKER}/info`;
+const LINK_INFO_CALL = `/api/proxy/api/internal/platform-linking/tokens/${LINK_MARKER}/info`;
 
 const sent: Sentry.Event[] = [];
 type SentSpan = { attributes: Record<string, { value: unknown }> };
@@ -99,7 +99,7 @@ describe("a browser error report", () => {
     });
     expect(crumbs).toContainEqual({
       method: "GET",
-      url: `/api/proxy/api/platform-linking/tokens/${R}/info`,
+      url: `/api/proxy/api/internal/platform-linking/tokens/${R}/info`,
       status_code: 200,
     });
     expect(JSON.stringify(event)).not.toContain(RESET_MARKER);
@@ -158,10 +158,10 @@ describe("a browser transaction", () => {
     );
     const [span] = transaction.spans ?? [];
     expect(span.description).toBe(
-      `GET /api/proxy/api/platform-linking/tokens/${R}/info`,
+      `GET /api/proxy/api/internal/platform-linking/tokens/${R}/info`,
     );
     expect(span.data).toMatchObject({
-      url: `/api/proxy/api/platform-linking/tokens/${R}/info`,
+      url: `/api/proxy/api/internal/platform-linking/tokens/${R}/info`,
       "http.query": `?token=${R}`,
       "http.method": "GET",
     });

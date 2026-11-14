@@ -71,7 +71,7 @@ function mount() {
     </QueryClientProvider>,
   );
 }
-const base = "*/api/proxy/api/credits/pro-activation";
+const base = "*/api/proxy/api/internal/credits/pro-activation";
 const confirm = vi.fn();
 const preview = vi.fn();
 
@@ -81,7 +81,7 @@ beforeEach(() => {
   confirm.mockReset();
   preview.mockReset();
   server.use(
-    http.get("*/api/proxy/api/credits/manage", () =>
+    http.get("*/api/proxy/api/internal/credits/manage", () =>
       HttpResponse.json({ url: "https://billing.stripe.com/p/session/test" }),
     ),
     http.get(`${base}/current`, () => new HttpResponse(null, { status: 404 })),
@@ -135,13 +135,13 @@ describe("Pro activation", () => {
         http.get(`${base}/current`, () =>
           HttpResponse.json({ ...quote, status: "ready", ...receipt }),
         ),
-        http.get("*/api/proxy/api/credits/trial", () =>
+        http.get("*/api/proxy/api/internal/credits/trial", () =>
           HttpResponse.json({ active: false, converted: true }),
         ),
-        http.get("*/api/proxy/api/credits/subscription", () =>
+        http.get("*/api/proxy/api/internal/credits/subscription", () =>
           HttpResponse.json({ tier: "PRO" }),
         ),
-        http.get("*/api/proxy/api/chat/usage", () =>
+        http.get("*/api/proxy/api/internal/chat/usage", () =>
           HttpResponse.json({ tier: "PRO" }),
         ),
       );
@@ -168,13 +168,13 @@ describe("Pro activation", () => {
           usage_reset: false,
         }),
       ),
-      http.get("*/api/proxy/api/credits/trial", () =>
+      http.get("*/api/proxy/api/internal/credits/trial", () =>
         HttpResponse.json({ active: false, converted: true }),
       ),
-      http.get("*/api/proxy/api/credits/subscription", () =>
+      http.get("*/api/proxy/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "MAX" }),
       ),
-      http.get("*/api/proxy/api/chat/usage", () =>
+      http.get("*/api/proxy/api/internal/chat/usage", () =>
         HttpResponse.json({ tier: "MAX" }),
       ),
     );
@@ -202,13 +202,13 @@ describe("Pro activation", () => {
           activation_id: "generation-1",
         }),
       ),
-      http.get("*/api/proxy/api/credits/trial", () =>
+      http.get("*/api/proxy/api/internal/credits/trial", () =>
         HttpResponse.json({ active: false, converted: true }),
       ),
-      http.get("*/api/proxy/api/credits/subscription", () =>
+      http.get("*/api/proxy/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
-      http.get("*/api/proxy/api/chat/usage", () =>
+      http.get("*/api/proxy/api/internal/chat/usage", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
     );
@@ -326,13 +326,13 @@ describe("Pro activation", () => {
           activation_id: "generation-1",
         });
       }),
-      http.get("*/api/proxy/api/credits/trial", () =>
+      http.get("*/api/proxy/api/internal/credits/trial", () =>
         HttpResponse.json({ active: false, converted: true }),
       ),
-      http.get("*/api/proxy/api/credits/subscription", () =>
+      http.get("*/api/proxy/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
-      http.get("*/api/proxy/api/chat/usage", () =>
+      http.get("*/api/proxy/api/internal/chat/usage", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
     );
@@ -360,13 +360,13 @@ describe("Pro activation", () => {
           activation_id: "generation-1",
         }),
       ),
-      http.get("*/api/proxy/api/credits/trial", () =>
+      http.get("*/api/proxy/api/internal/credits/trial", () =>
         HttpResponse.json({ active: true, converted: false }),
       ),
-      http.get("*/api/proxy/api/credits/subscription", () =>
+      http.get("*/api/proxy/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "TRIAL" }),
       ),
-      http.get("*/api/proxy/api/chat/usage", () =>
+      http.get("*/api/proxy/api/internal/chat/usage", () =>
         HttpResponse.json({ tier: "TRIAL" }),
       ),
     );
@@ -397,13 +397,13 @@ describe("Pro activation", () => {
             activation_id: "generation-1",
           });
         }),
-        http.get("*/api/proxy/api/credits/trial", () =>
+        http.get("*/api/proxy/api/internal/credits/trial", () =>
           HttpResponse.json({ active: false, converted: true }),
         ),
-        http.get("*/api/proxy/api/credits/subscription", () =>
+        http.get("*/api/proxy/api/internal/credits/subscription", () =>
           HttpResponse.json({ tier }),
         ),
-        http.get("*/api/proxy/api/chat/usage", () => {
+        http.get("*/api/proxy/api/internal/chat/usage", () => {
           readUsage();
           return HttpResponse.json({ tier });
         }),
@@ -533,13 +533,13 @@ describe("Pro activation", () => {
           activation_id: "generation-1",
         }),
       ),
-      http.get("*/api/proxy/api/credits/trial", () =>
+      http.get("*/api/proxy/api/internal/credits/trial", () =>
         HttpResponse.json({ status: "converted" }),
       ),
-      http.get("*/api/proxy/api/credits/subscription", () =>
+      http.get("*/api/proxy/api/internal/credits/subscription", () =>
         HttpResponse.json({ tier: "PRO" }),
       ),
-      http.get("*/api/proxy/api/chat/usage", async () => {
+      http.get("*/api/proxy/api/internal/chat/usage", async () => {
         await usageWait;
         return HttpResponse.json({ tier: "PRO", daily: { used: 0 } });
       }),

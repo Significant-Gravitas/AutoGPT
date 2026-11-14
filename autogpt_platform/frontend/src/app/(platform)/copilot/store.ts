@@ -47,7 +47,7 @@ export interface ArtifactRef {
   /**
    * Fully-qualified URL the preview/download code will fetch from. Today
    * this is always the same-origin proxy path
-   * `/api/proxy/api/workspace/files/{id}/download`.
+   * `/api/proxy/api/internal/workspace/files/{id}/download`.
    */
   sourceUrl: string;
   /**

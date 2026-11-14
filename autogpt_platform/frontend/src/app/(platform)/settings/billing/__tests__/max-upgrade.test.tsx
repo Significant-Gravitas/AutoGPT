@@ -22,10 +22,10 @@ afterEach(() => setTrialUser(null));
 beforeEach(() => {
   setTrialUser("billing-user");
   server.use(
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json(subscription),
     ),
-    http.get("*/api/credits/manage", () =>
+    http.get("*/api/internal/credits/manage", () =>
       HttpResponse.json({ url: "https://billing.stripe.com/test" }),
     ),
   );
@@ -45,11 +45,14 @@ describe("Max charge review", () => {
     const requested = vi.fn();
     const charged = vi.fn();
     server.use(
-      http.post("*/api/credits/subscription/preview", async ({ request }) => {
-        requested(await request.json());
-        return HttpResponse.json(preview);
-      }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post(
+        "*/api/internal/credits/subscription/preview",
+        async ({ request }) => {
+          requested(await request.json());
+          return HttpResponse.json(preview);
+        },
+      ),
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         charged(await request.json());
         return HttpResponse.json({ ...subscription, tier: "MAX" });
       }),
@@ -85,12 +88,12 @@ describe("Max charge review", () => {
     let attempts = 0;
     const charged = vi.fn();
     server.use(
-      http.post("*/api/credits/subscription/preview", () =>
+      http.post("*/api/internal/credits/subscription/preview", () =>
         ++attempts === 1
           ? new HttpResponse(null, { status: 502 })
           : HttpResponse.json(maxUpgradePreview()),
       ),
-      http.post("*/api/credits/subscription", () => {
+      http.post("*/api/internal/credits/subscription", () => {
         charged();
         return HttpResponse.json(subscription);
       }),
@@ -119,7 +122,7 @@ describe("Max charge review", () => {
       let quotes = 0;
       const charged = vi.fn();
       server.use(
-        http.post("*/api/credits/subscription/preview", () =>
+        http.post("*/api/internal/credits/subscription/preview", () =>
           HttpResponse.json(
             maxUpgradePreview(
               ++quotes === 1
@@ -132,12 +135,15 @@ describe("Max charge review", () => {
             ),
           ),
         ),
-        http.post("*/api/credits/subscription", async ({ request }) => {
-          charged(await request.json());
-          return charged.mock.calls.length === 1
-            ? HttpResponse.json({ detail: "Review again" }, { status })
-            : HttpResponse.json({ ...subscription, tier: "MAX" });
-        }),
+        http.post(
+          "*/api/internal/credits/subscription",
+          async ({ request }) => {
+            charged(await request.json());
+            return charged.mock.calls.length === 1
+              ? HttpResponse.json({ detail: "Review again" }, { status })
+              : HttpResponse.json({ ...subscription, tier: "MAX" });
+          },
+        ),
       );
       const dialog = await openReview();
       fireEvent.click(
@@ -163,11 +169,11 @@ describe("Max charge review", () => {
     const requested = vi.fn();
     const charged = vi.fn();
     server.use(
-      http.post("*/api/credits/subscription/preview", () => {
+      http.post("*/api/internal/credits/subscription/preview", () => {
         requested();
         return HttpResponse.json(preview);
       }),
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         charged(await request.json());
         return charged.mock.calls.length === 1
           ? HttpResponse.json(
@@ -196,7 +202,7 @@ describe("Max charge review", () => {
 
   it("lets the user keep Pro while loading and cannot confirm before a quote arrives", async () => {
     server.use(
-      http.post("*/api/credits/subscription/preview", async () => {
+      http.post("*/api/internal/credits/subscription/preview", async () => {
         await delay(100);
         return HttpResponse.json(maxUpgradePreview());
       }),
@@ -213,10 +219,10 @@ describe("Max charge review", () => {
 
   it("uses yearly currency and tax-inclusive terms without adding tax twice", async () => {
     server.use(
-      http.get("*/api/credits/subscription", () =>
+      http.get("*/api/internal/credits/subscription", () =>
         HttpResponse.json({ ...subscription, billing_cycle: "yearly" }),
       ),
-      http.post("*/api/credits/subscription/preview", () =>
+      http.post("*/api/internal/credits/subscription/preview", () =>
         HttpResponse.json(
           maxUpgradePreview({
             currency: "eur",
@@ -240,7 +246,7 @@ describe("Max charge review", () => {
 
   it("displays a zero-decimal currency in Stripe's minor units", async () => {
     server.use(
-      http.post("*/api/credits/subscription/preview", () =>
+      http.post("*/api/internal/credits/subscription/preview", () =>
         HttpResponse.json(maxUpgradePreview({ currency: "jpy" })),
       ),
     );

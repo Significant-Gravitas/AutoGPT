@@ -198,7 +198,7 @@ describe("Marketplace ExpertsSection", () => {
 
   test("keeps the raise button when templates fail to load", async () => {
     server.use(
-      http.get("/api/proxy/api/experts/templates", () =>
+      http.get("/api/proxy/api/internal/experts/templates", () =>
         HttpResponse.json({ detail: "Unavailable" }, { status: 500 }),
       ),
       getListExpertsMockHandler([]),

@@ -32,7 +32,7 @@ it("discards a late quote from the previous account and clears the amount on log
   const pending = deferredTrialResponse<ReturnType<typeof maxUpgradePreview>>();
   const requested = vi.fn();
   server.use(
-    http.post("*/api/credits/subscription/preview", async () => {
+    http.post("*/api/internal/credits/subscription/preview", async () => {
       requested();
       return HttpResponse.json(
         requested.mock.calls.length === 1
@@ -58,7 +58,7 @@ it("discards a late quote from the previous account and clears the amount on log
 it("withdraws an expired charge and requires another review", async () => {
   let calls = 0;
   server.use(
-    http.post("*/api/credits/subscription/preview", () => {
+    http.post("*/api/internal/credits/subscription/preview", () => {
       const expires =
         ++calls === 1
           ? Math.ceil(Date.now() / 1000) + 1
@@ -79,7 +79,7 @@ it("withdraws an expired charge and requires another review", async () => {
 
 it("never presents an already expired response as payable", async () => {
   server.use(
-    http.post("*/api/credits/subscription/preview", () =>
+    http.post("*/api/internal/credits/subscription/preview", () =>
       HttpResponse.json(
         maxUpgradePreview({ expires_at: Math.floor(Date.now() / 1000) - 1 }),
       ),

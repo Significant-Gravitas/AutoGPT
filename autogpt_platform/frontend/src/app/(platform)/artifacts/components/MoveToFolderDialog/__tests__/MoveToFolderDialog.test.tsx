@@ -14,7 +14,7 @@ vi.mock("framer-motion", async (importActual) => {
   return { ...actual, useReducedMotion: () => true };
 });
 
-const PROXY = "/api/proxy/api/workspace";
+const PROXY = "/api/proxy/api/internal/workspace";
 
 // Files / Reports / 2026 / Q3, plus a sibling at the root.
 const FOLDERS = [

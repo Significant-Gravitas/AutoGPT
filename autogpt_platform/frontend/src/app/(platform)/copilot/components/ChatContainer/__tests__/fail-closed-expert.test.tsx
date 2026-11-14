@@ -111,7 +111,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
   it("keeps a fired expert's thread read-only with their real name", async () => {
     let requestedUrl: string | null = null;
     server.use(
-      http.get("*/api/experts/identities", ({ request }) => {
+      http.get("*/api/internal/experts/identities", ({ request }) => {
         requestedUrl = request.url;
         return HttpResponse.json([{ ...maria, is_archived: true }]);
       }),
@@ -124,12 +124,12 @@ describe("Copilot expert thread — fail-closed identity", () => {
       "Maria was fired — this thread is read-only",
     );
     expect(screen.queryByTestId("composer")).toBeNull();
-    expect(requestedUrl).toContain("/api/experts/identities");
+    expect(requestedUrl).toContain("/api/internal/experts/identities");
   });
 
   it("fails closed to read-only when the roster fetch errors", async () => {
     server.use(
-      http.get("*/api/experts/identities", () =>
+      http.get("*/api/internal/experts/identities", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
@@ -178,7 +178,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
       releaseRequest = resolve;
     });
     server.use(
-      http.get("*/api/experts/identities", async () => {
+      http.get("*/api/internal/experts/identities", async () => {
         await requestGate;
         return HttpResponse.json([maria]);
       }),
@@ -206,7 +206,7 @@ describe("Copilot expert thread — fail-closed identity", () => {
       releaseRefetch = resolve;
     });
     server.use(
-      http.get("*/api/experts/identities", async () => {
+      http.get("*/api/internal/experts/identities", async () => {
         requestCount += 1;
         if (requestCount === 1) return HttpResponse.json([maria]);
         await refetchGate;

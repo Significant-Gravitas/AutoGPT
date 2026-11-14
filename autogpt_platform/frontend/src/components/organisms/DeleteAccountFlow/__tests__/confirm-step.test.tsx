@@ -52,7 +52,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 }));
 
 const EMAIL_LABEL = "Type jane@example.com to confirm";
-const DELETION_PATH = "/api/proxy/api/account/deletion";
+const DELETION_PATH = "/api/proxy/api/internal/account/deletion";
 
 beforeEach(() => {
   mocks.logOut.mockReset().mockResolvedValue(undefined);

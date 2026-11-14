@@ -72,20 +72,25 @@ function setup(params: Record<string, string>) {
     getGetTrialsGetTrialStatusMockHandler200(
       trialResponse({ active: false, status: null }),
     ),
-    jsonHandler("/api/credits/subscription", {
+    jsonHandler("/api/internal/credits/subscription", {
       tier: "PRO",
       monthly_cost: 5000,
       has_active_stripe_subscription: true,
       status: "active",
     }),
-    jsonHandler("/api/credits/manage", { url: "https://billing.stripe.com" }),
-    jsonHandler("/api/credits", { credits: 1234 }),
-    jsonHandler("/api/credits/transactions", {
+    jsonHandler("/api/internal/credits/manage", {
+      url: "https://billing.stripe.com",
+    }),
+    jsonHandler("/api/internal/credits", { credits: 1234 }),
+    jsonHandler("/api/internal/credits/transactions", {
       transactions: [],
       next_transaction_time: null,
     }),
-    jsonHandler("/api/credits/auto-top-up", { amount: 0, threshold: 0 }),
-    jsonHandler("/api/credits/invoices", []),
+    jsonHandler("/api/internal/credits/auto-top-up", {
+      amount: 0,
+      threshold: 0,
+    }),
+    jsonHandler("/api/internal/credits/invoices", []),
     jsonHandler("/api/v2/chat/copilot-usage", {
       daily: { percent_used: 0, resets_at: null },
       weekly: { percent_used: 0, resets_at: null },
@@ -182,7 +187,7 @@ describe("returning from an abandoned checkout", () => {
     const tierRequests: unknown[] = [];
     setup(UPGRADE_RETURN);
     server.use(
-      http.post("*/api/credits/subscription", async ({ request }) => {
+      http.post("*/api/internal/credits/subscription", async ({ request }) => {
         tierRequests.push(await request.clone().json());
         return HttpResponse.json({ url: "https://checkout.stripe.com/retry" });
       }),

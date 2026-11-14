@@ -225,11 +225,11 @@ describe("builder execution updates", () => {
     executionRequests = 0;
     heldResponses = null;
     server.use(
-      http.get(`/api/proxy/api/graphs/${GRAPH_ID}`, () =>
+      http.get(`/api/proxy/api/internal/graphs/${GRAPH_ID}`, () =>
         HttpResponse.json(graphResponse()),
       ),
       http.get(
-        `/api/proxy/api/graphs/${GRAPH_ID}/executions/${EXECUTION_ID}`,
+        `/api/proxy/api/internal/graphs/${GRAPH_ID}/executions/${EXECUTION_ID}`,
         async () => {
           executionRequests++;
           const snapshot = executionResponse();
@@ -237,8 +237,8 @@ describe("builder execution updates", () => {
           return HttpResponse.json(snapshot);
         },
       ),
-      http.get("/api/proxy/api/graphs", () => HttpResponse.json([])),
-      http.get("/api/proxy/api/builder/blocks/batch", () =>
+      http.get("/api/proxy/api/internal/graphs", () => HttpResponse.json([])),
+      http.get("/api/proxy/api/internal/builder/blocks/batch", () =>
         HttpResponse.json([
           {
             id: BLOCK_ID,

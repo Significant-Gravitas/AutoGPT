@@ -22,7 +22,7 @@ describe("invalidateAllScheduleQueries", () => {
       queryKey: getListCopilotFollowupSchedulesQueryKey(),
     });
     expect(spy).toHaveBeenCalledWith({
-      queryKey: ["/api/library/agents"],
+      queryKey: ["/api/internal/library/agents"],
     });
     expect(spy).toHaveBeenCalledWith({
       queryKey: getGetV1ListExecutionSchedulesForAGraphQueryKey("graph-abc"),
@@ -43,7 +43,7 @@ describe("invalidateAllScheduleQueries", () => {
       queryKey: getListCopilotFollowupSchedulesQueryKey(),
     });
     expect(spy).toHaveBeenCalledWith({
-      queryKey: ["/api/library/agents"],
+      queryKey: ["/api/internal/library/agents"],
     });
   });
 });

@@ -57,7 +57,7 @@ function setup() {
   const patches: unknown[] = [];
   server.use(
     getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
-    http.post("*/api/credits/trial/cancel", async ({ request }) => {
+    http.post("*/api/internal/credits/trial/cancel", async ({ request }) => {
       cancels.push(await request.clone().json());
       return HttpResponse.json(trialResponse());
     }),
@@ -173,7 +173,7 @@ test("a failed save still cancels the trial and shows no toast", async () => {
     server.events.removeListener("response:mocked", observeFailure),
   );
   server.use(
-    http.patch("*/api/feedback-prompts/:id", () =>
+    http.patch("*/api/internal/feedback-prompts/:id", () =>
       HttpResponse.json({ detail: "boom" }, { status: 500 }),
     ),
   );

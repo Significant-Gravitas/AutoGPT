@@ -84,7 +84,7 @@ describe("a message sent right after Stop", () => {
     const { hold } = createStreamHold(4);
     server.use(
       http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         async ({ request }) => {
           const { message = "" } = (await request.json()) as {
             message?: string;
@@ -165,7 +165,7 @@ function store(role: "user" | "assistant", content: string) {
 }
 
 function storedSessionHandler() {
-  return http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
+  return http.get(`*/api/internal/chat/sessions/${TEST_SESSION_ID}`, () =>
     HttpResponse.json({
       id: TEST_SESSION_ID,
       created_at: "2026-05-13T00:00:00Z",

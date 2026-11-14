@@ -123,7 +123,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         );
         server.use(
           http.post(
-            `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+            `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
             async ({ request }) => {
               requests.push(await request.json());
               return streamSseResponse(
@@ -137,7 +137,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             },
           ),
           http.post(
-            `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
+            `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/messages/pending`,
             queueRequest,
           ),
         );
@@ -212,7 +212,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     it("clears kickoff recovery state after an HTTP 429", async () => {
       const expertId = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
       server.use(
-        http.get("*/api/experts/identities", () =>
+        http.get("*/api/internal/experts/identities", () =>
           HttpResponse.json([
             {
               id: expertId,
@@ -406,7 +406,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         })),
       );
       return http.post(
-        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
         () => {
           refused = true;
           return HttpResponse.json(ourCap, { status: 429 });

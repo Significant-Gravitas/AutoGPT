@@ -153,7 +153,9 @@ vi.mock("../steps/BrainDumpStep/recordingStore", () => ({
 }));
 let tier = "NO_TIER";
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  getGetSubscriptionStatusQueryKey: () => ["/api/credits/subscription"],
+  getGetSubscriptionStatusQueryKey: () => [
+    "/api/internal/credits/subscription",
+  ],
   useGetSubscriptionStatus: (opts: {
     query: { select: (res: { status: number; data: unknown }) => unknown };
   }) => ({
@@ -515,7 +517,7 @@ describe("hiring the plan's team", () => {
         team: [{ template_id: "tpl-maria", name: "Maria", role: "Sales" }],
         tasks: [],
       }),
-      http.post("*/api/onboarding/brain-dump/plan/hire", () => {
+      http.post("*/api/internal/onboarding/brain-dump/plan/hire", () => {
         hires.count += 1;
         return HttpResponse.json({
           hired: [

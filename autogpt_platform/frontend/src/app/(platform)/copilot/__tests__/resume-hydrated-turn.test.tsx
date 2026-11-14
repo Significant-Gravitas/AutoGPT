@@ -308,7 +308,7 @@ function renderResumedSession(
   let resumeRequests = 0;
   server.use(
     http.get(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
       () => {
         resumeRequests += 1;
         return parkedSseResponse(replayChunks);
@@ -811,7 +811,7 @@ function renderRuntimeReload(
   const cursors: string[] = [];
   server.use(
     http.get(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+      `${TEST_BACKEND_BASE_URL}/api/internal/chat/sessions/${TEST_SESSION_ID}/stream`,
       ({ request }) => {
         const params = new URL(request.url).searchParams;
         const after = params.get("after") ?? "0-0";

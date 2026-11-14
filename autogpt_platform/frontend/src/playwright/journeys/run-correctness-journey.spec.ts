@@ -216,7 +216,7 @@ async function startRunFromLibrary(page: Page, agentURL: string) {
 
 async function getRunStatus(page: Page, graphID: string, runID: string) {
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphID}/executions/${runID}`,
+    `/api/proxy/api/internal/graphs/${graphID}/executions/${runID}`,
   );
   expect(response.ok(), `GET execution: ${response.status()}`).toBe(true);
   const body = (await response.json()) as { status: string };

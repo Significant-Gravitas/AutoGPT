@@ -7,9 +7,10 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ExecutionTargetPicker } from "../ExecutionTargetPicker";
 
-const EXECUTORS_URL = "http://localhost:3000/api/proxy/api/copilot/executors";
+const EXECUTORS_URL =
+  "http://localhost:3000/api/proxy/api/internal/copilot/executors";
 const DIRECTORIES_URL =
-  "http://localhost:3000/api/proxy/api/copilot/executors/machine-1/directories";
+  "http://localhost:3000/api/proxy/api/internal/copilot/executors/machine-1/directories";
 
 const MACHINE = {
   machine_id: "machine-1",
@@ -47,6 +48,7 @@ describe("ExecutionTargetPicker", () => {
     storage.clean(Key.COPILOT_LOCAL_PC_WARNING_ACKED);
     resetTargetStore();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("defaults to Cloud and selects Local PC with the keyboard", async () => {
@@ -349,6 +351,10 @@ describe("ExecutionTargetPicker", () => {
 
   it("teaches setup and keeps polling when no computer is connected", async () => {
     const user = userEvent.setup();
+    vi.stubEnv(
+      "NEXT_PUBLIC_AGPT_SERVER_URL",
+      "https://backend.example.com/api",
+    );
     mockMachines([]);
 
     render(<ExecutionTargetPicker />);
@@ -360,9 +366,10 @@ describe("ExecutionTargetPicker", () => {
         /^pipx install git\+https:\/\/github\.com\/Significant-Gravitas\/autogpt-local-executor\.git@[a-f0-9]{40}$/,
       ),
     ).toBeDefined();
+    // The shim takes the backend's root, not the app's /api/internal.
     expect(
       screen.getByText(
-        /autogpt-shim --platform-url .* --platform-oauth-url .* auth/,
+        /^autogpt-shim --platform-url 'https:\/\/backend\.example\.com' --platform-oauth-url .* auth$/,
       ),
     ).toBeDefined();
     expect(screen.getByText("autogpt-shim install")).toBeDefined();
@@ -592,7 +599,7 @@ describe("ExecutionTargetPicker", () => {
     mockMachines([replacement]);
     server.use(
       http.post(
-        "http://localhost:3000/api/proxy/api/copilot/executors/machine-2/directories",
+        "http://localhost:3000/api/proxy/api/internal/copilot/executors/machine-2/directories",
         () =>
           HttpResponse.json({
             connection_id: "connection-2",

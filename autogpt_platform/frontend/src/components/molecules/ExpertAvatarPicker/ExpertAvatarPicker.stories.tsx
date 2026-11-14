@@ -21,20 +21,23 @@ const meta = {
   parameters: {
     msw: {
       handlers: [
-        http.post("*/api/experts/avatars/generations", () =>
+        http.post("*/api/internal/experts/avatars/generations", () =>
           HttpResponse.json(
             { id: "preview", status: "pending" },
             { status: 202 },
           ),
         ),
-        http.get("*/api/experts/avatars/generations/preview", async () => {
-          await delay(3000);
-          return HttpResponse.json({
-            id: "preview",
-            status: "complete",
-            avatar_url: DEFAULT_EXPERT_AVATAR_URL,
-          });
-        }),
+        http.get(
+          "*/api/internal/experts/avatars/generations/preview",
+          async () => {
+            await delay(3000);
+            return HttpResponse.json({
+              id: "preview",
+              status: "complete",
+              avatar_url: DEFAULT_EXPERT_AVATAR_URL,
+            });
+          },
+        ),
       ],
     },
   },

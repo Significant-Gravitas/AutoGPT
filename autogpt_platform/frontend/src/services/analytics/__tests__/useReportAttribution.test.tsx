@@ -39,7 +39,7 @@ function wrapper({ children }: { children: ReactNode }) {
 function captureReports(status = 200) {
   const bodies: unknown[] = [];
   server.use(
-    http.post("*/api/analytics/attribution", async ({ request }) => {
+    http.post("*/api/internal/analytics/attribution", async ({ request }) => {
       bodies.push(await request.json());
       if (status !== 200) return new HttpResponse(null, { status });
       return HttpResponse.json({ user_id: "user-1", anonymous_id: "anon-1" });

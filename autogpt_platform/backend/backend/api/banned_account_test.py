@@ -90,9 +90,9 @@ def test_an_optional_auth_route_answers_when_the_ban_is_unreadable(mocker):
 # Deleting an account is its owner's right whatever the ban, so the deletion
 # routes (``get_user_id_allowing_closed``) answer a banned account too.
 BAN_EXEMPT = {
-    "['GET'] /api/account/deletion",
-    "['POST'] /api/account/deletion",
-    "['POST'] /api/account/deletion/restore",
+    "['GET'] /api/internal/account/deletion",
+    "['POST'] /api/internal/account/deletion",
+    "['POST'] /api/internal/account/deletion/restore",
 }
 
 

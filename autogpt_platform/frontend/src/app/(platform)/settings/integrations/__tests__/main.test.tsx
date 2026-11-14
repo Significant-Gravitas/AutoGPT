@@ -52,7 +52,7 @@ function makeProvider(
 }
 
 function noMicrosoftAccounts() {
-  return http.get("*/api/integrations/:provider/credentials", () =>
+  return http.get("*/api/internal/integrations/:provider/credentials", () =>
     HttpResponse.json([]),
   );
 }

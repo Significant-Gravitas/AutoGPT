@@ -103,7 +103,7 @@ test("a refusal from a day ago is checked again", async () => {
 test("a failed claim leaves no marker, so the next load asks again", async () => {
   let attempts = 0;
   server.use(
-    http.post("*/api/feedback-prompts/claim", () => {
+    http.post("*/api/internal/feedback-prompts/claim", () => {
       attempts += 1;
       return HttpResponse.json({ detail: "boom" }, { status: 500 });
     }),

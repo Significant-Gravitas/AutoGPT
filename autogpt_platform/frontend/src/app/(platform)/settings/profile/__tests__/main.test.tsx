@@ -146,11 +146,13 @@ describe("SettingsProfilePage - data loading", () => {
     // A 404 from the profile endpoint means "no profile yet" — the page must
     // render the empty form so the user can create one, not an error card.
     server.use(
-      http.get("http://localhost:3000/api/proxy/api/store/profile", () =>
-        HttpResponse.json(
-          { detail: "User does not have a profile yet" },
-          { status: 404 },
-        ),
+      http.get(
+        "http://localhost:3000/api/proxy/api/internal/store/profile",
+        () =>
+          HttpResponse.json(
+            { detail: "User does not have a profile yet" },
+            { status: 404 },
+          ),
       ),
     );
 

@@ -35,7 +35,7 @@ function signedUpWith(...providers: string[]) {
 beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
   server.use(
-    http.get("*/api/integrations/providers", () =>
+    http.get("*/api/internal/integrations/providers", () =>
       HttpResponse.json([
         {
           name: "microsoft",
@@ -44,7 +44,7 @@ beforeEach(() => {
         },
       ]),
     ),
-    http.get("*/api/integrations/:provider/credentials", () =>
+    http.get("*/api/internal/integrations/:provider/credentials", () =>
       HttpResponse.json([]),
     ),
   );
@@ -84,23 +84,25 @@ describe("AccessStep", () => {
   it("only offers to continue once the account is connected", async () => {
     signedUpWith("microsoft");
     server.use(
-      http.get("*/api/integrations/:provider/credentials", ({ params }) =>
-        HttpResponse.json(
-          params.provider === "microsoft"
-            ? [
-                {
-                  id: "work-id",
-                  provider: "microsoft",
-                  type: "oauth2",
-                  title: "Pat Example (work account)",
-                  username: "pat@company.example",
-                  scopes: ["User.Read"],
-                },
-              ]
-            : [],
-        ),
+      http.get(
+        "*/api/internal/integrations/:provider/credentials",
+        ({ params }) =>
+          HttpResponse.json(
+            params.provider === "microsoft"
+              ? [
+                  {
+                    id: "work-id",
+                    provider: "microsoft",
+                    type: "oauth2",
+                    title: "Pat Example (work account)",
+                    username: "pat@company.example",
+                    scopes: ["User.Read"],
+                  },
+                ]
+              : [],
+          ),
       ),
-      http.post("*/api/integrations/microsoft/check", () =>
+      http.post("*/api/internal/integrations/microsoft/check", () =>
         HttpResponse.json({
           verified: true,
           account_type: "work",

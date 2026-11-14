@@ -37,7 +37,7 @@ export function deriveFileOrigin(filePath: string | undefined): FileOrigin {
 }
 
 export function getFileDownloadUrl(fileId: string): string {
-  return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
+  return `/api/proxy/api/internal/workspace/files/${encodeURIComponent(fileId)}/download`;
 }
 
 // Fetches the file as a blob and triggers a browser download. Throws on a
@@ -69,7 +69,7 @@ export function getFilePreviewUrl(
   if (opts.width) params.set("w", String(opts.width));
   if (opts.bytes) params.set("bytes", String(opts.bytes));
   const query = params.toString();
-  const base = `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/preview`;
+  const base = `/api/proxy/api/internal/workspace/files/${encodeURIComponent(fileId)}/preview`;
   return query ? `${base}?${query}` : base;
 }
 

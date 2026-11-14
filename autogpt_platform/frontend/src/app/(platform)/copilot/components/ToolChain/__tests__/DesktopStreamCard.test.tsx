@@ -10,7 +10,7 @@ vi.mock("../../../useIsMobile", () => ({
 
 const STREAM = {
   kind: "desktop_stream",
-  url: "/api/proxy/api/desktop-preview?token=abc",
+  url: "/api/proxy/api/internal/desktop-preview?token=abc",
   provider: "e2b",
   sandbox_id: "sbx-1",
 };

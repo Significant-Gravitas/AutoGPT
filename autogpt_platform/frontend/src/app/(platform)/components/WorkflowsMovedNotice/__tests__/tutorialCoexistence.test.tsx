@@ -93,7 +93,7 @@ beforeEach(() => {
         completedSteps: ["ONBOARDING_COMPLETE"],
       });
     }),
-    http.post("/api/proxy/api/onboarding/step", ({ request }) => {
+    http.post("/api/proxy/api/internal/onboarding/step", ({ request }) => {
       context.postedStep(new URL(request.url).searchParams.get("step"));
       return new HttpResponse(null, { status: 200 });
     }),

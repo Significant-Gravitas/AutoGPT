@@ -7,7 +7,7 @@ export async function synthesizeSpeech(
   sessionId: string | null,
 ): Promise<Blob> {
   const response = await fetch(
-    `${environment.getAGPTServerBaseUrl()}/api/chat/speech`,
+    `${environment.getAGPTServerBaseUrl()}/api/internal/chat/speech`,
     {
       method: "POST",
       headers: {

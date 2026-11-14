@@ -37,7 +37,7 @@ async function openPreset(name: string) {
 describe("MCP preset access options", () => {
   test("switching preset methods cancels sign-in and discards entered credentials", async () => {
     server.use(
-      http.post("*/api/mcp/oauth/login", () =>
+      http.post("*/api/internal/mcp/oauth/login", () =>
         HttpResponse.json({
           login_url: "https://vendor.example.com/authorize",
           state_token: "state",
@@ -89,7 +89,7 @@ describe("MCP preset access options", () => {
 
   test("Parallel defaults public, offers OAuth on its distinct URL, and saves tokens on the base URL", async () => {
     server.use(
-      http.post("*/api/mcp/oauth/login", async ({ request }) => {
+      http.post("*/api/internal/mcp/oauth/login", async ({ request }) => {
         oauthRequest(await request.json());
         return HttpResponse.json({
           login_url: "https://vendor.example.com/authorize",

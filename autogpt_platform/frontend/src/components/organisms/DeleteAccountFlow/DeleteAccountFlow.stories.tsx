@@ -199,7 +199,7 @@ export const DeleteRejected: Story = {
   parameters: {
     msw: {
       handlers: [
-        http.post("*/api/account/deletion", () =>
+        http.post("*/api/internal/account/deletion", () =>
           HttpResponse.json(
             {
               detail:

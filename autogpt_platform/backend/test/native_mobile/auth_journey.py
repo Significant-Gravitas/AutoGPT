@@ -152,7 +152,7 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
         for jwt in (token, renewed):
             assert (
                 await backend.get(
-                    "/api/auth/user/timezone",
+                    "/api/internal/auth/user/timezone",
                     headers={"Authorization": f"Bearer {jwt}"},
                 )
             ).status_code == 200
@@ -171,7 +171,8 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
         assert send.await_args.args[0]["code"] == 4003
         assert (
             await backend.get(
-                "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+                "/api/internal/auth/user/timezone",
+                headers={"Authorization": f"Bearer {token}"},
             )
         ).status_code == 401
 
@@ -194,7 +195,8 @@ async def test_backend_rechecks_session_authority(
     ) as backend:
         assert (
             await backend.get(
-                "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+                "/api/internal/auth/user/timezone",
+                headers={"Authorization": f"Bearer {token}"},
             )
         ).status_code == 200
     if change == "expire":
@@ -229,7 +231,8 @@ async def test_backend_rechecks_session_authority(
         transport=ASGITransport(app=app), base_url="http://backend"
     ) as backend:
         response = await backend.get(
-            "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+            "/api/internal/auth/user/timezone",
+            headers={"Authorization": f"Bearer {token}"},
         )
         if change in {"ban", "revoked_ban", "future_ban"}:
             assert response.status_code == 403
@@ -277,13 +280,15 @@ async def test_session_lookup_failure_fails_closed_and_recovers(
                 lambda: AsyncMock(is_auth_session_active=lookup),
             )
             response = await backend.get(
-                "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+                "/api/internal/auth/user/timezone",
+                headers={"Authorization": f"Bearer {token}"},
             )
             assert response.status_code == 503
             assert response.headers["Retry-After"] == "5"
         assert (
             await backend.get(
-                "/api/auth/user/timezone", headers={"Authorization": f"Bearer {token}"}
+                "/api/internal/auth/user/timezone",
+                headers={"Authorization": f"Bearer {token}"},
             )
         ).status_code == 200
 
@@ -307,11 +312,11 @@ async def test_native_session_bearer_requires_its_signature(
     "path,lookup_target",
     [
         (
-            "/api/store/search?query=private&content_types=CHAT_SESSION",
+            "/api/internal/store/search?query=private&content_types=CHAT_SESSION",
             "backend.api.features.store.routes.search_engine.unified_hybrid_search",
         ),
         (
-            "/api/store/skills/test-skill/files/SKILL.md?version_id=pending",
+            "/api/internal/store/skills/test-skill/files/SKILL.md?version_id=pending",
             "backend.api.features.store.skill_routes.skill_db.find_readable_version",
         ),
     ],

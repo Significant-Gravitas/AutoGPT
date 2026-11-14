@@ -198,7 +198,7 @@ describe("agent display names", () => {
         {
           isComplete,
           fileUrlBuilder: (id) =>
-            `/api/public/shared/chats/token/files/${id}/download`,
+            `/api/internal/public/shared/chats/token/files/${id}/download`,
         },
       );
       expect(messages[0].parts[0]).toMatchObject({

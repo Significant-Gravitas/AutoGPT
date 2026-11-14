@@ -193,7 +193,7 @@ const dashboard: HomeDashboardResponse = {
 
 function mockDashboard(response: HomeDashboardResponse) {
   server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
+    http.get(/\/api\/proxy\/api\/internal\/home(?:\?.*)?$/, () =>
       HttpResponse.json(response),
     ),
   );

@@ -224,8 +224,9 @@ describe("ComputerPanelContent", () => {
         workspace_path: "/home/user/workspace",
         shared_path: "/home/user/shared",
       }),
-      http.post("/api/proxy/api/chat/sessions/:sessionId/desktop", () =>
-        HttpResponse.json({ detail: refusal }, { status: 429 }),
+      http.post(
+        "/api/proxy/api/internal/chat/sessions/:sessionId/desktop",
+        () => HttpResponse.json({ detail: refusal }, { status: 429 }),
       ),
     );
 

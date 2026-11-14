@@ -13,7 +13,7 @@ import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 import { useAdminImpersonation } from "../useAdminImpersonation";
 
 const NOTIFY_URL =
-  "http://localhost:3000/api/proxy/api/admin/impersonation/notify";
+  "http://localhost:3000/api/proxy/api/internal/admin/impersonation/notify";
 const TARGET_USER_ID = "target-user-id";
 
 function wrapper({ children }: { children: ReactNode }) {

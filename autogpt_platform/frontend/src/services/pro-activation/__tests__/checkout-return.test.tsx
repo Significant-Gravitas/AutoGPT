@@ -70,7 +70,7 @@ function mount() {
 
 function activationReady(returnTo: string) {
   server.use(
-    http.get("*/api/proxy/api/credits/pro-activation/current", () => {
+    http.get("*/api/proxy/api/internal/credits/pro-activation/current", () => {
       current();
       return HttpResponse.json({
         ...quote,
@@ -78,13 +78,13 @@ function activationReady(returnTo: string) {
         return_to: returnTo,
       });
     }),
-    http.get("*/api/proxy/api/credits/trial", () =>
+    http.get("*/api/proxy/api/internal/credits/trial", () =>
       HttpResponse.json({ active: false, converted: false }),
     ),
-    http.get("*/api/proxy/api/credits/subscription", () =>
+    http.get("*/api/proxy/api/internal/credits/subscription", () =>
       HttpResponse.json({ tier: "PRO" }),
     ),
-    http.get("*/api/proxy/api/chat/usage", () =>
+    http.get("*/api/proxy/api/internal/chat/usage", () =>
       HttpResponse.json({ tier: "PRO" }),
     ),
   );

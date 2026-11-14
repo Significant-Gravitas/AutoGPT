@@ -16,7 +16,7 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 
 beforeEach(() => toastMock.mockClear());
 
-const PRESET_PATH = "/api/proxy/api/library/presets/:presetId";
+const PRESET_PATH = "/api/proxy/api/internal/library/presets/:presetId";
 
 // Stored shape for a triggered preset that also has a regular input node.
 const STORED_INPUTS = {

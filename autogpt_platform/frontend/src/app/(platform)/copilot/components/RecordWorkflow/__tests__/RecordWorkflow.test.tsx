@@ -12,7 +12,7 @@ import type { LocalPCExecutorStatus } from "../../../hooks/useLocalPCExecutor";
 import { RecordWorkflow } from "../RecordWorkflow";
 
 const EXECUTOR_URL =
-  "http://localhost:3000/api/proxy/api/copilot/sessions/:sessionId/executor";
+  "http://localhost:3000/api/proxy/api/internal/copilot/sessions/:sessionId/executor";
 const START_URL = `${EXECUTOR_URL}/recording/start`;
 const STOP_URL = `${EXECUTOR_URL}/recording/stop`;
 const REVIEW_URL = `${EXECUTOR_URL}/recording/:recordingId/review`;

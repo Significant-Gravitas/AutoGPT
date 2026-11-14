@@ -40,13 +40,16 @@ const UNAVAILABLE = /this chat isn't available on this account/i;
 
 function sessionError(status: number) {
   let calls = 0;
-  const handler = http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () => {
-    calls += 1;
-    return HttpResponse.json(
-      { detail: `Session ${TEST_SESSION_ID} not found.` },
-      { status },
-    );
-  });
+  const handler = http.get(
+    `*/api/internal/chat/sessions/${TEST_SESSION_ID}`,
+    () => {
+      calls += 1;
+      return HttpResponse.json(
+        { detail: `Session ${TEST_SESSION_ID} not found.` },
+        { status },
+      );
+    },
+  );
   return { handler, calls: () => calls };
 }
 
@@ -75,18 +78,20 @@ describe("a chat link the user cannot open", () => {
   });
 
   it("says a chat its expert's reset removed was removed, naming the expert", async () => {
-    const handler = http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
-      HttpResponse.json(
-        {
-          detail: {
-            type: "chat_removed",
-            expert_id: "expert-1",
-            expert_name: "Remy",
-            message: "This chat was removed when Remy was reset.",
+    const handler = http.get(
+      `*/api/internal/chat/sessions/${TEST_SESSION_ID}`,
+      () =>
+        HttpResponse.json(
+          {
+            detail: {
+              type: "chat_removed",
+              expert_id: "expert-1",
+              expert_name: "Remy",
+              message: "This chat was removed when Remy was reset.",
+            },
           },
-        },
-        { status: 410 },
-      ),
+          { status: 410 },
+        ),
     );
     renderHost({ sessionResponse: handler });
 
@@ -108,18 +113,20 @@ describe("a chat link the user cannot open", () => {
   });
 
   it("offers a plain new chat when the reset expert is no longer on the team", async () => {
-    const handler = http.get(`*/api/chat/sessions/${TEST_SESSION_ID}`, () =>
-      HttpResponse.json(
-        {
-          detail: {
-            type: "chat_removed",
-            expert_id: null,
-            expert_name: "Remy",
-            message: "This chat was removed when Remy was reset.",
+    const handler = http.get(
+      `*/api/internal/chat/sessions/${TEST_SESSION_ID}`,
+      () =>
+        HttpResponse.json(
+          {
+            detail: {
+              type: "chat_removed",
+              expert_id: null,
+              expert_name: "Remy",
+              message: "This chat was removed when Remy was reset.",
+            },
           },
-        },
-        { status: 410 },
-      ),
+          { status: 410 },
+        ),
     );
     renderHost({ sessionResponse: handler });
 

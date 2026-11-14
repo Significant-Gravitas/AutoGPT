@@ -182,7 +182,7 @@ describe("Marketplace skill package contents", () => {
     // is mocked at the transport.
     server.use(
       detail({ files: PACKAGE }),
-      http.get(`/api/proxy/api/store/skills/${SLUG}/files/*`, () =>
+      http.get(`/api/proxy/api/internal/store/skills/${SLUG}/files/*`, () =>
         HttpResponse.json({ detail: "not text" }, { status: 415 }),
       ),
     );
@@ -217,7 +217,7 @@ function detail(overrides: Partial<MarketplaceSkillDetails>) {
 }
 
 function fileText(text: string) {
-  return http.get(`/api/proxy/api/store/skills/${SLUG}/files/*`, () =>
+  return http.get(`/api/proxy/api/internal/store/skills/${SLUG}/files/*`, () =>
     HttpResponse.text(text),
   );
 }

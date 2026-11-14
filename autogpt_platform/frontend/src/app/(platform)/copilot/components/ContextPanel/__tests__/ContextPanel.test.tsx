@@ -86,7 +86,7 @@ describe("ContextPanel", () => {
           id: "f1",
           title: "doc.md",
           mimeType: "text/markdown",
-          sourceUrl: "/api/proxy/api/workspace/files/f1/download",
+          sourceUrl: "/api/proxy/api/internal/workspace/files/f1/download",
           origin: "agent",
         },
       },

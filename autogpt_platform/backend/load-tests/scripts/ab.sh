@@ -137,7 +137,7 @@ print(w["steady_started_at"] + "/" + w["steady_ended_at"])
 echo "Wait a few minutes for Sentry to ingest the last events, then compare, naming the transaction you care about:"
 echo
 echo "S=\$(git rev-parse --show-toplevel)/.claude/skills/perf-compare/scripts/perf_compare.py"
-echo "python3 \"\$S\" --project autogpt-server-previews --transaction '/api/store/skills/{slug}' \\"
+echo "python3 \"\$S\" --project autogpt-server-previews --transaction '/api/internal/store/skills/{slug}' \\"
 echo "  --baseline env=pr-$control$(windows A) \\"
 echo "  --candidate env=pr-$candidate$(windows B)"
 echo

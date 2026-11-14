@@ -79,7 +79,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get(
-    "/api/copilot/executors",
+    "/api/internal/copilot/executors",
     response_model=ExecutorsResponse,
     tags=["copilot"],
 )
@@ -113,7 +113,7 @@ async def list_local_executors(
 
 
 @router.post(
-    "/api/copilot/executors/{machine_id}/directories",
+    "/api/internal/copilot/executors/{machine_id}/directories",
     response_model=DirectoryListResponse,
     tags=["copilot"],
     dependencies=[Depends(enforce_payment_paywall)],
@@ -170,7 +170,7 @@ async def list_local_executor_directories(
 
 
 @router.get(
-    "/api/copilot/sessions/{session_id}/executor",
+    "/api/internal/copilot/sessions/{session_id}/executor",
     response_model=ExecutorStatus,
     tags=["copilot"],
 )
@@ -210,7 +210,7 @@ async def get_session_executor(
 
 
 @router.post(
-    "/api/copilot/sessions/{session_id}/executor/consent",
+    "/api/internal/copilot/sessions/{session_id}/executor/consent",
     tags=["copilot"],
 )
 async def set_session_computer_use_consent(
@@ -259,7 +259,7 @@ async def set_session_computer_use_consent(
 
 
 @router.post(
-    "/api/copilot/sessions/{session_id}/executor/recording/start",
+    "/api/internal/copilot/sessions/{session_id}/executor/recording/start",
     tags=["copilot"],
     dependencies=[Depends(enforce_payment_paywall)],
 )
@@ -294,7 +294,7 @@ async def start_session_recording(
 
 
 @router.post(
-    "/api/copilot/sessions/{session_id}/executor/recording/stop",
+    "/api/internal/copilot/sessions/{session_id}/executor/recording/stop",
     tags=["copilot"],
 )
 async def stop_session_recording(
@@ -325,7 +325,7 @@ async def stop_session_recording(
 
 
 @router.post(
-    "/api/copilot/sessions/{session_id}/executor/recording/{recording_id}/review",
+    "/api/internal/copilot/sessions/{session_id}/executor/recording/{recording_id}/review",
     tags=["copilot"],
 )
 async def review_session_recording(

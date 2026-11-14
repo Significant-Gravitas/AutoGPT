@@ -295,7 +295,8 @@ describe("downloadOutputs", () => {
 
     const items = [
       makeRenderer({
-        downloadData: "/api/proxy/api/workspace/files/abc-123/download",
+        downloadData:
+          "/api/proxy/api/internal/workspace/files/abc-123/download",
         downloadFilename: "photo.png",
       }),
     ];
@@ -303,7 +304,7 @@ describe("downloadOutputs", () => {
     await downloadOutputs(items);
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/proxy/api/workspace/files/abc-123/download",
+      "/api/proxy/api/internal/workspace/files/abc-123/download",
       { mode: "cors" },
     );
     expect(mockZipFile).toHaveBeenCalledWith("photo.png", mockBlob);
@@ -322,11 +323,11 @@ describe("downloadOutputs", () => {
 
     const items = [
       makeRenderer({
-        downloadData: "/api/proxy/api/workspace/files/file-1/download",
+        downloadData: "/api/proxy/api/internal/workspace/files/file-1/download",
         downloadFilename: "image1.png",
       }),
       makeRenderer({
-        downloadData: "/api/proxy/api/workspace/files/file-2/download",
+        downloadData: "/api/proxy/api/internal/workspace/files/file-2/download",
         downloadFilename: "image2.jpg",
       }),
     ];
@@ -351,7 +352,7 @@ describe("downloadOutputs", () => {
     const items = [
       makeRenderer({
         downloadData:
-          "/api/proxy/api/public/shared/abc-token/files/file-123/download",
+          "/api/proxy/api/internal/public/shared/abc-token/files/file-123/download",
         downloadFilename: "shared-image.png",
       }),
     ];
@@ -359,7 +360,7 @@ describe("downloadOutputs", () => {
     await downloadOutputs(items);
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/proxy/api/public/shared/abc-token/files/file-123/download",
+      "/api/proxy/api/internal/public/shared/abc-token/files/file-123/download",
       { mode: "cors" },
     );
     expect(mockZipFile).toHaveBeenCalledWith("shared-image.png", mockBlob);

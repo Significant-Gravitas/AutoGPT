@@ -277,7 +277,7 @@ export function realCards(): RealCard[] {
 }
 
 export function realCardSchemaHandler(cards: RealCard[]) {
-  return http.get("*/api/builder/blocks/batch", ({ request }) => {
+  return http.get("*/api/internal/builder/blocks/batch", ({ request }) => {
     const ids = new URL(request.url).searchParams.getAll("block_ids");
     return HttpResponse.json(
       cards

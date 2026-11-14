@@ -47,7 +47,7 @@ export async function sendAuthEmail({
   await assertEmailHasMailServer(to);
   try {
     const token = await mintServiceToken("auth-email:send");
-    const endpoint = `${environment.getAGPTServerBaseUrl()}/api/auth/email/send`;
+    const endpoint = `${environment.getAGPTServerBaseUrl()}/api/internal/auth/email/send`;
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {

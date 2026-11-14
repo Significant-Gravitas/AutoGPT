@@ -4,7 +4,7 @@ import { localExecutorDeployment } from "../helpers";
 describe("localExecutorDeployment", () => {
   it("uses the configured backend and this frontend for authorization", () => {
     const deployment = localExecutorDeployment(
-      "https://api.example.com/api",
+      "https://api.example.com",
       "https://app.example.com",
     );
     expect(deployment.authCommand).toBe(
@@ -21,7 +21,7 @@ describe("localExecutorDeployment", () => {
 
   it("preserves a self-hosted backend path prefix", () => {
     expect(
-      localExecutorDeployment("/backend/api/", "https://my-autogpt.example")
+      localExecutorDeployment("/backend/", "https://my-autogpt.example")
         .platformURL,
     ).toBe("https://my-autogpt.example/backend");
   });
@@ -29,7 +29,7 @@ describe("localExecutorDeployment", () => {
   it("quotes command arguments without exposing URL shell metacharacters", () => {
     expect(
       localExecutorDeployment(
-        "https://api.example.com/it's/api",
+        "https://api.example.com/it's",
         "https://app.example.com",
       ).startCommand,
     ).toBe(

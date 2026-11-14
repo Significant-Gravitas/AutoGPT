@@ -39,7 +39,7 @@ async def test_a_signed_in_body_over_the_limit_is_refused_unparsed():
     limit = _default_limit()
     with _signed_in():
         sent = await _post(
-            "/api/graphs",
+            "/api/internal/graphs",
             [b"{", b" " * limit, b"}"],
             {"content-type": JSON, **CHUNKED, **VALID_TOKEN},
         )
@@ -65,7 +65,7 @@ async def test_an_upload_route_takes_a_multipart_body_above_the_default_limit():
     """Refused for its missing token, not its size: the whole body was let through."""
     body = [b"--x\r\n", b"A" * (_default_limit() + MiB)]
 
-    sent = await _post("/api/files/upload", body, {"content-type": MULTIPART})
+    sent = await _post("/api/internal/files/upload", body, {"content-type": MULTIPART})
 
     assert sent.status == 401
     assert sent.received == sum(map(len, body))
@@ -83,7 +83,7 @@ async def test_a_file_of_exactly_the_largest_allowed_size_fits_with_its_framing(
         b"\r\n--x--\r\n",
     ]
 
-    sent = await _post("/api/files/upload", body, {"content-type": MULTIPART})
+    sent = await _post("/api/internal/files/upload", body, {"content-type": MULTIPART})
 
     assert sent.status == 401
     assert sent.received == sum(map(len, body))
@@ -91,7 +91,7 @@ async def test_a_file_of_exactly_the_largest_allowed_size_fits_with_its_framing(
 
 async def test_an_upload_route_holds_any_other_body_to_the_default_limit():
     sent = await _post(
-        "/api/files/upload",
+        "/api/internal/files/upload",
         [b"a=" + b"A" * (_default_limit() + MiB)],
         {"content-type": "application/x-www-form-urlencoded"},
     )
@@ -119,12 +119,12 @@ async def test_a_mounted_app_that_bounds_its_own_bodies_answers_in_its_own_shape
 @pytest.mark.parametrize(
     "path",
     [
-        "/api/files/upload",
-        "/api/workspace/files/upload",
-        "/api/store/submissions/media",
-        "/api/skills/package",
-        "/api/oauth/apps/{app_id}/logo/upload",
-        "/api/onboarding/brain-dump/parts",
+        "/api/internal/files/upload",
+        "/api/internal/workspace/files/upload",
+        "/api/internal/store/submissions/media",
+        "/api/internal/skills/package",
+        "/api/internal/oauth/apps/{app_id}/logo/upload",
+        "/api/internal/onboarding/brain-dump/parts",
     ],
 )
 def test_every_upload_route_gets_room_for_its_file(path: str):
@@ -136,7 +136,9 @@ def test_every_upload_route_gets_room_for_its_file(path: str):
 
 
 def test_webhook_ingress_takes_the_largest_provider_payload():
-    route = _routes()["/api/integrations/{provider}/webhooks/{webhook_id}/ingress"]
+    route = _routes()[
+        "/api/internal/integrations/{provider}/webhooks/{webhook_id}/ingress"
+    ]
 
     assert route_body_limit(_matched(route, JSON)) == WEBHOOK_PAYLOAD_LIMIT
 

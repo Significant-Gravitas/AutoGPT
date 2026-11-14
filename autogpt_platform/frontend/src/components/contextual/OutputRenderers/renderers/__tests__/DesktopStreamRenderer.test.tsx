@@ -60,7 +60,7 @@ describe("DesktopStreamRenderer", () => {
     expect(
       desktopStreamRenderer.canRender({
         ...streamValue,
-        url: "/api/proxy/api/desktop-preview?token=abc",
+        url: "/api/proxy/api/internal/desktop-preview?token=abc",
         requires_auth: true,
       }),
     ).toBe(true);

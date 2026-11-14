@@ -9,7 +9,8 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const SESSIONS_URL = "http://localhost:3000/api/proxy/api/chat/sessions";
+const SESSIONS_URL =
+  "http://localhost:3000/api/proxy/api/internal/chat/sessions";
 
 vi.mock("@sentry/nextjs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/nextjs")>()),

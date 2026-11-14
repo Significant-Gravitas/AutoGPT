@@ -26,7 +26,7 @@ async function isBannedAddress(email: string) {
   try {
     const token = await mintServiceToken(BAN_RECORD_SCOPE);
     const response = await fetch(
-      `${environment.getAGPTServerBaseUrl()}/api/auth/email/ban-record`,
+      `${environment.getAGPTServerBaseUrl()}/api/internal/auth/email/ban-record`,
       {
         method: "POST",
         headers: {

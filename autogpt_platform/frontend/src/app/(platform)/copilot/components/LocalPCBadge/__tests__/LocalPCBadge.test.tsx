@@ -12,7 +12,7 @@ import { describe, expect, test } from "vitest";
 import { LocalPCBadge } from "../LocalPCBadge";
 
 const EXECUTOR_URL =
-  "http://localhost:3000/api/proxy/api/copilot/sessions/:sessionId/executor";
+  "http://localhost:3000/api/proxy/api/internal/copilot/sessions/:sessionId/executor";
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("LocalPCBadge", () => {

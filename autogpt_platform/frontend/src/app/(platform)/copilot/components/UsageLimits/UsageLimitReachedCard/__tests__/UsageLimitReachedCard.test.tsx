@@ -44,14 +44,14 @@ afterEach(() => {
 });
 function setup(tier = "PRO", daily = 100, weekly = 40) {
   server.use(
-    http.get("*/api/chat/usage", () =>
+    http.get("*/api/internal/chat/usage", () =>
       HttpResponse.json({
         tier,
         daily: { percent_used: daily, resets_at: "2099-10-07T00:00:00Z" },
         weekly: { percent_used: weekly, resets_at: "2099-10-12T00:00:00Z" },
       }),
     ),
-    http.get("*/api/credits/subscription", () =>
+    http.get("*/api/internal/credits/subscription", () =>
       HttpResponse.json({
         tier,
         tier_costs: { PRO: 5000, MAX: 32000 },
@@ -66,7 +66,7 @@ describe("Usage notice", () => {
     setTrialUser();
     setup("TRIAL");
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json(
           trialResponse({
             allowance_used_percent: 100,
@@ -164,7 +164,7 @@ describe("Usage notice", () => {
     setup();
     server.use(
       http.get(
-        "*/api/chat/usage",
+        "*/api/internal/chat/usage",
         () => new HttpResponse(null, { status: 503 }),
       ),
     );
@@ -184,7 +184,7 @@ describe("Usage notice", () => {
     setTrialUser();
     setup("NO_TIER");
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json(
           trialResponse({
             active: false,
@@ -211,7 +211,7 @@ describe("Usage notice", () => {
     setTrialUser();
     setup("TRIAL");
     server.use(
-      http.get("*/api/credits/trial", () =>
+      http.get("*/api/internal/credits/trial", () =>
         HttpResponse.json(
           trialResponse({
             allowance_used_percent: 100,

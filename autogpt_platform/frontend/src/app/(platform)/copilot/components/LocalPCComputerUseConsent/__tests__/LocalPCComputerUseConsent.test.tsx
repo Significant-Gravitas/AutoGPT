@@ -10,7 +10,7 @@ import { describe, expect, test, vi } from "vitest";
 import { LocalPCComputerUseConsent } from "../LocalPCComputerUseConsent";
 
 const EXECUTOR_URL =
-  "http://localhost:3000/api/proxy/api/copilot/sessions/:sessionId/executor";
+  "http://localhost:3000/api/proxy/api/internal/copilot/sessions/:sessionId/executor";
 const CONSENT_URL = `${EXECUTOR_URL}/consent`;
 const DRIVER = "cua-driver 0.38.0";
 const READ_TOOLS = ["get_window_state", "list_windows"];

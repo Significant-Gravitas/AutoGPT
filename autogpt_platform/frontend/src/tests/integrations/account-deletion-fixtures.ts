@@ -20,9 +20,9 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import { server } from "@/mocks/mock-server";
 import { http, HttpResponse } from "msw";
 
-const DELETION_PATH = "/api/proxy/api/account/deletion";
+const DELETION_PATH = "/api/proxy/api/internal/account/deletion";
 const CREDENTIAL_PATH =
-  "/api/proxy/api/integrations/:provider/credentials/:credId";
+  "/api/proxy/api/internal/integrations/:provider/credentials/:credId";
 
 /** Pins every field the flow reads; faker fills only the ones it never does. */
 export function subscriptionStatus(

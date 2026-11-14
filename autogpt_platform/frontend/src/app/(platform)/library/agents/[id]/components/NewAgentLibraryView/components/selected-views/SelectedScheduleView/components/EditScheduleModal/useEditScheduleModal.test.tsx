@@ -87,7 +87,7 @@ describe("useEditScheduleModal", () => {
 
   test("a rejected save shows the server's reason and does not invalidate", async () => {
     server.use(
-      http.patch("/api/proxy/api/schedules/:scheduleId", () =>
+      http.patch("/api/proxy/api/internal/schedules/:scheduleId", () =>
         HttpResponse.json({ detail: "Invalid cron" }, { status: 400 }),
       ),
     );

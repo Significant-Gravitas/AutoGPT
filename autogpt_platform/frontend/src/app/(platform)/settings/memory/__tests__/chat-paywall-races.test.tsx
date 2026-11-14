@@ -19,7 +19,7 @@ describe("Memory chat request lifetime", () => {
     async (status) => {
       const response = Promise.withResolvers<Response>();
       server.use(
-        http.post("*/api/chat/sessions", () => response.promise, {
+        http.post("*/api/internal/chat/sessions", () => response.promise, {
           once: true,
         }),
       );
@@ -59,7 +59,9 @@ describe("Memory chat request lifetime", () => {
 
   it("ignores a late paywall response after leaving memory settings", async () => {
     const response = Promise.withResolvers<Response>();
-    server.use(http.post("*/api/chat/sessions", () => response.promise));
+    server.use(
+      http.post("*/api/internal/chat/sessions", () => response.promise),
+    );
     renderMemoryPage();
     const user = userEvent.setup();
     await user.click(
@@ -85,7 +87,7 @@ describe("Memory chat request lifetime", () => {
     const newResponse = Promise.withResolvers<Response>();
     const bodies: unknown[] = [];
     server.use(
-      http.post("*/api/chat/sessions", async ({ request }) => {
+      http.post("*/api/internal/chat/sessions", async ({ request }) => {
         bodies.push(await request.json());
         return bodies.length === 1 ? oldResponse.promise : newResponse.promise;
       }),
