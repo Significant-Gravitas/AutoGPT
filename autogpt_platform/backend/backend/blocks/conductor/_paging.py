@@ -8,6 +8,7 @@ the caller's remaining wall-clock budget.
 """
 
 import asyncio
+from collections import deque
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -19,6 +20,8 @@ Remaining = Callable[[], float] | None
 
 # Upper bound on the exponential search for the transcript end (2**40 rows).
 MAX_PROBES = 40
+# Rows a forward read to the transcript end will consume before stopping.
+MAX_SCAN_ROWS = 1000
 
 
 async def fetch_after(
@@ -48,6 +51,47 @@ async def fetch_after(
         cursor = str(data[-1].get("id") or "") if data else ""
         if not has_more or not cursor or len(rows) >= count or expired(remaining):
             return rows, has_more
+
+
+async def fetch_latest_after(
+    client: ConductorClient,
+    session_id: str,
+    after: str,
+    count: int,
+    remaining: Remaining = None,
+    cap: int = MAX_SCAN_ROWS,
+) -> tuple[Rows, bool]:
+    """The newest `count` rows after the `after` cursor, oldest first, and
+    whether rows between the cursor and the returned slice were skipped.
+
+    Reads forward from the cursor to the end of the transcript (or the
+    deadline) keeping only the newest `count`, so a caller that waited out a
+    long turn gets its end without paging through the middle. Once `cap`
+    rows have been read and more follow, the end is located directly instead
+    (every row of that tail is past the cursor, since more than `cap` rows
+    already were and `count` is at most `cap`).
+    """
+    kept: deque[dict[str, Any]] = deque(maxlen=count)
+    skipped = False
+    cursor = after
+    read = 0
+    while True:
+        rows, has_more = await fetch_after(
+            client, session_id, cursor, PAGE_SIZE, remaining
+        )
+        for row in rows:
+            if len(kept) == count:
+                skipped = True
+            kept.append(row)
+        read += len(rows)
+        cursor = str(rows[-1].get("id") or "") if rows else ""
+        if not has_more or not cursor or expired(remaining):
+            return list(kept), skipped or has_more
+        if read >= cap:
+            tail, _ = await fetch_tail_at(
+                client, session_id, min(count, cap), remaining
+            )
+            return tail, True
 
 
 async def fetch_tail(
