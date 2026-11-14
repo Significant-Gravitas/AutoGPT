@@ -18,9 +18,9 @@ from typing import Any
 
 from backend.api.features.experts.models import Expert
 from backend.copilot.context import is_unattended_turn
-from backend.copilot.model import ChatSession, get_chat_session, get_user_sessions
+from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tree import MAX_DEPTH
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import chat_db, experts_db
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,9 @@ async def has_chat_with(user_id: str, expert_id: str) -> bool:
     that isn't true sends the expert into a chat already under way.
     """
     try:
-        sessions, _ = await get_user_sessions(
+        # Only whether one exists: the listing alone, without the total count
+        # ``get_user_sessions`` would gather alongside it.
+        sessions = await chat_db().get_user_chat_sessions(
             user_id, limit=1, expert_id=expert_id, pinned_first=False
         )
     except Exception:

@@ -501,9 +501,10 @@ class TestDelegation:
     async def test_a_later_chat_gets_no_introduction(
         self, roster, mock_turn, mock_sessions, monkeypatch
     ):
+        chats = MagicMock()
+        chats.get_user_chat_sessions = AsyncMock(return_value=[MagicMock()])
         monkeypatch.setattr(
-            "backend.copilot.tools.expert_delegation.get_user_sessions",
-            AsyncMock(return_value=([MagicMock()], 1)),
+            "backend.copilot.tools.expert_delegation.chat_db", lambda: chats
         )
         await DelegateToExpertTool()._execute(
             user_id="alice",

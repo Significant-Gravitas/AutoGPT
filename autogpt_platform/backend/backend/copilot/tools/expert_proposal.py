@@ -360,12 +360,17 @@ async def apply_proposal(
     proposal: ExpertChangeProposal,
     *,
     on_card: bool = True,
+    handing_off: bool = False,
 ) -> ToolResponseBase:
     """Apply *proposal*. *on_card*: the confirm renders as a card the user
-    can act on, which a chat-platform conversation does not show."""
+    can act on, which a chat-platform conversation does not show.
+    *handing_off*: a task goes to the new expert next, whose report replaces
+    the applied message (see ``hire_handoff``)."""
     preview = proposal.preview
     if preview.kind == "hire":
-        return await _apply_hire(user_id, session_id, preview, on_card=on_card)
+        return await _apply_hire(
+            user_id, session_id, preview, on_card=on_card, handing_off=handing_off
+        )
     if preview.kind == "raise":
         return await _apply_raise(user_id, session_id, preview, on_card=on_card)
     if preview.kind == "update":
@@ -390,7 +395,11 @@ async def _apply_hire(
     preview: ExpertChangePreview,
     *,
     on_card: bool,
+    handing_off: bool,
 ) -> ToolResponseBase:
+    """Hire the previewed template and say so, with whether the expert
+    already has a chat (a re-hire comes back with theirs). *handing_off*
+    skips that read: the hand-off's report replaces this message."""
     if preview.template_id is None:
         return _discarded_proposal_error(session_id, "template", "hire_expert")
     try:
@@ -403,8 +412,9 @@ async def _apply_hire(
     except Exception as e:
         return _hire_failure_response(e, session_id)
     # Hiring a template already on the team, or fired from it, returns that
-    # expert with the chats they had.
-    has_chat = await has_chat_with(user_id, result.expert.id)
+    # expert with the chats they had. A hand-off replaces this message, and
+    # reads the same fact itself to decide the expert's first turn.
+    has_chat = not handing_off and await has_chat_with(user_id, result.expert.id)
     return ExpertChangeAppliedResponse(
         message=applied_message(
             "hire", result.expert.name, has_chat=has_chat, on_card=on_card

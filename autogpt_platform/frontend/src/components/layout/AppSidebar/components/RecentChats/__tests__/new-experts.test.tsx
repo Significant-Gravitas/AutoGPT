@@ -120,7 +120,7 @@ describe("a new expert in Recent chats", () => {
     expect(
       await screen.findByRole("button", { name: "Nadia chats" }),
     ).toBeDefined();
-    expect(screen.queryByRole("link", { name: /Say hello/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Say hello to / })).toBeNull();
     expect(screen.queryByText("New")).toBeNull();
   });
 
@@ -137,6 +137,6 @@ describe("a new expert in Recent chats", () => {
     );
 
     expect(await screen.findByText("No conversations yet")).toBeDefined();
-    expect(screen.queryByRole("link", { name: /Say hello/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Say hello to / })).toBeNull();
   });
 });

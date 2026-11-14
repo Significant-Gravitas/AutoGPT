@@ -74,6 +74,8 @@ class ConfirmExpertChangeTool(BaseTool):
         confirmation_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        """Apply the proposal behind *confirmation_id*, then hand its task to
+        the new expert when the "and start" id was the one confirmed."""
         session_id = session.session_id
         if error := autopilot_session_guard(user_id, session):
             return error
@@ -110,6 +112,7 @@ class ConfirmExpertChangeTool(BaseTool):
             proposal,
             # A chat-platform conversation renders no card to point at.
             on_card=session.metadata.source_platform is None,
+            handing_off=proposal.handoff is not None and proposal.hand_off,
         )
         task = proposal.handoff
         if task is None or not isinstance(applied, ExpertChangeAppliedResponse):
