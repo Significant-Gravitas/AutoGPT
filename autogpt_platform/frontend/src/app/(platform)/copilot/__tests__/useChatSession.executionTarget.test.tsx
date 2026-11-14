@@ -4,7 +4,7 @@ import { useChatSession } from "../useChatSession";
 import { server } from "@/mocks/mock-server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -63,10 +63,13 @@ function renderChatSession(target?: NewChatExecutionTarget) {
     },
   });
 
+  // hasMemory keeps the session id the hook writes, as the address bar does.
+  // Without it, once nuqs flushes that write the hook reads the old, empty
+  // URL back and drops the session it has just created.
   function TestProviders({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <NuqsTestingAdapter>{children}</NuqsTestingAdapter>
+        <NuqsTestingAdapter hasMemory>{children}</NuqsTestingAdapter>
       </QueryClientProvider>
     );
   }
@@ -89,10 +92,12 @@ function createdSession(executionTarget: { kind: string } | null = null) {
 
 function mockCreatedSession(
   executionTarget: { kind: string; [field: string]: unknown } | null = null,
+  { readDelayMs = 0 } = {},
 ) {
   server.use(
-    http.get(`${SESSIONS_URL}/session-1`, () =>
-      HttpResponse.json({
+    http.get(`${SESSIONS_URL}/session-1`, async () => {
+      if (readDelayMs) await delay(readDelayMs);
+      return HttpResponse.json({
         ...createdSession(executionTarget),
         updated_at: "2026-07-10T17:00:00Z",
         chat_status: "idle",
@@ -102,8 +107,8 @@ function mockCreatedSession(
         oldest_sequence: null,
         total_prompt_tokens: 0,
         total_completion_tokens: 0,
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -151,11 +156,16 @@ describe("useChatSession execution target", () => {
         });
       }
       let requestBody: unknown;
-      mockCreatedSession({
-        kind: "local",
-        machine_id: "machine-1",
-        allowed_root: "C:\\Users\\Ada\\Projects",
-      });
+      // The session read answers after the create has returned, the order a
+      // loaded runner gives, so the read-back comes after nuqs's URL flush.
+      mockCreatedSession(
+        {
+          kind: "local",
+          machine_id: "machine-1",
+          allowed_root: "C:\\Users\\Ada\\Projects",
+        },
+        { readDelayMs: 25 },
+      );
       server.use(
         http.post(SESSIONS_URL, async ({ request }) => {
           requestBody = await request.json();
