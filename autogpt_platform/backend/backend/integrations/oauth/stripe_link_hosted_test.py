@@ -13,6 +13,10 @@ from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth import HANDLERS_BY_NAME, stripe_link_hosted
+from backend.integrations.oauth.refresh_failure import (
+    OAuthTokenRequestError,
+    describe_refresh_failure,
+)
 from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
 from backend.integrations.oauth.stripe_link_hosted import (
     STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
@@ -335,12 +339,32 @@ async def test_a_failed_call_never_repeats_the_response_body(handler, link):
         400, text="client_secret=client-secret liwltoken_canary"
     )
 
-    with pytest.raises(RuntimeError) as failure:
+    with pytest.raises(OAuthTokenRequestError) as failure:
         await handler.exchange_code_for_tokens("code", [], "v" * 43)
 
     assert "client-secret" not in str(failure.value)
     assert "canary" not in str(failure.value)
     assert "400" in str(failure.value)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_refresh_reads_as_a_dead_grant(handler, link):
+    """The refresh path marks a credential for reconnecting only when the
+    failure carries OAuth's code; a bare error would be retried forever."""
+    _, responses = link
+    responses["/auth/token"] = httpx.Response(
+        400, json={"error": "invalid_grant", "error_description": "client-secret"}
+    )
+
+    with pytest.raises(OAuthTokenRequestError) as failure:
+        await handler.refresh_tokens(hosted_credentials())
+
+    assert (failure.value.status_code, failure.value.error_code) == (
+        400,
+        "invalid_grant",
+    )
+    assert describe_refresh_failure(failure.value).definitive
+    assert "client-secret" not in str(failure.value)
 
 
 def test_device_credentials_are_not_mistaken_for_hosted_ones():
