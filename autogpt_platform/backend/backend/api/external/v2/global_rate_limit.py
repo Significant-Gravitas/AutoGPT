@@ -196,6 +196,7 @@ def client_ip(scope: Scope) -> str:
     peer = (scope.get("client") or ("unknown",))[0]
     forwarded = Headers(scope=scope).getlist("x-forwarded-for")
     if proxies := settings.config.trusted_proxies:
+        # uvicorn walked this list already (rest_api.py), so this lands on its answer.
         return client_address(peer, forwarded, proxies)
     return _client_by_hop_count(peer, forwarded_entries(forwarded))
 
@@ -203,12 +204,12 @@ def client_ip(scope: Scope) -> str:
 def _client_by_hop_count(peer: str, forwarded: list[str]) -> str:
     """The deprecated reading: our proxies append `trusted_proxy_count` entries,
     so the client is that many from the right. Google's load balancer appends two."""
-    hops = settings.config.trusted_proxy_count
-    if hops < 1:
-        return peer
     # The default is Cloud's chain; only an operator's own value is theirs to replace.
     if "trusted_proxy_count" in settings.config.model_fields_set:
         _warn_hop_count_deprecated()
+    hops = settings.config.trusted_proxy_count
+    if hops < 1:
+        return peer
     return forwarded[-hops] if len(forwarded) >= hops else peer
 
 
@@ -216,7 +217,8 @@ def _client_by_hop_count(peer: str, forwarded: list[str]) -> str:
 def _warn_hop_count_deprecated() -> None:
     logger.warning(
         "The External API reads the client IP by TRUSTED_PROXY_COUNT, which is "
-        "deprecated; set TRUSTED_PROXIES to the proxies in front of the backend"
+        "deprecated; set TRUSTED_PROXIES to the proxies in front of the backend, "
+        "or to 127.0.0.1,::1 if there are none"
     )
 
 

@@ -27,6 +27,7 @@ def client_address(peer: str, forwarded_for: Iterable[str], proxies: str) -> str
     lines = list(forwarded_for)
     if not lines or not _is_listed(peer, networks):
         return peer
+    # Empty entries stay, as uvicorn keeps them; forwarded_entries drops them.
     entries = [entry.strip() for entry in ", ".join(lines).split(",")]
     for entry in reversed(entries):
         host = _host(entry)
