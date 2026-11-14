@@ -188,6 +188,34 @@ def test_build_trigger_run_at_returns_datetrigger():
     assert isinstance(trigger, DateTrigger)
 
 
+@pytest.mark.parametrize(
+    "cron",
+    [
+        "0 * * * *",  # 60 minutes → hourly
+        "0 0 * * *",  # 24 hours → daily
+        "*/59 * * * *",
+        "0 */23 * * *",
+        "15 9 */30 * *",  # day cap 30, not 31
+        "*/1 * * * *",
+    ],
+)
+def test_build_trigger_accepts_frontend_custom_interval_crons(cron: str):
+    """#15275/#15276 overlap: crons the frontend clamp emits must pass 16488
+    length/next-fire guards and APScheduler field ranges."""
+    trigger = _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+    assert isinstance(trigger, CronTrigger)
+    assert trigger.end_date is None
+
+
+@pytest.mark.parametrize(
+    "cron",
+    ["*/60 * * * *", "0 */24 * * *", "0 0 */31 * *", "*/0 * * * *"],
+)
+def test_build_trigger_rejects_out_of_range_custom_interval_crons(cron: str):
+    with pytest.raises(ValueError):
+        _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
+
+
 # ---------------------------------------------------------------------------
 # _next_run_time_iso
 # ---------------------------------------------------------------------------
