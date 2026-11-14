@@ -483,6 +483,63 @@ async def test_a_legacy_session_creates_its_allowed_root_on_start(
 
 
 @pytest.mark.asyncio
+async def test_a_legacy_allowed_root_is_made_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session's allowed_root on a stalled network mount held the event
+    loop in mkdir, which every session and the machine's connection share:
+    none of them answered a request or a keepalive until the mount did."""
+    import threading
+
+    root = tmp_path / "root"
+    config = ShimConfig(
+        session_id="session-1",
+        allowed_root=root,
+        audit_log_path=tmp_path / "audit.log",
+    )
+    daemon = ShimDaemon(
+        config,
+        token_store=object(),
+        audit=MagicMock(spec=AuditWriter),
+        manage_audit_lifecycle=False,
+    )
+    monkeypatch.setattr(daemon, "_preflight_or_raise", AsyncMock())
+    monkeypatch.setattr(
+        daemon, "_session", AsyncMock(side_effect=DaemonAuthenticationError("stop here"))
+    )
+    stalled = threading.Event()
+    answered = threading.Event()
+    loop_ran_meanwhile: list[bool] = []
+    real_mkdir = Path.mkdir
+
+    def mkdir(self: Path, *args: Any, **kwargs: Any) -> None:
+        if self == root:
+            stalled.set()
+            # The mount answers once the event loop has run something else.
+            loop_ran_meanwhile.append(answered.wait(timeout=30))
+        real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    run = asyncio.ensure_future(daemon.run())
+    try:
+        for _ in range(3000):
+            if stalled.is_set():
+                break
+            await asyncio.sleep(0.01)
+        answered.set()
+        with pytest.raises(DaemonAuthenticationError):
+            await asyncio.wait_for(run, timeout=60)
+    finally:
+        answered.set()
+        if not run.done():
+            run.cancel()
+            await asyncio.gather(run, return_exceptions=True)
+
+    assert loop_ran_meanwhile == [True]
+    assert root.is_dir()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "restart"),
     [

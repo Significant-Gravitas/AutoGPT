@@ -33,9 +33,10 @@ import logging
 import os
 import re
 import secrets
+import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
@@ -318,15 +319,47 @@ class AuditWriter:
         # Open-append-fsync per record. Slow for high throughput but the
         # audit log is one-line-per-shim-event, not a hot path. A log removed
         # since the last write is recreated owner-only, like the first one.
+        # Unbuffered, so that a record cut short can be cut off again with
+        # nothing left to write after it; its line ends as text mode's did.
+        data = line.replace("\n", os.linesep).encode("utf-8")
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
-        with open(os.open(self.path, flags, 0o600), "a", encoding="utf-8") as f:
-            f.write(line)
-            f.flush()
+        with open(os.open(self.path, flags, 0o600), "ab", buffering=0) as f:
+            # Every writer appends holding the log's lock, so this record
+            # starts at the log's end as it is now.
+            start = os.fstat(f.fileno()).st_size
+            try:
+                view = memoryview(data)
+                while view:
+                    written = f.write(view)
+                    if not written:
+                        raise OSError(errno.EIO, "The audit log took none of the record")
+                    view = view[written:]
+            except BaseException:
+                self._cut_off_part_written(f.fileno(), start, len(data))
+                raise
             try:
                 os.fsync(f.fileno())
             except OSError:
                 # Best-effort: some filesystems (procfs, etc.) reject fsync.
                 logger.debug("fsync failed on audit log", exc_info=True)
+
+    def _cut_off_part_written(self, fd: int, start: int, length: int) -> None:
+        """Cut off what landed of a record whose write failed part way (a
+        full disk), back to `start`, where it began. Left at the log's end,
+        it kept every later write from reading the last record, and the next
+        start refused the log as tampered with. A record written whole stays,
+        and so does a log not as long as when the record began."""
+        try:
+            size = os.fstat(fd).st_size
+            if start < size < start + length:
+                os.ftruncate(fd, start)
+        except OSError as exc:
+            logger.warning(
+                "Part of a record that couldn't be written whole is left at the end of the "
+                "audit log at %s (%s): until it is cut off, the log fails verification",
+                self.path,
+                exc,
+            )
 
     # ── Rotation ────────────────────────────────────────────────────────
 
@@ -615,17 +648,19 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
     doesn't exist yet, since a log another key signed would never verify
     with it. With `create` false no key is made at all (load_audit_key).
     A key is made under a lock all starts share, after a second look for
-    one another start stored meanwhile (_holding_key_lock).
+    one another start stored meanwhile (_holding_key_lock), and only that
+    look decides whether the log rules a new key out: another start may
+    store the key and make the log just after the first look.
     """
     try:
         import keyring
         import keyring.errors
     except ImportError:
+        holder = "No keyring package is installed, and the file fallback"
         if not _fallback_path().exists():
-            _refuse_a_new_key(
-                audit_log, create, "No keyring package is installed, and the file fallback"
-            )
-        return _fallback_audit_key()
+            # An audit command, which makes no key, stops here.
+            _refuse_a_new_key(None, create, holder)
+        return _fallback_audit_key(may_make=lambda: _refuse_a_new_key(audit_log, create, holder))
     try:
         _load_keyring_backend(keyring)
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
@@ -636,7 +671,8 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
             # it signed the log; a new keychain key couldn't verify it.
             logger.info("The keychain holds no audit key; using the file fallback's.")
             return _fallback_audit_key()
-        _refuse_a_new_key(audit_log, create, "The OS keychain")
+        # An audit command, which makes no key, stops here.
+        _refuse_a_new_key(None, create, "The OS keychain")
         with _holding_key_lock():
             # Another start may have stored a key while this one waited: in
             # the keychain (the service, and a `start` run by hand), or in the
@@ -659,6 +695,7 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
                     )
                 logger.info("The keychain holds no audit key; using the file fallback's.")
                 return _fallback_key_held(_fallback_path(), passphrase)
+            _refuse_a_new_key(audit_log, create, "The OS keychain")
             key = secrets.token_bytes(32)
             keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
             return key
@@ -729,18 +766,14 @@ def _refuse_a_new_key(audit_log: Path | None, create: bool, holder: str) -> None
     """Raise AuditKeyError unless a new audit key may be made: never for the
     audit commands (`create` false), and never while `audit_log`, the log
     the key is for, exists, since a new key couldn't verify a log another
-    key signed. `holder` names where no key was found."""
+    key signed. `holder` names where no key was found. The log is checked
+    with the lock held, once no key turned up there either (None skips it)."""
     if not create:
         raise AuditKeyError(f"{holder} holds no audit key, so there is none to read")
     if audit_log is not None and os.path.lexists(audit_log):
-        hint = (
-            " (the file fallback has one: set AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE to read it)"
-            if _fallback_path().exists()
-            else ""
-        )
         raise AuditKeyError(
             f"{holder} holds no audit key, but the audit log at {audit_log} was signed "
-            f"with one{hint}, which a new key couldn't verify. Restore that key, or move "
+            "with one, which a new key couldn't verify. Restore that key, or move "
             "the log aside to start a new log with a new key"
         )
 
@@ -775,14 +808,18 @@ def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = T
         ) from exc
 
 
-def _fallback_audit_key(keyring: Any = None) -> bytes:
+def _fallback_audit_key(
+    keyring: Any = None, *, may_make: Callable[[], None] | None = None
+) -> bytes:
     """Legacy audit-only obfuscation; the existing log authenticates the key.
 
     This format has no authentication tag or slow password KDF. OAuth tokens
     require an OS keychain, so this is not a headless token-storage solution.
     With `keyring` (the module), a start that found no keychain looks in it
     again under the lock before it makes a file key (_keychain_key_meanwhile).
-    A storage error making its folder or key raises AuditKeyStorageError.
+    `may_make`, called under the lock when there is still no file key, raises
+    if none may be made. A storage error making its folder or key raises
+    AuditKeyStorageError.
     """
     fallback_path = _fallback_path()
     folder = fallback_path.parent
@@ -807,10 +844,13 @@ def _fallback_audit_key(keyring: Any = None) -> bytes:
     # Under the lock a new key is made under: two starts would each write
     # their own, and one could read the other's half written.
     with _holding_key_lock():
-        if keyring is not None and not fallback_path.exists():
-            stored = _keychain_key_meanwhile(keyring)
-            if stored is not None:
-                return stored
+        if not fallback_path.exists():
+            if keyring is not None:
+                stored = _keychain_key_meanwhile(keyring)
+                if stored is not None:
+                    return stored
+            if may_make is not None:
+                may_make()
         return _fallback_key_held(fallback_path, passphrase)
 
 
@@ -822,10 +862,16 @@ def _keychain_key_meanwhile(keyring: Any) -> bytes | None:
     the next start, which finds the keychain's first. None while there is
     still no keychain, or it holds no key. A keychain that came up but can't
     be read (locked, say) may hold one: AuditKeyUnavailableError, which the
-    start waits out as it does a keychain locked at its first look."""
+    start waits out as it does a keychain locked at its first look.
+
+    keyring picks its backend once per process, and one that found no
+    keychain keeps its failure backend, which can't see a keychain that came
+    up since: a new process looks instead (_look_for_a_keychain_afresh)."""
     try:
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
     except (keyring.errors.NoKeyringError, keyring.errors.InitError):
+        if _kept_no_keychain(keyring):
+            _look_for_a_keychain_afresh()
         return None
     except Exception as exc:
         raise AuditKeyUnavailableError(
@@ -833,6 +879,102 @@ def _keychain_key_meanwhile(keyring: Any) -> bytes | None:
             "it may still be locked"
         ) from exc
     return _stored_audit_key(stored) if stored is not None else None
+
+
+# Run by a new interpreter, on this process's import path, so that keyring
+# picks its backend afresh, as a start does. It prints `up` when a keychain
+# answered and `none` when there is none; nothing it reads is printed.
+_FRESH_KEYCHAIN_LOOK = """\
+import sys
+sys.path[:] = sys.argv[3:]
+import keyring
+import keyring.errors
+try:
+    keyring.get_password(sys.argv[1], sys.argv[2])
+except (keyring.errors.NoKeyringError, keyring.errors.InitError):
+    print("none")
+else:
+    print("up")
+"""
+# A look takes well under a second. One still running by then is most
+# likely held by a keychain that is up and waits to be unlocked.
+_FRESH_KEYCHAIN_LOOK_TIMEOUT_SECONDS = 30.0
+
+
+def _kept_no_keychain(keyring: Any) -> bool:
+    """Whether keyring settled on its failure backend, for no keychain at
+    all, which this process keeps whatever comes up later."""
+    from keyring.backends import fail
+
+    try:
+        return isinstance(keyring.get_keyring(), fail.Keyring)
+    except Exception:
+        # No backend to tell by: the look from a new process says.
+        return True
+
+
+def _look_for_a_keychain_afresh() -> None:
+    """Raise AuditKeyUnavailableError unless a new process finds no keychain
+    either, with the lock held, before the file fallback makes a key.
+
+    This process found none and keeps that finding, but a Secret Service
+    that came up since may hold the key another start stored meanwhile; a
+    file key made beside it would be a second key. A keychain found now
+    sends the start to be started again (it exits 75), and the next start
+    finds that keychain for itself. A look that can't start or finish may
+    have had one to tell of, so the start waits for that too."""
+    if not sys.executable:
+        raise AuditKeyUnavailableError(
+            "No OS keychain was found, and with no Python interpreter to run, no new "
+            "process can look for one again"
+        )
+    argv = [
+        sys.executable,
+        "-I",
+        "-c",
+        _FRESH_KEYCHAIN_LOOK,
+        KEYCHAIN_SERVICE,
+        KEYCHAIN_AUDIT_KEY_USERNAME,
+        *(entry for entry in sys.path if isinstance(entry, str) and entry),
+    ]
+    try:
+        looked = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=_FRESH_KEYCHAIN_LOOK_TIMEOUT_SECONDS,
+            # No console window of its own on Windows.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AuditKeyUnavailableError(
+            "No OS keychain was found, and a new process looking for one again didn't "
+            "finish (a keychain waiting to be unlocked, say)"
+        ) from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuditKeyUnavailableError(
+            "No OS keychain was found, and a new process to look for one again couldn't "
+            f"be started ({type(exc).__name__})"
+        ) from exc
+    lines = looked.stdout.splitlines() if looked.returncode == 0 else []
+    answer = lines[-1].strip() if lines else b""
+    if answer == b"none":
+        return
+    if answer == b"up":
+        raise AuditKeyUnavailableError(
+            "An OS keychain is up now, which this start found missing, and keyring keeps "
+            "that finding for the process; exiting to be started again with it, rather "
+            "than make a file key beside the key it may hold"
+        )
+    logger.debug(
+        "The new process looking for a keychain exited %s: %s",
+        looked.returncode,
+        looked.stderr.decode("utf-8", "replace")[-400:],
+    )
+    raise AuditKeyUnavailableError(
+        "No OS keychain was found, and a new process couldn't finish looking for one "
+        f"again (exit {looked.returncode}); one may be up but still locked"
+    )
 
 
 def _fallback_key_held(fallback_path: Path, passphrase: str) -> bytes:

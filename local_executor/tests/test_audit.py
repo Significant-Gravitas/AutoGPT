@@ -264,6 +264,97 @@ async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkey
     assert AuditWriter.verify(rotated, KEY) == []
 
 
+class _DiskFullPartWay:
+    """The audit log's file on a disk that fills part way through a record:
+    the first half of what is written lands, then the write fails."""
+
+    def __init__(self, file: Any) -> None:
+        self._file = file
+
+    def write(self, data: Any) -> int:
+        self._file.write(data[: len(data) // 2])
+        self._file.flush()
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._file, name)
+
+    def __enter__(self) -> _DiskFullPartWay:
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        self._file.close()
+        return False
+
+
+def _appends_fill_the_disk(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_open = open
+
+    def full_disk_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        handle = real_open(file, mode, *args, **kwargs)
+        # Only an append, which opens the log by its descriptor.
+        return _DiskFullPartWay(handle) if isinstance(file, int) and "a" in mode else handle
+
+    monkeypatch.setattr(audit_module, "open", full_disk_open, raising=False)
+
+
+@pytest.mark.asyncio
+async def test_a_record_a_full_disk_cut_short_is_cut_off_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write the disk filled part way through left the first part of its
+    record at the end of the log. Every later write then failed to read the
+    log's last record, and the next start refused the log as tampered with,
+    until someone cut the part off by hand. It is cut off when the write
+    fails, so the log still ends with its last whole record, and the next
+    write and start go on."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    whole = writer.path.read_bytes()
+
+    with monkeypatch.context() as full_disk:
+        _appends_fill_the_disk(full_disk)
+        with pytest.raises(OSError) as raised:
+            await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+
+    assert raised.value.errno == errno.ENOSPC
+    assert writer.path.read_bytes() == whole
+    await writer.write("EXECUTE_COMMAND", request_id="c", details={}, result={})
+    restarted = AuditWriter(path=writer.path, audit_key=KEY)
+    await restarted.write("EXECUTE_COMMAND", request_id="d", details={}, result={})
+
+    assert AuditWriter.verify(writer.path, KEY) == []
+    records = [json.loads(line) for line in writer.path.read_text(encoding="utf-8").splitlines()]
+    assert [(record["request_id"], record["seq"]) for record in records] == [
+        ("a", 1),
+        ("c", 2),
+        ("d", 3),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_record_written_whole_is_kept_when_what_follows_its_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a record cut short is cut off: one written whole stays, though
+    the flush to disk after it failed, as some filesystems' fsync does."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+
+    def no_fsync(_fd: int) -> None:
+        raise OSError(errno.EINVAL, "Invalid argument")
+
+    with monkeypatch.context() as unsynced:
+        unsynced.setattr(audit_module.os, "fsync", no_fsync)
+        await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+
+    assert AuditWriter.verify(writer.path, KEY) == []
+    assert [
+        json.loads(line)["request_id"]
+        for line in writer.path.read_text(encoding="utf-8").splitlines()
+    ] == ["a", "b"]
+
+
 @pytest.mark.asyncio
 async def test_force_rotate_collision_safe(tmp_path: Path) -> None:
     """If two rotations happen in the same second, the second gets a -N suffix."""
@@ -1753,6 +1844,99 @@ def test_a_file_key_is_made_and_read_under_the_same_lock(
     assert outcome == [the_other_starts]
 
 
+def test_a_start_looks_for_the_key_again_before_it_refuses_for_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start that found no key refused for good when the log it is for
+    existed, before taking the lock it looks again under. Another start
+    could store the key and make the log just after this one looked, so the
+    refusal came while the key that signed the log was stored, and a
+    supervised start stayed stopped."""
+    import secrets
+
+    import keyring
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    log = tmp_path / "audit.log"
+    other_key = secrets.token_bytes(32)
+    keychain: dict[tuple[str, str], str] = {}
+    reads = 0
+
+    def read(service: str, user: str) -> str | None:
+        nonlocal reads
+        reads += 1
+        found = keychain.get((service, user))
+        if reads == 1:
+            # The other start stores its key and makes its log just after.
+            keychain[(service, user)] = other_key.hex()
+            log.write_text("")
+        return found
+
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", side_effect=read),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        key = get_or_create_audit_key(log)
+
+    assert key == other_key
+    assert stored == []
+
+
+def test_without_the_keyring_package_a_start_looks_for_the_file_key_again_before_it_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the keyring package, a start that found no file key refused
+    for good when the log existed, before taking the lock the file key is
+    read under, though another start could have made that key and signed
+    the log with it just after this one looked."""
+    import secrets
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    log = tmp_path / "audit.log"
+    fallback = tmp_path / "audit-key.enc"
+    other_key = secrets.token_bytes(32)
+    real_exists = Path.exists
+    looked = False
+
+    def exists(self: Path, *args: Any, **kwargs: Any) -> bool:
+        nonlocal looked
+        found = real_exists(self, *args, **kwargs)
+        if self == fallback and not looked:
+            looked = True
+            # The other start makes the file key and its log just after.
+            salt = secrets.token_bytes(16)
+            ciphertext = audit_module._xor_encrypt("passphrase", salt, other_key)
+            fallback.write_text(f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8")
+            log.write_text("")
+        return found
+
+    monkeypatch.setattr(Path, "exists", exists)
+
+    assert get_or_create_audit_key(log) == other_key
+
+
+def test_without_the_keyring_package_an_audit_command_with_no_file_key_stops_at_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An audit command makes no key, so it has nothing to wait for the lock
+    for: with no file key it stops before taking it, and makes no folder."""
+    from autogpt_local_executor.audit import AuditKeyError
+
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setitem(sys.modules, "keyring", None)
+
+    with pytest.raises(AuditKeyError, match="none to read"):
+        audit_module.load_audit_key()
+
+    assert not fallback_dir.exists()
+
+
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
 
 
@@ -2392,3 +2576,128 @@ def test_a_keychain_that_comes_up_locked_while_waiting_makes_no_file_key(
 
     assert reads == 2
     assert not (tmp_path / "audit-key.enc").exists()
+
+
+def _keyring_found_no_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """keyring as a start leaves it that found no keychain: on its failure
+    backend, which it keeps for the rest of the process."""
+    import keyring.core
+    from keyring.backends import fail
+
+    monkeypatch.setattr(keyring.core, "_keyring_backend", fail.Keyring())
+
+
+def test_a_keychain_only_a_new_process_can_see_gets_no_file_key_beside_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """keyring picks its backend once per process. A start that found no
+    keychain kept the failure backend, so its second look under the lock
+    could never see a Secret Service that came up meanwhile, holding the key
+    another start stored: it made a file key, a second key, and signed the
+    log with it, which the next start, finding the keychain's key first,
+    refused. A new process looks instead, and a keychain it finds sends the
+    start to be started again with it (exit 75)."""
+    import textwrap
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+    from autogpt_local_executor.config import ShimConfig
+    from autogpt_local_executor.daemon import DaemonPreflightError, ShimDaemon
+
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    _keyring_found_no_keychain(monkeypatch)
+    # What a new process finds: a keychain holding the other start's key.
+    backends = tmp_path / "backends"
+    backends.mkdir()
+    (backends / "keychain_now_up.py").write_text(
+        textwrap.dedent(
+            """
+            from keyring.backend import KeyringBackend
+
+
+            class Keyring(KeyringBackend):
+                priority = 1
+
+                def get_password(self, service, username):
+                    return "6f" * 32
+
+                def set_password(self, service, username, password):
+                    raise NotImplementedError
+            """
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(backends))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keychain_now_up.Keyring")
+
+    with pytest.raises(AuditKeyUnavailableError, match="started again"):
+        get_or_create_audit_key(tmp_path / "audit.log")
+    config = ShimConfig(
+        session_id="session-1", allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"
+    )
+    with pytest.raises(DaemonPreflightError) as raised:
+        ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.transient is True
+    assert not (fallback_dir / "audit-key.enc").exists()
+    assert not (tmp_path / "audit.log").exists()
+
+
+def test_a_home_with_no_keychain_for_a_new_process_either_gets_the_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file fallback is for a home with no keychain at all: a new
+    process that finds none either lets the start make the file key, which
+    the next start, with the log it signed, reads."""
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    _keyring_found_no_keychain(monkeypatch)
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
+    log = tmp_path / "audit.log"
+
+    key = get_or_create_audit_key(log)
+    log.write_text("")
+
+    assert (fallback_dir / "audit-key.enc").is_file()
+    assert get_or_create_audit_key(log) == key
+
+
+@pytest.mark.parametrize("outcome", ["locked", "crashed", "timed out", "unrunnable"])
+def test_a_new_process_that_cant_say_whether_a_keychain_is_up_makes_no_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """A new process that couldn't finish its look (a keychain that is up
+    but waits to be unlocked, say) may have had a keychain to tell of: the
+    start waits, as it does for a keychain locked at its own first look.
+    Only the look's own answer says there is none, not an exit code: 3 is
+    also what Windows gives a process that aborted."""
+    import subprocess
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    _keyring_found_no_keychain(monkeypatch)
+    looks: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        looks.append(argv)
+        if outcome == "timed out":
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        if outcome == "unrunnable":
+            raise OSError(errno.ENOENT, "No such file or directory", argv[0])
+        if outcome == "crashed":
+            return subprocess.CompletedProcess(argv, 3, b"", b"")
+        return subprocess.CompletedProcess(argv, 1, b"", b"keyring.errors.KeyringLocked")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(AuditKeyUnavailableError):
+        get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert len(looks) == 1
+    assert looks[0][0] == sys.executable
+    assert not (fallback_dir / "audit-key.enc").exists()

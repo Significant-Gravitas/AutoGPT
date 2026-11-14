@@ -614,13 +614,16 @@ class CommandHandler:
 
         plat = platform_info.detect_platform()
         creation_flags = 0
-        preexec_fn = None
+        new_session = False
         if plat == "windows":
             # CREATE_NEW_PROCESS_GROUP so we can deliver CTRL_BREAK_EVENT.
             creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         else:
-            # New session = new pgid so we can kill the whole tree.
-            preexec_fn = os.setsid  # type: ignore[attr-defined]
+            # New session = new pgid so we can kill the whole tree. Not
+            # preexec_fn=os.setsid: Python code run in the forked child of a
+            # process with threads (the jail's checks run in worker threads)
+            # can deadlock it before exec.
+            new_session = True
 
         exit_code = -1
 
@@ -631,7 +634,7 @@ class CommandHandler:
                     cwd=str(cwd),
                     env=env,
                     creation_flags=creation_flags,
-                    preexec_fn=preexec_fn,
+                    new_session=new_session,
                 )
             else:
                 resolved = platform_info.resolve_shell(payload.shell.value)
@@ -657,7 +660,7 @@ class CommandHandler:
                     cwd=str(cwd),
                     env=env,
                     creation_flags=creation_flags,
-                    preexec_fn=preexec_fn,
+                    new_session=new_session,
                 )
         except FileNotFoundError as exc:
             await self._audit(
@@ -807,7 +810,7 @@ class CommandHandler:
         cwd: str,
         env: dict[str, str],
         creation_flags: int,
-        preexec_fn,
+        new_session: bool,
     ) -> asyncio.subprocess.Process:
         return await asyncio.create_subprocess_exec(
             *argv,
@@ -816,7 +819,7 @@ class CommandHandler:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             creationflags=creation_flags,
-            preexec_fn=preexec_fn,
+            start_new_session=new_session,
         )
 
     @staticmethod

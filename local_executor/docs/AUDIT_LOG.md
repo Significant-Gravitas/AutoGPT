@@ -147,7 +147,13 @@ If the keychain is unavailable, a legacy audit-only fallback uses
 `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`. It uses HMAC-derived XOR obfuscation, without
 authenticated encryption or a slow password KDF. It makes a new key only while
 there is no log yet; with one, which the keychain's key signed, the daemon
-waits for the keychain instead (it exits 75 to be restarted). A keychain that
+waits for the keychain instead (it exits 75 to be restarted). The keyring
+package picks its backend once per process, so a start that found no
+keychain can't see one that comes up later: before the fallback makes a new
+key, a new process looks for one, under the lock below, and a keychain it
+finds, which may hold a key another start stored meanwhile, sends the start
+to be started again with it (exit 75). So does a look that can't finish
+(a keychain still waiting to be unlocked, say). A keychain that
 turns up later, holding no audit key, leaves the file key in use: it signed
 the log. A start without the passphrase to read the file key stops for good
 instead of making a keychain key, since the file key may have signed a log,
@@ -168,7 +174,9 @@ Two starts at once that find no key (the service, and a `start` run by
 hand) make one between them: a key is made, and the file fallback's is
 read, under a lock every start takes, `.audit-key.lock` in
 `AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`), and a
-start that waited for it uses the key the other stored.
+start that waited for it uses the key the other stored, even when the
+other has made the log meanwhile: only the look under the lock decides
+that a log rules a new key out.
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using
@@ -323,7 +331,11 @@ require shipping a CA flow we don't need for v0.
 ## What this catches
 
 - **A record cut off part way** — a partial final line is reported as
-  `truncated`.
+  `truncated`. The writer cuts off what landed of a record whose write
+  failed part way (a full disk, say), so the log still ends with its last
+  whole record and the next write and start go on; a partial line left
+  some other way (the machine losing power mid-write, say) stays to be
+  reported.
 - **Record deletion** — `seq` jumps, prev_hmac mismatches.
 - **Field tampering** — HMAC mismatch on the tampered record.
 - **Wholesale log replacement** — verifier needs the audit key; an

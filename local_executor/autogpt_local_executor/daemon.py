@@ -566,9 +566,13 @@ class ShimDaemon:
             await self._preflight_or_raise()
             if not self._control_mode:
                 # A legacy session is jailed to allowed_root, which the shim
-                # creates on first run (CROSS_PLATFORM.md), as `doctor` does.
+                # creates on first run (CROSS_PLATFORM.md), as `doctor` does:
+                # in a worker thread, as a folder on a stalled mount would hold
+                # the event loop every session shares.
                 try:
-                    self.config.allowed_root.mkdir(parents=True, exist_ok=True)
+                    await asyncio.to_thread(
+                        self.config.allowed_root.mkdir, parents=True, exist_ok=True
+                    )
                 except OSError as exc:
                     raise _allowed_root_failure(self.config.allowed_root, exc) from exc
             if self._manage_audit_lifecycle:
