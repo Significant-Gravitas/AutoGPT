@@ -38505,6 +38505,24 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
+      "SubscriptionPaymentDue": {
+        "properties": {
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "currency": { "type": "string", "title": "Currency" },
+          "payment_url": { "type": "string", "title": "Payment Url" },
+          "plan": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Plan"
+          },
+          "due_since": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Due Since"
+          }
+        },
+        "type": "object",
+        "required": ["amount_due", "currency", "payment_url"],
+        "title": "SubscriptionPaymentDue"
+      },
       "SubscriptionStatusResponse": {
         "properties": {
           "tier": {
@@ -38565,6 +38583,13 @@
             "title": "Paused Workflow Schedules",
             "description": "Active workflow schedules that won't run until the user has a plan. Counted only for NO_TIER; 0 for every other tier.",
             "default": 0
+          },
+          "payment_due": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SubscriptionPaymentDue" },
+              { "type": "null" }
+            ],
+            "description": "The open bill of a renewal whose charge failed. Paying it at ``payment_url`` restores the plan, renewing from the payment. Set only for NO_TIER."
           },
           "pending_tier": {
             "anyOf": [

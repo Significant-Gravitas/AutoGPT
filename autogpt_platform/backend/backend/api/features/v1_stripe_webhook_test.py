@@ -22,12 +22,14 @@ from backend.data.credit import (
     sync_tier_from_checkout_session,
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
+from backend.data.subscription_billing_restart import RestartOutcome
 from backend.data.subscription_payment_failure import PaymentFailureOutcome
 from backend.util.test import SpinTestServer
 
 from .billing.subscriptions.routes import (
     _claim_stripe_event,
     _release_stripe_event,
+    _restart_period_if_paid_late,
     router,
 )
 
@@ -216,6 +218,11 @@ def test_claimed_webhook_recovers_subscription_without_collection(
         "backend.api.features.billing.subscriptions.routes.UserCredit.fulfill_checkout",
         new_callable=AsyncMock,
     )
+    restart = mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        return_value=RestartOutcome.NOT_APPLICABLE,
+    )
     response = client.post(
         "/credits/stripe_webhook",
         content=b"{}",
@@ -225,6 +232,11 @@ def test_claimed_webhook_recovers_subscription_without_collection(
     recovered.assert_awaited_once_with(current)
     collection.assert_not_awaited()
     fulfill.assert_not_awaited()
+    # A delivery that died part way through a billing restart resumes it.
+    if event_type == "invoice.paid":
+        restart.assert_awaited_once_with("in_retry")
+    else:
+        restart.assert_not_awaited()
 
 
 def test_stripe_webhook_checkout_propagates_sync_failure(
@@ -1084,3 +1096,228 @@ def test_trial_ending_event_reconciles_and_queues_trial_reminder(
     notify.assert_awaited_once_with(subscription, "ending")
     for mock in stub_lifecycle_emails.values():
         mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "event_type", ["invoice.paid", "invoice.payment_succeeded", "invoice_payment.paid"]
+)
+@pytest.mark.parametrize("outcome", list(RestartOutcome))
+def test_paid_invoice_restarts_the_period_last_and_alerts_when_it_cannot(
+    mocker: pytest_mock.MockFixture, event_type, outcome
+) -> None:
+    """A late payment restarts the billing period (SECRT-2873), after access
+    and any trial conversion are recorded against the paid invoice."""
+    invoice = {"id": "in_late", "customer": "cus_1", "subscription": "sub_1"}
+    mocker.patch(
+        "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
+    )
+    calls = MagicMock()
+    routes = "backend.api.features.billing.subscriptions.routes"
+    for name in (
+        "reconcile_wallet_payment_on_paid_invoice",
+        "handle_subscription_payment_success",
+        "on_trial_invoice",
+    ):
+        mocker.patch(
+            f"{routes}.{name}",
+            new=AsyncMock(side_effect=lambda *a, _n=name, **k: calls(_n)),
+        )
+
+    def restarted(invoice_id: str) -> RestartOutcome:
+        calls("restart")
+        return outcome
+
+    restart = mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new=AsyncMock(side_effect=restarted),
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
+    )
+    mocker.patch(
+        f"{routes}._claim_restart_alert", new_callable=AsyncMock, return_value=True
+    )
+
+    _post_event(
+        mocker,
+        {
+            "type": event_type,
+            "data": {
+                "object": (
+                    {"invoice": "in_late"}
+                    if event_type == "invoice_payment.paid"
+                    else invoice
+                )
+            },
+        },
+    )
+
+    assert [c.args[0] for c in calls.call_args_list] == [
+        "reconcile_wallet_payment_on_paid_invoice",
+        "handle_subscription_payment_success",
+        "on_trial_invoice",
+        "restart",
+    ]
+    restart.assert_awaited_once_with("in_late")
+    assert alert.await_count == int(outcome == RestartOutcome.NEEDS_MANUAL_FIX)
+
+
+class _InMemoryRedis:
+    """The SET NX / DEL subset the webhook's claims use."""
+
+    def __init__(self) -> None:
+        self.keys: dict[str, str] = {}
+
+    async def set(self, key: str, value: str, nx: bool = False, ex=None):
+        if nx and key in self.keys:
+            return None
+        self.keys[key] = value
+        return True
+
+    async def delete(self, *keys: str) -> int:
+        return sum(self.keys.pop(key, None) is not None for key in keys)
+
+
+@pytest.fixture
+def late_payment_needing_a_person(mocker: pytest_mock.MockFixture):
+    """A paid invoice whose restart needs a person, with the webhook's Redis
+    claims held in memory for this test only."""
+    routes = "backend.api.features.billing.subscriptions.routes"
+    mocker.patch(
+        f"{routes}.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=_InMemoryRedis(),
+    )
+    invoice_id = "in_late"
+    invoice = {"id": invoice_id, "customer": "cus_1", "subscription": "sub_1"}
+    mocker.patch(
+        "stripe.Invoice.retrieve_async", new_callable=AsyncMock, return_value=invoice
+    )
+    for name in (
+        "reconcile_wallet_payment_on_paid_invoice",
+        "handle_subscription_payment_success",
+        "on_trial_invoice",
+        "recover_claimed_billing_event",
+    ):
+        mocker.patch(f"{routes}.{name}", new_callable=AsyncMock)
+    restart = mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        return_value=RestartOutcome.NEEDS_MANUAL_FIX,
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    paid = {"id": "evt_paid", "type": "invoice.paid", "data": {"object": invoice}}
+    deliveries = (
+        paid,
+        paid,  # Stripe's redelivery
+        {
+            "id": "evt_invoice_payment_paid",
+            "type": "invoice_payment.paid",
+            "data": {"object": {"invoice": invoice_id}},
+        },
+    )
+    return deliveries, restart, alert
+
+
+def test_a_late_payment_needing_a_person_alerts_once_across_its_deliveries(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """One payment arrives as invoice.paid, invoice.payment_succeeded and
+    invoice_payment.paid, and Stripe redelivers each for days; every delivery
+    runs the restart again. The person is told once."""
+    deliveries, restart, alert = late_payment_needing_a_person
+
+    for event in deliveries:
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    alert.assert_awaited_once()
+
+
+def test_a_late_payment_alert_that_was_not_delivered_is_sent_by_the_next_delivery(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """A Discord outage on the first delivery must not use up the invoice's
+    one alert: the next delivery tells the person, and the one after does not
+    repeat it."""
+    deliveries, restart, alert = late_payment_needing_a_person
+    alert.side_effect = [False, True]
+
+    for event in deliveries:
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    assert alert.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_an_undelivered_alert_leaves_a_claim_it_does_not_hold(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A delivery whose claim failed on Redis alerts without holding the
+    claim, so its failed send must not free another delivery's claim for an
+    alert that did go out."""
+    routes = "backend.api.features.billing.subscriptions.routes"
+    redis = _InMemoryRedis()
+    redis.keys["billing_restart_alert:in_late"] = "1"
+    mocker.patch(
+        f"{routes}.get_redis_async",
+        new_callable=AsyncMock,
+        side_effect=[RuntimeError("redis down"), redis, redis],
+    )
+    mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        return_value=RestartOutcome.NEEDS_MANUAL_FIX,
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    await _restart_period_if_paid_late("in_late")
+
+    alert.assert_awaited_once()
+    assert "billing_restart_alert:in_late" in redis.keys
+
+
+def test_a_restart_stripe_refuses_alerts_instead_of_failing_the_webhook(
+    mocker: pytest_mock.MockFixture, late_payment_needing_a_person
+) -> None:
+    """Stripe answers each redelivery with the same refusal under the same
+    idempotency key, so a 500 would only replay it until Stripe gave up. The
+    webhook answers 200 and a person is told, once."""
+    deliveries, restart, alert = late_payment_needing_a_person
+    restart.return_value = None
+    restart.side_effect = stripe.InvalidRequestError("No such invoice", None)
+
+    for event in deliveries:
+        _post_event(mocker, event)
+
+    assert restart.await_count == 3
+    alert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_transient_stripe_error_in_the_restart_is_retried_by_stripe(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The reset may have landed; the retry finds it or makes it."""
+    routes = "backend.api.features.billing.subscriptions.routes"
+    mocker.patch(
+        f"{routes}.restart_period_after_late_payment",
+        new_callable=AsyncMock,
+        side_effect=stripe.APIConnectionError("timed out"),
+    )
+    alert = mocker.patch(
+        f"{routes}.alert_tier_reconciliation_discrepancy", new_callable=AsyncMock
+    )
+
+    with pytest.raises(stripe.APIConnectionError):
+        await _restart_period_if_paid_late("in_late")
+    alert.assert_not_awaited()

@@ -54,6 +54,9 @@ from backend.data.subscription_lookup_cache import (
     invalidate_active_subscription_cache,
     read_active_subscription,
 )
+from backend.data.subscription_payment_due_cache import (
+    invalidate_subscription_payment_due,
+)
 from backend.data.subscription_pending_cache import (
     PENDING_CHANGES,
     PendingChange,
@@ -1858,13 +1861,14 @@ async def set_subscription_tier(
 
 async def invalidate_billing_lookups(customer_id: str) -> None:
     """Drop the customer's cached billing lookups on every worker: the active
-    subscription and any pending change. Every path that changes the
-    customer's subscription in Stripe calls this after the change; it never
-    raises. Both at once, so a Redis outage costs the caller one deadline,
-    not two in a row."""
+    subscription, any pending change and a failed renewal's open bill. Every
+    path that changes the customer's subscription in Stripe calls this after
+    the change; it never raises. All at once, so a Redis outage costs the
+    caller one deadline, not one per lookup."""
     await asyncio.gather(
         invalidate_active_subscription_cache(customer_id),
         invalidate_pending_subscription_change(customer_id),
+        invalidate_subscription_payment_due(customer_id),
     )
 
 
@@ -3170,7 +3174,8 @@ async def _create_subscription_checkout(
 
 
 async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> None:
-    """Best-effort cancel of any active subs for the customer other than new_sub_id.
+    """Best-effort cancel of any active subs for the customer other than new_sub_id,
+    and of older past-due or unpaid ones (``end_plans_replaced_by``).
 
     Called from the webhook handler after a new subscription becomes active. Failures
     are logged but not raised so a transient Stripe error doesn't crash the webhook —
@@ -3184,6 +3189,11 @@ async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> Non
     TODO(#stripe-reconcile-job): replace this best-effort cleanup with a periodic
     reconciliation job that queries Stripe for customers with >1 active sub.
     """
+    from backend.data.subscription_payment_failure import (  # local import avoids circular
+        end_plans_replaced_by,
+    )
+
+    await end_plans_replaced_by(customer_id, new_sub_id)
     try:
         await _cancel_customer_subscriptions(customer_id, exclude_sub_id=new_sub_id)
     except stripe.StripeError:
@@ -3638,13 +3648,15 @@ def log_tier_reconciliation_discrepancy(
     return direction
 
 
-async def alert_tier_reconciliation_discrepancy(message: str) -> None:
+async def alert_tier_reconciliation_discrepancy(message: str) -> bool:
     """Best-effort ops alert to the platform Discord channel. Never raises so a
     Discord outage can't break reconciliation — but a delivery failure is logged
     at ERROR (→ Sentry) so a broken bot token surfaces loudly instead of leaving
-    ops blind. Discord is the primary alert surface; this is the fallback."""
+    ops blind. Discord is the primary alert surface; this is the fallback.
+    Returns whether Discord took the alert."""
     try:
         await discord_send_alert(message, DiscordChannel.PLATFORM)
+        return True
     except Exception:
         # Discord delivery failed (bad token / channel / gateway timeout) — log
         # the FULL alert content at ERROR so Sentry carries the same payload the
@@ -3655,6 +3667,7 @@ async def alert_tier_reconciliation_discrepancy(message: str) -> None:
             message,
             exc_info=True,
         )
+        return False
 
 
 def _track_billing_event(

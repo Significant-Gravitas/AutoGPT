@@ -206,6 +206,7 @@ model User {
   subscriptionTrial SubscriptionTrial?
   paidUsageActivation PaidUsageActivation?
   proActivationAttempt ProActivationAttempt?
+  subscriptionBillingRestarts SubscriptionBillingRestart[]
 
   // Relations
 
@@ -402,6 +403,30 @@ model SubscriptionTrial {
 
   @@index([status, endsAt])
   @@index([stripeCustomerId, id])
+}
+
+// A renewal or a trial's first invoice whose failed payment paused the plan
+// (SECRT-2873). Written when access is cut; paying the invoice later restarts
+// the billing period from the payment, and the row records how far that got,
+// kept after Stripe's 24-hour idempotency window so a repeated or delayed
+// event never restarts the period twice. Only the restart reads it, so it
+// goes with the account; the invoices and credit notes stay in Stripe.
+model SubscriptionBillingRestart {
+  stripeInvoiceId      String    @id
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId String
+  periodStart          DateTime
+  pausedAt             DateTime
+  paidAt               DateTime?
+  stripeCreditNoteId   String?
+  restartedAt          DateTime?
+  // Left for a person: the reset did not land, and its credit was taken back.
+  abandonedAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 // No account/trial foreign key: deleting an account must not reset intro eligibility.

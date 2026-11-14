@@ -35,6 +35,7 @@ export function subscriptionStatus(
     pending_tier: null,
     pending_tier_effective_at: null,
     pending_billing_cycle: null,
+    payment_due: null,
     ...overrides,
   });
 }
