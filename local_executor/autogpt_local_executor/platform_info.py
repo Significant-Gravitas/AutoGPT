@@ -206,8 +206,11 @@ class SessionDisplay:
     without either, `follow` takes them, and the session variables that go
     with them, from the manager's environment as it is now, and follows them
     after that: a new login brings a new display and, on GNOME, a new
-    XAUTHORITY; a session that ended takes them away. A shim run by hand, or
-    one that started with a display, keeps its own environment."""
+    XAUTHORITY; a session that ended takes them away. The session's values
+    stand in for any the service started with (an XAUTHORITY an earlier
+    session left doesn't open the new display), which come back once the
+    session ends. A shim run by hand, or one that started with a display,
+    keeps its own environment."""
 
     def __init__(
         self,
@@ -221,9 +224,12 @@ class SessionDisplay:
         self._clock = clock
         self._lock = threading.Lock()
         # The session variables this process started with, and those it took.
-        self._own: frozenset[str] | None = None
+        self._own: dict[str, str] | None = None
         self._taken: set[str] = set()
         self._read_at: float | None = None
+
+    def _started_with(self) -> dict[str, str]:
+        return {key: value for key in SESSION_DISPLAY_VARIABLES if (value := self._env.get(key))}
 
     def following(self) -> bool:
         """Whether `follow` takes this process's display from the manager:
@@ -231,10 +237,8 @@ class SessionDisplay:
         with self._lock:
             if self._env.get("AUTOGPT_SHIM_SUPERVISOR") != "systemd":
                 return False
-            own = self._own
-            if own is None:
-                own = frozenset(k for k in SESSION_DISPLAY_VARIABLES if self._env.get(k))
-            return not {"DISPLAY", "WAYLAND_DISPLAY"} & own
+            own = self._own if self._own is not None else self._started_with()
+            return not {"DISPLAY", "WAYLAND_DISPLAY"} & own.keys()
 
     def follow(self) -> bool:
         """Bring this process's display variables in line with the
@@ -244,8 +248,8 @@ class SessionDisplay:
             if self._env.get("AUTOGPT_SHIM_SUPERVISOR") != "systemd":
                 return False
             if self._own is None:
-                self._own = frozenset(k for k in SESSION_DISPLAY_VARIABLES if self._env.get(k))
-            if {"DISPLAY", "WAYLAND_DISPLAY"} & self._own:
+                self._own = self._started_with()
+            if {"DISPLAY", "WAYLAND_DISPLAY"} & self._own.keys():
                 return False
             now = self._clock()
             if self._read_at is not None and now - self._read_at < _MANAGER_READ_EVERY_SECONDS:
@@ -257,23 +261,29 @@ class SessionDisplay:
             usable = {
                 key: value
                 for key in SESSION_DISPLAY_VARIABLES
-                if key not in self._own and _usable(value := manager.get(key))
+                if _usable(value := manager.get(key))
             }
             if "DISPLAY" not in usable and "WAYLAND_DISPLAY" not in usable:
                 usable = {}
             changed = False
             for key in SESSION_DISPLAY_VARIABLES:
-                if key in self._own:
-                    continue
-                value = usable.get(key)
-                if value is None:
-                    if key in self._taken:
-                        self._env.pop(key, None)
-                        self._taken.discard(key)
-                        changed = True
-                elif self._env.get(key) != value:
-                    self._env[key] = value
+                if key in usable:
+                    # The session's, even over one this process started
+                    # with: an XAUTHORITY an earlier session left doesn't
+                    # open this session's display.
+                    value = usable[key]
                     self._taken.add(key)
+                elif key in self._taken:
+                    # Gone with the session: this process's own comes back.
+                    value = self._own.get(key)
+                    self._taken.discard(key)
+                else:
+                    continue
+                if self._env.get(key) != value:
+                    if value is None:
+                        self._env.pop(key, None)
+                    else:
+                        self._env[key] = value
                     changed = True
             if changed:
                 logger.info(

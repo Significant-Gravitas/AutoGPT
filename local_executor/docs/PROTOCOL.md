@@ -72,6 +72,9 @@ frame whose objects and arrays nest more than 64 levels deep is logged and
 dropped the same way; no message comes close. So is one holding `NaN`,
 `Infinity` or a number too large for a double (`1e999`, or a whole number
 309 digits long): JSON has none of them, though some encoders write them.
+The shim's log says where such a frame failed and how
+(`COMPUTER_TOOL_CALL.payload.tool: missing`), never what it held, so the
+text a malformed computer tool call was to type stays out of it.
 
 ### Frame-level `version`
 
@@ -198,6 +201,7 @@ is no platform path, recursive flag, glob, offset, or caller-controlled limit.
   "type": "DIRECTORY_LIST_REQUEST",
   "id": "request-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {"browse_id": null, "directory_ref": null}
 }
 ```
@@ -207,6 +211,7 @@ is no platform path, recursive flag, glob, offset, or caller-controlled limit.
   "type": "DIRECTORY_LIST_RESPONSE",
   "id": "request-uuid",
   "ts": 1234567890.1,
+  "version": "2.0",
   "payload": {
     "browse_id": "host-opaque-id",
     "current": null,
@@ -242,6 +247,7 @@ references fail closed.
   "type": "ATTACH_SESSION",
   "id": "request-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "session_id": "session-uuid",
     "browse_id": "host-opaque-id",
@@ -256,6 +262,7 @@ references fail closed.
   "type": "SESSION_ATTACHED",
   "id": "request-uuid",
   "ts": 1234567890.1,
+  "version": "2.0",
   "payload": {
     "session_id": "session-uuid",
     "allowed_root": "/Users/alice/Projects/AutoGPT",
@@ -344,6 +351,7 @@ process can access.
   "type": "EXECUTE_COMMAND",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "command": "ls -la /tmp",     // mutually exclusive with "argv"
     "argv": null,                  // OR ["ls", "-la", "/tmp"] — no shell parsing
@@ -396,6 +404,7 @@ semantics.
   "type": "COMMAND_RESULT",
   "id": "req-uuid",
   "ts": 1234567890.5,
+  "version": "2.0",
   "payload": {
     "stdout": "total 48\n...",
     "stderr": "",
@@ -430,6 +439,7 @@ must resolve inside `allowed_root`.
   "type": "FILE_READ",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "path": "/Users/alice/autogpt-workspace/data.csv",
     "encoding": "utf-8",    // "utf-8" | "base64"
@@ -474,6 +484,7 @@ hides the on-disk truth from the platform and breaks reproducibility.
   "type": "FILE_CONTENTS",
   "id": "req-uuid",
   "ts": 1234567890.1,
+  "version": "2.0",
   "payload": {
     "content": "col1,col2\n1,2\n",
     "encoding": "utf-8",
@@ -489,6 +500,7 @@ hides the on-disk truth from the platform and breaks reproducibility.
   "type": "FILE_WRITE",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "path": "/Users/alice/autogpt-workspace/output.txt",
     "content": "hello world\n",
@@ -549,6 +561,7 @@ there leaves a partial file, and the old contents are gone.
   "type": "ACK",
   "id": "req-uuid",
   "ts": 1234567890.1,
+  "version": "2.0",
   "payload": { "ok": true }
 }
 ```
@@ -562,6 +575,7 @@ Used in place of shell `ls -la` / `stat` / `test -e`. Cross-OS by design.
   "type": "FILE_STAT",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "path": "/Users/alice/autogpt-workspace/data.csv",
     "follow_symlinks": true
@@ -576,6 +590,7 @@ Used in place of shell `ls -la` / `stat` / `test -e`. Cross-OS by design.
   "type": "FILE_STAT_RESPONSE",
   "id": "req-uuid",
   "ts": 1234567890.1,
+  "version": "2.0",
   "payload": {
     "exists": true,
     "is_file": true,
@@ -615,6 +630,7 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
   "type": "FILE_LIST",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "path": "/Users/alice/autogpt-workspace",
     "glob": "*.csv",               // null = list everything
@@ -632,6 +648,7 @@ Used in place of shell `ls` / `find`. Optional glob pattern.
   "type": "FILE_LIST_RESPONSE",
   "id": "req-uuid",
   "ts": 1234567890.1,
+  "version": "2.0",
   "payload": {
     "entries": [
       {
@@ -684,6 +701,7 @@ Used in place of shell `rm` / `del`.
   "type": "FILE_DELETE",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "path": "/Users/alice/autogpt-workspace/old.csv",
     "recursive": false,            // required true to delete a non-empty dir
@@ -710,6 +728,7 @@ Used in place of shell `mv` / `move`. Also covers renames.
   "type": "FILE_MOVE",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "src": "/Users/alice/autogpt-workspace/a.csv",
     "dst": "/Users/alice/autogpt-workspace/b.csv",
@@ -852,7 +871,7 @@ once the driver has started.
 
 #### `COMPUTER_TOOLS_REQUEST` (platform → shim)
 ```json
-{"type": "COMPUTER_TOOLS_REQUEST", "id": "req-uuid", "ts": 1234567890.0, "payload": {}}
+{"type": "COMPUTER_TOOLS_REQUEST", "id": "req-uuid", "ts": 1234567890.0, "version": "2.0", "payload": {}}
 ```
 
 #### `COMPUTER_TOOLS_RESPONSE` (shim → platform)
@@ -861,6 +880,7 @@ once the driver has started.
   "type": "COMPUTER_TOOLS_RESPONSE",
   "id": "req-uuid",
   "ts": 1234567890.2,
+  "version": "2.0",
   "payload": {
     "driver": {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"},
     "instructions": "cua-driver: background GUI automation. ...",
@@ -902,6 +922,7 @@ other chats' work holds, then gets `SHIM_OVERLOADED`.
   "type": "COMPUTER_TOOL_CALL",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "tool": "run_steps",
     "arguments": {"pid": 844, "window_id": 10725, "steps": [{"tool": "click", "args": {"element_token": "s0000002a:14"}}], "observe": {}},
@@ -964,6 +985,7 @@ installed app in `list_apps` would match).
   "type": "COMPUTER_TOOL_RESULT",
   "id": "req-uuid",
   "ts": 1234567890.4,
+  "version": "2.0",
   "payload": {
     "tool": "run_steps",
     "is_error": false,
@@ -1007,6 +1029,7 @@ a copy made while it was read (`changed`).
   "type": "ERROR",
   "id": "req-uuid",
   "ts": 1234567890.0,
+  "version": "2.0",
   "payload": {
     "code": "PATH_OUTSIDE_ALLOWED_ROOT",
     "message": "Path /etc/passwd is outside allowed root /Users/alice/autogpt-workspace",
@@ -1094,8 +1117,8 @@ depends on `code`.
 
 #### `PING` / `PONG`
 ```json
-{ "type": "PING", "id": "uuid", "ts": 1234567890.0, "payload": {} }
-{ "type": "PONG", "id": "same-uuid", "ts": 1234567890.01, "payload": {} }
+{ "type": "PING", "id": "uuid", "ts": 1234567890.0, "version": "2.0", "payload": {} }
+{ "type": "PONG", "id": "same-uuid", "ts": 1234567890.01, "version": "2.0", "payload": {} }
 ```
 
 Platform sends `PING` every 30s. Shim must respond with `PONG` within 10s or connection is dropped.

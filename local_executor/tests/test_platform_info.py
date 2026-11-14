@@ -309,6 +309,42 @@ def test_the_display_follows_a_new_login_and_goes_with_the_session() -> None:
     assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
 
 
+def test_the_sessions_xauthority_replaces_one_the_service_started_with() -> None:
+    """A service that started without a display but with an XAUTHORITY (one
+    an earlier session left in the manager, say) kept it, and took the new
+    session's DISPLAY without the authority file that opens it, so computer
+    use stayed off. The session's variables go with its display, and the
+    service's own come back once the session ends."""
+    environ = {
+        "AUTOGPT_SHIM_SUPERVISOR": "systemd",
+        "XAUTHORITY": "/run/user/1000/xauth_old",
+        "XDG_CURRENT_DESKTOP": "sway",
+    }
+    manager = _Manager(DISPLAY=":0", XAUTHORITY="/run/user/1000/xauth_new", XDG_SESSION_TYPE="x11")
+    clock = _Clock()
+    follower = _follower(environ, manager, clock)
+
+    assert follower.follow() is True
+    assert environ == {
+        "AUTOGPT_SHIM_SUPERVISOR": "systemd",
+        "DISPLAY": ":0",
+        "XAUTHORITY": "/run/user/1000/xauth_new",
+        "XDG_SESSION_TYPE": "x11",
+        # The manager has none, so the service's own stands.
+        "XDG_CURRENT_DESKTOP": "sway",
+    }
+    assert follower.following() is True
+
+    manager.env = {}
+    clock.now += 11
+    assert follower.follow() is True
+    assert environ == {
+        "AUTOGPT_SHIM_SUPERVISOR": "systemd",
+        "XAUTHORITY": "/run/user/1000/xauth_old",
+        "XDG_CURRENT_DESKTOP": "sway",
+    }
+
+
 def test_the_manager_is_read_at_most_every_ten_seconds() -> None:
     manager = _Manager(DISPLAY=":0")
     clock = _Clock()

@@ -102,6 +102,7 @@ from .protocol import (
     StatusMessage,
     StatusPayload,
     StopRecordingMessage,
+    describe_parse_failure,
     dump_message,
     make_ack,
     make_error,
@@ -1093,12 +1094,14 @@ class ShimDaemon:
         except ValueError as exc:
             # pydantic's ValidationError, like a JSON or UTF-8 error, is a
             # ValueError. A control daemon fails terminally on an ACK without
-            # its required fields (PROTOCOL.md → HELLO_ACK).
+            # its required fields (PROTOCOL.md → HELLO_ACK). pydantic's text
+            # quotes the frame's values, so neither error carries it along.
+            failure = f"Malformed HELLO_ACK: {describe_parse_failure(exc)}"
             if not self._control_mode:
-                raise
+                raise ValueError(failure) from None
             self._disable_reconnect = True
             await self._close_failed_handshake(ws, 4400, "Malformed HELLO_ACK")
-            raise RuntimeError(f"Malformed HELLO_ACK: {exc.__class__.__name__}") from exc
+            raise RuntimeError(failure) from None
         if not isinstance(ack, HelloAckMessage):
             raise RuntimeError(f"Expected HELLO_ACK, got {type(ack).__name__}")
         if ack.id != hello.id:
@@ -1321,7 +1324,9 @@ class ShimDaemon:
         try:
             msg = parse_message(raw)
         except (ValidationError, ValueError) as exc:
-            logger.warning("Failed to parse inbound frame: %s", exc)
+            # Not pydantic's text, which quotes what the frame held: a
+            # malformed computer tool call's typed text, say.
+            logger.warning("Failed to parse inbound frame: %s", describe_parse_failure(exc))
             return
         if self._negotiated_version is not None and not same_major(
             msg.version, self._negotiated_version

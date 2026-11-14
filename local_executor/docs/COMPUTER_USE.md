@@ -92,7 +92,9 @@ decides whether to offer computer use and before each call, together with
 `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `DESKTOP_SESSION`, `SWAYSOCK`,
 `HYPRLAND_INSTANCE_SIGNATURE`). It follows them when a new login brings a
 new display (on GNOME, a new `XAUTHORITY` too) and restarts cua-driver with
-them, and lets them go when the session ends. GNOME and KDE export them, as
+them, and lets them go when the session ends. The session's values stand in
+for any the service started with, such as an `XAUTHORITY` an earlier session
+left, which come back once it ends. GNOME and KDE export them, as
 do the Xsession and xinit scripts of most distributions. A session that
 doesn't, such as some standalone window managers, needs
 `dbus-update-activation-environment --systemd DISPLAY XAUTHORITY` (or

@@ -158,7 +158,9 @@ turns up later, holding no audit key, leaves the file key in use: it signed
 the log. A start without the passphrase to read the file key stops for good
 instead of making a keychain key, since the file key may have signed a log,
 another deployment's included, and every start would find the new key
-first. A new file key is written beside its place and then renamed there,
+first. With no keychain up yet, such a start waits for one instead (exit
+75): it may hold the key the log was signed with. A new file key is written
+beside its place and then renamed there,
 so a full disk part way through leaves none, and the start exits 75 to be
 restarted, as it does when the disk fills making the key's folder or its
 lock. OAuth tokens have no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
