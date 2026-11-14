@@ -11,6 +11,7 @@ interface Props {
 export function InChatApproval({ sessionId, checkoutId }: Props) {
   const {
     readOnly,
+    assistantName,
     state,
     purchase,
     isLoading,
@@ -27,7 +28,7 @@ export function InChatApproval({ sessionId, checkoutId }: Props) {
 
   const walletNote = (
     <p className="text-body text-foreground-secondary">
-      Paid with your Link wallet. The agent never sees your card number.
+      Paid with your Link wallet. {assistantName} never sees your card number.
     </p>
   );
   if (readOnly) return walletNote;
@@ -54,6 +55,7 @@ export function InChatApproval({ sessionId, checkoutId }: Props) {
     return (
       <SettledDecision
         state={state}
+        assistantName={assistantName}
         agentNotTold={agentNotTold}
         onTellAgent={retryTellAgent}
       />

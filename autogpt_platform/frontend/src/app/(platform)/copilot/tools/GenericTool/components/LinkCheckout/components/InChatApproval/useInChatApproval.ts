@@ -71,6 +71,7 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
 
   return {
     readOnly,
+    assistantName: actions?.assistantName ?? "Otto",
     state: record?.state,
     purchase: record ? purchaseDetails(record) : null,
     isLoading: approval.isLoading,

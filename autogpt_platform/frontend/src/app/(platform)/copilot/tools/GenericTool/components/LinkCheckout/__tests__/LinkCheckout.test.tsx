@@ -47,9 +47,18 @@ function approval(
   };
 }
 
-function renderCard(chatSurface: "copilot" | "share" = "copilot") {
+interface CardChat {
+  chatSurface?: "copilot" | "share";
+  assistantName?: string;
+}
+
+function renderCard({ chatSurface = "copilot", assistantName }: CardChat = {}) {
   return render(
-    <CopilotChatActionsProvider onSend={onSend} chatSurface={chatSurface}>
+    <CopilotChatActionsProvider
+      onSend={onSend}
+      chatSurface={chatSurface}
+      assistantName={assistantName}
+    >
       <LinkCheckout output={output} />
     </CopilotChatActionsProvider>,
   );
@@ -265,20 +274,27 @@ describe("LinkCheckout in-chat approval", () => {
 
     expect(
       await screen.findByText(
-        "Your decision is saved, but the message to the agent did not send.",
+        "Your decision is saved, but the message to Otto did not send.",
       ),
     ).toBeDefined();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Tell the agent" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Tell Otto" }));
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
     expect(onSend.mock.calls[1][0]).toContain(`"checkout_id":"${CHECKOUT_ID}"`);
     await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "Tell the agent" }),
-      ).toBeNull(),
+      expect(screen.queryByRole("button", { name: "Tell Otto" })).toBeNull(),
     );
+  });
+
+  it("names the expert whose chat the purchase is in", async () => {
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() => approval("awaiting")),
+    );
+    renderCard({ assistantName: "Max" });
+
+    expect(
+      await screen.findByText(/Max never sees your card number/),
+    ).toBeDefined();
   });
 
   it("shows a decision already made after the chat reloads", async () => {
@@ -297,10 +313,10 @@ describe("LinkCheckout in-chat approval", () => {
     server.use(
       getGetV2GetALinkPurchaseApprovalMockHandler(() => approval("awaiting")),
     );
-    renderCard("share");
+    renderCard({ chatSurface: "share" });
 
     expect(
-      await screen.findByText(/The agent never sees your card number/),
+      await screen.findByText(/Otto never sees your card number/),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
