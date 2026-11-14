@@ -1924,6 +1924,51 @@ async def test_a_call_kept_waiting_past_its_deadline_never_starts(
     assert [r["tool"] for r in _records(fake_log, "call")] == ["drag"]
 
 
+class _HeldAudit:
+    """An audit writer whose writes wait until `go` is set, as one behind
+    `autogpt-shim audit verify` on a large log does, recording each op."""
+
+    def __init__(self) -> None:
+        self.go = asyncio.Event()
+        self.writing = asyncio.Event()
+        self.written: list[str] = []
+
+    async def write(self, op: str, **_kwargs: Any) -> None:
+        self.writing.set()
+        await self.go.wait()
+        self.written.append(op)
+
+
+async def test_a_call_whose_record_is_slow_to_write_leaves_the_computer_to_the_next(
+    make_handler, fake_log
+) -> None:
+    """A call kept the computer, which every chat's calls take turns at,
+    until its audit record was written, after the driver was done: an audit
+    log held up (`autogpt-shim audit verify` on a large log, a slow disk)
+    held every other chat's calls too, each until its deadline. The record
+    is still written before the call's answer goes out."""
+    first = make_handler(session_id=None)
+    second = make_handler(session_id="other-chat")
+    first.share_with(second)
+    held = _HeldAudit()
+    first.audit = held  # type: ignore[assignment]
+    call = asyncio.create_task(first.handle(_call("click", {"pid": 7})))
+    try:
+        await asyncio.wait_for(held.writing.wait(), timeout=30)
+
+        other = await second.handle(_call("click", {"pid": 8}, timeout_seconds=10))
+
+        assert isinstance(other, ComputerToolResultMessage)
+        assert not call.done()
+    finally:
+        held.go.set()
+    response = await call
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert held.written == ["COMPUTER_TOOL_CALL"]
+    assert [r["tool"] for r in _records(fake_log, "call")] == ["click", "click"]
+
+
 class _HeldStart:
     """A client factory whose drivers don't finish starting until `go` is
     set, counting the starts."""

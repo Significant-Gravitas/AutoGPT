@@ -1757,7 +1757,10 @@ class ComputerUseHandler:
         shim received it (`received_at`, loop time), covering its wait for
         the computer, which every session's calls take turns at, and the
         driver's work. A call whose deadline passes while it waits never
-        reaches the driver."""
+        reaches the driver. The computer is let go once the driver is done,
+        before the call's audit record is written: a record held up (the
+        log locked by `autogpt-shim audit verify`, a slow disk) holds up
+        this call's answer, which goes out after it, not other chats' calls."""
         deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
         details = self._call_details(msg)
@@ -1767,9 +1770,19 @@ class ComputerUseHandler:
         except TimeoutError:
             return await self._not_started(msg, details, start)
         try:
-            return await self._run_call(msg, details, start, deadline)
-        finally:
-            self._machine_turn.release()
+            try:
+                response, record, result = await self._run_call(msg, details, start, deadline)
+            finally:
+                self._machine_turn.release()
+        except asyncio.CancelledError:
+            # The action may have happened: the bridge stopped the driver to
+            # end it, but nothing takes back a click it already made.
+            await self._emit(
+                msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
+            )
+            raise
+        await self._emit(msg.id, record, result)
+        return response
 
     @staticmethod
     def call_deadline(msg: ComputerToolCallMessage, received_at: float | None = None) -> float:
@@ -1803,42 +1816,45 @@ class ComputerUseHandler:
         details: dict[str, Any],
         start: float,
         deadline: float,
-    ) -> Any:
+    ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+        """Relay the call, and return its answer with its audit record's
+        details and result, which _call writes once the computer is free."""
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
         approved = msg.payload.approved_arguments
         try:
             result = await self._relay(tool, arguments, deadline, approved)
-        except asyncio.CancelledError:
-            # The action may have happened: the bridge stopped the driver to
-            # end it, but nothing takes back a click it already made.
-            await self._emit(
-                msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
-            )
-            raise
         except ComputerUseError as exc:
-            await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
-            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+            return (
+                make_error(msg.id, exc.code, exc.message, details=exc.details or None),
+                details,
+                _err_result(_elapsed_ms(start), exc.code.value),
+            )
         except DriverUnavailable as exc:
-            await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
-            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+            return (
+                make_error(msg.id, exc.code, exc.message, details=exc.details or None),
+                details,
+                _err_result(_elapsed_ms(start), exc.code.value),
+            )
         except McpError as exc:
             if exc.code != INVALID_PARAMS:
-                await self._emit(
-                    msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value)
+                return (
+                    make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"cua-driver: {exc.message}"),
+                    details,
+                    _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
                 )
-                return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"cua-driver: {exc.message}")
             # Arguments the driver rejected are the model's to fix.
             result = self._result_payload(
                 tool, {"isError": True, "content": [{"type": "text", "text": exc.message}]}
             )
         except CallNotStarted:
-            return await self._not_started(msg, details, start)
-        except TimeoutError as exc:
-            await self._emit(
-                msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
+            return (
+                self._not_started_response(msg),
+                details,
+                _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value),
             )
-            return make_error(
+        except TimeoutError as exc:
+            timed_out = make_error(
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
                 (
@@ -1856,18 +1872,32 @@ class ComputerUseHandler:
                     "started": True,
                 },
             )
+            return (
+                timed_out,
+                details,
+                _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value),
+            )
         payload, summary = result
-        await self._emit(msg.id, {**details, **summary}, _ok_result(_elapsed_ms(start)))
-        return ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload)
+        return (
+            ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload),
+            {**details, **summary},
+            _ok_result(_elapsed_ms(start)),
+        )
 
     async def _not_started(
         self, msg: ComputerToolCallMessage, details: dict[str, Any], start: float
     ) -> Any:
-        """The deadline passed before the driver took the call: it waited
-        behind other calls on this computer, or for the driver to start."""
+        """Audit, and answer, a call whose deadline passed before it had the
+        computer."""
         await self._emit(
             msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
         )
+        return self._not_started_response(msg)
+
+    @staticmethod
+    def _not_started_response(msg: ComputerToolCallMessage) -> Any:
+        """The deadline passed before the driver took the call: it waited
+        behind other calls on this computer, or for the driver to start."""
         return make_error(
             msg.id,
             ErrorCode.COMMAND_TIMEOUT,

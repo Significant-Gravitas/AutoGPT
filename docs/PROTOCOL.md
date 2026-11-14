@@ -915,7 +915,10 @@ sent again. A start that outlasts it goes on, for the calls after it. At the dea
 the driver, which can't cancel a call it is running, and answers
 `COMMAND_TIMEOUT` with `details.started: true`, though an action the driver
 already made stays made. The next call starts the driver afresh, without the
-element tokens and sessions of the old one.
+element tokens and sessions of the old one. Once the driver is done, the call
+lets the next one have the computer and writes its audit record, and its
+answer goes out when the record is in: an audit log held up delays that
+answer, not other calls.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
 arguments the platform approved for this call: usually the person, on an
