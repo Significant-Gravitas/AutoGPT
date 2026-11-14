@@ -570,12 +570,15 @@ class AuditKeyError(RuntimeError):
 
 
 class AuditKeyStorageError(AuditKeyError):
-    """The lock a new audit key is made under couldn't be taken: a storage
-    error, which a restart may fix (a full disk) or not (a read-only one).
-    `error` is the OSError that says which."""
+    """The audit key's storage failed: the lock a new key is made under
+    couldn't be taken, or the file fallback's folder or new key couldn't be
+    written. A storage error, which a restart may fix (a full disk) or not
+    (a read-only one): `error` is the OSError that says which, and
+    `description` what failed, without it."""
 
-    def __init__(self, message: str, error: OSError) -> None:
-        super().__init__(message)
+    def __init__(self, description: str, error: OSError) -> None:
+        super().__init__(f"{description} ({error})")
+        self.description = description
         self.error = error
 
 
@@ -701,7 +704,7 @@ def _holding_key_lock() -> Iterator[None]:
             stack.enter_context(_file_lock(lock))
         except OSError as exc:
             raise AuditKeyStorageError(
-                f"The lock the audit key is made under, {lock}, couldn't be taken ({exc})", exc
+                f"The lock the audit key is made under, {lock}, couldn't be taken", exc
             ) from exc
         yield
 
@@ -779,9 +782,21 @@ def _fallback_audit_key(keyring: Any = None) -> bytes:
     require an OS keychain, so this is not a headless token-storage solution.
     With `keyring` (the module), a start that found no keychain looks in it
     again under the lock before it makes a file key (_keychain_key_meanwhile).
+    A storage error making its folder or key raises AuditKeyStorageError.
     """
     fallback_path = _fallback_path()
-    fallback_path.parent.mkdir(parents=True, exist_ok=True)
+    folder = fallback_path.parent
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        # A file where the folder belongs, which no restart moves.
+        raise AuditKeyError(
+            f"The file fallback's folder for the audit key, {folder}, is not a folder"
+        ) from None
+    except OSError as exc:
+        raise AuditKeyStorageError(
+            f"The file fallback's folder for the audit key, {folder}, couldn't be made", exc
+        ) from exc
     passphrase = os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE")
     if not passphrase:
         raise RuntimeError(
@@ -839,9 +854,33 @@ def _fallback_key_held(fallback_path: Path, passphrase: str) -> bytes:
     key = secrets.token_bytes(32)
     salt = secrets.token_bytes(16)
     ct = _xor_encrypt(passphrase, salt, key)
-    fallback_path.write_text(f"{salt.hex()}:{ct.hex()}", encoding="utf-8")
-    _chmod_owner_only(fallback_path)
+    _store_fallback_key(fallback_path, f"{salt.hex()}:{ct.hex()}".encode("ascii"))
     return key
+
+
+def _store_fallback_key(path: Path, blob: bytes) -> None:
+    """Write a new file fallback key whole or not at all: the bytes go to a
+    new file beside `path`, owner-only from the start, which is then renamed
+    to it. Written in place, a full disk part way through left the key cut
+    short, and every later start refused it as malformed. A storage error
+    raises AuditKeyStorageError and leaves no file behind."""
+    temp = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    try:
+        with os.fdopen(os.open(temp, flags, 0o600), "wb") as handle:
+            handle.write(blob)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    except BaseException as exc:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        if isinstance(exc, OSError):
+            raise AuditKeyStorageError(
+                f"The file fallback's audit key couldn't be written to {path}", exc
+            ) from exc
+        raise
+    _chmod_owner_only(path)
 
 
 def _fallback_path() -> Path:

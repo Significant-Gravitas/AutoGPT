@@ -525,9 +525,7 @@ class ShimDaemon:
             ) from exc
         except AuditKeyStorageError as exc:
             # A full disk clears; a read-only one doesn't: the errno says.
-            raise _audit_storage_failure(
-                "The lock the audit key is made under couldn't be taken", exc.error
-            ) from exc
+            raise _audit_storage_failure(exc.description, exc.error) from exc
         except Exception as exc:
             # A malformed stored key, or no keychain and no file fallback.
             raise DaemonPreflightError(
