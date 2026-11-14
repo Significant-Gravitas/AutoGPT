@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from autogpt_local_executor import session_grants
 from autogpt_local_executor.session_grants import (
     RootGrantError,
     RootGrantSigner,
@@ -133,6 +134,13 @@ def _renumber_the_device(monkeypatch: pytest.MonkeyPatch, root: Path) -> None:
     monkeypatch.setattr(Path, "stat", renumbered)
 
 
+def _creation_time(monkeypatch: pytest.MonkeyPatch, birth: str | None) -> None:
+    """From now on every folder's creation time is `birth`: None as on a
+    filesystem that reports none (an NFS share on Linux 6.12 or earlier,
+    say)."""
+    monkeypatch.setattr(session_grants, "directory_birth", lambda path: birth)
+
+
 def _grant(key: bytes, claims: dict[str, Any]) -> str:
     """A grant of `claims`, signed as RootGrantSigner signs one."""
     encoded = (
@@ -155,12 +163,13 @@ def test_a_grant_restores_once_its_folders_device_is_numbered_afresh(
     """The fingerprint held st_dev, which a POSIX system gives a device when
     it is attached or mounted, so once a reboot or a new mount numbered the
     folder's device afresh, its grant never restored again, and its chat
-    could no longer use this computer. The folder's inode number, creation
-    time and path still tell one put in its place apart. Windows' st_dev is
-    the volume's serial number, kept from when it was formatted, and still
-    counts there."""
+    could no longer use this computer. Where the folder has a creation time,
+    its inode number, creation time and path still tell one put in its place
+    apart. Windows' st_dev is the volume's serial number, kept from when it
+    was formatted, and still counts there."""
     root = tmp_path / "workspace"
     root.mkdir()
+    _creation_time(monkeypatch, "ns:1700000000123456789")
     signer = RootGrantSigner(b"a" * 32, "machine-1")
     issued = signer.issue("session-1", root, 1)
     _renumber_the_device(monkeypatch, root)
@@ -208,3 +217,60 @@ def test_a_grant_fingerprinted_with_its_device_number_restores_while_that_holds(
     _renumber_the_device(monkeypatch, root)
     with pytest.raises(RootGrantError, match="changed"):
         signer.verify(grant, "session-1")
+
+
+def test_a_grant_for_a_folder_with_no_creation_time_keeps_to_its_device(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where the filesystem reports no creation time, the path and inode
+    number can't tell the selected folder from another filesystem mounted at
+    its path later: the root folders of two filesystems of one type usually
+    share an inode number (2 on ext4). Without the device number in its
+    fingerprint, the folder's grant restored on a filesystem the person
+    never chose. It restores while the device number holds."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, None)
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", root, 1)
+
+    assert signer.verify(issued.root_grant, "session-1") == issued
+    # The same path and inode number on another device, as another
+    # filesystem mounted at the path shows them.
+    _renumber_the_device(monkeypatch, root)
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+
+
+def test_a_grant_with_neither_a_device_number_nor_a_creation_time_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant issued while a POSIX fingerprint held no device number names a
+    folder with no creation time by its path and inode number alone, which
+    another filesystem mounted at that path matches too, so it no longer
+    restores, even unchanged: the person selects the folder again."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, None)
+    canonical = Path(os.path.realpath(root))
+    stat = canonical.stat(follow_symlinks=False)
+    identity = {"inode": stat.st_ino, "path": os.path.normcase(str(canonical))}
+    fingerprint = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    key = b"a" * 32
+    grant = _grant(
+        key,
+        {
+            "allowed_root": str(canonical),
+            "birth": None,
+            "fingerprint": fingerprint,
+            "issued_at": 1.0,
+            "machine_id": "machine-1",
+            "revision": 1,
+            "session_id": "session-1",
+        },
+    )
+
+    with pytest.raises(RootGrantError, match="changed"):
+        RootGrantSigner(key, "machine-1").verify(grant, "session-1")
