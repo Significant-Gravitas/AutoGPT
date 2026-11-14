@@ -11,7 +11,7 @@ This file guides coding agents working in `local_executor/`. It holds `autogpt-s
 
 ## How it fits with the platform
 
-- The wire protocol is `docs/PROTOCOL.md`. The platform's side lives in `autogpt_platform/backend/backend/copilot/tools/local_pc_*` and `autogpt_platform/backend/backend/api/features/local_executor/`. A protocol change updates both sides in the same pull request.
+- The wire protocol is `docs/PROTOCOL.md`. The platform's side lives in `autogpt_platform/backend/backend/copilot/tools/local_pc_*` and `autogpt_platform/backend/backend/api/features/local_executor/`. A protocol change updates both sides in the same pull request. Protocol 2.0 is the one exception: its platform side is pull request #13050, which lands first, and no platform speaking 1.x was ever released.
 - Sign-in is OAuth with PKCE for the `CONNECT_LOCAL_EXECUTOR` scope (`docs/OAUTH_FLOW.md`). Each computer signs in on its own.
 - The platform's setup card installs a pinned revision (`LocalExecutorSetup.tsx`). A change only reaches users once that pin moves.
 
