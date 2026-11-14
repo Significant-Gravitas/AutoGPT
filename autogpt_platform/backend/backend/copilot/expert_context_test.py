@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.experts.models import (
+    AI_DISCLOSURE_RULE,
     PROTECTED_SOUL_RULES,
     CheckedExpert,
     Expert,
@@ -28,7 +29,9 @@ from backend.copilot.expert_check import remember_expert_check, sharing_expert_c
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
+    GATED_WORK_RULE,
     OWNED_BLOCK_TAGS,
+    UNGATED_WORK_RULE,
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
 )
@@ -327,7 +330,20 @@ class TestBuildExpertIdentitySuffix:
         )
 
     @pytest.mark.asyncio
-    async def test_latest_soul_fields_and_protected_rules_are_rendered(self):
+    @pytest.mark.parametrize("in_turn", [False, True], ids=["read", "in_turn"])
+    @pytest.mark.parametrize(
+        "gated, told, not_told",
+        [
+            (True, GATED_WORK_RULE, UNGATED_WORK_RULE),
+            (False, UNGATED_WORK_RULE, GATED_WORK_RULE),
+        ],
+    )
+    async def test_latest_soul_fields_and_protected_rules_are_rendered(
+        self, gated: bool, told: str, not_told: str, in_turn: bool
+    ):
+        """A gated session asking in chat as well would ask the owner twice; an
+        ungated one keeps the ask for outward steps nobody asked for. A turn
+        builds it from the expert it checked, so both routes are covered."""
         expert = _expert().model_copy(
             update={
                 "identity": "I help teams find the clearest strategy.",
@@ -340,21 +356,37 @@ class TestBuildExpertIdentitySuffix:
         mock_db.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
         )
-        with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_checks(),
+        ):
+            if in_turn:
+                remember_expert_check(
+                    "user-1",
+                    "exp-1",
+                    CheckedExpert(
+                        expert=expert,
+                        organization_id="personal-org",
+                        team_id="personal-team",
+                    ),
+                )
             result = await build_expert_identity_suffix(
                 "user-1",
                 "exp-1",
                 organization_id="personal-org",
                 team_id="personal-team",
+                gated=gated,
             )
 
+        assert mock_db.get_expert.await_count == (0 if in_turn else 1)
         assert "I help teams find the clearest strategy." in result
         assert "Warm, concise, and direct." in result
         assert "Never invent customer evidence." in result
         assert "<what_ive_learned>" not in result
         assert "Nothing recorded yet." not in result
-        for rule in PROTECTED_SOUL_RULES:
-            assert rule and rule in result
+        assert AI_DISCLOSURE_RULE in result
+        assert told in result
+        assert not_told not in result
 
     @pytest.mark.asyncio
     async def test_voice_preferences_are_fenced_as_untrusted_quoted_data(self):

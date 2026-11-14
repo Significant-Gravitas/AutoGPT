@@ -104,7 +104,7 @@ from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.exceptions import NotFoundError
-from backend.copilot.gate import active_mode
+from backend.copilot.gate import active_mode, gate_active
 from backend.copilot.gate.held import resolve_answered
 from backend.util.llm.provider_billing import (
     PROVIDER_UNAVAILABLE_CODE,
@@ -1980,6 +1980,7 @@ async def _apply_building_mode_restart(
         session.expert_id,
         organization_id=session.organization_id,
         team_id=session.team_id,
+        gated=await gate_active(session.user_id, session),
     )
     # Same supplement order as the main assembly. The delegation and
     # chat-reading tools stay registered across a restart (registration happens
@@ -5251,6 +5252,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         session.expert_id,
         organization_id=session.organization_id,
         team_id=session.team_id,
+        gated=await gate_active(session.user_id, session),
     )
     expert_identity_validated = True
 
