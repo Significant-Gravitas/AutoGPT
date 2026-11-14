@@ -113,7 +113,11 @@ class StoreValueBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.data or input_data.input
+        # The trigger value is used only when no data is stored: a falsy
+        # stored value (0, False, "", [], {}) is still the retained data.
+        yield "output", (
+            input_data.input if input_data.data is None else input_data.data
+        )
 
 
 class PrintToConsoleBlock(Block):
