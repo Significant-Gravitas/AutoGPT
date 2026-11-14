@@ -4415,6 +4415,11 @@ async def _run_stream_attempt(
         options=launch_options(state.options), transport=transport
     )
     client = await sdk_client.__aenter__()
+    # Before the ``try``: its ``finally`` reads how the attempt ended.
+    loop_state = _SDKLoopState(
+        last_real_msg_time=time.monotonic(),
+        last_flush_time=time.monotonic(),
+    )
     try:
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
@@ -4452,11 +4457,6 @@ async def _run_stream_attempt(
         else:
             await send_user_text(client, state.query_message, ctx.session_id)
             state.transcript_builder.append_user(content=ctx.current_message)
-
-        loop_state = _SDKLoopState(
-            last_real_msg_time=time.monotonic(),
-            last_flush_time=time.monotonic(),
-        )
 
         async for ev in _consume_sdk_until_done(client, ctx, state, acc, loop_state):
             yield ev
@@ -4515,6 +4515,14 @@ async def _run_stream_attempt(
                 yield ev
     finally:
         await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
+        # A stopped attempt gets no ResultMessage; the CLI saved its spend as it
+        # exited. An attempt that raised an error is the retry loop's to absorb.
+        if (
+            isinstance(sys.exception(), (asyncio.CancelledError, GeneratorExit))
+            and not acc.stream_completed
+            and not loop_state.ended_with_stream_error
+        ):
+            await _record_unreported_cli_spend(ctx, state)
 
     # --- Post-stream processing (only on success) ---
     if state.adapter.has_unresolved_tool_calls:
@@ -4550,17 +4558,7 @@ async def _run_stream_attempt(
 
     hangup_pause: TurnPause | None = None
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
-        snapshot = await asyncio.to_thread(
-            read_cli_session_usage,
-            ctx.sdk_cwd,
-            state.options.resume or state.options.session_id or ctx.session_id,
-            ctx.log_prefix,
-        )
-        state.usage.record_unreported(
-            snapshot,
-            state.observed_model or getattr(state.options, "model", None),
-            ctx.log_prefix,
-        )
+        await _record_unreported_cli_spend(ctx, state)
         # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
         # branch means the CLI hung up — per-query budget exhausted, max_turns,
         # OOM, or crash — without ever emitting a ResultMessage.
@@ -4621,6 +4619,23 @@ async def _run_stream_attempt(
                 loop_state.stream_error_code not in _OUTER_LOOP_YIELDS_ERROR_CODES
             ),
         )
+
+
+async def _record_unreported_cli_spend(
+    ctx: _StreamContext, state: "_RetryState"
+) -> None:
+    """Charge what the CLI saved in its session file beyond the results seen."""
+    snapshot = await asyncio.to_thread(
+        read_cli_session_usage,
+        ctx.sdk_cwd,
+        state.options.resume or state.options.session_id or ctx.session_id,
+        ctx.log_prefix,
+    )
+    state.usage.record_unreported(
+        snapshot,
+        state.observed_model or getattr(state.options, "model", None),
+        ctx.log_prefix,
+    )
 
 
 async def _seed_transcript(
@@ -6675,9 +6690,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # from the failed attempt in the uploaded transcript.
             transcript_snap = state.transcript_builder.snapshot()
             events_yielded = 0
+            attempt_stream = _run_stream_attempt(stream_ctx, state)
 
             try:
-                async for event in _run_stream_attempt(stream_ctx, state):
+                async for event in attempt_stream:
                     if not isinstance(event, _EPHEMERAL_EVENT_TYPES):
                         events_yielded += 1
                     # Emit a one-time StreamStatus when the SDK switches
@@ -6707,6 +6723,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
+                raise
+            except GeneratorExit:
+                # Closed at a yield above: ``async for`` leaves the attempt
+                # suspended, and its CLI close must run before ``finally``.
+                await attempt_stream.aclose()
                 raise
             except _BuildingModeRestart:
                 # enter_agent_building_mode: relaunch this attempt with the
@@ -6930,33 +6951,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if not already_yielded:
                     yield StreamError(errorText=failure.display_msg, code=failure.code)
 
-        # Copy token usage from retry state to outer-scope accumulators
-        # so the finally block can persist them.
-        if state is not None:
-            turn_prompt_tokens = state.usage.prompt_tokens
-            turn_completion_tokens = state.usage.completion_tokens
-            turn_cache_read_tokens = state.usage.cache_read_tokens
-            turn_cache_creation_tokens = state.usage.cache_creation_tokens
-            turn_cost_usd = state.usage.cost_usd
-
         # Emit token usage to the client (must be in try to reach SSE stream).
         # Session persistence of usage is in finally to stay consistent with
         # rate-limit recording even if an exception interrupts between here
         # and the finally block.
-        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+        if state is not None and (
+            state.usage.prompt_tokens > 0 or state.usage.completion_tokens > 0
+        ):
             # total_tokens = prompt (uncached input) + completion (output).
             # Cache tokens are tracked separately and excluded from total
             # so that the semantics match the baseline path (OpenRouter)
             # which folds cache into prompt_tokens. Keeping total_tokens
             # = prompt + completion everywhere makes cross-path comparisons
             # and session-level aggregation consistent.
-            total_tokens = turn_prompt_tokens + turn_completion_tokens
             yield StreamUsage(
-                prompt_tokens=turn_prompt_tokens,
-                completion_tokens=turn_completion_tokens,
-                total_tokens=total_tokens,
-                cache_read_tokens=turn_cache_read_tokens,
-                cache_creation_tokens=turn_cache_creation_tokens,
+                prompt_tokens=state.usage.prompt_tokens,
+                completion_tokens=state.usage.completion_tokens,
+                total_tokens=state.usage.prompt_tokens + state.usage.completion_tokens,
+                cache_read_tokens=state.usage.cache_read_tokens,
+                cache_creation_tokens=state.usage.cache_creation_tokens,
             )
 
         if ended_with_stream_error:
@@ -7075,6 +7088,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # turn (see drain_pending_messages call above), so there's
             # nothing to clean up here — any message pushed after that
             # point belongs to the next turn.
+
+            # Here, not at the end of the try: a stopped or failed turn is
+            # charged for the model calls it made too.
+            if state is not None:
+                turn_prompt_tokens = state.usage.prompt_tokens
+                turn_completion_tokens = state.usage.completion_tokens
+                turn_cache_read_tokens = state.usage.cache_read_tokens
+                turn_cache_creation_tokens = state.usage.cache_creation_tokens
+                turn_cost_usd = state.usage.cost_usd
 
             if codex_gateway is not None:
                 deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
