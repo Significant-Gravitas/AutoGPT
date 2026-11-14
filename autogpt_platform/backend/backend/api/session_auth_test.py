@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import jwt
 import pytest
+from autogpt_libs.auth import closed_accounts
 from autogpt_libs.auth import config as auth_config
 from autogpt_libs.auth import jwt_utils
 from autogpt_libs.auth.service import (
@@ -150,6 +151,56 @@ async def test_migration_window_does_not_allow_malformed_session_claims(
     with pytest.raises(HTTPException) as rejected:
         await session_auth.require_active_auth_session({"sub": "user", "sid": sid})
     assert rejected.value.status_code == 401
+
+
+@pytest.fixture
+def ended_session(monkeypatch: pytest.MonkeyPatch) -> Iterator[AsyncMock]:
+    """A token whose session is gone, for an account that isn't banned."""
+    monkeypatch.setattr(
+        session_auth.user_store, "is_user_banned", AsyncMock(return_value=False)
+    )
+    sessions = Mock(is_auth_session_active=AsyncMock(return_value=False))
+    monkeypatch.setattr(session_auth, "auth_session_db", Mock(return_value=sessions))
+    users = Mock(is_auth_user_banned=AsyncMock(return_value=False))
+    monkeypatch.setattr(session_auth, "user_db", Mock(return_value=users))
+    closed = AsyncMock(return_value=False)
+    monkeypatch.setattr(closed_accounts, "_closed_account_query", lambda: closed)
+    closed_accounts.forget_account_state("user")
+    yield closed
+    closed_accounts.forget_account_state("user")
+
+
+async def test_an_ended_session_is_refused_with_a_code_the_client_signs_out_on(
+    ended_session: AsyncMock,
+) -> None:
+    with pytest.raises(HTTPException) as rejected:
+        await session_auth.require_active_auth_session({"sub": "user", "sid": "s1"})
+    assert rejected.value.status_code == 401
+    assert rejected.value.detail == {
+        "code": "session_revoked",
+        "message": "Session expired or revoked",
+    }
+
+
+async def test_a_closed_account_is_refused_as_closed_not_as_an_ended_session(
+    ended_session: AsyncMock,
+) -> None:
+    # Closing an account deletes every session, so its tokens reach the
+    # "not active" answer.
+    ended_session.return_value = True
+    with pytest.raises(HTTPException) as rejected:
+        await session_auth.require_active_auth_session({"sub": "user", "sid": "s1"})
+    assert rejected.value.status_code == 401
+    assert rejected.value.detail == closed_accounts.ACCOUNT_CLOSED_DETAIL
+
+
+async def test_a_live_session_costs_no_closed_account_lookup(
+    ended_session: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sessions = Mock(is_auth_session_active=AsyncMock(return_value=True))
+    monkeypatch.setattr(session_auth, "auth_session_db", Mock(return_value=sessions))
+    await session_auth.require_active_auth_session({"sub": "user", "sid": "s1"})
+    ended_session.assert_not_awaited()
 
 
 def _sign(key: ec.EllipticCurvePrivateKey, payload: dict[str, Any]) -> str:

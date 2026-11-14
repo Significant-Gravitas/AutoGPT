@@ -5,6 +5,12 @@ import {
   queueFollowUpMessage,
 } from "../queueFollowUpMessage";
 
+const validateSession = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
+  useAuthStore: { getState: () => ({ validateSession }) },
+}));
+
 vi.mock("@/services/environment", () => ({
   environment: {
     getAGPTServerBaseUrl: () => "https://api.example.test",
@@ -128,6 +134,42 @@ describe("queueFollowUpMessage", () => {
     await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
       /Expected 200 from \/messages\/pending; got 500/,
     );
+  });
+
+  it("checks the session with the auth backend when the one behind the token has ended", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: { code: "session_revoked", message: "Session ended" },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
+      /got 401/,
+    );
+    await vi.waitFor(() =>
+      expect(validateSession).toHaveBeenCalledWith({ force: true }),
+    );
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("stays signed in on a 401 that is not an ended session", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { pathname: "/copilot", replace });
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Not authenticated" }), {
+        status: 401,
+      }),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
+      /got 401/,
+    );
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("throws on 429 rate-limit response", async () => {
