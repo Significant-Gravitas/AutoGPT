@@ -1,6 +1,7 @@
 """Tests for the Slack OAuth v2 install flow."""
 
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import parse_qs, urlparse
@@ -83,29 +84,8 @@ def test_user_param_roundtrip_tamper_and_expiry():
 
 @pytest.mark.asyncio
 async def test_callback_exchanges_code_and_stores_install():
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
-        patch(f"{_O}.record_guild_joined", new=AsyncMock()) as roster,
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = "https://f.example"
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            return_value={
-                "ok": True,
-                "access_token": "xoxb-workspace",
-                "team": {"id": "T1", "name": "Acme"},
-                "bot_user_id": "UBOT",
-                "app_id": "A1",
-            }
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "auth-code"})
-        )
+    with _slack() as (upsert, roster):
+        resp = await _callback()
 
     upsert.assert_awaited_once()
     kwargs = upsert.await_args.kwargs
@@ -123,29 +103,11 @@ async def test_callback_exchanges_code_and_stores_install():
 
 @pytest.mark.asyncio
 async def test_callback_with_user_state_records_pending_install():
-    cid, secret = _creds()
     with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()),
-        patch(f"{_O}.record_guild_joined", new=AsyncMock()),
+        _slack(),
         patch(f"{_O}.mark_pending", new=AsyncMock()) as pending,
-        patch(f"{_O}.Settings") as settings,
     ):
-        settings.return_value.config.frontend_base_url = "https://f.example"
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            return_value={
-                "ok": True,
-                "access_token": "xoxb-workspace",
-                "team": {"id": "T1", "name": "Acme"},
-                "bot_user_id": "UBOT",
-                "app_id": "A1",
-            }
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state("user-123"), "code": "auth-code"})
-        )
+        resp = await _callback("user-123")
     pending.assert_awaited_once()
     user_id, install = pending.await_args.args
     assert user_id == "user-123"
@@ -162,27 +124,9 @@ async def test_callback_with_user_state_records_pending_install():
 
 @pytest.mark.asyncio
 async def test_callback_without_app_id_falls_back_to_settings_page():
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()),
-        patch(f"{_O}.record_guild_joined", new=AsyncMock()),
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.frontend_base_url = "https://f.example"
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            return_value={
-                "ok": True,
-                "access_token": "xoxb-workspace",
-                "team": {"id": "T1", "name": "Acme"},
-                "bot_user_id": "UBOT",
-            }
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "auth-code"})
-        )
+    no_app_id = {k: v for k, v in _INSTALLED.items() if k != "app_id"}
+    with _slack(returns=no_app_id):
+        resp = await _callback()
     assert resp.status_code == 302
     assert (
         resp.headers["location"] == "https://f.example/settings/bots?slack_installed=1"
@@ -191,9 +135,7 @@ async def test_callback_without_app_id_falls_back_to_settings_page():
 
 @pytest.mark.asyncio
 async def test_install_folds_a_verified_user_param_into_the_state():
-    cid, secret = _creds()
-    with cid, secret, patch(f"{_O}.Settings") as settings:
-        settings.return_value.config.platform_base_url = "https://b.example"
+    with _slack():
         param = oauth.make_install_user_param("user-123")
         resp = await oauth._handle_install(_req({"u": param}))
     location = resp.headers["location"]
@@ -204,9 +146,7 @@ async def test_install_folds_a_verified_user_param_into_the_state():
 
 @pytest.mark.asyncio
 async def test_install_ignores_a_forged_user_param():
-    cid, secret = _creds()
-    with cid, secret, patch(f"{_O}.Settings") as settings:
-        settings.return_value.config.platform_base_url = "https://b.example"
+    with _slack():
         resp = await oauth._handle_install(_req({"u": "user-666.123.badsig"}))
     location = resp.headers["location"]
     state = parse_qs(urlparse(location).query)["state"][0]
@@ -216,31 +156,9 @@ async def test_install_ignores_a_forged_user_param():
 
 @pytest.mark.asyncio
 async def test_callback_fires_on_installed_so_stale_clients_evict():
-    cid, secret = _creds()
     evicted: list[str] = []
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()),
-        patch(f"{_O}.record_guild_joined", new=AsyncMock()),
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = ""
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            return_value={
-                "ok": True,
-                "access_token": "xoxb-new",
-                "team": {"id": "T1", "name": "Acme"},
-                "bot_user_id": "UBOT",
-                "app_id": "A1",
-            }
-        )
-        await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "c"}),
-            on_installed=evicted.append,
-        )
+    with _slack(frontend_url="", returns={**_INSTALLED, "access_token": "xoxb-new"}):
+        await _callback(code="c", on_installed=evicted.append)
     assert evicted == ["T1"]
 
 
@@ -263,28 +181,8 @@ async def test_callback_handles_user_denied():
 async def test_callback_falls_back_to_slack_redirect_without_a_frontend_url():
     # Self-hosted deployments may run the API without our frontend; the Slack
     # redirect still gets the user to the bot rather than a blank page.
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()),
-        patch(f"{_O}.record_guild_joined", new=AsyncMock()),
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.frontend_base_url = ""
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            return_value={
-                "ok": True,
-                "access_token": "xoxb-workspace",
-                "team": {"id": "T1", "name": "Acme"},
-                "bot_user_id": "UBOT",
-                "app_id": "A1",
-            }
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "auth-code"})
-        )
+    with _slack(frontend_url=""):
+        resp = await _callback()
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://slack.com/app_redirect?app=A1&team=T1"
 
@@ -294,24 +192,9 @@ async def test_callback_exchange_failure_redirects_gracefully():
     # slack_sdk raises SlackApiError on ok:false (expired/reused code, wrong
     # secret) — the callback must land the browser back on settings with the
     # error flag, not surface a raw 500.
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = "https://f.example"
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            side_effect=SlackApiError(
-                "bad code", response={"ok": False, "error": "invalid_code"}
-            )
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "expired-code"})
-        )
+    error = SlackApiError("bad code", response={"ok": False, "error": "invalid_code"})
+    with _slack(raises=error) as (upsert, _roster):
+        resp = await _callback(code="expired-code")
     upsert.assert_not_awaited()
     assert resp.status_code == 302
     assert resp.headers["location"] == (
@@ -321,21 +204,9 @@ async def test_callback_exchange_failure_redirects_gracefully():
 
 @pytest.mark.asyncio
 async def test_callback_transport_failure_also_lands_gracefully():
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = "https://f.example"
-        # slack_sdk re-raises the raw asyncio/aiohttp error on transport failure.
-        web_client.return_value.oauth_v2_access = AsyncMock(side_effect=TimeoutError())
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "auth-code"})
-        )
+    # slack_sdk re-raises the raw asyncio/aiohttp error on transport failure.
+    with _slack(raises=TimeoutError()) as (upsert, _roster):
+        resp = await _callback()
     upsert.assert_not_awaited()
     assert resp.status_code == 302
     assert resp.headers["location"] == (
@@ -347,23 +218,9 @@ async def test_callback_transport_failure_also_lands_gracefully():
 async def test_callback_failure_detail_carries_slack_error_code():
     # Without a frontend URL the plain-text landing is all an operator sees,
     # so Slack's error code must survive into it.
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = ""
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            side_effect=SlackApiError(
-                "bad code", response={"ok": False, "error": "invalid_code"}
-            )
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "expired-code"})
-        )
+    error = SlackApiError("bad code", response={"ok": False, "error": "invalid_code"})
+    with _slack(frontend_url="", raises=error):
+        resp = await _callback(code="expired-code")
     assert resp.status_code == 400
     assert b"invalid_code" in resp.body
 
@@ -372,21 +229,9 @@ async def test_callback_failure_detail_carries_slack_error_code():
 async def test_callback_handles_a_non_json_slack_response():
     # A proxy outage hands slack_sdk a text/plain body; SlackApiError then
     # carries a raw aiohttp response with no .get(), which must not 500.
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = "https://f.example"
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            side_effect=SlackApiError("bad gateway", response=MagicMock(spec=[]))
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "auth-code"})
-        )
+    error = SlackApiError("bad gateway", response=MagicMock(spec=[]))
+    with _slack(raises=error):
+        resp = await _callback()
     assert resp.status_code == 302
     assert resp.headers["location"] == (
         "https://f.example/settings/bots?slack_install_error=1"
@@ -406,21 +251,9 @@ async def test_callback_failure_reads_the_code_from_a_real_sdk_response():
         headers={},
         status_code=200,
     )
-    cid, secret = _creds()
-    with (
-        cid,
-        secret,
-        patch(f"{_O}.AsyncWebClient") as web_client,
-        patch(f"{_O}.Settings") as settings,
-    ):
-        settings.return_value.config.platform_base_url = "https://b.example"
-        settings.return_value.config.frontend_base_url = ""
-        web_client.return_value.oauth_v2_access = AsyncMock(
-            side_effect=SlackApiError("bad code", response=response)
-        )
-        resp = await oauth._handle_callback(
-            _req({"state": oauth._make_state(), "code": "expired-code"})
-        )
+    error = SlackApiError("bad code", response=response)
+    with _slack(frontend_url="", raises=error):
+        resp = await _callback(code="expired-code")
     assert resp.status_code == 400
     assert b"invalid_code" in resp.body
 
@@ -432,3 +265,45 @@ def test_scopes_match_the_app_manifest():
         Path(oauth.__file__).with_name("app-manifest.yaml").read_text()
     )
     assert set(manifest["oauth_config"]["scopes"]["bot"]) == set(oauth._SCOPES)
+
+
+_INSTALLED = {
+    "ok": True,
+    "access_token": "xoxb-workspace",
+    "team": {"id": "T1", "name": "Acme"},
+    "bot_user_id": "UBOT",
+    "app_id": "A1",
+}
+
+
+@contextmanager
+def _slack(
+    *,
+    frontend_url: str = "https://f.example",
+    returns: dict = _INSTALLED,
+    raises: BaseException | None = None,
+):
+    """Patch the app credentials, Settings, both install stores and Slack's
+    oauth.v2.access, which answers `returns` unless given `raises`."""
+    cid, secret = _creds()
+    with (
+        cid,
+        secret,
+        patch(f"{_O}.AsyncWebClient") as web_client,
+        patch(f"{_O}.upsert_bot_install", new=AsyncMock()) as upsert,
+        patch(f"{_O}.record_guild_joined", new=AsyncMock()) as roster,
+        patch(f"{_O}.Settings") as settings,
+    ):
+        settings.return_value.config.platform_base_url = "https://b.example"
+        settings.return_value.config.frontend_base_url = frontend_url
+        web_client.return_value.oauth_v2_access = (
+            AsyncMock(return_value=returns)
+            if raises is None
+            else AsyncMock(side_effect=raises)
+        )
+        yield upsert, roster
+
+
+async def _callback(state_user: str = "", code: str = "auth-code", **kwargs):
+    request = _req({"state": oauth._make_state(state_user), "code": code})
+    return await oauth._handle_callback(request, **kwargs)
