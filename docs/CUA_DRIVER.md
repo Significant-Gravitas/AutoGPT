@@ -328,9 +328,12 @@ where one of another release fails the same way, and asks
 prompting; if either is missing it exits 78 and launchd starts it again
 later, as before. Each chat's session checks again when it starts,
 through the same driver. The platform gives a new chat's session a few
-seconds to connect, so if another chat's call holds the driver for more
-than two of them, the new session goes ahead unchecked: the grants are the
-app's, checked when the shim started, and a busy driver is a working one.
+seconds to connect, so the check, its run as well as its start, ends
+within two of them: if another chat's call holds the driver that long, or
+the driver takes the check and doesn't answer, the new session goes ahead
+unchecked, without waiting for a driver that overran the check to be
+stopped. The grants are the app's, checked when the shim started, and a
+busy driver is a working one.
 Its HELLO waits as briefly for the screen size, the call's run as well as
 its start, and leaves it out instead, without waiting for a driver that
 overran the call to be stopped (the stop keeps the driver's turn, so no

@@ -2671,6 +2671,62 @@ async def test_a_chats_hello_does_not_wait_for_a_stalled_driver_to_stop(
         await parent._computer_handler.close()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows ends a process at once on terminate")
+async def test_a_chats_permission_check_ends_within_its_wait_when_the_driver_stalls(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """A chat's permission check (macOS) waited for the shared driver only
+    until the driver took it: one that took it and stalled held the chat's
+    start for the check's 30 s, then for the driver's stop (terminated, then
+    killed after two seconds, then waited for two more), past the eight
+    seconds the platform gives a chat's session. The whole check fits in the
+    chat's wait, and the session goes ahead unchecked, as it does when the
+    driver is busy; the stop keeps the driver's turn until the old driver is
+    gone, so no call starts another one meanwhile."""
+    from autogpt_local_executor import daemon as daemon_module
+    from autogpt_local_executor import handlers, platform_info
+    from autogpt_local_executor.computer_use import mcp_client
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    monkeypatch.setattr(daemon_module, "PERMISSION_CHECK_SECONDS", 60.0)
+    monkeypatch.setattr(mcp_client, "KILL_GRACE_SECONDS", 60.0)
+    monkeypatch.setenv("FAKE_CUA_PERMISSIONS_SLOW_SECONDS", "60")
+    monkeypatch.setenv("FAKE_CUA_IGNORE_TERM", "1")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    bridge = parent._computer_handler.driver
+    stalled: StdioMcpClient | None = None
+    check: asyncio.Future[None] | None = None
+    try:
+        await bridge.snapshot()
+        stalled = bridge._client
+        assert stalled is not None and stalled._process is not None
+        check = asyncio.ensure_future(child._preflight_computer_use())
+        done, _ = await asyncio.wait({check}, timeout=30)
+
+        assert check in done
+        assert check.result() is None
+        # The driver took the check, and is still being stopped.
+        assert [r["tool"] for r in _records(fake_log, "call")] == ["check_permissions"]
+        assert stalled._process.returncode is None
+        assert bridge._turn.locked()
+        stalled._process.kill()
+        loop = asyncio.get_running_loop()
+        until = loop.time() + 30
+        while bridge._turn.locked():
+            assert loop.time() < until, "the stop never let go of the driver's turn"
+            await asyncio.sleep(0.01)
+    finally:
+        if check is not None:
+            check.cancel()
+        if stalled is not None and stalled._process is not None:
+            with contextlib.suppress(ProcessLookupError):
+                stalled._process.kill()
+        await parent._computer_handler.close()
+
+
 async def test_a_chat_attached_again_after_two_idle_detaches_passes_its_permission_check(
     tmp_path, fake_log, monkeypatch
 ) -> None:

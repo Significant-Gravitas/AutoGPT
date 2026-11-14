@@ -9,6 +9,8 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_VERSION       serverInfo.version (default 0.38.0)
   FAKE_CUA_EXTRA_TOOLS   comma-separated tools listed beyond the catalog
   FAKE_CUA_PERMISSIONS   JSON for check_permissions' structured result
+  FAKE_CUA_PERMISSIONS_SLOW_SECONDS  how long check_permissions takes to answer (default
+                         at once)
   FAKE_CUA_SCREEN        JSON for get_screen_size's structured result
   FAKE_CUA_CLIPBOARD     file holding the clipboard text
   FAKE_CUA_CLIPBOARD_TYPES  comma-separated clipboard types
@@ -174,6 +176,8 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
         )
         return text_result("1920x1080", size)
     if name == "check_permissions":
+        if os.environ.get("FAKE_CUA_PERMISSIONS_SLOW_SECONDS"):
+            time.sleep(float(os.environ["FAKE_CUA_PERMISSIONS_SLOW_SECONDS"]))
         granted = json.loads(
             os.environ.get("FAKE_CUA_PERMISSIONS")
             or '{"accessibility": true, "screen_recording": true}'
