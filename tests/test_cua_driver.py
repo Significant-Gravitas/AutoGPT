@@ -974,6 +974,18 @@ def test_arguments_that_reach_the_disk_wait_for_approval(
          "steps[0]"),
         ("run_steps", {"steps": [{"launch_app": {"name": "Calculator"}}]}, [], "steps[0]"),
         ("run_steps", {"steps": [{"tool": "Launch_App", "args": {}}]}, [], "steps[0]"),
+        # Steps the shim can't look inside: a number stopped the check with a
+        # TypeError, and the call went unaudited, and a string or an object
+        # was read a character or a key at a time, none of them a step.
+        ("run_steps", {"steps": 1}, [], "steps"),
+        ("run_steps", {"steps": True}, [], "steps"),
+        ("run_steps", {"steps": "click"}, [], "steps"),
+        ("run_steps", {"steps": {"0": {"tool": "click", "args": {"debug_image_out": "/x"}}}}, [],
+         "steps"),
+        ("run_steps", {"steps": [{"tool": "click", "args": {"pid": 1}}, "garbage"]}, [],
+         "steps[1]"),
+        ("run_steps", {"steps": [{"tool": "run_steps", "args": {"steps": 1}}]}, [],
+         "steps[0].steps"),
         # The driver runs `observe` as get_window_state, which writes the
         # screenshot to the file it names.
         (
@@ -1012,7 +1024,10 @@ def test_arguments_this_machine_never_takes_are_refused(
         ("get_window_state", {"pid": 1, "screenshot_out_file": ""}),
         ("clipboard_write", {"text": "hello"}),
         ("check_permissions", {"prompt": False}),
-        ("run_steps", {"steps": [{"tool": "click", "args": {"pid": 1}}, "garbage"]}),
+        (
+            "run_steps",
+            {"steps": [{"tool": "click", "args": {"pid": 1}}, {"wait_for": {"name": "Saved"}}]},
+        ),
         ("launch_app", {"name": "Calculator"}),
         ("launch_app", {"name": "notepad.exe", "start_minimized": True}),
         ("launch_app", {"bundle_id": "com.apple.calculator"}),
@@ -1790,6 +1805,11 @@ async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_looks_opens_
                 "observe": {"pid": 1, "window_id": 2, "screenshot_out_file": "/home/me/.bashrc"},
             },
         ),
+        # A batch whose steps the shim can't look inside; a number used to
+        # end the call as INTERNAL_ERROR, with no audit record.
+        ("run_steps", {"steps": 1}),
+        ("run_steps", {"steps": {"0": {"tool": "move_cursor", "args": {"x": 1, "y": 1}}}}),
+        ("run_steps", {"steps": [{"tool": "move_cursor", "args": {"x": 1, "y": 1}}, "garbage"]}),
         ("launch_app", {"name": "/bin/sh"}),
     ],
 )
