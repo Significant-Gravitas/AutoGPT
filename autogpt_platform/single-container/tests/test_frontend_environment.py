@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -196,6 +197,42 @@ class FrontendEnvironmentTest(unittest.TestCase):
         self.assertIn("REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC", policy)
         self.assertNotIn("GRANT ALL", policy)
         self.assertNotIn("GRANT CREATE", policy)
+
+
+class FrontendBakeAppEnvTest(unittest.TestCase):
+    def test_baked_app_env_matches_entrypoint(self) -> None:
+        """The frontend bake must carry the app env the entrypoint runs.
+
+        The backend mounts its LOCAL-only surface (the test-data seeder under
+        /api/admin, /docs) from the RUNTIME app_env, while the frontend gates
+        the same surface from NEXT_PUBLIC_APP_ENV baked at build time. When
+        the two drift, the admin UI shows endpoints that 404: in the shipped
+        appliance Admin > Test Data rendered and "Generate Test Data" failed
+        with "Not Found" (#16736).
+        """
+        dockerfile = (SINGLE_CONTAINER_DIR / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        entrypoint = (SINGLE_CONTAINER_DIR / "entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
+
+        baked = re.findall(r"^\s*NEXT_PUBLIC_APP_ENV=(\S+)", dockerfile, re.MULTILINE)
+        runtime = re.findall(r"\bexport APP_ENV=(\S+)", entrypoint)
+        self.assertEqual(
+            len(baked), 1, f"expected one NEXT_PUBLIC_APP_ENV bake, got {baked}"
+        )
+        self.assertEqual(
+            len(runtime), 1, f"expected one APP_ENV export, got {runtime}"
+        )
+        self.assertEqual(
+            baked[0],
+            runtime[0],
+            "the appliance's baked NEXT_PUBLIC_APP_ENV must match the runtime "
+            "APP_ENV entrypoint.sh exports, or the frontend gates its "
+            "local-only admin surface against a different app env than the "
+            "backend mounts it for",
+        )
 
 
 if __name__ == "__main__":
