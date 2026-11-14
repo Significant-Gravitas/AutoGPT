@@ -11,9 +11,10 @@ request that is already approved.
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Path, Request, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Security, status
 from pydantic import BaseModel
 
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.link_checkout.approval import (
     ApprovalConflict,
     ApprovalState,
@@ -72,7 +73,7 @@ async def get_link_purchase_approval(
 @router.post(
     "/sessions/{session_id}/link-checkouts/{checkout_id}/approve",
     summary="Approve a Link purchase",
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "No such purchase in the caller's chat"},
         409: {"description": "Already declined, or expired"},
@@ -91,7 +92,7 @@ async def approve_link_purchase(
 @router.post(
     "/sessions/{session_id}/link-checkouts/{checkout_id}/decline",
     summary="Decline a Link purchase",
-    dependencies=[Security(auth.requires_user)],
+    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "No such purchase in the caller's chat"},
         409: {"description": "Already approved, or expired"},
