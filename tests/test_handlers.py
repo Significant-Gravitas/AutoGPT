@@ -10,6 +10,7 @@ import os
 import signal
 import stat
 import sys
+import tempfile
 import textwrap
 import threading
 import time
@@ -523,6 +524,46 @@ async def test_list_glob_csv(tmp_path: Path) -> None:
     assert isinstance(resp, FileListResponseMessage)
     names = {e.name for e in resp.payload.entries}
     assert names == {"b.csv"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("folds", "listed"), [(True, {"data.csv"}), (False, set())])
+async def test_a_glob_matches_by_the_folders_case_rule_where_the_shim_cant_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, folds: bool, listed: set[str]
+) -> None:
+    """Whether a glob's case counts was told by a file made in the listed
+    folder for a moment. Where none could be made (a read-only mount, say),
+    the OS's default answered: on Linux `*.CSV` missed `data.csv` on a
+    filesystem that folds case, and on macOS and Windows it matched
+    `data.csv` on one that keeps case."""
+    (tmp_path / "data.csv").write_text("a")
+    (tmp_path / "notes.txt").write_text("b")
+    # As named and as resolved (macOS's /var is /private/var).
+    folders = {os.path.normcase(str(tmp_path)), os.path.normcase(os.path.realpath(tmp_path))}
+    real_stat = os.stat
+
+    def stat_in_a_folder_with_that_rule(path, *args, **kwargs):
+        parent, name = os.path.split(os.fspath(path))
+        if os.path.normcase(parent) not in folders or name in os.listdir(parent):
+            return real_stat(path, *args, **kwargs)
+        same = [entry for entry in os.listdir(parent) if entry.lower() == name.lower()]
+        if folds and same:
+            return real_stat(os.path.join(parent, same[0]), *args, **kwargs)
+        raise FileNotFoundError(errno.ENOENT, "No such file or directory", os.fspath(path))
+
+    def read_only(*_args, **_kwargs):
+        raise OSError(errno.EROFS, "Read-only file system")
+
+    monkeypatch.setattr(os, "stat", stat_in_a_folder_with_that_rule)
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", read_only)
+    response = await FileHandler(make_config(tmp_path)).handle_list(
+        FileListMessage(
+            id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(tmp_path), glob="*.CSV")
+        )
+    )
+
+    assert isinstance(response, FileListResponseMessage)
+    assert {entry.name for entry in response.payload.entries} == listed
 
 
 @pytest.mark.asyncio

@@ -692,8 +692,16 @@ millions of entries is never read whole.
 Glob is matched with `fnmatch.fnmatchcase`. On case-insensitive
 filesystems (macOS APFS default, Windows NTFS default), matching is
 case-insensitive; on case-sensitive Linux ext4, it's case-sensitive. The
-glob is matched against the **basename**, not the full path; combine with
-`recursive: true` to descend.
+shim tells which by looking one of the listed folder's entries up again
+with its letters' case swapped, which a case-insensitive filesystem
+resolves to the same file; this only reads, so a read-only mount is told
+apart too. A folder with no entry whose name has a letter gets a probe
+file made in it for a moment instead, and where that can't be made either
+(an empty folder on a read-only mount), the OS's default decides:
+case-insensitive on macOS and Windows, case-sensitive elsewhere. The
+listed folder's rule holds for the whole walk. The glob is matched against
+the **basename**, not the full path; combine with `recursive: true` to
+descend.
 
 #### `FILE_DELETE` (platform → shim)
 
