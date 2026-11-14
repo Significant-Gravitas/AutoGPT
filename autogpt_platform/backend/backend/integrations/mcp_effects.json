@@ -542,5 +542,19 @@
     "external": [
       "execute"
     ]
+  },
+  "mcp_smartgate": {
+    "source": "https://smartgate.network/docs/tools",
+    "read": [
+      "smart_search",
+      "smart_fetch",
+      "smart_dedup",
+      "smart_context_gate"
+    ],
+    "external": [
+      "smart_budget_guard",
+      "smart_memory",
+      "smart_pipe"
+    ]
   }
 }
