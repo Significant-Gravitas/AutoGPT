@@ -823,6 +823,38 @@ def test_an_explicit_driver_in_the_current_folder_runs_from_there(
     assert Path(driver.driver_argv(found, "direct")[0]).is_absolute()
 
 
+async def test_a_driver_found_through_a_relative_path_entry_starts_in_its_own_folder(
+    fake_log: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """shutil.which keeps a relative PATH entry (`bin`) in the path it
+    returns, and a Linux driver starts in an empty folder of its own, where
+    `bin/cua-driver` names nothing: its start failed, and HELLO went on
+    without computer use."""
+    name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
+    (tmp_path / "bin").mkdir()
+    binary = tmp_path / "bin" / name
+    shutil.copyfile(FAKE, binary)
+    binary.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", os.pathsep.join(["bin", os.environ.get("PATH", "")]))
+    monkeypatch.setattr(driver, "bundled_binary", lambda: None)
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        platform="linux",
+        client_factory=_fake_client,
+    )
+
+    try:
+        snapshot = await bridge.snapshot()
+    finally:
+        await bridge.close()
+
+    assert snapshot.tools
+    found = driver.find_driver_binary()
+    assert found is not None and found.is_absolute()
+    assert found.samefile(binary)
+
+
 def test_an_explicit_driver_path_that_cannot_be_expanded_is_not_found(monkeypatch) -> None:
     """Path.expanduser raises RuntimeError for `~someone` with no such
     account, or a home it can't find, and no caller of find_driver_binary
