@@ -15,7 +15,11 @@ from .agent_search import (
     search_library_for_creation,
 )
 from .base import BaseTool
-from .expert_scope import require_installed_workflow, session_workflow_scope
+from .expert_scope import (
+    ExpertWorkflowScope,
+    require_installed_workflow,
+    session_workflow_scope,
+)
 from .external_scope import external_tenant
 from .models import AgentInfo, AgentsFoundResponse, ErrorResponse, ToolResponseBase
 
@@ -138,6 +142,7 @@ class FindLibraryAgentTool(BaseTool):
         goal_summary: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        """Search the library, narrowed to installed workflows for an expert."""
         if user_id and (direct_id := agent_id.strip()):
             scope_error = await require_installed_workflow(
                 user_id,
@@ -176,13 +181,24 @@ class FindLibraryAgentTool(BaseTool):
                     )
                 }
             )
-        installed: list[AgentInfo] = []
-        uninstalled: list[AgentInfo] = []
-        for agent in result.agents:
-            allowed = scope.allows_agent(
+        installed = await self._installed_agents(
+            user_id,
+            session,
+            scope,
+            found=result,
+            query=query,
+            agent_id=agent_id,
+            include_graph=include_graph,
+        )
+        if isinstance(installed, ErrorResponse):
+            return installed
+        uninstalled = [
+            agent
+            for agent in result.agents
+            if not scope.allows_agent(
                 library_agent_id=agent.id, graph_id=agent.graph_id
             )
-            (installed if allowed else uninstalled).append(agent)
+        ]
         message = (
             f"Found {len(installed)} installed workflows. Only installed "
             "workflows can be run, edited or scheduled."
@@ -202,6 +218,53 @@ class FindLibraryAgentTool(BaseTool):
             }
         )
 
+    async def _installed_agents(
+        self,
+        user_id: str,
+        session: ChatSession,
+        scope: ExpertWorkflowScope,
+        *,
+        found: AgentsFoundResponse,
+        query: str,
+        agent_id: str,
+        include_graph: bool,
+    ) -> list[AgentInfo] | ErrorResponse:
+        """The expert's installed workflows among the matches for this search.
+
+        A library search is limited to one page, so filtering *found* would
+        miss an installed workflow ranked behind a page of uninstalled ones.
+        The search is therefore repeated within the scope, so the limit
+        applies to the installed set. A by-id lookup returns at most one
+        agent, so *found* already holds every candidate.
+        """
+        candidates = found.agents
+        if not agent_id.strip():
+            if not (scope.library_agent_ids or scope.graph_ids):
+                return []
+            scoped = await self._search(
+                user_id,
+                session,
+                query=query,
+                agent_id="",
+                include_graph=include_graph,
+                write_graph_to="",
+                for_creation=False,
+                goal_summary="",
+                scope=scope,
+            )
+            if isinstance(scoped, ErrorResponse):
+                return scoped
+            candidates = (
+                scoped.agents if isinstance(scoped, AgentsFoundResponse) else []
+            )
+        # The scope is already in the query; filtering again keeps the
+        # runnable set exact if any lookup path returns an agent outside it.
+        return [
+            agent
+            for agent in candidates
+            if scope.allows_agent(library_agent_id=agent.id, graph_id=agent.graph_id)
+        ]
+
     async def _search(
         self,
         user_id: str | None,
@@ -213,7 +276,9 @@ class FindLibraryAgentTool(BaseTool):
         write_graph_to: str,
         for_creation: bool,
         goal_summary: str,
+        scope: ExpertWorkflowScope | None = None,
     ) -> ToolResponseBase:
+        """Run the library search; *scope* limits it to those workflows."""
         tenant = external_tenant(session)
         if for_creation:
             # No ``or query`` fallback: the gate only accepts non-empty
@@ -255,6 +320,8 @@ class FindLibraryAgentTool(BaseTool):
             user_id=user_id,
             include_graph=include_graph,
             tenant=tenant,
+            library_agent_ids=scope.library_agent_ids if scope else None,
+            graph_ids=scope.graph_ids if scope else None,
         )
 
 

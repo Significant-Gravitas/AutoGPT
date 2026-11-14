@@ -231,6 +231,68 @@ async def test_list_library_agents_search_matches_snapshot_and_graph(mocker):
     } in where["OR"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs, expected_and",
+    [
+        ({}, None),
+        # An explicitly empty allow-list still restricts (to nothing), unlike
+        # an omitted one.
+        (
+            {"library_agent_ids": []},
+            [{"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": []}}]}],
+        ),
+        (
+            {"graph_ids": []},
+            [{"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": []}}]}],
+        ),
+        (
+            {"library_agent_ids": [], "graph_ids": []},
+            [{"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": []}}]}],
+        ),
+        (
+            {"library_agent_ids": ["lib-1"], "graph_ids": ["graph-2"]},
+            [
+                {
+                    "OR": [
+                        {"id": {"in": ["lib-1"]}},
+                        {"agentGraphId": {"in": ["graph-2"]}},
+                    ]
+                }
+            ],
+        ),
+        (
+            {"graph_ids": ["graph-2"], "organization_id": "org-1"},
+            [
+                {"OR": [{"organizationId": "org-1"}, {"organizationId": None}]},
+                {"OR": [{"id": {"in": []}}, {"agentGraphId": {"in": ["graph-2"]}}]},
+            ],
+        ),
+    ],
+)
+async def test_list_library_agents_id_allow_list_is_in_the_query(
+    mocker, kwargs, expected_and
+):
+    """An id allow-list must reach the query, so page_size limits the allowed
+    agents rather than the whole library (#14572)."""
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", **kwargs)
+
+    assert mock_find_many.call_args.kwargs["where"].get("AND") == expected_and
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     mocker.patch(

@@ -180,6 +180,50 @@ class TestLibraryUUIDLookup:
         assert response.count == 1
         assert response.agents[0].name == "My Library Agent"
 
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "graph_ids, expected_ids, lists",
+        [
+            # The looked-up agent is outside the allow-list: fall back to the
+            # allowed listing instead of returning it.
+            (["graph-installed"], ["lib-installed"], True),
+            # The looked-up agent is allowed: return it directly.
+            (["a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"], ["lib-agent-id"], False),
+        ],
+    )
+    async def test_uuid_lookup_respects_the_allow_list(
+        self, graph_ids, expected_ids, lists
+    ):
+        """A UUID match outside the allow-list must not replace the listing."""
+        looked_up = self._make_mock_library_agent()
+        installed = self._make_mock_library_agent("graph-installed")
+        installed.id = "lib-installed"
+
+        mock_lib_db = MagicMock()
+        mock_lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=looked_up)
+        mock_lib_db.list_library_agents = AsyncMock(
+            return_value=MagicMock(agents=[installed])
+        )
+
+        with patch(
+            "backend.copilot.tools.agent_search.library_db",
+            return_value=mock_lib_db,
+        ):
+            response = await search_agents(
+                query="a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+                source="library",
+                session_id="s",
+                user_id=_TEST_USER_ID,
+                graph_ids=graph_ids,
+            )
+
+        assert isinstance(response, AgentsFoundResponse)
+        assert [a.id for a in response.agents] == expected_ids
+        assert mock_lib_db.list_library_agents.await_count == (1 if lists else 0)
+        if lists:
+            kwargs = mock_lib_db.list_library_agents.call_args.kwargs
+            assert kwargs["graph_ids"] == graph_ids
+
     @staticmethod
     def _github_trigger_info():
         return GraphTriggerInfo(

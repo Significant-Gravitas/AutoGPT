@@ -118,6 +118,8 @@ async def list_library_agents(
     organization_id: Optional[str] = None,
     include_nodes: bool = False,
     folder_ids: list[str] | None = None,
+    library_agent_ids: list[str] | None = None,
+    graph_ids: list[str] | None = None,
 ) -> library_model.LibraryAgentResponse:
     """
     Retrieves a paginated list of LibraryAgent records for a given user.
@@ -133,6 +135,8 @@ async def list_library_agents(
         folder_id: Filter by folder ID. If provided, only returns agents in this folder.
         folder_ids: Only returns agents in one of these folders.
         include_root_only: If True, only returns agents without a folder (root-level).
+        library_agent_ids: Together with ``graph_ids``, restricts the listing to
+            agents matching either an id or a graph id, before pagination.
         include_executions: Whether to include execution data for status calculation.
             Defaults to False for performance (UI fetches status separately).
             Set to True when accurate status/metrics are needed (e.g., agent generator).
@@ -172,15 +176,29 @@ async def list_library_agents(
     # so org context scopes rather than shares: the caller's own rows in
     # the active org, plus untagged pre-backfill rows. Nested in AND so it
     # can't collide with the search OR-clause below.
+    and_clauses: list[prisma.types.LibraryAgentWhereInput] = []
     if organization_id is not None:
-        where_clause["AND"] = [
+        and_clauses.append(
             {
                 "OR": [
                     {"organizationId": organization_id},
                     {"organizationId": None},
                 ]
             }
-        ]
+        )
+    # An id allow-list (e.g. an expert's installed workflows) is applied in the
+    # query so page_size limits the allowed set, not the whole library.
+    if library_agent_ids is not None or graph_ids is not None:
+        and_clauses.append(
+            {
+                "OR": [
+                    {"id": {"in": library_agent_ids or []}},
+                    {"agentGraphId": {"in": graph_ids or []}},
+                ]
+            }
+        )
+    if and_clauses:
+        where_clause["AND"] = and_clauses
 
     # Apply folder filter (skip when searching — search spans all folders)
     if folder_id is not None and not search_term:

@@ -40,16 +40,28 @@ async def search_agents(
     user_id: str | None = None,
     include_graph: bool = False,
     tenant: str | None = None,
+    library_agent_ids: list[str] | None = None,
+    graph_ids: list[str] | None = None,
 ) -> ToolResponseBase:
     """Search for agents in marketplace or user library.
 
     ``tenant`` confines library results to one organization (see
     ``external_scope``); None searches the whole library.
+    ``library_agent_ids`` / ``graph_ids`` confine library results to agents
+    matching either list, applied before the result limit.
     """
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(query, session_id, user_id, include_graph, tenant)
+        return await _search_library(
+            query,
+            session_id,
+            user_id,
+            include_graph,
+            tenant,
+            library_agent_ids=library_agent_ids,
+            graph_ids=graph_ids,
+        )
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -120,6 +132,8 @@ async def _search_library(
     user_id: str | None,
     include_graph: bool = False,
     tenant: str | None = None,
+    library_agent_ids: list[str] | None = None,
+    graph_ids: list[str] | None = None,
 ) -> ToolResponseBase:
     """Search user's library agents by name/description.
 
@@ -146,7 +160,9 @@ async def _search_library(
         if is_uuid(query):
             logger.info(f"Query looks like UUID, trying direct lookup: {query}")
             agent = await _get_library_agent_by_id(user_id, query, tenant)
-            if agent:
+            # An agent outside the allow-list must not stand in for the
+            # allowed listing below, or the allowed matches would be skipped.
+            if agent and _in_allow_list(agent, library_agent_ids, graph_ids):
                 agents.append(agent)
 
         if not agents:
@@ -167,6 +183,8 @@ async def _search_library(
                 # triggers from the listing without re-reading the full graph.
                 include_nodes=True,
                 organization_id=tenant,
+                library_agent_ids=library_agent_ids,
+                graph_ids=graph_ids,
             )
             for agent in results.agents:
                 agents.append(_library_agent_to_info(agent))
@@ -241,6 +259,19 @@ async def _search_library(
         agents=agents,
         count=len(agents),
         session_id=session_id,
+    )
+
+
+def _in_allow_list(
+    agent: AgentInfo,
+    library_agent_ids: list[str] | None,
+    graph_ids: list[str] | None,
+) -> bool:
+    """Whether *agent* passes the optional id allow-list (no list: all pass)."""
+    if library_agent_ids is None and graph_ids is None:
+        return True
+    return agent.id in (library_agent_ids or []) or (
+        agent.graph_id is not None and agent.graph_id in (graph_ids or [])
     )
 
 
