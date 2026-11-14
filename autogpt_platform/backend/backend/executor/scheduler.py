@@ -31,7 +31,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.util import ZoneInfo
+from apscheduler.util import ZoneInfo, obj_to_ref
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine, inspect, or_, select
@@ -3435,6 +3435,12 @@ class Scheduler(AppService):
             self._register_recording_purge()
             self._register_memory_cron_reconcile()
             self._register_community_sweep()
+            # Off the startup path: a full scan of the jobstore.
+            threading.Thread(
+                target=self._drop_stored_misfire_graces,
+                daemon=True,
+                name="DropStoredMisfireGraces",
+            ).start()
         self._report_parked_jobs()
         self._start_schedule_index_backfill()
         threading.Thread(
@@ -3524,6 +3530,47 @@ class Scheduler(AppService):
                     f"{len(parked)} job(s) in jobstore '{alias}' are PARKED and will "
                     f"not run until repaired: {parked}"
                 )
+
+    def _drop_stored_misfire_graces(self) -> None:
+        """Put user schedules saved before the job defaults on them: their stored
+        one-second grace skips any run that fires over a second late. Selected
+        by function, because the memory crons' grace is deliberate."""
+        dropped = 0
+        token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
+        try:
+            # The store's own bounded read, so the scan holds no APScheduler lock.
+            for job in self._execution_jobstore._get_jobs(
+                statement_timeout=MEMORY_CRON_LISTING_TIMEOUT_SECONDS
+            ):
+                if (
+                    job.func_ref not in _USER_SCHEDULE_FUNC_REFS
+                    or job.misfire_grace_time is None
+                ):
+                    continue
+                try:
+                    self.scheduler.modify_job(
+                        job.id,
+                        jobstore=Jobstores.EXECUTION.value,
+                        misfire_grace_time=None,
+                    )
+                except JobLookupError:
+                    continue  # Deleted since the scan.
+                except Exception:
+                    logger.warning(
+                        f"Could not drop the misfire grace of schedule {job.id}; "
+                        "the next start retries it",
+                        exc_info=True,
+                    )
+                    continue
+                dropped += 1
+        except Exception:
+            logger.exception(
+                f"Dropping stored misfire graces stopped after {dropped} schedule(s)"
+            )
+            return
+        finally:
+            WRITE_TIMEOUT.reset(token)
+        logger.info(f"Dropped the misfire grace of {dropped} stored user schedule(s)")
 
     def cleanup(self):
         # `run_service` builds the scheduler before it starts it, and a stopped
@@ -5213,6 +5260,11 @@ class Scheduler(AppService):
 
         result = run_async(run_ratification_pass(user_id))
         return result.model_dump(mode="json")
+
+
+_USER_SCHEDULE_FUNC_REFS = frozenset(
+    obj_to_ref(func) for func in (execute_graph, execute_copilot_turn)
+)
 
 
 class _JobList:
