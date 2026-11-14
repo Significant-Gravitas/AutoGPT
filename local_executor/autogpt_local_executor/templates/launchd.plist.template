@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Source template: autogpt_local_executor/templates/launchd.plist.template
+  Rendered file:   ~/Library/LaunchAgents/net.autogpt.shim.plist
+  Re-render with:  autogpt-shim install
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>net.autogpt.shim</string>
+
+    <key>ProgramArguments</key>
+    <array>
+{program_arguments}
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!--
+      KeepAlive: SuccessfulExit=false re-launches the daemon on any
+      non-zero exit, at most every ten seconds (launchd's default
+      throttle). The TCC chain relies on this: when computer-use
+      is requested but Accessibility / Screen Recording aren't granted,
+      the daemon exits 78 (EX_CONFIG) on every launch, each one starting
+      cua-driver to check; once the user grants consent in System
+      Settings, the next launch succeeds. launchd doesn't watch TCC.db.
+      See docs/COMPUTER_USE.md "macOS" and docs/CROSS_PLATFORM.md "Autostart".
+      A failure that no restart can fix (an authentication failure, a bad
+      config, a missing package or a setting that can't work) would restart
+      just as often, so under AUTOGPT_SHIM_SUPERVISOR=launchd (set below)
+      `start` exits 0 for it. A failure that can clear on its own (audit
+      storage full or not mounted yet, a keychain still locked) exits 75
+      and is restarted.
+    -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>{stdout_log}</string>
+
+    <key>StandardErrorPath</key>
+    <string>{stderr_log}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>AUTOGPT_SHIM_SUPERVISOR</key>
+        <string>launchd</string>
+    </dict>
+</dict>
+</plist>

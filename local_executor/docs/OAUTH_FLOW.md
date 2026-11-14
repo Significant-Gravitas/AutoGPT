@@ -1,0 +1,271 @@
+# OAuth Flow — Shim Authentication
+
+> **Status**: Implemented in the shim. The platform's public-client support it
+> needs is on PR #13050 ([Public-client support](#public-client-support-a-platform-prerequisite)).
+
+The shim authenticates using AutoGPT's **existing OAuth 2.0 provider infrastructure** —
+the same system used by third-party app integrations. No new auth infrastructure needed.
+
+## Why Not Device OAuth?
+
+AutoGPT already runs a full OAuth 2.0 Authorization Server:
+- `/auth/authorize` — authorization endpoint
+- `/api/oauth/token` — token endpoint
+- `introspect_token()` — token validation
+- Authorization Code + PKCE flow already implemented
+
+Device OAuth would be redundant. The shim registers as an OAuth app and uses
+Authorization Code + PKCE with a localhost redirect URI.
+
+---
+
+## Registration (One-Time)
+
+The shim is a first-party public OAuth application registered in the AutoGPT
+platform. It uses Authorization Code + PKCE and has no client secret.
+
+```
+Client ID:     autogpt-local-executor (well-known)
+Client type:   public (PKCE; no client secret)
+Redirect URI:  http://localhost:{port}/callback   where {port} ∈ 41899..41910
+Scopes:        CONNECT_LOCAL_EXECUTOR
+Grant types:   authorization_code, refresh_token
+```
+
+Ports 41899–41910 (12 ports) are reserved for the shim's local callback
+server. The shim binds the first free port in that range, from
+`oauth_redirect_port` on and never past 41910, so a busy 41899
+(held by another app, a stale shim process, or a developer's local dev
+server) doesn't break first-time auth. The platform's OAuth client
+registration MUST accept all ports in this range as valid `redirect_uri`
+values for `client_id=autogpt-local-executor` — registering only 41899
+would defeat the fallback. A configured `oauth_redirect_port` outside the
+range is the only port the shim tries, since no other is known to be
+registered, and sign-in through it works only once the deployment's operator
+has added `http://localhost:<port>/callback` to the OAuth app's redirect
+URIs; otherwise pick a port in the range. The listener is bound to loopback only:
+`127.0.0.1`, and where the machine has IPv6, `::1` on the same port, since
+a browser may try `localhost` as either; never `0.0.0.0` or `::`. A port
+another program holds on either address (on `::1`, or on every address
+through a dual-stack socket) is skipped, so the redirect can't reach it.
+See [CROSS_PLATFORM.md → OAuth callback port](CROSS_PLATFORM.md#oauth-callback-port).
+The server takes one connection at a time, so each read waits at most 10
+seconds and a whole request at most 20 before the connection is dropped: a
+browser's preconnect that never sends, or a client that sends a byte now and
+then, can't hold off the redirect. A request to `/callback` whose `state` isn't
+this sign-in's is refused with 400 and doesn't end the wait, so neither a tab
+left from an earlier attempt nor a page that requests the URL can end the
+sign-in. On Windows the server takes its port exclusively
+(`SO_EXCLUSIVEADDRUSE`), so a port another program listens on counts as busy
+and the next one is tried.
+
+### Operator setup (per-environment)
+
+Each platform deployment registers the app once via the existing
+`oauth-tool` CLI inside the backend container. The registration, the sign-in
+and the refresh all need the platform's public-client support, which isn't on
+`dev` yet (see [Public-client support](#public-client-support-a-platform-prerequisite)):
+
+```bash
+poetry run oauth-tool generate-app \
+    --name "AutoGPT Local Executor" \
+    --client-id "autogpt-local-executor" \
+    --public \
+    --description "Local PC shim for the AutoGPT hosted platform" \
+    --redirect-uris \
+      "http://localhost:41899/callback,http://localhost:41900/callback,\
+http://localhost:41901/callback,http://localhost:41902/callback,\
+http://localhost:41903/callback,http://localhost:41904/callback,\
+http://localhost:41905/callback,http://localhost:41906/callback,\
+http://localhost:41907/callback,http://localhost:41908/callback,\
+http://localhost:41909/callback,http://localhost:41910/callback" \
+    --scopes "CONNECT_LOCAL_EXECUTOR"
+```
+
+The command prints SQL containing the well-known public client ID and an
+`isPublic=true` marker. Replace `YOUR_USER_ID_HERE`, execute it once per
+environment, and keep every callback URI in the registration. Self-hosters
+that choose another ID configure it with `AUTOGPT_SHIM_OAUTH_CLIENT_ID`.
+
+### Public-client support (a platform prerequisite)
+
+The shim's client has no secret, and the platform side that accepts such a
+client is written but not merged: it is on PR #13050
+(https://github.com/Significant-Gravitas/AutoGPT/pull/13050), not on `dev`.
+A deployment without it has no `OAuthApplication.isPublic`, its
+`validate_client_credentials` always checks a client secret, and its
+`oauth-tool` has no `--public`: there the client above can't be registered,
+and the shim can neither sign in with it nor refresh. With that change:
+
+`OAuthApplication.isPublic` (added in migration
+`20260604120000_add_oauth_application_is_public`) and the
+`validate_client_credentials(..., code_verifier=...)` short-circuit
+together implement the OAuth 2.1 best-practice for desktop / mobile /
+SPA clients (PKCE, no client_secret).
+
+- Confidential client (default, `isPublic=false`): `client_secret` is
+  required as before. No behavior change.
+- Public client (`isPublic=true`): `client_secret` is ignored;
+  `code_verifier` is required and is the only credential. The PKCE
+  challenge/verifier check still happens in `consume_authorization_code`
+  (which compares the verifier against the stored code_challenge).
+
+The `oauth-tool generate-app --public` command sets this field for new shim
+registrations. Existing registrations can be migrated with `UPDATE
+"OAuthApplication" SET "isPublic" = true WHERE "clientId" = '<id>'`.
+
+Introspect (`/api/oauth/introspect`) remains confidential-auth-only. Revoke
+(`/api/oauth/revoke`) accepts this registered public client without a secret,
+binds each token to the client before revoking it, and returns the RFC 7009
+non-disclosing success response. `autogpt-shim revoke` revokes the access and
+refresh tokens for the configured deployment before clearing that deployment's
+keychain record. Other deployments' records are not removed. The platform also pushes a
+`SESSION_REVOKED` frame to a connected shim (see `PROTOCOL.md`).
+
+---
+
+## First-Time Auth Flow
+
+```
+User                    Shim                         AutoGPT Platform
+ |                       |                                |
+ | autogpt-shim auth     |                                |
+ |---------------------->|                                |
+ |                       | 1. Generate code_verifier      |
+ |                       |    code_challenge = S256(cv)   |
+ |                       |                                |
+ |                       | 2. Spin up localhost:41899      |
+ |                       |                                |
+ |                       | 3. Open browser →              |
+ |                       |    /auth/authorize?             |
+ |                       |      client_id=autogpt-local-executor
+ |                       |      redirect_uri=http://localhost:41899/callback
+ |                       |      code_challenge=...        |
+ |                       |      scope=CONNECT_LOCAL_EXECUTOR
+ |                       |                                |
+ |     [Browser opens]   |                                |
+ |<====================================================-->|
+ |     [User logs in and approves scopes]                 |
+ |                       |                                |
+ |                       |<-- GET /callback?code=AUTH_CODE
+ |                       |                                |
+ |                       | 4. POST /api/oauth/token        |
+ |                       |      grant_type=authorization_code
+ |                       |      code=AUTH_CODE            |
+ |                       |      code_verifier=...         |
+ |                       |                                |
+ |                       |<-- {access_token, refresh_token, expires_in}
+ |                       |                                |
+ |                       | 5. Store tokens in OS keychain |
+ |                       |    (keyring library)           |
+ |    Auth complete       |                                |
+ |<----------------------|                                |
+```
+
+---
+
+## WebSocket Connection Auth
+
+On every WebSocket connect, the shim includes the access token:
+
+```
+GET /ws/local-executor                 # persistent machine control
+GET /ws/local-executor/{session_id}    # activated per-chat data channel
+Authorization: Bearer {access_token}
+```
+
+Platform validates via `introspect_token(access_token)`:
+- Checks token not expired
+- On data channels, checks token belongs to the session owner
+- On the control channel, registers the online machine under the token's user
+- Checks `CONNECT_LOCAL_EXECUTOR` scope present (HTTP 403 without it)
+- Returns user_id for the session
+
+---
+
+## Token Refresh
+
+The shim refreshes using the stored `refresh_token` exactly once when the
+initial WebSocket upgrade returns 401. An initial 403 is treated as a terminal
+session-authorization denial and never rotates credentials. If the post-refresh
+retry returns 401 or 403, startup terminates instead of entering the reconnect
+loop. The refresh is forced even while the rejected access token remains in the
+keychain. Like the sign-in, it sends no client secret, so it too needs the
+platform's [public-client support](#public-client-support-a-platform-prerequisite).
+- On refresh failure (expired refresh token), prompt user to re-auth via CLI: `autogpt-shim auth`
+- The platform rotates the refresh token on every exchange, so once one goes
+  through, the token the keychain holds is used up. A new pair the keychain
+  then fails to store (locked meanwhile, say) is kept in memory and stored by
+  the next try, which doesn't exchange again. The shim retries in the same
+  process, since a restart would lose the pair. A sign-in stored meanwhile
+  (`autogpt-shim auth`) goes ahead of the kept pair.
+- A refreshed pair, kept or new, is stored only while the keychain still
+  holds the refresh token its exchange used up. A sign-in stored during the
+  exchange is kept instead, and a record `autogpt-shim revoke` removed
+  stays removed. The keychain has no compare-and-replace, so the shim reads
+  the record and writes the pair back to back in one thread: a sign-in
+  stored in the moment between that read and that write is still replaced.
+- A session stopped while its refresh waits for the token endpoint (a chat's
+  session detached, say) doesn't drop the answer: the refresh runs on in a
+  task of its own, holding the refresh lock, and stores the new pair. A
+  shim that exits meanwhile loses it, as it does an answer that never
+  arrives (a timeout after the platform rotated the token), and then needs
+  `autogpt-shim auth`: the platform treats the used-up token sent again as
+  reuse and revokes the sign-in.
+
+Tokens stored in OS keychain:
+- macOS: Keychain Services via `keyring` library
+- Linux: Secret Service (GNOME Keyring / KWallet) via `keyring`
+- Windows: Windows Credential Manager via `keyring`
+
+### Deployment-bound credentials
+
+Access and refresh tokens are stored together in a versioned keychain record.
+Its key is derived from the configured backend base, OAuth client ID, browser
+authorization URL, token/revocation endpoints, and WebSocket base. The same
+endpoint metadata is checked when reading the record. Backend path prefixes
+such as `/backend` remain part of the identity. Host casing, default ports,
+equivalent HTTP/WebSocket base schemes, and trailing base slashes do not create
+duplicate identities; different hosts, non-default ports, clients, and endpoint
+paths do. The per-chat session ID is not part of this shared machine credential.
+
+Split frontend/backend deployments are supported: `--platform-oauth-url` selects
+the browser authorization base while `--platform-url` selects the backend.
+Explicit OAuth or WebSocket overrides are bound when authenticating. Changing
+one does not authorize sending previously saved tokens to the new destination:
+authenticate again with the intended configuration. OAuth requests do not follow
+HTTP redirects; WebSocket redirects, including same-origin path changes, are
+rejected. A destination change while the daemon or OAuth flow is running is a
+terminal authentication error, not a refresh attempt against the new endpoint.
+
+Use the same persistent configuration for every command. A `--config` that
+names no file is an error rather than a quiet fallback to the defaults:
+
+```bash
+autogpt-shim --config /path/to/config.toml auth
+autogpt-shim --config /path/to/config.toml start
+autogpt-shim --config /path/to/config.toml revoke
+```
+
+Older releases used global `access_token` and `refresh_token` keychain entries
+without deployment metadata. Their origin cannot be inferred safely. The shim
+never forwards, migrates, or deletes those legacy entries automatically. Startup,
+refresh, and revocation fail closed if only legacy credentials are available,
+with instructions to authenticate explicitly. Successful `auth` creates a new
+scoped record and leaves legacy entries untouched. Revoke the legacy authorization
+at its original platform deployment; after doing so, remove the old entries using
+the OS credential manager if desired. A corrupt or mismatched scoped record also
+requires explicit authentication rather than falling back to legacy credentials.
+
+---
+
+## Scope
+
+The public shim client requests `CONNECT_LOCAL_EXECUTOR`, the AutoGPT
+`APIKeyPermission` for exactly this connection. It grants nothing else: no
+External API tools, and API keys cannot carry it. The WebSocket handshake
+requires that scope in addition to an active access token and session
+ownership. A token without the scope is refused with HTTP 403, and the shim
+asks for `autogpt-shim auth` to be run again. Individual executor capabilities
+remain opt-in through shim configuration, HELLO capability advertisement,
+platform feature flags, and the per-session computer-use consent gate.

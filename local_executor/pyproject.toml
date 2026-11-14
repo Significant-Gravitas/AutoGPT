@@ -1,0 +1,89 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autogpt-local-executor"
+version = "0.0.1.dev0"
+description = "⚠️ EXPERIMENTAL: Local PC shim for the AutoGPT hosted platform"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["autogpt", "experimental", "local-executor"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "websockets>=14.0",
+    "httpx>=0.27",
+    "keyring>=25.0",
+]
+
+[project.optional-dependencies]
+# Computer use runs cua-driver (MIT). The pin is the release whose tools
+# docs/CUA_DRIVER.md reviews; the bridge refuses another minor version.
+# On macOS, AppKit reads the pasteboard's private-content markers, and
+# `doctor` requests Accessibility and Screen Recording for the app that runs
+# the shim, which the driver leaves to its host.
+computer-use = [
+    "cua-driver==0.38.0",
+    "pyobjc-framework-ApplicationServices>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
+]
+hardware = [
+    "pyserial>=3.5",
+    "pyusb>=1.2",
+]
+local-llm = [
+    "ollama>=0.2",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "ruff>=0.4",
+    # The mypy CI's typecheck job pins: another can fail code this one passed.
+    "mypy==2.4.1",
+    # tests/test_packaging.py builds the wheel `pipx install` builds.
+    "hatchling",
+]
+all = [
+    "autogpt-local-executor[computer-use,hardware,local-llm]",
+]
+
+[project.scripts]
+autogpt-shim = "autogpt_local_executor.cli:main"
+
+# The package ships every file under it, the autostart templates included.
+[tool.hatch.build.targets.wheel]
+packages = ["autogpt_local_executor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+# UP038 (isinstance with X | Y) is deprecated upstream; the repo's pinned
+# pre-commit Ruff still enforces it.
+ignore = ["E501", "UP038"]
+
+[tool.ruff.lint.isort]
+# packaging/ holds the installer files; the `packaging` library is
+# third-party, which older Ruff versions can't tell on their own.
+known-third-party = ["packaging"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
