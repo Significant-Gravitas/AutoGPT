@@ -140,9 +140,11 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
 The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
-login, before the desktop exports its display to the user manager, so the
-shim takes `DISPLAY` and the rest from the manager once they are there and
-follows them across logins; see [COMPUTER_USE.md](COMPUTER_USE.md#linux).
+login, before the desktop exports its display to the user manager. So when
+the service started without `DISPLAY` or `WAYLAND_DISPLAY`, the shim takes
+them and the rest from the manager once they are there and follows them
+across logins; a service that started with a display keeps its own. See
+[COMPUTER_USE.md](COMPUTER_USE.md#linux).
 
 An authentication failure (`start` exits 77, `EX_NOPERM`) stops the
 service instead of restarting it, since a restart would only retry the
