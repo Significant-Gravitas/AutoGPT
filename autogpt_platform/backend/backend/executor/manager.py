@@ -42,6 +42,7 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsMetaInput,
     GraphExecutionStats,
@@ -82,6 +83,7 @@ from backend.util.decorator import (
 )
 from backend.util.exceptions import (
     BlockInputError,
+    CredentialsExpiredError,
     GraphNotFoundError,
     InsufficientBalanceError,
     ModerationError,
@@ -721,6 +723,11 @@ async def execute_node(
                     raise ValueError(
                         f"Credentials #{credentials_meta.id} for user #{user_id} not found"
                     )
+                if (
+                    isinstance(credentials, APIKeyCredentials)
+                    and credentials.is_expired()
+                ):
+                    raise credentials.expired_error()
                 if provider_matches(credentials.provider, "codex"):
                     await enforce_codex_access(user_id)
                 continue
@@ -751,6 +758,10 @@ async def execute_node(
                 raise ValueError(
                     f"Credentials #{credentials_meta.id} for user #{user_id} not found"
                 )
+            if isinstance(credentials, APIKeyCredentials) and credentials.is_expired():
+                # Outside the `except ValueError` above, so a field with a
+                # default can't fall back to running without the key.
+                raise credentials.expired_error()
             if provider_matches(credentials.provider, "codex"):
                 await enforce_codex_access(user_id)
             extra_exec_kwargs[field_name] = credentials
@@ -808,8 +819,9 @@ async def execute_node(
         # Most ValueError subclasses here are expected (BlockExecutionError,
         # InsufficientBalanceError, plain ValueError for auth/disabled blocks, etc.)
         # but NotFoundError/GraphNotFoundError could indicate real platform issues.
-        is_expected = isinstance(ex, ValueError) and not isinstance(
-            ex, (NotFoundError, GraphNotFoundError)
+        is_expected = isinstance(ex, CredentialsExpiredError) or (
+            isinstance(ex, ValueError)
+            and not isinstance(ex, (NotFoundError, GraphNotFoundError))
         )
         if not is_expected:
             _sentry_capture_exception(error=ex, scope=scope)
@@ -1427,11 +1439,15 @@ class ExecutionProcessor:
         except BaseException as e:
             stats.error = e
 
-            if isinstance(e, (ValueError, CredentialsNeedReconnectError)):
+            if isinstance(
+                e,
+                (ValueError, CredentialsNeedReconnectError, CredentialsExpiredError),
+            ):
                 # Avoid user error being marked as an actual error. A
                 # credential the provider refused for good was reported once
                 # when refused; until the user reconnects it, each run fails
-                # here without contacting the provider.
+                # here without contacting the provider. An expired API key is
+                # the same class of expected failure.
                 log_metadata.info(
                     f"Expected failure on node execution {node_exec.node_exec_id}: {type(e).__name__} - {e}"
                 )

@@ -1,6 +1,7 @@
 """Tests for credential hooks and provider-runtime credential leases."""
 
 import time
+from contextlib import asynccontextmanager
 from functools import partial
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -526,6 +527,51 @@ async def test_update_acquired_allows_codex_to_move_refresh_to_http_handler(mock
     await manager.update_acquired("user-a", migrated, _owned_lock())
 
     update.assert_awaited_once_with("user-a", migrated)
+
+
+@pytest.mark.asyncio
+async def test_get_and_delete_keep_expired_api_keys(mocker):
+    """#16234: expiry is enforced at use, not on metadata reads or deletes
+    (the #15735 failure class)."""
+    manager = IntegrationCredentialsManager()
+    expired = APIKeyCredentials(
+        id="cred-id",
+        provider="openai",
+        api_key=SecretStr("sk-expired"),
+        title="Old key",
+        expires_at=int(time.time()) - 60,
+    )
+    mocker.patch.object(
+        manager.store,
+        "get_creds_by_id",
+        AsyncMock(return_value=expired),
+    )
+    delete = mocker.patch.object(
+        manager.store,
+        "delete_creds_by_id",
+        new_callable=AsyncMock,
+    )
+
+    loaded = await manager.get("user-a", expired.id)
+    assert loaded is expired
+    assert loaded.is_expired()
+
+    getter = manager.cached_getter("user-a")
+    mocker.patch.object(
+        manager.store,
+        "get_all_creds",
+        AsyncMock(return_value=[expired]),
+    )
+    cached = await getter(expired.id)
+    assert cached is expired
+
+    @asynccontextmanager
+    async def unlocked(*_args, **_kwargs):
+        yield
+
+    mocker.patch.object(manager, "_locked", unlocked)
+    await manager.delete("user-a", expired.id)
+    delete.assert_awaited_once_with("user-a", expired.id)
 
 
 @pytest.mark.asyncio

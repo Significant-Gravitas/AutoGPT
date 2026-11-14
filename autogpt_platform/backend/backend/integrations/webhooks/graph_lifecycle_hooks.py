@@ -3,6 +3,8 @@ import logging
 from typing import TYPE_CHECKING, Optional, cast, overload
 
 from backend.blocks._base import BlockSchema
+from backend.blocks.autopilot import AutoPilotTransport
+from backend.copilot.constants import AUTOPILOT_BLOCK_ID
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -176,13 +178,18 @@ def _apply_credential_result(
 
     # If the credential field is optional (has a default in the schema, or
     # node metadata marks it optional), clear the stale reference instead
-    # of blocking the save.
+    # of blocking the save. An infra failure says nothing about the
+    # credential, so keep the reference and fail below instead.
     creds_field_optional = (
         new_node.credentials_optional
         or creds_field_name not in block_input_schema.get_required_fields()
     )
-    if creds_field_optional:
-        new_node.input_default[creds_field_name] = {}
+    if creds_field_optional and not unavailable:
+        # Drop the key rather than writing `{}`: an id-less object fails the
+        # field's nested credentials schema in `validate_exec`, so the node
+        # would never be queued. An absent key means "not configured".
+        _preserve_legacy_autopilot_transport(new_node, creds_field_name)
+        new_node.input_default.pop(creds_field_name, None)
         logger.warning(
             f"Node #{new_node.id}: cleared stale optional "
             f"credentials #{creds_meta['id']} for "
@@ -216,6 +223,23 @@ def _apply_credential_result(
         f"{credential_ref} no longer exists. Please pick a different "
         "credential and try again."
     )
+
+
+def _preserve_legacy_autopilot_transport(
+    new_node: "Node | NodeModel", creds_field_name: str
+) -> None:
+    """A submitted legacy AutoPilot node encodes ChatGPT billing as the
+    presence of `codex_credentials` and has no `transport`. Persist that
+    choice before dropping a deleted reference so `AutoPilotBlock.run`
+    reports the missing connection instead of billing platform credits.
+    """
+    if creds_field_name != "codex_credentials":
+        return
+    if new_node.input_default.get("transport") is not None:
+        return
+    if new_node.block_id != AUTOPILOT_BLOCK_ID:
+        return
+    new_node.input_default["transport"] = AutoPilotTransport.CODEX_APP_SERVER.value
 
 
 async def on_graph_deactivate(graph: "GraphModel", user_id: str):
