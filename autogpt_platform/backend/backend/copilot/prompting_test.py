@@ -143,6 +143,7 @@ class TestCredentialsSurfacingGuardrails:
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "with the field set to `null`" in result
         assert "Don't ask for the id or URL" in result
+        assert "don't ask them to make one: create it first" in result
 
     def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
         """An expert session's ``find_capability`` reports an account-owned

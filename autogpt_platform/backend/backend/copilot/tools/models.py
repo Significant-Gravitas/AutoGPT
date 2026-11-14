@@ -367,6 +367,11 @@ class SetupRequirementsResponse(ToolResponseBase):
     # Set only when a credential we had was rejected; its absence is what
     # "never connected" looks like, so the two cases stay distinguishable.
     rejection: CredentialRejection | None = None
+    create_hint: str | None = Field(
+        default=None,
+        description="For the model only: the capability that creates a new one "
+        "of what the card's picker would pick. The card never shows it.",
+    )
 
 
 # Execution models

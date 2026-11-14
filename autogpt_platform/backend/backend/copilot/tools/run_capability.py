@@ -61,6 +61,7 @@ from .models import (
     SetupRequirementsResponse,
     ToolResponseBase,
 )
+from .picker_create import create_hint
 from .review_card import review_card_location
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
@@ -356,7 +357,7 @@ async def _run_block(
             parameters={},
             session_id=session.session_id,
         )
-    return await RunBlockTool()._execute(
+    result = await RunBlockTool()._execute(
         user_id,
         session,
         block_id=block_id,
@@ -366,6 +367,9 @@ async def _run_block(
         gate_decided=decided,
         refs_resolved=refs_resolved,
     )
+    if isinstance(result, SetupRequirementsResponse) and (block := get_block(block_id)):
+        result.create_hint = create_hint(block, result, payload)
+    return result
 
 
 def _mcp_subject(server_url: str, payload: dict[str, Any]) -> Subject:
