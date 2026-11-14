@@ -2274,9 +2274,11 @@ async def test_a_listing_is_capped_whatever_max_entries_asks_for(
 
 
 def _loop_stats_inside(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """The paths in `root` that os.stat and os.lstat are called on from the
-    calling thread, the event loop's. realpath, exists, is_dir, is_symlink and
-    lexists all come down to them."""
+    """The paths in `root` that os.stat, os.lstat and os.path.realpath are
+    called on from the calling thread, the event loop's. exists, is_dir,
+    is_symlink and lexists all come down to the first two, and so does
+    realpath on POSIX; on Windows realpath resolves a path that exists
+    through nt._getfinalpathname, without them."""
     loop_thread = threading.get_ident()
     prefixes = (str(root), os.path.realpath(root))
     seen: list[str] = []
@@ -2293,7 +2295,32 @@ def _loop_stats_inside(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]
 
     monkeypatch.setattr(os, "stat", watched(os.stat))
     monkeypatch.setattr(os, "lstat", watched(os.lstat))
+    monkeypatch.setattr(os.path, "realpath", watched(os.path.realpath))
     return seen
+
+
+@pytest.mark.parametrize("call", ["realpath", "resolve", "exists", "lexists"])
+def test_the_loop_watch_sees_a_path_in_the_root_checked_on_the_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, call: str
+) -> None:
+    """The check below passes only if its watch sees an in-root path checked
+    on the calling thread. Watching os.stat and os.lstat alone missed one
+    resolved on Windows, where realpath goes through nt._getfinalpathname
+    for a path that exists."""
+    root = tmp_path / "root"
+    target = root / "dir"
+    target.mkdir(parents=True)
+    seen = _loop_stats_inside(root, monkeypatch)
+    checks = {
+        "realpath": lambda: os.path.realpath(target),
+        "resolve": target.resolve,
+        "exists": target.exists,
+        "lexists": lambda: os.path.lexists(target),
+    }
+
+    checks[call]()
+
+    assert seen
 
 
 @pytest.mark.asyncio
