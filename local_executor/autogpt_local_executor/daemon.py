@@ -499,6 +499,14 @@ class ShimDaemon:
         # Set on a child session once the reaper has decided to detach it for
         # idleness; from then on it refuses requests (_reap_idle_children).
         self._detaching = False
+        # Set once a session has decided to close its connection to say HELLO
+        # again: from then on it refuses requests, until its next connection
+        # (_hello_again_once_a_display_is_up).
+        self._reconnecting = False
+        # Set on every chat's session once the machine's connection has so
+        # decided: the chat refuses requests until the machine's next session
+        # stops it, across a reconnect of the chat's own too.
+        self._machine_reconnecting = False
         audit_key = getattr(self.audit, "audit_key", None)
         if not isinstance(audit_key, bytes):
             audit_key = secrets.token_bytes(32)
@@ -778,6 +786,10 @@ class ShimDaemon:
             await self._shutdown_children()
             self._directory_browser.reset()
             self._connection_id = None
+        # Closed to say HELLO again, the last connection refused requests from
+        # then on; on the machine's, the chats it would have cut off have just
+        # been stopped.
+        self._reconnecting = False
         # Reset per-session counters so reconnects don't carry over.
         self._in_flight = 0
         self._queue_depth = 0
@@ -1341,14 +1353,20 @@ class ShimDaemon:
             # We somehow got a request before HELLO_ACK; be defensive.
             self._semaphore = asyncio.Semaphore(self.config.max_concurrent)
 
-        if self._detaching:
-            # Being detached for idleness: a request started now would be cut
-            # off by the stop. The platform retries once it attaches again.
+        if self._detaching or self._reconnecting or self._machine_reconnecting:
+            # Being detached for idleness, or reconnecting to say HELLO again:
+            # a request started now would be cut off by the stop. Nothing ran,
+            # so it can be sent again once the session is back.
+            reason, why = (
+                ("detaching", "The session is being detached after being idle")
+                if self._detaching
+                else ("reconnecting", "The local executor is reconnecting to offer computer use")
+            )
             response = make_error(
                 msg.id,
                 ErrorCode.SHIM_OVERLOADED,
-                "The session is being detached after being idle; retry in a moment.",
-                details={"reason": "detaching"},
+                f"{why}; retry in a moment.",
+                details={"reason": reason},
             )
             response.pending_capacity = 0
             await self._send_frame(ws, response)
@@ -1513,7 +1531,8 @@ class ShimDaemon:
         way: the reconnect's HELLO offers computer use (PROTOCOL.md,
         Reconnection). Work in progress is waited for: a request or a
         recording, and for the machine's connection, whose next session
-        stops every chat's, a chat's too."""
+        stops every chat's, a chat's too. Once it is decided, no new work
+        starts: the close and the reconnect's backoff take seconds."""
         while self._running and self._ws is ws:
             await asyncio.sleep(DISPLAY_WATCH_SECONDS)
             if not await asyncio.to_thread(
@@ -1522,6 +1541,12 @@ class ShimDaemon:
                 continue
             if self._ws is not ws or not self._quiet_enough_for_a_new_hello():
                 continue
+            # Decided, with nothing awaited since the check: this session and
+            # its chats' refuse requests from now on, so none starts only for
+            # the next connection to stop it with them.
+            self._reconnecting = True
+            for active in self._child_sessions.values():
+                active.daemon._machine_reconnecting = True
             logger.info("The desktop's display is up; reconnecting so HELLO offers computer use")
             await ws.close(code=1000, reason="Computer use is available now")
             return

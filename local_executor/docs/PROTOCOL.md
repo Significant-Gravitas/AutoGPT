@@ -296,8 +296,11 @@ with a request still queued or running is not idle, however long that request
 takes. The stop is audited (`IDLE_SESSION_DETACH`) before it happens, and from
 the moment the daemon decides on it the child refuses requests with
 `SHIM_OVERLOADED` (`details.reason: "detaching"`), so none starts only to be cut
-off; the platform retries once the child is restored. If the audit record
-can't be written, the child keeps running.
+off. Nothing ran, so a refused request can be sent again once the child is
+restored: the auto-retry layer re-sends only an idempotent one (see
+[Idempotency](#idempotency)), and a `COMPUTER_TOOL_CALL`, like every other
+non-idempotent request, goes back to the model, which decides. If the audit
+record can't be written, the child keeps running.
 
 #### `HELLO.platform` enum
 
@@ -912,7 +915,10 @@ sent again. A start that outlasts it goes on, for the calls after it. At the dea
 the driver, which can't cancel a call it is running, and answers
 `COMMAND_TIMEOUT` with `details.started: true`, though an action the driver
 already made stays made. The next call starts the driver afresh, without the
-element tokens and sessions of the old one.
+element tokens and sessions of the old one. Once the driver is done, the call
+lets the next one have the computer and writes its audit record, and its
+answer goes out when the record is in: an audit log held up delays that
+answer, not other calls.
 
 `approved_arguments` (at most 8, default empty) names the tool's approval
 arguments the platform approved for this call: usually the person, on an
@@ -936,8 +942,10 @@ accepts: `check_permissions` with `prompt: true`; any approval argument
 inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
 `bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
 a leading `-`, a control character, on Linux a name whose first word is
-a program, a program's own name included, and on Windows a `bundle_id` that
-isn't an AUMID or a `name` no installed app in `list_apps` would match).
+a program, a program's own name included, or, unless `urls` or `launch_path`
+is given, one that isn't an installed app's name or desktop-file id in
+`list_apps`, and on Windows a `bundle_id` that isn't an AUMID or a `name` no
+installed app in `list_apps` would match).
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json
@@ -1303,5 +1311,11 @@ when one it sent left `computer_use` out only for want of the desktop's
 display (a Linux systemd service started at login, before the desktop
 exported it) and the display is up now. It waits until nothing is under
 way on that connection, and on the machine connection, whose next session
-stops every chat's, until no chat's work is either.
+stops every chat's, until no chat's work is either. From the moment it
+decides, that session, and on the machine connection every chat's, refuses
+requests with `SHIM_OVERLOADED` (`details.reason: "reconnecting"`) until the
+next connection (a chat's until the machine's next session stops it, even if
+the chat reconnects first), so none starts during the close and the backoff
+only to be cut off; nothing ran, so each can be sent again, as after an idle
+detach.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.

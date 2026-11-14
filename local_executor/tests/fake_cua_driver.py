@@ -21,8 +21,10 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_TOOLS_LIST    JSON object merged into tools/list's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
   FAKE_CUA_SCREEN_SLOW_SECONDS  how long get_screen_size takes to answer (default at once)
+  FAKE_CUA_IGNORE_TERM   ignore SIGTERM (POSIX), so only a kill stops the fake
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
-  FAKE_CUA_APPS          JSON list of installed app names list_apps returns
+  FAKE_CUA_APPS          JSON list of the installed apps list_apps returns: names, or
+                         {"name", "bundle_id"} objects
   FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
 """
 
@@ -31,6 +33,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -132,19 +135,33 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
     ):
         if os.environ.get("FAKE_CUA_LIST_APPS_ERROR"):
             return text_result(os.environ["FAKE_CUA_LIST_APPS_ERROR"], error=True)
-        names = json.loads(os.environ["FAKE_CUA_APPS"])
-        # cua-driver 0.38 on Windows: installed apps carry their launch_path;
-        # a running process no installed app matched has none.
+        # Each a name, or {"name", "bundle_id"} (on Linux the desktop-file id).
+        installed = [
+            app if isinstance(app, dict) else {"name": app}
+            for app in json.loads(os.environ["FAKE_CUA_APPS"])
+        ]
+        # cua-driver 0.38 on Windows and Linux: installed apps carry their
+        # launch_path; a running process no installed app matched has none.
         apps = [
             {
                 "pid": 0,
-                "name": app,
+                "name": app["name"],
+                "bundle_id": app.get("bundle_id"),
                 "running": False,
                 "kind": "desktop",
-                "launch_path": f"C:\\Apps\\{app}.exe",
+                "launch_path": f"C:\\Apps\\{app['name']}.exe",
             }
-            for app in names
-        ] + [{"pid": 77, "name": "logoff", "running": True, "kind": "desktop", "launch_path": None}]
+            for app in installed
+        ] + [
+            {
+                "pid": 77,
+                "name": "logoff",
+                "bundle_id": None,
+                "running": True,
+                "kind": "desktop",
+                "launch_path": None,
+            }
+        ]
         return text_result(f"Found {len(apps)} app(s).", {"apps": apps, "processes": []})
     if name == "get_screen_size":
         if os.environ.get("FAKE_CUA_SCREEN_SLOW_SECONDS"):
@@ -292,6 +309,9 @@ def main() -> None:
         sys.stderr.write("fake driver failed to start\n")
         sys.stderr.flush()
         sys.exit(4)
+    if os.environ.get("FAKE_CUA_IGNORE_TERM"):
+        # POSIX: slow to stop, so the shim waits KILL_GRACE_SECONDS to kill it.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     for line in sys.stdin:
         line = line.strip()
         if line:

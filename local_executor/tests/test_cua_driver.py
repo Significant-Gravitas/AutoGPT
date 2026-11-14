@@ -5,6 +5,7 @@ a fake driver (tests/fake_cua_driver.py) that speaks MCP over stdio."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import shutil
 import sys
@@ -1052,7 +1053,22 @@ async def test_the_tool_list_carries_the_drivers_guidance_and_this_machines_rule
     assert "session" not in zoom.input_schema["properties"]
     assert zoom.input_schema["required"] == []
     assert zoom.approval_arguments == {}
-    assert "wait for the person's approval" in payload.instructions
+    assert "need approval on every call" in payload.instructions
+
+
+async def test_the_tool_list_promises_no_prompt_for_an_approval(make_handler) -> None:
+    """The guidance said disk arguments, scripts and launch arguments wait for
+    the person's approval on every call. A chat that runs Unsupervised, or a
+    standing rule the person set on an earlier card, approves without asking,
+    so the model could tell the person to expect a prompt that never came."""
+    handler = make_handler()
+
+    response = await handler.handle(ComputerToolsRequestMessage(id=new_id(), ts=now_ts()))
+
+    assert isinstance(response, ComputerToolsResponseMessage)
+    instructions = response.payload.instructions
+    assert "wait for the person's approval" not in instructions
+    assert "unless the chat runs Unsupervised or a standing rule" in instructions
 
 
 async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler) -> None:
@@ -1405,11 +1421,12 @@ async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
     ]
 
 
-async def test_a_windows_launch_name_is_refused_when_the_apps_cannot_be_listed(
-    make_handler, fake_log, monkeypatch
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+async def test_a_launch_name_is_refused_when_the_apps_cannot_be_listed(
+    make_handler, fake_log, monkeypatch, platform: str
 ) -> None:
-    monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the Windows shell did not answer")
-    handler = make_handler(platform="win32")
+    monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the shell did not answer")
+    handler = make_handler(platform=platform)
 
     response = await handler.handle(_call("launch_app", {"name": "Notepad"}))
 
@@ -1419,27 +1436,117 @@ async def test_a_windows_launch_name_is_refused_when_the_apps_cannot_be_listed(
 
 
 @pytest.mark.parametrize(
-    ("platform", "arguments"),
+    ("platform", "arguments", "approved"),
     [
-        ("win32", {"name": "logoff", "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
-        ("win32", {"name": "logoff", "bundle_id": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
-        ("linux", {"name": "Calculator"}),
-        ("darwin", {"name": "Calculator"}),
+        ("win32", {"name": "logoff", "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}, []),
+        (
+            "win32",
+            {"name": "logoff", "bundle_id": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"},
+            [],
+        ),
+        ("linux", {"name": "invoice.pdf", "launch_path": "zebra-notes"}, ["launch_path"]),
+        ("linux", {"name": "invoice.pdf", "urls": ["https://example.com"]}, ["urls"]),
+        ("darwin", {"name": "Calculator"}, []),
     ],
-    ids=["windows-aumid", "windows-aumid-bundle-id", "linux", "macos"],
+    ids=["windows-aumid", "windows-aumid-bundle-id", "linux-launch-path", "linux-urls", "macos"],
 )
 async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
-    make_handler, fake_log, monkeypatch, platform: str, arguments: dict
+    make_handler, fake_log, monkeypatch, platform: str, arguments: dict, approved: list
 ) -> None:
-    """An AUMID wins over the name in cua-driver's routing, and elsewhere
-    than Windows the name never reaches ShellExecuteEx."""
+    """An AUMID wins over the name in cua-driver's routing on Windows, and
+    on Linux links to open and then a launch_path do; macOS looks a name up
+    among its apps and goes no further."""
     monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
     handler = make_handler(platform=platform)
 
-    response = await handler.handle(_call("launch_app", arguments))
+    response = await handler.handle(_call("launch_app", arguments, approved_arguments=approved))
 
     assert isinstance(response, ComputerToolResultMessage)
     assert [call["tool"] for call in _records(fake_log, "call")] == ["launch_app"]
+
+
+_LINUX_APPS = [
+    ("Zebra Notes", "org.example.ZebraNotes"),
+    ("Éditeur", "org.example.Editeur"),
+    ("Mousepad", None),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "matches"),
+    [
+        ("Zebra Notes", True),
+        ("zebra notes", True),
+        ("ZEBRA NOTES", True),
+        ("org.example.ZebraNotes", True),
+        ("ORG.EXAMPLE.ZEBRANOTES", True),
+        ("ÉDITEUR", True),
+        ("Mousepad", True),
+        # The driver folds ASCII letters only.
+        ("éditeur", False),
+        # Its other matches can change before it looks (part of a name
+        # another app installed meanwhile also has), so they don't count,
+        # and it keeps the spaces.
+        ("Zebra", False),
+        (" Zebra Notes", False),
+        ("invoice.pdf", False),
+        ("..", False),
+        ("", False),
+    ],
+)
+def test_a_linux_launch_name_matches_an_app_as_the_driver_always_does(
+    name: str, matches: bool
+) -> None:
+    """cua-driver 0.38 on Linux, once no program has the name's first word:
+    an installed app's display name or desktop-file id, ignoring ASCII case."""
+    assert catalog.linux_app_name_matches(name, _LINUX_APPS) is matches
+
+
+@pytest.mark.parametrize("name", ["invoice.pdf", ".bash_history", "..", "Zebra", "logoff"])
+async def test_a_linux_launch_by_a_name_no_app_has_never_reaches_the_driver(
+    make_handler, fake_log, monkeypatch, name: str
+) -> None:
+    """On Linux cua-driver hands a name that no program has and no installed
+    app matches to xdg-open when a file or folder of that name is in its
+    working folder, the person's home under systemd: `.bash_history` opened
+    in an editor, for a screenshot to read, past the path jail and the
+    approval `urls` needs. A running process of that name, which no
+    installed app matched, doesn't count."""
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": name}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    handler = make_handler(platform="linux")
+
+    first = await handler.handle(_call("launch_app", {"name": "zebra notes"}))
+    second = await handler.handle(_call("launch_app", {"name": "org.example.ZebraNotes"}))
+
+    for response in (first, second):
+        assert isinstance(response, ComputerToolResultMessage)
+        assert response.payload.is_error is False
+    # The installed apps are listed once and kept for a while.
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "list_apps",
+        "launch_app",
+        "launch_app",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1816,6 +1923,51 @@ async def test_a_call_kept_waiting_past_its_deadline_never_starts(
     assert queued.payload.details == {"tool": "click", "timeout_seconds": 1, "started": False}
     assert "Nothing ran" in queued.payload.message
     assert [r["tool"] for r in _records(fake_log, "call")] == ["drag"]
+
+
+class _HeldAudit:
+    """An audit writer whose writes wait until `go` is set, as one behind
+    `autogpt-shim audit verify` on a large log does, recording each op."""
+
+    def __init__(self) -> None:
+        self.go = asyncio.Event()
+        self.writing = asyncio.Event()
+        self.written: list[str] = []
+
+    async def write(self, op: str, **_kwargs: Any) -> None:
+        self.writing.set()
+        await self.go.wait()
+        self.written.append(op)
+
+
+async def test_a_call_whose_record_is_slow_to_write_leaves_the_computer_to_the_next(
+    make_handler, fake_log
+) -> None:
+    """A call kept the computer, which every chat's calls take turns at,
+    until its audit record was written, after the driver was done: an audit
+    log held up (`autogpt-shim audit verify` on a large log, a slow disk)
+    held every other chat's calls too, each until its deadline. The record
+    is still written before the call's answer goes out."""
+    first = make_handler(session_id=None)
+    second = make_handler(session_id="other-chat")
+    first.share_with(second)
+    held = _HeldAudit()
+    first.audit = held  # type: ignore[assignment]
+    call = asyncio.create_task(first.handle(_call("click", {"pid": 7})))
+    try:
+        await asyncio.wait_for(held.writing.wait(), timeout=30)
+
+        other = await second.handle(_call("click", {"pid": 8}, timeout_seconds=10))
+
+        assert isinstance(other, ComputerToolResultMessage)
+        assert not call.done()
+    finally:
+        held.go.set()
+    response = await call
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert held.written == ["COMPUTER_TOOL_CALL"]
+    assert [r["tool"] for r in _records(fake_log, "call")] == ["click", "click"]
 
 
 class _HeldStart:
@@ -2464,6 +2616,58 @@ async def test_a_child_session_waits_only_briefly_for_a_screen_size_that_stalls(
     finally:
         if probe is not None:
             probe.cancel()
+        await parent._computer_handler.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows ends a process at once on terminate")
+async def test_a_chats_hello_does_not_wait_for_a_stalled_driver_to_stop(
+    tmp_path, fake_log, monkeypatch, linux_with_display
+) -> None:
+    """A screen-size probe out of time waited for its driver to be stopped,
+    and a driver slow to go (terminated, then killed after two seconds, then
+    waited for two more) held a chat's HELLO up to four seconds past the
+    probe's two, past the eight the platform gives the session. HELLO goes
+    on at the probe's deadline; the stop keeps the driver's turn until the
+    old driver is gone, so no call starts another one meanwhile."""
+    from autogpt_local_executor import handlers
+    from autogpt_local_executor.computer_use import mcp_client
+
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    monkeypatch.setattr(handlers, "SCREEN_SIZE_SECONDS", 60.0)
+    monkeypatch.setattr(mcp_client, "KILL_GRACE_SECONDS", 60.0)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_SLOW_SECONDS", "60")
+    monkeypatch.setenv("FAKE_CUA_IGNORE_TERM", "1")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    bridge = parent._computer_handler.driver
+    stalled: StdioMcpClient | None = None
+    hello: asyncio.Future[Any] | None = None
+    try:
+        await bridge.snapshot()
+        stalled = bridge._client
+        assert stalled is not None and stalled._process is not None
+        hello = asyncio.ensure_future(child._build_hello())
+        done, _ = await asyncio.wait({hello}, timeout=30)
+
+        assert hello in done
+        assert "computer_use" in hello.result().payload.capabilities
+        assert hello.result().payload.screen_resolution is None
+        # The old driver is still being stopped, and keeps the turn.
+        assert stalled._process.returncode is None
+        assert bridge._turn.locked()
+        stalled._process.kill()
+        loop = asyncio.get_running_loop()
+        until = loop.time() + 30
+        while bridge._turn.locked():
+            assert loop.time() < until, "the stop never let go of the driver's turn"
+            await asyncio.sleep(0.01)
+    finally:
+        if hello is not None:
+            hello.cancel()
+        if stalled is not None and stalled._process is not None:
+            with contextlib.suppress(ProcessLookupError):
+                stalled._process.kill()
         await parent._computer_handler.close()
 
 

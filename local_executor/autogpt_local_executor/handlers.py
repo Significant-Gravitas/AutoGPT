@@ -6,7 +6,9 @@ from `protocol`) and returns the response message — never raises (any
 internal error becomes an ERROR message with INTERNAL_ERROR).
 
 Every FILE_* handler MUST call `assert_inside_jail()` before touching
-the filesystem.
+the filesystem, in a worker thread like every other filesystem call
+(`_jailed`, `_read_in_a_thread`): a stalled mount holds a stat for as long
+as it stalls, and the event loop carries every session.
 """
 
 from __future__ import annotations
@@ -51,6 +53,8 @@ from .computer_use import (
 )
 from .computer_use.catalog import (
     is_aumid,
+    linux_app_name_matches,
+    linux_launch_uses_name,
     takes_session,
     windows_app_name_matches,
     without_session,
@@ -308,6 +312,12 @@ def _is_link(path: Path) -> bool:
     return path.is_symlink() or bool(isjunction and isjunction(path))
 
 
+def _is_own_directory(path: Path) -> bool:
+    """A directory itself. FILE_DELETE removes a link to one as a file,
+    leaving the directory it links to."""
+    return path.is_dir() and not _is_link(path)
+
+
 _T = TypeVar("_T")
 
 
@@ -391,10 +401,20 @@ async def _run_to_completion(func: Callable[..., _T], /, *args: Any, **kwargs: A
                 task.uncancel()
 
 
+async def _jailed(
+    requested_path: str | os.PathLike[str], allowed_root: str | os.PathLike[str]
+) -> Path:
+    """`assert_inside_jail`, in a worker thread: resolving a path stats each
+    folder on the way, and a mount that stalls (NFS, FUSE, a cloud-synced
+    folder) holds a stat for as long as it stalls. On the event loop it would
+    hold every session's work and keepalive with it."""
+    return await _read_in_a_thread(assert_inside_jail, requested_path, allowed_root)
+
+
 async def _read_in_a_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
-    """Run a read (FILE_READ, FILE_STAT, FILE_LIST) in a worker thread, and
-    keep its task until the thread is done even if the task is cancelled
-    meanwhile, then let the cancel go on. The thread can't be stopped, and a
+    """Run a read (FILE_READ, FILE_STAT, FILE_LIST, a request's path checks)
+    in a worker thread, and keep its task until the thread is done even if
+    the task is cancelled meanwhile, then let the cancel go on. The thread can't be stopped, and a
     request holds its machine slot until its task ends: one let go as the
     cancel landed, with its read still blocked (on a network filesystem,
     say), let repeated disconnects pile up reads past the limit, holding the
@@ -579,7 +599,7 @@ class CommandHandler:
             # No cwd is the root itself, `.` from it: the jail takes a relative
             # path from the root, so a relative root named again would be joined
             # to itself (workspace/workspace).
-            cwd = assert_inside_jail(payload.cwd or ".", self.config.allowed_root)
+            cwd = await _jailed(payload.cwd or ".", self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "EXECUTE_COMMAND", cwd_str, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -879,7 +899,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            path = assert_inside_jail(payload.path, self.config.allowed_root)
+            path = await _jailed(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_READ", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -978,7 +998,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            path = assert_inside_jail(payload.path, self.config.allowed_root)
+            path = await _jailed(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_WRITE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1052,13 +1072,18 @@ class FileHandler:
     async def handle_stat(self, msg: FileStatMessage) -> FileStatResponseMessage | ErrorMessage:
         payload = msg.payload
         start = time.monotonic()
-        try:
+
+        def jailed() -> Path:
             path = assert_inside_jail(payload.path, self.config.allowed_root)
             # Without following, describe the entry the path names, a symlink
             # included. The root has no entry inside itself, so it is
             # described as resolved.
             if not payload.follow_symlinks and path != _resolved_root(self.config):
-                path = assert_entry_inside_jail(payload.path, self.config.allowed_root)
+                return assert_entry_inside_jail(payload.path, self.config.allowed_root)
+            return path
+
+        try:
+            path = await _read_in_a_thread(jailed)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_STAT", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1144,7 +1169,7 @@ class FileHandler:
         payload = msg.payload
         start = time.monotonic()
         try:
-            base = assert_inside_jail(payload.path, self.config.allowed_root)
+            base = await _jailed(payload.path, self.config.allowed_root)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_LIST", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1157,7 +1182,7 @@ class FileHandler:
             "max_entries": payload.max_entries,
         }
 
-        if not base.exists():
+        if not await _read_in_a_thread(base.exists):
             await self._emit(
                 "FILE_LIST",
                 msg.id,
@@ -1165,7 +1190,7 @@ class FileHandler:
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{base} does not exist")
-        if not base.is_dir():
+        if not await _read_in_a_thread(base.is_dir):
             await self._emit(
                 "FILE_LIST",
                 msg.id,
@@ -1320,10 +1345,14 @@ class FileHandler:
     async def handle_delete(self, msg: FileDeleteMessage) -> AckMessage | ErrorMessage:
         payload = msg.payload
         start = time.monotonic()
-        try:
+
+        def jailed() -> Path:
             assert_inside_jail(payload.path, self.config.allowed_root)
             # A symlink is removed itself; its target is left alone.
-            path = assert_entry_inside_jail(payload.path, self.config.allowed_root)
+            return assert_entry_inside_jail(payload.path, self.config.allowed_root)
+
+        try:
+            path = await _read_in_a_thread(jailed)
         except PathJailError as exc:
             await _audit_jail_violation(self.audit, "FILE_DELETE", payload.path, exc)
             return _jail_error_to_message(msg.id, exc)
@@ -1334,7 +1363,7 @@ class FileHandler:
             "missing_ok": payload.missing_ok,
         }
 
-        if not os.path.lexists(path):
+        if not await _read_in_a_thread(os.path.lexists, path):
             if payload.missing_ok:
                 await self._emit("FILE_DELETE", msg.id, details, _ok_result(_elapsed_ms(start)))
                 return make_ack(msg.id)
@@ -1347,7 +1376,7 @@ class FileHandler:
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{path} does not exist")
 
         try:
-            if path.is_dir() and not _is_link(path):
+            if await _read_in_a_thread(_is_own_directory, path):
                 if payload.recursive:
                     await _run_to_completion(shutil.rmtree, str(path))
                 else:
@@ -1381,13 +1410,19 @@ class FileHandler:
     async def handle_move(self, msg: FileMoveMessage) -> AckMessage | ErrorMessage:
         payload = msg.payload
         start = time.monotonic()
-        try:
+
+        def jailed() -> tuple[Path, Path]:
             assert_inside_jail(payload.src, self.config.allowed_root)
             assert_inside_jail(payload.dst, self.config.allowed_root)
             # Renaming moves a symlink itself, and overwriting replaces one,
             # never its target.
-            src = assert_entry_inside_jail(payload.src, self.config.allowed_root)
-            dst = assert_entry_inside_jail(payload.dst, self.config.allowed_root)
+            return (
+                assert_entry_inside_jail(payload.src, self.config.allowed_root),
+                assert_entry_inside_jail(payload.dst, self.config.allowed_root),
+            )
+
+        try:
+            src, dst = await _read_in_a_thread(jailed)
         except PathJailError as exc:
             await _audit_jail_violation(
                 self.audit, "FILE_MOVE", f"{payload.src} -> {payload.dst}", exc
@@ -1396,7 +1431,7 @@ class FileHandler:
 
         details = {"src": str(src), "dst": str(dst), "overwrite": payload.overwrite}
 
-        if not os.path.lexists(src):
+        if not await _read_in_a_thread(os.path.lexists, src):
             await self._emit(
                 "FILE_MOVE",
                 msg.id,
@@ -1404,7 +1439,7 @@ class FileHandler:
                 _err_result(_elapsed_ms(start), ErrorCode.PATH_NOT_FOUND.value),
             )
             return make_error(msg.id, ErrorCode.PATH_NOT_FOUND, f"{src} does not exist")
-        if os.path.lexists(dst) and not payload.overwrite:
+        if not payload.overwrite and await _read_in_a_thread(os.path.lexists, dst):
             await self._emit(
                 "FILE_MOVE",
                 msg.id,
@@ -1472,7 +1507,8 @@ def _session_ended(raw: dict[str, Any]) -> bool:
     )
 
 
-# How long the installed apps' names are kept for checking Windows launches.
+# How long the installed apps are kept for checking launches by name
+# (Windows, Linux).
 INSTALLED_APPS_SECONDS = 60.0
 # How many chats' driver label renewals a machine keeps (session_label): a
 # chat renewed less recently than that many others starts from its first.
@@ -1510,8 +1546,9 @@ class ComputerUseHandler:
         # driver (share_with): a chat's later sessions use the same driver,
         # which refuses the labels it ended until it restarts.
         self._label_renewals: dict[str, int] = {}
-        # Windows: the installed apps' names, and when they were listed.
-        self._installed_apps: tuple[list[str], float] | None = None
+        # Windows and Linux: each installed app's name and bundle_id, and when
+        # they were listed.
+        self._installed_apps: tuple[list[tuple[str, str | None]], float] | None = None
 
     @property
     def shares_a_driver(self) -> bool:
@@ -1571,9 +1608,11 @@ class ComputerUseHandler:
 
     async def screen_size(self) -> tuple[int, int] | None:
         """The main display's logical size, from the driver, for HELLO. The
-        whole call fits in HELLO's wait, its run as well as its start: a
-        driver that takes the call and stalls would otherwise hold HELLO past
-        the point the platform gives up on it, for a size HELLO can leave out."""
+        whole call fits in HELLO's wait, its run as well as its start, and
+        the stop of a driver that overran it isn't waited for: a driver that
+        takes the call and stalls, or is slow to go, would otherwise hold
+        HELLO past the point the platform gives up on it, for a size HELLO
+        can leave out."""
         wait = self._hello_wait
         try:
             raw = await self.call_driver(
@@ -1581,6 +1620,7 @@ class ComputerUseHandler:
                 {"session": self.session_label},
                 timeout=SCREEN_SIZE_SECONDS if wait is None else min(SCREEN_SIZE_SECONDS, wait),
                 start_within=wait,
+                wait_for_stop=False,
             )
         except (DriverUnavailable, McpError, TimeoutError):
             # HELLO goes out without the size rather than not at all.
@@ -1635,6 +1675,7 @@ class ComputerUseHandler:
         *,
         timeout: float,
         start_within: float | None = None,
+        wait_for_stop: bool = True,
     ) -> dict[str, Any]:
         """One driver call, as `CuaDriverBridge.call_tool`. cua-driver ends a
         named session left idle for five minutes and refuses every later call
@@ -1647,7 +1688,11 @@ class ComputerUseHandler:
         deadline = loop.time() + timeout
         start_by = None if start_within is None else loop.time() + start_within
         raw = await self.driver.call_tool(
-            tool, arguments, timeout=timeout, start_within=start_within
+            tool,
+            arguments,
+            timeout=timeout,
+            start_within=start_within,
+            wait_for_stop=wait_for_stop,
         )
         if arguments.get("session") != self.session_label or not _session_ended(raw):
             return raw
@@ -1665,6 +1710,7 @@ class ComputerUseHandler:
             arguments,
             timeout=remaining,
             start_within=None if start_by is None else max(start_by - now, 0.0),
+            wait_for_stop=wait_for_stop,
         )
 
     async def handle(self, msg: Any, *, received_at: float | None = None) -> Any:
@@ -1720,7 +1766,10 @@ class ComputerUseHandler:
         shim received it (`received_at`, loop time), covering its wait for
         the computer, which every session's calls take turns at, and the
         driver's work. A call whose deadline passes while it waits never
-        reaches the driver."""
+        reaches the driver. The computer is let go once the driver is done,
+        before the call's audit record is written: a record held up (the
+        log locked by `autogpt-shim audit verify`, a slow disk) holds up
+        this call's answer, which goes out after it, not other chats' calls."""
         deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
         details = self._call_details(msg)
@@ -1730,9 +1779,19 @@ class ComputerUseHandler:
         except TimeoutError:
             return await self._not_started(msg, details, start)
         try:
-            return await self._run_call(msg, details, start, deadline)
-        finally:
-            self._machine_turn.release()
+            try:
+                response, record, result = await self._run_call(msg, details, start, deadline)
+            finally:
+                self._machine_turn.release()
+        except asyncio.CancelledError:
+            # The action may have happened: the bridge stopped the driver to
+            # end it, but nothing takes back a click it already made.
+            await self._emit(
+                msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
+            )
+            raise
+        await self._emit(msg.id, record, result)
+        return response
 
     @staticmethod
     def call_deadline(msg: ComputerToolCallMessage, received_at: float | None = None) -> float:
@@ -1766,42 +1825,45 @@ class ComputerUseHandler:
         details: dict[str, Any],
         start: float,
         deadline: float,
-    ) -> Any:
+    ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+        """Relay the call, and return its answer with its audit record's
+        details and result, which _call writes once the computer is free."""
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
         approved = msg.payload.approved_arguments
         try:
             result = await self._relay(tool, arguments, deadline, approved)
-        except asyncio.CancelledError:
-            # The action may have happened: the bridge stopped the driver to
-            # end it, but nothing takes back a click it already made.
-            await self._emit(
-                msg.id, details, _err_result(_elapsed_ms(start), _CANCELLED_ERROR_CODE)
-            )
-            raise
         except ComputerUseError as exc:
-            await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
-            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+            return (
+                make_error(msg.id, exc.code, exc.message, details=exc.details or None),
+                details,
+                _err_result(_elapsed_ms(start), exc.code.value),
+            )
         except DriverUnavailable as exc:
-            await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
-            return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+            return (
+                make_error(msg.id, exc.code, exc.message, details=exc.details or None),
+                details,
+                _err_result(_elapsed_ms(start), exc.code.value),
+            )
         except McpError as exc:
             if exc.code != INVALID_PARAMS:
-                await self._emit(
-                    msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value)
+                return (
+                    make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"cua-driver: {exc.message}"),
+                    details,
+                    _err_result(_elapsed_ms(start), ErrorCode.INTERNAL_ERROR.value),
                 )
-                return make_error(msg.id, ErrorCode.INTERNAL_ERROR, f"cua-driver: {exc.message}")
             # Arguments the driver rejected are the model's to fix.
             result = self._result_payload(
                 tool, {"isError": True, "content": [{"type": "text", "text": exc.message}]}
             )
         except CallNotStarted:
-            return await self._not_started(msg, details, start)
-        except TimeoutError as exc:
-            await self._emit(
-                msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
+            return (
+                self._not_started_response(msg),
+                details,
+                _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value),
             )
-            return make_error(
+        except TimeoutError as exc:
+            timed_out = make_error(
                 msg.id,
                 ErrorCode.COMMAND_TIMEOUT,
                 (
@@ -1819,18 +1881,32 @@ class ComputerUseHandler:
                     "started": True,
                 },
             )
+            return (
+                timed_out,
+                details,
+                _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value),
+            )
         payload, summary = result
-        await self._emit(msg.id, {**details, **summary}, _ok_result(_elapsed_ms(start)))
-        return ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload)
+        return (
+            ComputerToolResultMessage(id=msg.id, ts=now_ts(), payload=payload),
+            {**details, **summary},
+            _ok_result(_elapsed_ms(start)),
+        )
 
     async def _not_started(
         self, msg: ComputerToolCallMessage, details: dict[str, Any], start: float
     ) -> Any:
-        """The deadline passed before the driver took the call: it waited
-        behind other calls on this computer, or for the driver to start."""
+        """Audit, and answer, a call whose deadline passed before it had the
+        computer."""
         await self._emit(
             msg.id, details, _err_result(_elapsed_ms(start), ErrorCode.COMMAND_TIMEOUT.value)
         )
+        return self._not_started_response(msg)
+
+    @staticmethod
+    def _not_started_response(msg: ComputerToolCallMessage) -> Any:
+        """The deadline passed before the driver took the call: it waited
+        behind other calls on this computer, or for the driver to start."""
         return make_error(
             msg.id,
             ErrorCode.COMMAND_TIMEOUT,
@@ -1875,7 +1951,7 @@ class ComputerUseHandler:
                 details={"tool": tool, "argument": exc.argument},
             ) from exc
         if tool == "launch_app":
-            await self._check_windows_launch_name(arguments, deadline)
+            await self._check_launch_name(arguments, deadline)
         if takes_session(spec.get("inputSchema") or {}):
             arguments["session"] = self.session_label
         timeout = deadline - asyncio.get_running_loop().time()
@@ -1894,41 +1970,67 @@ class ComputerUseHandler:
                     self.clipboard_writeback.clear()
         return self._result_payload(tool, raw)
 
-    async def _check_windows_launch_name(self, arguments: dict[str, Any], deadline: float) -> None:
-        """On Windows cua-driver looks a launch_app `name` up among the
-        installed apps and, when none matches, hands it to ShellExecuteEx,
-        which runs a program of that name from PATH, out of sight: `logoff`
-        signs the person out. A launch by name goes ahead only when an
-        installed app, as list_apps lists it, would match. A launch_path,
-        path or AUMID takes precedence over the name in the driver's routing,
-        so those calls aren't checked here."""
-        name = arguments.get("name")
-        if self.driver.platform != "win32" or not isinstance(name, str):
-            return
-        if any(arguments.get(key) for key in ("launch_path", "path", "aumid")):
-            return
-        bundle_id = arguments.get("bundle_id")
-        if isinstance(bundle_id, str) and is_aumid(bundle_id):
-            return
-        if not windows_app_name_matches(name, await self._installed_app_names(deadline)):
-            raise ComputerUseError(
-                ErrorCode.FEATURE_NOT_SUPPORTED,
-                f"No installed app here is called {name!r}, so cua-driver would run a "
-                "program of that name from PATH, out of sight. Name the app as list_apps "
-                "shows it, pass its AUMID as aumid, or pass the program as launch_path, "
-                "which the person approves.",
-                details={"tool": "launch_app", "argument": "name"},
-            )
+    async def _check_launch_name(self, arguments: dict[str, Any], deadline: float) -> None:
+        """A launch_app `name` goes ahead only when an installed app, as
+        list_apps lists it, would match it, on the systems where cua-driver
+        acts on a name nothing matches.
 
-    async def _installed_app_names(self, deadline: float) -> list[str]:
-        """The installed apps' names from list_apps, kept for a minute. A
-        running process no installed app matched has no launch_path, and
-        the driver's name lookup doesn't find it either."""
+        On Windows the driver looks the name up among the installed apps
+        and, when none matches, hands it to ShellExecuteEx, which runs a
+        program of that name from PATH, out of sight: `logoff` signs the
+        person out. A launch_path, path or AUMID takes precedence over the
+        name in the driver's routing, so those calls aren't checked.
+
+        On Linux, once no program has the name's first word
+        (check_arguments), the driver looks for an installed app and, when
+        none matches, hands the name to xdg-open if a file or folder of that
+        name is in its working folder, the person's home under systemd:
+        `.bash_history` opens in an editor, for a screenshot to read, past
+        the path jail and the approval `urls` needs. Links to open, and then
+        a launch_path, take precedence over the name, so those calls aren't
+        checked."""
+        name = arguments.get("name")
+        platform = self.driver.platform
+        if not isinstance(name, str):
+            return
+        if platform == "win32":
+            if any(arguments.get(key) for key in ("launch_path", "path", "aumid")):
+                return
+            bundle_id = arguments.get("bundle_id")
+            if isinstance(bundle_id, str) and is_aumid(bundle_id):
+                return
+            apps = await self._installed_apps_listed(deadline)
+            if not windows_app_name_matches(name, [app_name for app_name, _ in apps]):
+                raise ComputerUseError(
+                    ErrorCode.FEATURE_NOT_SUPPORTED,
+                    f"No installed app here is called {name!r}, so cua-driver would run a "
+                    "program of that name from PATH, out of sight. Name the app as list_apps "
+                    "shows it, pass its AUMID as aumid, or pass the program as launch_path, "
+                    "which the person approves.",
+                    details={"tool": "launch_app", "argument": "name"},
+                )
+        elif platform.startswith("linux") and linux_launch_uses_name(arguments):
+            if not linux_app_name_matches(name, await self._installed_apps_listed(deadline)):
+                raise ComputerUseError(
+                    ErrorCode.FEATURE_NOT_SUPPORTED,
+                    f"No installed app here has the name or bundle_id {name!r}, so "
+                    "cua-driver would open a file or folder of that name, if there is one, "
+                    "without the person's approval. Name the app exactly as list_apps shows "
+                    "it, or pass the program as launch_path or the file as urls, which the "
+                    "person approves.",
+                    details={"tool": "launch_app", "argument": "name"},
+                )
+
+    async def _installed_apps_listed(self, deadline: float) -> list[tuple[str, str | None]]:
+        """Each installed app's name and bundle_id (on Linux its desktop-file
+        id) from list_apps, kept for a minute. A running process no installed
+        app matched has no launch_path, and the driver's name lookup doesn't
+        find it either."""
         loop = asyncio.get_running_loop()
         if self._installed_apps is not None:
-            names, listed_at = self._installed_apps
+            listed, listed_at = self._installed_apps
             if loop.time() - listed_at < INSTALLED_APPS_SECONDS:
-                return names
+                return listed
         timeout = deadline - loop.time()
         if timeout <= 0:
             raise CallNotStarted(
@@ -1938,19 +2040,20 @@ class ComputerUseHandler:
         structured = raw.get("structuredContent")
         apps = structured.get("apps") if isinstance(structured, dict) else None
         if raw.get("isError") or not isinstance(apps, list):
+            aumid = "the app's AUMID as aumid, or " if self.driver.platform == "win32" else ""
             raise ComputerUseError(
                 ErrorCode.FEATURE_NOT_SUPPORTED,
-                "The installed apps couldn't be listed to check this launch's name. Pass the "
-                "app's AUMID as aumid, or the program as launch_path, which the person approves.",
+                "The installed apps couldn't be listed to check this launch's name. Pass "
+                f"{aumid}the program as launch_path, which the person approves.",
                 details={"tool": "launch_app", "argument": "name"},
             )
-        names = [
-            app["name"]
+        listed = [
+            (app["name"], app["bundle_id"] if isinstance(app.get("bundle_id"), str) else None)
             for app in apps
             if isinstance(app, dict) and isinstance(app.get("name"), str) and app.get("launch_path")
         ]
-        self._installed_apps = (names, loop.time())
-        return names
+        self._installed_apps = (listed, loop.time())
+        return listed
 
     async def _clipboard_read(self, arguments: dict[str, Any], timeout: float) -> dict[str, Any]:
         """Relay a clipboard read under the shim's rules: by default only
@@ -2342,13 +2445,15 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "- Screenshots come back in results, at most "
         f"{config.max_screenshots_per_minute} images a minute.",
         "- Arguments that read or write this computer's disk (each tool's "
-        "`approval_arguments`) wait for the person's approval on every call. Use one only "
-        "when the task needs that file. A `run_script` script waits too, since its calls "
-        "can save a screenshot to a file: use `run_steps` or single calls unless the flow "
-        "needs a script's logic.",
-        "- Open an app with `launch_app` by its `name` (or `bundle_id`) alone. A command "
-        "line, a path, links or files to open, extra arguments or an inspector port wait "
-        "for the person's approval, since the program they start runs out of sight.",
+        "`approval_arguments`) need approval on every call: the platform asks the person, "
+        "unless the chat runs Unsupervised or a standing rule the person set approves the "
+        "call without asking. Use one only when the task needs that file. A `run_script` "
+        "script needs approval too, since its calls can save a screenshot to a file: use "
+        "`run_steps` or single calls unless the flow needs a script's logic.",
+        "- Open an app with `launch_app` by its `name` as `list_apps` shows it (or its "
+        "`bundle_id`) alone. A command "
+        "line, a path, links or files to open, extra arguments or an inspector port need "
+        "the same approval, since the program they start runs out of sight.",
         f"- {clipboard}",
         "- Only the tools listed are available. Driver configuration, sessions, "
         "recording, process control, downloads and page JavaScript are not.",

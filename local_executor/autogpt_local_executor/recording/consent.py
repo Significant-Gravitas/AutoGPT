@@ -198,16 +198,26 @@ def request_user_consent(
     Python), or goes unanswered for CONSENT_PROMPT_TIMEOUT_SECONDS. A headless
     shim therefore fails closed instead of silently authorizing a recording.
     """
+    # A co-pilot recording sends each step as it is captured (RECORDING_STEP),
+    # not the review copy, which is hygiene-redacted; a demonstration's leave
+    # the machine only after the stop.
+    live = (
+        "While you record, each step (what you do and type, and in which app and "
+        "window) is sent through AutoGPT to your authenticated browser as it happens. "
+        if mode == "copilot"
+        else ""
+    )
     if interpretation_route == "screenshots_to_cloud":
-        detail = (
+        detail = live + (
             "After you stop, the structured trajectory and screenshots may be sent "
             "to AutoGPT for browser review and skill generation."
         )
     else:
         detail = (
-            "Screen pixels stay on this machine. After you stop, a hygiene-redacted "
-            "structured trajectory is sent through AutoGPT to your authenticated "
-            "browser for review."
+            "Screen pixels stay on this machine. "
+            + live
+            + "After you stop, a hygiene-redacted structured trajectory is sent through "
+            "AutoGPT to your authenticated browser for review."
         )
     argv = [
         sys.executable,

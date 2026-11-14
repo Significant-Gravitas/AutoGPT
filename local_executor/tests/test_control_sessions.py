@@ -1014,6 +1014,108 @@ async def test_a_session_says_hello_again_once_nothing_is_under_way(
     assert ws.closed_with is not None and ws.closed_with[0] == 1000
 
 
+class _ClosingSocket(_ConnectedSocket):
+    """A _ConnectedSocket whose close lets `meanwhile` run first: frames the
+    platform sent before it saw the close still arrive, on this connection
+    and on the chats' own."""
+
+    def __init__(self, session_id: str | None, meanwhile: Any) -> None:
+        super().__init__(session_id)
+        self._meanwhile = meanwhile
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        await self._meanwhile(self)
+        await super().close(code, reason)
+
+
+async def _until(condition: Any) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 10
+    while not condition():
+        assert loop.time() < deadline, "the condition never came true"
+        await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_a_request_while_the_machine_reconnects_for_the_display_is_refused_not_cut_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once the machine's connection had decided to say HELLO again, its
+    close and the reconnect's backoff took seconds, and its chats' sessions
+    went on taking requests meanwhile: one started then was stopped with
+    every chat's session when the next connection began. From the decision
+    on, the machine's session and its chats' refuse requests as busy, and
+    the next connection serves them again."""
+    desktop = _Desktop(monkeypatch)
+    daemon = _computer_use_session(tmp_path, "machine")
+    child, started, sent = _idle_child(tmp_path)
+    chat = asyncio.create_task(asyncio.sleep(60))
+    served: list[str] = []
+
+    async def handle(msg, *, send):
+        served.append(msg.payload.path)
+        return make_ack(msg.id)
+
+    daemon._handle = handle  # type: ignore[method-assign]
+
+    async def requests_arrive(ws: _ConnectedSocket) -> None:
+        await child._on_frame(_ChildSocket(sent), _stat_request("/tmp/chat"))
+        await daemon._on_frame(ws, _stat_request("/tmp/machine"))
+        for _ in range(10):
+            await asyncio.sleep(0)
+
+    ws = _ClosingSocket(None, requests_arrive)
+    session = asyncio.create_task(daemon._run_session(ws))
+    try:
+        await desktop.looked(1)
+        daemon._child_sessions["session-1"] = _ActiveChild(daemon=child, task=chat)
+        desktop.up = True
+        await ws.wait_closed()
+        await asyncio.wait_for(session, timeout=10)
+    finally:
+        session.cancel()
+
+    assert started == [] and served == []
+    (chat_refusal,) = (json.loads(raw) for raw in sent)
+    (machine_refusal,) = (
+        frame for frame in map(json.loads, ws.sent) if frame["id"] == "stat-/tmp/machine"
+    )
+    for refusal in (chat_refusal, machine_refusal):
+        assert refusal["type"] == "ERROR"
+        assert refusal["payload"]["code"] == "SHIM_OVERLOADED"
+        assert refusal["payload"]["details"] == {"reason": "reconnecting"}
+
+    # A chat that reconnects on its own meanwhile (its connection dropped
+    # too) still refuses: the machine's next session stops it all the same.
+    chat_again = _ConnectedSocket("session-1")
+    chat_session = asyncio.create_task(child._run_session(chat_again))
+    try:
+        await _until(lambda: child._status_task is not None)
+        await child._on_frame(chat_again, _stat_request("/tmp/chat-again"))
+        for _ in range(10):
+            await asyncio.sleep(0)
+    finally:
+        await chat_again.close()
+        await asyncio.wait_for(chat_session, timeout=10)
+    assert started == []
+    (chat_again_refusal,) = (
+        frame for frame in map(json.loads, chat_again.sent) if frame["id"] == "stat-/tmp/chat-again"
+    )
+    assert chat_again_refusal["payload"]["details"] == {"reason": "reconnecting"}
+
+    # The next connection stops the chat it would have cut off, and serves.
+    again = _ConnectedSocket(None)
+    session = asyncio.create_task(daemon._run_session(again))
+    try:
+        await _until(lambda: daemon._status_task is not None)
+        assert chat.cancelled() and daemon._child_sessions == {}
+        await daemon._on_frame(again, _stat_request("/tmp/after"))
+        await _until(lambda: served == ["/tmp/after"])
+    finally:
+        await again.close()
+        await asyncio.wait_for(session, timeout=10)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("why", ["computer-use-off", "display-there"])
 async def test_a_hello_without_computer_use_for_another_reason_isnt_said_again(

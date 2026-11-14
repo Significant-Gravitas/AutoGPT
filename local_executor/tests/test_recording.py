@@ -609,6 +609,31 @@ def test_the_consent_dialog_runs_in_a_process_of_its_own(monkeypatch: pytest.Mon
     assert options["timeout"] == consent_module.CONSENT_PROMPT_TIMEOUT_SECONDS
 
 
+@pytest.mark.parametrize("route", ["screenshots_to_cloud", "extract_then_cloud"])
+def test_a_copilot_recordings_consent_says_its_steps_leave_as_it_goes(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """The dialog said the trajectory leaves the machine after the recording
+    stops, but a co-pilot recording sends each step as it is captured
+    (RECORDING_STEP): the person approved a schedule other than the one that
+    runs. A demonstration's still leave after the stop."""
+    from autogpt_local_executor.recording import consent as consent_module
+
+    _no_tk_in_this_process(monkeypatch)
+    shown = {}
+    for mode in ("copilot", "demonstration"):
+        dialog = _DialogProcess(stdout=b"declined\n")
+        monkeypatch.setattr(consent_module.subprocess, "run", dialog)
+        consent_module.request_user_consent(ConsentBroker(), mode=mode, interpretation_route=route)
+        [(argv, _options)] = dialog.calls
+        shown[mode] = argv[5]
+
+    assert "While you record, each step" in shown["copilot"]
+    assert "as it happens" in shown["copilot"]
+    assert "While you record" not in shown["demonstration"]
+    assert "After you stop" in shown["demonstration"]
+
+
 @pytest.mark.parametrize(
     "dialog",
     [

@@ -227,7 +227,16 @@ Known gaps:
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, so the shim refuses a `name` whose first
   word is a program, a program's own name included (`reboot` would run it;
-  an app goes by the name `list_apps` shows, such as `Firefox`). On Windows
+  an app goes by the name `list_apps` shows, such as `Firefox`). A `name`
+  no installed app matches it then hands to `xdg-open` if a file or folder
+  of that name is in its working folder, the person's home under systemd
+  (`.bash_history` would open in an editor, for a screenshot to read, past
+  the path jail and the approval `urls` needs), so where the driver acts on
+  the `name` (no `urls`, no `launch_path`) the shim lets it through only
+  when it is an installed app's name or desktop-file id, as `list_apps`
+  lists them, ignoring ASCII case as the driver does. The driver's looser
+  matches, part of a name or a launcher's program, don't count: another
+  app installed meanwhile can leave them matching nothing. On Windows
   the driver hands a `name` that matches no installed app, and a
   `bundle_id` that isn't an AUMID (`Package!App`), to ShellExecuteEx, which
   runs a program of that name from PATH (`logoff` would sign the person
@@ -323,7 +332,9 @@ seconds to connect, so if another chat's call holds the driver for more
 than two of them, the new session goes ahead unchecked: the grants are the
 app's, checked when the shim started, and a busy driver is a working one.
 Its HELLO waits as briefly for the screen size, the call's run as well as
-its start, and leaves it out instead,
+its start, and leaves it out instead, without waiting for a driver that
+overran the call to be stopped (the stop keeps the driver's turn, so no
+call starts another driver until the old one is gone),
 and as briefly for a driver that is starting again (after another chat's
 call overran, say), and then lists the tools the driver offered when it
 last ran, which its next start offers again.

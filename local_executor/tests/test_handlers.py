@@ -11,8 +11,11 @@ import signal
 import stat
 import sys
 import textwrap
+import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -196,6 +199,42 @@ async def test_a_write_never_reaches_a_hard_link_made_after_the_check(tmp_path: 
     assert isinstance(response, AckMessage)
     assert outside.read_text() == "must remain intact"
     assert target.read_text() == "overwrite"
+
+
+@pytest.mark.asyncio
+async def test_an_in_place_write_checks_the_opened_descriptor_before_truncating(
+    tmp_path: Path,
+) -> None:
+    """Where a new file can't take the old one's place (a folder that takes
+    no new entries, say), a write overwrites the old file in place, opened
+    without truncating: a hard link made from outside between the check and
+    the open is refused on the opened descriptor, before a byte changes."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "single.txt"
+    target.write_text("must remain intact")
+    outside = tmp_path / "outside.txt"
+    original_open = os.open
+
+    def link_before_open(*args, **kwargs):
+        if Path(args[0]) == target:
+            os.link(target, outside)
+        return original_open(*args, **kwargs)
+
+    handler = FileHandler(make_config(root))
+    with (
+        patch(
+            "autogpt_local_executor.path_jail._replace_with",
+            side_effect=PermissionError(errno.EACCES, "no new entries here"),
+        ),
+        patch("autogpt_local_executor.path_jail.os.open", side_effect=link_before_open),
+    ):
+        response = await handler.handle_write(_write_msg(target, "overwrite"))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert target.read_text() == "must remain intact"
+    assert outside.read_text() == "must remain intact"
 
 
 @pytest.mark.asyncio
@@ -1985,3 +2024,73 @@ async def test_a_listing_is_capped_whatever_max_entries_asks_for(
     assert isinstance(response, FileListResponseMessage)
     assert len(response.payload.entries) == 10
     assert response.payload.truncated is True
+
+
+# ── The event loop and slow mounts ──────────────────────────────────────────
+
+
+def _loop_stats_inside(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The paths in `root` that os.stat and os.lstat are called on from the
+    calling thread, the event loop's. realpath, exists, is_dir, is_symlink and
+    lexists all come down to them."""
+    loop_thread = threading.get_ident()
+    prefixes = (str(root), os.path.realpath(root))
+    seen: list[str] = []
+
+    def watched(real: Callable[..., Any]) -> Callable[..., Any]:
+        def call(path: Any, *args: Any, **kwargs: Any) -> Any:
+            if threading.get_ident() == loop_thread and not isinstance(path, int):
+                name = os.fsdecode(os.fspath(path))
+                if name.startswith(prefixes):
+                    seen.append(name)
+            return real(path, *args, **kwargs)
+
+        return call
+
+    monkeypatch.setattr(os, "stat", watched(os.stat))
+    monkeypatch.setattr(os, "lstat", watched(os.lstat))
+    return seen
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kind", ["command", "read", "write", "stat", "stat-entry", "list", "delete", "move"]
+)
+async def test_a_request_checks_its_paths_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Each request resolved its paths in the jail, and list, delete and move
+    checked them, on the event loop every session shares. A stalled mount
+    (NFS, FUSE, a cloud-synced folder) holds a stat for as long as it stalls,
+    and with it every session's work and keepalive."""
+    root = tmp_path / "root"
+    (root / "dir").mkdir(parents=True)
+    a = root / "dir" / "a.txt"
+    a.write_text("a")
+    config = ShimConfig(
+        allowed_root=root,
+        audit_log_path=tmp_path / "_audit.log",
+        platform_url="http://localhost:9999",
+        machine_id="test-machine",
+        enable_shell=True,
+    )
+    files = FileHandler(config)
+    listing = FileListMessage(id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(a.parent)))
+    requests = {
+        "command": lambda: CommandHandler(config).handle(
+            _cmd_msg(argv=[sys.executable, "-c", "pass"], cwd=str(a.parent))
+        ),
+        "read": lambda: files.handle_read(_read_msg(a)),
+        "write": lambda: files.handle_write(_write_msg(a.parent / "b.txt", "b")),
+        "stat": lambda: files.handle_stat(_stat_msg(a)),
+        "stat-entry": lambda: files.handle_stat(_stat_msg(a, follow_symlinks=False)),
+        "list": lambda: files.handle_list(listing),
+        "delete": lambda: files.handle_delete(_delete_msg(a)),
+        "move": lambda: files.handle_move(_move_msg(a, a.parent / "c.txt")),
+    }
+    seen = _loop_stats_inside(root, monkeypatch)
+
+    response = await requests[kind]()
+
+    assert not isinstance(response, ErrorMessage), response
+    assert seen == []

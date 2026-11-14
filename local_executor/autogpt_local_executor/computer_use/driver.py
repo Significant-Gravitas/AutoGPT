@@ -251,6 +251,9 @@ class CuaDriverBridge:
         self._start: asyncio.Task[StdioMcpClient] | None = None
         # Held for each tool call: the driver runs one at a time anyway.
         self._turn = asyncio.Lock()
+        # Stops of drivers whose call overran, which the caller didn't wait
+        # for (call_tool): each holds the turn until its driver is gone.
+        self._stops: set[asyncio.Future[None]] = set()
         self._starts: list[float] = []
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
@@ -295,6 +298,7 @@ class CuaDriverBridge:
         *,
         timeout: float,
         start_within: float | None = None,
+        wait_for_stop: bool = True,
     ) -> dict[str, Any]:
         """One tool call, which waits for its turn and runs within `timeout`
         seconds in all. Raises CallNotStarted when the deadline passes before
@@ -307,7 +311,12 @@ class CuaDriverBridge:
         would go on acting on the machine until it ended, and every request
         sent after it would wait. The bridge sends one call at a time, so the
         one the driver runs is the one that overran, and stops the driver to
-        end it; the next call starts a new one."""
+        end it; the next call starts a new one. A stop can take seconds (a
+        driver slow to go is killed after KILL_GRACE_SECONDS), and the call
+        waits for it unless `wait_for_stop` is false, for a caller that must
+        be done by its deadline (HELLO's screen-size probe): the stop then
+        goes on, keeping the turn until the driver is gone, so the next call
+        still waits for it."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         start_by = deadline if start_within is None else min(deadline, loop.time() + start_within)
@@ -331,7 +340,10 @@ class CuaDriverBridge:
                 raise DriverUnavailable(f"cua-driver stopped during the call: {exc}") from exc
             except (TimeoutError, asyncio.CancelledError):
                 stopping = asyncio.ensure_future(self._stop_unfinished(client))
-                await asyncio.shield(stopping)
+                self._stops.add(stopping)
+                stopping.add_done_callback(self._stops.discard)
+                if wait_for_stop:
+                    await asyncio.shield(stopping)
                 raise
         finally:
             if stopping is not None and not stopping.done():
@@ -348,6 +360,10 @@ class CuaDriverBridge:
             start.cancel()
             with contextlib.suppress(BaseException):
                 await start
+        if self._stops:
+            # A driver still being stopped is no longer the bridge's client,
+            # which the stop below ends: it would outlive the shim.
+            await asyncio.gather(*self._stops, return_exceptions=True)
         async with self._lock:
             self._closed = True
             await self._stop_client()
