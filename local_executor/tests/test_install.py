@@ -178,6 +178,42 @@ def test_task_xml_is_utf16_as_declared_and_quotes_the_command_line(tmp_path: Pat
     )
 
 
+def test_an_allowed_root_given_to_install_stays_one_argument_in_each_template(
+    tmp_path: Path,
+) -> None:
+    """`install` passes the service the global options `start` needs too
+    (_service_global_args), `--allowed-root` among them, and each template
+    quotes them its own way: a folder with a space or a `%` in its name must
+    come back whole from each."""
+    root = "/home/alice/My Docs/100% done"
+    ctx = install_mod.AutostartContext(
+        shim_command=("/opt/bin/autogpt-shim",),
+        config_path=None,
+        stdout_log="/tmp/out.log",
+        stderr_log="/tmp/err.log",
+        global_args=("--allowed-root", root),
+    )
+    argv = ["/opt/bin/autogpt-shim", "--allowed-root", root, "start"]
+
+    plist = plistlib.loads(install_mod.render_template("launchd.plist.template", ctx).encode())
+    assert plist["ProgramArguments"] == argv
+
+    lines = install_mod.render_template("systemd.service.template", ctx).splitlines()
+    [exec_start] = [
+        line.removeprefix("ExecStart=") for line in lines if line.startswith("ExecStart=")
+    ]
+    assert _systemd_argv(exec_start) == argv
+
+    raw = install_mod.write_windows_task_xml(ctx, tmp_path / "task.xml").read_bytes()
+    ns = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
+    exec_action = ET.fromstring(raw).find("t:Actions/t:Exec", ns)
+    assert exec_action is not None
+    # As Windows splits a command line: the quoted folder is one argument.
+    assert exec_action.findtext("t:Arguments", namespaces=ns) == (
+        '--allowed-root "/home/alice/My Docs/100% done" start'
+    )
+
+
 def test_a_path_with_a_control_character_is_refused() -> None:
     ctx = install_mod.AutostartContext(
         shim_command=("/opt/bin/autogpt-shim",),

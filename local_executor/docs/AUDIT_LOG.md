@@ -163,7 +163,10 @@ first. With no keychain up yet, such a start waits for one instead (exit
 beside its place and then renamed there,
 so a full disk part way through leaves none, and the start exits 75 to be
 restarted, as it does when the disk fills making the key's folder or its
-lock. OAuth tokens have no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+lock. A storage error reading an existing file key (a network mount that
+timed out, say) is no malformed key either: the start exits 75, or 78
+where a restart can't help (the key may not be read). OAuth tokens have no
+file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
 
 Only the daemon makes a key, and only while there is no log yet: a log with
 no key stored for it (a keychain entry removed, say) stops it at start,

@@ -1419,23 +1419,27 @@ MAX_FRAME_NESTING = 64
 
 def _nesting_depth(value: Any) -> int:
     """How many objects and arrays deep `value` goes, counted without
-    recursing, and no further than one level past MAX_FRAME_NESTING."""
-    deepest = 0
-    stack = [(value, 1)]
-    while stack:
-        item, depth = stack.pop()
-        if isinstance(item, dict):
-            children: Any = item.values()
-        elif isinstance(item, list):
-            children = item
+    recursing, and no further than one level past MAX_FRAME_NESTING.
+
+    The walk keeps one iterator for each level it is in, so what it holds
+    grows with the frame's depth, not its width: an entry for each array or
+    object still to look at came to millions for a frame of one flat array
+    of empty ones."""
+    if not isinstance(value, dict | list):
+        return 0
+    levels = [iter(value.values() if isinstance(value, dict) else value)]
+    deepest = 1
+    while levels:
+        for child in levels[-1]:
+            # A scalar adds no depth.
+            if isinstance(child, dict | list):
+                levels.append(iter(child.values() if isinstance(child, dict) else child))
+                deepest = max(deepest, len(levels))
+                if deepest > MAX_FRAME_NESTING:
+                    return deepest
+                break
         else:
-            continue
-        deepest = max(deepest, depth)
-        if deepest > MAX_FRAME_NESTING:
-            break
-        # A scalar adds no depth, and a long flat array of them would only
-        # grow the stack.
-        stack.extend((child, depth + 1) for child in children if isinstance(child, dict | list))
+            levels.pop()
     return deepest
 
 

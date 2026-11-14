@@ -1363,6 +1363,64 @@ def test_a_fallback_audit_key_folder_that_cannot_be_made_says_whether_a_restart_
     assert raised.value.transient is transient
 
 
+@pytest.mark.parametrize(
+    ("failure", "permanent", "transient"),
+    [
+        # A network mount timing out, which can come back.
+        ("ETIMEDOUT", False, True),
+        ("EACCES", True, False),
+        # Contents that aren't a key, which no restart changes.
+        ("malformed", True, False),
+    ],
+)
+def test_a_fallback_audit_key_that_cannot_be_read_says_whether_a_restart_can_fix_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str, permanent: bool, transient: bool
+) -> None:
+    """With no keychain, a storage error reading the file fallback's audit
+    key was reported as a malformed key, which startup takes for permanent,
+    so a supervised shim stopped for good when its storage timed out
+    instead of exiting for a restart once it came back."""
+    import errno
+    import os
+
+    import keyring
+    import keyring.errors
+
+    config = ShimConfig(
+        session_id="session-1", allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"
+    )
+    fallback = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback))
+
+    def missing(*_args: object) -> None:
+        raise keyring.errors.NoKeyringError("no recommended backend")
+
+    monkeypatch.setattr(keyring, "get_password", missing)
+    fallback.mkdir()
+    key_file = fallback / "audit-key.enc"
+    if failure == "malformed":
+        key_file.write_text("not-an-encrypted-key", encoding="utf-8")
+    else:
+        key_file.write_text("00" * 16 + ":" + "00" * 32, encoding="utf-8")
+        number = getattr(errno, failure)
+        real_read_text = Path.read_text
+
+        def read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+            if self == key_file:
+                raise OSError(number, os.strerror(number), str(self))
+            return real_read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", read_text)
+
+    with pytest.raises(daemon_module.DaemonPreflightError) as raised:
+        ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.permanent is permanent
+    assert raised.value.transient is transient
+    assert key_file.exists()
+
+
 def test_a_full_disk_writing_the_fallback_audit_key_leaves_no_key_for_later_starts_to_refuse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

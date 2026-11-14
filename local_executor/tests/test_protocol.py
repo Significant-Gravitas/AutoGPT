@@ -360,6 +360,27 @@ def test_a_frame_nested_one_level_past_the_limit_is_refused(frame) -> None:
         parse_message(frame(_DOCUMENTED_NESTING_LIMIT - 1))
 
 
+def test_the_depth_check_holds_what_a_frame_is_deep_not_wide() -> None:
+    """The depth check kept an entry for every array or object it had still
+    to look at, so a frame of one flat array holding a few million empty
+    arrays (16 MiB of them) held a few million entries more while it was
+    checked. It keeps one for each level it is in now."""
+    import tracemalloc
+
+    from autogpt_local_executor.protocol import _nesting_depth
+
+    wide: list[list[int]] = [[] for _ in range(500_000)]
+    tracemalloc.start()
+    try:
+        assert _nesting_depth(wide) == 2
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    # An entry for each of the 500,000 took over 30 MB.
+    assert peak < 2_000_000
+
+
 def test_parse_rejects_missing_id() -> None:
     raw = json.dumps({"type": "PING", "ts": 1.0, "payload": {}})
     with pytest.raises(ValidationError):

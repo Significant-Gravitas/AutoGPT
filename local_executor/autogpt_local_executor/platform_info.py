@@ -87,17 +87,19 @@ def detect_capabilities(
     enable_hardware: bool = False,
     enable_recording: bool = False,
     cua_driver_path: str | None = None,
+    driver_found: bool | None = None,
 ) -> list[str]:
     """Return the list of capabilities to advertise in HELLO.
 
     Defaults gate optional capabilities behind config flags so a shim never
-    advertises something the user didn't opt in to.
+    advertises something the user didn't opt in to. `driver_found` is
+    can_do_computer_use's.
     """
     caps: list[str] = []
     if enable_shell:
         caps.append("shell")
     caps.append("files")  # always present
-    if enable_computer_use and can_do_computer_use(cua_driver_path):
+    if enable_computer_use and can_do_computer_use(cua_driver_path, driver_found=driver_found):
         caps.append("computer_use")
     if enable_hardware:
         if _module_available("serial"):
@@ -117,16 +119,23 @@ def available_recording_channels() -> list[str]:
     return []
 
 
-def can_do_computer_use(cua_driver_path: str | None = None) -> bool:
+def can_do_computer_use(
+    cua_driver_path: str | None = None, *, driver_found: bool | None = None
+) -> bool:
     """Whether computer use can be offered: cua-driver is installed and, on
     Linux, has a display it can drive (linux_display_problem). WSL2 has none
-    for Windows apps. The daemon advertises it only once the driver starts."""
+    for Windows apps. The daemon advertises it only once the driver starts.
+    `driver_found` says whether the driver is installed, for a caller that
+    looked for it itself (HELLO, which bounds the look); otherwise it is
+    looked for here."""
     from .computer_use.driver import find_driver_binary
 
     plat = detect_platform()
     if plat == "wsl2":
         return False
-    if find_driver_binary(cua_driver_path) is None:
+    if driver_found is None:
+        driver_found = find_driver_binary(cua_driver_path) is not None
+    if not driver_found:
         return False
     if plat == "linux":
         session_display.follow()

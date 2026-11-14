@@ -1674,6 +1674,224 @@ async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
                 os.kill(int(pid_path.read_text()), signal.SIGKILL)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
+async def test_a_cancel_landing_as_the_command_exits_still_stops_its_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Python 3.11's asyncio.wait_for drops a cancel that lands as the work
+    it waits for ends. The command's exit was waited for that way, so a
+    session revoked just as its command exited ended the request as if
+    nothing had happened: the command was recorded as done, and a child it
+    left holding its output ran on."""
+    import fcntl
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    exited = handlers_module._exited
+    requests: list[asyncio.Task] = []
+
+    async def exited_as_the_request_is_cancelled(proc):
+        await exited(proc)
+        requests[0].cancel()
+
+    monkeypatch.setattr(handlers_module, "_exited", exited_as_the_request_is_cancelled)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    lock_path = tmp_path / "child.lock"
+    pid_path = tmp_path / "child.pid"
+    child = textwrap.dedent(
+        f"""
+        import fcntl, os, time
+        lock = open({str(lock_path)!r}, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open({str(pid_path)!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({str(pid_path)!r} + ".tmp", {str(pid_path)!r})
+        time.sleep(120)
+        """
+    )
+    # The command starts the child, which keeps its stdout and stderr, and
+    # exits once the child holds its lock.
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {child!r}])
+        while not os.path.exists({str(pid_path)!r}):
+            time.sleep(0.01)
+        """
+    )
+
+    def child_released_its_lock() -> bool:
+        with open(lock_path, "w") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path)))
+    )
+    requests.append(task)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=60)
+        assert task in done
+        assert task.cancelled()
+        assert await _wait_until(child_released_its_lock, timeout=30)
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+    finally:
+        if not task.done():
+            task.cancel()
+        if pid_path.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+
+
+def _hold_pipe_connections(monkeypatch: pytest.MonkeyPatch) -> tuple[asyncio.Event, list[Any]]:
+    """Have asyncio wait to connect a new command's pipes until the event
+    returned is set, as a busy event loop might: its command was created
+    before then. The list gets each command's Popen as its wait begins."""
+    from asyncio import base_subprocess
+
+    may_connect = asyncio.Event()
+    created: list[Any] = []
+    connect = base_subprocess.BaseSubprocessTransport._connect_pipes
+
+    async def connect_when_allowed(self, waiter):
+        created.append(self._proc)
+        await may_connect.wait()
+        await connect(self, waiter)
+
+    monkeypatch.setattr(
+        base_subprocess.BaseSubprocessTransport, "_connect_pipes", connect_when_allowed
+    )
+    return may_connect, created
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
+async def test_a_command_cancelled_as_it_starts_is_stopped_with_its_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A POSIX command runs from the moment it is created, and asyncio
+    connects its output pipes after that. A cancel landing in between went
+    to asyncio's own cleanup, which kills the command alone, so a child it
+    had started ran on after its session ended, with no CANCELLED record:
+    the request never had the process to stop."""
+    import fcntl
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    may_connect, _created = _hold_pipe_connections(monkeypatch)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    lock_path = tmp_path / "child.lock"
+    pid_path = tmp_path / "child.pid"
+    child = textwrap.dedent(
+        f"""
+        import fcntl, os, time
+        lock = open({str(lock_path)!r}, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open({str(pid_path)!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({str(pid_path)!r} + ".tmp", {str(pid_path)!r})
+        time.sleep(120)
+        """
+    )
+    command = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(120)"
+    )
+
+    def child_released_its_lock() -> bool:
+        with open(lock_path, "w") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path)))
+    )
+    try:
+        # The child runs while the command's start still waits for its pipes.
+        assert await _wait_until(pid_path.exists, timeout=60)
+        assert not task.done()
+        task.cancel()
+        may_connect.set()
+
+        assert await _wait_until(child_released_its_lock, timeout=30)
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+    finally:
+        may_connect.set()
+        if pid_path.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+        if not task.done():
+            task.cancel()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows starts a command suspended")
+@pytest.mark.asyncio
+async def test_a_windows_command_cancelled_as_it_starts_never_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a command is created suspended and runs only once it is in
+    its job, after asyncio has connected its pipes. A cancel landing before
+    then reaches asyncio's own cleanup, which ends the command while it is
+    still suspended: nothing of it ran, so there is nothing to stop or
+    record (on POSIX there is: the test above)."""
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    may_connect, created = _hold_pipe_connections(monkeypatch)
+    handler = CommandHandler(make_config(tmp_path), Audit())
+    ran = tmp_path / "ran"
+    task = asyncio.create_task(
+        handler.handle(
+            _cmd_msg(
+                argv=[sys.executable, "-c", f"open({str(ran)!r}, 'w').close()"],
+                cwd=str(tmp_path),
+            )
+        )
+    )
+    try:
+        assert await _wait_until(lambda: bool(created), timeout=60)
+        task.cancel()
+        may_connect.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        [popen] = created
+        assert popen.poll() is not None
+        assert not ran.exists()
+        assert not handlers_module._command_jobs
+        assert [record for record in records if record[0] == "EXECUTE_COMMAND"] == []
+    finally:
+        may_connect.set()
+        if not task.done():
+            task.cancel()
+
+
 def _released(held: Path) -> bool:
     """Whether no process holds `held` open any more. Windows refuses to
     delete a file another process has open without sharing deletion, which
@@ -1801,6 +2019,80 @@ async def test_a_windows_command_cancelled_after_it_exited_takes_its_child_with_
             task.cancel()
 
 
+def test_a_command_whose_job_cannot_be_made_is_never_resumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A command whose job couldn't be made was resumed anyway, and its stop
+    could then end it alone: what it started ran on after a timeout or a
+    revoked session. It now stays suspended, for its request to refuse."""
+    from autogpt_local_executor import windows_jobs
+
+    resumed: list[int] = []
+
+    def no_job(_kernel32: object, _pid: int) -> windows_jobs.CommandJob:
+        raise OSError(errno.EACCES, "jobs are restricted here")
+
+    monkeypatch.setattr(windows_jobs, "_kernel32", lambda: object())
+    monkeypatch.setattr(windows_jobs, "_job_holding", no_job)
+    monkeypatch.setattr(windows_jobs, "_resume", lambda _kernel32, pid: resumed.append(pid))
+
+    with pytest.raises(OSError, match="not run"):
+        windows_jobs.run_in_job(4321)
+
+    assert resumed == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows job objects")
+@pytest.mark.asyncio
+async def test_a_windows_command_that_cannot_get_a_job_is_refused_before_it_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When its job couldn't be made, a command ran without one, and a stop
+    ended it alone. It is refused now, while still suspended, so nothing of
+    it runs, and the refusal is recorded."""
+    from autogpt_local_executor import windows_jobs
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    def no_job(_kernel32: object, _pid: int) -> windows_jobs.CommandJob:
+        raise OSError(errno.EACCES, "jobs are restricted here")
+
+    monkeypatch.setattr(windows_jobs, "_job_holding", no_job)
+    created: list[asyncio.subprocess.Process] = []
+    create = asyncio.create_subprocess_exec
+
+    async def create_and_keep(*args, **kwargs):
+        proc = await create(*args, **kwargs)
+        created.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_and_keep)
+    handler = CommandHandler(make_config(tmp_path), Audit())
+    ran = tmp_path / "ran"
+
+    response = await handler.handle(
+        _cmd_msg(
+            argv=[sys.executable, "-c", f"open({str(ran)!r}, 'w').close()"],
+            cwd=str(tmp_path),
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.INTERNAL_ERROR
+    assert "job" in response.payload.message
+    [proc] = created
+    await asyncio.wait_for(proc.wait(), timeout=30)
+    # Ended while it was still suspended, so it can't run now.
+    assert not ran.exists()
+    assert not handlers_module._command_jobs
+    [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+    assert result["error_code"] == "INTERNAL_ERROR"
+
+
 @pytest.mark.asyncio
 async def test_a_program_a_finished_command_started_in_the_background_keeps_running(
     tmp_path: Path,
@@ -1840,6 +2132,56 @@ async def test_a_program_a_finished_command_started_in_the_background_keeps_runn
 
     assert isinstance(response, CommandResultMessage)
     assert response.payload.exit_code == 0
+    go.touch()
+    assert await _wait_until(survived.exists, timeout=60)
+
+
+@pytest.mark.asyncio
+async def test_a_command_that_exits_leaving_a_child_on_its_output_is_done_when_it_exits(
+    tmp_path: Path,
+) -> None:
+    """Process.wait() returns once the output pipes have closed as well as
+    the process exited, so a command that exited after starting a child
+    that kept its stdout and stderr (a server started in the background)
+    was waited for until its timeout, reported as timed out, and stopped
+    with the child. It is done once it exits now: its output is read for
+    _OUTPUT_DRAIN_SECONDS more, and the child keeps running, as one with
+    output of its own does."""
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config)
+    ready, go, survived = tmp_path / "ready", tmp_path / "go", tmp_path / "survived"
+    child = textwrap.dedent(
+        f"""
+        import os, time
+        open({str(ready)!r} + ".tmp", "w").close()
+        os.replace({str(ready)!r} + ".tmp", {str(ready)!r})
+        deadline = time.monotonic() + 60
+        while not os.path.exists({str(go)!r}) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        open({str(survived)!r}, "w").close()
+        """
+    )
+    # The command hands the child its stdout and stderr, and exits once the
+    # child runs.
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {child!r}], stdout=1, stderr=2)
+        while not os.path.exists({str(ready)!r}):
+            time.sleep(0.01)
+        print("started", flush=True)
+        """
+    )
+
+    response = await handler.handle(
+        _cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path), timeout_seconds=40)
+    )
+
+    assert isinstance(response, CommandResultMessage)
+    assert response.payload.timed_out is False
+    assert response.payload.exit_code == 0
+    assert "started" in response.payload.stdout
     go.touch()
     assert await _wait_until(survived.exists, timeout=60)
 
@@ -2589,6 +2931,41 @@ def test_an_in_place_write_goes_ahead_when_only_the_mode_cannot_be_kept(
     monkeypatch.undo()
 
     assert notes.read_text() == "new"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_an_in_place_write_leaves_a_mode_with_no_set_id_bits_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-place fallback set the file's mode even when it had no set-ID
+    bits to drop, so the mode it set was the one the file had. On an NFS
+    mount a chmod reaches the server even when it changes nothing, and a
+    server that drops ACL entries on a chmod (ZFS's aclmode=discard, say)
+    dropped the file's own ACL, which writing in place is there to keep."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    notes = tmp_path / "notes.txt"
+    notes.write_text("old")
+    notes.chmod(0o640)
+    applied: list[int] = []
+    real_fchmod = os.fchmod
+
+    def fchmod(fd: int, mode: int) -> None:
+        applied.append(mode)
+        real_fchmod(fd, mode)
+
+    def acl_differs(*_args, **_kwargs):
+        raise PermissionError("the file has an ACL a replacement wouldn't keep")
+
+    monkeypatch.setattr(path_jail, "_replace_with", acl_differs)
+    monkeypatch.setattr(path_jail.os, "fchmod", fchmod)
+
+    path_jail.write_jail_file(notes, tmp_path, b"new")
+    monkeypatch.undo()
+
+    assert notes.read_text() == "new"
+    assert applied == []
+    assert stat.S_IMODE(notes.stat().st_mode) == 0o640
 
 
 @pytest.mark.parametrize("char", ["\u6587", "\U0001f600"], ids=["cjk", "emoji"])

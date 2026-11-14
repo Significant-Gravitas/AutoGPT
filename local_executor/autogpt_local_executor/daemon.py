@@ -1228,6 +1228,13 @@ class ShimDaemon:
 
     async def _build_hello(self) -> HelloMessage:
         cfg = self.config
+        # The driver is looked for first, through the bridge's one look at a
+        # time and within HELLO's wait (driver_found_for_hello): one looked
+        # for in a thread of HELLO's own, waited for to the end, kept a
+        # stalled mount on PATH from letting HELLO out at all.
+        driver_found = None
+        if cfg.enable_computer_use:
+            driver_found = await self._computer_handler.driver_found_for_hello()
         # Off the event loop, which carries every other session: the X
         # display probe behind both can take seconds.
         caps = await asyncio.to_thread(
@@ -1238,6 +1245,7 @@ class ShimDaemon:
             enable_hardware=cfg.enable_hardware,
             enable_recording=cfg.enable_recording,
             cua_driver_path=cfg.cua_driver_path,
+            driver_found=driver_found,
         )
         # HELLO is the only place computer use is offered, so a session that
         # left it out for want of the desktop's display (the systemd service

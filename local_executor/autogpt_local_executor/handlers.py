@@ -310,11 +310,28 @@ async def _terminate_process_group(pgid: int) -> None:
     _signal_process_group(pgid, signal.SIGKILL)
 
 
+async def _exited(proc: asyncio.subprocess.Process) -> None:
+    """Return once `proc` has exited, whether or not its output pipes have
+    closed. Process.wait() returns only once they have too, and a child the
+    command started can keep them open (a server started in the
+    background, say), so a command that had exited was waited for until
+    its timeout, and stopped with the child. The exit is seen by its return
+    code, looked at every 50 ms while wait() hasn't returned."""
+    waiting = asyncio.ensure_future(proc.wait())
+    try:
+        while not waiting.done() and proc.returncode is None:
+            await asyncio.wait({waiting}, timeout=0.05)
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+
+
 def _end_windows_command(
     proc: asyncio.subprocess.Process, job: windows_jobs.CommandJob | None
 ) -> None:
     """End a Windows command and every process it started (its job), or the
-    command alone where it has no job: TerminateProcess ends one process."""
+    command alone where the job can't be ended: TerminateProcess ends one
+    process. Every command that runs has a job (_spawn_argv)."""
     if job is not None:
         try:
             job.terminate()
@@ -484,6 +501,42 @@ async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
     if cancelled:
         raise asyncio.CancelledError
     return result
+
+
+class _CancelledOnceStarted(asyncio.CancelledError):
+    """A request cancelled while its command started, once the command was
+    running (POSIX): the request stops it and records it, as one cancelled
+    later is."""
+
+    def __init__(self, proc: asyncio.subprocess.Process) -> None:
+        super().__init__()
+        self.proc = proc
+
+
+async def _started_through_cancel(
+    starting: Awaitable[asyncio.subprocess.Process],
+) -> asyncio.subprocess.Process:
+    """The process `starting` creates, though the task waiting for it is
+    cancelled meanwhile: it then raises _CancelledOnceStarted, holding it.
+
+    A POSIX command runs from the moment it is created, and asyncio connects
+    its output pipes after that. Cancelled there, asyncio kills the command
+    alone, so what it had started in its process group ran on, with no
+    record, and the request never had the process to stop. A start that
+    fails started nothing to stop, and the cancel goes on."""
+    task = asyncio.ensure_future(starting)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        if task.cancelled():
+            raise
+        while not task.done():
+            # Cancelled again: the start still has a process to hand over.
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait({task})
+        if task.cancelled() or task.exception() is not None:
+            raise
+        raise _CancelledOnceStarted(task.result()) from None
 
 
 async def _audit_jail_violation(
@@ -698,6 +751,15 @@ class CommandHandler:
                     creation_flags=creation_flags,
                     new_session=new_session,
                 )
+        except _CancelledOnceStarted as cancelled:
+            # Cancelled as its command started: stopped and recorded as one
+            # cancelled while it runs is (below).
+            await _finish_then_cancel(
+                self._stop_cancelled(
+                    cancelled.proc, msg.id, payload, cwd=str(cwd), env=env, start=start
+                )
+            )
+            raise
         except FileNotFoundError as exc:
             await self._audit(
                 msg.id,
@@ -809,14 +871,22 @@ class CommandHandler:
         timed_out = False
         try:
             try:
-                await asyncio.wait_for(proc.wait(), timeout=timeout)
+                # The command's exit, not its pipes' closing (_exited): a
+                # command that has exited isn't timed out, and what it left
+                # running keeps running, as on any other exit. What is still
+                # in the pipes is read for _OUTPUT_DRAIN_SECONDS (below).
+                # Under asyncio.timeout, not wait_for: Python 3.11's wait_for
+                # drops a cancel that lands as the exit is seen, and a session
+                # revoked then left the command recorded as done, and what it
+                # started running.
+                async with asyncio.timeout(timeout):
+                    await _exited(proc)
             except TimeoutError:
                 timed_out = True
                 await self._terminate_tree(proc)
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=2.0)
-                except TimeoutError:
-                    pass
+                with contextlib.suppress(TimeoutError):
+                    async with asyncio.timeout(2.0):
+                        await _exited(proc)
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*drain_tasks, return_exceptions=True),
@@ -875,7 +945,7 @@ class CommandHandler:
         # On Windows the command starts suspended, and runs once it is in a
         # job of its own, which a stop ends whole (windows_jobs).
         in_job = sys.platform == "win32"
-        proc = await asyncio.create_subprocess_exec(
+        starting = asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
             env=env,
@@ -884,16 +954,26 @@ class CommandHandler:
             creationflags=creation_flags | (windows_jobs.CREATE_SUSPENDED if in_job else 0),
             start_new_session=new_session,
         )
+        if in_job:
+            # Cancelled while it starts, asyncio ends the command while it is
+            # still suspended: nothing of it ran.
+            proc = await starting
+        else:
+            proc = await _started_through_cancel(starting)
         if in_job and isinstance(proc, asyncio.subprocess.Process):
             try:
                 job = windows_jobs.run_in_job(proc.pid)
             except OSError:
-                # Still suspended: it never ran.
+                # Still suspended: it never ran. Ended, and waited for,
+                # before the request is refused: without a job its stop could
+                # end it alone, and what it started would run on.
                 with contextlib.suppress(OSError):
                     proc.kill()
+                with contextlib.suppress(TimeoutError):
+                    async with asyncio.timeout(2.0):
+                        await proc.wait()
                 raise
-            if job is not None:
-                _command_jobs[proc] = job
+            _command_jobs[proc] = job
         return proc
 
     @staticmethod
@@ -1602,6 +1682,59 @@ def _session_ended(raw: dict[str, Any]) -> bool:
 MAX_RENEWED_LABELS = 1024
 
 
+def _program_on_path(name: str) -> str | None:
+    """The program `name` runs from PATH (shutil.which): what a Linux
+    launch's name runs when its first word is a program's (check_arguments)."""
+    return shutil.which(name)
+
+
+def _seen(future: asyncio.Future[Any]) -> None:
+    """Mark a lookup's failure seen: the callers that waited for it may all
+    have given up."""
+    if not future.cancelled():
+        future.exception()
+
+
+class _ProgramLookups:
+    """A machine's lookups of a Linux launch's name on PATH
+    (_program_on_path), made in a worker thread one at a time.
+
+    shutil.which stats a file in each PATH folder, and a stalled mount there
+    (NFS, FUSE) holds it for as long as it stalls. A caller waits for a
+    lookup no later than its own deadline, and leaves it to finish in its
+    thread. The next caller waits for that lookup too, no later than its
+    deadline, rather than start one that would stall as well: one looking
+    the same name up takes its answer, and one looking another up starts
+    its own once it has ended. So a stall holds one worker thread, however
+    many launches come in."""
+
+    def __init__(self) -> None:
+        self._name: str | None = None
+        self._lookup: asyncio.Future[str | None] | None = None
+
+    async def program_by(self, name: str, deadline: float) -> str | None:
+        """The program `name` runs, by `deadline` (loop time), else
+        TimeoutError."""
+        loop = asyncio.get_running_loop()
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError
+            lookup = self._lookup
+            if lookup is None or lookup.done():
+                lookup = self._lookup = asyncio.ensure_future(
+                    asyncio.to_thread(_program_on_path, name)
+                )
+                lookup.add_done_callback(_seen)
+                self._name = name
+            ours = self._name == name
+            done, _ = await asyncio.wait({lookup}, timeout=remaining)
+            if not done:
+                raise TimeoutError
+            if ours:
+                return lookup.result()
+
+
 class ComputerUseHandler:
     """Relays computer use to cua-driver (see docs/CUA_DRIVER.md).
 
@@ -1624,6 +1757,8 @@ class ComputerUseHandler:
         self._driver = driver
         # One GUI: tool calls from every session on the machine take turns.
         self._machine_turn = machine_turn or asyncio.Lock()
+        # The machine's lookups of launch names on PATH, made one at a time.
+        self._program_lookups = _ProgramLookups()
         # A child session's handler uses its parent's driver and never stops it.
         self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
@@ -1658,6 +1793,29 @@ class ComputerUseHandler:
                 raise DriverUnavailable("cua-driver is still starting") from None
             return last
 
+    async def driver_found_for_hello(self) -> bool:
+        """Whether the driver is installed, for HELLO, from the bridge's
+        look (CuaDriverBridge.find_binary, one look at a time), within
+        HELLO's wait and DRIVER_LOOKUP_SECONDS at most.
+
+        A stalled mount on sys.path or PATH holds the look for as long as it
+        stalls, and HELLO, which looked in a worker thread of its own and
+        waited for it to the end, never went out: the machine couldn't
+        connect, even for file work. Past the wait HELLO goes without
+        computer use, as when the driver isn't installed, and the look goes
+        on: the next HELLO waits for that same look."""
+        wait = self._hello_wait
+        timeout = DRIVER_LOOKUP_SECONDS if wait is None else min(DRIVER_LOOKUP_SECONDS, wait)
+        try:
+            async with asyncio.timeout(timeout):
+                return await self.driver.find_binary() is not None
+        except TimeoutError:
+            logger.warning(
+                "Not advertising computer_use: looking for cua-driver took longer than %g s",
+                timeout,
+            )
+            return False
+
     @property
     def _hello_wait(self) -> float | None:
         """How long HELLO waits for the driver: CHILD_DRIVER_WAIT_SECONDS for
@@ -1681,10 +1839,11 @@ class ComputerUseHandler:
 
     def share_with(self, other: ComputerUseHandler) -> None:
         """Make `other`, a child session's handler, use this one's driver
-        process, turn, screenshot budget, clipboard record and label
-        renewals: they are the machine's, not the session's."""
+        process, turn, lookups on PATH, screenshot budget, clipboard record
+        and label renewals: they are the machine's, not the session's."""
         other._driver = self.driver
         other._machine_turn = self._machine_turn
+        other._program_lookups = self._program_lookups
         other._owns_driver = False
         other._screenshot_rate = self._screenshot_rate
         other.clipboard_writeback = self.clipboard_writeback
@@ -1853,18 +2012,23 @@ class ComputerUseHandler:
         reaches the driver. The computer is let go once the driver is done,
         before the call's audit record is written: a record held up (the
         log locked by `autogpt-shim audit verify`, a slow disk) holds up
-        this call's answer, which goes out after it, not other chats' calls."""
+        this call's answer, which goes out after it, not other chats' calls.
+        What the call's check looks up on disk is looked up before it waits
+        for the computer, within the same deadline (_programs_named)."""
         deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
         details = self._call_details(msg)
         try:
+            programs = await self._programs_named(msg, deadline)
             async with asyncio.timeout_at(deadline):
                 await self._machine_turn.acquire()
         except TimeoutError:
             return await self._not_started(msg, details, start)
         try:
             try:
-                response, record, result = await self._run_call(msg, details, start, deadline)
+                response, record, result = await self._run_call(
+                    msg, details, start, deadline, programs
+                )
             finally:
                 self._machine_turn.release()
         except asyncio.CancelledError:
@@ -1883,6 +2047,39 @@ class ComputerUseHandler:
         when the shim received it."""
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
+
+    async def _programs_named(
+        self, msg: ComputerToolCallMessage, deadline: float
+    ) -> dict[str, str | None]:
+        """What the call's check (check_arguments) looks up on disk, by the
+        call's deadline, else TimeoutError: the program a Linux launch's
+        name runs when its first word is a program's, from PATH.
+
+        It is looked up before the call waits for the computer, through the
+        machine's lookups (_ProgramLookups). Looked up while the call held
+        the computer, with its wait for the worker thread held to the end, a
+        stalled mount on PATH held every chat's calls behind it for as long
+        as it stalled. A call the check refuses looks nothing up, and _relay
+        refuses it."""
+        names: list[str] = []
+
+        def noted(name: str) -> str | None:
+            names.append(name)
+            return None
+
+        try:
+            check_arguments(
+                msg.payload.tool,
+                msg.payload.arguments,
+                msg.payload.approved_arguments,
+                on_path=noted,
+            )
+        except (ApprovalRequired, ArgumentRefused):
+            return {}
+        programs: dict[str, str | None] = {}
+        for name in names:
+            programs[name] = await self._program_lookups.program_by(name, deadline)
+        return programs
 
     @staticmethod
     def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
@@ -1909,14 +2106,16 @@ class ComputerUseHandler:
         details: dict[str, Any],
         start: float,
         deadline: float,
+        programs: dict[str, str | None],
     ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
         """Relay the call, and return its answer with its audit record's
-        details and result, which _call writes once the computer is free."""
+        details and result, which _call writes once the computer is free.
+        `programs` is what its check looks up on disk (_programs_named)."""
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
         approved = msg.payload.approved_arguments
         try:
-            result = await self._relay(tool, arguments, deadline, approved)
+            result = await self._relay(tool, arguments, deadline, approved, programs)
         except ComputerUseError as exc:
             return (
                 make_error(msg.id, exc.code, exc.message, details=exc.details or None),
@@ -2011,6 +2210,7 @@ class ComputerUseHandler:
         arguments: dict[str, Any],
         deadline: float,
         approved: list[str],
+        programs: dict[str, str | None],
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
         snapshot = await self.driver.snapshot(deadline=deadline)
         spec = snapshot.tool(tool)
@@ -2021,16 +2221,11 @@ class ComputerUseHandler:
                 details={"tool": tool},
             )
         try:
-            # In a worker thread: on Linux a launch's name is looked up on
-            # PATH (shutil.which), which stats a file in each of its folders,
-            # and a stalled mount (NFS, FUSE) holds a stat for as long as it
-            # stalls. On the event loop it held every session's work and
-            # keepalive. As with a file request's path checks, the call keeps
-            # its slot, and the computer's turn, until the thread ends: one
-            # let go at its deadline would leave the lookup holding a worker
-            # thread, and each later launch another. A check that ends past
-            # the deadline never reaches the driver (CallNotStarted, below).
-            await _read_in_a_thread(check_arguments, tool, arguments, approved)
+            # On the event loop: the one thing the check looks at on disk,
+            # the program a Linux launch's name runs, was looked up on PATH
+            # before the call took the computer (_programs_named). A name
+            # not looked up then can't come up here: the check is the same.
+            check_arguments(tool, arguments, approved, on_path=programs.__getitem__)
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,
@@ -2359,6 +2554,9 @@ class ComputerUseHandler:
 
 # How long HELLO waits for the driver's screen size.
 SCREEN_SIZE_SECONDS = 10.0
+# How long HELLO waits for the look for the driver (CuaDriverBridge.find_binary)
+# at most: well within the ten seconds the platform waits for HELLO.
+DRIVER_LOOKUP_SECONDS = 5.0
 # How long a chat's session, starting, waits for the driver another chat's
 # call may hold (its permission check, HELLO's screen size) before going on
 # without it: the platform gives a new chat's session a few seconds (eight)

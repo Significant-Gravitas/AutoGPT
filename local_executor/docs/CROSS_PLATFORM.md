@@ -95,9 +95,9 @@ paths only; navigation and selection use short-lived opaque references.
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Graceful terminate | `SIGTERM` | `SIGTERM` | `CTRL_BREAK_EVENT` for console apps; `TerminateProcess` for GUI apps | Shim picks per-OS in command runner. |
-| Hard kill | `SIGKILL` | `SIGKILL` | `TerminateJobObject` on the command's job (`TerminateProcess` on the command alone if it has none) | Always available. |
+| Hard kill | `SIGKILL` | `SIGKILL` | `TerminateJobObject` on the command's job, which every command that runs has | Always available. |
 | Timeout enforcement | `asyncio.wait_for` + SIGTERM to the group → SIGKILL to whatever is left of it after 2s, even once the command itself has exited; a cancelled command is stopped the same way | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → end the job, even once the command itself has exited; a cancelled command is stopped the same way | Common timeout sequence; per-OS signal differs. |
-| Process group / job control | `setsid` + kill PGID | same | `CREATE_NEW_PROCESS_GROUP` flag, and a job object per command: the command starts suspended and runs once it is in its job, so every process it starts is in the job | So we kill child processes spawned by the command. The job doesn't kill on close: what a command that finished started to outlive it keeps running, as on POSIX, and a program that asks to leave the job (`CREATE_BREAKAWAY_FROM_JOB`) may, as a POSIX one may leave its group. |
+| Process group / job control | `setsid` + kill PGID | same | `CREATE_NEW_PROCESS_GROUP` flag, and a job object per command: the command starts suspended and runs once it is in its job, so every process it starts is in the job; one that can't be put in a job (Windows out of resources, or an unusual restriction on the job the shim runs in) is refused with `INTERNAL_ERROR` before it runs, since its stop could end it alone | So we kill child processes spawned by the command. The job doesn't kill on close: what a command that finished started to outlive it keeps running, as on POSIX, and a program that asks to leave the job (`CREATE_BREAKAWAY_FROM_JOB`) may, as a POSIX one may leave its group. |
 
 ### Environment variables
 
@@ -140,9 +140,11 @@ Computer use runs on cua-driver; see [COMPUTER_USE.md](COMPUTER_USE.md) and
 | Headless server / no DM | Works (still has launchd) | Works (with `enable-linger`) | Works | None require a logged-in GUI session for the WebSocket loop. |
 
 The systemd user unit sets `AUTOGPT_SHIM_SUPERVISOR=systemd`. It starts at
-login, before the desktop exports its display to the user manager, so the
-shim takes `DISPLAY` and the rest from the manager once they are there and
-follows them across logins; see [COMPUTER_USE.md](COMPUTER_USE.md#linux).
+login, before the desktop exports its display to the user manager. So when
+the service started without `DISPLAY` or `WAYLAND_DISPLAY`, the shim takes
+them and the rest from the manager once they are there and follows them
+across logins; a service that started with a display keeps its own. See
+[COMPUTER_USE.md](COMPUTER_USE.md#linux).
 
 An authentication failure (`start` exits 77, `EX_NOPERM`) stops the
 service instead of restarting it, since a restart would only retry the

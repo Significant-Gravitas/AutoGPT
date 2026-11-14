@@ -209,6 +209,55 @@ async def test_a_new_display_restarts_the_driver_off_the_budget(
     assert len(_records(fake_log, "call")) == driver.MAX_STARTS_PER_WINDOW + 2
 
 
+async def test_a_display_restart_cancelled_by_close_still_stops_the_old_driver(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A display-change restart stops the old driver before it starts the
+    new one, and close() cancels a start under way. A cancel landing in the
+    old driver's stop, in its grace period, ended the stop before the driver
+    was terminated: no longer the bridge's client, it ran on after close()
+    returned."""
+    monkeypatch.setenv("DISPLAY", ":0")
+    bridge = fake_bridge()
+    await bridge.call_tool("click", {"pid": 1}, timeout=10)
+    old = bridge._client
+    assert old is not None
+    close_old = old.close
+    stopping = asyncio.Event()
+    may_stop = asyncio.Event()
+
+    async def held_close(**kwargs: Any) -> None:
+        stopping.set()
+        await may_stop.wait()
+        await close_old(**kwargs)
+
+    monkeypatch.setattr(old, "close", held_close)
+    monkeypatch.setenv("DISPLAY", ":1")
+    call = asyncio.create_task(bridge.call_tool("click", {"pid": 1}, timeout=30))
+    try:
+        await asyncio.wait_for(stopping.wait(), timeout=30)
+        start = bridge._start
+        assert isinstance(start, asyncio.Task)
+        closing = asyncio.create_task(bridge.close())
+        for _ in range(600):
+            if start.cancelling():
+                break
+            await asyncio.sleep(0.05)
+        assert start.cancelling()
+        may_stop.set()
+        await asyncio.wait_for(closing, timeout=30)
+
+        assert old.alive is False
+        with pytest.raises(DriverUnavailable):
+            await call
+    finally:
+        may_stop.set()
+        if old.alive:
+            await close_old(now=True)
+        if not call.done():
+            call.cancel()
+
+
 async def test_a_cancelled_call_stops_the_driver(fake_log: Path, monkeypatch) -> None:
     monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
     bridge = fake_bridge()
@@ -1877,15 +1926,17 @@ async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
     looked_up_from: list[int] = []
     check = handlers_module.check_arguments
 
-    def on_path(word: str) -> str | None:
+    def look_up(word: str) -> str | None:
+        # A PATH where no program has the name.
         looked_up_from.append(threading.get_ident())
         return None
 
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = ()) -> None:
-        # Linux's check on every OS, with a PATH where no program has the name.
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
+        # Linux's check on every OS.
         check(tool, arguments, approved, platform="linux", on_path=on_path)
 
     monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
+    monkeypatch.setattr(handlers_module, "_program_on_path", look_up)
     handler = make_handler(platform="linux")
 
     response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
@@ -1893,6 +1944,69 @@ async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.is_error is False
     assert looked_up_from and loop_thread not in looked_up_from
+
+
+async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_deadline(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """A Linux launch's name was looked up on PATH in a worker thread that
+    the call waited for to the end, holding the computer: a stalled mount
+    on PATH held every chat's calls behind it for as long as it stalled. The
+    name is looked up before the call takes the computer now, and by its
+    deadline: past it the call didn't start (COMMAND_TIMEOUT), though the
+    lookup goes on to find a program, and calls that look nothing up go
+    ahead. The machine makes one lookup at a time, so a launch of another
+    name waits for the stalled one rather than start one that would stall
+    too, and once the stall clears a launch looks its name up again."""
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    released = threading.Event()
+    looked_up: list[str] = []
+
+    def stalled(word: str) -> str | None:
+        looked_up.append(word)
+        released.wait(timeout=60)
+        return "/usr/bin/zebra" if word == "zebra" else None
+
+    check = handlers_module.check_arguments
+
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path=None):
+        # Linux's check on every OS. Given no on_path, it looks names up
+        # itself, as it did in its worker thread.
+        check(tool, arguments, approved, platform="linux", on_path=on_path or stalled)
+
+    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
+    monkeypatch.setattr(handlers_module, "_program_on_path", stalled, raising=False)
+    handler = make_handler(platform="linux")
+    try:
+        launch = _call("launch_app", {"name": "zebra notes"}, timeout_seconds=1)
+        stalled_launch = await asyncio.wait_for(handler.handle(launch), timeout=30)
+        click = await asyncio.wait_for(handler.handle(_call("click", {"pid": 1})), timeout=30)
+        another = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=1)
+        waited = await asyncio.wait_for(handler.handle(another), timeout=30)
+        assert looked_up == ["zebra"]
+    finally:
+        released.set()
+
+    for response in (stalled_launch, waited):
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+        assert response.payload.details["started"] is False
+    assert isinstance(click, ComputerToolResultMessage)
+    assert click.payload.is_error is False
+    launched = await asyncio.wait_for(
+        handler.handle(_call("launch_app", {"name": "Zebra Notes"})), timeout=30
+    )
+    assert isinstance(launched, ComputerToolResultMessage)
+    assert launched.payload.is_error is False
+    assert looked_up == ["zebra", "Zebra"]
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "click",
+        "list_apps",
+        "launch_app",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -3344,6 +3458,45 @@ async def test_hello_without_computer_use_starts_no_driver(
 
     assert hello.payload.computer_use_driver is None
     assert _records(fake_log, "initialize") == []
+
+
+async def test_hello_goes_out_without_computer_use_while_the_look_for_the_driver_stalls(
+    tmp_path, fake_log, linux_with_display, monkeypatch
+) -> None:
+    """HELLO looked for the driver in a worker thread of its own each time
+    and waited for it to the end, so a stalled mount on sys.path or PATH
+    kept HELLO from going out: the machine couldn't connect, even for file
+    work. The look is the bridge's, one at a time, within HELLO's wait now:
+    past it HELLO goes out without computer use, a later HELLO waits for the
+    same look rather than start another, and once the look has ended HELLO
+    offers computer use again."""
+    released = threading.Event()
+    looks: list[str] = []
+    find = driver.find_driver_binary
+
+    def stalled(explicit: Any = None) -> Any:
+        looks.append(str(explicit))
+        released.wait(timeout=60)
+        return find(explicit)
+
+    monkeypatch.setattr(driver, "find_driver_binary", stalled)
+    monkeypatch.setattr(handlers_module, "DRIVER_LOOKUP_SECONDS", 0.5, raising=False)
+    daemon = _daemon(tmp_path)
+    try:
+        first = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+        again = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+        assert len(looks) == 1
+        released.set()
+        later = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+    finally:
+        released.set()
+        await daemon._computer_handler.close()
+
+    for hello in (first, again):
+        assert "files" in hello.payload.capabilities
+        assert "computer_use" not in hello.payload.capabilities
+        assert hello.payload.computer_use_driver is None
+    assert "computer_use" in later.payload.capabilities
 
 
 async def test_computer_tool_calls_need_the_granted_capability(tmp_path, fake_log) -> None:

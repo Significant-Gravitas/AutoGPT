@@ -424,7 +424,10 @@ The shim drains stdout and stderr concurrently and retains at most
 shared budget, it continues draining to avoid subprocess deadlock and appends
 `[command output truncated]` to `stderr` inside the same byte budget, with
 `output_truncated: true`. The retained text is also capped below the 16 MiB
-transport ceiling to account for worst-case JSON escaping.
+transport ceiling to account for worst-case JSON escaping. A command is done
+when it exits: a program it started that still holds its stdout or stderr
+(a server started in the background, say) keeps running, and what it writes
+there is read for 2 more seconds, with `timed_out: false`.
 
 ---
 
@@ -549,7 +552,10 @@ are the ACL's mask, so a file that let another account in and kept its own
 group out would come back open to the group; the ACL an NFSv4 or SMB mount
 reads from its server; a macOS ACL; and on Windows the owner and DACL
 (inheritance turned off, say). The shim compares the two before any
-content is written, and writes in place when it can't read them. A Windows
+content is written, and writes in place when it can't read them. Written in
+place, a file's mode is changed only to drop set-user-ID or set-group-ID:
+on an NFS mount even a chmod that changes nothing reaches the server, and
+a server that drops ACL entries on a chmod would drop the file's. A Windows
 folder WSL2 reaches through `/mnt` shows no ACL to compare, so a file
 there that is replaced takes the folder's. Where the directory takes no new entries, (on
 Windows) another program has the file open, or the shim may not give the new
