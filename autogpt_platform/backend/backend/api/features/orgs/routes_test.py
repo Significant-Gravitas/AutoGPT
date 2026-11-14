@@ -597,25 +597,31 @@ class TestOrgDbMembers:
 
         member = _make_member(userId=OTHER_USER_ID, isOwner=False)
         self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
-        # User has another org — removal allowed
-        self.prisma.orgmember.count = AsyncMock(return_value=1)
-
-        ws1 = _make_workspace(id="ws-1")
-        ws2 = _make_workspace(id="ws-2")
-        self.prisma.team.find_many = AsyncMock(return_value=[ws1, ws2])
+        self.prisma.orgmember.delete_many = AsyncMock(return_value=1)
         self.prisma.teammember.delete_many = AsyncMock()
-        self.prisma.orgmember.delete = AsyncMock()
 
         await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
 
-        # Should delete workspace memberships for each workspace
-        assert self.prisma.teammember.delete_many.call_count == 2
-        calls = self.prisma.teammember.delete_many.call_args_list
-        ws_ids = [c[1]["where"]["teamId"] for c in calls]
-        assert set(ws_ids) == {"ws-1", "ws-2"}
+        self.prisma.orgmember.delete_many.assert_awaited_once_with(
+            where={"orgId": ORG_ID, "userId": OTHER_USER_ID, "isOwner": False}
+        )
+        self.prisma.teammember.delete_many.assert_awaited_once_with(
+            where={"userId": OTHER_USER_ID, "Team": {"is": {"orgId": ORG_ID}}}
+        )
 
-        # Org membership deleted
-        self.prisma.orgmember.delete.assert_called_once()
+    @pytest.mark.asyncio
+    async def test_remove_member_made_owner_meanwhile_keeps_everything(self):
+        """The owner check is repeated by the delete itself."""
+        from backend.api.features.orgs.db import remove_org_member
+
+        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        self.prisma.orgmember.delete_many = AsyncMock(return_value=0)
+        self.prisma.teammember.delete_many = AsyncMock()
+
+        with pytest.raises(ValueError, match="Cannot remove the org owner"):
+            await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
+        self.prisma.teammember.delete_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_remove_owner_raises_value_error(self):
@@ -666,60 +672,50 @@ class TestOrgDbTransferOwnership:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
-        self.prisma.execute_raw = AsyncMock(return_value=2)
+        self.prisma.orgmember.update_many = AsyncMock(return_value=1)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch(
+            "backend.api.features.orgs.db.transaction",
+            _fake_transaction(self.prisma),
+        )
 
     @pytest.mark.asyncio
-    async def test_transfer_ownership_atomic(self):
+    async def test_transfer_releases_only_a_held_ownership_then_promotes(self):
         from backend.api.features.orgs.db import transfer_ownership
-
-        current_owner = _make_member(userId=USER_ID, isOwner=True)
-        new_owner = _make_member(userId=OTHER_USER_ID, isOwner=False)
-
-        self.prisma.orgmember.find_unique = AsyncMock(
-            side_effect=[current_owner, new_owner]
-        )
 
         await transfer_ownership(ORG_ID, USER_ID, OTHER_USER_ID)
 
-        # Raw SQL was executed for atomic transfer
-        self.prisma.execute_raw.assert_called_once()
-        raw_call_args = self.prisma.execute_raw.call_args
-        sql = raw_call_args[0][0]
-        assert "isOwner" in sql
-        # Positional params: current_owner_id, new_owner_id, org_id
-        assert raw_call_args[0][1] == USER_ID
-        assert raw_call_args[0][2] == OTHER_USER_ID
-        assert raw_call_args[0][3] == ORG_ID
+        assert [
+            c.kwargs for c in self.prisma.orgmember.update_many.await_args_list
+        ] == [
+            {
+                "where": {"orgId": ORG_ID, "userId": USER_ID, "isOwner": True},
+                "data": {"isOwner": False},
+            },
+            {
+                "where": {"orgId": ORG_ID, "userId": OTHER_USER_ID},
+                "data": {"isOwner": True, "isAdmin": True},
+            },
+        ]
 
     @pytest.mark.asyncio
     async def test_transfer_to_non_member_raises(self):
         from backend.api.features.orgs.db import transfer_ownership
 
-        current_owner = _make_member(userId=USER_ID, isOwner=True)
-        self.prisma.orgmember.find_unique = AsyncMock(side_effect=[current_owner, None])
+        self.prisma.orgmember.update_many = AsyncMock(side_effect=[1, 0])
 
         with pytest.raises(NotFoundError, match="not a member"):
             await transfer_ownership(ORG_ID, USER_ID, "stranger")
 
     @pytest.mark.asyncio
-    async def test_transfer_from_non_owner_raises(self):
+    async def test_transfer_by_a_non_owner_promotes_no_one(self):
         from backend.api.features.orgs.db import transfer_ownership
 
-        not_owner = _make_member(userId=USER_ID, isOwner=False)
-        self.prisma.orgmember.find_unique = AsyncMock(side_effect=[not_owner])
+        self.prisma.orgmember.update_many = AsyncMock(return_value=0)
 
         with pytest.raises(ValueError, match="not the org owner"):
             await transfer_ownership(ORG_ID, USER_ID, OTHER_USER_ID)
-
-    @pytest.mark.asyncio
-    async def test_transfer_when_current_not_found_raises(self):
-        from backend.api.features.orgs.db import transfer_ownership
-
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
-
-        with pytest.raises(ValueError, match="not the org owner"):
-            await transfer_ownership(ORG_ID, "no-one", OTHER_USER_ID)
+        self.prisma.orgmember.update_many.assert_awaited_once()
 
 
 class TestOrgDbAliases:
@@ -1925,7 +1921,7 @@ class TestMigrationSlugEdgeCases:
 
     @pytest.mark.asyncio
     async def test_resolve_unique_slug_exhaustion_raises_runtime_error(self):
-        """When all 10000 suffixes are taken, RuntimeError should be raised."""
+        """When every candidate is taken, RuntimeError should be raised."""
         from backend.data.org_migration import _resolve_unique_slug
 
         # Every slug is "taken"
@@ -1933,7 +1929,7 @@ class TestMigrationSlugEdgeCases:
             return_value=MagicMock(id="taken")
         )
 
-        with pytest.raises(RuntimeError, match="10000 attempts"):
+        with pytest.raises(RuntimeError, match="after 24 attempts"):
             await _resolve_unique_slug("occupied")
 
 
@@ -2397,7 +2393,7 @@ class TestSoftDeleteOrg:
 
 
 class TestSelfRemovalPrevention:
-    """Tests for preventing users from becoming org-less."""
+    """Who `remove_org_member` refuses: yourself, the owner, a non-member."""
 
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
@@ -2413,33 +2409,6 @@ class TestSelfRemovalPrevention:
 
         with pytest.raises(ValueError, match="Cannot remove yourself"):
             await remove_org_member(ORG_ID, USER_ID, requesting_user_id=USER_ID)
-
-    @pytest.mark.asyncio
-    async def test_remove_member_who_would_become_orgless_blocked(self):
-        from backend.api.features.orgs.db import remove_org_member
-
-        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
-        # User has NO other org memberships
-        self.prisma.orgmember.count = AsyncMock(return_value=0)
-
-        with pytest.raises(ValueError, match="no other organization"):
-            await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
-
-    @pytest.mark.asyncio
-    async def test_remove_member_with_other_orgs_allowed(self):
-        from backend.api.features.orgs.db import remove_org_member
-
-        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
-        # User has 1 other org membership
-        self.prisma.orgmember.count = AsyncMock(return_value=1)
-        self.prisma.team.find_many = AsyncMock(return_value=[])
-        self.prisma.orgmember.delete = AsyncMock()
-
-        # Should not raise
-        await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
-        self.prisma.orgmember.delete.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_remove_owner_blocked(self):

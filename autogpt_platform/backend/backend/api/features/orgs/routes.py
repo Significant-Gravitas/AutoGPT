@@ -9,7 +9,7 @@ from autogpt_libs.auth import (
     requires_user,
 )
 from autogpt_libs.auth.models import RequestContext
-from autogpt_libs.auth.permissions import OrgAction
+from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
 
 from . import db as org_db
@@ -175,6 +175,12 @@ async def update_member(
     ],
 ) -> OrgMemberResponse:
     _verify_org_path(ctx, org_id)
+    if request.is_billing_manager is not None and not check_org_permission(
+        ctx, OrgAction.MANAGE_BILLING
+    ):
+        raise HTTPException(
+            403, detail=f"Missing org permission: {OrgAction.MANAGE_BILLING.value}"
+        )
     return await org_db.update_org_member(
         org_id=org_id,
         user_id=uid,

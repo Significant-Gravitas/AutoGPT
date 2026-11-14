@@ -56,8 +56,13 @@ _RenewLock = Callable[[], Awaitable[None]]
 _LOCK_RENEW_EVERY = 50
 
 # Caps the derived base at CreateOrgRequest.slug's limit; a collision suffix and
-# conversion's "-personal-1" can take the final slug to 116 characters.
+# conversion's "-personal-1" can take the final slug to 120 characters.
 _MAX_SLUG_LENGTH = 100
+
+# Numbered suffixes keep a common slug readable; the random ones after them end
+# the search however many numbered slugs are taken.
+_NUMBERED_SLUG_ATTEMPTS = 20
+_RANDOM_SLUG_ATTEMPTS = 3
 
 # A handful of per-account failures in a row (bad data, not the database) is
 # tolerated; this many consecutive ones reads as the database itself being
@@ -75,17 +80,13 @@ def _sanitize_slug(raw: str) -> str:
 
 
 async def _resolve_unique_slug(desired: str) -> str:
-    """Return *desired* if no Organization uses it yet, else append a numeric suffix."""
-    existing = await prisma.organization.find_unique(where={"slug": desired})
-    if existing is None:
-        # Also check aliases
-        alias = await prisma.organizationalias.find_unique(where={"aliasSlug": desired})
-        if alias is None:
-            return desired
-
-    # Collision — find the next available numeric suffix
-    for i in range(1, 10_000):
-        candidate = f"{desired}-{i}"
+    """Return *desired* if no Organization or alias uses it yet, else a suffixed one."""
+    candidates = [
+        desired,
+        *(f"{desired}-{i}" for i in range(1, _NUMBERED_SLUG_ATTEMPTS + 1)),
+        *(f"{desired}-{uuid4().hex[:8]}" for _ in range(_RANDOM_SLUG_ATTEMPTS)),
+    ]
+    for candidate in candidates:
         org = await prisma.organization.find_unique(where={"slug": candidate})
         alias = await prisma.organizationalias.find_unique(
             where={"aliasSlug": candidate}
@@ -94,7 +95,8 @@ async def _resolve_unique_slug(desired: str) -> str:
             return candidate
 
     raise RuntimeError(
-        f"Could not resolve a unique slug for '{desired}' after 10000 attempts"
+        f"Could not resolve a unique slug for '{desired}' "
+        f"after {len(candidates)} attempts"
     )
 
 
@@ -120,9 +122,10 @@ async def create_personal_org(
     (``create_orgs_for_existing_users``) creates.
 
     Wrapping everything in one transaction is what makes the sign-up race safe:
-    two concurrent first-requests for the same user resolve to the same
-    deterministic slug and collide on ``Organization.slug``'s unique
-    constraint. Because Postgres blocks the loser's insert until the winner
+    two concurrent first-requests for the same user collide on the
+    ``Organization_one_personal_per_user`` index (and usually on
+    ``Organization.slug`` too, unless the slug came from a random suffix).
+    Because Postgres blocks the loser's insert until the winner
     commits, by the time the loser sees ``UniqueViolationError`` the winner's
     org *and* member (same tx) are already visible.
 

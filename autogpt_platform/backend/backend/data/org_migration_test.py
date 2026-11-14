@@ -6,6 +6,7 @@ test infrastructure does not provide a live database connection.
 """
 
 import logging
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -157,6 +158,20 @@ class TestResolveUniqueSlug:
 
         result = await _resolve_unique_slug("x")
         assert result == "x-3"
+
+    @pytest.mark.asyncio
+    async def test_every_numbered_slug_taken_still_resolves(self, mock_prisma):
+        async def alias_find(where):
+            if re.fullmatch(r"x(-\d+)?", where["aliasSlug"]):
+                return MagicMock()
+            return None
+
+        mock_prisma.organizationalias.find_unique = AsyncMock(side_effect=alias_find)
+
+        result = await _resolve_unique_slug("x")
+
+        assert re.fullmatch(r"x-[0-9a-f]{8}", result)
+        assert mock_prisma.organizationalias.find_unique.await_count < 50
 
 
 # ---------------------------------------------------------------------------

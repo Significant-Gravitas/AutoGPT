@@ -6,9 +6,10 @@ from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, requires_org_permission, requires_user
 from autogpt_libs.auth.models import RequestContext
-from autogpt_libs.auth.permissions import OrgAction
+from autogpt_libs.auth.permissions import OrgAction, check_org_permission
 from fastapi import APIRouter, HTTPException, Security
 from prisma.errors import UniqueViolationError
+from prisma.models import OrgInvitation
 
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
@@ -48,6 +49,12 @@ async def create_invitation(
     ],
 ) -> InvitationCreateResponse:
     _verify_org_path(ctx, org_id)
+    if request.is_billing_manager and not check_org_permission(
+        ctx, OrgAction.MANAGE_BILLING
+    ):
+        raise HTTPException(
+            403, detail=f"Missing org permission: {OrgAction.MANAGE_BILLING.value}"
+        )
 
     # Reject team IDs outside this org at create time. The accept path's
     # add_team_member re-validates (and silently skips failures), so
@@ -178,7 +185,8 @@ async def accept_invitation(
             org_id=invitation.orgId,
             user_id=user_id,
             is_admin=invitation.isAdmin,
-            is_billing_manager=invitation.isBillingManager,
+            is_billing_manager=invitation.isBillingManager
+            and await _inviter_may_grant_billing(invitation),
             invited_by=invitation.invitedByUserId,
         )
     except UniqueViolationError:
@@ -230,6 +238,18 @@ async def accept_invitation(
     )
 
     return {"orgId": invitation.orgId, "message": "Invitation accepted"}
+
+
+async def _inviter_may_grant_billing(invitation: OrgInvitation) -> bool:
+    """Whether the invitation's sender holds MANAGE_BILLING in its org right now."""
+    inviter = await prisma.orgmember.find_first(
+        where={
+            "orgId": invitation.orgId,
+            "userId": invitation.invitedByUserId,
+            "status": "ACTIVE",
+        }
+    )
+    return inviter is not None and (inviter.isOwner or inviter.isBillingManager)
 
 
 @router.post(

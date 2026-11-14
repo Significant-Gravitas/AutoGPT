@@ -650,7 +650,8 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
     - Cannot remove the org owner (transfer ownership first)
     - Cannot remove yourself (use leave flow instead)
     - Cannot remove a user who has active schedules (transfer/cancel first)
-    - Cannot remove a user who would become org-less (no other org memberships)
+
+    A member left with no organization gets a personal one on their next request.
     """
     member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
@@ -658,81 +659,55 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
     if member is None:
         raise NotFoundError(f"Member {user_id} not found in org {org_id}")
     if member.isOwner:
-        raise ValueError("Cannot remove the org owner. Transfer ownership first.")
+        raise ValueError(_OWNER_REMOVAL_REFUSED)
     if user_id == requesting_user_id:
         raise ValueError(
             "Cannot remove yourself from an organization. "
             "Ask another admin to remove you, or transfer ownership first."
         )
 
-    # Check if user would become org-less
-    other_memberships = await prisma.orgmember.count(
-        where={
-            "userId": user_id,
-            "status": "ACTIVE",
-            "orgId": {"not": org_id},
-            "Org": {"deletedAt": None},
-        }
-    )
-    if other_memberships == 0:
-        raise ValueError(
-            "Cannot remove this member — they have no other organization memberships "
-            "and would be locked out. They must join or create another org first."
-        )
-
     # Check for active schedules
     # TODO: Check APScheduler for active schedules owned by this user in this org
     # For now, this is a placeholder for the schedule transfer requirement
 
-    # Remove from all workspaces in this org
-    workspaces = await prisma.team.find_many(where={"orgId": org_id})
-    for ws in workspaces:
-        await prisma.teammember.delete_many(where={"teamId": ws.id, "userId": user_id})
+    async with transaction() as tx:
+        # Conditional on isOwner so a transfer that lands after the check above
+        # leaves the new owner and their workspaces in place.
+        removed = await tx.orgmember.delete_many(
+            where={"orgId": org_id, "userId": user_id, "isOwner": False}
+        )
+        if removed != 1:
+            raise ValueError(_OWNER_REMOVAL_REFUSED)
+        await tx.teammember.delete_many(
+            where={"userId": user_id, "Team": {"is": {"orgId": org_id}}}
+        )
 
-    # Remove org membership
-    await prisma.orgmember.delete(
-        where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
-    )
+
+_OWNER_REMOVAL_REFUSED = "Cannot remove the org owner. Transfer ownership first."
 
 
 async def transfer_ownership(
     org_id: str, current_owner_id: str, new_owner_id: str
 ) -> None:
-    """Transfer org ownership atomically. Both updates happen in one statement."""
+    """Hand ownership to another member. The release only matches while the caller
+    still owns the org, so a concurrent second transfer finds nothing to release."""
     if current_owner_id == new_owner_id:
         raise ValueError("Cannot transfer ownership to the same user")
 
-    current = await prisma.orgmember.find_unique(
-        where={"orgId_userId": {"orgId": org_id, "userId": current_owner_id}}
-    )
-    if current is None or not current.isOwner:
-        raise ValueError("Current user is not the org owner")
+    async with transaction() as tx:
+        released = await tx.orgmember.update_many(
+            where={"orgId": org_id, "userId": current_owner_id, "isOwner": True},
+            data={"isOwner": False},
+        )
+        if released != 1:
+            raise ValueError("Current user is not the org owner")
 
-    new = await prisma.orgmember.find_unique(
-        where={"orgId_userId": {"orgId": org_id, "userId": new_owner_id}}
-    )
-    if new is None:
-        raise NotFoundError(f"User {new_owner_id} is not a member of org {org_id}")
-
-    await prisma.execute_raw(
-        """
-        UPDATE "OrgMember"
-        SET "isOwner" = CASE
-                WHEN "userId" = $1 THEN false
-                WHEN "userId" = $2 THEN true
-                ELSE "isOwner"
-            END,
-            "isAdmin" = CASE
-                WHEN "userId" = $2 THEN true
-                ELSE "isAdmin"
-            END,
-            "updatedAt" = NOW()
-        WHERE "orgId" = $3 AND "userId" IN ($1, $2)
-        """,
-        current_owner_id,
-        new_owner_id,
-        org_id,
-    )
+        promoted = await tx.orgmember.update_many(
+            where={"orgId": org_id, "userId": new_owner_id},
+            data={"isOwner": True, "isAdmin": True},
+        )
+        if promoted != 1:
+            raise NotFoundError(f"User {new_owner_id} is not a member of org {org_id}")
 
 
 # ---------------------------------------------------------------------------
