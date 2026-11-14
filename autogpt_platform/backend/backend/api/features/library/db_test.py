@@ -2743,6 +2743,48 @@ async def test_another_organizations_entry_on_the_version_is_not_replaced(
     library_rows.update.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_a_refused_version_leaves_the_other_fields_unwritten(mocker):
+    """A PATCH that names a bad graph_version answers 404 and must leave the
+    entry unchanged. The other fields in the same request used to be written
+    before the version was validated, so a caller that got the error — and
+    reasonably assumed nothing changed — had an entry that was, e.g., already
+    archived and gone from the listings."""
+    rows = MagicMock()
+    rows.find_first_or_raise = AsyncMock(return_value=MagicMock(id="entry-a"))
+    rows.find_many = AsyncMock(return_value=[])
+    rows.delete_many = AsyncMock()
+    rows.update = AsyncMock(return_value=MagicMock())
+    rows.update_many = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=rows)
+    # The requested version doesn't exist.
+    mocker.patch(
+        "prisma.models.AgentGraph.prisma",
+        return_value=MagicMock(find_unique=AsyncMock(return_value=None)),
+    )
+
+    @asynccontextmanager
+    async def transaction():
+        yield None
+
+    mocker.patch("backend.api.features.library.db.transaction", transaction)
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=AsyncMock(return_value=MagicMock(graph_id="graph-1")),
+    )
+
+    with pytest.raises(NotFoundError):
+        await db.update_library_agent(
+            "entry-a",
+            "test-user",
+            is_favorite=True,
+            graph_version=99,
+        )
+
+    rows.update_many.assert_not_awaited()
+    rows.update.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "organization_id, organization_ids",
     [
@@ -3040,3 +3082,65 @@ async def test_list_library_agents_filters_on_folder_ids(mocker):
     await db.list_library_agents("test-user", folder_ids=["f1", "f2"])
 
     assert find_many.call_args.kwargs["where"]["folderId"] == {"in": ["f1", "f2"]}
+
+
+@pytest.mark.asyncio
+async def test_extra_fields_are_applied_when_the_version_is_accepted(mocker):
+    """The counterpart of the refused-version test: with a valid version, the
+    other fields land inside the version transaction. Dropping the extra_fields
+    write, or widening its where-clause to every entry of the user, must not
+    survive this test (review follow-up on #16718)."""
+    rows = MagicMock()
+    rows.find_first_or_raise = AsyncMock(return_value=MagicMock(id="entry-a"))
+    rows.find_many = AsyncMock(return_value=[])
+    rows.delete_many = AsyncMock()
+    rows.update = AsyncMock(return_value=MagicMock())
+    rows.update_many = AsyncMock()
+    mocker.patch("prisma.models.LibraryAgent.prisma", return_value=rows)
+    # The requested version exists: the user's own, in the personal org.
+    mocker.patch(
+        "prisma.models.AgentGraph.prisma",
+        return_value=MagicMock(
+            find_unique=AsyncMock(
+                return_value=MagicMock(userId="test-user", organizationId=None)
+            )
+        ),
+    )
+
+    @asynccontextmanager
+    async def transaction():
+        yield None
+
+    mocker.patch("backend.api.features.library.db.transaction", transaction)
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=AsyncMock(return_value=MagicMock(graph_id="graph-1")),
+    )
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_sub_graphs",
+        new=AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.library_model.LibraryAgent.from_db",
+        return_value=MagicMock(),
+    )
+    mocker.patch("backend.api.features.library.db.schedule_library_agent_embedding")
+
+    await db.update_library_agent(
+        "entry-a",
+        "test-user",
+        is_favorite=True,
+        graph_version=1,
+    )
+
+    # The fields rode along in the version transaction, scoped to the entry.
+    rows.update_many.assert_awaited_once()
+    kwargs = rows.update_many.await_args.kwargs
+    assert kwargs["where"] == {"id": "entry-a", "userId": "test-user"}
+    assert kwargs["data"] == {"isFavorite": True}
+    # And the version change itself still happened.
+    rows.update.assert_awaited_once()
