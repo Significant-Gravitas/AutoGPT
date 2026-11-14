@@ -1,12 +1,17 @@
 """Preview links must not expose credentials or authorize other users."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from cryptography.fernet import Fernet
 
-from backend.util.desktop_preview import create_preview_link, resolve_preview_link
+from backend.util.desktop_preview import (
+    DesktopPreview,
+    create_preview_link,
+    resolve_preview,
+    stream_is_served,
+)
 from backend.util.encryption import JSONCryptor
 
 
@@ -27,10 +32,11 @@ def test_preview_link_hides_credentials_and_requires_owner(cryptor):
     assert not link.startswith("//")
     assert urlsplit(link).netloc == ""
     token = parse_qs(urlsplit(link).query)["token"][0]
-    assert resolve_preview_link("owner", token) == desktop_url
-    assert resolve_preview_link("other-user", token) is None
-    assert resolve_preview_link("", token) is None
-    assert resolve_preview_link("owner", token[:-10]) is None
+    preview = resolve_preview("owner", token)
+    assert preview is not None and preview.url == desktop_url
+    assert resolve_preview("other-user", token) is None
+    assert resolve_preview("", token) is None
+    assert resolve_preview("owner", token[:-10]) is None
 
 
 def test_preview_link_requires_user(cryptor):
@@ -46,7 +52,7 @@ def test_preview_link_requires_user(cryptor):
     ],
 )
 def test_invalid_payload_rejected(cryptor, data):
-    assert resolve_preview_link("owner", cryptor.encrypt(data)) is None
+    assert resolve_preview("owner", cryptor.encrypt(data)) is None
 
 
 def test_expired_preview_rejected(cryptor):
@@ -54,4 +60,30 @@ def test_expired_preview_rejected(cryptor):
         b'{"purpose":"e2b-desktop-preview","user_id":"owner","url":"https://preview.example"}',
         current_time=0,
     ).decode()
-    assert resolve_preview_link("owner", token) is None
+    assert resolve_preview("owner", token) is None
+
+
+@pytest.mark.asyncio
+async def test_a_link_without_a_stream_key_is_not_checked():
+    # Links issued before the key was carried keep redirecting as they did.
+    legacy = DesktopPreview(
+        purpose="e2b-desktop-preview", user_id="owner", url="https://x?password=p"
+    )
+    with patch("backend.util.desktop_preview.get_redis_async") as get_redis:
+        assert await stream_is_served(legacy) is True
+    get_redis.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_stream_state_still_redirects():
+    preview = DesktopPreview(
+        purpose="e2b-desktop-preview",
+        user_id="owner",
+        url="https://x?password=p",
+        stream_key="k",
+    )
+    with patch(
+        "backend.util.desktop_preview.get_redis_async",
+        AsyncMock(side_effect=ConnectionError("redis down")),
+    ):
+        assert await stream_is_served(preview) is True

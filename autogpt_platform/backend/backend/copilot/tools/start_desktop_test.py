@@ -22,7 +22,7 @@ _STREAM = DesktopStream(
 _C = "backend.copilot.computer"
 
 
-def _preview_link(user_id: str, live_url: str) -> str:
+def _preview_link(user_id: str, live_url: str, stream_key: str | None = None) -> str:
     return f"/api/proxy/api/desktop-preview?for={user_id}"
 
 

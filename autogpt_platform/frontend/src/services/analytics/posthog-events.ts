@@ -193,6 +193,12 @@ export const CredentialConnectionFailureEvent = {
     "credential_proceed_stuck_after_connect",
 } as const;
 
+export const DesktopStreamEvent = {
+  // A live desktop the person had on screen stopped being served: a pause of
+  // the box (each turn end among them) or its running limit. `seconds_live`.
+  DESKTOP_STREAM_ENDED: "desktop_stream_ended",
+} as const;
+
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
   TRIAL_CANCEL_POPUP_VIEWED: "trial_cancel_popup_viewed",
@@ -236,6 +242,7 @@ export const PostHogEvent = {
   ...VoiceModeEvent,
   ...VisualAnswerEvent,
   ...CredentialConnectionFailureEvent,
+  ...DesktopStreamEvent,
   ...TrialEvent,
   ...TourEvent,
   ...OnboardingEvent,

@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { http, HttpResponse } from "msw";
+import { fn } from "storybook/test";
 import { DesktopStreamPreview } from "@/components/contextual/OutputRenderers/renderers/DesktopStreamRenderer";
 
 const meta: Meta<typeof DesktopStreamPreview> = {
@@ -48,4 +50,29 @@ export const ProfileTab: Story = {
 
 export const ProfileTabOwnerOnly: Story = {
   args: { ...OwnerOnly.args, textSize: "body-md" },
+};
+
+export const Stopped: Story = {
+  args: {
+    value: {
+      kind: "desktop_stream",
+      url: "/api/proxy/api/desktop-preview?token=story",
+      provider: "e2b",
+      sandbox_id: "sbx-story",
+      requires_auth: true,
+    },
+    onReconnect: fn(),
+  },
+  parameters: {
+    msw: {
+      handlers: [
+        http.get("/api/proxy/api/desktop-preview", () =>
+          HttpResponse.json(
+            { detail: "Desktop stream ended" },
+            { status: 410 },
+          ),
+        ),
+      ],
+    },
+  },
 };
