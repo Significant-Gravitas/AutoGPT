@@ -1,4 +1,8 @@
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+
+# Bytes per chunk when a file is streamed rather than read whole.
+STREAM_CHUNK_BYTES = 64 * 1024
 
 
 class WorkspaceStorageBackend(ABC):
@@ -36,6 +40,20 @@ class WorkspaceStorageBackend(ABC):
 
         Returns:
             File content as bytes
+        """
+        pass
+
+    @abstractmethod
+    def retrieve_stream(self, storage_path: str) -> AsyncIterator[bytes]:
+        """
+        Yield file content in chunks of at most ``STREAM_CHUNK_BYTES``, reading
+        each one from storage only when the caller asks for it.
+
+        Args:
+            storage_path: The storage path returned from store()
+
+        Raises:
+            FileNotFoundError: On the first chunk, if the file doesn't exist
         """
         pass
 

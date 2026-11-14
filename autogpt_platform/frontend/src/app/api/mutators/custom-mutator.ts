@@ -1,14 +1,12 @@
 import {
   ApiError,
+  AuthTokenUnavailableError,
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 import * as Sentry from "@sentry/nextjs";
 
-import {
-  isAccountBannedResponse,
-  signOutBannedAccount,
-} from "@/lib/auth/account-banned";
+import { handleRefusedAccount } from "@/lib/auth/account-banned";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
@@ -115,6 +113,8 @@ export const customMutator = async <
       const authHeaders = createRequestHeaders(token, !!data, contentType);
       headers = { ...headers, ...authHeaders };
     } catch (error) {
+      // A signed-in request must not go out without its token.
+      if (error instanceof AuthTokenUnavailableError) throw error;
       console.warn("Failed to get server auth token:", error);
     }
   }
@@ -183,9 +183,7 @@ export const customMutator = async <
       logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
-      if (isAccountBannedResponse(response.status, responseData)) {
-        signOutBannedAccount();
-      }
+      handleRefusedAccount(response.status, responseData);
     }
 
     throw new ApiError(errorMessage, response.status, responseData);

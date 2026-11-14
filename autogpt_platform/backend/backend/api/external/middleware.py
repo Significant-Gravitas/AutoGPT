@@ -1,12 +1,19 @@
-from typing import Optional
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Optional
 
+from autogpt_libs.auth import reject_closed_account
 from autogpt_libs.auth.dependencies import ACCOUNT_BANNED_DETAIL
-from fastapi import FastAPI, HTTPException, Security, status
+from fastapi import FastAPI, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, ConfigDict
 from starlette.types import Scope
 
+from backend.api.external.auth_rate_limit import (
+    APIKeyValidationBudget,
+    enforce_api_key_validate_rate_limit,
+    refund_api_key_validate_rate_limit,
+)
 from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -33,9 +40,14 @@ class VerifiedCredential(BaseModel):
     rejection: Optional[HTTPException] = None
 
 
+# Every path rejects a closed account's key or token with a 401: deletion
+# revokes every key and grant, but one issued while the account was closing
+# would otherwise keep working until the account's data is erased.
 async def resolve_auth_info(
     api_key: str | None = Security(api_key_header),
     bearer: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+    *,
+    before_api_key_verify: Callable[[], Awaitable[None]] | None = None,
 ) -> APIAuthorizationInfo | None:
     """
     Resolve authentication from API key or Bearer token headers.
@@ -43,29 +55,28 @@ async def resolve_auth_info(
     Returns the auth info if valid credentials are provided, or None if no
     credentials are present. Raises HTTPException on *invalid* credentials.
     """
-    if api_key is not None:
-        api_key_info = await validate_api_key(api_key)
+    key = _plaintext_api_key(api_key, bearer)
+    if key is not None:
+        api_key_info = (
+            await validate_api_key(key, before_verify=before_api_key_verify)
+            if before_api_key_verify is not None
+            else await validate_api_key(key)
+        )
         if api_key_info:
+            await reject_closed_account(api_key_info.user_id)
             await _refuse_banned_owner(api_key_info)
             return api_key_info
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
-        )
+        if api_key is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
 
     if bearer is not None:
-        # MCP clients can only send credentials as a Bearer token, so an API key
-        # arrives here too; without this the request resolves to anonymous and
-        # gets the per-IP rate limit. Order matches v2's MCP TokenVerifier.
-        if not is_access_token(bearer.credentials) and (
-            api_key_info := await validate_api_key(bearer.credentials)
-        ):
-            await _refuse_banned_owner(api_key_info)
-            return api_key_info
-
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await reject_closed_account(token_info.user_id)
         await _refuse_banned_owner(token_info)
         return token_info
 
@@ -76,6 +87,8 @@ async def resolve_request_auth(
     scope: Scope,
     api_key: str | None,
     bearer: HTTPAuthorizationCredentials | None,
+    *,
+    before_api_key_verify: Callable[[], Awaitable[None]] | None = None,
 ) -> APIAuthorizationInfo | None:
     """`resolve_auth_info`, verified at most once per request.
 
@@ -96,7 +109,11 @@ async def resolve_request_auth(
         try:
             verified = VerifiedCredential(
                 credential=credential,
-                auth=await resolve_auth_info(api_key=api_key, bearer=bearer),
+                auth=await resolve_auth_info(
+                    api_key=api_key,
+                    bearer=bearer,
+                    before_api_key_verify=before_api_key_verify,
+                ),
             )
         except HTTPException as rejection:
             verified = VerifiedCredential(credential=credential, rejection=rejection)
@@ -117,20 +134,47 @@ def verified_credential(scope: Scope) -> Optional[VerifiedCredential]:
 
 
 async def require_auth(
-    auth: APIAuthorizationInfo | None = Security(resolve_auth_info),
+    request: Request,
+    api_key: Annotated[str | None, Security(api_key_header)] = None,
+    bearer: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_auth)
+    ] = None,
 ) -> APIAuthorizationInfo:
-    """
-    Unified authentication dependency that requires valid credentials.
+    """The request's verified caller; 401 when it sent no credentials.
 
-    Depends on `resolve_auth_info` (which accepts API key or Bearer token)
-    and rejects requests with no credentials.
+    Resolved once per request: v1's rate limiter and its routes ask for it under
+    different scopes, which FastAPI caches apart. Verifying an API key first
+    reserves from v1's pre-Scrypt budget, which a valid key gets back.
     """
+    key = _plaintext_api_key(api_key, bearer)
+    budget: APIKeyValidationBudget | None = None
+
+    async def reserve() -> None:
+        nonlocal budget
+        if key is not None:
+            budget = await enforce_api_key_validate_rate_limit(request, key)
+
+    auth = await resolve_request_auth(
+        request.scope, api_key=api_key, bearer=bearer, before_api_key_verify=reserve
+    )
     if auth is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication. Provide API key or access token.",
         )
+    await refund_api_key_validate_rate_limit(budget)
     return auth
+
+
+def _plaintext_api_key(
+    api_key: str | None, bearer: HTTPAuthorizationCredentials | None
+) -> str | None:
+    """Prefer an explicit API key while supporting Bearer-only MCP clients."""
+    if api_key is not None:
+        return api_key
+    if bearer is not None and not is_access_token(bearer.credentials):
+        return bearer.credentials
+    return None
 
 
 async def _refuse_banned_owner(auth: APIAuthorizationInfo) -> None:

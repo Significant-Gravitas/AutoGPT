@@ -28,3 +28,15 @@ regexes = [
     # LLM model name enum values falsely flagged as API keys
     '''Llama-\d.*Instruct''',
 ]
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Synthetic fixtures for the frontend secret detector"
+paths = ['''^autogpt_platform/frontend/src/lib/secret-detection\.test\.ts$''']
+
+[[rules]]
+id = "slack-app-token"
+[[rules.allowlists]]
+description = "Synthetic fixtures for the frontend secret detector"
+paths = ['''^autogpt_platform/frontend/src/lib/secret-detection\.test\.ts$''']

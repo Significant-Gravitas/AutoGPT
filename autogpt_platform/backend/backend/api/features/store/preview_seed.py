@@ -4,7 +4,10 @@ Preview environments start from an empty database, so their store has nothing
 to browse. This puts a small marketplace there the way real listings arrive:
 each creator gets a profile and a saved workflow, submits it, and an admin
 approves it; then reviews land and the store's materialized views refresh.
-Skills go through the same submit-and-approve path.
+Skills go through the same submit-and-approve path. It also registers the
+Local PC companion's public OAuth app, owned by the seed's admin, so a computer
+can be linked to the preview (see
+:mod:`backend.api.features.local_executor.preview_seed`).
 
 Identities come from the content (uuid5), so every run addresses the same
 rows. A run creates what is missing, approves a submission an earlier run left
@@ -26,6 +29,9 @@ import prisma.enums
 import prisma.models
 from pydantic import BaseModel, ConfigDict
 
+from backend.api.features.local_executor.preview_seed import (
+    ensure_local_executor_oauth_app,
+)
 from backend.api.features.orgs.db import get_user_default_team
 from backend.blocks.io import (
     AgentLongTextInputBlock,
@@ -98,6 +104,8 @@ class SeedSummary(BaseModel):
     skills: dict[str, str] = {}
     # Reviews this run added; one that already exists is never rewritten.
     reviews: int = 0
+    # Per OAuth app the preview needs: "created" or "existing".
+    oauth_apps: dict[str, str] = {}
     failed: dict[str, str] = {}
 
 
@@ -162,6 +170,16 @@ async def seed_marketplace() -> SeedSummary:
     users = {user.key: await _ensure_user(user) for user in all_users()}
     summary.users = len(users)
     admin_id = users[ADMIN.key].id
+
+    # A preview links a Local PC through the companion's public OAuth app,
+    # which the fixture lacks and the API can't register.
+    try:
+        summary.oauth_apps["local-executor"] = await ensure_local_executor_oauth_app(
+            admin_id
+        )
+    except Exception as e:
+        logger.exception("Could not register the Local PC companion's OAuth app")
+        summary.failed["oauth_app:local-executor"] = str(e)
 
     for listing in LISTINGS:
         try:
@@ -238,10 +256,9 @@ async def _ensure_user(user: SeedUser) -> _SeededUser:
                 links=list(user.links),
             ),
         )
-    # update_profile leaves a new profile's avatar NULL, but the Creator view's
-    # avatar_url is non-null, so one NULL fails the whole creators list. One
-    # write finishes the profile: a run that stopped before it finishes it next
-    # time, and a profile it already finished keeps any later edit.
+    # update_profile leaves a new profile's avatar NULL. One write finishes the
+    # profile: a run that stopped before it finishes it next time, and a
+    # profile it already finished keeps any later edit.
     await prisma.models.Profile.prisma().update_many(
         where={"userId": user_id, "avatarUrl": None},
         data={"avatarUrl": "", "isFeatured": user.featured},

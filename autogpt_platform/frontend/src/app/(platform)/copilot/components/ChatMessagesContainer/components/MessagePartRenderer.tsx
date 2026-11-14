@@ -25,6 +25,8 @@ import { RunCapabilityTool } from "../../../tools/RunCapability/RunCapability";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
+import { RenderUI } from "../../../tools/RenderUI/RenderUI";
+import { RENDER_UI_PART_TYPE } from "../../../tools/RenderUI/helpers";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
@@ -43,6 +45,12 @@ import {
   resolveWorkspaceUrls,
   workspaceLinkFileID,
 } from "../helpers";
+import { MistakeTool } from "../../../tools/FeedbackPrompts/MistakeTool";
+import {
+  type FeedbackCardTarget,
+  MISTAKE_PART_TYPE,
+  WORK_CHECK_PART_TYPE,
+} from "../../../tools/FeedbackPrompts/helpers";
 import { WorkspaceLink, WorkspaceLinksContext } from "./WorkspaceLink";
 import { ReasoningCollapse } from "./ReasoningCollapse";
 
@@ -171,6 +179,11 @@ interface Props {
    *  only animates while it is; once the stream ends the row is history,
    *  however it was left. */
   isCurrentlyStreaming?: boolean;
+  /** Newest assistant message and no turn in progress: only then can a card send. */
+  canActOnCards?: boolean;
+  /** Set on the last settled reply: where the mistake card sends its answer.
+   *  Absent, the card does not show. */
+  feedbackTarget?: FeedbackCardTarget | null;
 }
 
 export function MessagePartRenderer({
@@ -184,6 +197,8 @@ export function MessagePartRenderer({
   liveCompactionCallId,
   liveCompactionStats,
   isCurrentlyStreaming,
+  canActOnCards,
+  feedbackTarget,
 }: Props) {
   const key = `${messageID}-${partIndex}`;
 
@@ -262,6 +277,16 @@ export function MessagePartRenderer({
         />
       );
     }
+    case RENDER_UI_PART_TYPE:
+      return (
+        <RenderUI
+          key={key}
+          part={part as ToolUIPart}
+          canAct={Boolean(canActOnCards && !isCurrentlyStreaming && !readOnly)}
+          isCurrentlyStreaming={isCurrentlyStreaming}
+          fileUrlBuilder={fileUrlBuilder}
+        />
+      );
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-expert_onboarding":
@@ -311,6 +336,17 @@ export function MessagePartRenderer({
     case "tool-delete_folder":
     case "tool-move_agents_to_folder":
       return <FolderTool key={key} part={part as ToolUIPart} />;
+    case WORK_CHECK_PART_TYPE:
+      // Sits under the reply's actions, drawn by MessageRow.
+      return null;
+    case MISTAKE_PART_TYPE:
+      return feedbackTarget ? (
+        <MistakeTool
+          key={key}
+          part={part as ToolUIPart}
+          target={feedbackTarget}
+        />
+      ) : null;
     case "tool-TodoWrite":
       // Hidden inline — the task list surfaces through TaskProgressBar above
       // the composer, not as a message part. That bar is gated on

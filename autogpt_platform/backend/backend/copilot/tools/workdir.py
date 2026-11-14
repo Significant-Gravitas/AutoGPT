@@ -1,8 +1,10 @@
 """Writing files into the turn's working directory.
 
-The model's shell and file tools run on an E2B sandbox in production and in a
-bubblewrap-isolated ``/tmp/copilot-<session>`` directory locally. Both branches
-live here so every tool that puts a file where the model can reach it —
+The model's shell and file tools run on an E2B sandbox in production, on the
+user's own machine in a Local PC chat (inside the folder the chat is bound
+to), and in a bubblewrap-isolated ``/tmp/copilot-<session>`` directory
+locally. Every branch lives here so every tool that puts a file where the
+model can reach it —
 ``read_workspace_file``'s ``save_to_path``, ``read_skill``'s package
 materialisation — resolves and validates the destination the same way.
 """
@@ -11,11 +13,13 @@ import functools
 import logging
 import os
 import shlex
+from typing import TYPE_CHECKING
 
 from backend.copilot.context import (
-    E2B_WORKDIR,
     get_current_sandbox,
-    resolve_sandbox_path,
+    get_workdir,
+    is_local_pc_executor,
+    resolve_executor_path,
 )
 from backend.copilot.host_fs import open_no_follow, unlink_no_follow
 from backend.copilot.tools.sandbox import make_session_path
@@ -25,13 +29,17 @@ from backend.util.settings import Config
 
 from .models import ErrorResponse
 
+if TYPE_CHECKING:
+    from .local_pc_shim import LocalPCShim
+
 logger = logging.getLogger(__name__)
 
 
 def workdir_root(session_id: str) -> str:
     """Directory the model's shell starts in for this turn."""
-    if get_current_sandbox() is not None:
-        return E2B_WORKDIR
+    sandbox = get_current_sandbox()
+    if sandbox is not None:
+        return get_workdir(sandbox)
     return make_session_path(session_id)
 
 
@@ -86,7 +94,11 @@ async def read_workdir_bytes(path: str, session_id: str) -> bytes | None:
             remote = resolve_sandbox_path_or_error(path, session_id, "path")
             if isinstance(remote, ErrorResponse):
                 return None
-            data = await read_sandbox_file(sandbox, remote, max_size)
+            data = (
+                await sandbox.files.read_capped(remote, max_size)
+                if is_local_pc_executor(sandbox)
+                else await read_sandbox_file(sandbox, remote, max_size)
+            )
         else:
             validated = validate_ephemeral_path(
                 path, param_name="path", session_id=session_id
@@ -111,6 +123,8 @@ async def remove_from_workdir(paths: list[str], session_id: str) -> list[str]:
     if not paths:
         return []
     sandbox = get_current_sandbox()
+    if is_local_pc_executor(sandbox):
+        return await _remove_on_local_pc(sandbox, paths, session_id)
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
@@ -141,6 +155,26 @@ async def remove_from_workdir(paths: list[str], session_id: str) -> list[str]:
     return failed
 
 
+async def _remove_on_local_pc(
+    sandbox: "LocalPCShim", paths: list[str], session_id: str
+) -> list[str]:
+    """Delete through the companion's file op, one path at a time, so a path
+    it refuses is reported on its own."""
+    failed: list[str] = []
+    for path in paths:
+        try:
+            await sandbox.files.delete(path, missing_ok=True)
+        except Exception:
+            logger.warning(
+                "[workdir] failed to remove %s on the Local PC in session %s",
+                path,
+                session_id,
+                exc_info=True,
+            )
+            failed.append(path)
+    return failed
+
+
 async def set_executable(
     paths: list[str], executable: bool, session_id: str
 ) -> list[str]:
@@ -156,6 +190,10 @@ async def set_executable(
     if not paths:
         return []
     sandbox = get_current_sandbox()
+    if is_local_pc_executor(sandbox):
+        # The companion has no mode op, and a shell there is the user's own:
+        # report every path unset rather than run chmod on their machine.
+        return list(paths)
     try:
         if sandbox is not None:
             quoted = " ".join(shlex.quote(p) for p in paths)
@@ -199,16 +237,18 @@ async def set_executable(
 def resolve_sandbox_path_or_error(
     path: str, session_id: str | None, param_name: str
 ) -> str | ErrorResponse:
-    """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
+    """Normalize *path* to an absolute path on the turn's executor: under
+    ``/home/user`` on E2B, under the bound folder on a Local PC.
 
-    Delegates to :func:`~backend.copilot.context.resolve_sandbox_path` and
+    Delegates to :func:`~backend.copilot.context.resolve_executor_path` and
     wraps any ``ValueError`` into an :class:`ErrorResponse`.
     """
+    sandbox = get_current_sandbox()
     try:
-        return resolve_sandbox_path(path)
+        return resolve_executor_path(path, sandbox)
     except ValueError:
         return ErrorResponse(
-            message=f"{param_name} must be within {E2B_WORKDIR}",
+            message=f"{param_name} must be within {get_workdir(sandbox)}",
             session_id=session_id,
         )
 

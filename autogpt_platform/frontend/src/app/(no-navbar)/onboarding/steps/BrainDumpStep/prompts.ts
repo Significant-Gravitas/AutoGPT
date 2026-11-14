@@ -12,6 +12,9 @@ interface BrainDumpQuestion {
 interface BrainDumpPromptSet {
   questions: BrainDumpQuestion[];
   examples: string[];
+  // What the person might want off their plate, shown under Otto's question
+  // when a take was too short, and as the placeholder when they write after.
+  offYourPlateExample: string;
 }
 
 export const BRAIN_DUMP_PROMPT_SETS = {
@@ -33,6 +36,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "I sell online, um, mostly on Shopify, and I never get round to the newsletter or the follow-up emails.",
       "Honestly I am the bottleneck. Everything goes through my inbox and I am drowning a bit.",
     ],
+    "Chasing invoices, and the Instagram posts I never get to.",
   ),
   Operations: promptSet(
     [
@@ -52,6 +56,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "I manage a warehouse team and, um, half my job is answering where is my order emails.",
       "We onboard a new client every week and it is the same twenty steps, done by hand, every time.",
     ],
+    "Confirming appointments and chasing suppliers for updates.",
   ),
   "Sales/BD": promptSet(
     [
@@ -71,6 +76,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "Um, after every call I mean to write the follow-up and update the CRM, and I just do not.",
       "I am a solo consultant, so I am the sales team, and the pipeline lives in my head and a sticky note.",
     ],
+    "Building lead lists. It takes me half of every Monday.",
   ),
   Marketing: promptSet(
     [
@@ -90,6 +96,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "Um, I run the newsletter, the socials and the ads, and the reporting at the end of the month kills me.",
       "We are launching in spring and, honestly, I do not even have a content calendar yet.",
     ],
+    "The newsletter. It's always the thing that slips.",
   ),
   "Product/PM": promptSet(
     [
@@ -109,6 +116,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "Um, I want to know what competitors ship each week, but I only find out when a customer tells me.",
       "We are pre-launch, and I keep a list of user interview notes that nobody, including me, has read twice.",
     ],
+    "Turning support tickets into a feedback doc every week.",
   ),
   Engineering: promptSet(
     [
@@ -128,6 +136,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "Um, I keep meaning to write the docs, and the changelog, and the onboarding guide, and none of it happens.",
       "We are an agency of three devs and the client updates and invoices eat our Fridays.",
     ],
+    "Release notes and status updates on Fridays.",
   ),
   "HR/People": promptSet(
     [
@@ -147,6 +156,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "I screen something like a hundred applications a week and most of it is reading the same CVs.",
       "Honestly the reminders are the worst part: reviews, check-ins, training, I chase all of it.",
     ],
+    "Scheduling interviews. So much back and forth.",
   ),
   Other: promptSet(
     [
@@ -166,6 +176,7 @@ export const BRAIN_DUMP_PROMPT_SETS = {
       "So I run a small charity, we are all volunteers, and nobody has time for the grant applications.",
       "Okay where do I start. I am a landlord with six flats and the tenant messages never stop.",
     ],
+    "The reminders and invoices for my students.",
   ),
 } satisfies Record<string, BrainDumpPromptSet>;
 
@@ -179,8 +190,20 @@ export function promptSetNameForRole(role: string): PromptSetName {
   return PROMPT_SET_NAMES.find((name) => name === role) ?? "Other";
 }
 
-function promptSet(questions: string[], examples: string[]) {
-  return { questions: questions.map(toQuestion), examples };
+export function offYourPlateExampleForRole(role: string) {
+  return BRAIN_DUMP_PROMPT_SETS[promptSetNameForRole(role)].offYourPlateExample;
+}
+
+function promptSet(
+  questions: string[],
+  examples: string[],
+  offYourPlateExample: string,
+) {
+  return {
+    questions: questions.map(toQuestion),
+    examples,
+    offYourPlateExample,
+  };
 }
 
 function toQuestion(line: string): BrainDumpQuestion {

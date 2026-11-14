@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
@@ -18,10 +18,23 @@ from fastapi import (
     Security,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
+from backend.api.features.chat.local_create_lock import client_named_local_create
+from backend.api.features.chat.removed_chat import (
+    CHAT_REMOVED_RESPONSE,
+    chat_removed_error,
+)
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
+from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
@@ -60,20 +73,25 @@ from backend.copilot.expert_kickoff import (
     scoped_client_message_id,
 )
 from backend.copilot.gate.card_approval import record_card_decisions
+from backend.copilot.limit_tracking import track_limit_exceeded, track_turn_cap
 from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
     AutopilotMode,
+    ChatSession,
     ChatSessionInfo,
-    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+    PublicChatSessionMetadata,
     SessionIdConflictError,
     create_chat_session,
     delete_chat_session,
+    get_adoptable_local_client_chat_session,
     get_chat_session_metadata,
     get_or_create_builder_session,
     get_or_create_client_chat_session,
     get_or_create_expert_kickoff_session,
+    get_user_session_groups,
     get_user_sessions,
     update_session_autopilot_mode,
     update_session_llm_route,
@@ -94,6 +112,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_pending_for_http,
     resolve_attachments_for_http,
+)
+from backend.copilot.pending_message_receipts import (
+    PendingMessageReceiptUnavailable,
+    pending_message_was_received,
 )
 from backend.copilot.pending_messages import (
     accept_client_message,
@@ -140,6 +162,18 @@ from backend.copilot.service import (
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
+from backend.copilot.tools.local_pc_machine import (
+    MachineConnectionStaleError,
+    MachineControlError,
+    MachineNotConnectedError,
+    MachineSessionBinding,
+    activate_machine_session,
+    attach_machine_session,
+    detach_machine_session,
+    get_machine_presence,
+)
+from backend.copilot.tools.local_pc_relay_protocol import RelayPresence
+from backend.copilot.tools.local_pc_shim import get_shim_manager
 from backend.copilot.tools.manage_presets import (
     PresetDeletedResponse,
     PresetListResponse,
@@ -166,6 +200,7 @@ from backend.copilot.tools.models import (
     ExecutionStartedResponse,
     ExpertOnboardingResponse,
     ExpertSoulUpdatedResponse,
+    FeedbackPromptToolResponse,
     InputValidationErrorResponse,
     MCPToolOutputResponse,
     MCPToolsDiscoveredResponse,
@@ -181,6 +216,7 @@ from backend.copilot.tools.models import (
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
+from backend.copilot.tools.render_ui_models import UIBlocksResponse
 from backend.copilot.transports import (
     ChatTransportsResponse,
     DefaultChatRoute,
@@ -203,6 +239,7 @@ from backend.util import tracing
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.sandbox_limits import SandboxLimitError
 from backend.util.settings import Settings
 from backend.util.text_limits import MAX_TITLE_LENGTH, MAX_URL_LENGTH, IDText
 
@@ -255,6 +292,7 @@ async def enforce_platform_allowance(user_id: str) -> None:
             expected_tier=usage_tier,
         )
     except RateLimitExceeded as e:
+        track_limit_exceeded(user_id, e, surface="chat")
         # Structured envelope (not a bare string) so the frontend can
         # offer "switch to another connection" (e.g. a connected
         # BYOSUB/Codex credential) instead of only "upgrade your plan" --
@@ -279,6 +317,20 @@ async def enforce_platform_allowance(user_id: str) -> None:
         ) from e
 
 
+async def _chat_message_reply_status_for_http(
+    message_id: str, session_id: str
+) -> bool | None:
+    try:
+        return await chat_message_has_assistant_reply(message_id, session_id)
+    except Exception as exc:
+        logger.warning(f"Chat message history lookup unavailable: {type(exc).__name__}")
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+
+
 async def _validate_and_get_session(
     session_id: str,
     user_id: str | None,
@@ -293,6 +345,12 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
+
+
+def _refuse_archived_session(session: ChatSessionInfo) -> None:
+    """A reset expert's archived chat cannot be continued."""
+    if session.archived_at is not None:
+        raise NotFoundError(f"Session {session.session_id} not found.")
 
 
 async def _validate_session_expert_writable_by_user(
@@ -317,6 +375,7 @@ async def _validate_and_get_writable_session(
     user_id: str,
 ) -> ChatSessionInfo:
     session = await _validate_and_get_session(session_id, user_id)
+    _refuse_archived_session(session)
     await _validate_session_expert_writable_by_user(session, user_id)
     return session
 
@@ -338,8 +397,8 @@ async def _try_release_orphan_running(
     # change can't make this subtraction raise ``TypeError``.
     updated_at = meta.updated_at
     if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - updated_at).total_seconds()
+        updated_at = updated_at.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - updated_at).total_seconds()
     if age <= active_turns.ORPHAN_RUNNING_RESET_SECONDS:
         return False
     if cancel_background:
@@ -348,6 +407,18 @@ async def _try_release_orphan_running(
         )
     await active_turns.release_turn_slot(user_id, session_id)
     return True
+
+
+PENDING_REFUSAL_HEADERS = {
+    "X-Error-Code": {
+        "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+        "schema": {"type": "string", "enum": ["pending_buffer_full"]},
+    },
+    "Retry-After": {
+        "description": "Seconds to wait before retrying admission",
+        "schema": {"type": "integer", "minimum": 0},
+    },
+}
 
 
 router = APIRouter(
@@ -453,12 +524,10 @@ class QueuePendingMessageRequest(BaseModel):
     folder_ids: list[IDText] | None = Field(default=None, max_length=5)
     message_id: str | None = Field(
         default=None,
+        min_length=1,
         max_length=64,
-        description=(
-            "Optional per-send UUID, scoped like ``StreamChatRequest."
-            "message_id``. A retransmit of a follow-up already queued is "
-            "answered as accepted without queueing it again."
-        ),
+        description="Per-send idempotency key, scoped to the user and session. "
+        "Reuse on retries; use a new key for a separate send.",
     )
 
 
@@ -473,6 +542,28 @@ class PeekPendingMessagesResponse(BaseModel):
 
     messages: list[str]
     count: int
+
+
+class CloudExecutionTargetRequest(BaseModel):
+    kind: Literal["cloud"] = "cloud"
+
+
+class LocalExecutionTargetRequest(BaseModel):
+    kind: Literal["local"] = "local"
+    machine_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    expected_connection_id: str = Field(min_length=1, max_length=128)
+    browse_id: str = Field(min_length=1, max_length=256)
+    directory_ref: str = Field(min_length=1, max_length=256)
+
+
+ExecutionTargetRequest = Annotated[
+    CloudExecutionTargetRequest | LocalExecutionTargetRequest,
+    Field(discriminator="kind"),
+]
 
 
 class CreateSessionRequest(BaseModel):
@@ -525,6 +616,19 @@ class CreateSessionRequest(BaseModel):
     # The approval mode the chat starts on. Leave unset to start on the
     # expert's default (or the platform default); send only a deliberate pick.
     autopilot_mode: AutopilotMode | None = None
+    execution_target: ExecutionTargetRequest = Field(
+        default_factory=CloudExecutionTargetRequest
+    )
+
+    @model_validator(mode="after")
+    def builder_sessions_use_cloud_execution(self) -> "CreateSessionRequest":
+        if self.builder_graph_id and self.execution_target.kind == "local":
+            raise ValueError("Builder-bound sessions do not support Local PC execution")
+        if self.expert_kickoff and self.execution_target.kind == "local":
+            raise ValueError(
+                "Expert kickoff sessions do not support Local PC execution"
+            )
+        return self
 
 
 class CreateSessionResponse(BaseModel):
@@ -533,7 +637,7 @@ class CreateSessionResponse(BaseModel):
     id: str
     created_at: str
     user_id: str | None
-    metadata: ChatSessionMetadata = ChatSessionMetadata()
+    metadata: PublicChatSessionMetadata = PublicChatSessionMetadata()
     expert_id: str | None = None
 
 
@@ -565,7 +669,7 @@ class SessionDetailResponse(BaseModel):
     oldest_sequence: int | None = None
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
-    metadata: ChatSessionMetadata = ChatSessionMetadata()
+    metadata: PublicChatSessionMetadata = PublicChatSessionMetadata()
     expert_id: str | None = None
     # From the background-task record, not the transcript page: a child's
     # outcome, and whether a parent still has a continuation to come.
@@ -592,6 +696,26 @@ class ListSessionsResponse(BaseModel):
 
     sessions: list[SessionSummaryResponse]
     total: int
+
+
+class SessionGroupResponse(BaseModel):
+    """One expert's chats in the sidebar; Otto's own when ``expert_id`` is null."""
+
+    expert_id: str | None = None
+    total: int = Field(description="Every chat in the group, not just those listed.")
+    sessions: list[SessionSummaryResponse] = Field(
+        description="The group's newest chats, newest first."
+    )
+
+
+class ListSessionGroupsResponse(BaseModel):
+    """The sidebar's chats, grouped by expert, most recently active first."""
+
+    groups: list[SessionGroupResponse]
+    pinned: list[SessionSummaryResponse] = Field(
+        default_factory=list,
+        description="Pinned chats, newest first, when asked for separately.",
+    )
 
 
 class CancelSessionResponse(BaseModel):
@@ -621,6 +745,224 @@ class UpdateSessionPinnedRequest(BaseModel):
     is_pinned: bool
 
 
+async def _best_effort_detach_local_session(
+    presence: RelayPresence,
+    session_id: str,
+) -> None:
+    try:
+        await detach_machine_session(presence, session_id)
+    except Exception:
+        logger.warning(
+            "[LocalPC] Failed to detach machine attachment for session %s",
+            session_id[:12],
+            exc_info=True,
+        )
+
+
+async def _compensate_local_session_creation(
+    presence: RelayPresence,
+    session_id: str,
+    *,
+    user_id: str,
+    organization_id: str | None,
+    attach_to_undo: bool,
+    inserted_target: LocalExecutionTargetMetadata | None,
+) -> None:
+    """Undo only what this request may have done: detach an attach it made
+    or may have made, and delete the row only if it is the one this request
+    inserted, bound to exactly ``inserted_target``."""
+    if attach_to_undo:
+        await _best_effort_detach_local_session(presence, session_id)
+    if inserted_target is None:
+        return
+    try:
+        # A Cloud create for the same id takes no Local PC lock, so it can
+        # win the insert; that row is not this request's to delete. Once a
+        # row exists nothing else can take its id, so checking it first is
+        # safe.
+        saved = await get_chat_session_metadata(session_id, user_id)
+        if saved is None or saved.metadata.execution_target != inserted_target:
+            return
+        await delete_chat_session(
+            session_id,
+            user_id,
+            organization_id=organization_id,
+        )
+    except Exception:
+        logger.exception(
+            "[LocalPC] Failed to delete compensated session %s",
+            session_id[:12],
+        )
+
+
+async def _create_local_chat_session(
+    *,
+    user_id: str,
+    organization_id: str | None,
+    team_id: str | None,
+    dry_run: bool,
+    target: LocalExecutionTargetRequest,
+    session_id: str | None = None,
+    llm_auth_provider: CopilotLlmAuthProvider = "platform",
+    llm_credential_id: str | None = None,
+    expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+) -> ChatSession:
+    if not await is_local_executor_enabled(user_id):
+        raise HTTPException(status_code=404, detail="Local PC executor is not enabled")
+
+    config = ChatConfig()
+    if expert_id is not None:
+        organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
+            user_id, expert_id
+        )
+
+    if session_id is not None:
+        existing = await get_adoptable_local_client_chat_session(
+            user_id,
+            session_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            machine_id=target.machine_id,
+            directory_ref=target.directory_ref,
+        )
+        if existing is not None:
+            return existing
+    else:
+        session_id = str(uuid4())
+
+    # Checked after adoption: a resend adopts the session its first attempt
+    # committed even if the machine has gone offline since.
+    try:
+        presence = await get_machine_presence(
+            user_id,
+            config.local_pc_executor_oauth_client_id,
+            target.machine_id,
+            expected_connection_id=target.expected_connection_id,
+        )
+    except (MachineNotConnectedError, MachineConnectionStaleError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    # The machine refuses a second attach of a live session id, so a request
+    # whose attach succeeded owns that id, including a row its create may have
+    # committed before a cancellation. One the machine refused owns nothing.
+    # One it never answered (a timeout, a lost connection, a cancellation)
+    # may still have attached, so it is undone too: the create lock leaves no
+    # other attempt that could hold the id.
+    attached: MachineSessionBinding | None = None
+    attach_unconfirmed = False
+    # create_chat_session resolves a private expert's tenancy again, so undo
+    # under the tenancy the row was saved with once it exists.
+    saved_organization_id = organization_id
+    inserted_target: LocalExecutionTargetMetadata | None = None
+    try:
+        try:
+            attached = await attach_machine_session(
+                presence,
+                session_id=session_id,
+                browse_id=target.browse_id,
+                directory_ref=target.directory_ref,
+            )
+        except MachineControlError as exc:
+            attach_unconfirmed = not exc.refused
+            raise
+        except BaseException:
+            attach_unconfirmed = True
+            raise
+        if attached.session_id != session_id or attached.revision != 1:
+            raise MachineControlError(
+                "INVALID_SESSION_BINDING",
+                "The Local PC executor returned an invalid session binding",
+            )
+
+        execution_target = LocalExecutionTargetMetadata(
+            machine_id=target.machine_id,
+            directory_ref=target.directory_ref,
+            allowed_root=attached.allowed_root,
+            root_fingerprint=attached.fingerprint,
+            root_grant=attached.root_grant,
+            revision=attached.revision,
+        )
+        inserted_target = execution_target
+        session = await create_chat_session(
+            user_id,
+            dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
+            session_id=session_id,
+            execution_target=execution_target,
+            llm_auth_provider=llm_auth_provider,
+            llm_credential_id=llm_credential_id,
+            expert_id=expert_id,
+            autopilot_mode=autopilot_mode,
+        )
+        saved_organization_id = session.organization_id
+        activated = await activate_machine_session(presence, attached)
+        if attached != activated:
+            raise MachineControlError(
+                "INVALID_SESSION_BINDING",
+                "The Local PC executor activated a different session binding",
+            )
+
+        try:
+            await get_shim_manager().wait_for(session_id, timeout=8.0)
+            hello = await get_shim_manager().get_hello_async(session_id)
+        except Exception as exc:
+            raise MachineControlError(
+                "SESSION_DATA_CHANNEL_UNAVAILABLE",
+                "The Local PC executor did not open the session data channel",
+            ) from exc
+        if (
+            hello is None
+            or hello.machine_id != target.machine_id
+            or hello.allowed_root != attached.allowed_root
+        ):
+            raise MachineControlError(
+                "SESSION_DATA_CHANNEL_MISMATCH",
+                "The Local PC executor opened a mismatched session data channel",
+            )
+    except BaseException as exc:
+        cleanup_task = asyncio.create_task(
+            _compensate_local_session_creation(
+                presence,
+                session_id,
+                user_id=user_id,
+                organization_id=saved_organization_id,
+                attach_to_undo=attached is not None or attach_unconfirmed,
+                inserted_target=inserted_target,
+            )
+        )
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            await cleanup_task
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        if isinstance(
+            exc,
+            (MachineNotConnectedError, MachineConnectionStaleError),
+        ):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if isinstance(exc, MachineControlError):
+            status_code = (
+                409
+                if exc.code
+                in {
+                    "DIRECTORY_REFERENCE_INVALID",
+                    "DIRECTORY_UNAVAILABLE",
+                    "SESSION_ALREADY_ACTIVE",
+                    "SESSION_REVISION_MISMATCH",
+                }
+                else 503
+            )
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        raise
+
+    await _best_effort_detach_local_session(presence, session_id)
+    return session
+
+
 # ========== Routes ==========
 
 
@@ -641,6 +983,16 @@ async def list_sessions(
             "strict recency when adopting the latest expert thread."
         ),
     ),
+    autopilot_only: bool = Query(
+        default=False,
+        description="Only Otto's own chats, those with no expert.",
+    ),
+    pinned: bool | None = Query(
+        default=None,
+        description=(
+            "Only pinned (true) or only unpinned (false) chats; both when " "left out."
+        ),
+    ),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
@@ -654,10 +1006,17 @@ async def list_sessions(
         offset: Number of sessions to skip for pagination.
         expert_id: Restrict the listing to sessions scoped to this expert.
         pinned_first: Whether pinned sessions precede strict recency ordering.
+        autopilot_only: Restrict the listing to sessions with no expert.
+        pinned: Restrict the listing to pinned or to unpinned sessions.
 
     Returns:
         ListSessionsResponse: List of session summaries and total count.
     """
+    if expert_id is not None and autopilot_only:
+        raise HTTPException(
+            status_code=400,
+            detail="Pass expert_id or autopilot_only, not both.",
+        )
     sessions, total_count = await get_user_sessions(
         user_id,
         limit,
@@ -665,49 +1024,121 @@ async def list_sessions(
         organization_id=ctx.org_id,
         expert_id=expert_id,
         pinned_first=pinned_first,
+        autopilot_only=autopilot_only,
+        pinned=pinned,
+    )
+    running = await _running_session_ids(sessions)
+    return ListSessionsResponse(
+        sessions=[_session_summary(session, running) for session in sessions],
+        total=total_count,
     )
 
-    # Batch-check Redis for active stream status on each session
-    processing_set: set[str] = set()
-    if sessions:
-        try:
-            redis = await get_redis_async()
-            pipe = redis.pipeline(transaction=False)
-            for session in sessions:
-                # Use the canonical helper so the hash-tag braces match every
-                # other writer; building the key inline drops the braces and
-                # silently misses every running session on cluster mode.
-                pipe.hget(
-                    stream_registry.get_session_meta_key(session.session_id),
-                    "status",
-                )
-            statuses = await pipe.execute()
-            processing_set = {
-                session.session_id
-                for session, st in zip(sessions, statuses)
-                if st == "running"
-            }
-        except Exception:
-            logger.warning(
-                "Failed to fetch processing status from Redis; defaulting to empty"
-            )
 
-    return ListSessionsResponse(
-        sessions=[
-            SessionSummaryResponse(
-                id=session.session_id,
-                created_at=session.started_at.isoformat(),
-                updated_at=session.updated_at.isoformat(),
-                title=session.title,
-                chat_status=session.chat_status,
-                is_processing=session.session_id in processing_set,
-                source_platform=session.metadata.source_platform,
-                is_pinned=session.is_pinned,
-                expert_id=session.expert_id,
+@router.get(
+    "/session-groups",
+    dependencies=[Security(auth.requires_user)],
+)
+async def list_session_groups(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
+    min_per_group: int = Query(
+        default=3,
+        ge=1,
+        le=20,
+        description="The newest chats every group lists, however old.",
+    ),
+    limit: int = Query(
+        default=30,
+        ge=1,
+        le=100,
+        description=(
+            "Chats to list in all: the newest beyond each group's minimum "
+            "fill up to this. The minimums alone can pass it."
+        ),
+    ),
+    pinned_separately: bool = Query(
+        default=False,
+        description=(
+            "Return pinned chats in `pinned` and leave them out of the groups "
+            "and their totals."
+        ),
+    ),
+) -> ListSessionGroupsResponse:
+    """
+    List the user's chats grouped by expert, for the sidebar.
+
+    Every group, Otto's own (``expert_id`` null) included, carries its real
+    chat count and at least its ``min_per_group`` newest chats; the newest of
+    the rest fill the list up to ``limit``, so the groups in use show more.
+    The most recently active group comes first. Page further into a group
+    with ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for
+    Otto's.
+    """
+    groups, pinned = await get_user_session_groups(
+        user_id,
+        min_per_group,
+        limit,
+        organization_id=ctx.org_id,
+        pinned_separately=pinned_separately,
+    )
+    running = await _running_session_ids(
+        [*pinned, *(session for group in groups for session in group.sessions)]
+    )
+    return ListSessionGroupsResponse(
+        groups=[
+            SessionGroupResponse(
+                expert_id=group.expert_id,
+                total=group.total,
+                sessions=[_session_summary(s, running) for s in group.sessions],
             )
-            for session in sessions
+            for group in groups
         ],
-        total=total_count,
+        pinned=[_session_summary(session, running) for session in pinned],
+    )
+
+
+async def _running_session_ids(sessions: list[ChatSessionInfo]) -> set[str]:
+    """Which of these sessions have a turn streaming right now, read from
+    Redis in one batch. A Redis failure counts every session as idle."""
+    if not sessions:
+        return set()
+    try:
+        redis = await get_redis_async()
+        pipe = redis.pipeline(transaction=False)
+        for session in sessions:
+            # Use the canonical helper so the hash-tag braces match every
+            # other writer; building the key inline drops the braces and
+            # silently misses every running session on cluster mode.
+            pipe.hget(
+                stream_registry.get_session_meta_key(session.session_id),
+                "status",
+            )
+        statuses = await pipe.execute()
+    except Exception:
+        logger.warning(
+            "Failed to fetch processing status from Redis; defaulting to empty"
+        )
+        return set()
+    return {
+        session.session_id
+        for session, status in zip(sessions, statuses)
+        if status == "running"
+    }
+
+
+def _session_summary(
+    session: ChatSessionInfo, running: set[str]
+) -> SessionSummaryResponse:
+    return SessionSummaryResponse(
+        id=session.session_id,
+        created_at=session.started_at.isoformat(),
+        updated_at=session.updated_at.isoformat(),
+        title=session.title,
+        chat_status=session.chat_status,
+        is_processing=session.session_id in running,
+        source_platform=session.metadata.source_platform,
+        is_pinned=session.is_pinned,
+        expert_id=session.expert_id,
     )
 
 
@@ -933,6 +1364,7 @@ async def create_session(
     Returns:
         CreateSessionResponse: Details of the resulting session.
     """
+    request = request or CreateSessionRequest()
     dry_run = request.dry_run if request else False
     builder_graph_id = request.builder_graph_id if request else None
     expert_id = request.expert_id if request else None
@@ -991,7 +1423,33 @@ async def create_session(
         f"{', expert_kickoff=True' if expert_kickoff else ''}"
     )
 
-    if builder_graph_id:
+    if request.execution_target.kind == "local":
+        try:
+            async with client_named_local_create(user_id, client_session_id):
+                session = await _create_local_chat_session(
+                    user_id=user_id,
+                    organization_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    dry_run=dry_run,
+                    target=request.execution_target,
+                    session_id=client_session_id,
+                    llm_auth_provider=llm_auth_provider,
+                    llm_credential_id=llm_credential_id,
+                    expert_id=expert_id,
+                    autopilot_mode=autopilot_mode,
+                )
+        except SessionIdConflictError as e:
+            raise HTTPException(
+                status_code=409, detail="Session id already in use"
+            ) from e
+        except experts_db.ExpertNotFoundError as e:
+            raise HTTPException(status_code=404, detail="Expert not found") from e
+        except experts_db.ExpertPrivateTenancyNotFoundError as e:
+            raise HTTPException(
+                status_code=503,
+                detail="Your expert workspace is still being set up. Try again shortly.",
+            ) from e
+    elif builder_graph_id:
         if llm_auth_provider != "platform":
             raise HTTPException(
                 status_code=422,
@@ -1056,7 +1514,7 @@ async def create_session(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
-        metadata=session.metadata,
+        metadata=PublicChatSessionMetadata.from_internal(session.metadata),
         expert_id=session.expert_id,
     )
 
@@ -1088,6 +1546,8 @@ async def get_session_computer(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "Session not found or access denied"},
+        409: {"description": "The chat runs on a Local PC, not in a cloud box"},
+        429: {"description": "Too many sandboxes are running"},
         502: {"description": "The desktop could not be started"},
         503: {"description": "E2B is not configured"},
     },
@@ -1105,6 +1565,13 @@ async def start_session_desktop(
     # expert's box (the archive already killed it, and nothing would kill
     # the new one).
     session = await _validate_and_get_writable_session(session_id, user_id)
+    # A Local PC chat's commands run on the user's computer; a cloud box here
+    # would be a second machine the panel calls the chat's own.
+    if session.metadata.execution_target.kind == "local":
+        raise HTTPException(
+            status_code=409,
+            detail="This chat runs on your Local PC, so it has no cloud desktop.",
+        )
     api_key = ChatConfig().active_e2b_api_key
     if not api_key:
         raise HTTPException(
@@ -1118,6 +1585,8 @@ async def start_session_desktop(
             user_id=user_id,
             session_id=session_id,
         )
+    except SandboxLimitError as refusal:
+        raise HTTPException(status_code=429, detail=str(refusal))
     except Exception as exc:
         logger.error(
             "[E2B] start_session_desktop failed for %s: %s",
@@ -1158,6 +1627,13 @@ async def delete_session(
     Raises:
         HTTPException: 404 if session not found or not owned by user.
     """
+    session_metadata = await get_chat_session_metadata(session_id, user_id)
+    if session_metadata is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+
     deleted = await delete_chat_session(session_id, user_id, organization_id=ctx.org_id)
 
     if not deleted:
@@ -1165,6 +1641,31 @@ async def delete_session(
             status_code=404,
             detail=f"Session {session_id} not found or access denied",
         )
+
+    execution_target = session_metadata.metadata.execution_target
+    if execution_target.kind == "local":
+        try:
+            config = ChatConfig()
+            presence = await get_machine_presence(
+                user_id,
+                config.local_pc_executor_oauth_client_id,
+                execution_target.machine_id,
+            )
+            await detach_machine_session(presence, session_id)
+        except Exception:
+            logger.warning(
+                "[LocalPC] Failed to detach deleted session %s",
+                session_id[:12],
+                exc_info=True,
+            )
+        try:
+            await get_shim_manager().close_existing_session(session_id)
+        except Exception:
+            logger.warning(
+                "[LocalPC] Failed to close deleted session data channel %s",
+                session_id[:12],
+                exc_info=True,
+            )
 
     # Best-effort cleanup of the E2B sandbox (if any), after the response.
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
@@ -1407,6 +1908,7 @@ async def update_session_pinned_route(
 
 @router.get(
     "/sessions/{session_id}",
+    responses=CHAT_REMOVED_RESPONSE,
 )
 async def get_session(
     session_id: str,
@@ -1430,6 +1932,10 @@ async def get_session(
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
+    # A reset expert's chats are archived: kept, but no longer opened. Old
+    # links still reach them, so the page says why rather than "not found".
+    if page.session.archived_at is not None:
+        raise await chat_removed_error(page.session)
 
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
@@ -1490,7 +1996,7 @@ async def get_session(
         oldest_sequence=page.oldest_sequence,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
-        metadata=page.session.metadata,
+        metadata=PublicChatSessionMetadata.from_internal(page.session.metadata),
         expert_id=page.session.expert_id,
         background_outcome=background.outcome,
         background_pending=background.pending,
@@ -1905,12 +2411,13 @@ def _empty_ui_message_stream_response(
         404: {"description": "Session not found or access denied"},
         429: {
             "description": "Cost rate-limit, call-frequency cap, or "
-            "per-user concurrent-turn limit exceeded"
+            "per-user concurrent-turn limit exceeded, or pending message buffer full",
+            "headers": PENDING_REFUSAL_HEADERS,
         },
         503: {
-            "description": "Chat service degraded (Redis unavailable for rate "
-            "limit or stream registry); client should honour the Retry-After "
-            "header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, "
+            "or pending-message history unavailable); client should honour the "
+            "Retry-After header before retrying."
         },
     },
 )
@@ -2021,7 +2528,7 @@ async def stream_chat_post(
             session.expert_id,
         )
         message_metadata = expert_kickoff_metadata(session.expert_id)
-        persisted_kickoff_has_reply = await chat_message_has_assistant_reply(
+        persisted_kickoff_has_reply = await _chat_message_reply_status_for_http(
             message_id,
             session_id,
         )
@@ -2037,10 +2544,14 @@ async def stream_chat_post(
     turn_team_id = session.team_id if session.organization_id else ctx.team_id
 
     try:
+        if request.is_user_message and await pending_message_was_received(
+            session_id, message_id
+        ):
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         turn_in_flight = (
             request.is_user_message and message and await is_turn_in_flight(session_id)
         )
-    except StreamRegistryUnavailable as exc:
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         # Same fail-closed mapping as the RateLimitUnavailable branch below:
         # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
         # so a Redis brown-out at this step would otherwise surface as a raw
@@ -2050,6 +2561,15 @@ async def stream_chat_post(
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+
+    if (
+        turn_in_flight
+        and message_id is not None
+        and not request.expert_kickoff
+        and await _chat_message_reply_status_for_http(message_id, session_id)
+        is not None
+    ):
+        turn_in_flight = False
 
     if turn_in_flight:
         if request.expert_kickoff:
@@ -2197,6 +2717,7 @@ async def stream_chat_post(
         ) from exc
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
+            track_turn_cap(user_id, exc, surface="chat", outcome="refused")
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         # Soft running cap (default 5) hit. Fall through to the queue:
         # if total in-flight (running + queued) is still under the hard
@@ -2226,7 +2747,8 @@ async def stream_chat_post(
                 request_arrival_at=request_arrival_at,
                 impersonated=is_impersonated_request(http_request),
             )
-        except turn_queue.InflightCapExceeded:
+        except turn_queue.InflightCapExceeded as cap_exc:
+            track_turn_cap(user_id, cap_exc, surface="chat", outcome="refused")
             await release_client_message_claim()
             raise HTTPException(
                 status_code=429,
@@ -2238,6 +2760,7 @@ async def stream_chat_post(
             await release_client_message_claim()
             raise
         await accept_client_message_claim()
+        track_turn_cap(user_id, exc, surface="chat", outcome="queued")
         logger.info(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
@@ -2368,7 +2891,7 @@ async def stream_chat_post(
                         )
                         break
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
 
         except GeneratorExit:
@@ -2439,10 +2962,14 @@ async def stream_chat_post(
     responses={
         404: {"description": "Session not found or access denied"},
         409: {"description": "Session has no active turn to receive pending messages"},
-        429: {"description": "Call-frequency cap exceeded"},
+        429: {
+            "description": "Call-frequency cap exceeded or pending message buffer full",
+            "headers": PENDING_REFUSAL_HEADERS,
+        },
         503: {
-            "description": "Chat service degraded (Redis unavailable); "
-            "client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message "
+            "history unavailable); client should honour the Retry-After header "
+            "before retrying."
         },
     },
 )
@@ -2472,12 +2999,19 @@ async def queue_pending_message(
             raise client_message_in_progress_error()
     try:
         turn_in_flight = await is_turn_in_flight(session_id)
-    except StreamRegistryUnavailable as exc:
+        received = await pending_message_was_received(session_id, client_message_id)
+    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
         raise HTTPException(
             status_code=503,
             detail="Chat service degraded, retry shortly",
             headers={"Retry-After": "30"},
         ) from exc
+    if received or (
+        client_message_id is not None
+        and await _chat_message_reply_status_for_http(client_message_id, session_id)
+        is not None
+    ):
+        return await already_accepted_response(session_id)
     if not turn_in_flight:
         raise HTTPException(
             status_code=409,
@@ -2560,6 +3094,12 @@ async def resume_session_stream(
     when nothing is running: the AI SDK's parser cannot continue a block it
     did not see start.
     """
+    # The stream of a chat a reset removed is still in Redis until it
+    # expires; it must not replay what the chat page no longer shows.
+    session = await get_chat_session_metadata(session_id, user_id)
+    if session is not None and session.archived_at is not None:
+        raise await chat_removed_error(session)
+
     if turn is not None:
         try:
             subscriber_queue = await stream_registry.subscribe_to_turn(
@@ -2620,7 +3160,7 @@ def _resume_response(
             while True:
                 try:
                     entry = await asyncio.wait_for(subscriber_queue.get(), timeout=10.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield StreamHeartbeat().to_sse()
                     continue
                 frame_id, chunk = entry
@@ -2797,6 +3337,8 @@ ToolResponseUnion = (
     | TodoWriteResponse
     | ExpertSoulUpdatedResponse
     | ExpertOnboardingResponse
+    | UIBlocksResponse
+    | FeedbackPromptToolResponse
 )
 
 

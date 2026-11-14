@@ -45,6 +45,7 @@ from .expert_resources import (
     RevokeExpertCredentialTool,
 )
 from .feature_requests import CreateFeatureRequestTool, SearchFeatureRequestsTool
+from .feedback_prompts import FlagMistakeTool, RequestWorkCheckTool
 from .find_agent import FindAgentTool
 from .find_capability import FindCapabilityTool
 from .find_library_agent import FindLibraryAgentTool
@@ -79,6 +80,7 @@ from .message_session import MessageSessionTool
 from .models import ErrorResponse
 from .platform_info import PlatformInfoTool
 from .raise_expert import RaiseExpertTool
+from .render_ui import RenderUITool
 from .resume_capability import ResumeCapabilityTool
 from .routines import ListRoutinesTool, ScheduleRoutineTool
 from .run_agent import RunAgentTool
@@ -111,6 +113,7 @@ logger = logging.getLogger(__name__)
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
     "ask_question": AskQuestionTool(),
+    "render_ui": RenderUITool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "decompose_goal": DecomposeGoalTool(),
@@ -201,6 +204,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "delete_workspace_file": DeleteWorkspaceFileTool(),
     # The hire's first turn (expert sessions only): greeting + intake card.
     "expert_onboarding": ExpertOnboardingTool(),
+    # Feedback cards in the chat. In no TOOL_GROUPS group: both work in expert
+    # chats as well as Otto's.
+    "request_work_check": RequestWorkCheckTool(),
+    "flag_mistake": FlagMistakeTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm
     "update_expert_soul": UpdateExpertSoulTool(),
     "confirm_expert_soul_update": ConfirmExpertSoulUpdateTool(),
@@ -339,6 +346,8 @@ INTERACTIVE_ORIGIN_TOOLS: frozenset[str] = frozenset(
         "raise_expert",
         "update_expert",
         "confirm_expert_change",
+        "grant_expert_credential",
+        "revoke_expert_credential",
     }
 )
 

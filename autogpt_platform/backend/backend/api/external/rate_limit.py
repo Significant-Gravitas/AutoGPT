@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 # Per-scope tiers: (max requests, window seconds).
 # Cheap reads (identity, block listing) get a generous cap; anything that
 # executes work (block execution, graph runs) gets a tight one.
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 READ_MAX_REQUESTS = 300
 READ_WINDOW_SECONDS = 60
 EXECUTION_MAX_REQUESTS = 30
