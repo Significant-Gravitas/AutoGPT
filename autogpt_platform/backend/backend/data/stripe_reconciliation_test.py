@@ -276,8 +276,10 @@ async def test_sweep_queries_reconcilable_users(
 
     find_many.assert_awaited_once_with(
         where={
-            "stripeCustomerId": {"not": None},
-            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
+            "NOT": [
+                {"stripeCustomerId": None},
+                {"subscriptionTier": SubscriptionTier.ENTERPRISE},
+            ],
         },
     )
 

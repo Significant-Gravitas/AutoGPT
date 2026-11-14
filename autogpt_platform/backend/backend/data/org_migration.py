@@ -22,8 +22,16 @@ from typing import TYPE_CHECKING, LiteralString
 from uuid import uuid4
 
 from prisma import Prisma
+from prisma.enums import (
+    CredentialOwnerType,
+    OrgMemberStatus,
+    SeatStatus,
+    SeatType,
+    TeamJoinPolicy,
+)
 from prisma.errors import UniqueViolationError
 from prisma.models import Organization
+from prisma.types import OrganizationCreateInput, OrganizationProfileCreateInput
 
 from backend.data.db import prisma, transaction
 from backend.util.json import SafeJson
@@ -161,7 +169,6 @@ async def create_personal_org(
                 "slug": slug,
                 "isPersonal": True,
                 "bootstrapUserId": user_id,
-                "settings": "{}",
             }
         )
 
@@ -171,7 +178,7 @@ async def create_personal_org(
                 "userId": user_id,
                 "isOwner": True,
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -180,7 +187,7 @@ async def create_personal_org(
                 "name": "Default",
                 "orgId": org.id,
                 "isDefault": True,
-                "joinPolicy": "OPEN",
+                "joinPolicy": TeamJoinPolicy.OPEN,
                 "createdByUserId": user_id,
             }
         )
@@ -190,7 +197,7 @@ async def create_personal_org(
                 "teamId": workspace.id,
                 "userId": user_id,
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -206,8 +213,8 @@ async def create_personal_org(
             data={
                 "organizationId": org.id,
                 "userId": user_id,
-                "seatType": "FREE",
-                "status": "ACTIVE",
+                "seatType": SeatType.FREE,
+                "status": SeatStatus.ACTIVE,
                 "assignedByUserId": user_id,
             }
         )
@@ -289,7 +296,7 @@ async def _find_owned_personal_org(user_id: str):
         where={
             "userId": user_id,
             "isOwner": True,
-            "Org": {"isPersonal": True, "deletedAt": None},
+            "Org": {"is": {"isPersonal": True, "deletedAt": None}},
         },
         order={"createdAt": "asc"},
     )
@@ -491,12 +498,11 @@ async def _create_backfill_org(row: dict) -> None:
     display_name = profile_name or user_name or email.split("@")[0]
 
     # Create Organization — only include optional JSON fields when non-None
-    org_data: dict = {
+    org_data: OrganizationCreateInput = {
         "name": display_name,
         "slug": slug,
         "isPersonal": True,
         "bootstrapUserId": user_id,
-        "settings": "{}",
     }
     if row.get("stripeCustomerId"):
         org_data["stripeCustomerId"] = row["stripeCustomerId"]
@@ -519,7 +525,7 @@ async def _create_backfill_org(row: dict) -> None:
                 "User": {"connect": {"id": user_id}},
                 "isOwner": True,
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
@@ -529,7 +535,7 @@ async def _create_backfill_org(row: dict) -> None:
                 "name": "Default",
                 "Org": {"connect": {"id": org.id}},
                 "isDefault": True,
-                "joinPolicy": "OPEN",
+                "joinPolicy": TeamJoinPolicy.OPEN,
                 "createdByUserId": user_id,
             }
         )
@@ -540,12 +546,12 @@ async def _create_backfill_org(row: dict) -> None:
                 "Team": {"connect": {"id": workspace.id}},
                 "User": {"connect": {"id": user_id}},
                 "isAdmin": True,
-                "status": "ACTIVE",
+                "status": OrgMemberStatus.ACTIVE,
             }
         )
 
         # Create OrganizationProfile (from user's Profile if exists)
-        profile_data: dict = {
+        profile_data: OrganizationProfileCreateInput = {
             "Organization": {"connect": {"id": org.id}},
             "username": slug,
             "displayName": display_name,
@@ -568,8 +574,8 @@ async def _create_backfill_org(row: dict) -> None:
             data={
                 "organizationId": org.id,
                 "userId": user_id,
-                "seatType": "FREE",
-                "status": "ACTIVE",
+                "seatType": SeatType.FREE,
+                "status": SeatStatus.ACTIVE,
                 "assignedByUserId": user_id,
             }
         )
@@ -1025,7 +1031,7 @@ async def migrate_credentials_to_table(
                 data={
                     "id": cred.id,
                     "organizationId": org_row.id,
-                    "ownerType": "USER",
+                    "ownerType": CredentialOwnerType.USER,
                     "ownerId": user.id,
                     "provider": cred.provider,
                     "credentialType": cred.type,

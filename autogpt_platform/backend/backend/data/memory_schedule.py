@@ -177,7 +177,7 @@ async def set_scope_state(
         "userId": user_id,
     }
     if only_from is not None:
-        where["state"] = {"in": list(only_from)}
+        where["OR"] = [{"state": from_state} for from_state in only_from]
     data: prisma.types.MemoryScopeScheduleUpdateManyMutationInput = {"state": state}
     if state != MemoryScopeScheduleState.ACTIVE:
         data["nightlyJobId"] = None
@@ -295,7 +295,7 @@ async def list_live_expert_scopes(
     where: prisma.types.ExpertWhereInput = {
         "isTemplate": False,
         "isArchived": False,
-        "ownerUserId": {"not": None},
+        "NOT": [{"ownerUserId": None}],
         "visibility": ResourceVisibility.PRIVATE,
     }
     if after is not None:
@@ -327,7 +327,7 @@ async def list_learning_account_ids(
     rows = await prisma.models.SkillLearningSource.prisma().group_by(
         by=["userId"], where=where, order={"userId": "asc"}, take=limit
     )
-    return [row["userId"] for row in rows]
+    return [user_id for row in rows if (user_id := row.get("userId")) is not None]
 
 
 async def existing_user_ids(user_ids: list[str]) -> set[str]:

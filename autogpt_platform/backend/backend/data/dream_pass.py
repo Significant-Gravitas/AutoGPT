@@ -22,9 +22,11 @@ retention job deletes closed passes past their retention
 (``delete_old_dream_passes``). None is exposed to a user.
 """
 
+from collections.abc import Iterable
 from datetime import datetime
 
 import prisma.models
+from prisma.enums import DreamPassStatus
 from prisma.types import DreamPassCreateInput, DreamPassWhereInput
 
 from backend.copilot.dream.pass_errors import PASS_ERROR_CODES, PASS_ERROR_STAGES
@@ -193,7 +195,7 @@ async def list_open_dream_passes(
     """The scope's passes that have not reached a terminal status, newest
     first; at most *limit* of them when given."""
     rows = await prisma.models.DreamPass.prisma().find_many(
-        where={"scopeKey": scope_key, "status": {"in": list(OPEN_STATUSES)}},
+        where={"scopeKey": scope_key, "OR": _status_in(OPEN_STATUSES)},
         order={"createdAt": "desc"},
         take=limit,
     )
@@ -207,7 +209,7 @@ async def list_dream_passes(
     open when *open_only*."""
     where: DreamPassWhereInput = {"userId": user_id}
     if open_only:
-        where["status"] = {"in": list(OPEN_STATUSES)}
+        where["OR"] = _status_in(OPEN_STATUSES)
     rows = await prisma.models.DreamPass.prisma().find_many(
         where=where, order={"createdAt": "desc"}, take=limit
     )
@@ -226,7 +228,7 @@ async def list_expired_dream_passes(
     after that point (keyset pagination, so the reaper can go on past rows it
     tried). A pass with no lease is not listed."""
     where: DreamPassWhereInput = {
-        "status": {"in": list(OPEN_STATUSES)},
+        "AND": [{"OR": _status_in(OPEN_STATUSES)}],
         "leaseExpiresAt": {"lt": expired_before},
     }
     if after_lapse is not None and after_id is not None:
@@ -280,8 +282,8 @@ async def list_dream_pass_cleanups(
         )
     rows = await prisma.models.DreamPass.prisma().find_many(
         where={
-            "status": {"in": list(CLOSED_STATUSES)},
-            "cleanupPendingAt": {"not": None},
+            "OR": _status_in(CLOSED_STATUSES),
+            "NOT": [{"cleanupPendingAt": None}],
             "AND": where,
         },
         order=[{"cleanupPendingAt": "asc"}, {"id": "asc"}],
@@ -330,3 +332,8 @@ async def delete_old_dream_passes(created_before: datetime, limit: int = 1000) -
         created_before,
         limit,
     )
+
+
+def _status_in(statuses: Iterable[DreamPassStatus]) -> list[DreamPassWhereInput]:
+    # The generated client types an enum column as equality only, no `in`.
+    return [{"status": status} for status in statuses]

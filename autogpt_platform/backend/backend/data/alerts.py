@@ -150,7 +150,7 @@ async def resolve_alert_condition(user_id: str, cause_key: str) -> bool:
             where={
                 "userId": user_id,
                 "causeKey": cause_key,
-                "status": {"in": LIVE_STATUSES},
+                "OR": [{"status": status} for status in LIVE_STATUSES],
             },
             data={
                 "status": AlertConditionStatus.RESOLVED,
@@ -289,7 +289,7 @@ async def get_briefing_alert_conditions(user_id: str) -> list[AlertConditionDTO]
         rows = await AlertCondition.prisma().find_many(
             where={
                 "userId": user_id,
-                "status": {"in": LIVE_STATUSES},
+                "OR": [{"status": status} for status in LIVE_STATUSES],
                 "briefedAt": None,
             },
             order={"createdAt": "asc"},

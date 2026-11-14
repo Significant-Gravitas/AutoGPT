@@ -17,6 +17,8 @@ does not re-verify org membership.
 import logging
 from collections.abc import Collection
 
+from prisma.enums import OrgMemberStatus
+
 from backend.data.db import prisma
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ async def get_user_team_ids(user_id: str, organization_id: str) -> list[str]:
     memberships = await prisma.teammember.find_many(
         where={
             "userId": user_id,
-            "status": "ACTIVE",
+            "status": OrgMemberStatus.ACTIVE,
             "Team": {"is": {"orgId": organization_id}},
         }
     )
@@ -89,7 +91,7 @@ async def writable_organization_ids(
             "userId": user_id,
             "orgId": organization_id,
             "isOwner": True,
-            "Org": {"isPersonal": True, "deletedAt": None},
+            "Org": {"is": {"isPersonal": True, "deletedAt": None}},
         }
     )
     if personal is None:

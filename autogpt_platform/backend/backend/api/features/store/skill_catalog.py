@@ -196,7 +196,7 @@ async def _publish_package(
         await prisma.models.SkillListing.prisma(tx).update(
             where={"id": listing.id},
             data={
-                "activeVersionId": version.id,
+                "ActiveVersion": {"connect": {"id": version.id}},
                 "isDeleted": False,
                 "hasApprovedVersion": True,
             },

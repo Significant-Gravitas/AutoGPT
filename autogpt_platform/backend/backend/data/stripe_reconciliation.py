@@ -79,8 +79,10 @@ async def reconcile_all_stripe_tiers() -> ReconciliationSummary:
     # stay excluded.
     candidates = await User.prisma().find_many(
         where={
-            "stripeCustomerId": {"not": None},
-            "subscriptionTier": {"not": SubscriptionTier.ENTERPRISE},
+            "NOT": [
+                {"stripeCustomerId": None},
+                {"subscriptionTier": SubscriptionTier.ENTERPRISE},
+            ],
         },
     )
     summary.candidate_users = len(candidates)
