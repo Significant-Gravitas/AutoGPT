@@ -57,26 +57,6 @@ def test_the_client_is_the_first_unlisted_hop_from_the_right(
 
 
 @pytest.mark.parametrize(
-    "forwarded, expected",
-    [
-        # What no listed proxy vouched for ends the walk at the nearest one.
-        ("not-an-ip", NGINX),
-        (f"{CLIENT}, garbage, {HOST_PROXY}", HOST_PROXY),
-        # A bracket closed by anything but a port, or never closed, is not an address.
-        (f"{CLIENT}, [{HOST_PROXY}]junk", NGINX),
-        (f"{CLIENT}, [{HOST_PROXY}", NGINX),
-        (f"{CLIENT}, {HOST_PROXY}:notaport", NGINX),
-        # Only listed hops: the request started at the leftmost of them.
-        (f"{HOST_PROXY}, 172.18.9.9", HOST_PROXY),
-    ],
-)
-def test_a_header_with_no_unlisted_address_leaves_the_nearest_listed_hop(
-    forwarded: str, expected: str
-) -> None:
-    assert client_address(NGINX, [forwarded], PROXIES) == expected
-
-
-@pytest.mark.parametrize(
     "proxies, peer, forwarded, expected",
     [
         (
@@ -128,6 +108,14 @@ def test_a_value_that_lists_no_proxy_is_unset(
         ("10.0.0.1", f"{CLIENT}, {HOST_PROXY}, {NGINX}"),
         (NGINX, f"{HOST_PROXY}, 172.18.9.9"),
         ("2001:db8::1", "2001:db9::7"),
+        ("2001:db8::1", "2001:0db9:0:0:0:0:0:7"),
+        # Entries that are not listed addresses: what uvicorn names, the walk names.
+        (NGINX, "not-an-ip"),
+        (NGINX, f"{CLIENT}, garbage, {HOST_PROXY}"),
+        (NGINX, f"{CLIENT}, , {HOST_PROXY}"),
+        (NGINX, f"{CLIENT}, [{HOST_PROXY}]junk"),
+        (NGINX, f"{CLIENT}, [{HOST_PROXY}"),
+        (NGINX, f"{CLIENT}, {HOST_PROXY}:notaport"),
         # A dual-stack socket's IPv4 peers, listed by an IPv4 range and a ::ffff: one.
         (f"::ffff:{NGINX}", CLIENT),
         ("::ffff:10.9.0.1", CLIENT),

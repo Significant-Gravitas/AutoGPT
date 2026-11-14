@@ -449,10 +449,6 @@ class ThirdPartyTelemetryTest(unittest.TestCase):
         self.assertIn("export GRAPHITI_TELEMETRY_ENABLED=false", entrypoint)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 def _configure(
     *, output: str = "$BEHAVE_AS", **overrides: str
 ) -> subprocess.CompletedProcess[str]:
@@ -530,3 +526,7 @@ def _entrypoint_shell(
             **environment,
         },
     )
+
+
+if __name__ == "__main__":
+    unittest.main()

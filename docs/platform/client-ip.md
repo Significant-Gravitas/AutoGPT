@@ -12,7 +12,7 @@ This page explains where the backend and the frontend each get a caller's IP add
 
 ## The backend
 
-The backend uses the address of the connection it receives. When that connection comes from a proxy listed in `TRUSTED_PROXIES`, it reads the `X-Forwarded-For` header instead and takes the caller to be the first address from the right that the list doesn't include. Every request is read that way, the External API's per-IP limits included.
+The backend uses the address of the connection it receives. When that connection comes from a proxy listed in `TRUSTED_PROXIES`, it reads the `X-Forwarded-For` header instead and takes the caller to be the first entry from the right that the list doesn't include, as the server (uvicorn) does: an entry that isn't an address is never on the list. Every request is read that way, the External API's per-IP limits included.
 
 If a reverse proxy sits in front of the backend, set `TRUSTED_PROXIES` on the backend to the address it connects from — not necessarily the proxy's own address. A proxy on the host that reaches the backend through its published port (`8006` by default under Docker Compose) connects from the Docker network's gateway, not from `127.0.0.1`. Find it with `docker network inspect app-network --format '{{(index .IPAM.Config 0).Gateway}}'` (it varies per install; Docker assigns the subnet). A proxy running in its own container on the same network connects with its own container address instead.
 
@@ -20,7 +20,7 @@ The setting takes a comma-separated list of IP addresses or CIDR ranges, so `TRU
 
 Once the backend trusts that address, let nothing else reach it there: the backend reads `X-Forwarded-For` from any connection that comes from a listed address. Under Docker Compose, publish the backend's port on the host's loopback only (`ports: ["127.0.0.1:8006:8006"]`), so only a proxy on the host can reach it, or drop the mapping and run the proxy in a container on the same network.
 
-`TRUSTED_PROXIES` replaces two backend settings, which still work while it is unset and are ignored once it is set: `FORWARDED_ALLOW_IPS`, the server's (uvicorn's) own list of proxies, which defaults to `127.0.0.1,::1`, and `TRUSTED_PROXY_COUNT`, below. Both are deprecated, and the backend logs a warning naming `TRUSTED_PROXIES` when it reads either.
+`TRUSTED_PROXIES` replaces two backend settings, which still work while it is unset and are ignored once it is set: `FORWARDED_ALLOW_IPS`, the server's (uvicorn's) own list of proxies, which defaults to `127.0.0.1,::1`, and `TRUSTED_PROXY_COUNT`, below. Both are deprecated, and the backend logs a warning naming `TRUSTED_PROXIES` when either is set.
 
 ### Limits on the External API
 

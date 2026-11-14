@@ -206,7 +206,9 @@ def _client_by_hop_count(peer: str, forwarded: list[str]) -> str:
     hops = settings.config.trusted_proxy_count
     if hops < 1:
         return peer
-    _warn_hop_count_deprecated()
+    # The default is Cloud's chain; only an operator's own value is theirs to replace.
+    if "trusted_proxy_count" in settings.config.model_fields_set:
+        _warn_hop_count_deprecated()
     return forwarded[-hops] if len(forwarded) >= hops else peer
 
 

@@ -54,19 +54,35 @@ def test_with_trusted_proxies_an_unlisted_peer_is_the_client(
     assert client_ip(scope) == "198.51.100.4"
 
 
-def test_the_hop_count_warns_once_that_trusted_proxies_replaces_it(
+@pytest.mark.parametrize(
+    "hop_count, warnings",
+    [({"trusted_proxy_count": 3}, 1), ({}, 0)],
+    ids=["set", "default"],
+)
+def test_the_hop_count_warns_once_and_only_when_an_operator_set_it(
     mocker: pytest_mock.MockFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    hop_count: dict[str, int],
+    warnings: int,
 ) -> None:
-    mocker.patch.object(global_rate_limit.settings.config, "trusted_proxy_count", 1)
+    monkeypatch.delenv("TRUSTED_PROXY_COUNT", raising=False)
+    monkeypatch.delenv("TRUSTED_PROXIES", raising=False)
+    config = Config(_env_file=None, **hop_count)
+    mocker.patch.object(global_rate_limit.settings, "config", config)
     warning = mocker.patch.object(global_rate_limit.logger, "warning")
     global_rate_limit._warn_hop_count_deprecated.cache_clear()
-    scope = {"type": "http", "client": (PEER, 0), "headers": []}
+    forwarded = f"{CLIENT}, {OUR_PROXIES}".encode()
+    scope = {
+        "type": "http",
+        "client": (PEER, 0),
+        "headers": [(b"x-forwarded-for", forwarded)],
+    }
 
-    client_ip(scope)
+    assert client_ip(scope) == CLIENT
     client_ip(scope)
 
-    warning.assert_called_once()
-    assert "set TRUSTED_PROXIES" in warning.call_args.args[0]
+    names = ["set TRUSTED_PROXIES" in call.args[0] for call in warning.call_args_list]
+    assert names == [True] * warnings
 
 
 @pytest.mark.parametrize("spoofed", ["", "6.6.6.6, ", "6.6.6.6, 7.7.7.7, "])
