@@ -18,6 +18,11 @@ because every reconnect says so again.  Do not set the address before the
 proxy exists: E2B's proxy option fails closed, so a box pointed at nothing
 has no egress at all, pip, npm and gh included.
 
+A pinned box is also made to trust the proxy's signing CA
+(``e2b_proxy_trust``), on create and on a reconnect whose box lacks it: the
+proxy terminates TLS to bound hosts, and without the CA every such
+connection fails inside the box.
+
 The per-box proxy credential is how the proxy knows whose connection it is
 serving, and that mapping is the tenant boundary on the proxy's side.  A
 credential is minted for one running stretch of a box: fresh at create,
@@ -53,6 +58,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.data.model import APIKeyCredentials
 from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import is_system_credential
+from backend.util.e2b_proxy_trust import trust_proxy_ca
 from backend.util.sandbox_limits import USER_KEY, start_slot, stopped, tagged
 from backend.util.settings import Secrets, Settings
 
@@ -241,6 +247,9 @@ async def _create_pinned(sandbox_cls: type[S], owner: EgressOwner, **kwargs: Any
     try:
         await _remember(credential, owner, sandbox_id=sandbox.sandbox_id)
         await _bind(sandbox.sandbox_id, credential.username, owner)
+        # Inside the cleanup: a create cancelled during the install (a
+        # caller's timeout) would otherwise leave the box running unowned.
+        await trust_proxy_ca(sandbox, fresh=True)
     except BaseException:
         # The box is on the meter and its handle is about to be lost: kill
         # it rather than leak it, and take its credential with it.
@@ -310,7 +319,18 @@ async def _connect_pinned(
         "[E2B] Reconnected %.12s for %s, egress re-pinned", sandbox_id, owner.label
     )
     _audit_pin("reconnected", sandbox_id, owner)
+    # A box from before the proxy, or from before a rotation, gets the CA now.
+    await trust_proxy_ca(sandbox, chat=owner.kind != "block")
     return sandbox
+
+
+async def proxy_trust_envs(sandbox: AsyncSandbox, owner: EgressOwner) -> dict[str, str]:
+    """Environment for a process in *owner*'s *sandbox* that does not read
+    ``/etc/profile.d`` (a code interpreter's kernel) to trust the proxy's CA.
+    Empty with no proxy configured, or when the box could not be made to."""
+    if proxy_address() is None:
+        return {}
+    return await trust_proxy_ca(sandbox, chat=owner.kind != "block") or {}
 
 
 async def reattach_command(

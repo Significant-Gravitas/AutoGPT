@@ -203,8 +203,11 @@ poetry run swap-proxy
 
 ### The signing CA
 
-The boxes' image trusts one CA certificate, and the proxy signs the certificate
-of every bound host with that CA's key. So:
+Every box trusts one CA certificate, and the proxy signs the certificate of
+every bound host with that CA's key. The backend installs the certificate in
+each box it pins to the proxy, from `E2B_EGRESS_PROXY_CA_CERT`
+(`backend/util/e2b_proxy_trust.py`): the system store, a bundle for Python and
+Node, and the browsers' policies. So:
 
 - **One CA for every replica and every restart.** A replica that signed with a
   CA of its own would break TLS to every bound host inside every box, and it
@@ -222,14 +225,25 @@ of every bound host with that CA's key. So:
   Whoever holds it can read the traffic of every bound host. It is not in the
   image, the repository or a box.
 - **Rotation is a coordinated change**: boxes must trust the new certificate
-  before the proxy starts signing with the new key.
+  before the proxy starts signing with the new key:
+  1. Put both certificates in `E2B_EGRESS_PROXY_CA_CERT` and release it.
+     Each box installs the new set on its next create or reconnect.
+  2. Wait until every box running before that release has reconnected or
+     stopped. E2B stops a box after 24 hours of running at most, so 24 hours
+     is always enough. A box still running on the old set fails TLS to bound
+     hosts once the key changes. A paused box is fine: it installs the new
+     set when it resumes.
+  3. Switch the proxy to the new key.
+  4. Drop the old certificate from the setting. Each box removes it from its
+     store, bundle and browser policies, and from its NSS database, on its
+     next reconnect.
 
 ### Turning it on
 
 The backend only sends boxes here once `E2B_EGRESS_PROXY_ADDRESS` is set, and
 E2B fails closed. Setting that address and provisioning the CA are **one release
 step**: the proxy reachable at that address, the CA mounted into every replica,
-and its certificate in the image the boxes run. Any one of them missing shows up
+and its certificate in the backend's `E2B_EGRESS_PROXY_CA_CERT`. Any one of them missing shows up
 as every box losing either its egress or its TLS to bound hosts.
 
 The same address is also what switches boxes from real tokens to placeholders

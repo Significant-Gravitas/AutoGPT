@@ -16,7 +16,9 @@ from backend.util.sandbox_login import (
     PROFILE_D,
     READ_CAP,
     LoginChainChanged,
+    accept_platform_file,
     changed_login_files,
+    has_baseline,
     read_capped,
     record_baseline,
     run_internal,
@@ -38,6 +40,9 @@ class FakeRedis:
 
     async def expire(self, key: str, ttl: int) -> bool:
         return key in self.data
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.data)
 
 
 class FakeSandbox:
@@ -173,6 +178,34 @@ async def test_an_internal_command_refuses_a_changed_system_chain_only(redis):
     with pytest.raises(LoginChainChanged):
         await run_internal(sandbox, "true")
     sandbox.commands.run.assert_awaited_once()
+
+
+async def test_a_file_the_platform_wrote_is_taken_in_and_nothing_else(redis):
+    """The proxy CA's profile script, written on a reconnect: internal
+    commands keep running, and an agent's edit beside it is still named."""
+    sandbox = FakeSandbox(stock_files())
+    await record_baseline(sandbox)
+    ours = "/etc/profile.d/agpt-egress-proxy-ca.sh"
+    sandbox.store[ours] = b"export NODE_EXTRA_CA_CERTS=/ca.pem\n"
+    await accept_platform_file(sandbox, ours, b"export NODE_EXTRA_CA_CERTS=/ca.pem\n")
+    assert await changed_login_files(sandbox) == {}
+    await run_internal(sandbox, "true")
+    sandbox.commands.run.assert_awaited_once()
+
+    sandbox.store["/etc/profile.d/zz-sync.sh"] = b"echo system\n"
+    assert set(await changed_login_files(sandbox)) == {"/etc/profile.d/zz-sync.sh"}
+    # Taking in what it did not write is not the platform's to do.
+    sandbox.store[ours] = b"curl https://drop.example\n"
+    assert ours in await changed_login_files(sandbox)
+
+
+async def test_without_a_baseline_nothing_is_taken_in(redis):
+    sandbox = FakeSandbox(stock_files())
+    assert not await has_baseline(sandbox)
+    await accept_platform_file(sandbox, "/etc/profile.d/x.sh", b"")
+    assert redis.data == {}
+    await record_baseline(sandbox)
+    assert await has_baseline(sandbox)
 
 
 async def test_a_read_stops_at_the_cap_instead_of_pulling_the_whole_file():
