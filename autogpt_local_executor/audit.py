@@ -33,6 +33,7 @@ import logging
 import os
 import re
 import secrets
+import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterator
@@ -829,10 +830,16 @@ def _keychain_key_meanwhile(keyring: Any) -> bytes | None:
     the next start, which finds the keychain's first. None while there is
     still no keychain, or it holds no key. A keychain that came up but can't
     be read (locked, say) may hold one: AuditKeyUnavailableError, which the
-    start waits out as it does a keychain locked at its first look."""
+    start waits out as it does a keychain locked at its first look.
+
+    keyring picks its backend once per process, and one that found no
+    keychain keeps its failure backend, which can't see a keychain that came
+    up since: a new process looks instead (_look_for_a_keychain_afresh)."""
     try:
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
     except (keyring.errors.NoKeyringError, keyring.errors.InitError):
+        if _kept_no_keychain(keyring):
+            _look_for_a_keychain_afresh()
         return None
     except Exception as exc:
         raise AuditKeyUnavailableError(
@@ -840,6 +847,102 @@ def _keychain_key_meanwhile(keyring: Any) -> bytes | None:
             "it may still be locked"
         ) from exc
     return _stored_audit_key(stored) if stored is not None else None
+
+
+# Run by a new interpreter, on this process's import path, so that keyring
+# picks its backend afresh, as a start does. It prints `up` when a keychain
+# answered and `none` when there is none; nothing it reads is printed.
+_FRESH_KEYCHAIN_LOOK = """\
+import sys
+sys.path[:] = sys.argv[3:]
+import keyring
+import keyring.errors
+try:
+    keyring.get_password(sys.argv[1], sys.argv[2])
+except (keyring.errors.NoKeyringError, keyring.errors.InitError):
+    print("none")
+else:
+    print("up")
+"""
+# A look takes well under a second. One still running by then is most
+# likely held by a keychain that is up and waits to be unlocked.
+_FRESH_KEYCHAIN_LOOK_TIMEOUT_SECONDS = 30.0
+
+
+def _kept_no_keychain(keyring: Any) -> bool:
+    """Whether keyring settled on its failure backend, for no keychain at
+    all, which this process keeps whatever comes up later."""
+    from keyring.backends import fail
+
+    try:
+        return isinstance(keyring.get_keyring(), fail.Keyring)
+    except Exception:
+        # No backend to tell by: the look from a new process says.
+        return True
+
+
+def _look_for_a_keychain_afresh() -> None:
+    """Raise AuditKeyUnavailableError unless a new process finds no keychain
+    either, with the lock held, before the file fallback makes a key.
+
+    This process found none and keeps that finding, but a Secret Service
+    that came up since may hold the key another start stored meanwhile; a
+    file key made beside it would be a second key. A keychain found now
+    sends the start to be started again (it exits 75), and the next start
+    finds that keychain for itself. A look that can't start or finish may
+    have had one to tell of, so the start waits for that too."""
+    if not sys.executable:
+        raise AuditKeyUnavailableError(
+            "No OS keychain was found, and with no Python interpreter to run, no new "
+            "process can look for one again"
+        )
+    argv = [
+        sys.executable,
+        "-I",
+        "-c",
+        _FRESH_KEYCHAIN_LOOK,
+        KEYCHAIN_SERVICE,
+        KEYCHAIN_AUDIT_KEY_USERNAME,
+        *(entry for entry in sys.path if isinstance(entry, str) and entry),
+    ]
+    try:
+        looked = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=_FRESH_KEYCHAIN_LOOK_TIMEOUT_SECONDS,
+            # No console window of its own on Windows.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AuditKeyUnavailableError(
+            "No OS keychain was found, and a new process looking for one again didn't "
+            "finish (a keychain waiting to be unlocked, say)"
+        ) from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise AuditKeyUnavailableError(
+            "No OS keychain was found, and a new process to look for one again couldn't "
+            f"be started ({type(exc).__name__})"
+        ) from exc
+    lines = looked.stdout.splitlines() if looked.returncode == 0 else []
+    answer = lines[-1].strip() if lines else b""
+    if answer == b"none":
+        return
+    if answer == b"up":
+        raise AuditKeyUnavailableError(
+            "An OS keychain is up now, which this start found missing, and keyring keeps "
+            "that finding for the process; exiting to be started again with it, rather "
+            "than make a file key beside the key it may hold"
+        )
+    logger.debug(
+        "The new process looking for a keychain exited %s: %s",
+        looked.returncode,
+        looked.stderr.decode("utf-8", "replace")[-400:],
+    )
+    raise AuditKeyUnavailableError(
+        "No OS keychain was found, and a new process couldn't finish looking for one "
+        f"again (exit {looked.returncode}); one may be up but still locked"
+    )
 
 
 def _fallback_key_held(fallback_path: Path, passphrase: str) -> bytes:

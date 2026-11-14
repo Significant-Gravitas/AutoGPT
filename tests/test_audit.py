@@ -2485,3 +2485,128 @@ def test_a_keychain_that_comes_up_locked_while_waiting_makes_no_file_key(
 
     assert reads == 2
     assert not (tmp_path / "audit-key.enc").exists()
+
+
+def _keyring_found_no_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """keyring as a start leaves it that found no keychain: on its failure
+    backend, which it keeps for the rest of the process."""
+    import keyring.core
+    from keyring.backends import fail
+
+    monkeypatch.setattr(keyring.core, "_keyring_backend", fail.Keyring())
+
+
+def test_a_keychain_only_a_new_process_can_see_gets_no_file_key_beside_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """keyring picks its backend once per process. A start that found no
+    keychain kept the failure backend, so its second look under the lock
+    could never see a Secret Service that came up meanwhile, holding the key
+    another start stored: it made a file key, a second key, and signed the
+    log with it, which the next start, finding the keychain's key first,
+    refused. A new process looks instead, and a keychain it finds sends the
+    start to be started again with it (exit 75)."""
+    import textwrap
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+    from autogpt_local_executor.config import ShimConfig
+    from autogpt_local_executor.daemon import DaemonPreflightError, ShimDaemon
+
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    _keyring_found_no_keychain(monkeypatch)
+    # What a new process finds: a keychain holding the other start's key.
+    backends = tmp_path / "backends"
+    backends.mkdir()
+    (backends / "keychain_now_up.py").write_text(
+        textwrap.dedent(
+            """
+            from keyring.backend import KeyringBackend
+
+
+            class Keyring(KeyringBackend):
+                priority = 1
+
+                def get_password(self, service, username):
+                    return "6f" * 32
+
+                def set_password(self, service, username, password):
+                    raise NotImplementedError
+            """
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(backends))
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keychain_now_up.Keyring")
+
+    with pytest.raises(AuditKeyUnavailableError, match="started again"):
+        get_or_create_audit_key(tmp_path / "audit.log")
+    config = ShimConfig(
+        session_id="session-1", allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"
+    )
+    with pytest.raises(DaemonPreflightError) as raised:
+        ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.transient is True
+    assert not (fallback_dir / "audit-key.enc").exists()
+    assert not (tmp_path / "audit.log").exists()
+
+
+def test_a_home_with_no_keychain_for_a_new_process_either_gets_the_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file fallback is for a home with no keychain at all: a new
+    process that finds none either lets the start make the file key, which
+    the next start, with the log it signed, reads."""
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    _keyring_found_no_keychain(monkeypatch)
+    monkeypatch.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.fail.Keyring")
+    log = tmp_path / "audit.log"
+
+    key = get_or_create_audit_key(log)
+    log.write_text("")
+
+    assert (fallback_dir / "audit-key.enc").is_file()
+    assert get_or_create_audit_key(log) == key
+
+
+@pytest.mark.parametrize("outcome", ["locked", "crashed", "timed out", "unrunnable"])
+def test_a_new_process_that_cant_say_whether_a_keychain_is_up_makes_no_file_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """A new process that couldn't finish its look (a keychain that is up
+    but waits to be unlocked, say) may have had a keychain to tell of: the
+    start waits, as it does for a keychain locked at its own first look.
+    Only the look's own answer says there is none, not an exit code: 3 is
+    also what Windows gives a process that aborted."""
+    import subprocess
+
+    from autogpt_local_executor.audit import AuditKeyUnavailableError
+
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    _keyring_found_no_keychain(monkeypatch)
+    looks: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        looks.append(argv)
+        if outcome == "timed out":
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        if outcome == "unrunnable":
+            raise OSError(errno.ENOENT, "No such file or directory", argv[0])
+        if outcome == "crashed":
+            return subprocess.CompletedProcess(argv, 3, b"", b"")
+        return subprocess.CompletedProcess(argv, 1, b"", b"keyring.errors.KeyringLocked")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(AuditKeyUnavailableError):
+        get_or_create_audit_key(tmp_path / "audit.log")
+
+    assert len(looks) == 1
+    assert looks[0][0] == sys.executable
+    assert not (fallback_dir / "audit-key.enc").exists()

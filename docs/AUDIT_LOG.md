@@ -147,7 +147,13 @@ If the keychain is unavailable, a legacy audit-only fallback uses
 `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`. It uses HMAC-derived XOR obfuscation, without
 authenticated encryption or a slow password KDF. It makes a new key only while
 there is no log yet; with one, which the keychain's key signed, the daemon
-waits for the keychain instead (it exits 75 to be restarted). A keychain that
+waits for the keychain instead (it exits 75 to be restarted). The keyring
+package picks its backend once per process, so a start that found no
+keychain can't see one that comes up later: before the fallback makes a new
+key, a new process looks for one, under the lock below, and a keychain it
+finds, which may hold a key another start stored meanwhile, sends the start
+to be started again with it (exit 75). So does a look that can't finish
+(a keychain still waiting to be unlocked, say). A keychain that
 turns up later, holding no audit key, leaves the file key in use: it signed
 the log. A start without the passphrase to read the file key stops for good
 instead of making a keychain key, since the file key may have signed a log,
