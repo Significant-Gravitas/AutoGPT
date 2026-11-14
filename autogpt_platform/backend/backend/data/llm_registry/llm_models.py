@@ -174,6 +174,16 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
+    # Regolo.ai models
+    REGOLO_APERTUS_70B = "regolo/apertus-70b"
+    REGOLO_BRICK_ROUTER = "regolo/brick-v1-beta"
+    REGOLO_GEMMA4_31B = "regolo/gemma4-31b"
+    REGOLO_GPT_OSS_120B = "regolo/gpt-oss-120b"
+    REGOLO_GPT_OSS_20B = "regolo/gpt-oss-20b"
+    REGOLO_GLM52 = "regolo/glm5.2"
+    REGOLO_QWEN3_5_122B = "regolo/qwen3.5-122b"
+    REGOLO_QWEN3_5_9B = "regolo/qwen3.5-9b"
+    REGOLO_QWEN3_8_27B = "regolo/qwen3.8-27b"
     # Anthropic models
     CLAUDE_4_5_OPUS = "claude-opus-4-5-20251101"
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
