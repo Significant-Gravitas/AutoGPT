@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import re
 import sys
 import time
@@ -101,16 +102,12 @@ class RootGrantSigner:
                 raise RootGrantError("Root grant claims are invalid")
             root = canonical_directory(Path(allowed_root))
             birth = claims["birth"]
-            # A grant issued while every system's fingerprint held st_dev
-            # restores while that number holds. Without a creation time
-            # nothing else tells the folder from another filesystem mounted
-            # at its path, so such a grant needs the number, and on Linux
-            # one issued since names the folder's mount too.
-            accepted = {_fingerprint(root, device=True)}
-            if not _needs_device(birth):
-                accepted.add(_fingerprint(root, device=False))
-            elif birth is None and (mounted := _mount_fingerprint(root)) is not None:
-                accepted.add(mounted)
+            # The fingerprint a grant issued now would hold, or the one every
+            # system's grant held before most of them left out st_dev, which
+            # restores while that number holds. So on Btrfs a grant issued
+            # with neither the number nor the folder's subvolume is refused:
+            # a snapshot put in the folder's place matched it.
+            accepted = {_issued_fingerprint(root, birth), _fingerprint(root, device=True)}
             if fingerprint not in accepted:
                 raise RootGrantError("The selected directory changed after the grant was issued")
             # A filesystem that reuses a freed inode (ext4, tmpfs) gives a
@@ -174,14 +171,22 @@ def directory_fingerprint(path: Path) -> str:
     (server:/export, /dev/sdb1) and filesystem type, which the same
     filesystem mounted again keeps. Where the mount can't be found, the
     device number counts alone.
+
+    On Btrfs a snapshot of the folder's subvolume keeps the folder's inode
+    number and creation time, and the subvolume's owner can make one and
+    put it in the folder's place without root. So there the fingerprint
+    holds the subvolume's UUID, which the snapshot doesn't share and a
+    renumbered device keeps. Where it can't be read (Linux before 4.18), the
+    device number counts, as for a folder with no creation time.
     """
     root = canonical_directory(path)
     return _issued_fingerprint(root, directory_birth(root))
 
 
 def _needs_device(birth: str | None) -> bool:
-    """Whether the fingerprint of a folder with creation time `birth` holds
-    its device number (directory_fingerprint says why)."""
+    """Whether the fingerprint of every folder with creation time `birth`
+    holds its device number (directory_fingerprint says why). One on Btrfs
+    may hold it too."""
     return sys.platform == "win32" or birth is None
 
 
@@ -192,6 +197,11 @@ def _issued_fingerprint(root: Path, birth: str | None) -> str:
         mounted = _mount_fingerprint(root)
         if mounted is not None:
             return mounted
+    elif not _needs_device(birth) and _on_btrfs(root):
+        subvolume = _btrfs_subvolume(root)
+        if subvolume is None:
+            return _fingerprint(root, device=True)
+        return _digest(root, _root_stat(root), device=False, subvolume=subvolume)
     return _fingerprint(root, device=_needs_device(birth))
 
 
@@ -225,6 +235,7 @@ def _digest(
     *,
     device: bool,
     mount: dict[str, str] | None = None,
+    subvolume: str | None = None,
 ) -> str:
     identity: dict[str, object] = {
         "inode": stat.st_ino,
@@ -234,8 +245,68 @@ def _digest(
         identity["device"] = stat.st_dev
     if mount is not None:
         identity["mount"] = mount
+    if subvolume is not None:
+        identity["subvolume"] = subvolume
     raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+# statfs(2)'s f_type for Btrfs (BTRFS_SUPER_MAGIC, <linux/magic.h>).
+_BTRFS_SUPER_MAGIC = 0x9123683E
+# BTRFS_IOC_GET_SUBVOL_INFO (<linux/btrfs.h>, Linux 4.18+), which any user
+# who can open a folder may ask: _IOR(0x94, 60, struct
+# btrfs_ioctl_get_subvol_info_args), a 504-byte struct holding the
+# subvolume's UUID at bytes 296 to 311.
+_BTRFS_IOC_GET_SUBVOL_INFO = 0x81F8943C
+_SUBVOL_INFO_SIZE = 504
+_SUBVOL_UUID = slice(296, 312)
+
+
+class _Statfs(ctypes.Structure):
+    # struct statfs begins with f_type: a long, except on s390, where it is
+    # an unsigned int. The rest is room enough for the struct anywhere.
+    _fields_ = [
+        ("f_type", ctypes.c_uint if platform.machine().startswith("s390") else ctypes.c_long),
+        ("_rest", ctypes.c_byte * 256),
+    ]
+
+
+def _on_btrfs(root: Path) -> bool:
+    """Whether `root` is on Btrfs, by statfs(2). False off Linux, and where
+    statfs can't be called."""
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        statfs = ctypes.CDLL(None, use_errno=True).statfs
+    except (AttributeError, OSError):
+        return False
+    statfs.argtypes = [ctypes.c_char_p, ctypes.POINTER(_Statfs)]
+    statfs.restype = ctypes.c_int
+    result = _Statfs()
+    if statfs(os.fsencode(root), ctypes.byref(result)):
+        return False
+    return result.f_type & 0xFFFFFFFF == _BTRFS_SUPER_MAGIC
+
+
+def _btrfs_subvolume(root: Path) -> str | None:
+    """The UUID of the Btrfs subvolume that holds `root`, as hex, or None
+    if it can't be read."""
+    if not sys.platform.startswith("linux"):
+        return None
+    import fcntl
+
+    try:
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError:
+        return None
+    try:
+        info = bytearray(_SUBVOL_INFO_SIZE)
+        fcntl.ioctl(fd, _BTRFS_IOC_GET_SUBVOL_INFO, info, True)
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
+    return bytes(info[_SUBVOL_UUID]).hex()
 
 
 # The mounts the shim can see, one a line (proc(5)): mount ID, parent ID,
