@@ -357,7 +357,6 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/listings/versions/{store_listing_version_id}",
     "GET /api/store/listings/versions/{store_listing_version_id}/graph/download",
     "GET /api/store/media/{user_id}/{media_type}/{filename}",
-    "GET /api/store/metrics/cache",
     "GET /api/store/search",
     "GET /api/store/skills",
     "GET /api/store/skills/{slug}",
