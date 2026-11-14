@@ -605,9 +605,10 @@ class AuditKeyError(RuntimeError):
 
 class AuditKeyStorageError(AuditKeyError):
     """The audit key's storage failed: the lock a new key is made under
-    couldn't be taken, or the file fallback's folder or new key couldn't be
-    written. A storage error, which a restart may fix (a full disk) or not
-    (a read-only one): `error` is the OSError that says which, and
+    couldn't be taken, the file fallback's folder or new key couldn't be
+    written, or its key couldn't be read. A storage error, which a restart
+    may fix (a full disk, a network mount that timed out) or not (a
+    read-only disk): `error` is the OSError that says which, and
     `description` what failed, without it."""
 
     def __init__(self, description: str, error: OSError) -> None:
@@ -846,8 +847,8 @@ def _fallback_audit_key(
     With `keyring` (the module), a start that found no keychain looks in it
     again under the lock before it makes a file key (_keychain_key_meanwhile).
     `may_make`, called under the lock when there is still no file key, raises
-    if none may be made. A storage error making its folder or key raises
-    AuditKeyStorageError.
+    if none may be made. A storage error making its folder or key, or
+    reading its key, raises AuditKeyStorageError.
     """
     fallback_path = _fallback_path()
     folder = fallback_path.parent
@@ -1017,7 +1018,13 @@ def _fallback_key_held(fallback_path: Path, passphrase: str) -> bytes:
             if len(salt) != 16 or len(ciphertext) != 32:
                 raise ValueError("Invalid audit key envelope length")
             return _xor_decrypt(passphrase, salt, ciphertext)
-        except (OSError, ValueError) as exc:
+        except OSError as exc:
+            # Not a malformed key: a storage error (a network mount timing
+            # out, say), which a restart may fix, and its errno says whether.
+            raise AuditKeyStorageError(
+                f"The file fallback's audit key at {fallback_path} couldn't be read", exc
+            ) from exc
+        except ValueError as exc:
             raise AuditKeyError(
                 "Stored audit key fallback is malformed; refusing to replace it"
             ) from exc
