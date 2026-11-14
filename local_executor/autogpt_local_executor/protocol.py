@@ -15,9 +15,10 @@ from __future__ import annotations
 import json
 import math
 import time
+import types
 import uuid
 from enum import StrEnum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 
@@ -1328,21 +1329,85 @@ def describe_parse_failure(exc: ValueError) -> str:
     pydantic's text quotes the value each error is about, and for a missing
     field or an unknown type that is the whole object around it: a malformed
     computer tool call put the text it was to type into the log, past the
-    audit log's redaction. A ValidationError is told by where each error is
-    (the message type, field names, list positions, and the name of a map's
-    key or of a field the frame shouldn't have) and its kind. parse_message's
-    other errors quote nothing the frame held, so their text is kept."""
+    audit log's redaction. A ValidationError is told by where each error is,
+    in the parts of its location the protocol defines (_defined_location),
+    and its kind. parse_message's other errors quote nothing the frame held,
+    so their text is kept."""
     if not isinstance(exc, ValidationError):
         return str(exc)
     errors = exc.errors(include_url=False, include_context=False, include_input=False)
     named = [
-        f"{'.'.join(str(part) for part in error['loc']) or 'frame'}: {error['type']}"
+        f"{_defined_location(error['loc']) or 'frame'}: {error['type']}"
         for error in errors[:_NAMED_PARSE_ERRORS]
     ]
     if len(errors) > _NAMED_PARSE_ERRORS:
         named.append(f"{len(errors) - _NAMED_PARSE_ERRORS} more")
     noun = "error" if len(errors) == 1 else "errors"
     return f"{len(errors)} validation {noun} ({', '.join(named)})"
+
+
+def _defined_location(loc: tuple[int | str, ...]) -> str:
+    """pydantic's location of an error, with each part the protocol doesn't
+    define where it stands written `*`. The message type, the fields of the
+    model at each point, list positions and a content block's type are the
+    protocol's. The name of a field the model doesn't have and a map's key
+    are the frame's, and could hold text it meant to keep private, or a
+    newline that would start a line of the frame's own in the log; pydantic's
+    names for a union's members are told from them no better."""
+    shape: Any = Message
+    named = []
+    for part in loc:
+        shape, defined = _location_step(shape, part)
+        named.append(str(part) if defined else "*")
+    return ".".join(named)
+
+
+def _location_step(shape: Any, part: int | str) -> tuple[Any, bool]:
+    """What a location's `part` leads to from `shape`, None for what the
+    protocol doesn't describe, and whether the protocol defines the part."""
+    shape = _unwrapped(shape)
+    if isinstance(part, int):
+        # A list position, which the frame's length decides, not its text.
+        args = get_args(shape)
+        return (args[0] if get_origin(shape) in (list, tuple) and args else None), True
+    if _is_model(shape):
+        field = shape.model_fields.get(part)
+        return (None, False) if field is None else (field.annotation, True)
+    if get_origin(shape) in (Union, types.UnionType):
+        for member in get_args(shape):
+            if _is_model(member) and part in _tags(member):
+                return member, True
+    if get_origin(shape) is dict and len(get_args(shape)) == 2:
+        return get_args(shape)[1], False
+    return None, False
+
+
+def _unwrapped(shape: Any) -> Any:
+    """`shape` without Annotated's metadata, and a union with None as the
+    other member it allows, which pydantic's locations don't name."""
+    while True:
+        if get_origin(shape) is Annotated:
+            shape = get_args(shape)[0]
+            continue
+        if get_origin(shape) in (Union, types.UnionType):
+            members = [member for member in get_args(shape) if member is not type(None)]
+            if len(members) == 1:
+                shape = members[0]
+                continue
+        return shape
+
+
+def _is_model(shape: Any) -> bool:
+    return isinstance(shape, type) and get_origin(shape) is None and issubclass(shape, BaseModel)
+
+
+def _tags(model: type[BaseModel]) -> tuple[Any, ...]:
+    """The `type` values a union's member takes, which pydantic names it by
+    in a discriminated union's locations."""
+    field = model.model_fields.get("type")
+    if field is None or get_origin(field.annotation) is not Literal:
+        return ()
+    return get_args(field.annotation)
 
 
 # How deeply an inbound frame may nest. No message comes close: a run_steps

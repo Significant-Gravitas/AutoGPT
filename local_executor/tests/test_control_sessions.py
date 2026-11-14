@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+import websockets
 
 from autogpt_local_executor.audit import AuditWriter, SessionAuditWriter
 from autogpt_local_executor.config import ShimConfig
@@ -35,8 +36,11 @@ from autogpt_local_executor.protocol import (
     SessionActivatedMessage,
     SessionAttachedMessage,
     SessionRestoredMessage,
+    SessionRevokedMessage,
+    SessionRevokedPayload,
     dump_message,
     make_ack,
+    new_id,
     now_ts,
 )
 
@@ -476,20 +480,32 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "where"),
+    [
+        (
+            {**_CONTROL_ACK, "granted_capabilities": "hunter2-held-value"},
+            "HELLO_ACK.payload.granted_capabilities: list_type",
+        ),
+        ({**_CONTROL_ACK, "hunter2-held-value": 1}, "HELLO_ACK.payload.*: extra_forbidden"),
+    ],
+    ids=["a-value", "a-field-name"],
+)
 async def test_a_malformed_control_hello_ack_is_reported_without_what_it_held(
-    tmp_path: Path,
+    tmp_path: Path, payload: dict[str, Any], where: str
 ) -> None:
     """The error a control daemon stops with carried pydantic's, whose text
-    quotes the values the HELLO_ACK held, in its traceback."""
+    quotes the values the HELLO_ACK held, in its traceback, and then the
+    name of a field it shouldn't have, which its location holds."""
     daemon = _control_daemon(tmp_path)
-    websocket = _AckSocket({**_CONTROL_ACK, "granted_capabilities": "hunter2-held-value"})
+    websocket = _AckSocket(payload)
 
     with pytest.raises(RuntimeError) as raised:
         await daemon._handshake(websocket)
 
     told = "".join(traceback.format_exception(raised.value))
     assert "hunter2" not in told
-    assert "HELLO_ACK.payload.granted_capabilities: list_type" in told
+    assert where in told
     assert websocket.closed is not None and websocket.closed[0] == 4400
 
 
@@ -1155,3 +1171,176 @@ async def test_a_hello_without_computer_use_for_another_reason_isnt_said_again(
     await daemon._build_hello()
 
     assert daemon._hello_waits_for_display is False
+
+
+# ── A revoked session's work stops before its record is written ──────────────
+
+
+class _PlatformClosesSocket(_ConnectedSocket):
+    """A _ConnectedSocket the platform closes, with a code of its choosing."""
+
+    def __init__(self, session_id: str | None) -> None:
+        super().__init__(session_id)
+        self._platform_code: int | None = None
+        self._platform_closed = asyncio.Event()
+
+    def close_from_platform(self, code: int) -> None:
+        self._platform_code = code
+        self._platform_closed.set()
+
+    async def __anext__(self) -> str:
+        from websockets.frames import Close
+
+        await self._platform_closed.wait()
+        assert self._platform_code is not None
+        raise websockets.exceptions.ConnectionClosed(
+            rcvd=Close(code=self._platform_code, reason=""), sent=None
+        )
+
+
+def _running_command(session: ShimDaemon) -> tuple[asyncio.Event, asyncio.Event]:
+    """Have `session` run every request as a command that goes on until it
+    is stopped. Returns events set once one runs and once it has stopped."""
+    running = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def command(msg, *, send):
+        running.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    session._handle = command  # type: ignore[method-assign]
+    return running, stopped
+
+
+async def _chat_running_a_command(
+    daemon: ShimDaemon, tmp_path: Path
+) -> tuple[asyncio.Task[None], asyncio.Event]:
+    """One of `daemon`'s chats, writing to its audit log as those
+    _start_child_session starts do, with a command running. Returns the
+    chat's session and an event set once the command has stopped."""
+    config = ShimConfig(
+        session_id="session-1",
+        machine_id="machine-1",
+        allowed_root=tmp_path / "chat-root",
+        audit_log_path=daemon.config.audit_log_path,
+    )
+    chat = ShimDaemon(
+        config,
+        token_store=object(),
+        audit=SessionAuditWriter(daemon.audit, "session-1"),
+        manage_audit_lifecycle=False,
+    )
+    running, stopped = _running_command(chat)
+    chat_ws = _ConnectedSocket("session-1")
+    session = asyncio.create_task(chat._run_session(chat_ws))
+    daemon._child_sessions["session-1"] = _ActiveChild(daemon=chat, task=session)
+    await _until(lambda: chat._status_task is not None)
+    await chat._on_frame(chat_ws, _stat_request("/tmp/command"))
+    await asyncio.wait_for(running.wait(), timeout=10)
+    return session, stopped
+
+
+def _hold_the_audit_writer(daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch) -> asyncio.Event:
+    """Hold every write to `daemon`'s audit log, its chats' too, until the
+    event returned is set, as `audit verify` holding the log's lock while it
+    reads a large log does."""
+    free = asyncio.Event()
+    write = daemon.audit.write
+
+    async def held(op: str, **kwargs: Any) -> None:
+        await free.wait()
+        await write(op, **kwargs)
+
+    monkeypatch.setattr(daemon.audit, "write", held)
+    return free
+
+
+def _revocations(daemon: ShimDaemon) -> list[dict[str, Any]]:
+    records = (json.loads(line) for line in daemon.config.audit_log_path.read_text().splitlines())
+    return [record["details"] for record in records if record["op"] == "SESSION_REVOKED"]
+
+
+@pytest.mark.asyncio
+async def test_a_revoked_machine_stops_its_chats_while_the_revocation_is_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SESSION_REVOKED stopped the machine's own requests at once, but its
+    chats' sessions only once its audit record was written, and an audit
+    writer held up (its lock taken by `audit verify` on a large log, say)
+    left their commands running on a machine whose session had been revoked.
+    They stop at once, and the record is still written."""
+    daemon = _control_daemon(tmp_path)
+    chat, stopped = await _chat_running_a_command(daemon, tmp_path)
+    writer_free = _hold_the_audit_writer(daemon, monkeypatch)
+    revoked = dump_message(
+        SessionRevokedMessage(
+            id=new_id(),
+            ts=now_ts(),
+            payload=SessionRevokedPayload(reason="revoked_by_user"),
+        )
+    )
+    handling = asyncio.ensure_future(daemon._on_frame(_ConnectedSocket(None), revoked))
+    try:
+        await asyncio.wait_for(stopped.wait(), timeout=10)
+        assert not handling.done()
+    finally:
+        writer_free.set()
+    await asyncio.wait_for(handling, timeout=10)
+
+    assert chat.done() and daemon._child_sessions == {}
+    assert [details["source"] for details in _revocations(daemon)] == ["frame"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", [4427, 4428])
+@pytest.mark.parametrize("working", ["chat", "session"])
+async def test_a_session_closed_as_revoked_stops_its_work_while_that_is_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: int, working: str
+) -> None:
+    """A revocation the platform sends as the close code (taken over by
+    another computer, or revoked) was recorded before anything stopped: the
+    session's own requests were cancelled after the record, and the
+    machine's chats were stopped after that, so a held-up audit writer left
+    their commands running. They stop at once; the record is still written."""
+    if working == "chat":
+        daemon = _control_daemon(tmp_path)
+        ws = _PlatformClosesSocket(None)
+    else:
+        config = ShimConfig(
+            session_id="session-1",
+            machine_id="machine-1",
+            allowed_root=tmp_path / "root",
+            audit_log_path=tmp_path / "audit.log",
+        )
+        audit = AuditWriter(config.audit_log_path, b"a" * 32, machine_id=config.machine_id)
+        daemon = ShimDaemon(config, token_store=object(), audit=audit)
+        ws = _PlatformClosesSocket("session-1")
+    session = asyncio.create_task(daemon._run_session(ws))
+    try:
+        await _until(lambda: daemon._status_task is not None)
+        if working == "chat":
+            chat, stopped = await _chat_running_a_command(daemon, tmp_path)
+        else:
+            running, stopped = _running_command(daemon)
+            await daemon._on_frame(ws, _stat_request("/tmp/command"))
+            await asyncio.wait_for(running.wait(), timeout=10)
+        writer_free = _hold_the_audit_writer(daemon, monkeypatch)
+        ws.close_from_platform(code)
+        try:
+            await asyncio.wait_for(stopped.wait(), timeout=10)
+            assert not session.done()
+        finally:
+            writer_free.set()
+        with pytest.raises(websockets.exceptions.ConnectionClosed):
+            await asyncio.wait_for(session, timeout=10)
+    finally:
+        session.cancel()
+
+    if working == "chat":
+        assert chat.done() and daemon._child_sessions == {}
+    assert [(details["source"], details["close_code"]) for details in _revocations(daemon)] == [
+        ("ws_close_code", code)
+    ]

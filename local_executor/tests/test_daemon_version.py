@@ -393,8 +393,34 @@ def _call_frame(payload: dict[str, Any], kind: str = "COMPUTER_TOOL_CALL") -> st
             _DIGITS[:8],
         ),
         (b'{"type": "PING", "id": "\xff"}', "frame is not UTF-8", "0xff"),
+        (
+            _call_frame({"tool": "type_text", "arguments": {}, _TYPED: 1}),
+            "COMPUTER_TOOL_CALL.payload.*: extra_forbidden",
+            _TYPED_END,
+        ),
+        (
+            json.dumps(
+                {"type": "PING", "id": "p", "ts": 1.0, "version": VERSION, "payload": {}, _TYPED: 1}
+            ),
+            "PING.*: extra_forbidden",
+            _TYPED_END,
+        ),
+        (
+            _call_frame({"command": "ls", "env": {_TYPED: 1}}, "EXECUTE_COMMAND"),
+            "EXECUTE_COMMAND.payload.env.*: string_type",
+            _TYPED_END,
+        ),
     ],
-    ids=["arguments-not-an-object", "no-tool", "unknown-type", "huge-number", "not-utf8"],
+    ids=[
+        "arguments-not-an-object",
+        "no-tool",
+        "unknown-type",
+        "huge-number",
+        "not-utf8",
+        "extra-field",
+        "extra-envelope-field",
+        "map-key",
+    ],
 )
 async def test_a_frame_that_fails_to_parse_is_logged_without_what_it_held(
     daemon: ShimDaemon,
@@ -414,21 +440,50 @@ async def test_a_frame_that_fails_to_parse_is_logged_without_what_it_held(
     assert where in caplog.text
 
 
-async def test_a_malformed_hello_ack_is_reported_without_what_it_held(daemon: ShimDaemon) -> None:
+async def test_a_refused_frame_cannot_add_a_line_to_the_log(
+    daemon: ShimDaemon, caplog: pytest.LogCaptureFixture
+) -> None:
+    """pydantic's location for a field the frame shouldn't have is the
+    field's name, which the frame chooses, and the log line carried it: a
+    newline in it began a line of the frame's own."""
+    forged = "\n2026-11-14 06:00:00 WARNING autogpt_local_executor.daemon: forged"
+    raw = _call_frame({"tool": "type_text", "arguments": {}, forged: 1})
+
+    with caplog.at_level(logging.DEBUG):
+        await daemon._on_frame(_FakeWebSocket([]), raw)
+
+    (logged,) = (r.getMessage() for r in caplog.records if "parse" in r.getMessage())
+    assert "\n" not in logged
+    assert "forged" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("payload", "where"),
+    [
+        (
+            {"session_id": "test-session", "granted_capabilities": _TYPED},
+            "HELLO_ACK.payload.granted_capabilities: list_type",
+        ),
+        (
+            {"session_id": "test-session", "granted_capabilities": [], _TYPED: 1},
+            "HELLO_ACK.payload.*: extra_forbidden",
+        ),
+    ],
+    ids=["a-value", "a-field-name"],
+)
+async def test_a_malformed_hello_ack_is_reported_without_what_it_held(
+    daemon: ShimDaemon, payload: dict[str, Any], where: str
+) -> None:
     """A session's handshake passed pydantic's error on, and the reconnect
     loop logs it: the values of the HELLO_ACK, or of a frame sent in its
-    place, went into the log."""
-    ack = {
-        "type": "HELLO_ACK",
-        "id": "__HELLO_ID__",
-        "ts": now_ts(),
-        "payload": {"session_id": "test-session", "granted_capabilities": _TYPED},
-    }
+    place, went into the log, and then the name of a field it shouldn't
+    have, which its location holds."""
+    ack = {"type": "HELLO_ACK", "id": "__HELLO_ID__", "ts": now_ts(), "payload": payload}
     ws = _FakeWebSocket(inbound=[json.dumps(ack)])
 
     with pytest.raises(ValueError) as raised:
         await daemon._handshake(ws)
 
     told = "".join(traceback.format_exception(raised.value))
-    assert _TYPED not in told
-    assert "HELLO_ACK.payload.granted_capabilities: list_type" in told
+    assert _TYPED_END not in told
+    assert where in told

@@ -837,11 +837,18 @@ class ShimDaemon:
                         label,
                     )
                     self._disable_reconnect = True
+                    # As for a SESSION_REVOKED frame: the session's requests
+                    # and the machine's chats stop now, not once the record
+                    # below is written.
+                    cancelled = self._cancel_dispatch_requests()
+                    chats = self._stop_chats_at_once()
                     await self._audit_session_revoked(
                         reason=label.lower(),
                         source="ws_close_code",
                         close_code=code,
                     )
+                    await chats
+                    await self._drain_dispatch_tasks(cancelled)
                 raise
             except Exception as exc:
                 disconnect_reason = f"loop_error: {exc.__class__.__name__}"
@@ -1410,10 +1417,11 @@ class ShimDaemon:
         self._revoked_ws = ws
         self._disable_reconnect = True
         # Nor may the revoked session's work go on: stop what is running and
-        # what is queued behind it. A side effect already running in a thread
-        # can't be stopped and may never finish, so the record and the close
-        # come before any wait for it.
+        # what is queued behind it, and the machine's chats with it. A side
+        # effect already running in a thread can't be stopped and may never
+        # finish, so the record and the close come before any wait for it.
         cancelled = self._cancel_dispatch_requests()
+        chats = self._stop_chats_at_once()
         reason = msg.payload.reason
         new_machine = msg.payload.new_shim_machine_id
         logger.warning(
@@ -1439,7 +1447,18 @@ class ShimDaemon:
             logger.debug("ws.close after SESSION_REVOKED failed", exc_info=True)
         await self._stop_status_ticker()
         await record
+        await chats
         await self._drain_dispatch_tasks(cancelled)
+
+    def _stop_chats_at_once(self) -> asyncio.Future[None]:
+        """Begin stopping the machine's chats (none for a chat's own session)
+        when its session is revoked. run() stops them only after the
+        revocation's audit record, which a held-up audit writer (its lock
+        taken by `audit verify` on a large log, say) can keep from being
+        written, and they ran their commands meanwhile."""
+        stopping = asyncio.ensure_future(self._shutdown_children())
+        stopping.add_done_callback(_retrieve_outcome)
+        return stopping
 
     async def _audit_session_revoked(
         self,

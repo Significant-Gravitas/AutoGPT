@@ -209,8 +209,9 @@ class SessionDisplay:
     XAUTHORITY; a session that ended takes them away. The session's values
     stand in for any the service started with (an XAUTHORITY an earlier
     session left doesn't open the new display), which come back once the
-    session ends. A shim run by hand, or one that started with a display,
-    keeps its own environment."""
+    session ends, and so does a session's lack of an XAUTHORITY: Xlib then
+    reads ~/.Xauthority. A shim run by hand, or one that started with a
+    display, keeps its own environment."""
 
     def __init__(
         self,
@@ -272,6 +273,11 @@ class SessionDisplay:
                     # with: an XAUTHORITY an earlier session left doesn't
                     # open this session's display.
                     value = usable[key]
+                    self._taken.add(key)
+                elif key == "XAUTHORITY" and usable:
+                    # Nor for a session without one: Xlib reads only the
+                    # file XAUTHORITY names, and ~/.Xauthority without it.
+                    value = None
                     self._taken.add(key)
                 elif key in self._taken:
                     # Gone with the session: this process's own comes back.
