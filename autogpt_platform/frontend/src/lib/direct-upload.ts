@@ -104,28 +104,33 @@ async function uploadError(res: Response): Promise<ApiError> {
   return new ApiError(await readUploadError(res), res.status, null);
 }
 
+interface UploadErrorBody {
+  detail?: string | { message?: string };
+  message?: string;
+}
+
 async function readUploadError(res: Response): Promise<string> {
+  const text = await res.text();
+  let body: UploadErrorBody | null | undefined;
+  try {
+    body = JSON.parse(text) as UploadErrorBody | null;
+  } catch {
+    body = undefined;
+  }
+  // Backend returns { detail: "..." } or { detail: { message: "..." } }. Its
+  // 413s say which limit was hit: the per-file size or the storage quota.
+  const detail = body?.detail;
+  if (typeof detail === "string") return detail;
+  if (typeof detail?.message === "string") return detail.message;
+  if (typeof body?.message === "string") return body.message;
   // A proxy/ingress in front of the backend may still reject an oversized body
   // with a 413 whose payload isn't backend JSON — surface a clear size message
-  // instead of a bare "HTTP 413".
+  // instead of a bare "HTTP 413" or the proxy's error page.
   if (res.status === 413) {
     return "File is too large. Please choose a smaller file.";
   }
-  const text = await res.text();
-  try {
-    const body = JSON.parse(text) as {
-      detail?: string | { message?: string };
-      message?: string;
-    };
-    // Backend returns { detail: "..." } or { detail: { message: "..." } }.
-    const detail = body?.detail;
-    if (typeof detail === "string") return detail;
-    if (typeof detail?.message === "string") return detail.message;
-    if (typeof body?.message === "string") return body.message;
-  } catch {
-    // Response body wasn't JSON — surface the raw text so it reaches the toast.
-    if (text) return text;
-  }
+  // Response body wasn't JSON — surface the raw text so it reaches the toast.
+  if (text && body === undefined) return text;
   return res.statusText || `Upload failed (HTTP ${res.status})`;
 }
 

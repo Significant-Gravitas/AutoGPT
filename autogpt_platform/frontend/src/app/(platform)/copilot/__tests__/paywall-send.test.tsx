@@ -225,4 +225,25 @@ describe("a refused attachment", () => {
     });
     await waitFor(() => expect(textarea.value).toBe("summarise this"));
   });
+
+  it("says why the upload was refused", async () => {
+    const reason =
+      "Storage limit exceeded. Delete some files or upgrade your plan for more storage.";
+    uploadFileDirect.mockRejectedValue(new ApiError(reason, 413, null));
+    render(<ComposerWithFile />);
+    const textarea = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Message",
+    });
+    fireEvent.change(textarea, { target: { value: "summarise this" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "File upload failed",
+          description: `notes.pdf: ${reason}`,
+        }),
+      ),
+    );
+  });
 });
