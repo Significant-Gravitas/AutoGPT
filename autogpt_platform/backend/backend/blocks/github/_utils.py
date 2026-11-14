@@ -2,7 +2,7 @@ import re
 from urllib.parse import urlparse
 
 _GITHUB_HOSTS = ("github.com", "www.github.com")
-_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$")
+_OWNER_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$")
 _REPO_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 

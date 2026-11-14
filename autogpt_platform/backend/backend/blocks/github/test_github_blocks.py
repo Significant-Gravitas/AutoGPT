@@ -324,6 +324,13 @@ class TestNormalizeRepoPath:
     def test_dots_and_dashes_in_repo_name(self):
         assert normalize_repo_path("my-org/my.repo_v2") == "my-org/my.repo_v2"
 
+    def test_managed_user_owner(self):
+        assert normalize_repo_path("octocat_acme/repo") == "octocat_acme/repo"
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("_bad/repo")
+        with pytest.raises(ValueError, match="Invalid repository"):
+            normalize_repo_path("bad_/repo")
+
     def test_deep_link_is_rejected(self):
         with pytest.raises(ValueError, match="Invalid repository"):
             normalize_repo_path("https://github.com/owner/repo/tree/main")
