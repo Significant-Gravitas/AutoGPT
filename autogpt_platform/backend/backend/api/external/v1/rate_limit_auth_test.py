@@ -144,11 +144,19 @@ async def test_verification_and_permissions_are_not_cached_across_requests(
 
 @pytest.mark.parametrize("path", ["/me", "/blocks"])
 @pytest.mark.parametrize("credential", ["api-key", "bearer-key", "token"])
-async def test_a_request_verifies_its_credential_once(
-    mocker, v1_client, v1_counter, v1_auth_storage, v1_generated_keys, path, credential
+async def test_a_request_verifies_its_credential_and_is_recorded_once(
+    mocker,
+    v1_client,
+    v1_counter,
+    v1_auth_storage,
+    v1_generated_keys,
+    v1_key_rows,
+    path,
+    credential,
 ):
     mocker.patch("backend.blocks.get_blocks", return_value={})
     verify = mocker.spy(api_key.keysmith, "verify_key")
+    recorded = mocker.patch.object(middleware, "record_api_request")
     key = v1_generated_keys[0].key
     headers = {
         "api-key": {"X-API-Key": key},
@@ -162,12 +170,13 @@ async def test_a_request_verifies_its_credential_once(
     key_lookup, token_lookup = v1_auth_storage
     assert key_lookup.await_count + token_lookup.await_count == 1
     assert verify.call_count == (0 if credential == "token" else 1)
+    recorded.assert_called_once_with(v1_key_rows[0].user_id, "external")
 
 
 @pytest.mark.parametrize("throttled", [True, False])
 @pytest.mark.parametrize("path", ["/me", "/blocks"])
 @pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
-async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
+async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified_or_recorded(
     mocker, v1_client, v1_auth_storage, v1_generated_keys, path, bearer, throttled
 ):
     mocker.patch("backend.blocks.get_blocks", return_value={})
@@ -178,6 +187,7 @@ async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
         return_value=None,
     )
     verify = mocker.spy(api_key.keysmith, "verify_key")
+    recorded = mocker.patch.object(middleware, "record_api_request")
     key = v1_generated_keys[0].key
     headers = {"Authorization": f"Bearer {key}"} if bearer else {"X-API-Key": key}
 
@@ -187,3 +197,4 @@ async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
     reserve.assert_awaited_once()
     assert v1_auth_storage[0].await_count == 1
     assert verify.call_count == (0 if throttled else 1)
+    assert recorded.call_count == (0 if throttled else 1)

@@ -103,7 +103,10 @@ from backend.data.analytics import (
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
 from backend.data.auth.session import is_auth_session_active
-from backend.data.auth_ip_events import delete_expired_ip_events
+from backend.data.auth_ip_events import (
+    delete_expired_ip_events,
+    find_accounts_sharing_an_ip,
+)
 from backend.data.block import (
     get_blocks_needing_optimization,
     update_block_optimized_description,
@@ -209,6 +212,7 @@ from backend.data.understanding import (
 )
 from backend.data.user import (
     claim_welcome_email,
+    get_account_created_at,
     get_active_user_ids_in_timerange,
     get_auth_user_flag_fields,
     get_billing_email_recipient,
@@ -457,6 +461,8 @@ class DatabaseManager(AppService):
     is_account_closed = _(is_account_closed)
     # Exposed for the scheduler's auth-identity invariant monitor.
     heal_orphaned_auth_identities = _(heal_orphaned_auth_identities)
+    # Exposed for the scheduler's report of activity by accounts without a plan.
+    get_account_created_at = _(get_account_created_at)
     get_user_integrations = _(get_user_integrations)
     update_user_integrations = _(update_user_integrations)
     get_near_expiry_oauth_credentials = _(get_near_expiry_oauth_credentials)
@@ -529,6 +535,7 @@ class DatabaseManager(AppService):
 
     # ============ Sign-in IP log ============ #
     delete_expired_ip_events = _(delete_expired_ip_events)
+    find_accounts_sharing_an_ip = _(find_accounts_sharing_an_ip)
 
     # ============ Store ============ #
     get_store_agents = _(get_store_agents)
@@ -1056,6 +1063,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     is_auth_user_banned = d.is_auth_user_banned
     is_account_closed = d.is_account_closed
     heal_orphaned_auth_identities = d.heal_orphaned_auth_identities
+    get_account_created_at = d.get_account_created_at
     get_user_integrations = d.get_user_integrations
     update_user_integrations = d.update_user_integrations
     get_near_expiry_oauth_credentials = d.get_near_expiry_oauth_credentials
@@ -1164,6 +1172,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Sign-in IP log ============ #
     delete_expired_ip_events = d.delete_expired_ip_events
+    find_accounts_sharing_an_ip = d.find_accounts_sharing_an_ip
 
     # ============ Store ============ #
     get_store_agents = d.get_store_agents

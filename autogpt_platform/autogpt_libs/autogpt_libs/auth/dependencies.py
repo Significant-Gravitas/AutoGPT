@@ -162,6 +162,7 @@ async def get_optional_user_id(
     # someone signed out: these routes are read-only, so that costs little.
     if await get_account_state(user_id) is not AccountState.OPEN:
         return None
+    _count_request(user_id)
     return user_id
 
 
@@ -177,8 +178,13 @@ async def get_unbanned_jwt_payload(
     still delete their account (``get_user_id_allowing_closed``).
     """
     user_id = jwt_payload.get("sub")
-    if user_id and await _is_banned(user_id):
+    if not user_id:
+        return jwt_payload
+    if await _is_banned(user_id):
         raise fastapi.HTTPException(status_code=403, detail=ACCOUNT_BANNED_DETAIL)
+    # The resolvers below refuse a closed account; they reuse this cached answer.
+    if await get_account_state(user_id) is not AccountState.CLOSED:
+        _count_request(user_id)
     return jwt_payload
 
 
@@ -193,6 +199,15 @@ async def _is_banned(user_id: str) -> bool:
     if not db.is_connected():
         return False
     return await is_user_banned(user_id)
+
+
+def _count_request(user_id: str) -> None:
+    """Counts toward the daily report of what accounts without a plan did."""
+    try:
+        from backend.data.api_activity import record_api_request  # deferred
+    except ImportError:
+        return
+    record_api_request(user_id, "internal")
 
 
 async def requires_user(
