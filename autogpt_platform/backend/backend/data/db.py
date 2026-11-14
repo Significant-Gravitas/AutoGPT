@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import threading
@@ -78,9 +79,32 @@ prisma = _ThreadBoundPrisma(
 logger = logging.getLogger(__name__)
 RawQueryModelT = TypeVar("RawQueryModelT", bound=BaseModel)
 
+# Bound how long /health waits for a database answer before reporting it down.
+HEALTH_CHECK_TIMEOUT = 5
+
 
 def is_connected():
     return prisma.is_connected()
+
+
+async def is_healthy() -> bool:
+    """Return whether the database answers a query right now.
+
+    ``is_connected()`` is only the client's own flag, which stays true after
+    the server drops the pool. Health checks need the live answer.
+    """
+    if not is_connected():
+        return False
+    try:
+        async with asyncio.timeout(HEALTH_CHECK_TIMEOUT):
+            await _query_database()
+    except Exception:
+        return False
+    return True
+
+
+async def _query_database() -> None:
+    await prisma.query_raw("SELECT 1")
 
 
 @conn_retry("Prisma", "Acquiring connection")
