@@ -588,8 +588,11 @@ def _audit_tail(path: Path) -> int:
     if not path.is_file():
         print(f"Audit log not found: {path}")
         return 1
-    for line in _follow(path, wait=lambda: time.sleep(0.5)):
-        _print_record_line(line)
+    try:
+        for line in _follow(path, wait=lambda: time.sleep(0.5)):
+            _print_record_line(line)
+    except KeyboardInterrupt:
+        pass  # Ctrl+C, the only way to stop following: an end, not a failure
     return 0
 
 

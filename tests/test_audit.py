@@ -1217,6 +1217,29 @@ def test_tail_follows_the_new_log_after_a_rotation(tmp_path: Path) -> None:
     assert seen == [b'{"seq": 1}\n', b'{"seq": 1, "new": true}\n']
 
 
+def test_ctrl_c_ends_audit_tail_without_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """audit tail follows the log until Ctrl+C, its only way out, which it
+    didn't catch: every tail ended with KeyboardInterrupt's traceback."""
+    import time
+
+    path = tmp_path / "audit.log"
+    path.write_bytes(b'{"seq": 1, "op": "FILE_READ", "result": {"ok": true}}\n')
+
+    def ctrl_c(_seconds: float) -> None:
+        raise KeyboardInterrupt  # pressed while tail waits for the next record
+
+    monkeypatch.setattr(time, "sleep", ctrl_c)
+    try:
+        code = cli._audit_tail(path)
+    except KeyboardInterrupt:
+        pytest.fail("Ctrl+C ended audit tail with a traceback")
+
+    assert code == 0
+    assert "seq=    1  FILE_READ" in capsys.readouterr().out
+
+
 def test_tail_reads_a_record_appended_just_before_a_rotation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
