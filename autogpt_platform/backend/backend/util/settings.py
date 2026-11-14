@@ -775,6 +775,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="How many schedules one user may hold on the scheduler.",
     )
 
+    max_schedule_payload_bytes: int = Field(
+        default=1024 * 1024,
+        ge=1024,
+        description="The most one schedule may store, its inputs or message "
+        "included, as compact JSON.",
+    )
+
     schedule_read_timeout_seconds: float = Field(
         default=5.0,
         gt=0,

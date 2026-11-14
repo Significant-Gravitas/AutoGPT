@@ -1,9 +1,11 @@
-"""The per-user limit on schedules, read through the schedule index."""
+"""The limits on how many schedules one user holds and how large each is."""
 
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 
+from backend.data.schedule import MAX_SCHEDULE_NAME_LENGTH
 from backend.executor import scheduler as scheduler_module
 from backend.executor.schedule_index_test_helpers import (
     _graph_job_kwargs,
@@ -11,6 +13,7 @@ from backend.executor.schedule_index_test_helpers import (
     _scheduler_with_index,
 )
 from backend.executor.scheduler import (
+    CopilotTurnJobArgs,
     GraphExecutionJobArgs,
     Jobstores,
     Scheduler,
@@ -105,6 +108,68 @@ def test_another_users_schedules_do_not_count_against_the_limit(
 ):
     _persist(full_scheduler, _args("theirs", "u2"))
     full_scheduler.scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.parametrize("kind", ["graph", "copilot_turn"])
+@pytest.mark.parametrize("length, stored", [(3_000, True), (4_096, False)])
+def test_a_schedule_is_stored_only_within_the_size_limit(
+    full_scheduler: Scheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    length: int,
+    stored: bool,
+):
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_payload_bytes", 4_096)
+    text = "x" * length
+    args = (
+        GraphExecutionJobArgs(
+            **_graph_job_kwargs("new", "u2", "g1") | {"input_data": {"topic": text}}
+        )
+        if kind == "graph"
+        else CopilotTurnJobArgs(
+            schedule_id="new",
+            user_id="u2",
+            message=text,
+            run_at=datetime(2026, 12, 1, tzinfo=UTC),
+        )
+    )
+
+    if stored:
+        _persist(full_scheduler, args)
+        full_scheduler.scheduler.add_job.assert_called_once()
+    else:
+        with pytest.raises(ValueError, match="too large to save"):
+            _persist(full_scheduler, args)
+        full_scheduler.scheduler.add_job.assert_not_called()
+
+
+def test_editing_a_schedules_inputs_past_the_size_limit_is_refused(
+    full_scheduler: Scheduler, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(scheduler_module.config, "max_schedule_payload_bytes", 4_096)
+    validate = MagicMock()
+    monkeypatch.setattr(scheduler_module, "run_async", validate)
+
+    with pytest.raises(ValueError, match="too large to save"):
+        full_scheduler.update_graph_execution_schedule(
+            schedule_id="held-1", user_id="u1", input_data={"topic": "x" * 4_096}
+        )
+    validate.assert_not_called()
+    full_scheduler.scheduler.modify_job.assert_not_called()
+
+
+def test_a_job_name_is_stored_no_longer_than_a_schedule_name(
+    full_scheduler: Scheduler,
+):
+    # Copilot follow-ups and routines pass names no request model bounded.
+    full_scheduler._persist_schedule(
+        dispatch_func=MagicMock(),
+        job_args=_args("new", "u2"),
+        trigger=MagicMock(),
+        name="n" * (MAX_SCHEDULE_NAME_LENGTH + 1),
+    )
+    stored = full_scheduler.scheduler.add_job.call_args.kwargs["name"]
+    assert stored == "n" * MAX_SCHEDULE_NAME_LENGTH
 
 
 def _args(schedule_id: str, user_id: str) -> GraphExecutionJobArgs:
