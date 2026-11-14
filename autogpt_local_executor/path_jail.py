@@ -353,17 +353,16 @@ def write_jail_file(
         _replace_with(path, data, mode, owner)
     except PermissionError:
         with open_jail_file(path, allowed_root, write=True) as file:
-            if mode is not None and hasattr(os, "fchmod"):
+            if set_id and mode is not None and hasattr(os, "fchmod"):
                 # Before the contents change, so they never carry the bits,
-                # even when the write fails part way. Best effort for the
-                # rest of the mode (a file someone else owns), but a file
-                # whose set-ID bits stay isn't written: the kernel doesn't
-                # drop them for a shim with CAP_FSETID.
-                try:
-                    os.fchmod(file.fileno(), mode)
-                except OSError:
-                    if set_id:
-                        raise
+                # even when the write fails part way. A file whose set-ID
+                # bits stay isn't written: the kernel doesn't drop them for a
+                # shim with CAP_FSETID. Otherwise the mode is left alone,
+                # since it is the file's own already: on an NFS mount a
+                # chmod reaches the server even when it changes nothing, and
+                # a server that drops ACL entries on a chmod (ZFS's
+                # aclmode=discard, say) would drop the ACL this write keeps.
+                os.fchmod(file.fileno(), mode)
             file.truncate(0)
             file.write(data)
 

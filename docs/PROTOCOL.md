@@ -549,7 +549,10 @@ are the ACL's mask, so a file that let another account in and kept its own
 group out would come back open to the group; the ACL an NFSv4 or SMB mount
 reads from its server; a macOS ACL; and on Windows the owner and DACL
 (inheritance turned off, say). The shim compares the two before any
-content is written, and writes in place when it can't read them. A Windows
+content is written, and writes in place when it can't read them. Written in
+place, a file's mode is changed only to drop set-user-ID or set-group-ID:
+on an NFS mount even a chmod that changes nothing reaches the server, and
+a server that drops ACL entries on a chmod would drop the file's. A Windows
 folder WSL2 reaches through `/mnt` shows no ACL to compare, so a file
 there that is replaced takes the folder's. Where the directory takes no new entries, (on
 Windows) another program has the file open, or the shim may not give the new

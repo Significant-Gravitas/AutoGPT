@@ -2591,6 +2591,41 @@ def test_an_in_place_write_goes_ahead_when_only_the_mode_cannot_be_kept(
     assert notes.read_text() == "new"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_an_in_place_write_leaves_a_mode_with_no_set_id_bits_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The in-place fallback set the file's mode even when it had no set-ID
+    bits to drop, so the mode it set was the one the file had. On an NFS
+    mount a chmod reaches the server even when it changes nothing, and a
+    server that drops ACL entries on a chmod (ZFS's aclmode=discard, say)
+    dropped the file's own ACL, which writing in place is there to keep."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    notes = tmp_path / "notes.txt"
+    notes.write_text("old")
+    notes.chmod(0o640)
+    applied: list[int] = []
+    real_fchmod = os.fchmod
+
+    def fchmod(fd: int, mode: int) -> None:
+        applied.append(mode)
+        real_fchmod(fd, mode)
+
+    def acl_differs(*_args, **_kwargs):
+        raise PermissionError("the file has an ACL a replacement wouldn't keep")
+
+    monkeypatch.setattr(path_jail, "_replace_with", acl_differs)
+    monkeypatch.setattr(path_jail.os, "fchmod", fchmod)
+
+    path_jail.write_jail_file(notes, tmp_path, b"new")
+    monkeypatch.undo()
+
+    assert notes.read_text() == "new"
+    assert applied == []
+    assert stat.S_IMODE(notes.stat().st_mode) == 0o640
+
+
 @pytest.mark.parametrize("char", ["\u6587", "\U0001f600"], ids=["cjk", "emoji"])
 @pytest.mark.asyncio
 async def test_a_file_whose_name_is_long_in_bytes_can_be_written(tmp_path: Path, char: str) -> None:
