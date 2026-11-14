@@ -138,6 +138,12 @@ def _build_bwrap_command(
     - **Clean environment**: ``--clearenv`` wipes all inherited env vars.
       Only the explicitly-passed safe env vars are set inside the sandbox.
     - **Network isolation**: ``--unshare-net`` blocks all network access.
+    - **Process isolation**: ``--unshare-pid`` and ``--unshare-ipc`` give each
+      sandbox its own process table and IPC objects, so a command cannot list
+      other chats' commands (``/proc/<pid>/cmdline`` is world-readable) or
+      attach to their shared memory, semaphores and message queues.  The PID
+      namespace requires a host that lets the sandbox mount its own ``/proc``;
+      where it does not, every command fails with :data:`_PROC_MOUNT_HELP`.
     - **Resource limits**: ulimit caps on processes (64), memory (512MB),
       file size (50MB), and open FDs (256) to prevent fork bombs and abuse.
     - **New session**: prevents terminal control escape.
@@ -196,6 +202,10 @@ def _build_bwrap_command(
             cwd,
             # Isolation
             "--unshare-net",
+            # A private PID namespace is what makes --proc above this
+            # sandbox's own process table; it needs an unmasked host /proc.
+            "--unshare-pid",
+            "--unshare-ipc",
             "--die-with-parent",
             "--new-session",
             "--chdir",
@@ -250,11 +260,38 @@ async def run_sandboxed(
     full_command = _build_bwrap_command(command, cwd, safe_env)
 
     try:
-        return await _run_capped(full_command, cwd, safe_env, timeout)
+        stdout, stderr, exit_code, timed_out = await _run_capped(
+            full_command, cwd, safe_env, timeout
+        )
     except RuntimeError:
         raise
     except Exception as e:
         return "", f"Sandbox error: {e}", -1, False
+
+    return stdout, explain_proc_mount_failure(stderr), exit_code, timed_out
+
+
+# bwrap's wording when the kernel refuses the sandbox its own procfs. Its
+# format string is "Can't mount proc on %s", and the destination it fills in
+# is newroot-relative in some versions, so match what comes before it.
+PROC_MOUNT_REFUSED = "Can't mount proc on "
+
+_PROC_MOUNT_HELP = (
+    "The sandbox could not mount its own /proc, which its PID namespace "
+    "requires. A host whose /proc has masked paths refuses that mount: run the "
+    "container with Docker's `--security-opt systempaths=unconfined` or "
+    "Kubernetes' `procMount: Unmasked`."
+)
+
+
+def explain_proc_mount_failure(stderr: str) -> str:
+    """Prefix :data:`_PROC_MOUNT_HELP` to a refused-procfs *stderr*.
+
+    Left alone otherwise, so a command's own stderr passes through.
+    """
+    if PROC_MOUNT_REFUSED not in stderr:
+        return stderr
+    return f"{_PROC_MOUNT_HELP}\n{stderr}".rstrip("\n")
 
 
 async def _run_capped(

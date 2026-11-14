@@ -1,0 +1,305 @@
+"""Erase a closed account and everything it holds (SECRT-2854).
+
+Closing comes first, and is not done here: Settings and the paywall close an
+account (`account_deletion.service.delete_account`, SECRT-2877), and so does
+the CLI for a request made by email (`request.close_for_email_request`).
+Closing cancels the account's Stripe plan, disconnects its apps, stops its
+work and email and writes its `AccountDeletionRequest`. It does not ban the
+sign-in: for 14 days the owner can sign in and keep the account.
+
+Once those 14 days are over, `erase_account` claims the request
+(`request.claim_request`), so a late Keep is refused, and then removes the
+data: it reruns the work stop and removes the memory crons, sends the
+confirmation closing could not, cancels the subscriptions of the account and
+of the orgs that go with it, hands the agents other accounts still use to the
+"deleted user" account, removes what lives outside the account's rows
+(marketplace, files, memory, MailerLite), keeps a ban record if the account is
+banned, and deletes its rows, then the PostHog person, then marks the request
+done. The rows go late because they are how the earlier steps find their data,
+so a step that fails leaves the account in place for a rerun to finish. PostHog
+needs only the user ID, so it goes after the rows: until they are gone, an
+email webhook or a Stripe event can still capture an event for the account
+and bring the person back. One captured just before the rows went can still
+land after the delete, so a rerun of a finished erasure repeats the PostHog
+delete (`_repair_steps`) and changes nothing else.
+"""
+
+import logging
+import traceback
+from collections.abc import Awaitable, Callable
+from functools import partial
+
+from backend.data.account_erasure.ban_record import keep_ban_record
+from backend.data.account_erasure.database import delete_rows
+from backend.data.account_erasure.lease import (
+    acquire_erasure_lease,
+    keep_erasure_lease,
+    release_erasure_lease,
+    renew_in_background,
+)
+from backend.data.account_erasure.marketplace import delete_marketplace
+from backend.data.account_erasure.memory import delete_memory
+from backend.data.account_erasure.models import (
+    AccountErasureBlocked,
+    Blocker,
+    ErasureReport,
+    StepReport,
+    StepStatus,
+    Subject,
+)
+from backend.data.account_erasure.preflight import (
+    REFUSED_IDS,
+    find_blockers,
+    load_subject,
+)
+from backend.data.account_erasure.request import (
+    claim_request,
+    complete_request,
+    send_confirmation,
+)
+from backend.data.account_erasure.shared_agents import (
+    plan_transfer,
+    transfer_shared_agents,
+)
+from backend.data.account_erasure.storage import delete_files
+from backend.data.account_erasure.subscriptions import cancel_subscriptions
+from backend.data.account_erasure.third_parties import (
+    delete_posthog_person,
+    forget_mailerlite_subscriber,
+)
+from backend.data.account_erasure.work import stop_work
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+Step = Callable[..., Awaitable[StepReport]]
+
+# The outside service each step needs. A step skips only when its service is
+# not configured; an apply then stops there, so the request stays open until
+# someone makes sure that data is gone. All but PostHog run before the rows go
+# (they hold the address MailerLite needs and the expert IDs that name the
+# memory graphs); PostHog needs only the user ID. A stack that doesn't use a
+# service says so in `account_erasure_unused_services`.
+_SERVICE_OF_STEP = {
+    "subscriptions": "stripe",
+    "files": "buckets",
+    "memory": "falkordb",
+    "posthog": "posthog",
+    "mailerlite": "mailerlite",
+}
+
+KeepAlive = Callable[[], Awaitable[bool]]
+
+# Steps whose exception messages can't quote the account's address, so their
+# tracebacks are logged as text. The rest (the confirmation email, the
+# MailerLite lookup by address) log the exception type only. No step logs with
+# exc_info: Sentry would attach the frame locals, and `subject` holds the
+# address.
+_TRACEBACK_STEPS = {
+    "stop_work",
+    "subscriptions",
+    "shared_agents",
+    "marketplace",
+    "files",
+    "memory",
+    "posthog",
+    "ban_record",
+    "database",
+    "request",
+}
+
+# `report.not_claimed` for a request an earlier run finished.
+ERASED_ALREADY = "erased already"
+
+
+async def erase_account(
+    user_id: str,
+    *,
+    dry_run: bool = True,
+    email: str | None = None,
+) -> ErasureReport:
+    """Erase the account, or with `dry_run` (the default) only count what
+    would go. `email` finds the MailerLite subscriber of an account whose rows
+    are already gone.
+
+    Raises `AccountErasureBlocked` before deleting anything when a blocker
+    needs a decision; a dry run reports blockers instead. An apply whose
+    request can't be claimed, or that another run is erasing, runs no step
+    (`report.not_claimed`), except on a finished erasure, where it repeats
+    the PostHog delete (`_repair_steps`). Returns the report;
+    `report.complete` says whether everything is gone."""
+    if dry_run:
+        return await _erase(user_id, email, dry_run=True)
+    lease = await acquire_erasure_lease(user_id)
+    if lease is None:
+        logger.info(f"Account erasure of {user_id}: another run is erasing it")
+        return ErasureReport(
+            user_id=user_id, dry_run=False, not_claimed="another run is erasing it"
+        )
+    try:
+        async with renew_in_background(lease):
+            return await _erase(
+                user_id,
+                email,
+                dry_run=False,
+                keepalive=partial(keep_erasure_lease, lease),
+            )
+    finally:
+        await release_erasure_lease(lease)
+
+
+async def _erase(
+    user_id: str,
+    email: str | None,
+    *,
+    dry_run: bool,
+    keepalive: KeepAlive | None = None,
+) -> ErasureReport:
+    subject = await load_subject(user_id, email)
+    plan = await plan_transfer(user_id)
+    subject.shared_graph_ids = plan.graph_ids
+    subject.kept_listing_ids = plan.listing_ids
+    blockers = await find_blockers(subject)
+    return await _run(subject, _erasure_steps(), blockers, dry_run, keepalive)
+
+
+async def _run(
+    subject: Subject,
+    steps: list[tuple[str, Step]],
+    blockers: list[Blocker],
+    dry_run: bool,
+    keepalive: KeepAlive | None = None,
+) -> ErasureReport:
+    report = ErasureReport(
+        user_id=subject.user_id,
+        dry_run=dry_run,
+        account_found=subject.has_user_row or subject.has_auth_identity,
+        blockers=blockers,
+    )
+    if report.blockers and not dry_run:
+        raise AccountErasureBlocked(report)
+    if any(b.name in REFUSED_IDS for b in report.blockers):
+        # Not even a dry run asks a step about it: an empty ID lists every
+        # user's runs, and the placeholder's counts mean nothing.
+        return report
+    if not dry_run and not await _claim(subject, report):
+        if not subject.request_completed:
+            return report
+        steps = _repair_steps()
+    for name, step in steps:
+        if keepalive is not None and not await keepalive():
+            # Another run may be on this account now: leave it to that one.
+            report.steps.append(
+                StepReport(
+                    name=name,
+                    status=StepStatus.FAILED,
+                    note="lost the erasure lease before this step; the next "
+                    "run resumes",
+                )
+            )
+            break
+        result = await _run_step(name, step, subject, dry_run)
+        if not dry_run:
+            result = _stop_on_a_missing_service(result)
+        report.steps.append(result)
+        if result.status == StepStatus.FAILED and not dry_run:
+            break
+    logger.info(
+        f"Account erasure of {subject.user_id}: dry_run={dry_run}, "
+        f"complete={report.complete}, not_claimed={report.not_claimed}, "
+        f"failed={report.failed}"
+    )
+    return report
+
+
+async def _claim(subject: Subject, report: ErasureReport) -> bool:
+    """Claim the request before any step, so Keep can no longer win. Without
+    a claim the erasure doesn't run: the owner kept the account in the
+    meantime, or the erasure finished on an earlier run (then only the repair
+    steps run)."""
+    subject.request_id = await claim_request(subject.user_id)
+    if subject.request_id is not None:
+        return True
+    report.not_claimed = (
+        ERASED_ALREADY
+        if subject.request_completed
+        else "kept by its owner, or its 14 days are not over"
+    )
+    logger.info(f"Account erasure of {subject.user_id}: not claimed")
+    return False
+
+
+def stops_an_apply(step: StepReport) -> bool:
+    """Whether a dry-run step shows the --apply would stop there: it failed,
+    or it was skipped for a service the stack uses."""
+    return _stop_on_a_missing_service(step).status == StepStatus.FAILED
+
+
+def _stop_on_a_missing_service(result: StepReport) -> StepReport:
+    """A step skipped for want of its settings fails the apply, so the request
+    is never marked done with that service's data left behind, unless the
+    stack doesn't use the service."""
+    service = _SERVICE_OF_STEP.get(result.name)
+    if result.status != StepStatus.SKIPPED or service is None:
+        return result
+    if service in Settings().config.account_erasure_unused_services:
+        return result
+    return result.model_copy(
+        update={
+            "status": StepStatus.FAILED,
+            "note": f"{result.note}. Set it up and run again, or delete this "
+            "data by hand and run once with "
+            f"ACCOUNT_ERASURE_UNUSED_SERVICES='[\"{service}\"]' (a JSON list).",
+        }
+    )
+
+
+def _erasure_steps() -> list[tuple[str, Step]]:
+    return [
+        ("stop_work", stop_work),
+        ("confirmation", send_confirmation),
+        ("subscriptions", cancel_subscriptions),
+        ("shared_agents", transfer_shared_agents),
+        ("marketplace", delete_marketplace),
+        ("files", delete_files),
+        ("memory", delete_memory),
+        ("mailerlite", forget_mailerlite_subscriber),
+        ("ban_record", keep_ban_record),
+        ("database", delete_rows),
+        ("posthog", delete_posthog_person),
+        ("request", complete_request),
+    ]
+
+
+def _repair_steps() -> list[tuple[str, Step]]:
+    """What a rerun of a finished erasure repeats: the PostHog delete, which
+    needs only the user ID, since an event already on its way when the rows
+    went can bring the person back. The other outside steps find their data
+    through the rows (or the address they held), and nothing re-creates it
+    once the rows are gone."""
+    return [("posthog", delete_posthog_person)]
+
+
+async def _run_step(
+    name: str, step: Step, subject: Subject, dry_run: bool
+) -> StepReport:
+    """One step. A failure is reported by its exception type only: messages
+    can carry an email or a path, and the report is printed and logged."""
+    try:
+        return await step(subject, dry_run=dry_run)
+    except Exception as e:
+        trace = (
+            "\n" + "".join(traceback.format_exception(e))
+            if name in _TRACEBACK_STEPS
+            else ""
+        )
+        logger.error(
+            f"Account erasure step {name} failed for {subject.user_id}: "
+            f"{type(e).__name__}{trace}"
+        )
+        return StepReport(
+            name=name,
+            status=StepStatus.FAILED,
+            note=f"{type(e).__name__}; the log has the details. Run again to "
+            "retry from here.",
+        )

@@ -301,7 +301,8 @@ async def wake(
             )
         )
         info = await chat_db().get_chat_session_metadata(session_id)
-        if info is None or info.user_id != user_id:
+        # A reset removed the chat: nothing runs in it again.
+        if info is None or info.user_id != user_id or info.archived_at is not None:
             return True
         waiting = await _waiting(user_id, session_id)
         # A running turn's end carries the answers whatever still waits.
