@@ -1314,6 +1314,8 @@ way on that connection, and on the machine connection, whose next session
 stops every chat's, until no chat's work is either. From the moment it
 decides, that session, and on the machine connection every chat's, refuses
 requests with `SHIM_OVERLOADED` (`details.reason: "reconnecting"`) until the
-next connection, so none starts during the close and the backoff only to be
-cut off; nothing ran, so each can be sent again, as after an idle detach.
+next connection (a chat's until the machine's next session stops it, even if
+the chat reconnects first), so none starts during the close and the backoff
+only to be cut off; nothing ran, so each can be sent again, as after an idle
+detach.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.

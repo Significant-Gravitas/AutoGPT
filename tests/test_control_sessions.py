@@ -1085,6 +1085,24 @@ async def test_a_request_while_the_machine_reconnects_for_the_display_is_refused
         assert refusal["payload"]["code"] == "SHIM_OVERLOADED"
         assert refusal["payload"]["details"] == {"reason": "reconnecting"}
 
+    # A chat that reconnects on its own meanwhile (its connection dropped
+    # too) still refuses: the machine's next session stops it all the same.
+    chat_again = _ConnectedSocket("session-1")
+    chat_session = asyncio.create_task(child._run_session(chat_again))
+    try:
+        await _until(lambda: child._status_task is not None)
+        await child._on_frame(chat_again, _stat_request("/tmp/chat-again"))
+        for _ in range(10):
+            await asyncio.sleep(0)
+    finally:
+        await chat_again.close()
+        await asyncio.wait_for(chat_session, timeout=10)
+    assert started == []
+    (chat_again_refusal,) = (
+        frame for frame in map(json.loads, chat_again.sent) if frame["id"] == "stat-/tmp/chat-again"
+    )
+    assert chat_again_refusal["payload"]["details"] == {"reason": "reconnecting"}
+
     # The next connection stops the chat it would have cut off, and serves.
     again = _ConnectedSocket(None)
     session = asyncio.create_task(daemon._run_session(again))
