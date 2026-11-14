@@ -753,6 +753,12 @@ def _holding_key_lock() -> Iterator[None]:
     key, in the person's own folder, so every deployment's start, whatever
     its log, takes the same one, as they share the keychain's key. One that
     can't be taken raises AuditKeyStorageError."""
+    # In AUTOGPT_SHIM_FALLBACK_DIR, not at a fixed place in the home folder:
+    # the setting is for a home without POSIX locks or permissions (nothing
+    # the shim installs sets it), where a lock there would fail the very
+    # starts the setting is for. First starts set to different folders take
+    # different locks though they share the keychain's key, which is a
+    # misconfiguration; docs/AUDIT_LOG.md says so.
     lock = _fallback_path().with_name(".audit-key.lock")
     with contextlib.ExitStack() as stack:
         try:

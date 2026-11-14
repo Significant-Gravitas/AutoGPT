@@ -178,7 +178,13 @@ read, under a lock every start takes, `.audit-key.lock` in
 `AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`), and a
 start that waited for it uses the key the other stored, even when the
 other has made the log meanwhile: only the look under the lock decides
-that a log rules a new key out.
+that a log rules a new key out. The lock is in that folder rather than at a
+fixed place in the home folder because `AUTOGPT_SHIM_FALLBACK_DIR` is for a
+home without POSIX locks or permissions, where a lock in the home folder
+would fail the very starts the setting is for; nothing the shim installs
+sets it. Two first starts with different `AUTOGPT_SHIM_FALLBACK_DIR`
+values take different locks though they share the keychain's one key, so
+that is a misconfiguration: give every start on the computer the same one.
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using
