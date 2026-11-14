@@ -75,10 +75,10 @@ class Subject(BaseModel):
     # Organizations only this account belongs to: its personal org, and any
     # other org it is the sole member of. They go with the account.
     sole_org_ids: list[str] = []
-    # The Stripe customers of its sole orgs, other than the account's own:
-    # closing the account (`account_deletion.service.delete_account`) already
-    # cancelled that one's subscriptions.
-    org_stripe_customer_ids: list[str] = []
+    # Its own Stripe customer and those of its sole orgs. Closing the account
+    # (`account_deletion.service.delete_account`) cancelled its own customer's
+    # subscriptions, but one paid for in the seconds after the close survives.
+    stripe_customer_ids: list[str] = []
     # Experts it owns, each with its own memory graph.
     expert_ids: list[str] = []
     # The `source` of its `AccountDeletionRequest` (None without one): the
@@ -98,6 +98,9 @@ class Subject(BaseModel):
     # Whether the account-deleted email went out (the request's
     # `confirmationSentAt`); the erasure sends it first when it did not.
     confirmation_sent: bool = False
+    # The operator closed it without the email (`confirmationSkipped`,
+    # `--no-email`): the erasure sends none.
+    confirmation_skipped: bool = False
     # The request's `completedAt` is set: an earlier erasure finished.
     request_completed: bool = False
     # Its agents other accounts still use (`shared_agents.py`): handed to the

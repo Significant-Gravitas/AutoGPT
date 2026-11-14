@@ -411,6 +411,24 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=5 * 60,
         description="Interval in seconds between account erasure sweeps.",
     )
+    account_erasure_stall_check_interval_secs: int = Field(
+        default=60 * 60,
+        ge=60,
+        description=(
+            "Interval in seconds between checks for account erasures that "
+            "started and did not finish. Runs whether or not the erasure job is "
+            "on, since the erase-account CLI claims requests too."
+        ),
+    )
+    account_erasure_stall_alert_secs: int = Field(
+        default=3 * 60 * 60,
+        ge=30 * 60,
+        description=(
+            "Age in seconds of an erasure's claim (startedAt) with no completedAt "
+            "after which it pages: a failed step, a service left unset or a "
+            "crashed run (docs/engineering/account-deletion.md)."
+        ),
+    )
     account_erasure_unused_services: List[str] = Field(
         default=[],
         description=(

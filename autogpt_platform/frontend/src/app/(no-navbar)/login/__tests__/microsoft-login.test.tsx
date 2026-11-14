@@ -155,6 +155,21 @@ describe("Continue with Microsoft on the login page", () => {
     expect(screen.queryByText(/didn't finish/)).toBeNull();
   });
 
+  test("explains another provider's refused sign-in in words of its own", async () => {
+    // Where Google, GitHub or Discord lands when it refuses an address it
+    // didn't verify, or one an account already uses.
+    mockSearchParams = new URLSearchParams({ error: "account_not_linked" });
+
+    render(<LoginPage />);
+
+    expect(
+      await screen.findByText(
+        "We can't sign you in with that account. If you already have an AutoGPT account, log in the way you usually do. If not, sign up with your email address.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/Microsoft/)).toBeNull();
+  });
+
   test("tells a banned account it is banned, not that sign-in didn't finish", async () => {
     mockSearchParams = new URLSearchParams({
       provider: "microsoft",
