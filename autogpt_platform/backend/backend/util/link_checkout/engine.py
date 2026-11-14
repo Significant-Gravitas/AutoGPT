@@ -17,7 +17,7 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from backend.util.link_checkout import broker_checkout, broker_client
-from backend.util.link_checkout.broker_commands import execute_browser
+from backend.util.link_checkout.broker_commands import execute_browser, validate_command
 from backend.util.link_checkout.broker_protocol import (
     AuthorizedCheckout,
     BrowserCommand,
@@ -93,10 +93,16 @@ async def run_browser_command(
     session_id: str, args: tuple[str, ...]
 ) -> tuple[int, str, str]:
     """``agent-browser`` semantics for the browser tools: a screenshot's last
-    argument is the local file to write."""
+    argument is the local file to write, and a command this browser does not
+    take, such as navigation's page-check script, comes back failed instead of
+    raising."""
     arguments = list(args)
     screenshot_path = Path(arguments.pop()) if arguments[0] == "screenshot" else None
     principal = current_caller(session_id)
+    try:
+        validate_command(arguments)
+    except ValueError as refused:
+        return 1, "", str(refused)
     result = await _browser(BrowserCommand(**principal.model_dump(), args=arguments))
     if screenshot_path and result.code == 0:
         screenshot_path.write_bytes(base64.b64decode(result.image, validate=True))

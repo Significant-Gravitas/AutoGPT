@@ -128,3 +128,14 @@ async def test_a_screenshot_comes_back_as_the_local_file(remote, tmp_path):
     operation, command = remote.await_args.args
     assert operation == "browser"
     assert command.args == ["screenshot", "--annotate"]
+
+
+@pytest.mark.asyncio
+async def test_a_command_the_browser_does_not_take_fails_like_a_command(remote):
+    with engine.caller("owner", "chat", "owner"):
+        code, output, error = await engine.run_browser_command(
+            "chat", ("eval", "document.cookie")
+        )
+
+    assert (code, output, error) == (1, "", "Unsupported browser command")
+    remote.assert_not_awaited()
