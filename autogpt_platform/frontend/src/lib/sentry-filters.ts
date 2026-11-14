@@ -49,18 +49,46 @@ export function isInjectedIframeProbe(event: Event) {
 const CHUNK_LOAD_MESSAGE =
   /Loading (CSS )?chunk \S+ failed|Failed to load chunk/;
 
-export function isChunkLoadFailure(name = "", message = "") {
-  return name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(message);
+// Chrome, Safari and Firefox reading `.call` off a module webpack doesn't
+// have. Only deploy skew when webpack's own runtime is the frame that threw.
+const MISSING_MODULE_MESSAGE =
+  /^Cannot read properties of undefined \(reading 'call'\)$|^undefined is not an object \(evaluating '[^']+\.call'\)$|^can't access property "call", \S+ is undefined$/;
+const WEBPACK_RUNTIME_PATH = "/_next/static/chunks/webpack-";
+
+type DeploySkewKind = "chunk_load" | "missing_module";
+
+/**
+ * How a tab on an older build failed to run the current deployment's code:
+ * a chunk it can no longer fetch, or a module its webpack runtime never had.
+ * `crashingFrame` is the frame that threw, as text holding its file URL.
+ */
+export function deploySkewKind(
+  name = "",
+  message = "",
+  crashingFrame = "",
+): DeploySkewKind | null {
+  if (name === "ChunkLoadError" || CHUNK_LOAD_MESSAGE.test(message)) {
+    return "chunk_load";
+  }
+  if (
+    MISSING_MODULE_MESSAGE.test(message) &&
+    crashingFrame.includes(WEBPACK_RUNTIME_PATH)
+  ) {
+    return "missing_module";
+  }
+  return null;
 }
 
 /**
  * Marks a failed on-demand code load as deploy skew: a tab on an older build
- * asked for a chunk the current deployment no longer serves. The event is
- * still sent, so a chunk that fails for another reason stays visible.
+ * asked for code the current deployment no longer serves. The event is still
+ * sent, so a chunk that fails for another reason stays visible.
  */
 export function tagDeploySkew<T extends Event>(event: T): T {
   const exception = event.exception?.values?.[0];
-  if (isChunkLoadFailure(exception?.type, exception?.value)) {
+  // Sentry lists frames oldest first, so the one that threw is last.
+  const crashingFrame = exception?.stacktrace?.frames?.at(-1)?.filename;
+  if (deploySkewKind(exception?.type, exception?.value, crashingFrame)) {
     event.tags = { ...event.tags, deploy_skew: true };
   }
   return event;
