@@ -798,10 +798,11 @@ def _build_completion_response(
 # what a `pkill -f` pattern taken from that command then matches.
 _SHELL_KILLED_MESSAGE = (
     "The command's shell was killed by a signal before it finished, so later "
-    "steps in the command did not run. The usual cause is a `pkill -f` whose "
-    "pattern matches this command's own text. Use `pkill -x <name>`, or "
-    "`pkill -f '[n]pm install'` if the command does not also contain "
-    "`npm install`."
+    "steps in the command did not run. The signal can come from a `pkill -f` "
+    "whose pattern matches this command's own text, from running out of "
+    "memory, or from another process. If the command runs `pkill -f`, use "
+    "`pkill -x <name>` instead, or `pkill -f '[p]attern'` if the command does "
+    "not also contain `pattern`."
 )
 
 
