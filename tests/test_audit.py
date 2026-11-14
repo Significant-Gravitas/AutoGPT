@@ -1962,6 +1962,46 @@ def test_without_the_keyring_package_a_start_looks_for_the_file_key_again_before
     assert get_or_create_audit_key(log) == other_key
 
 
+@pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
+def test_without_a_keychain_a_start_looks_for_the_file_key_again_before_it_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """With no keychain up, a start that found no file key refused for the
+    log (exit 75) before taking the lock the file key is read under, though
+    another start could have made that key and signed the log with it just
+    after this one looked: a start run by hand failed while the key that
+    signed its log was there."""
+    import secrets
+
+    import keyring
+    import keyring.errors
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    log = tmp_path / "audit.log"
+    fallback = tmp_path / "audit-key.enc"
+    other_key = secrets.token_bytes(32)
+    real_exists = Path.exists
+    looked = False
+
+    def exists(self: Path, *args: Any, **kwargs: Any) -> bool:
+        nonlocal looked
+        found = real_exists(self, *args, **kwargs)
+        if self == fallback and not looked:
+            looked = True
+            # The other start makes the file key and its log just after.
+            salt = secrets.token_bytes(16)
+            ciphertext = audit_module._xor_encrypt("passphrase", salt, other_key)
+            fallback.write_text(f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8")
+            log.write_text("")
+        return found
+
+    monkeypatch.setattr(Path, "exists", exists)
+    no_keychain = getattr(keyring.errors, error)("none")
+    with patch.object(keyring, "get_password", side_effect=no_keychain):
+        assert get_or_create_audit_key(log) == other_key
+
+
 def test_without_the_keyring_package_an_audit_command_with_no_file_key_stops_at_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

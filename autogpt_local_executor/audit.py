@@ -27,6 +27,7 @@ import contextlib
 import dataclasses
 import datetime as _dt
 import errno
+import functools
 import hmac
 import json
 import logging
@@ -704,7 +705,10 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
         raise
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
         if not _fallback_path().exists():
-            _no_keychain_yet(exc, audit_log, create=create)
+            # An audit command, which makes no key, stops here, as does a
+            # start without the passphrase to make one. Whether the log
+            # rules a new key out is looked at under the lock.
+            _no_keychain_yet(exc, None, create=create)
         elif not os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
             # Waited for, as a keychain missing at start is (_no_keychain_yet):
             # it may hold the key the log was signed with, as the file key is
@@ -717,8 +721,10 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
                 "later is picked up on the next try; otherwise set the passphrase to read "
                 "the file key"
             ) from exc
-        logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
-        return _fallback_audit_key(keyring)
+        logger.warning("No usable keychain for the audit key (%s); trying the file fallback.", exc)
+        return _fallback_audit_key(
+            keyring, may_make=functools.partial(_no_keychain_yet, exc, audit_log, create=create)
+        )
     except Exception as exc:
         raise AuditKeyUnavailableError(
             f"The OS keychain couldn't be read for the audit key ({type(exc).__name__}); "
@@ -800,7 +806,10 @@ def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = T
     Service the desktop session starts after the autostart service, say. It
     is waited for (the daemon exits to be restarted) rather than taken as
     gone, unless the person set the passphrase and no log exists for the
-    keychain's key to have signed. Without `create` there is no key to read."""
+    keychain's key to have signed. Without `create` there is no key to read.
+    The log is checked with the lock held, once no key turned up there
+    either (None skips it): another start may make the file key and the
+    log just after the first look."""
     if not create:
         raise AuditKeyUnavailableError(
             f"No OS keychain is available ({type(exc).__name__}), and the file fallback "
