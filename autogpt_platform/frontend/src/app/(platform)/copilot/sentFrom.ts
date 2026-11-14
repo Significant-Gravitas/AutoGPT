@@ -1,4 +1,4 @@
-import type { ChatSessionMetadata } from "@/app/api/__generated__/models/chatSessionMetadata";
+import type { PublicChatSessionMetadata } from "@/app/api/__generated__/models/publicChatSessionMetadata";
 import { isValidUUID } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { extractDbSequence } from "./helpers/convertChatSessionToUiMessages";
@@ -10,7 +10,7 @@ export interface SentFrom {
 }
 
 type SessionDelegation = Pick<
-  ChatSessionMetadata,
+  PublicChatSessionMetadata,
   "delegated_by_session_id" | "delegated_by_expert_id"
 >;
 

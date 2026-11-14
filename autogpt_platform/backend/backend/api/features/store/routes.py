@@ -809,8 +809,11 @@ async def generate_image(
     summary="Get cache metrics in Prometheus format",
     tags=["store", "metrics"],
     response_class=fastapi.responses.PlainTextResponse,
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
-async def get_cache_metrics():
+# Not async: cache_info() scans Redis with the blocking client, so this runs in
+# FastAPI's thread pool rather than on the event loop.
+def get_cache_metrics():
     """
     Get cache metrics in Prometheus text format.
 

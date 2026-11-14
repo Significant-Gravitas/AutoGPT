@@ -142,8 +142,12 @@ On the environment's app (dev: `autogpt-dev`, prod: `AutoGPT`):
    `{frontend}/api/auth/callback/microsoft` (Continue with Microsoft).
 3. **Token configuration:** add the optional ID-token claim `xms_edov`.
    Without it, work and school accounts cannot use Continue with Microsoft.
-4. **Certificates & secrets:** the bot's existing secret also serves sign-in.
-   Rotate by adding a new secret, deploying it, then removing the old one.
+4. **Certificates & secrets:** an app that accepts personal accounts can hold
+   only two client secrets. Each app has two: the bot's (the backend's
+   `MICROSOFT_CLIENT_SECRET`) and Vercel's (`AUTH_MICROSOFT_CLIENT_SECRET`,
+   named "Vercel staging/production Continue with Microsoft", expiring
+   2028-11). With no free slot, rotating one means deleting it, adding the
+   new one and deploying it, with that side down in between.
 5. **API permissions:** add the connection's delegated Microsoft Graph
    permissions: `User.Read`, `openid`, `profile`, `email`, `offline_access`,
    `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite`, `Files.ReadWrite`,
@@ -165,9 +169,23 @@ app, at `/common` (the Copilot-only connection used `/organizations`). So step
 flag: without it, personal accounts can't sign in. Continue with Microsoft has
 its own switch, below.
 
-Dev's app has steps 1–4 (2026-10-26); step 5 and the flags remain. Prod needs
-step 1 before this release reaches it, and step 5 so an admin's approval
-covers every service; then steps 2 and 3 and the flags.
+Both apps have steps 1–5 as of 2026-11-12:
+
+- **Dev (`autogpt-dev`):** steps 1–4 on 2026-10-26, for localhost and the
+  local test stack. On 2026-11-12 it got `dev-builder.agpt.co`'s two
+  redirects and step 5.
+- **Prod (`AutoGPT`):** all five on 2026-11-12, a day after v0.11.2 shipped
+  this to prod. Until then, personal accounts couldn't connect there.
+
+Four of the Copilot permissions (`ChannelMessage.Read.All`,
+`ExternalItem.Read.All`, `OnlineMeetingTranscript.Read.All`,
+`People.Read.All`) need an admin's consent in each organization, ours
+included. Nobody has granted it for agpt.co. The infra shared config sets
+`MICROSOFT_BROWSER_SIGN_IN` for both environments (infra #498), and Vercel's
+staging and Production environments hold the frontend settings below.
+Continue with Microsoft and browser sign-in are live on dev since
+2026-11-12. Prod has every setting in place, and both turn on with its
+next deploy (the button is read at build time).
 
 ## Environment variables
 

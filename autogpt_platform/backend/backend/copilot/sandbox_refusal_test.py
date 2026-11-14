@@ -91,7 +91,7 @@ async def test_the_baseline_engine_ends_a_refused_turn_and_keeps_queued_messages
         patch(f"{svc}.get_or_create_sandbox", AsyncMock(side_effect=_REFUSAL)),
         patch(f"{svc}.workspace_volume_mounts", MagicMock()),
         patch(f"{svc}.forget_turn_ceiling", AsyncMock()),
-        patch(f"{svc}.push_pending_message", AsyncMock()) as requeue,
+        patch(f"{svc}.restore_pending_messages", AsyncMock()) as requeue,
         patch(f"{svc}.upsert_chat_session", AsyncMock()) as saved,
         patch(f"{svc}._build_system_prompt", MagicMock(side_effect=_WENT_ON)),
     ):
@@ -107,6 +107,6 @@ async def test_the_baseline_engine_ends_a_refused_turn_and_keeps_queued_messages
         ]
 
     assert events == [_EXPECTED]
-    requeue.assert_awaited_once_with(session.session_id, queued)
+    requeue.assert_awaited_once_with(session.session_id, [queued])
     saved.assert_awaited_once_with(session)
     assert session.messages[-1].content == _MARKER

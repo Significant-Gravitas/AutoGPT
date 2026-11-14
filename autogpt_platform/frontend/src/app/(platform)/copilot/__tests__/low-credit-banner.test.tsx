@@ -68,7 +68,11 @@ vi.mock("../useCopilotPage", () => ({
 }));
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+  useAuth: () => ({
+    user: { id: "user-a" },
+    isUserLoading: false,
+    isLoggedIn: true,
+  }),
 }));
 
 // sessionId is read via nuqs to key the chat-host subtree; stub it.

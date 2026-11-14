@@ -16,6 +16,7 @@ from backend.blocks.google.gmail import (
     validate_email_recipients,
 )
 from backend.data.execution import ExecutionContext
+from backend.util.type import MediaFileType
 
 
 class TestGmailReadBlock:
@@ -597,7 +598,7 @@ class TestForwardMessageValidation:
     async def test_additional_attachments_are_limited_in_total(self, tmp_path):
         (tmp_path / "pad.bin").write_bytes(b"x" * 40)
         input_data = self._make_input(to=["valid@example.com"])
-        input_data.additionalAttachments = ["pad.bin"] * 50
+        input_data.additionalAttachments = [MediaFileType("pad.bin")] * 50
         store = AsyncMock(return_value="pad.bin")
 
         with (
