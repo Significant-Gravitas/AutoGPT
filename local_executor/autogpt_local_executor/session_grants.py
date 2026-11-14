@@ -48,10 +48,11 @@ class RootGrantSigner:
         if revision < 1:
             raise ValueError("revision must be positive")
         root = canonical_directory(allowed_root)
-        fingerprint = directory_fingerprint(root)
+        birth = directory_birth(root)
+        fingerprint = _fingerprint(root, device=_needs_device(birth))
         claims = {
             "allowed_root": str(root),
-            "birth": directory_birth(root),
+            "birth": birth,
             "fingerprint": fingerprint,
             "issued_at": self._now(),
             "machine_id": self.machine_id,
@@ -98,14 +99,19 @@ class RootGrantSigner:
             if not isinstance(allowed_root, str) or not isinstance(fingerprint, str):
                 raise RootGrantError("Root grant claims are invalid")
             root = canonical_directory(Path(allowed_root))
+            birth = claims["birth"]
             # A grant issued while every system's fingerprint held st_dev
-            # restores while that number holds.
-            if fingerprint not in (directory_fingerprint(root), _fingerprint(root, device=True)):
+            # restores while that number holds. Without a creation time
+            # nothing else tells the folder from another filesystem mounted
+            # at its path, so such a grant needs the number.
+            accepted = {_fingerprint(root, device=True)}
+            if not _needs_device(birth):
+                accepted.add(_fingerprint(root, device=False))
+            if fingerprint not in accepted:
                 raise RootGrantError("The selected directory changed after the grant was issued")
             # A filesystem that reuses a freed inode (ext4, tmpfs) gives a
             # recreated directory the old identity; its creation time still
             # differs. None where the platform keeps no creation time.
-            birth = claims["birth"]
             if birth is not None and birth != directory_birth(root):
                 raise RootGrantError("The selected directory changed after the grant was issued")
         except RootGrantError:
@@ -137,8 +143,9 @@ def canonical_directory(path: Path) -> Path:
 
 def directory_fingerprint(path: Path) -> str:
     """What tells the selected folder from one put in its place: its inode
-    number and canonical path, and on Windows its volume's serial number,
-    which is st_dev there and kept from when the volume was formatted.
+    number and canonical path, and its device number on Windows (the
+    volume's serial number, kept from when the volume was formatted) and
+    wherever the folder has no creation time.
 
     A POSIX st_dev is the number the system gives a device when it is
     attached or mounted: a reboot can number a btrfs subvolume or an LVM
@@ -148,8 +155,22 @@ def directory_fingerprint(path: Path) -> str:
     place of the selected one has another inode number or, on a filesystem
     that reuses a freed one, another creation time (directory_birth, which
     the grant checks too).
+
+    Where the filesystem reports no creation time (an NFS share on Linux
+    6.12 or earlier, say), the inode number can't tell the folder from
+    another filesystem mounted at its path: the root folders of two
+    filesystems of one type usually share an inode number (2 on ext4).
+    There the device number counts, and a renumbered device asks for the
+    folder again.
     """
-    return _fingerprint(canonical_directory(path), device=sys.platform == "win32")
+    root = canonical_directory(path)
+    return _fingerprint(root, device=_needs_device(directory_birth(root)))
+
+
+def _needs_device(birth: str | None) -> bool:
+    """Whether the fingerprint of a folder with creation time `birth` holds
+    its device number (directory_fingerprint says why)."""
+    return sys.platform == "win32" or birth is None
 
 
 def _fingerprint(root: Path, *, device: bool) -> str:
