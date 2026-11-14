@@ -5,7 +5,9 @@ import pytest
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import service_unit_test as baseline_tests
-from backend.copilot.executor.processor_error_code_test import _run
+from backend.copilot.executor.processor_error_code_test import (
+    _run,
+)
 from backend.copilot.executor.processor_error_code_test import (
     allowance_admits_every_turn as allowance_admits_every_turn,
 )

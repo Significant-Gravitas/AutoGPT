@@ -121,7 +121,7 @@ aiohappyeyeballs = "^2.6.1"
 black = "^24.10.0"
 faker = ">=38.2,<41.0"
 fakeredis = { version = "^2.40.0", extras = ["lua"] }
-isort = "^5.13.2"
+isort = ">=5.13.2,<10.0.0"
 poethepoet = ">=0.41,<0.50"
 pre-commit = "^4.4.0"
 pyright = "^1.1.407"
