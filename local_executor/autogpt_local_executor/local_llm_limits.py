@@ -23,7 +23,8 @@ async def bounded_chunks(stream: AsyncGenerator[dict, None]) -> AsyncGenerator[d
         while True:
             limit = IDLE_TIMEOUT_SECONDS if started else TOTAL_TIMEOUT_SECONDS
             try:
-                chunk = await asyncio.wait_for(anext(stream), timeout=limit)
+                async with asyncio.timeout(limit):
+                    chunk = await anext(stream)
             except StopAsyncIteration:
                 return
             except TimeoutError:

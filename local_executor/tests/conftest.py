@@ -2,6 +2,16 @@ from __future__ import annotations
 
 import pytest
 
+from autogpt_local_executor.computer_use import concealed
+
+
+@pytest.fixture(autouse=True)
+def _clipboard_tools_looked_up_afresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Have every test look wl-paste and xclip up for itself: the shim keeps
+    their paths once found (concealed._clipboard_tool), and the path one
+    test's stand-in for shutil.which gave would stand in for the next's."""
+    monkeypatch.setattr(concealed, "_clipboard_tool_paths", {})
+
 
 @pytest.fixture(autouse=True)
 def _away_from_the_real_file_keys(

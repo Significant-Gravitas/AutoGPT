@@ -3107,6 +3107,96 @@ async def test_a_second_clipboard_read_never_starts_past_the_deadline(
     assert "stopped cua-driver" not in response.payload.message
 
 
+async def test_clipboard_checks_whose_reads_gave_up_hold_one_worker_thread(
+    make_handler, tmp_path, monkeypatch
+) -> None:
+    """A foreign clipboard read's check for a password manager's mark ran in
+    a worker thread of its own, and on Linux the check looks for wl-paste or
+    xclip on PATH before its own timeout applies: with a mount on PATH
+    stalled, each read whose deadline passed left one more thread stuck,
+    until the threads every session's file and audit work shares were all
+    held. The machine checks one at a time, for its chats too, and a check
+    that finds one still running waits for it, then looks for itself."""
+    from autogpt_local_executor import handlers
+
+    released = threading.Event()
+    counting = threading.Lock()
+    looks = 0
+
+    def look(_timeout: float | None = None) -> concealed.ClipboardState:
+        nonlocal looks
+        with counting:
+            looks += 1
+            first = looks == 1
+        released.wait(timeout=60)  # the stalled mount, until it clears
+        # The first look began while a password manager's copy was there.
+        return concealed.ClipboardState("x-kde-passwordManagerHint" if first else None)
+
+    monkeypatch.setattr(handlers, "clipboard_state", look)
+    machine = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
+    chat = make_handler(
+        session_id="chat", enable_clipboard=True, enable_clipboard_read_foreign=True
+    )
+    machine.share_with(chat)
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
+    await machine.driver.snapshot()  # started, so the calls' time goes to the checks
+    try:
+        for handler in (machine, chat, machine):
+            response = await handler.handle(_call("clipboard_read", timeout_seconds=1))
+            assert isinstance(response, ErrorMessage)
+            assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+            assert response.payload.details["started"] is False
+        assert looks == 1
+
+        checks = machine._clipboard_checks
+        real_state_by = checks.state_by
+        waiting = asyncio.Event()
+
+        async def state_by(deadline: float) -> concealed.ClipboardState:
+            waiting.set()
+            return await real_state_by(deadline)
+
+        monkeypatch.setattr(checks, "state_by", state_by)
+        reading = asyncio.create_task(chat.handle(_call("clipboard_read", timeout_seconds=30)))
+        await asyncio.wait_for(waiting.wait(), timeout=30)
+        assert looks == 1  # it waits for the stalled check
+        released.set()
+        response = await asyncio.wait_for(reading, timeout=60)
+    finally:
+        released.set()
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.structured_content["text"] == "a copied paragraph"
+    assert looks == 3  # the stalled check, then the read's own, before and after
+
+
+def test_a_clipboard_tool_found_on_path_is_kept(monkeypatch) -> None:
+    """Looking wl-paste or xclip up on PATH stats a file in each PATH folder,
+    which a stalled mount there holds, and every check looked them up again.
+    A tool once found is kept, and run by its path, which its start doesn't
+    look up either; one not found yet is looked for again, so one installed
+    later is found."""
+    looked_up: list[str] = []
+    installed = {"xclip"}
+
+    def which(name: str) -> str | None:
+        looked_up.append(name)
+        return f"/usr/bin/{name}" if name in installed else None
+
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.setattr(concealed.shutil, "which", which)
+    xclip = ["/usr/bin/xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"]
+
+    assert concealed.linux_clipboard_types_command() == xclip
+    installed.add("wl-paste")
+    assert concealed.linux_clipboard_types_command() == ["/usr/bin/wl-paste", "--list-types"]
+    assert concealed.linux_clipboard_types_command() == ["/usr/bin/wl-paste", "--list-types"]
+    monkeypatch.delenv("WAYLAND_DISPLAY")
+    assert concealed.linux_clipboard_types_command() == xclip
+    assert looked_up == ["wl-paste", "xclip", "wl-paste"]
+
+
 def test_marker_in_finds_each_platforms_marker() -> None:
     assert concealed.marker_in(["public.utf8-plain-text"]) is None
     assert concealed.marker_in(None) is None

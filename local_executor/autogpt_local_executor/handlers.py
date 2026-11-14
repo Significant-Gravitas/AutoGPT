@@ -410,15 +410,6 @@ class _ClipboardCheckOutOfTime(TimeoutError):
     driver ran nothing past the deadline, so it isn't stopped."""
 
 
-async def _clipboard_state_by(deadline: float, timeout: float) -> ClipboardState:
-    """The clipboard's marker, from a worker thread, by `deadline` (loop
-    time), else TimeoutError. `timeout` bounds the look once a thread runs
-    it; the deadline also bounds the wait for a free one, which file work
-    can hold, while the call holds the computer's turn."""
-    async with asyncio.timeout_at(deadline):
-        return await asyncio.to_thread(clipboard_state, timeout)
-
-
 class _NeverStarted(Exception):
     """The job was cancelled while it still waited for a worker thread."""
 
@@ -932,14 +923,14 @@ class CommandHandler:
             timed_out = False
             stdout_b = stderr_b = b""
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                async with asyncio.timeout(timeout):
+                    stdout_b, stderr_b = await proc.communicate()
             except TimeoutError:
                 timed_out = True
                 await self._terminate_tree(proc)
-                try:
-                    stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=2.0)
-                except TimeoutError:
-                    pass
+                with contextlib.suppress(TimeoutError):
+                    async with asyncio.timeout(2.0):
+                        stdout_b, stderr_b = await proc.communicate()
             output.feed("stdout", stdout_b)
             output.feed("stderr", stderr_b)
             kept_stdout, kept_stderr, truncated = output.finish()
@@ -960,10 +951,10 @@ class CommandHandler:
                 # command that has exited isn't timed out, and what it left
                 # running keeps running, as on any other exit. What is still
                 # in the pipes is read for _OUTPUT_DRAIN_SECONDS (below).
-                # Under asyncio.timeout, not wait_for: Python 3.11's wait_for
-                # drops a cancel that lands as the exit is seen, and a session
-                # revoked then left the command recorded as done, and what it
-                # started running.
+                # Both waits are under asyncio.timeout, not wait_for: Python
+                # 3.11's wait_for drops a cancel that lands as the exit is
+                # seen, or as the read ends, and a session revoked then left
+                # the command recorded as done, and what it started running.
                 async with asyncio.timeout(timeout):
                     await _exited(proc)
             except TimeoutError:
@@ -973,10 +964,8 @@ class CommandHandler:
                     async with asyncio.timeout(2.0):
                         await _exited(proc)
             try:
-                await asyncio.wait_for(
-                    asyncio.gather(*drain_tasks, return_exceptions=True),
-                    timeout=_OUTPUT_DRAIN_SECONDS,
-                )
+                async with asyncio.timeout(_OUTPUT_DRAIN_SECONDS):
+                    await asyncio.gather(*drain_tasks, return_exceptions=True)
             except TimeoutError:
                 for task in drain_tasks:
                     task.cancel()
@@ -1825,6 +1814,46 @@ class _ProgramLookups:
                 return lookup.result()
 
 
+class _ClipboardChecks:
+    """A machine's checks of the clipboard for a password manager's mark
+    (clipboard_state), made in a worker thread one at a time.
+
+    On Linux the check looks for wl-paste or xclip on PATH before its own
+    timeout applies, and a stalled mount there (NFS, FUSE) holds that look
+    for as long as it stalls. A foreign clipboard read waits for its check
+    no later than its deadline and leaves it to finish in its thread. The
+    next check waits for that one to end, no later than its own deadline,
+    then looks for itself: what the clipboard held then says nothing of what
+    it holds now, and a read is checked before and after with looks of its
+    own. So a stall holds one worker thread, however many reads come in."""
+
+    def __init__(self) -> None:
+        self._check: asyncio.Future[ClipboardState] | None = None
+
+    async def state_by(self, deadline: float) -> ClipboardState:
+        """The clipboard's marker, by `deadline` (loop time), else
+        TimeoutError."""
+        loop = asyncio.get_running_loop()
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError
+            earlier = self._check
+            check: asyncio.Future[ClipboardState]
+            if earlier is None or earlier.done():
+                check = self._check = asyncio.ensure_future(
+                    asyncio.to_thread(clipboard_state, remaining)
+                )
+                check.add_done_callback(_seen)
+            else:
+                check = earlier
+            done, _ = await asyncio.wait({check}, timeout=remaining)
+            if not done:
+                raise TimeoutError
+            if check is not earlier:
+                return check.result()
+
+
 class ComputerUseHandler:
     """Relays computer use to cua-driver (see docs/CUA_DRIVER.md).
 
@@ -1849,6 +1878,9 @@ class ComputerUseHandler:
         self._machine_turn = machine_turn or asyncio.Lock()
         # The machine's lookups of launch names on PATH, made one at a time.
         self._program_lookups = _ProgramLookups()
+        # The machine's checks of the clipboard for a password manager's
+        # mark, made one at a time.
+        self._clipboard_checks = _ClipboardChecks()
         # A child session's handler uses its parent's driver and never stops it.
         self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
@@ -1929,11 +1961,13 @@ class ComputerUseHandler:
 
     def share_with(self, other: ComputerUseHandler) -> None:
         """Make `other`, a child session's handler, use this one's driver
-        process, turn, lookups on PATH, screenshot budget, clipboard record
-        and label renewals: they are the machine's, not the session's."""
+        process, turn, lookups on PATH, clipboard checks, screenshot budget,
+        clipboard record and label renewals: they are the machine's, not the
+        session's."""
         other._driver = self.driver
         other._machine_turn = self._machine_turn
         other._program_lookups = self._program_lookups
+        other._clipboard_checks = self._clipboard_checks
         other._owns_driver = False
         other._screenshot_rate = self._screenshot_rate
         other.clipboard_writeback = self.clipboard_writeback
@@ -2445,10 +2479,11 @@ class ComputerUseHandler:
         # Each look at the OS gets what is left of the deadline (xclip and
         # wl-paste can take seconds), and so does each read: the call holds
         # the computer's turn throughout, which every chat's calls share.
+        # The looks are the machine's, one at a time (_ClipboardChecks).
         before = None
         if foreign:
             try:
-                before = await _clipboard_state_by(deadline, timeout)
+                before = await self._clipboard_checks.state_by(deadline)
             except TimeoutError:
                 raise CallNotStarted(
                     "clipboard_read's deadline passed in the marker check"
@@ -2496,7 +2531,7 @@ class ComputerUseHandler:
             if left <= 0:
                 raise _ClipboardCheckOutOfTime
             try:
-                after = await _clipboard_state_by(deadline, left)
+                after = await self._clipboard_checks.state_by(deadline)
             except TimeoutError:
                 raise _ClipboardCheckOutOfTime from None
             if loop.time() >= deadline:
@@ -3067,10 +3102,10 @@ class LocalLLMHandler:
 
         async with self._inflight_lock:
             try:
-                return await asyncio.wait_for(
-                    self._run_completion(msg, send=send, details_base=details_base, start=start),
-                    timeout=local_llm_limits.TOTAL_TIMEOUT_SECONDS,
-                )
+                async with asyncio.timeout(local_llm_limits.TOTAL_TIMEOUT_SECONDS):
+                    return await self._run_completion(
+                        msg, send=send, details_base=details_base, start=start
+                    )
             except TimeoutError:
                 await self._emit(
                     msg.id,
@@ -3137,9 +3172,8 @@ class LocalLLMHandler:
                                 finish_reason=None,
                             ),
                         )
-                        await asyncio.wait_for(
-                            send(chunk_msg), timeout=local_llm_limits.IDLE_TIMEOUT_SECONDS
-                        )
+                        async with asyncio.timeout(local_llm_limits.IDLE_TIMEOUT_SECONDS):
+                            await send(chunk_msg)
 
                 if done:
                     # Emit terminal-marker chunk (delta="", finish_reason=stop/length)
@@ -3154,9 +3188,8 @@ class LocalLLMHandler:
                                 finish_reason=finish_reason,
                             ),
                         )
-                        await asyncio.wait_for(
-                            send(chunk_msg), timeout=local_llm_limits.IDLE_TIMEOUT_SECONDS
-                        )
+                        async with asyncio.timeout(local_llm_limits.IDLE_TIMEOUT_SECONDS):
+                            await send(chunk_msg)
                     break
         except OllamaBackendError as exc:
             details = {

@@ -954,6 +954,7 @@ class _Desktop:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import autogpt_local_executor.daemon as daemon_module
         from autogpt_local_executor import platform_info
+        from autogpt_local_executor.computer_use import driver as driver_module
 
         self.up = False
         self.looks = 0
@@ -963,8 +964,14 @@ class _Desktop:
             platform_info, "computer_use_waits_for_a_display", lambda: not self.up, raising=False
         )
         monkeypatch.setattr(platform_info, "can_do_computer_use", self._can_do_computer_use)
+        # The driver is installed, as the bridge's look finds.
+        monkeypatch.setattr(
+            driver_module, "find_driver_binary", lambda _explicit=None: Path("cua-driver")
+        )
 
-    def _can_do_computer_use(self, _driver_path: str | None = None) -> bool:
+    def _can_do_computer_use(
+        self, _driver_path: str | None = None, *, driver_found: bool | None = None
+    ) -> bool:
         self.looks += 1
         return self.up
 
@@ -1173,6 +1180,114 @@ async def test_a_hello_without_computer_use_for_another_reason_isnt_said_again(
     await daemon._build_hello()
 
     assert daemon._hello_waits_for_display is False
+
+
+class _NoManager:
+    """platform_info.session_display, with the display already followed."""
+
+    def follow(self, timeout: float | None = None) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_the_display_watch_looks_for_the_driver_through_the_bridges_one_look(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While a session waits for the desktop's display, its watch asked
+    every ten seconds whether computer use could start, which looked for the
+    driver in a worker thread the watch waited for to the end. A stalled
+    mount on sys.path or PATH held that look, and the reconnect, cancelling
+    the watch, left its thread held: each connection one more, until the
+    threads every session's file and audit work shares were all held. The
+    watch now looks through the bridge's look, one at a time and bounded,
+    and tells the display check what it found."""
+    import threading
+
+    import autogpt_local_executor.daemon as daemon_module
+    from autogpt_local_executor import handlers, platform_info
+    from autogpt_local_executor.computer_use import driver as driver_module
+
+    released = threading.Event()
+    counting = threading.Lock()
+    lookups = 0
+
+    def stalled_lookup(_explicit: str | None = None) -> Path:
+        nonlocal lookups
+        with counting:
+            lookups += 1
+        released.wait(timeout=60)  # a mount on PATH, stalled until it clears
+        return tmp_path / "cua-driver"
+
+    up = False
+    # What each display check was told of the driver: None, it looked itself.
+    told: list[bool | None] = []
+    real_can_do_computer_use = platform_info.can_do_computer_use
+
+    def can_do_computer_use(
+        cua_driver_path: str | None = None, *, driver_found: bool | None = None
+    ) -> bool:
+        told.append(driver_found)
+        return real_can_do_computer_use(cua_driver_path, driver_found=driver_found)
+
+    monkeypatch.setattr(driver_module, "find_driver_binary", stalled_lookup)
+    monkeypatch.setattr(handlers, "DRIVER_LOOKUP_SECONDS", 0.05)
+    monkeypatch.setattr(daemon_module, "DISPLAY_WATCH_SECONDS", 0.01)
+    monkeypatch.setattr(platform_info, "detect_capabilities", lambda **_kwargs: ["files"])
+    monkeypatch.setattr(platform_info, "computer_use_waits_for_a_display", lambda: not up)
+    monkeypatch.setattr(platform_info, "can_do_computer_use", can_do_computer_use)
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "linux")
+    monkeypatch.setattr(platform_info, "session_display", _NoManager())
+    monkeypatch.setattr(
+        platform_info,
+        "linux_display_problem",
+        lambda _environ=None: None if up else "no display yet",
+    )
+    daemon = _computer_use_session(tmp_path, "machine")
+    bridge = daemon._computer_handler.driver
+    real_find_binary = bridge.find_binary
+    watch_looks = 0
+
+    async def find_binary() -> Path | None:
+        nonlocal watch_looks
+        if asyncio.current_task() is daemon._display_watch_task:
+            watch_looks += 1
+        return await real_find_binary()
+
+    monkeypatch.setattr(bridge, "find_binary", find_binary)
+
+    def watch_asked() -> int:
+        return watch_looks + len(told)
+
+    try:
+        for _ in range(3):
+            ws = _ConnectedSocket(None)
+            asked_before = watch_asked()
+            session = asyncio.create_task(daemon._run_session(ws))
+            try:
+                await _until(lambda: watch_asked() > asked_before)
+            finally:
+                await ws.close()
+                await asyncio.wait_for(session, timeout=10)
+        # HELLO's look, which the watches waited for in turn.
+        assert lookups == 1
+
+        released.set()
+        ws = _ConnectedSocket(None)
+        told_before = len(told)
+        session = asyncio.create_task(daemon._run_session(ws))
+        try:
+            await _until(lambda: len(told) > told_before)
+            assert ws.closed_with is None
+            up = True
+            await ws.wait_closed()
+            await asyncio.wait_for(session, timeout=10)
+        finally:
+            session.cancel()
+    finally:
+        released.set()
+
+    assert ws.closed_with == (1000, "Computer use is available now")
+    assert told and all(found is True for found in told)
 
 
 # ── A revoked session's work stops before its record is written ──────────────

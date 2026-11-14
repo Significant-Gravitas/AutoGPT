@@ -113,13 +113,31 @@ def _windows_state() -> ClipboardState:
         return ClipboardState(UNKNOWN)
 
 
+# wl-paste's and xclip's paths, each once found on PATH (_clipboard_tool).
+_clipboard_tool_paths: dict[str, str] = {}
+
+
+def _clipboard_tool(name: str) -> str | None:
+    """`name`'s path, looked up on PATH until it is found and then kept, as
+    systemctl's is (platform_info._systemctl): shutil.which stats a file in
+    each PATH folder, and a stalled mount there (NFS, FUSE) holds it for as
+    long as it stalls, before the look's timeout applies. The tool runs by
+    that path, so its start doesn't search PATH again."""
+    path = _clipboard_tool_paths.get(name)
+    if path is None:
+        path = shutil.which(name)
+        if path is not None:
+            _clipboard_tool_paths[name] = path
+    return path
+
+
 def linux_clipboard_types_command() -> list[str] | None:
     """The command that lists the clipboard's types on Linux: wl-paste in a
     Wayland session that has it, else xclip with an X display, else None."""
-    if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-paste"):
-        return ["wl-paste", "--list-types"]
-    if os.environ.get("DISPLAY") and shutil.which("xclip"):
-        return ["xclip", "-selection", "clipboard", "-t", "TARGETS", "-o"]
+    if os.environ.get("WAYLAND_DISPLAY") and (wl_paste := _clipboard_tool("wl-paste")):
+        return [wl_paste, "--list-types"]
+    if os.environ.get("DISPLAY") and (xclip := _clipboard_tool("xclip")):
+        return [xclip, "-selection", "clipboard", "-t", "TARGETS", "-o"]
     return None
 
 
