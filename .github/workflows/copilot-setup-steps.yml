@@ -175,7 +175,7 @@ jobs:
             wait
             
             # Only save cache on main branches (not PRs) to avoid cache pollution
-            if [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            if [[ "$GITHUB_REF" == "refs/heads/master" ]] || [[ "$GITHUB_REF" == "refs/heads/dev" ]]; then
               echo "Saving Docker images to cache in parallel..."
               for image in "${IMAGES[@]}"; do
                 # Convert image name to filename (replace : and / with -)

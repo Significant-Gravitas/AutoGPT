@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: 'read'
-  id-token: 'write'
 
 jobs:
   # A platform release once went out tagged v0.6.44, without the prefix. The
