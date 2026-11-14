@@ -1658,6 +1658,59 @@ def _session_ended(raw: dict[str, Any]) -> bool:
 MAX_RENEWED_LABELS = 1024
 
 
+def _program_on_path(name: str) -> str | None:
+    """The program `name` runs from PATH (shutil.which): what a Linux
+    launch's name runs when its first word is a program's (check_arguments)."""
+    return shutil.which(name)
+
+
+def _seen(future: asyncio.Future[Any]) -> None:
+    """Mark a lookup's failure seen: the callers that waited for it may all
+    have given up."""
+    if not future.cancelled():
+        future.exception()
+
+
+class _ProgramLookups:
+    """A machine's lookups of a Linux launch's name on PATH
+    (_program_on_path), made in a worker thread one at a time.
+
+    shutil.which stats a file in each PATH folder, and a stalled mount there
+    (NFS, FUSE) holds it for as long as it stalls. A caller waits for a
+    lookup no later than its own deadline, and leaves it to finish in its
+    thread. The next caller waits for that lookup too, no later than its
+    deadline, rather than start one that would stall as well: one looking
+    the same name up takes its answer, and one looking another up starts
+    its own once it has ended. So a stall holds one worker thread, however
+    many launches come in."""
+
+    def __init__(self) -> None:
+        self._name: str | None = None
+        self._lookup: asyncio.Future[str | None] | None = None
+
+    async def program_by(self, name: str, deadline: float) -> str | None:
+        """The program `name` runs, by `deadline` (loop time), else
+        TimeoutError."""
+        loop = asyncio.get_running_loop()
+        while True:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise TimeoutError
+            lookup = self._lookup
+            if lookup is None or lookup.done():
+                lookup = self._lookup = asyncio.ensure_future(
+                    asyncio.to_thread(_program_on_path, name)
+                )
+                lookup.add_done_callback(_seen)
+                self._name = name
+            ours = self._name == name
+            done, _ = await asyncio.wait({lookup}, timeout=remaining)
+            if not done:
+                raise TimeoutError
+            if ours:
+                return lookup.result()
+
+
 class ComputerUseHandler:
     """Relays computer use to cua-driver (see docs/CUA_DRIVER.md).
 
@@ -1680,6 +1733,8 @@ class ComputerUseHandler:
         self._driver = driver
         # One GUI: tool calls from every session on the machine take turns.
         self._machine_turn = machine_turn or asyncio.Lock()
+        # The machine's lookups of launch names on PATH, made one at a time.
+        self._program_lookups = _ProgramLookups()
         # A child session's handler uses its parent's driver and never stops it.
         self._owns_driver = True
         self._screenshot_rate = _SlidingWindowRateLimiter(config.max_screenshots_per_minute)
@@ -1737,10 +1792,11 @@ class ComputerUseHandler:
 
     def share_with(self, other: ComputerUseHandler) -> None:
         """Make `other`, a child session's handler, use this one's driver
-        process, turn, screenshot budget, clipboard record and label
-        renewals: they are the machine's, not the session's."""
+        process, turn, lookups on PATH, screenshot budget, clipboard record
+        and label renewals: they are the machine's, not the session's."""
         other._driver = self.driver
         other._machine_turn = self._machine_turn
+        other._program_lookups = self._program_lookups
         other._owns_driver = False
         other._screenshot_rate = self._screenshot_rate
         other.clipboard_writeback = self.clipboard_writeback
@@ -1909,18 +1965,23 @@ class ComputerUseHandler:
         reaches the driver. The computer is let go once the driver is done,
         before the call's audit record is written: a record held up (the
         log locked by `autogpt-shim audit verify`, a slow disk) holds up
-        this call's answer, which goes out after it, not other chats' calls."""
+        this call's answer, which goes out after it, not other chats' calls.
+        What the call's check looks up on disk is looked up before it waits
+        for the computer, within the same deadline (_programs_named)."""
         deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
         details = self._call_details(msg)
         try:
+            programs = await self._programs_named(msg, deadline)
             async with asyncio.timeout_at(deadline):
                 await self._machine_turn.acquire()
         except TimeoutError:
             return await self._not_started(msg, details, start)
         try:
             try:
-                response, record, result = await self._run_call(msg, details, start, deadline)
+                response, record, result = await self._run_call(
+                    msg, details, start, deadline, programs
+                )
             finally:
                 self._machine_turn.release()
         except asyncio.CancelledError:
@@ -1939,6 +2000,39 @@ class ComputerUseHandler:
         when the shim received it."""
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
+
+    async def _programs_named(
+        self, msg: ComputerToolCallMessage, deadline: float
+    ) -> dict[str, str | None]:
+        """What the call's check (check_arguments) looks up on disk, by the
+        call's deadline, else TimeoutError: the program a Linux launch's
+        name runs when its first word is a program's, from PATH.
+
+        It is looked up before the call waits for the computer, through the
+        machine's lookups (_ProgramLookups). Looked up while the call held
+        the computer, with its wait for the worker thread held to the end, a
+        stalled mount on PATH held every chat's calls behind it for as long
+        as it stalled. A call the check refuses looks nothing up, and _relay
+        refuses it."""
+        names: list[str] = []
+
+        def noted(name: str) -> str | None:
+            names.append(name)
+            return None
+
+        try:
+            check_arguments(
+                msg.payload.tool,
+                msg.payload.arguments,
+                msg.payload.approved_arguments,
+                on_path=noted,
+            )
+        except (ApprovalRequired, ArgumentRefused):
+            return {}
+        programs: dict[str, str | None] = {}
+        for name in names:
+            programs[name] = await self._program_lookups.program_by(name, deadline)
+        return programs
 
     @staticmethod
     def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
@@ -1965,14 +2059,16 @@ class ComputerUseHandler:
         details: dict[str, Any],
         start: float,
         deadline: float,
+        programs: dict[str, str | None],
     ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
         """Relay the call, and return its answer with its audit record's
-        details and result, which _call writes once the computer is free."""
+        details and result, which _call writes once the computer is free.
+        `programs` is what its check looks up on disk (_programs_named)."""
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
         approved = msg.payload.approved_arguments
         try:
-            result = await self._relay(tool, arguments, deadline, approved)
+            result = await self._relay(tool, arguments, deadline, approved, programs)
         except ComputerUseError as exc:
             return (
                 make_error(msg.id, exc.code, exc.message, details=exc.details or None),
@@ -2067,6 +2163,7 @@ class ComputerUseHandler:
         arguments: dict[str, Any],
         deadline: float,
         approved: list[str],
+        programs: dict[str, str | None],
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
         snapshot = await self.driver.snapshot(deadline=deadline)
         spec = snapshot.tool(tool)
@@ -2077,16 +2174,11 @@ class ComputerUseHandler:
                 details={"tool": tool},
             )
         try:
-            # In a worker thread: on Linux a launch's name is looked up on
-            # PATH (shutil.which), which stats a file in each of its folders,
-            # and a stalled mount (NFS, FUSE) holds a stat for as long as it
-            # stalls. On the event loop it held every session's work and
-            # keepalive. As with a file request's path checks, the call keeps
-            # its slot, and the computer's turn, until the thread ends: one
-            # let go at its deadline would leave the lookup holding a worker
-            # thread, and each later launch another. A check that ends past
-            # the deadline never reaches the driver (CallNotStarted, below).
-            await _read_in_a_thread(check_arguments, tool, arguments, approved)
+            # On the event loop: the one thing the check looks at on disk,
+            # the program a Linux launch's name runs, was looked up on PATH
+            # before the call took the computer (_programs_named). A name
+            # not looked up then can't come up here: the check is the same.
+            check_arguments(tool, arguments, approved, on_path=programs.__getitem__)
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,

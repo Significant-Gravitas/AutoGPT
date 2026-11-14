@@ -1926,15 +1926,17 @@ async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
     looked_up_from: list[int] = []
     check = handlers_module.check_arguments
 
-    def on_path(word: str) -> str | None:
+    def look_up(word: str) -> str | None:
+        # A PATH where no program has the name.
         looked_up_from.append(threading.get_ident())
         return None
 
-    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = ()) -> None:
-        # Linux's check on every OS, with a PATH where no program has the name.
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
+        # Linux's check on every OS.
         check(tool, arguments, approved, platform="linux", on_path=on_path)
 
     monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
+    monkeypatch.setattr(handlers_module, "_program_on_path", look_up)
     handler = make_handler(platform="linux")
 
     response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
@@ -1942,6 +1944,69 @@ async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.is_error is False
     assert looked_up_from and loop_thread not in looked_up_from
+
+
+async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_deadline(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """A Linux launch's name was looked up on PATH in a worker thread that
+    the call waited for to the end, holding the computer: a stalled mount
+    on PATH held every chat's calls behind it for as long as it stalled. The
+    name is looked up before the call takes the computer now, and by its
+    deadline: past it the call didn't start (COMMAND_TIMEOUT), though the
+    lookup goes on to find a program, and calls that look nothing up go
+    ahead. The machine makes one lookup at a time, so a launch of another
+    name waits for the stalled one rather than start one that would stall
+    too, and once the stall clears a launch looks its name up again."""
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    released = threading.Event()
+    looked_up: list[str] = []
+
+    def stalled(word: str) -> str | None:
+        looked_up.append(word)
+        released.wait(timeout=60)
+        return "/usr/bin/zebra" if word == "zebra" else None
+
+    check = handlers_module.check_arguments
+
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path=None):
+        # Linux's check on every OS. Given no on_path, it looks names up
+        # itself, as it did in its worker thread.
+        check(tool, arguments, approved, platform="linux", on_path=on_path or stalled)
+
+    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
+    monkeypatch.setattr(handlers_module, "_program_on_path", stalled, raising=False)
+    handler = make_handler(platform="linux")
+    try:
+        launch = _call("launch_app", {"name": "zebra notes"}, timeout_seconds=1)
+        stalled_launch = await asyncio.wait_for(handler.handle(launch), timeout=30)
+        click = await asyncio.wait_for(handler.handle(_call("click", {"pid": 1})), timeout=30)
+        another = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=1)
+        waited = await asyncio.wait_for(handler.handle(another), timeout=30)
+        assert looked_up == ["zebra"]
+    finally:
+        released.set()
+
+    for response in (stalled_launch, waited):
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+        assert response.payload.details["started"] is False
+    assert isinstance(click, ComputerToolResultMessage)
+    assert click.payload.is_error is False
+    launched = await asyncio.wait_for(
+        handler.handle(_call("launch_app", {"name": "Zebra Notes"})), timeout=30
+    )
+    assert isinstance(launched, ComputerToolResultMessage)
+    assert launched.payload.is_error is False
+    assert looked_up == ["zebra", "Zebra"]
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "click",
+        "list_apps",
+        "launch_app",
+    ]
 
 
 @pytest.mark.parametrize(
