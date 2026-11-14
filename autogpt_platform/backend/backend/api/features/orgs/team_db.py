@@ -1,6 +1,7 @@
 """Database operations for workspace management."""
 
 import logging
+from datetime import datetime, timezone
 
 from prisma import Prisma
 from prisma.errors import UniqueViolationError
@@ -89,7 +90,7 @@ async def list_teams(org_id: str, user_id: str) -> list[TeamResponse]:
 async def get_team(ws_id: str, expected_org_id: str | None = None) -> TeamResponse:
     """Get workspace details. Validates org ownership if expected_org_id is given."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if expected_org_id and ws.orgId != expected_org_id:
         raise NotFoundError(f"Workspace {ws_id} not found in org {expected_org_id}")
@@ -113,20 +114,37 @@ async def update_team(ws_id: str, data: dict) -> TeamResponse:
 
 
 async def delete_team(ws_id: str) -> None:
-    """Delete a workspace. Cannot delete the default workspace."""
+    """Delete a workspace by archiving it. Cannot delete the default workspace.
+
+    Its agents, runs and other content keep their teamId, so with the
+    memberships gone each row stays visible to its own author only.
+    """
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if ws.isDefault:
         raise ValueError("Cannot delete the default workspace")
 
-    await prisma.team.delete(where={"id": ws_id})
+    async with transaction() as tx:
+        # What removing the row took with it through its cascading foreign keys.
+        await tx.teammember.delete_many(where={"teamId": ws_id})
+        await tx.teaminvite.delete_many(where={"teamId": ws_id})
+        await tx.apikey.delete_many(where={"teamId": ws_id})
+        await tx.integrationcredential.delete_many(where={"teamId": ws_id})
+        await tx.team.update(
+            where={"id": ws_id},
+            # (orgId, name) is unique: free the name for a new workspace.
+            data={
+                "archivedAt": datetime.now(timezone.utc),
+                "name": f"{ws.name} [deleted {ws_id}]",
+            },
+        )
 
 
 async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
     """Self-join an OPEN workspace. User must be an org member."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if ws.orgId != org_id:
         raise ValueError("Workspace does not belong to this organization")
@@ -160,7 +178,7 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
 async def leave_team(ws_id: str, user_id: str) -> None:
     """Leave a workspace. Cannot leave the default workspace."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None:
+    if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if ws.isDefault:
         raise ValueError("Cannot leave the default workspace")
@@ -189,6 +207,14 @@ async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
     return [TeamMemberResponse.from_db(m) for m in members]
 
 
+async def is_member_of_team(ws_id: str, user_id: str) -> bool:
+    """Return True if the user is an active member of the workspace."""
+    member = await prisma.teammember.find_unique(
+        where={"teamId_userId": {"teamId": ws_id, "userId": user_id}}
+    )
+    return bool(member and member.status == "ACTIVE")
+
+
 async def is_admin_of_team(ws_id: str, user_id: str) -> bool:
     """Return True if the user is an active admin of the workspace."""
     member = await prisma.teammember.find_unique(
@@ -208,7 +234,7 @@ async def add_team_member(
     """Add a member to a workspace. Must be an org member, workspace must belong to org."""
     # Verify workspace belongs to the org
     ws = await prisma.team.find_unique(where={"id": ws_id})
-    if ws is None or ws.orgId != org_id:
+    if ws is None or ws.archivedAt is not None or ws.orgId != org_id:
         raise ValueError(f"Workspace {ws_id} does not belong to org {org_id}")
 
     # Verify user is in the org

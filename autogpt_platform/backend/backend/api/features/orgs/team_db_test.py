@@ -99,7 +99,7 @@ class _Store:
         return 1
 
     async def _find_team(self, where):
-        return SimpleNamespace(id=WS, orgId=ORG, isDefault=False)
+        return SimpleNamespace(id=WS, orgId=ORG, isDefault=False, archivedAt=None)
 
     async def _find_org_member(self, where):
         return SimpleNamespace(orgId=ORG, userId=where["orgId_userId"]["userId"])
