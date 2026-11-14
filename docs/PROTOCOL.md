@@ -1173,10 +1173,13 @@ On receipt the shim MUST:
 4. **NOT auto-reconnect** to the same session_id. Operator restart is
    required to re-establish the session deliberately.
 
-The shim also cancels the session's requests. A side effect already running
+The shim also cancels the session's requests and, on the machine's
+connection, stops its chats' sessions, at once rather than after the audit
+record, which a held-up audit writer can delay. A side effect already running
 in a thread can't be stopped and may never finish, so the audit record and
 the close come first; the shim then waits up to 10 seconds for such work,
-lets go of any still running, and sends none of its replies.
+lets go of any still running, and sends none of its replies. A fatal close
+code (4426, 4427 or 4428, below) stops the session's work the same way.
 
 Receivers MUST tolerate unknown future `reason` values (forward-compatible
 minor extension); the table above is the 2.0 set.
