@@ -525,12 +525,18 @@ so no other account can open it, and read the new contents, before then. An exis
 one hard link is refused with `PATH_OUTSIDE_ALLOWED_ROOT`, as `FILE_READ`
 refuses one: its other names may be outside the root, and the shim can't
 tell, so the write neither succeeds nor replaces it. Because a target the
-write does replace gets a new inode, extended attributes and POSIX ACLs on
-the old file don't carry over. On Windows the new file would take the
-folder's inherited permissions, so a file whose owner or DACL differs from
-what the folder gives a new file (inheritance turned off, entries of its
-own) is written in place, keeping its own; the shim compares the two
-before any content is written. Where the directory takes no new entries, (on
+write does replace gets a new inode, extended attributes on the old file
+don't carry over, and the new file has the permissions the folder gives a
+new file. So a file whose ACL differs from that (entries of its own, or a
+folder whose default or inherited entries came after it) is written in
+place, keeping its own: a POSIX ACL on Linux, where the mode's group bits
+are the ACL's mask, so a file that let another account in and kept its own
+group out would come back open to the group; the ACL an NFSv4 or SMB mount
+reads from its server; a macOS ACL; and on Windows the owner and DACL
+(inheritance turned off, say). The shim compares the two before any
+content is written, and writes in place when it can't read them. A Windows
+folder WSL2 reaches through `/mnt` shows no ACL to compare, so a file
+there that is replaced takes the folder's. Where the directory takes no new entries, (on
 Windows) another program has the file open, or the shim may not give the new
 file the old one's owner and group (a file another account owns, a group the
 shim isn't in), the shim overwrites the file in place instead:

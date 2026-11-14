@@ -1356,6 +1356,26 @@ async def test_export_writes_the_archive_after_releasing_the_lock(
     assert json.loads(current.splitlines()[-1])["request_id"] == "b"
 
 
+@pytest.mark.parametrize("name", ["manifest.json", "manifest.sig", "Manifest.JSON"])
+@pytest.mark.asyncio
+async def test_export_refuses_a_log_named_like_its_manifest(
+    tmp_path: Path, monkeypatch, capsys, name: str
+) -> None:
+    """A log named manifest.json or manifest.sig went into the archive under
+    the name the manifest then took too: two members of one name, where a
+    reader by name gets the manifest, so the log's hash in it never matched.
+    On a filesystem that ignores case, one name overwrites the other when
+    the archive is unpacked."""
+    monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
+    writer = AuditWriter(path=tmp_path / name, audit_key=KEY, machine_id="test-machine")
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    output = tmp_path / "export.zip"
+
+    assert cli._audit_export(writer.path, output) == 2
+    assert "manifest" in capsys.readouterr().out
+    assert not output.exists()
+
+
 @_posix_only
 def test_the_lock_file_is_created_owner_only_and_an_old_one_is_tightened(tmp_path: Path) -> None:
     """The lock file got the umask's mode (0644). Another account that could

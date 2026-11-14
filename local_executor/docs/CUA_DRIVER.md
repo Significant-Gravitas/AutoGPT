@@ -93,6 +93,16 @@ launches need `DISPLAY`, the session bus and the rest), with these changes:
   telemetry by default; the shim's driver sends none and never checks for
   updates.
 
+**Working folder.** On Linux the driver starts in an empty folder of its
+own, a new one for each start, which nothing can be written to and which
+the shim removes when it stops. The driver hands a `launch_app` `name`
+that matches no installed app to `xdg-open` when a file or folder of that
+name is in its working folder (below); there no name finds anything. The
+apps the driver starts start there too, and a relative path in an approved
+argument names nothing there, so give absolute paths. On macOS and Windows
+the driver starts in the shim's own folder, from which it opens nothing by
+name.
+
 ## What the platform gets
 
 `COMPUTER_TOOLS_REQUEST` returns the driver's own instructions with the
@@ -229,9 +239,10 @@ Known gaps:
   word is a program, a program's own name included (`reboot` would run it;
   an app goes by the name `list_apps` shows, such as `Firefox`). A `name`
   no installed app matches it then hands to `xdg-open` if a file or folder
-  of that name is in its working folder, the person's home under systemd
-  (`.bash_history` would open in an editor, for a screenshot to read, past
-  the path jail and the approval `urls` needs), so where the driver acts on
+  of that name is in its working folder (in the person's home, where it ran
+  under systemd, `.bash_history` would open in an editor, for a screenshot
+  to read, past the path jail and the approval `urls` needs). So the driver
+  runs in an empty folder of its own (above), and where it acts on
   the `name` (no `urls`, no `launch_path`) the shim lets it through only
   when it is an installed app's name or desktop-file id, as `list_apps`
   lists them, ignoring ASCII case as the driver does. The driver's looser
@@ -243,7 +254,9 @@ Known gaps:
   out), so the shim refuses such a `bundle_id`, and lets a `name` through
   only when an installed app, as `list_apps` lists it, would match it the
   way the driver matches: the exact name, ignoring case and a trailing
-  `.exe`, or one that starts with it. On every OS it refuses a `name`,
+  `.exe`, or one that starts with it. Either way it lists the installed
+  apps for each launch it checks, just before the launch, so an app removed
+  since an earlier listing doesn't let its name through. On every OS it refuses a `name`,
   `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.
@@ -328,9 +341,12 @@ where one of another release fails the same way, and asks
 prompting; if either is missing it exits 78 and launchd starts it again
 later, as before. Each chat's session checks again when it starts,
 through the same driver. The platform gives a new chat's session a few
-seconds to connect, so if another chat's call holds the driver for more
-than two of them, the new session goes ahead unchecked: the grants are the
-app's, checked when the shim started, and a busy driver is a working one.
+seconds to connect, so the check, its run as well as its start, ends
+within two of them: if another chat's call holds the driver that long, or
+the driver takes the check and doesn't answer, the new session goes ahead
+unchecked, without waiting for a driver that overran the check to be
+stopped. The grants are the app's, checked when the shim started, and a
+busy driver is a working one.
 Its HELLO waits as briefly for the screen size, the call's run as well as
 its start, and leaves it out instead, without waiting for a driver that
 overran the call to be stopped (the stop keeps the driver's turn, so no

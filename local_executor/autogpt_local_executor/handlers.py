@@ -1507,9 +1507,6 @@ def _session_ended(raw: dict[str, Any]) -> bool:
     )
 
 
-# How long the installed apps are kept for checking launches by name
-# (Windows, Linux).
-INSTALLED_APPS_SECONDS = 60.0
 # How many chats' driver label renewals a machine keeps (session_label): a
 # chat renewed less recently than that many others starts from its first.
 MAX_RENEWED_LABELS = 1024
@@ -1546,9 +1543,6 @@ class ComputerUseHandler:
         # driver (share_with): a chat's later sessions use the same driver,
         # which refuses the labels it ended until it restarts.
         self._label_renewals: dict[str, int] = {}
-        # Windows and Linux: each installed app's name and bundle_id, and when
-        # they were listed.
-        self._installed_apps: tuple[list[tuple[str, str | None]], float] | None = None
 
     @property
     def shares_a_driver(self) -> bool:
@@ -1984,10 +1978,13 @@ class ComputerUseHandler:
         On Linux, once no program has the name's first word
         (check_arguments), the driver looks for an installed app and, when
         none matches, hands the name to xdg-open if a file or folder of that
-        name is in its working folder, the person's home under systemd:
-        `.bash_history` opens in an editor, for a screenshot to read, past
-        the path jail and the approval `urls` needs. Links to open, and then
-        a launch_path, take precedence over the name, so those calls aren't
+        name is in its working folder: in the person's home, where it ran
+        under systemd, `.bash_history` opened in an editor, for a screenshot
+        to read, past the path jail and the approval `urls` needs. It runs in
+        an empty folder of its own now (CuaDriverBridge._new_working_folder),
+        where no name finds anything, even one whose app went between this
+        check and the driver's own look. Links to open, and then a
+        launch_path, take precedence over the name, so those calls aren't
         checked."""
         name = arguments.get("name")
         platform = self.driver.platform
@@ -2023,14 +2020,13 @@ class ComputerUseHandler:
 
     async def _installed_apps_listed(self, deadline: float) -> list[tuple[str, str | None]]:
         """Each installed app's name and bundle_id (on Linux its desktop-file
-        id) from list_apps, kept for a minute. A running process no installed
-        app matched has no launch_path, and the driver's name lookup doesn't
-        find it either."""
+        id) from list_apps, listed for each launch, in the same turn of the
+        computer as the launch: apps kept from an earlier listing could hold
+        one removed since, whose name the driver, finding no app, would hand
+        to ShellExecuteEx or xdg-open. A running process no installed app
+        matched has no launch_path, and the driver's name lookup doesn't find
+        it either."""
         loop = asyncio.get_running_loop()
-        if self._installed_apps is not None:
-            listed, listed_at = self._installed_apps
-            if loop.time() - listed_at < INSTALLED_APPS_SECONDS:
-                return listed
         timeout = deadline - loop.time()
         if timeout <= 0:
             raise CallNotStarted(
@@ -2047,13 +2043,11 @@ class ComputerUseHandler:
                 f"{aumid}the program as launch_path, which the person approves.",
                 details={"tool": "launch_app", "argument": "name"},
             )
-        listed = [
+        return [
             (app["name"], app["bundle_id"] if isinstance(app.get("bundle_id"), str) else None)
             for app in apps
             if isinstance(app, dict) and isinstance(app.get("name"), str) and app.get("launch_path")
         ]
-        self._installed_apps = (listed, loop.time())
-        return listed
 
     async def _clipboard_read(self, arguments: dict[str, Any], timeout: float) -> dict[str, Any]:
         """Relay a clipboard read under the shim's rules: by default only

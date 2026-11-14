@@ -152,7 +152,10 @@ turns up later, holding no audit key, leaves the file key in use: it signed
 the log. A start without the passphrase to read the file key stops for good
 instead of making a keychain key, since the file key may have signed a log,
 another deployment's included, and every start would find the new key
-first. OAuth tokens have no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
+first. A new file key is written beside its place and then renamed there,
+so a full disk part way through leaves none, and the start exits 75 to be
+restarted, as it does when the disk fills making the key's folder or its
+lock. OAuth tokens have no file fallback. See [SECURITY.md](SECURITY.md#per-os-keychain-availability).
 
 Only the daemon makes a key, and only while there is no log yet: a log with
 no key stored for it (a keychain entry removed, say) stops it at start,
@@ -309,7 +312,9 @@ destination and moved into place when it is complete.
 Export bundles all current+rotated files into a `.zip` with an
 embedded `manifest.json` (per-file `name`/`size`/`sha256`) and a
 `manifest.sig` containing HMAC-SHA256 over the manifest using the
-local audit key. The signature is symmetric (not RSA): the user
+local audit key. It refuses a log named `manifest.json` or
+`manifest.sig`, in any case, which the archive would hold beside, or in
+place of, its own. The signature is symmetric (not RSA): the user
 shares the audit key out-of-band with support / a platform-side
 viewer when they upload the bundle. This is intentional — there is no
 public PKI for the per-machine audit key, and adding one would

@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -446,6 +447,43 @@ async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: 
     await bridge.close()
 
     assert not policy.exists()
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
+async def test_a_linux_driver_runs_in_an_empty_folder_of_its_own(
+    fake_log: Path, tmp_path: Path, monkeypatch, platform: str
+) -> None:
+    """On Linux cua-driver hands a launch_app name that matches no installed
+    app to xdg-open when a file or folder of that name is in its working
+    folder, which was the shim's: the person's home, under systemd. There
+    it runs in an empty folder of its own now, made for each start, which
+    nothing is written to, and removed with the bridge. On macOS and
+    Windows, where no name is opened from it, it keeps the shim's."""
+    import stat
+
+    monkeypatch.chdir(tmp_path)
+    bridge = _bridge(platform=platform)
+    try:
+        await bridge.snapshot()
+        [started] = _records(fake_log, "initialize")
+        folder = Path(started["cwd"])
+        policy_folder = Path(started["env"]["CUA_DRIVER_POLICY_FILE"]).parent
+        if platform == "linux":
+            assert not os.path.samefile(folder, tmp_path)
+            assert not os.path.samefile(folder, policy_folder)
+            assert list(folder.iterdir()) == []
+            assert os.path.samefile(started["env"]["PWD"], folder)
+            if os.name != "nt":
+                assert stat.S_IMODE(folder.stat().st_mode) == 0o500
+                if os.geteuid() != 0:
+                    with pytest.raises(PermissionError):
+                        (folder / "notes.txt").write_text("x")
+        else:
+            assert os.path.samefile(folder, tmp_path)
+    finally:
+        await bridge.close()
+
+    assert folder.exists() is (platform != "linux")
 
 
 async def test_only_catalog_tools_are_offered(fake_log: Path, monkeypatch) -> None:
@@ -1413,10 +1451,11 @@ async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
     for response in (first, second):
         assert isinstance(response, ComputerToolResultMessage)
         assert response.payload.is_error is False
-    # The installed apps are listed once and kept for a while.
+    # The installed apps are listed for each launch by name.
     assert [call["tool"] for call in _records(fake_log, "call")] == [
         "list_apps",
         "launch_app",
+        "list_apps",
         "launch_app",
     ]
 
@@ -1541,12 +1580,79 @@ async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
     for response in (first, second):
         assert isinstance(response, ComputerToolResultMessage)
         assert response.payload.is_error is False
-    # The installed apps are listed once and kept for a while.
+    # The installed apps are listed for each launch by name.
     assert [call["tool"] for call in _records(fake_log, "call")] == [
         "list_apps",
         "launch_app",
+        "list_apps",
         "launch_app",
     ]
+
+
+@pytest.mark.parametrize(
+    ("platform", "app"),
+    [
+        ("linux", {"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}),
+        ("win32", "Notepad"),
+    ],
+)
+async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_refused(
+    make_handler, fake_log, monkeypatch, tmp_path, platform: str, app: Any
+) -> None:
+    """The installed apps were kept for a minute, so the name of an app
+    removed meanwhile still went through. The driver, finding no app of that
+    name, hands it on Linux to xdg-open when a file or folder of that name
+    is in its working folder, and on Windows to ShellExecuteEx, which runs a
+    program of that name from PATH, neither with the person's approval."""
+    apps = tmp_path / "apps.json"
+    apps.write_text(json.dumps([app]), encoding="utf-8")
+    monkeypatch.setenv("FAKE_CUA_APPS_FILE", str(apps))
+    name = app["name"] if isinstance(app, dict) else app
+    handler = make_handler(platform=platform)
+
+    first = await handler.handle(_call("launch_app", {"name": name}))
+    apps.write_text("[]", encoding="utf-8")
+    second = await handler.handle(_call("launch_app", {"name": name}))
+
+    assert isinstance(first, ComputerToolResultMessage)
+    assert first.payload.is_error is False
+    assert isinstance(second, ErrorMessage)
+    assert second.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert second.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "list_apps",
+        "launch_app",
+        "list_apps",
+    ]
+
+
+async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_looks_opens_no_file(
+    make_handler, fake_log, monkeypatch, tmp_path
+) -> None:
+    """The shim lets a Linux launch by name through only when an installed
+    app has that name, but the driver looks again: an app removed between
+    the two left the driver no app, and it handed the name to xdg-open,
+    which opened a file of that name in its working folder, the shim's (the
+    person's home, under systemd), past the path jail and the approval
+    `urls` needs. In the driver's own empty folder the name finds nothing."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "Zebra Notes").write_text("the person's notes", encoding="utf-8")
+    monkeypatch.chdir(home)
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    monkeypatch.setenv("FAKE_CUA_LINUX_LAUNCH", "1")
+    monkeypatch.setenv("FAKE_CUA_APPS_GONE_AT_LAUNCH", "1")
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is True
+    assert _records(fake_log, "xdg-open") == []
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps", "launch_app"]
 
 
 @pytest.mark.parametrize(
@@ -2665,6 +2771,62 @@ async def test_a_chats_hello_does_not_wait_for_a_stalled_driver_to_stop(
     finally:
         if hello is not None:
             hello.cancel()
+        if stalled is not None and stalled._process is not None:
+            with contextlib.suppress(ProcessLookupError):
+                stalled._process.kill()
+        await parent._computer_handler.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows ends a process at once on terminate")
+async def test_a_chats_permission_check_ends_within_its_wait_when_the_driver_stalls(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """A chat's permission check (macOS) waited for the shared driver only
+    until the driver took it: one that took it and stalled held the chat's
+    start for the check's 30 s, then for the driver's stop (terminated, then
+    killed after two seconds, then waited for two more), past the eight
+    seconds the platform gives a chat's session. The whole check fits in the
+    chat's wait, and the session goes ahead unchecked, as it does when the
+    driver is busy; the stop keeps the driver's turn until the old driver is
+    gone, so no call starts another one meanwhile."""
+    from autogpt_local_executor import daemon as daemon_module
+    from autogpt_local_executor import handlers, platform_info
+    from autogpt_local_executor.computer_use import mcp_client
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    monkeypatch.setattr(daemon_module, "PERMISSION_CHECK_SECONDS", 60.0)
+    monkeypatch.setattr(mcp_client, "KILL_GRACE_SECONDS", 60.0)
+    monkeypatch.setenv("FAKE_CUA_PERMISSIONS_SLOW_SECONDS", "60")
+    monkeypatch.setenv("FAKE_CUA_IGNORE_TERM", "1")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    bridge = parent._computer_handler.driver
+    stalled: StdioMcpClient | None = None
+    check: asyncio.Future[None] | None = None
+    try:
+        await bridge.snapshot()
+        stalled = bridge._client
+        assert stalled is not None and stalled._process is not None
+        check = asyncio.ensure_future(child._preflight_computer_use())
+        done, _ = await asyncio.wait({check}, timeout=30)
+
+        assert check in done
+        assert check.result() is None
+        # The driver took the check, and is still being stopped.
+        assert [r["tool"] for r in _records(fake_log, "call")] == ["check_permissions"]
+        assert stalled._process.returncode is None
+        assert bridge._turn.locked()
+        stalled._process.kill()
+        loop = asyncio.get_running_loop()
+        until = loop.time() + 30
+        while bridge._turn.locked():
+            assert loop.time() < until, "the stop never let go of the driver's turn"
+            await asyncio.sleep(0.01)
+    finally:
+        if check is not None:
+            check.cancel()
         if stalled is not None and stalled._process is not None:
             with contextlib.suppress(ProcessLookupError):
                 stalled._process.kill()

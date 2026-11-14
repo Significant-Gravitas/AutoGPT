@@ -48,7 +48,7 @@ from .audit import (
     get_or_create_audit_key,
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
-from .computer_use import CallNotStarted, DriverUnavailable, find_driver_binary
+from .computer_use import DriverUnavailable, find_driver_binary
 from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
@@ -525,9 +525,7 @@ class ShimDaemon:
             ) from exc
         except AuditKeyStorageError as exc:
             # A full disk clears; a read-only one doesn't: the errno says.
-            raise _audit_storage_failure(
-                "The lock the audit key is made under couldn't be taken", exc.error
-            ) from exc
+            raise _audit_storage_failure(exc.description, exc.error) from exc
         except Exception as exc:
             # A malformed stored key, or no keychain and no file fallback.
             raise DaemonPreflightError(
@@ -2412,34 +2410,40 @@ class ShimDaemon:
         try:
             if child:
                 # Another chat's call can hold the shared driver far longer
-                # than the platform waits for this session to connect: wait
-                # briefly, then go ahead unchecked (below).
+                # than the platform waits for this session to connect, and a
+                # driver that takes the check can stall: the whole check, its
+                # run as well as its start, ends within a brief wait, without
+                # waiting for the stop of a driver that overran it (the stop
+                # keeps the driver's turn), and then the session goes ahead
+                # unchecked (below).
                 start_by = asyncio.get_running_loop().time() + handlers.CHILD_DRIVER_WAIT_SECONDS
                 await driver.snapshot(deadline=start_by)
-                start_within: float | None = max(start_by - asyncio.get_running_loop().time(), 0)
+                left = max(start_by - asyncio.get_running_loop().time(), 0)
+                timeout = min(PERMISSION_CHECK_SECONDS, left)
             else:
                 await driver.snapshot()
-                start_within = None
+                timeout = PERMISSION_CHECK_SECONDS
             result = await self._computer_handler.call_driver(
                 "check_permissions",
                 {"prompt": False, "session": self._computer_handler.session_label},
-                timeout=PERMISSION_CHECK_SECONDS,
-                start_within=start_within,
+                timeout=timeout,
+                wait_for_stop=not child,
             )
-        except CallNotStarted:
-            if not self._computer_handler.shares_a_driver:
+        except TimeoutError:  # CallNotStarted too
+            if not child:
                 await self._fail_preflight(
                     "cua-driver did not report its permissions in time. Run `autogpt-shim doctor`.",
                     missing_permissions=["accessibility_probe", "screen_recording_probe"],
                     error_code=ErrorCode.PERMISSION_PENDING,
                 )
             # A child session's check waited behind another chat's call on the
-            # shared driver, which is busy working: the grants are the app's,
-            # checked when the parent started, so the session goes ahead rather
-            # than end after activation reported it ready.
+            # shared driver, which is busy working, or the driver took it and
+            # didn't answer in time: the grants are the app's, checked when the
+            # parent started, so the session goes ahead rather than end after
+            # activation reported it ready.
             logger.info(
-                "Skipped the computer-use permission check: the shared driver is busy "
-                "with another session's call"
+                "Skipped the computer-use permission check: the shared driver didn't "
+                "answer it in time"
             )
             return
         except DriverUnavailable as exc:
@@ -2449,12 +2453,6 @@ class ShimDaemon:
                 missing_permissions=["accessibility_probe", "screen_recording_probe"],
                 error_code=exc.code,
                 permanent=exc.code == ErrorCode.DEPENDENCY_MISSING,
-            )
-        except TimeoutError:
-            await self._fail_preflight(
-                "cua-driver did not report its permissions in time. Run `autogpt-shim doctor`.",
-                missing_permissions=["accessibility_probe", "screen_recording_probe"],
-                error_code=ErrorCode.PERMISSION_PENDING,
             )
         except McpError as exc:
             await self._fail_preflight(

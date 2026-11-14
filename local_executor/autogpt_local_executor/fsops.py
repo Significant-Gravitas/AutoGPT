@@ -99,4 +99,83 @@ def _native_no_replace_rename(src: str | os.PathLike[str], dst: str | os.PathLik
     raise OSError(error, os.strerror(error), os.fspath(src), None, os.fspath(dst))
 
 
-__all__ = ["rename_no_replace"]
+# The extended attributes Linux keeps a file's ACL in: a POSIX ACL, and the
+# ACL an NFSv4 or SMB mount reads from its server.
+_LINUX_ACL_ATTRIBUTES = ("system.posix_acl_access", "system.nfs4_acl", "system.cifs_acl")
+# macOS's acl_type_t for its ACLs, the only kind it keeps, and the errors its
+# acl_get_* functions give for a file without one.
+_ACL_TYPE_EXTENDED = 0x00000100
+_NO_MACOS_ACL = {
+    errno.ENOENT,
+    getattr(errno, "ENOATTR", errno.ENOENT),
+    getattr(errno, "ENOTSUP", errno.EOPNOTSUPP),
+    errno.EOPNOTSUPP,
+}
+
+
+def file_acl(target: int | str | os.PathLike[str]) -> object:
+    """The ACL of `target`, a path (not followed if a link) or an open file:
+    on Linux its ACL attributes, on macOS its extended ACL as text. None, or
+    on Linux None for each attribute, where it has none or its filesystem
+    keeps none, and None on other systems. Two files with equal values have
+    the same ACL. OSError when it can't be read."""
+    if sys.platform.startswith("linux"):
+        return tuple(_linux_attribute(target, name) for name in _LINUX_ACL_ATTRIBUTES)
+    if sys.platform == "darwin":
+        return _macos_acl(target)
+    return None
+
+
+def _linux_attribute(target: int | str | os.PathLike[str], name: str) -> bytes | None:
+    try:
+        if isinstance(target, int):
+            return os.getxattr(target, name)
+        return os.getxattr(target, name, follow_symlinks=False)
+    except OSError as exc:
+        if exc.errno in (errno.ENODATA, errno.ENOTSUP, errno.EOPNOTSUPP):
+            return None
+        raise
+
+
+def _macos_acl(target: int | str | os.PathLike[str]) -> bytes | None:
+    libc = _libc()
+    try:
+        if libc is None:
+            raise AttributeError("no C library")
+        read = libc.acl_get_fd_np if isinstance(target, int) else libc.acl_get_link_np
+        as_text, free = libc.acl_to_text, libc.acl_free
+    except AttributeError:
+        raise OSError(errno.ENOSYS, "The C library's ACL functions couldn't be found") from None
+    subject: int | bytes
+    if isinstance(target, int):
+        read.argtypes = [ctypes.c_int, ctypes.c_int]
+        subject = target
+    else:
+        read.argtypes = [ctypes.c_char_p, ctypes.c_int]
+        subject = os.fsencode(target)
+    read.restype = ctypes.c_void_p
+    as_text.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    as_text.restype = ctypes.c_void_p
+    free.argtypes = [ctypes.c_void_p]
+    free.restype = ctypes.c_int
+    acl = read(subject, _ACL_TYPE_EXTENDED)
+    if not acl:
+        error = ctypes.get_errno()
+        # No ACL (ENOENT), or a filesystem that keeps none.
+        if error in _NO_MACOS_ACL:
+            return None
+        raise OSError(error, os.strerror(error))
+    try:
+        text = as_text(acl, None)
+        if not text:
+            error = ctypes.get_errno()
+            raise OSError(error, os.strerror(error))
+        try:
+            return ctypes.string_at(text)
+        finally:
+            free(text)
+    finally:
+        free(acl)
+
+
+__all__ = ["file_acl", "rename_no_replace"]

@@ -443,9 +443,26 @@ def _cmd_install(args) -> None:
 
     # The service starts with the same config file and options; a set it
     # can't load would stop it at every start, where nobody sees the error.
-    _config_or_exit(lambda: _build_config(args))
+    config = _config_or_exit(lambda: _build_config(args))
     environment = environment_settings()
     config_file = args.config if args.config is not None else _install.default_config_path()
+    if (
+        args.allowed_root is None
+        and "allowed_root" not in environment
+        and not config.allowed_root.is_absolute()
+    ):
+        # From the config file, which the service reads in the folder it
+        # starts in (the home folder, under systemd): a legacy session there
+        # would be jailed to another folder, a wider one for `.`. A flag's
+        # or the environment's is made absolute against this shell's
+        # (_service_global_args).
+        print(
+            f"Configuration error: allowed_root in {config_file} is {config.allowed_root}, "
+            "a relative path, which the service would take from the folder it starts in. "
+            "Make it absolute there, or pass --allowed-root.",
+            file=sys.stderr,
+        )
+        sys.exit(_config_error_exit_code())
     uncarried = [field for field in _UNCARRIED_DEPLOYMENT_SETTINGS if field in environment]
     for field in uncarried:
         print(
@@ -805,6 +822,10 @@ def _read_audit_file(path: Path) -> bytes | None:
         return None
 
 
+# The names an export archive keeps its manifest and signature under.
+_EXPORT_METADATA = frozenset({"manifest.json", "manifest.sig"})
+
+
 def _audit_export(current: Path, output: Path | None) -> int:
     """Zip current + rotated files and sign the manifest with the audit key.
 
@@ -874,6 +895,13 @@ def _audit_export(current: Path, output: Path | None) -> int:
         if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
             print(f"Refusing to name the export like a rotated audit log: {output}")
             return 2
+        # Nor holding a log under a name the archive's manifest takes: two
+        # members of one name, where a reader by name gets the manifest, or,
+        # unpacked where case is ignored, one in place of the other.
+        for path in files:
+            if path.name.casefold() in _EXPORT_METADATA:
+                print(f"Refusing to export an audit log named like the export's manifest: {path}")
+                return 2
         for path in files:
             if path == current:
                 current_data = path.read_bytes()

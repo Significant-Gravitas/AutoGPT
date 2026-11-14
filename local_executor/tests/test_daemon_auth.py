@@ -1254,3 +1254,122 @@ def test_an_audit_key_lock_that_cannot_be_taken_says_whether_a_restart_can_fix_i
 
     assert raised.value.permanent is permanent
     assert getattr(raised.value, "transient", False) is transient
+
+
+@pytest.mark.parametrize(
+    ("code", "permanent", "transient"),
+    [
+        ("ENOSPC", False, True),
+        ("EROFS", True, False),
+        # A file where the folder belongs.
+        ("EEXIST", True, False),
+    ],
+)
+def test_a_fallback_audit_key_folder_that_cannot_be_made_says_whether_a_restart_can_fix_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, permanent: bool, transient: bool
+) -> None:
+    """With no keychain and the file fallback's passphrase set, a full disk
+    making the folder for the fallback's audit key raised a bare OSError,
+    which startup takes for permanent, so a supervised shim stopped for good
+    instead of exiting for a restart once space was freed."""
+    import errno
+    import os
+
+    import keyring
+    import keyring.errors
+
+    config = ShimConfig(
+        session_id="session-1", allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"
+    )
+    fallback = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback))
+
+    def missing(*_args: object) -> None:
+        raise keyring.errors.NoKeyringError("no recommended backend")
+
+    monkeypatch.setattr(keyring, "get_password", missing)
+    number = getattr(errno, code)
+    real_mkdir = Path.mkdir
+
+    def mkdir(self: Path, *args: object, **kwargs: object) -> None:
+        if self == fallback:
+            raise OSError(number, os.strerror(number), str(self))
+        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+
+    with pytest.raises(daemon_module.DaemonPreflightError) as raised:
+        ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.permanent is permanent
+    assert raised.value.transient is transient
+
+
+def test_a_full_disk_writing_the_fallback_audit_key_leaves_no_key_for_later_starts_to_refuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A full disk part way through writing a new file fallback key raised a
+    bare OSError, which startup takes for permanent, and left the key file
+    cut short, which every later start refused as malformed. The start exits
+    for a restart instead, leaving no key file behind, and the next start,
+    with space freed, makes the key."""
+    import errno
+    import io
+
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor import audit as audit_module
+
+    config = ShimConfig(
+        session_id="session-1", allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"
+    )
+    fallback = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback))
+
+    def missing(*_args: object) -> None:
+        raise keyring.errors.NoKeyringError("no recommended backend")
+
+    monkeypatch.setattr(keyring, "get_password", missing)
+
+    class FullDisk:
+        """A file whose writes fail the way a full disk does: part of the
+        data lands, then the disk is full."""
+
+        def __init__(self, file: Any) -> None:
+            self._file = file
+
+        def write(self, data: Any) -> int:
+            self._file.write(data[:1])
+            self._file.flush()
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._file, name)
+
+        def __enter__(self) -> FullDisk:
+            return self
+
+        def __exit__(self, *_exc: object) -> bool:
+            self._file.close()
+            return False
+
+    real_open = io.open
+
+    def full_disk_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        handle = real_open(file, mode, *args, **kwargs)
+        return FullDisk(handle) if "w" in mode else handle
+
+    with monkeypatch.context() as full_disk:
+        full_disk.setattr(io, "open", full_disk_open)
+        with pytest.raises(daemon_module.DaemonPreflightError) as raised:
+            ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.transient is True
+    # Nothing a later start would read as a malformed key, or leave lying about.
+    assert [path.name for path in fallback.iterdir()] == [".audit-key.lock"]
+    writer = ShimDaemon._build_audit_writer(config)
+    assert (fallback / "audit-key.enc").is_file()
+    assert writer.audit_key == audit_module.get_or_create_audit_key(config.audit_log_path)
