@@ -240,6 +240,106 @@ async def test_a_raise_must_be_higher(tools, plan):
 
 
 @pytest.mark.asyncio
+async def test_a_raise_whose_new_request_failed_is_finished_by_a_retry(tools, plan):
+    """A request not yet approved is canceled and asked for again at the new
+    total. When that new request fails, the checkout is already saved at the
+    new total, so the advised retry asks Link again rather than finding the
+    old request canceled."""
+    created = await request(plan)
+    tools.status = "pending_approval"
+    tools.create_error = "link_rejected"
+    failed = await raise_to(created.checkout_id, 250)
+    assert "call this with the same new total" in failed.output
+    tools.create_error = None
+
+    raised = parsed(await raise_to(created.checkout_id, 250))
+
+    assert (raised.amount, raised.revision) == (250, 1)
+    assert raised.status == "pending_approval"
+    assert tools.calls == ["create", "status", "cancel", "create", "create"]
+    tools.status = "approved"
+    assert (await complete(created.checkout_id)).status == "submitted"
+    assert tools.amounts[-1] == 250
+
+
+@pytest.mark.asyncio
+async def test_a_raise_moved_to_link_whose_request_failed_is_finished_by_a_retry(
+    tools, plan, monkeypatch
+):
+    monkeypatch.setattr(
+        request_tools, "in_app_approval_allowed", AsyncMock(return_value=True)
+    )
+    created = await request(plan)
+    tools.create_error = "link_rejected"
+    await raise_to(created.checkout_id, 250)
+    tools.create_error = None
+
+    raised = parsed(await raise_to(created.checkout_id, 250))
+
+    assert (raised.amount, raised.revision) == (250, 1)
+    assert (raised.approval_mode, raised.status) == ("link", "pending_approval")
+    assert tools.calls == ["create", "create"]
+
+
+@pytest.mark.asyncio
+async def test_a_raise_whose_chat_record_failed_is_recorded_by_a_retry(
+    tools, plan, monkeypatch
+):
+    """The checkout is raised before the chat's approval record is. When that
+    record fails, the retry at the same total writes it, so the customer can
+    approve the new total in the chat."""
+    for module in (request_tools, raise_tools):
+        monkeypatch.setattr(
+            module, "in_app_approval_allowed", AsyncMock(return_value=True)
+        )
+    created = await request(plan)
+    reopen = raise_tools.reopen_approval
+    monkeypatch.setattr(
+        raise_tools, "reopen_approval", AsyncMock(side_effect=RuntimeError("down"))
+    )
+    await raise_to(created.checkout_id, 250)
+    monkeypatch.setattr(raise_tools, "reopen_approval", reopen)
+
+    raised = parsed(await raise_to(created.checkout_id, 250))
+
+    assert raised.approval_state == "awaiting"
+    record = await approval.read_approval(created.checkout_id)
+    assert record is not None
+    pending = record.pending
+    assert (pending.amount, pending.previous_amount, pending.revision) == (250, 100, 1)
+    await approval.decide(
+        created.checkout_id, "owner", "chat", approve=True, user_agent=None, revision=1
+    )
+    assert (await complete(created.checkout_id)).status == "submitted"
+    assert tools.amounts == [250, 250]
+
+
+@pytest.mark.asyncio
+async def test_a_retry_after_a_finished_raise_leaves_the_chat_record_alone(
+    tools, plan, monkeypatch
+):
+    """The card keeps showing the raise from the old total, and the customer's
+    decision on it stands."""
+    for module in (request_tools, raise_tools):
+        monkeypatch.setattr(
+            module, "in_app_approval_allowed", AsyncMock(return_value=True)
+        )
+    created = await request(plan)
+    await raise_to(created.checkout_id, 250)
+    await approval.decide(
+        created.checkout_id, "owner", "chat", approve=True, user_agent=None, revision=1
+    )
+
+    again = parsed(await raise_to(created.checkout_id, 250))
+
+    assert again.approval_state == "approved"
+    record = await approval.read_approval(created.checkout_id)
+    assert record is not None
+    assert (record.pending.previous_amount, record.pending.revision) == (100, 1)
+    assert (await complete(created.checkout_id)).status == "submitted"
+
+
+@pytest.mark.asyncio
 async def test_an_attempted_checkout_cannot_be_raised(tools, plan):
     created = await request(plan)
     await complete(created.checkout_id)

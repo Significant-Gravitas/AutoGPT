@@ -103,6 +103,9 @@ class FakeWorker:
         self.amounts: list[int] = []
         # Link answers a create with a request for another amount.
         self.mismatched_create = False
+        # Each create gets its own request; a canceled one stays canceled.
+        self.created = 0
+        self.canceled: set[str] = set()
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
@@ -121,9 +124,15 @@ class FakeWorker:
         if job.action == "raise" and self.raise_error:
             return WorkerResult(error=self.raise_error)
         spend = await synthetic_spend(job)
+        if job.action in ("create", "create_delegated"):
+            self.created += 1
+            spend.id = f"lsrq_fixture{self.created}"
         if job.action == "create" and self.mismatched_create:
             spend.amount += 1
         if job.action == "cancel":
+            spend.status = "canceled"
+            self.canceled.add(spend.id)
+        elif spend.id in self.canceled:
             spend.status = "canceled"
         elif job.action == "raise":
             # Raised, then waiting for the customer's approval in Link again.

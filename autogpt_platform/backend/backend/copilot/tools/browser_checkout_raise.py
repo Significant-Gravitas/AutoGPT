@@ -36,6 +36,7 @@ from backend.util.link_checkout.broker_protocol import (
     Principal,
     RaiseCheckout,
 )
+from backend.util.link_checkout.broker_raise import raises_total
 from backend.util.link_checkout.models import CHECKOUT_ID, Amount
 from backend.util.link_checkout.policy import Purchase, in_app_approval_allowed
 from backend.util.link_checkout.preflight import purchase_blocker
@@ -160,7 +161,7 @@ def _cannot_raise(current: CheckoutView, amount: int) -> str:
             "This checkout expired before payment; nothing was charged. Prepare "
             "a new one for the full total."
         )
-    if amount <= current.amount:
+    if not raises_total(amount, current.amount, current.revision):
         return RAISE_NOT_HIGHER
     return ""
 
@@ -170,8 +171,11 @@ async def _record_raise(
 ) -> ApprovalView | None:
     """The chat's approval record for the raised total: a new revision for
     the user to approve, or, when the approval moved to Link, a closed one so
-    no card in the chat can approve the purchase any more."""
+    no card in the chat can approve the purchase any more. Written once per
+    revision, so a retry that finishes a raise never undoes a decision."""
     previous = await read_approval(view.checkout_id)
+    if previous is not None and previous.pending.revision >= view.revision:
+        return previous
     if view.approval_mode != "in_app" and previous is None:
         return None
     await reopen_approval(
@@ -187,7 +191,9 @@ async def _record_raise(
             test_mode=view.test_mode,
             expires_at=view.expires_at if view.approval_mode == "in_app" else 0.0,
             revision=view.revision,
-            previous_amount=current.amount,
+            # The total last recorded in the chat: on a retry that finishes
+            # a raise, the checkout already carries the new one.
+            previous_amount=previous.pending.amount if previous else current.amount,
             reason=reason,
         )
     )

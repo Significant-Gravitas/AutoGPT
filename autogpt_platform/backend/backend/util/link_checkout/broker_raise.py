@@ -37,13 +37,16 @@ async def raise_checkout(request: RaiseCheckout) -> CheckoutView:
     """Raise an unpaid checkout's total when the final price came out higher.
     The customer approves the new total afresh: in Link (``_raise_in_link``),
     or in the chat while nothing exists in Link yet. The deadline restarts
-    with it."""
+    with it. Asking again for the total already raised to finishes a raise
+    that stopped partway (``_finish_raise``)."""
     key = session_key(request)
     async with browser_operation(key) as directory:
         intent = read_intent(directory, request.checkout_id, request.user_id, key)
         require_payable(intent.plan.test_mode)
-        if request.amount <= intent.plan.amount:
+        if not raises_total(request.amount, intent.plan.amount, intent.revision):
             raise CheckoutRefused(RAISE_NOT_HIGHER)
+        if request.amount == intent.plan.amount:
+            return await _finish_raise(directory, intent, request)
         raised = intent.model_copy(
             update={
                 "plan": intent.plan.model_copy(update={"amount": request.amount}),
@@ -86,8 +89,28 @@ async def _raise_in_link(
         await broker_link.cancel(intent, token)
         raised.spend_request_id = None
         raised.approval_url = ""
+        # Saved before the new request: if creating it fails, the retry at
+        # this total asks Link again rather than find the old one canceled.
+        replace_intent(directory, raised)
         return view(raised, await first_spend(directory, raised, token, None))
     raised.approval_url = link_action_url(spend.approval_url) or raised.approval_url
     validate_spend(raised, spend)
     replace_intent(directory, raised)
     return view(raised, spend)
+
+
+def raises_total(amount: int, current: int, revision: int) -> bool:
+    """A raise asks for more than the checkout's total, or, once a raise was
+    asked for, that same total again to finish it."""
+    return amount > current or (amount == current and revision > 0)
+
+
+async def _finish_raise(
+    directory: Path, intent: CheckoutIntent, request: RaiseCheckout
+) -> CheckoutView:
+    """The checkout is saved at its new total before Link is asked, so a raise
+    that stopped partway left at most the request at that total undone."""
+    if intent.spend_request_id is None and intent.approval_mode == "link":
+        spend = await first_spend(directory, intent, request.access_token, None)
+        return view(intent, spend)
+    return view(intent)
