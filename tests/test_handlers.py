@@ -1674,6 +1674,86 @@ async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
                 os.kill(int(pid_path.read_text()), signal.SIGKILL)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
+async def test_a_cancel_landing_as_the_command_exits_still_stops_its_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Python 3.11's asyncio.wait_for drops a cancel that lands as the work
+    it waits for ends. The command's exit was waited for that way, so a
+    session revoked just as its command exited ended the request as if
+    nothing had happened: the command was recorded as done, and a child it
+    left holding its output ran on."""
+    import fcntl
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    exited = handlers_module._exited
+    requests: list[asyncio.Task] = []
+
+    async def exited_as_the_request_is_cancelled(proc):
+        await exited(proc)
+        requests[0].cancel()
+
+    monkeypatch.setattr(handlers_module, "_exited", exited_as_the_request_is_cancelled)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    lock_path = tmp_path / "child.lock"
+    pid_path = tmp_path / "child.pid"
+    child = textwrap.dedent(
+        f"""
+        import fcntl, os, time
+        lock = open({str(lock_path)!r}, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open({str(pid_path)!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({str(pid_path)!r} + ".tmp", {str(pid_path)!r})
+        time.sleep(120)
+        """
+    )
+    # The command starts the child, which keeps its stdout and stderr, and
+    # exits once the child holds its lock.
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {child!r}])
+        while not os.path.exists({str(pid_path)!r}):
+            time.sleep(0.01)
+        """
+    )
+
+    def child_released_its_lock() -> bool:
+        with open(lock_path, "w") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path)))
+    )
+    requests.append(task)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=60)
+        assert task in done
+        assert task.cancelled()
+        assert await _wait_until(child_released_its_lock, timeout=30)
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+    finally:
+        if not task.done():
+            task.cancel()
+        if pid_path.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+
+
 def _hold_pipe_connections(monkeypatch: pytest.MonkeyPatch) -> tuple[asyncio.Event, list[Any]]:
     """Have asyncio wait to connect a new command's pipes until the event
     returned is set, as a busy event loop might: its command was created

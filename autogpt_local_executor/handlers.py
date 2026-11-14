@@ -875,14 +875,18 @@ class CommandHandler:
                 # command that has exited isn't timed out, and what it left
                 # running keeps running, as on any other exit. What is still
                 # in the pipes is read for _OUTPUT_DRAIN_SECONDS (below).
-                await asyncio.wait_for(_exited(proc), timeout=timeout)
+                # Under asyncio.timeout, not wait_for: Python 3.11's wait_for
+                # drops a cancel that lands as the exit is seen, and a session
+                # revoked then left the command recorded as done, and what it
+                # started running.
+                async with asyncio.timeout(timeout):
+                    await _exited(proc)
             except TimeoutError:
                 timed_out = True
                 await self._terminate_tree(proc)
-                try:
-                    await asyncio.wait_for(_exited(proc), timeout=2.0)
-                except TimeoutError:
-                    pass
+                with contextlib.suppress(TimeoutError):
+                    async with asyncio.timeout(2.0):
+                        await _exited(proc)
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*drain_tasks, return_exceptions=True),
