@@ -525,6 +525,37 @@ async def test_audit_show_prints_a_record_stdout_cant_encode(
     assert "# from \\u5ba1\\u8ba1.log" in output
 
 
+def test_audit_tail_prints_what_stdout_cant_encode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """tail printed each line's text as it was, so a stdout that can't
+    encode a character (a Windows code page, once redirected) raised
+    UnicodeEncodeError and ended tail at the damaged record a person needs
+    to see: a truncated one with a CJK path, or one whose bytes aren't
+    UTF-8, read as U+FFFD."""
+    import io
+
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", newline="\n")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    cli._print_record_line('{"seq": 1, "details": {"path": "未来.txt"'.encode() + b"\n")
+    cli._print_record_line(b'{"seq": 2, "op": "FILE_READ", \xff\xfe\n')
+    cli._print_record_line(
+        '{"seq": 3, "op": "写入", "result": {"ok": false, "error_code": "失败"}}'.encode() + b"\n"
+    )
+    missing = cli._audit_tail(tmp_path / "审计.log")
+
+    stdout.flush()
+    lines = stdout.buffer.getvalue().decode("cp1252").splitlines()
+    assert lines[0] == '[unparseable] {"seq": 1, "details": {"path": "\\u672a\\u6765.txt"'
+    assert lines[1] == '[unparseable] {"seq": 2, "op": "FILE_READ", \\ufffd\\ufffd'
+    assert lines[2].startswith("seq=    3  \\u5199\\u5165")
+    assert lines[2].endswith("err:\\u5931\\u8d25")
+    assert missing == 1
+    assert lines[3].startswith("Audit log not found: ")
+    assert lines[3].endswith("\\u5ba1\\u8ba1.log")
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX directory permissions")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root ignores modes")
 @pytest.mark.asyncio

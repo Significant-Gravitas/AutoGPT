@@ -585,8 +585,10 @@ def _audit_tail(path: Path) -> int:
     is visible as a parse error rather than silently garbled output."""
     import time
 
+    from .doctor import _printable
+
     if not path.is_file():
-        print(f"Audit log not found: {path}")
+        print(_printable(f"Audit log not found: {path}"))
         return 1
     try:
         for line in _follow(path, wait=lambda: time.sleep(0.5)):
@@ -1145,6 +1147,12 @@ def _parse_duration(s: str) -> float | None:
 def _print_record_line(raw: bytes) -> None:
     import json
 
+    # Escaped where stdout can't carry a character (a Windows code page,
+    # redirected), as _audit_show does: a truncated record's CJK path, or the
+    # U+FFFD a byte that isn't UTF-8 reads as, ended tail with
+    # UnicodeEncodeError at the damaged record a person needs to see.
+    from .doctor import _printable
+
     s = raw.decode("utf-8", errors="replace").rstrip("\n")
     if not s.strip():
         return
@@ -1155,7 +1163,7 @@ def _print_record_line(raw: bytes) -> None:
         # for a line nested past it.
         rec = None
     if not isinstance(rec, dict):
-        print(f"[unparseable] {s}")
+        print(_printable(f"[unparseable] {s}"))
         return
     # As text: a null, list or object seq or op can't take a width.
     seq = str(rec.get("seq", "?"))
@@ -1165,7 +1173,7 @@ def _print_record_line(raw: bytes) -> None:
         result = {}
     ok = result.get("ok")
     marker = "ok" if ok else f"err:{result.get('error_code')}"
-    print(f"seq={seq:>5}  {op:<22}  {marker}")
+    print(_printable(f"seq={seq:>5}  {op:<22}  {marker}"))
 
 
 def _print_violations(path: Path, violations: list) -> int:
