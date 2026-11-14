@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -22,6 +23,7 @@ from autogpt_local_executor.protocol import (
     Platform,
     ProtocolVersionMismatch,
     Shell,
+    describe_parse_failure,
     dump_message,
     make_ack,
     make_error,
@@ -562,3 +564,73 @@ def test_a_version_component_must_be_ascii_digits(version: str) -> None:
     `1.-1` used to negotiate a negative minor."""
     with pytest.raises(ValueError):
         negotiate_version("1.1", version)
+
+
+# ── How a refused frame is described ─────────────────────────────────────────
+
+
+def _frame(kind: str, payload: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    return {"type": kind, "id": "f", "ts": 1.0, "version": VERSION, "payload": payload, **extra}
+
+
+def _refusal(frame: dict[str, Any]) -> str:
+    with pytest.raises(ValidationError) as raised:
+        parse_message(json.dumps(frame))
+    return describe_parse_failure(raised.value)
+
+
+_DRIVER = {"name": "cua-driver", "version": "0.38.0", "runtime": "direct"}
+
+
+@pytest.mark.parametrize(
+    ("frame", "told"),
+    [
+        (
+            _frame(
+                "COMPUTER_TOOL_RESULT",
+                {"tool": "click", "content": [{"type": "text", "text": 5}]},
+            ),
+            "1 validation error (COMPUTER_TOOL_RESULT.payload.content.0.text.text: string_type)",
+        ),
+        (
+            _frame(
+                "COMPUTER_TOOLS_RESPONSE",
+                {
+                    "driver": _DRIVER,
+                    "instructions": "",
+                    "tools": [
+                        {"name": "click", "description": "", "input_schema": {}, "hunter2": 1}
+                    ],
+                },
+            ),
+            "1 validation error (COMPUTER_TOOLS_RESPONSE.payload.tools.0.*: extra_forbidden)",
+        ),
+        (
+            _frame("ERROR", {"code": 5, "message": "m"}),
+            "2 validation errors (ERROR.payload.code.*: enum, ERROR.payload.code.*: string_type)",
+        ),
+    ],
+    ids=["content-block", "extra-field-in-a-list", "union-member"],
+)
+def test_a_refused_frame_is_described_by_the_locations_its_model_defines(
+    frame: dict[str, Any], told: str
+) -> None:
+    """A message type, a field of the model at that point, a list position
+    and a content block's type are the protocol's own, and are named. Any
+    other part of pydantic's location is `*`: the name of a field the model
+    doesn't have and a map's key, which the frame chooses, and pydantic's
+    names for a union's members."""
+    assert _refusal(frame) == told
+
+
+@pytest.mark.parametrize("kind", [kind.value for kind in MessageType])
+def test_a_refused_frames_description_holds_no_name_the_frame_chose(kind: str) -> None:
+    """pydantic's locations hold the names of the fields a frame shouldn't
+    have, which the frame chooses: text it meant to keep private, or a
+    newline that starts a line of the frame's own in the shim's log."""
+    chosen = "hunter2\nforged"
+
+    told = _refusal(_frame(kind, {chosen: 1}, **{chosen: 2}))
+
+    assert "hunter2" not in told
+    assert "\n" not in told

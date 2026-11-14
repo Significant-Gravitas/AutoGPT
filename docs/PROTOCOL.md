@@ -74,7 +74,10 @@ dropped the same way; no message comes close. So is one holding `NaN`,
 309 digits long): JSON has none of them, though some encoders write them.
 The shim's log says where such a frame failed and how
 (`COMPUTER_TOOL_CALL.payload.tool: missing`), never what it held, so the
-text a malformed computer tool call was to type stays out of it.
+text a malformed computer tool call was to type stays out of it. A part of
+that place the protocol doesn't define, such as the name of a field the
+message doesn't have or a key of a map like `env`, is written `*`
+(`PING.payload.*: extra_forbidden`), as the frame chose it.
 
 ### Frame-level `version`
 

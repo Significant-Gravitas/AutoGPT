@@ -393,8 +393,34 @@ def _call_frame(payload: dict[str, Any], kind: str = "COMPUTER_TOOL_CALL") -> st
             _DIGITS[:8],
         ),
         (b'{"type": "PING", "id": "\xff"}', "frame is not UTF-8", "0xff"),
+        (
+            _call_frame({"tool": "type_text", "arguments": {}, _TYPED: 1}),
+            "COMPUTER_TOOL_CALL.payload.*: extra_forbidden",
+            _TYPED_END,
+        ),
+        (
+            json.dumps(
+                {"type": "PING", "id": "p", "ts": 1.0, "version": VERSION, "payload": {}, _TYPED: 1}
+            ),
+            "PING.*: extra_forbidden",
+            _TYPED_END,
+        ),
+        (
+            _call_frame({"command": "ls", "env": {_TYPED: 1}}, "EXECUTE_COMMAND"),
+            "EXECUTE_COMMAND.payload.env.*: string_type",
+            _TYPED_END,
+        ),
     ],
-    ids=["arguments-not-an-object", "no-tool", "unknown-type", "huge-number", "not-utf8"],
+    ids=[
+        "arguments-not-an-object",
+        "no-tool",
+        "unknown-type",
+        "huge-number",
+        "not-utf8",
+        "extra-field",
+        "extra-envelope-field",
+        "map-key",
+    ],
 )
 async def test_a_frame_that_fails_to_parse_is_logged_without_what_it_held(
     daemon: ShimDaemon,
@@ -412,6 +438,23 @@ async def test_a_frame_that_fails_to_parse_is_logged_without_what_it_held(
 
     assert held not in caplog.text
     assert where in caplog.text
+
+
+async def test_a_refused_frame_cannot_add_a_line_to_the_log(
+    daemon: ShimDaemon, caplog: pytest.LogCaptureFixture
+) -> None:
+    """pydantic's location for a field the frame shouldn't have is the
+    field's name, which the frame chooses, and the log line carried it: a
+    newline in it began a line of the frame's own."""
+    forged = "\n2026-11-14 06:00:00 WARNING autogpt_local_executor.daemon: forged"
+    raw = _call_frame({"tool": "type_text", "arguments": {}, forged: 1})
+
+    with caplog.at_level(logging.DEBUG):
+        await daemon._on_frame(_FakeWebSocket([]), raw)
+
+    (logged,) = (r.getMessage() for r in caplog.records if "parse" in r.getMessage())
+    assert "\n" not in logged
+    assert "forged" not in caplog.text
 
 
 async def test_a_malformed_hello_ack_is_reported_without_what_it_held(daemon: ShimDaemon) -> None:
