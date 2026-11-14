@@ -20,6 +20,8 @@ import { InputExpanderModal } from "./TextInputExpanderModal";
 import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
+const INTEGER_LITERAL = /^[+-]?\d+$/;
+
 export default function TextWidget(props: WidgetProps) {
   const { schema, placeholder, registry } = props;
   const { size, uiType } = registry.formContext;
@@ -66,7 +68,11 @@ export default function TextWidget(props: WidgetProps) {
       handleChange: (v: string) => {
         if (v === "") return undefined;
         const n = Number(v);
-        return Number.isFinite(n) ? Math.trunc(n) : undefined;
+        if (INTEGER_LITERAL.test(v.trim()) && !Number.isSafeInteger(n)) {
+          return v.trim();
+        }
+        if (!Number.isFinite(n)) return undefined;
+        return Math.trunc(n);
       },
     },
   };

@@ -96,6 +96,20 @@ describe("isFormValid", () => {
     expect(isFormValid(schema, {})).toBe(false);
   });
 
+  it("accepts integer strings above 2^53 without changing the submitted value", () => {
+    const schema: RJSFSchema = {
+      type: "object",
+      required: ["count"],
+      properties: {
+        count: { type: "integer" },
+      },
+    };
+    const formData = { count: "9007199254740993" };
+
+    expect(isFormValid(schema, formData)).toBe(true);
+    expect(formData.count).toBe("9007199254740993");
+  });
+
   it("returns true for empty schema with empty data", () => {
     const schema: RJSFSchema = {
       type: "object",

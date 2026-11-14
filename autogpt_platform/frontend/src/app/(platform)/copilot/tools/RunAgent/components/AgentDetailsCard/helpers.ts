@@ -32,6 +32,31 @@ export function isFormValid(
   schema: RJSFSchema,
   formData: Record<string, unknown>,
 ): boolean {
-  const { errors } = customValidator.validateFormData(formData, schema);
+  const { errors } = customValidator.validateFormData(
+    validationFormData(schema, formData),
+    schema,
+  );
   return errors.length === 0;
+}
+
+function validationFormData(
+  schema: RJSFSchema,
+  formData: Record<string, unknown>,
+): Record<string, unknown> {
+  const data = { ...formData };
+  for (const [key, prop] of Object.entries(schema.properties ?? {})) {
+    const value = data[key];
+    if (
+      typeof value !== "string" ||
+      typeof prop !== "object" ||
+      prop === null
+    ) {
+      continue;
+    }
+    const type = (prop as { type?: string }).type;
+    if (type !== "integer" && type !== "number") continue;
+    const number = Number(value);
+    if (!Number.isNaN(number)) data[key] = number;
+  }
+  return data;
 }
