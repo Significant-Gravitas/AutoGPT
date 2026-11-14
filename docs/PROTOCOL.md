@@ -424,7 +424,10 @@ The shim drains stdout and stderr concurrently and retains at most
 shared budget, it continues draining to avoid subprocess deadlock and appends
 `[command output truncated]` to `stderr` inside the same byte budget, with
 `output_truncated: true`. The retained text is also capped below the 16 MiB
-transport ceiling to account for worst-case JSON escaping.
+transport ceiling to account for worst-case JSON escaping. A command is done
+when it exits: a program it started that still holds its stdout or stderr
+(a server started in the background, say) keeps running, and what it writes
+there is read for 2 more seconds, with `timed_out: false`.
 
 ---
 

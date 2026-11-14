@@ -2056,6 +2056,56 @@ async def test_a_program_a_finished_command_started_in_the_background_keeps_runn
     assert await _wait_until(survived.exists, timeout=60)
 
 
+@pytest.mark.asyncio
+async def test_a_command_that_exits_leaving_a_child_on_its_output_is_done_when_it_exits(
+    tmp_path: Path,
+) -> None:
+    """Process.wait() returns once the output pipes have closed as well as
+    the process exited, so a command that exited after starting a child
+    that kept its stdout and stderr (a server started in the background)
+    was waited for until its timeout, reported as timed out, and stopped
+    with the child. It is done once it exits now: its output is read for
+    _OUTPUT_DRAIN_SECONDS more, and the child keeps running, as one with
+    output of its own does."""
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config)
+    ready, go, survived = tmp_path / "ready", tmp_path / "go", tmp_path / "survived"
+    child = textwrap.dedent(
+        f"""
+        import os, time
+        open({str(ready)!r} + ".tmp", "w").close()
+        os.replace({str(ready)!r} + ".tmp", {str(ready)!r})
+        deadline = time.monotonic() + 60
+        while not os.path.exists({str(go)!r}) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        open({str(survived)!r}, "w").close()
+        """
+    )
+    # The command hands the child its stdout and stderr, and exits once the
+    # child runs.
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {child!r}], stdout=1, stderr=2)
+        while not os.path.exists({str(ready)!r}):
+            time.sleep(0.01)
+        print("started", flush=True)
+        """
+    )
+
+    response = await handler.handle(
+        _cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path), timeout_seconds=40)
+    )
+
+    assert isinstance(response, CommandResultMessage)
+    assert response.payload.timed_out is False
+    assert response.payload.exit_code == 0
+    assert "started" in response.payload.stdout
+    go.touch()
+    assert await _wait_until(survived.exists, timeout=60)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
 @pytest.mark.asyncio
 async def test_a_group_stop_cut_short_in_its_grace_period_kills_the_group(

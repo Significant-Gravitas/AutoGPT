@@ -310,6 +310,22 @@ async def _terminate_process_group(pgid: int) -> None:
     _signal_process_group(pgid, signal.SIGKILL)
 
 
+async def _exited(proc: asyncio.subprocess.Process) -> None:
+    """Return once `proc` has exited, whether or not its output pipes have
+    closed. Process.wait() returns only once they have too, and a child the
+    command started can keep them open (a server started in the
+    background, say), so a command that had exited was waited for until
+    its timeout, and stopped with the child. The exit is seen by its return
+    code, looked at every 50 ms while wait() hasn't returned."""
+    waiting = asyncio.ensure_future(proc.wait())
+    try:
+        while not waiting.done() and proc.returncode is None:
+            await asyncio.wait({waiting}, timeout=0.05)
+    finally:
+        if not waiting.done():
+            waiting.cancel()
+
+
 def _end_windows_command(
     proc: asyncio.subprocess.Process, job: windows_jobs.CommandJob | None
 ) -> None:
@@ -855,12 +871,16 @@ class CommandHandler:
         timed_out = False
         try:
             try:
-                await asyncio.wait_for(proc.wait(), timeout=timeout)
+                # The command's exit, not its pipes' closing (_exited): a
+                # command that has exited isn't timed out, and what it left
+                # running keeps running, as on any other exit. What is still
+                # in the pipes is read for _OUTPUT_DRAIN_SECONDS (below).
+                await asyncio.wait_for(_exited(proc), timeout=timeout)
             except TimeoutError:
                 timed_out = True
                 await self._terminate_tree(proc)
                 try:
-                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    await asyncio.wait_for(_exited(proc), timeout=2.0)
                 except TimeoutError:
                     pass
             try:
