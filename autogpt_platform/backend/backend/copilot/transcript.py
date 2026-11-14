@@ -1567,7 +1567,8 @@ async def _run_compression(
 ) -> CompressResult:
     """Run LLM-based compression with truncation fallback.
 
-    Uses the shared OpenAI client from ``get_openai_client()``.
+    Summarizes through OpenRouter (or the local endpoint under
+    ``CHAT_USE_LOCAL``), the endpoints that serve the copilot's models.
     If no client is configured or the LLM call fails, falls back to
     truncation-based compression which drops older messages without
     summarization.
@@ -1583,9 +1584,11 @@ async def _run_compression(
     30-second timeout to guard against slow tokenization on very large
     transcripts.
     """
-    client = get_openai_client()
+    # The default client is direct OpenAI whenever OPENAI_INTERNAL_API_KEY is
+    # set, and OpenAI refuses every ``anthropic/...`` id.
+    client = get_openai_client(prefer_openrouter=True)
     if client is None:
-        logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
+        logger.warning(f"{log_prefix} No OpenRouter key configured, using truncation")
         return await asyncio.wait_for(
             compress_context(
                 messages=messages, model=model, client=None, target_tokens=target_tokens

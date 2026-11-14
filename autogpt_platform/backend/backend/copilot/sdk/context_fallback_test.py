@@ -28,18 +28,27 @@ Compression unit tests
 | M | [2+ msgs]            | None          | target_tokens=None forwarded to _run_compression |
 | N | [2+ msgs]            | 30_000        | target_tokens=30_000 forwarded                |
 | O | [2+ msgs], run fails | None          | drops history, no stats                       |
+| P | [20 msgs], prod keys | 3_000         | summary made by OpenRouter, not OpenAI        |
 """
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import openai
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.compaction import CompactionStats
-from backend.copilot.sdk.service import _build_query_message, _compress_messages
+from backend.copilot.sdk.service import (
+    _build_query_message,
+    _compress_messages,
+    _compression_model,
+)
+from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult
 
 # ---------------------------------------------------------------------------
@@ -567,6 +576,71 @@ class TestCompressMessages:
         # filter_compaction_messages should not remove these plain messages
         filtered = filter_compaction_messages(msgs)
         assert len(filtered) == len(msgs)
+
+    @pytest.mark.asyncio
+    async def test_scenario_p_summary_is_made_by_an_endpoint_serving_the_model(
+        self,
+    ):
+        """Scenario P: prod sets both OPENAI_INTERNAL_API_KEY and
+        OPEN_ROUTER_API_KEY.  The summary must go to OpenRouter, because
+        api.openai.com refuses every ``anthropic/...`` id and the history is
+        then only truncated."""
+        calls: list[tuple[str, str]] = []
+
+        def endpoint(request: httpx.Request) -> httpx.Response:
+            model = json.loads(request.content)["model"]
+            calls.append((request.url.host, model))
+            if request.url.host == "api.openai.com":
+                # Prod's copilot executor got this body on 12 Nov.
+                error = {"message": "invalid model ID", "type": "invalid_request_error"}
+                return httpx.Response(400, json={"error": error})
+            message = {"role": "assistant", "content": "SUMMARY OF EARLIER TURNS"}
+            return httpx.Response(
+                200,
+                json={
+                    "id": "gen-1",
+                    "object": "chat.completion",
+                    "created": 0,
+                    "model": model,
+                    "choices": [
+                        {"index": 0, "finish_reason": "stop", "message": message}
+                    ],
+                },
+            )
+
+        real_client = openai.AsyncOpenAI
+        opened: list[httpx.AsyncClient] = []
+
+        def client_on_fake_endpoint(**kwargs) -> openai.AsyncOpenAI:
+            opened.append(httpx.AsyncClient(transport=httpx.MockTransport(endpoint)))
+            return real_client(**kwargs, http_client=opened[-1])
+
+        secrets = MagicMock(
+            openai_internal_api_key="sk-openai", open_router_api_key="sk-or"
+        )
+        msgs = _msgs(
+            *[
+                (("user", "assistant")[i % 2], f"turn {i} " + "detail " * 40)
+                for i in range(20)
+            ]
+        )
+        get_openai_client.cache_clear()
+        try:
+            with (
+                patch("backend.util.clients.settings", MagicMock(secrets=secrets)),
+                patch("openai.AsyncOpenAI", side_effect=client_on_fake_endpoint),
+            ):
+                result, compacted, _ = await _compress_messages(
+                    msgs, target_tokens=3_000
+                )
+        finally:
+            get_openai_client.cache_clear()
+            for http_client in opened:
+                await http_client.aclose()
+
+        assert calls == [("openrouter.ai", _compression_model())]
+        assert compacted is True
+        assert "SUMMARY OF EARLIER TURNS" in (result[0].content or "")
 
 
 # ---------------------------------------------------------------------------

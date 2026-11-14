@@ -844,7 +844,7 @@ class TestRunCompression:
     """Direct tests for ``_run_compression`` covering all 3 code paths.
 
     Paths:
-    (a) No OpenAI client configured → truncation fallback immediately.
+    (a) No OpenRouter client configured → truncation fallback immediately.
     (b) LLM success → returns LLM-compressed result.
     (c) LLM call raises → truncation fallback.
     """
