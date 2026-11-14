@@ -209,6 +209,55 @@ async def test_a_new_display_restarts_the_driver_off_the_budget(
     assert len(_records(fake_log, "call")) == driver.MAX_STARTS_PER_WINDOW + 2
 
 
+async def test_a_display_restart_cancelled_by_close_still_stops_the_old_driver(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A display-change restart stops the old driver before it starts the
+    new one, and close() cancels a start under way. A cancel landing in the
+    old driver's stop, in its grace period, ended the stop before the driver
+    was terminated: no longer the bridge's client, it ran on after close()
+    returned."""
+    monkeypatch.setenv("DISPLAY", ":0")
+    bridge = fake_bridge()
+    await bridge.call_tool("click", {"pid": 1}, timeout=10)
+    old = bridge._client
+    assert old is not None
+    close_old = old.close
+    stopping = asyncio.Event()
+    may_stop = asyncio.Event()
+
+    async def held_close(**kwargs: Any) -> None:
+        stopping.set()
+        await may_stop.wait()
+        await close_old(**kwargs)
+
+    monkeypatch.setattr(old, "close", held_close)
+    monkeypatch.setenv("DISPLAY", ":1")
+    call = asyncio.create_task(bridge.call_tool("click", {"pid": 1}, timeout=30))
+    try:
+        await asyncio.wait_for(stopping.wait(), timeout=30)
+        start = bridge._start
+        assert isinstance(start, asyncio.Task)
+        closing = asyncio.create_task(bridge.close())
+        for _ in range(600):
+            if start.cancelling():
+                break
+            await asyncio.sleep(0.05)
+        assert start.cancelling()
+        may_stop.set()
+        await asyncio.wait_for(closing, timeout=30)
+
+        assert old.alive is False
+        with pytest.raises(DriverUnavailable):
+            await call
+    finally:
+        may_stop.set()
+        if old.alive:
+            await close_old(now=True)
+        if not call.done():
+            call.cancel()
+
+
 async def test_a_cancelled_call_stops_the_driver(fake_log: Path, monkeypatch) -> None:
     monkeypatch.setenv("FAKE_CUA_SLOW_SECONDS", "2")
     bridge = fake_bridge()

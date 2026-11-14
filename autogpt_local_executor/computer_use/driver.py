@@ -640,10 +640,32 @@ class CuaDriverBridge:
         return path
 
     async def _stop_client(self) -> None:
+        """Stop the bridge's driver, if it has one, and wait until it is gone.
+
+        The stop is a task of its own, which a cancel doesn't cut short, and
+        one close() waits for (_stops). A display-change restart that
+        close() cancelled while the old driver stopped ended the stop in its
+        grace period, before the driver was terminated, and the driver, no
+        longer the bridge's client, ran on after close(). A caller cancelled
+        meanwhile still waits for the stop, then lets the cancel go on."""
         client, self._client = self._client, None
-        if client is not None:
-            with contextlib.suppress(Exception):
-                await client.close()
+        if client is None:
+            return
+        stopping = asyncio.ensure_future(client.close())
+        stopping.add_done_callback(_retrieved)
+        self._stops.add(stopping)
+        stopping.add_done_callback(self._stops.discard)
+        cancelled = False
+        while not stopping.done():
+            try:
+                await asyncio.shield(stopping)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception:
+                # A driver whose stop failed is let go of all the same.
+                pass
+        if cancelled:
+            raise asyncio.CancelledError
 
     async def _stop_unfinished(self, client: StdioMcpClient) -> None:
         """Stop a driver still running a call nobody waits for. Stopping it
@@ -660,8 +682,9 @@ class CuaDriverBridge:
 
 
 def _retrieved(task: asyncio.Future[Any]) -> None:
-    """Mark a start's failure seen, or a look's (find_binary): the callers
-    that waited for it may all have given up, and the next starts again."""
+    """Mark a start's failure seen, a look's (find_binary) or a stop's: the
+    callers that waited for it may all have given up, and the next starts
+    again."""
     if not task.cancelled():
         task.exception()
 
