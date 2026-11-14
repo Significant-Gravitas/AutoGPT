@@ -345,6 +345,38 @@ def test_the_sessions_xauthority_replaces_one_the_service_started_with() -> None
     }
 
 
+def test_a_session_without_an_xauthority_clears_the_one_the_service_started_with() -> None:
+    """A session that opens its display without an XAUTHORITY, for Xlib to
+    read ~/.Xauthority, left the one the service started with in place (one
+    an earlier session left in the manager, say), and Xlib read that file
+    instead, which doesn't open this display. While such a session lasts
+    there is none, after a session that had one too, and the service's own
+    comes back once it ends."""
+    environ = {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "XAUTHORITY": "/run/user/1000/xauth_old"}
+    manager = _Manager(DISPLAY=":0")
+    clock = _Clock()
+    follower = _follower(environ, manager, clock)
+
+    assert follower.follow() is True
+    assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "DISPLAY": ":0"}
+
+    manager.env = {"DISPLAY": ":1", "XAUTHORITY": "/run/user/1000/xauth_new"}
+    clock.now += 11
+    assert follower.follow() is True
+    manager.env = {"DISPLAY": ":2"}
+    clock.now += 11
+    assert follower.follow() is True
+    assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd", "DISPLAY": ":2"}
+
+    manager.env = {}
+    clock.now += 11
+    assert follower.follow() is True
+    assert environ == {
+        "AUTOGPT_SHIM_SUPERVISOR": "systemd",
+        "XAUTHORITY": "/run/user/1000/xauth_old",
+    }
+
+
 def test_the_manager_is_read_at_most_every_ten_seconds() -> None:
     manager = _Manager(DISPLAY=":0")
     clock = _Clock()
