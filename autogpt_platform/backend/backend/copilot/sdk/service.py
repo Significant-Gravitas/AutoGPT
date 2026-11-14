@@ -7276,24 +7276,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             message=message,
             is_user_message=is_user_message,
         ):
-            # Extract last assistant message from THIS TURN only (not all
-            # session history) to avoid distilling stale content from prior
-            # turns when the current turn errors before producing output.
-            _this_turn_msgs = (
-                session.messages[pre_attempt_msg_count:] if session else []
-            )
-            _assistant_msgs = [
-                m.content or "" for m in _this_turn_msgs if m.role == "assistant"
-            ]
-            _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
-
             _ingest_task = asyncio.create_task(
                 _enqueue_graphiti_turn(
                     user_id,
                     session,
                     session_id,
                     message,
-                    _last_assistant,
                 )
             )
             _background_tasks.add(_ingest_task)
@@ -7622,13 +7610,11 @@ async def _enqueue_graphiti_turn(
     session: ChatSession,
     session_id: str,
     message: str,
-    assistant_msg: str,
 ) -> None:
     await enqueue_conversation_turn(
         user_id,
         session_id,
         message,
-        assistant_msg=assistant_msg,
         expert_id=session.expert_id,
         bridge_origin=session.metadata.source_platform is not None,
     )

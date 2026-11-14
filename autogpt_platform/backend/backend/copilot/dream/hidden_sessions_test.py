@@ -81,11 +81,9 @@ class TestEpisodeSessionIds:
             patch.object(ingest, "_enqueue_payload", enqueue),
             patch.object(ingest, "resolve_user_name", AsyncMock(return_value="Al")),
         ):
-            await ingest.enqueue_conversation_turn(
-                "user-1", "sess-42", "hello", "The analysis shows " + "x" * 200
-            )
+            await ingest.enqueue_conversation_turn("user-1", "sess-42", "hello")
 
-        assert len(payloads) == 2, "a turn and its derived finding"
+        assert len(payloads) == 1, "only the user's turn"
         for payload in payloads:
             found = hidden_sessions.episode_session_ids(
                 payload["name"], payload["source_description"], payload["episode_body"]
