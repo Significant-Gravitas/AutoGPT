@@ -19,6 +19,7 @@ from backend.api.external import auth_rate_limit as rate_limit
 from backend.api.external import middleware
 from backend.data.auth import api_key
 from backend.data.auth.base import APIAuthorizationInfo
+from backend.util.trusted_proxies import uvicorn_forwarded_allow_ips
 
 
 @pytest.fixture(params=["api-key", "bearer"])
@@ -108,6 +109,7 @@ def test_raw_forwarded_header_is_ignored():
         ("192.0.2.10", "198.51.100.9", "192.0.2.10"),
         ("127.0.0.1", "198.51.100.9", "198.51.100.9"),
         ("127.0.0.1", "203.0.113.5, 198.51.100.9", "198.51.100.9"),
+        ("10.0.0.7", "203.0.113.5, 198.51.100.9, 10.0.0.8", "198.51.100.9"),
     ],
 )
 async def test_uvicorn_trust_boundary(peer, forwarded, expected):
@@ -116,7 +118,10 @@ async def test_uvicorn_trust_boundary(peer, forwarded, expected):
     async def app(scope, receive, send):
         observed.append(rate_limit.client_ip_from_request(Request(scope)))
 
-    proxy = ProxyHeadersMiddleware(app, trusted_hosts=["127.0.0.1"])
+    # The list the REST server hands uvicorn, from TRUSTED_PROXIES.
+    trusted = uvicorn_forwarded_allow_ips("127.0.0.1,10.0.0.0/8")
+    assert trusted is not None
+    proxy = ProxyHeadersMiddleware(app, trusted_hosts=trusted)
     scope = HTTPScope(
         type="http",
         asgi={"version": "3.0", "spec_version": "2.3"},

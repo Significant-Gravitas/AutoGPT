@@ -23,6 +23,7 @@ endpoint's own auth dependency handles 401, and the rate limiter fails open.
 """
 
 import contextlib
+import functools
 import hashlib
 import logging
 from typing import Optional
@@ -38,6 +39,7 @@ from backend.api.external.middleware import resolve_request_auth
 from backend.api.utils.rate_limit import RateLimiter, RateLimitState
 from backend.data.auth.oauth import is_access_token
 from backend.util.settings import Settings
+from backend.util.trusted_proxies import client_address, forwarded_entries
 
 from .errors import error_response
 
@@ -190,27 +192,32 @@ def app_path(scope: Scope) -> str:
 
 # Documented in docs/platform/client-ip.md: update it with any change here.
 def client_ip(scope: Scope) -> str:
-    """The caller's address, trusting only the proxies in front of us.
-
-    Our proxies append `trusted_proxy_count` entries, so the client is that
-    many from the right; anything further left the caller wrote itself and
-    could use to spread its requests over an unlimited number of buckets.
-    It counts entries, not proxies: Google's load balancer appends two.
-    """
+    """The caller's address, named only by the proxies TRUSTED_PROXIES lists."""
     peer = (scope.get("client") or ("unknown",))[0]
+    forwarded = Headers(scope=scope).getlist("x-forwarded-for")
+    if proxies := settings.config.trusted_proxies:
+        return client_address(peer, forwarded, proxies)
+    return _client_by_hop_count(peer, forwarded_entries(forwarded))
+
+
+def _client_by_hop_count(peer: str, forwarded: list[str]) -> str:
+    """The deprecated reading: our proxies append `trusted_proxy_count` entries,
+    so the client is that many from the right. Google's load balancer appends two."""
     hops = settings.config.trusted_proxy_count
     if hops < 1:
         return peer
-
-    # Every line, in order, as one list: a repeated header means the same as
-    # its lines joined, and a proxy may add a line rather than extend one.
-    forwarded = [
-        value.strip()
-        for line in Headers(scope=scope).getlist("x-forwarded-for")
-        for value in line.split(",")
-        if value.strip()
-    ]
+    # The default is Cloud's chain; only an operator's own value is theirs to replace.
+    if "trusted_proxy_count" in settings.config.model_fields_set:
+        _warn_hop_count_deprecated()
     return forwarded[-hops] if len(forwarded) >= hops else peer
+
+
+@functools.cache
+def _warn_hop_count_deprecated() -> None:
+    logger.warning(
+        "The External API reads the client IP by TRUSTED_PROXY_COUNT, which is "
+        "deprecated; set TRUSTED_PROXIES to the proxies in front of the backend"
+    )
 
 
 def _with_rate_limit_headers(send: Send, state: Optional[RateLimitState]) -> Send:

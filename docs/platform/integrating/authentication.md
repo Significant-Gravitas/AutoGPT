@@ -88,13 +88,13 @@ have independent budgets. Excess attempts receive `429` with `Retry-After`.
 v2 has its own [pre-verification limits](api-conventions.md#rate-limits).
 
 For self-hosting, this limit applies automatically when Redis is available and
-the server has a valid client address. Set Uvicorn's `FORWARDED_ALLOW_IPS` to your
-own reverse proxies' addresses, never `*`, and restrict direct backend access.
-Bundled Nginx passes its connection's remote address to Uvicorn over loopback.
-If another proxy sits in front of Nginx, configure trusted client-address
-restoration there; otherwise its callers share a budget for each key prefix.
-Verify separate caller budgets and resistance to forged forwarding headers
-through the complete deployed chain.
+the server has a valid client address. Set `TRUSTED_PROXIES` to your own reverse
+proxies' addresses and restrict direct backend access. In the single-container
+image, set `TRUSTED_PROXIES` on the container to the proxy in front of it;
+otherwise that proxy's callers share a budget for each key prefix.
+[Client IP Addresses](../client-ip.md) describes the setting. Verify separate
+caller budgets and resistance to forged forwarding headers through the complete
+deployed chain.
 
 ## Check what a key can do
 

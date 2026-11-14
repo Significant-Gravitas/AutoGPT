@@ -14,6 +14,7 @@ from backend.api.external.fastapi_app import external_api
 from backend.api.external.v1.app import v1_app
 from backend.api.external.v2.app import v2_app
 from backend.api.session_auth import require_active_auth_session
+from backend.api.test_helpers import override_config
 
 
 @pytest.mark.parametrize("application", [rest_api.app, external_api, v1_app, v2_app])
@@ -42,6 +43,19 @@ def test_metrics_get_a_listener_of_their_own_only_when_enabled(
         config.agent_api_metrics_port, addr=config.pyro_host
     )
     assert config.agent_api_metrics_port != config.agent_api_port
+
+
+def test_uvicorn_trusts_x_forwarded_for_from_trusted_proxies(
+    mocker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ENABLE_METRICS", "false")
+    monkeypatch.setenv("PYTHONASYNCIODEBUG", "")
+    serve_api = mocker.patch("backend.api.rest_api.uvicorn.run")
+
+    with override_config(rest_api.settings, "trusted_proxies", "172.18.0.0/16"):
+        rest_api.AgentServer().run()
+
+    assert serve_api.call_args.kwargs["forwarded_allow_ips"] == "172.18.0.0/16"
 
 
 def test_no_internal_route_takes_a_versioned_api_path() -> None:

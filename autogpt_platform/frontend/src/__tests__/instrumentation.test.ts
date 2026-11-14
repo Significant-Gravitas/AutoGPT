@@ -6,6 +6,7 @@ vi.mock("../../sentry.edge.config", () => ({}));
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   vi.resetModules();
 });
 
@@ -27,6 +28,21 @@ describe("register", () => {
     vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1, 192.168.0.0/16");
 
     await expect(register()).resolves.toBeUndefined();
+  });
+
+  it("warns that TRUST_X_FORWARDED_FOR is ignored when no proxies are listed", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.stubEnv("TRUSTED_PROXIES", "");
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await register();
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "TRUST_X_FORWARDED_FOR is deprecated and ignored",
+      ),
+    );
   });
 
   it("starts with no proxies listed", async () => {

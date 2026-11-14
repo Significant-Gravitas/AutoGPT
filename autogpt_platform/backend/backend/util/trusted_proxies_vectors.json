@@ -1,0 +1,18 @@
+{
+  "accepted": [
+    { "value": "", "networks": [] },
+    { "value": " , ,", "networks": [] },
+    { "value": "10.0.0.1", "networks": ["10.0.0.1/32"] },
+    { "value": " 10.0.0.0/8 ,192.168.1.5 ", "networks": ["10.0.0.0/8", "192.168.1.5/32"] },
+    { "value": "10.1.2.3/8", "networks": ["10.0.0.0/8"] },
+    { "value": "2001:db8::1", "networks": ["2001:db8::1/128"] },
+    { "value": "2001:db8::/32", "networks": ["2001:db8::/32"] },
+    { "value": "::ffff:10.0.0.0/104", "networks": ["::ffff:10.0.0.0/104"] }
+  ],
+  "rejected": [
+    { "value": "10.0.0.0/33", "unparseable": "10.0.0.0/33" },
+    { "value": "nginx-proxy", "unparseable": "nginx-proxy" },
+    { "value": "10.0.0.1, [::1]", "unparseable": "[::1]" },
+    { "value": "10.0.0.1:8080", "unparseable": "10.0.0.1:8080" }
+  ]
+}

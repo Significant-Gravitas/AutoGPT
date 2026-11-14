@@ -51,6 +51,8 @@ describe("getClientIPToken", () => {
   });
 
   it("signs nothing for a chain no listed proxy ends", async () => {
+    vi.stubEnv("TRUSTED_PROXIES", "");
+
     expect(
       await getClientIPToken(forwardedFor("203.0.113.12, 10.0.0.1")),
     ).toBeNull();
@@ -80,19 +82,25 @@ describe("getClientIPToken", () => {
   it("signs an address only where the proxy in front vouches for it", async () => {
     vi.stubEnv("VERCEL", "");
     vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
-    vi.stubEnv("TRUST_X_FORWARDED_FOR", "");
+    vi.stubEnv("TRUSTED_PROXIES", "");
 
     expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
     expect(mintServiceTokenMock).not.toHaveBeenCalled();
 
-    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
-    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).not.toBeNull();
-
-    vi.stubEnv("TRUST_X_FORWARDED_FOR", "");
     vi.stubEnv("TRUSTED_PROXIES", "10.0.0.1");
     expect(
       await getClientIPToken(forwardedFor("203.0.113.21, 10.0.0.1")),
     ).not.toBeNull();
+  });
+
+  it("signs nothing on TRUST_X_FORWARDED_FOR alone, which no longer vouches for the header", async () => {
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("TRUSTED_PROXIES", "");
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
+
+    expect(await getClientIPToken(forwardedFor("198.51.100.8"))).toBeNull();
+    expect(mintServiceTokenMock).not.toHaveBeenCalled();
   });
 
   it("answers null when signing fails", async () => {
