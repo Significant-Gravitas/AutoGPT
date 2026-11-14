@@ -8,6 +8,7 @@ from prisma.enums import ContentType
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import kickoff as experts_kickoff
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
@@ -784,6 +785,8 @@ class DatabaseManager(AppService):
     get_template = _(experts_db.get_template)
     with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
+    # A hire made in Otto's chat has no page to send its kickoff.
+    start_expert_kickoff = _(experts_kickoff.start_expert_kickoff)
     expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
@@ -1375,6 +1378,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_template = d.get_template
     with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
+    start_expert_kickoff = d.start_expert_kickoff
     expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts

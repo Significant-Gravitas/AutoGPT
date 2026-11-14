@@ -9,6 +9,25 @@ if TYPE_CHECKING:
 
 EXPERT_KICKOFF_KIND = "expert_kickoff"
 
+# The kickoff the server sends for a hire no browser follows
+# (``experts/kickoff.py``). Word for word the frontend's KICKOFF_PROMPT
+# (``copilot/expertKickoff.ts``), so a hire greets the same way whichever side
+# sends it; change both together. It stays ask-first: one click on Hire once ran
+# a Gmail send (SECRT-2622).
+EXPERT_KICKOFF_PROMPT = (
+    "You were just hired. Call expert_onboarding once, and nothing else, this "
+    "turn: a one-sentence greeting introducing yourself in your voice, with "
+    "no dashes, then "
+    "2-3 short questions the user can answer by tapping. Every question and "
+    "every option must come from your own role and area of expertise and from "
+    "the workflows installed on you — ask which outcome in your area to start "
+    "with, and which of the services your work depends on you should be "
+    "connected to, naming the real providers rather than asking in the "
+    "abstract. Do not ask about work outside your role, whatever else you "
+    "know about the user or their team. Do not run a workflow, create a "
+    "schedule, or start any other work before the answers come back."
+)
+
 _MESSAGE_NAMESPACE = uuid.UUID("d0890fe0-26eb-5ee4-91b4-42a930ce29ac")
 _CLIENT_MESSAGE_NAMESPACE = uuid.UUID("d70473da-722b-55cb-963f-4729e64d7b06")
 
