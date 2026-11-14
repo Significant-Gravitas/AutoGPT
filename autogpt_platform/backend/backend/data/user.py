@@ -1012,8 +1012,15 @@ async def set_user_name_if_unset(user_id: str, name: str) -> None:
         where={"id": user_id, "OR": [{"name": None}, {"name": ""}]},
         data={"name": name},
     )
-    if updated:
+    if not updated:
+        return
+    # Its caller saves more after this; a cache blip must not lose that save.
+    try:
         await _invalidate_user_caches(user_id, await get_user_email_by_id(user_id))
+    except Exception as e:
+        logger.warning(
+            f"Could not clear the cached user {user_id} after naming it: {e}"
+        )
 
 
 async def update_user_timezone(user_id: str, timezone: str) -> User:

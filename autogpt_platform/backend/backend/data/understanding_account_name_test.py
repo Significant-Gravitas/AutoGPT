@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 from prisma.models import CoPilotUnderstanding, User
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.copilot.graphiti.ingest import resolve_user_name
 from backend.data.redis_client import get_redis_async
@@ -92,6 +93,33 @@ async def test_a_name_given_to_the_understanding_fills_only_an_empty_account_nam
         ] * 3
     finally:
         await _remove([named, no_name, empty_name])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failed_cache_clear_after_naming_the_account_keeps_the_save(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    user_id = await _account(None)
+
+    def unreachable(*args, **kwargs):
+        raise RedisConnectionError("Redis is unreachable")
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(get_user_by_id, "cache_delete", unreachable)
+            await upsert_business_understanding(
+                user_id, BusinessUnderstandingInput(user_name="Rob", industry="Retail")
+            )
+
+        user = await User.prisma().find_unique(where={"id": user_id})
+        row = await CoPilotUnderstanding.prisma().find_unique(where={"userId": user_id})
+        assert user is not None and user.name == "Rob"
+        assert row is not None and row.data == {
+            "name": "Rob",
+            "business": {"industry": "Retail", "version": 1},
+        }
+    finally:
+        await _remove([user_id])
 
 
 @pytest.mark.asyncio(loop_scope="session")
