@@ -704,6 +704,60 @@ async def test_a_new_plan_ends_the_failed_plan_and_voids_its_bill():
 
 
 @pytest.mark.asyncio
+async def test_a_bank_debit_settling_after_the_new_plan_started_is_reported():
+    """The customer paid the old bill by bank debit, then chose a new plan
+    while the debit was processing. Cancelled at once, the old plan would
+    take that payment days later with nobody told to refund it. Left to the
+    payment, it is revived by it, then ended, and a person is told."""
+    with World() as world:
+        _left_for_a_new_plan(world, "past_due")
+        world.stripe.add_invoice("in_old", "sub_old", payment_intent="pi_debit")
+        world.stripe.payment_intents["pi_debit"] = {
+            "id": "pi_debit",
+            "status": "processing",
+        }
+        await world.subscription_updated("sub_new")
+
+        assert world.tier == SubscriptionTier.MAX
+        assert world.stripe.cancelled == []
+        assert world.stripe.voided == []
+        assert world.alerts == []
+
+        world.stripe.payment_intents["pi_debit"]["status"] = "succeeded"
+        world.stripe.card_pays("in_old", "pi_debit")
+        await world.subscription_updated("sub_old")
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.subscriptions["sub_new"]["status"] == "active"
+    assert len(world.alerts) == 1
+    assert "sub_old" in world.alerts[0] and "manual refund" in world.alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_a_bank_debit_failing_after_the_new_plan_started_ends_the_old_plan():
+    """The same debit fails instead: the failure ends the replaced plan and
+    voids its bill, and there is nothing to refund."""
+    with World() as world:
+        _left_for_a_new_plan(world, "past_due")
+        world.stripe.add_invoice("in_old", "sub_old", payment_intent="pi_debit")
+        world.stripe.payment_intents["pi_debit"] = {
+            "id": "pi_debit",
+            "status": "processing",
+        }
+        await world.subscription_updated("sub_new")
+        assert world.stripe.cancelled == []
+
+        world.stripe.payment_intents["pi_debit"]["status"] = "requires_payment_method"
+        await handle_subscription_payment_failure(world.stripe.view("in_old"))
+
+    assert world.tier == SubscriptionTier.MAX
+    assert world.stripe.cancelled == ["sub_old"]
+    assert world.stripe.voided == ["in_old"]
+    assert world.alerts == []
+
+
+@pytest.mark.asyncio
 async def test_a_failed_plan_revived_during_the_checkout_is_ended_and_reported():
     """Stripe's retry paid the old bill while the customer was in Checkout
     for the new plan. The old plan is cancelled as a duplicate, and the

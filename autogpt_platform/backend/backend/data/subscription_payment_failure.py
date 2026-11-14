@@ -327,10 +327,15 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
     Checkout, and nothing else ends the old one: Stripe keeps retrying its
     bill, and a retry that succeeds charges for a plan the customer left.
     So it is cancelled and its unpaid bills voided now, as a failed retry
-    would. An old plan a retry already revived during the Checkout is
-    cancelled by the stale-plan cleanup with the other active plans; its
-    payment needs a refund, so that raises an alert. A failure here raises
-    an alert too, since nothing retries this cleanup.
+    would. One whose bill has a payment still processing, such as a bank
+    debit, is left to that payment's events: settled, it revives the plan
+    and ``end_revived_plan`` ends it and raises the refund alert; failed, the
+    failure handler ends it as replaced. Cancelled now, the payment would
+    settle later on a cancelled plan, and nothing would ask for its refund.
+    An old plan a retry already revived during the Checkout is cancelled by
+    the stale-plan cleanup with the other active plans; its payment needs a
+    refund, so that raises an alert. A failure here raises an alert too,
+    since nothing retries this cleanup.
     """
     try:
         new = dict(await stripe_call(stripe.Subscription.retrieve_async, new_sub_id))
@@ -347,7 +352,13 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
                     new.get("created") or 0
                 ):
                     continue
-                if status != "active":
+                if status != "active" and await _payment_processing(old["id"]):
+                    logger.info(
+                        f"Subscription {old['id']} of customer {customer_id} was"
+                        f" replaced by {new_sub_id} while a payment of its bill"
+                        " is processing; leaving it to that payment's events"
+                    )
+                elif status != "active":
                     logger.info(
                         f"Subscription {old['id']} of customer {customer_id} was"
                         f" replaced by {new_sub_id} while unpaid; cancelling it"
@@ -374,6 +385,19 @@ async def end_plans_replaced_by(customer_id: str, new_sub_id: str) -> None:
             f" of customer {customer_id} replaced; cancel them and void their"
             " open bills by hand"
         )
+
+
+async def _payment_processing(sub_id: str) -> bool:
+    """Whether a payment of any of the subscription's unpaid bills is still
+    settling."""
+    for status in _PAYABLE_INVOICE_STATUSES:
+        invoices = await stripe_call(
+            stripe.Invoice.list_async, subscription=sub_id, status=status, limit=100
+        )
+        async for invoice in stripe_list_items(invoices):
+            if await payment_in_progress(dict(invoice)):
+                return True
+    return False
 
 
 async def _revived_during_checkout(sub_id: str, new: dict) -> bool:
