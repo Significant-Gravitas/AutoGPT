@@ -380,6 +380,50 @@ async def test_closing_the_client_closes_the_drivers_stdin(fake_log: Path) -> No
     assert _records(fake_log, "stdin_closed")
 
 
+@pytest.mark.parametrize("code", ['"-32602x"', '{"code": -32602}', "[-32602]", "NaN", "Infinity"])
+async def test_an_error_whose_code_isnt_an_integer_fails_only_its_own_request(
+    fake_log: Path, monkeypatch, code: str
+) -> None:
+    """int() of a JSON-RPC error's code raised for a string, an object, a
+    list, NaN or Infinity, in the task that reads the driver's answers: it
+    ended, and every request then failed as if the driver had exited."""
+    from autogpt_local_executor.computer_use.mcp_client import McpError
+
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR", "get_screen_size")
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR_CODE", code)
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=30)
+    try:
+        with pytest.raises(McpError) as raised:
+            await client.call_tool("get_screen_size", {}, timeout=30)
+        later = await client.call_tool("click", {"x": 1, "y": 2}, timeout=30)
+    finally:
+        await client.close()
+
+    assert raised.value.code == mcp_client.INTERNAL_ERROR
+    assert raised.value.message.startswith("get_screen_size broke")
+    # The reader went on: the driver's next answer came in.
+    assert later["structuredContent"] == {"arguments": {"x": 1, "y": 2}}
+
+
+async def test_a_line_nested_past_pythons_limit_is_passed_over(fake_log: Path, monkeypatch) -> None:
+    """json.loads raises RecursionError, not ValueError, for a line nested
+    past Python's limit: the task that reads the driver's answers ended, and
+    every request then failed as if the driver had exited. It's passed over
+    like any line that isn't JSON."""
+    monkeypatch.setenv("FAKE_CUA_NESTED_LINE", "click")
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=30)
+    try:
+        answer = await client.call_tool("click", {"x": 1, "y": 2}, timeout=30)
+        alive = client.alive
+    finally:
+        await client.close()
+
+    assert answer["structuredContent"] == {"arguments": {"x": 1, "y": 2}}
+    assert alive
+
+
 # ── Bridge ───────────────────────────────────────────────────────────────
 
 

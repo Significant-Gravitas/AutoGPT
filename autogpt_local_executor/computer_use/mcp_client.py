@@ -330,9 +330,12 @@ class StdioMcpClient:
             )
 
     async def _dispatch(self, line: bytes) -> None:
+        """Hand one line from the driver on. Nothing in a line may raise
+        here: it would end _read_stdout, and every request with it, as if
+        the driver had exited."""
         try:
             message = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):  # RecursionError: nested past Python's limit
             logger.debug("cua-driver wrote a non-JSON line: %r", line[:200])
             return
         if not isinstance(message, dict):
@@ -345,13 +348,7 @@ class StdioMcpClient:
                 return
             error = message.get("error")
             if isinstance(error, dict):
-                future.set_exception(
-                    McpError(
-                        int(error.get("code") or 0),
-                        str(error.get("message") or "error"),
-                        error.get("data"),
-                    )
-                )
+                future.set_exception(_error_from(error))
             else:
                 result = message.get("result")
                 future.set_result(result if isinstance(result, dict) else {})
@@ -398,6 +395,19 @@ class StdioMcpClient:
         for future in self._pending.values():
             if not future.done():
                 future.set_exception(error)
+
+
+def _error_from(error: dict[str, Any]) -> McpError:
+    """The McpError a JSON-RPC error answer stands for. Its code is an
+    integer; one that isn't (a string, an object, NaN) makes it a protocol
+    error, of this request alone: int() of it raised in the reader."""
+    code = error.get("code")
+    message = str(error.get("message") or "error")
+    if isinstance(code, int) and not isinstance(code, bool):
+        return McpError(code, message, error.get("data"))
+    return McpError(
+        INTERNAL_ERROR, f"{message} (its error code isn't an integer)", error.get("data")
+    )
 
 
 __all__ = [
