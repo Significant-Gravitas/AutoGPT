@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
-import {
-  CheckIcon,
-  ClockIcon,
-  RocketLaunchIcon,
-  type Icon as PhosphorIcon,
-} from "@phosphor-icons/react";
-
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
+import {
+  Clock01Icon,
+  Rocket01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 type StepState = "done" | "current" | "upcoming";
 
@@ -16,7 +16,7 @@ interface Step {
   description: string;
   note?: string;
   state: StepState;
-  Icon: PhosphorIcon;
+  Icon: IconSvgElement;
 }
 
 const STEPS: Step[] = [
@@ -24,29 +24,30 @@ const STEPS: Step[] = [
     title: "Submitted for review",
     description: "Your listing is queued in the marketplace review pipeline.",
     state: "done",
-    Icon: CheckIcon,
+    Icon: Tick02Icon,
   },
   {
     title: "In review",
     description:
-      "Our team checks the details, media, and safety of your agent.",
+      "Our team checks the details, media, and safety of your workflow.",
     note: "Typically reviewed within 2–3 days.",
     state: "current",
-    Icon: ClockIcon,
+    Icon: Clock01Icon,
   },
   {
     title: "Goes live",
     description:
       "You'll get an email once it's approved. Rejected listings come back with feedback.",
     state: "upcoming",
-    Icon: RocketLaunchIcon,
+    Icon: Rocket01Icon,
   },
 ];
 
 const NODE_CLASS: Record<StepState, string> = {
-  done: "bg-emerald-500 text-white",
-  current: "bg-amber-50 text-amber-700 ring-2 ring-amber-300",
-  upcoming: "bg-zinc-100 text-zinc-400",
+  done: "bg-success text-action-foreground",
+  current:
+    "bg-warning-surface text-warning-foreground ring-2 ring-warning-border",
+  upcoming: "bg-surface-hover text-foreground-subtle",
 };
 
 interface Props {
@@ -61,13 +62,12 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
       transition={{ duration: 0.24, ease: "easeOut", delay: 0.24 }}
       className="mt-6 flex w-full max-w-md flex-col gap-3 px-2"
     >
-      <Text variant="body-medium" as="span" className="text-textBlack">
+      <Text variant="body-medium" as="span">
         What happens next
       </Text>
       <ol className="flex flex-col">
         {STEPS.map((step, index) => {
           const isLast = index === STEPS.length - 1;
-          const StepIcon = step.Icon;
           return (
             <li key={step.title} className="flex gap-3">
               <div className="flex flex-col items-center">
@@ -77,13 +77,15 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                     NODE_CLASS[step.state],
                   )}
                 >
-                  <StepIcon size={14} weight="bold" />
+                  <Icon icon={step.Icon} size={14} />
                 </span>
                 {!isLast ? (
                   <span
                     className={cn(
                       "mt-1 min-h-[18px] w-px flex-1",
-                      step.state === "done" ? "bg-emerald-300" : "bg-zinc-200",
+                      step.state === "done"
+                        ? "bg-success/60"
+                        : "bg-surface-active",
                     )}
                   />
                 ) : null}
@@ -92,26 +94,18 @@ export function ReviewStepper({ shouldReduceMotion }: Props) {
                 <Text
                   variant="small-medium"
                   as="span"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-textBlack"
-                  }
+                  tone={step.state === "upcoming" ? "subtle" : "base"}
                 >
                   {step.title}
                 </Text>
                 <Text
                   variant="small"
-                  className={
-                    step.state === "upcoming"
-                      ? "text-zinc-400"
-                      : "text-zinc-500"
-                  }
+                  tone={step.state === "upcoming" ? "subtle" : "muted"}
                 >
                   {step.description}
                 </Text>
                 {step.note ? (
-                  <Text variant="small" className="mt-1 text-amber-700">
+                  <Text variant="small" tone="warning" className="mt-1">
                     {step.note}
                   </Text>
                 ) : null}

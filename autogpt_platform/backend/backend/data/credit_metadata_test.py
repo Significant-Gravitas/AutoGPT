@@ -24,7 +24,7 @@ from backend.util.json import SafeJson
 
 
 @pytest.fixture
-async def setup_test_user():
+async def setup_test_user(server):
     """Setup test user and cleanup after test."""
     user_id = DEFAULT_USER_ID
 
@@ -176,7 +176,7 @@ async def test_top_up_intent_attaches_datafast_metadata():
     mock_session = MagicMock()
     mock_session.id = "cs_test_topup"
     mock_session.url = "https://checkout.stripe.com/c/cs_test_topup"
-    create_mock = MagicMock(return_value=mock_session)
+    create_mock = AsyncMock(return_value=mock_session)
     credit_system = UserCredit()
     with (
         patch(
@@ -190,7 +190,7 @@ async def test_top_up_intent_attaches_datafast_metadata():
             return_value=None,
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
@@ -212,10 +212,50 @@ async def test_top_up_intent_attaches_datafast_metadata():
 async def test_create_subscription_checkout_attaches_datafast_metadata():
     """create_subscription_checkout threads DataFast IDs into both the session
     metadata and the subscription_data metadata while keeping user_id."""
+    url, kwargs = await _create_subscription_checkout(
+        "https://app.example.com/success",
+        datafast_visitor_id="vis_1",
+        datafast_session_id="ses_1",
+    )
+
+    assert url == "https://checkout.stripe.com/pay/cs_test_sub"
+    assert kwargs["metadata"] == {
+        "datafast_visitor_id": "vis_1",
+        "datafast_session_id": "ses_1",
+    }
+    sub_metadata = kwargs["subscription_data"]["metadata"]
+    assert sub_metadata["user_id"] == "user-1"
+    assert sub_metadata["datafast_visitor_id"] == "vis_1"
+    assert sub_metadata["datafast_session_id"] == "ses_1"
+    assert sub_metadata["pro_activation_return_to"] == "/success"
+
+
+@pytest.mark.asyncio
+async def test_subscription_checkout_never_stores_the_session_id_placeholder():
+    """Stripe fills {CHECKOUT_SESSION_ID} only in its redirect, so a stored copy
+    would send the user to a URL holding the literal placeholder."""
+    _, kwargs = await _create_subscription_checkout(
+        "https://app.example.com/onboarding?subscription=success"
+        "&session_id={CHECKOUT_SESSION_ID}"
+    )
+
+    sub_metadata = kwargs["subscription_data"]["metadata"]
+    assert "pro_activation_return_to" not in sub_metadata
+
+
+async def _create_subscription_checkout(success_url: str, **datafast: str):
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/pay/cs_test_sub"
-    create_mock = MagicMock(return_value=mock_session)
+    create_mock = AsyncMock(return_value=mock_session)
     with (
+        patch(
+            "backend.data.credit.subscription_checkout_lock",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "backend.data.credit.ensure_no_unconverted_trial",
+            new_callable=AsyncMock,
+        ),
         patch(
             "backend.data.credit.get_subscription_price_id",
             new_callable=AsyncMock,
@@ -231,26 +271,15 @@ async def test_create_subscription_checkout_attaches_datafast_metadata():
             new_callable=AsyncMock,
         ),
         patch(
-            "backend.data.credit.stripe.checkout.Session.create",
+            "backend.data.credit.stripe.checkout.Session.create_async",
             new=create_mock,
         ),
     ):
         url = await create_subscription_checkout(
             user_id="user-1",
             tier=SubscriptionTier.PRO,
-            success_url="https://app.example.com/success",
+            success_url=success_url,
             cancel_url="https://app.example.com/cancel",
-            datafast_visitor_id="vis_1",
-            datafast_session_id="ses_1",
+            **datafast,
         )
-
-    assert url == "https://checkout.stripe.com/pay/cs_test_sub"
-    kwargs = create_mock.call_args.kwargs
-    assert kwargs["metadata"] == {
-        "datafast_visitor_id": "vis_1",
-        "datafast_session_id": "ses_1",
-    }
-    sub_metadata = kwargs["subscription_data"]["metadata"]
-    assert sub_metadata["user_id"] == "user-1"
-    assert sub_metadata["datafast_visitor_id"] == "vis_1"
-    assert sub_metadata["datafast_session_id"] == "ses_1"
+    return url, create_mock.call_args.kwargs

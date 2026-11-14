@@ -4,7 +4,7 @@ Two responsibilities:
 
 1. **Opt out of the full SpinTestServer.** Mirrors
    ``backend/copilot/tools/conftest.py`` — these tests don't need
-   postgres + rabbitmq + the platform-wide ``graph_cleanup`` autouse.
+   postgres + rabbitmq.
 
 2. **Provide FalkorDB integration fixtures.** Tests marked
    ``@pytest.mark.integration`` use the ``clean_graph`` and
@@ -12,6 +12,11 @@ Two responsibilities:
    ``falkordb_available`` session fixture skips the integration suite
    gracefully when FalkorDB is not reachable, so local unit-test runs
    stay fast.
+
+3. **Stub the LLM boundary.** ``stub_graphiti_client`` builds a real
+   ``Graphiti`` over a live FalkorDB driver with canned LLM responses,
+   so a test can drive the genuine ``add_episode`` pipeline — entity /
+   edge extraction, resolution, persistence — without an API key.
 
 Run integration tests with the platform docker-compose stack up::
 
@@ -27,26 +32,160 @@ The fixtures connect using ``GraphitiConfig`` defaults
 
 import socket
 import uuid
+from collections.abc import Awaitable, Iterable
 from datetime import datetime, timezone
-from typing import AsyncIterator
+from pathlib import Path
+from typing import AsyncIterator, cast
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from graphiti_core import Graphiti
+from graphiti_core.cross_encoder.client import CrossEncoderClient
+from graphiti_core.embedder.client import EMBEDDING_DIM, EmbedderClient
+from graphiti_core.llm_client.client import LLMClient
+from graphiti_core.llm_client.config import ModelSize
+from graphiti_core.prompts.models import Message
+from pydantic import BaseModel
+from pytest_mock import MockerFixture
+from redis.asyncio import Redis
 
+from . import recall_forget, scope_lock
+from .client import _build_graphiti
 from .config import graphiti_config
 from .falkordb_driver import AutoGPTFalkorDriver
+from .recall_fake_redis import FakeRedis
+from .scope import MemoryScope
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    graphiti_dir = Path(__file__).parent
+    for item in items:
+        if not item.path.is_relative_to(graphiti_dir):
+            continue
+        if not pytest_asyncio.is_async_test(item):
+            continue
+        asyncio_marker = item.get_closest_marker("asyncio")
+        if asyncio_marker and "loop_scope" in asyncio_marker.kwargs:
+            continue
+        item.add_marker(pytest.mark.asyncio(loop_scope="function"), append=False)
+
+
+class ScriptedLLMClient(LLMClient):
+    """Real ``LLMClient`` whose responses are canned per response model.
+
+    Keyed by ``response_model.__name__`` so one instance can serve every
+    prompt ``add_episode`` issues. Unlisted models get ``{}`` — graphiti's
+    per-entity-type attribute models are all-optional, so an empty payload
+    validates into defaults.
+    """
+
+    def __init__(self, responses: dict[str, dict] | None = None) -> None:
+        super().__init__(config=None, cache=False)
+        self.responses = responses or {}
+
+    async def _generate_response(
+        self,
+        messages: list[Message],
+        response_model: type[BaseModel] | None = None,
+        max_tokens: int = 16384,
+        model_size: ModelSize = ModelSize.medium,
+    ) -> dict:
+        name = response_model.__name__ if response_model else "raw"
+        return self.responses.get(name, {})
+
+
+class StubEmbedder(EmbedderClient):
+    """Constant vectors — no integration test ranks by similarity."""
+
+    async def create(
+        self, input_data: str | list[str] | Iterable[int] | Iterable[Iterable[int]]
+    ) -> list[float]:
+        return [0.1] * EMBEDDING_DIM
+
+    async def create_batch(self, input_data_list: list[str]) -> list[list[float]]:
+        return [[0.1] * EMBEDDING_DIM for _ in input_data_list]
+
+
+class StubCrossEncoder(CrossEncoderClient):
+    """Reranking is a search-path concern; ingestion never calls it."""
+
+    async def rank(self, query: str, passages: list[str]) -> list[tuple[str, float]]:
+        return [(passage, 1.0) for passage in passages]
+
+
+@pytest.fixture
+def stub_graphiti_client():
+    """Factory building a ``Graphiti`` with only the LLM boundary stubbed.
+
+    Call as ``stub_graphiti_client(driver, responses)``. Builds through the
+    production factory ``client._build_graphiti``, overriding only the three
+    boundaries that would otherwise make network calls, so the ingestion
+    pipeline under test behaves as it does in production minus the API
+    calls — and so a kwarg added to production wiring reaches these tests
+    instead of drifting from a hand-mirrored copy.
+    """
+
+    def _build(driver: AutoGPTFalkorDriver, responses: dict[str, dict]) -> Graphiti:
+        return _build_graphiti(
+            # Unused: the driver below already carries the test database.
+            group_id="",
+            llm_client=ScriptedLLMClient(responses),
+            embedder=StubEmbedder(),
+            cross_encoder=StubCrossEncoder(),
+            graph_driver=driver,
+        )
+
+    return _build
+
+
+@pytest.fixture(autouse=True)
+def lock_redis(mocker: MockerFixture) -> FakeRedis:
+    """Every test's own in-memory Redis for the graph write lock
+    (``scope_lock.py``), so no unit test reaches for a real one; the live
+    tests' ``scope_graph`` swaps in FalkorDB's own (``live_lock``)."""
+    redis = FakeRedis()
+    mocker.patch.object(
+        scope_lock, "get_redis_async", mocker.AsyncMock(return_value=redis)
+    )
+    return redis
+
+
+@pytest.fixture(autouse=True)
+def dream_copies(mocker: MockerFixture) -> AsyncMock:
+    """No forget here reaches Postgres: a hard forget's blanking of the
+    dream's copies (``dream/forget_copies.py``) does nothing and marks no
+    pass. Tests of that step read or set this mock."""
+    blank = mocker.AsyncMock(return_value=[])
+    mocker.patch.object(recall_forget, "blank_dream_copies", blank)
+    return blank
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def live_lock(
+    falkordb_available: bool, mocker: MockerFixture
+) -> AsyncIterator[Redis]:
+    """The FalkorDB server's own Redis as the graph write lock's backend,
+    so the live tests take a real ``SET NX`` lock and run its scripts."""
+    redis = Redis(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        decode_responses=True,
+    )
+    mocker.patch.object(
+        scope_lock, "get_redis_async", mocker.AsyncMock(return_value=redis)
+    )
+    try:
+        yield redis
+    finally:
+        await redis.aclose()
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
     """No-op server stub — graphiti tests don't need the full backend."""
     return None
-
-
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
-async def graph_cleanup():  # type: ignore[override]
-    """No-op graph cleanup stub."""
-    yield
 
 
 @pytest.fixture(scope="session")
@@ -130,6 +269,45 @@ async def clean_graph(
     finally:
         await _drop_database(driver)
         await driver.close()
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def scope_graph(
+    falkordb_available: bool,
+    live_lock: Redis,
+) -> AsyncIterator[tuple[AutoGPTFalkorDriver, MemoryScope]]:
+    """A fresh account scope and a driver on that scope's own database.
+
+    For code that opens its own driver from a ``MemoryScope`` (the recall
+    layer, ratification): ``clean_graph``'s standalone ``test_*`` database is
+    not derivable from any scope, so such code would read an empty graph.
+    Indices are built first, as the ingestion write path does, so graphiti's
+    searches and ``add_episode`` work. The graph is dropped afterwards with a
+    real ``GRAPH.DELETE``; ``DETACH DELETE`` would leave an empty
+    ``user_test-*`` graph behind on a shared instance. Its writers lock
+    through FalkorDB's own Redis (``live_lock``).
+    """
+    scope = MemoryScope.for_user(f"test-{uuid.uuid4().hex[:16]}")
+    driver = AutoGPTFalkorDriver(
+        host=graphiti_config.falkordb_host,
+        port=graphiti_config.falkordb_port,
+        password=graphiti_config.falkordb_password or None,
+        database=scope.group_id,
+        build_indices=False,
+    )
+    try:
+        await driver.ensure_indices()
+        yield driver, scope
+    finally:
+        try:
+            # falkordb's async ``Graph.delete`` is typed as its sync twin;
+            # the same cast ``falkordb_driver.py`` uses for ``query``.
+            await cast(Awaitable[None], driver._get_graph(None).delete())
+        except Exception as exc:
+            if "empty key" not in str(exc).lower():
+                raise
+        finally:
+            await driver.close()
 
 
 @pytest_asyncio.fixture(loop_scope="function")

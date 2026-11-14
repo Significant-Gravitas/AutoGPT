@@ -4,15 +4,14 @@
 // joins the platform, add functions here and grep won't find anything
 // else to touch.
 
-function getBaseUrl(): string {
-  // ``NEXT_PUBLIC_FRONTEND_BASE_URL`` lets the backend's share URL and
-  // the frontend's share URL match in environments where Next.js is
-  // proxied behind a different host than its window.location.  Falls
-  // back to the current origin in dev.
-  if (typeof window === "undefined") {
-    return process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "";
-  }
-  return process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || window.location.origin;
+function getBaseURL(): string {
+  if (typeof window !== "undefined") return window.location.origin;
+
+  return (
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
+    "http://localhost:3000"
+  );
 }
 
 export function executionSharePath(token: string): string {
@@ -24,11 +23,11 @@ export function chatSharePath(token: string): string {
 }
 
 export function executionShareUrl(token: string): string {
-  return `${getBaseUrl()}${executionSharePath(token)}`;
+  return `${getBaseURL()}${executionSharePath(token)}`;
 }
 
 export function chatShareUrl(token: string): string {
-  return `${getBaseUrl()}${chatSharePath(token)}`;
+  return `${getBaseURL()}${chatSharePath(token)}`;
 }
 
 // ---------- Per-share file download URL + matcher --------------------------
@@ -40,6 +39,7 @@ export function chatShareUrl(token: string): string {
 // nowhere else needs to be touched.
 
 const FILE_UUID_GROUP =
+  // oxlint-disable-next-line design-system/no-arbitrary-values -- a UUID regex, not a class list
   "([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})";
 
 function escapeRegex(value: string): string {

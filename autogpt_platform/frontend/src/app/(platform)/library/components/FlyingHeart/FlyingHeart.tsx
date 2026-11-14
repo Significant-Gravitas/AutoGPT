@@ -1,8 +1,9 @@
 "use client";
 
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { HeartIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
+import { FavouriteIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface FlyingHeartProps {
   startPosition: { x: number; y: number } | null;
@@ -30,7 +31,7 @@ export function FlyingHeart({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          className="pointer-events-none fixed z-50"
+          className="pointer-events-none fixed z-50 text-error drop-shadow-md"
           initial={{
             x: startPosition.x,
             y: startPosition.y,
@@ -59,11 +60,7 @@ export function FlyingHeart({
             onAnimationComplete();
           }}
         >
-          <HeartIcon
-            size={24}
-            weight="fill"
-            className="text-red-500 drop-shadow-md"
-          />
+          <Icon icon={FavouriteIcon} size={24} />
         </motion.div>
       )}
     </AnimatePresence>

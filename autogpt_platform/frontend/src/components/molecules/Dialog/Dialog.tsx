@@ -6,12 +6,20 @@ import { Drawer } from "vaul";
 import { BaseContent } from "./components/BaseContent";
 import { BaseFooter } from "./components/BaseFooter";
 import { BaseTrigger } from "./components/BaseTrigger";
-import { DialogCtx, useDialogCtx } from "./useDialogCtx";
+import { DialogCtx, DialogVariant, useDialogCtx } from "./useDialogCtx";
 import { useDialogInternal } from "./useDialogInternal";
 
 interface Props extends PropsWithChildren {
   title?: React.ReactNode;
+  /** `compact` is the dense neutral style: smaller radius, tighter padding,
+   *  sans title. */
+  variant?: DialogVariant;
   styling?: CSSProperties;
+  className?: string;
+  /** Below lg (the drawer), move focus into the dialog when it opens, as the
+   *  modal above lg always does. Off by default: vaul's drawer leaves focus
+   *  where it was. */
+  autoFocus?: boolean;
 
   forceOpen?: boolean;
   onClose?: (() => void) | undefined;
@@ -28,7 +36,10 @@ Dialog.Footer = BaseFooter;
 function Dialog({
   children,
   title,
+  variant = "default",
   styling,
+  className,
+  autoFocus = false,
 
   forceOpen = false,
   onClose,
@@ -41,7 +52,9 @@ function Dialog({
     <DialogCtx.Provider
       value={{
         title: title || "",
+        variant,
         styling,
+        className,
 
         isOpen,
         isForceOpen: forceOpen,
@@ -68,6 +81,7 @@ function Dialog({
       ) : (
         <Drawer.Root
           shouldScaleBackground
+          autoFocus={autoFocus}
           open={isOpen}
           onOpenChange={(open) => {
             if (!open && !forceOpen) {

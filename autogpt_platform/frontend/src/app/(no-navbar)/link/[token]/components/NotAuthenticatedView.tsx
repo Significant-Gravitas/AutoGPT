@@ -11,11 +11,8 @@ export function NotAuthenticatedView({ token, loginRedirect }: Props) {
   return (
     <AuthCard title="Sign in to continue">
       <div className="flex w-full flex-col items-center gap-6">
-        <Text
-          variant="body-medium"
-          className="text-center text-muted-foreground"
-        >
-          Sign in to your AutoGPT account to finish setting up AutoPilot.
+        <Text variant="body-medium" tone="muted" className="text-center">
+          Sign in to your AutoGPT account to finish setting up AutoGPT.
         </Text>
         <Button as="NextLink" href={loginRedirect} className="w-full">
           Sign in

@@ -9,21 +9,47 @@ because the copilot tool runs without a connected Prisma client.
 import logging
 from typing import Any
 
+from backend.api.features.experts import experts_db
+from backend.api.features.orgs.db import resolve_member_tenancy
 from backend.data.graph import get_graph
 from backend.data.integrations import get_webhook
 from backend.data.model import CredentialsMetaInput, GraphInput
-from backend.executor.utils import make_node_credentials_input_map
+from backend.executor.utils import (
+    make_node_credentials_input_map,
+    validate_and_construct_node_execution_input,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import setup_webhook_for_block
-from backend.util.exceptions import InvalidInputError, NotFoundError
+from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 from . import db
 from . import model as models
+from .model import (
+    NODE_INPUT_MASK_PREFIX,
+    is_trigger_config_entry,
+    node_input_mask_key,
+    split_trigger_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
 credentials_manager = IntegrationCredentialsManager()
+
+_EXPERT_WORKSPACE_UNAVAILABLE = (
+    "Your expert workspace is still being set up. Try again shortly."
+)
+
+
+async def _resolve_private_expert_tenancy(
+    user_id: str, expert_id: str, *, not_found_message: str
+) -> tuple[str, str | None]:
+    try:
+        return await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
+    except experts_db.ExpertNotFoundError as e:
+        raise NotFoundError(not_found_message) from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise MissingConfigError(_EXPERT_WORKSPACE_UNAVAILABLE) from e
 
 
 async def setup_triggered_preset(
@@ -35,6 +61,8 @@ async def setup_triggered_preset(
     description: str,
     trigger_config: dict[str, Any],
     agent_credentials: dict[str, CredentialsMetaInput],
+    constant_inputs: dict[str, Any] | None = None,
+    expert_id: str | None = None,
 ) -> models.LibraryAgentPreset:
     """Create a webhook-triggered ``LibraryAgentPreset`` for the given graph.
 
@@ -44,13 +72,20 @@ async def setup_triggered_preset(
     returned preset has ``.webhook`` populated, so ``preset.webhook.url`` is the
     ingress URL to hand to the user for manual-setup webhooks.
 
+    The preset's ``inputs`` hold the regular graph inputs (``constant_inputs``)
+    plus the trigger config nested under a per-node ``_node_input_mask_{node_id}``
+    key, so a graph can have both input nodes and a trigger node. The executor
+    separates the two again (see ``_execute_webhook_preset_trigger``).
+
     Fetches the graph itself (rather than taking a ``GraphModel``) so it can run
     as an RPC endpoint without serializing the whole graph across the boundary.
 
     Raises:
         NotFoundError: if the graph no longer exists / isn't accessible.
-        InvalidInputError: if the graph has no webhook node, or the webhook
-            backend rejects the trigger config / credentials.
+        MissingConfigError: if the private expert workspace is unavailable.
+        InvalidInputError: if the graph has no webhook node, the given
+            ``constant_inputs`` don't match the graph's input schema, or the
+            webhook backend rejects the trigger config / credentials.
     """
     graph = await get_graph(graph_id, version=graph_version, user_id=user_id)
     if not graph:
@@ -59,6 +94,8 @@ async def setup_triggered_preset(
         raise InvalidInputError(
             f"Graph #{graph_id} does not have a webhook trigger node"
         )
+
+    constant_inputs = constant_inputs or {}
 
     trigger_config_with_credentials = {
         **trigger_config,
@@ -69,28 +106,90 @@ async def setup_triggered_preset(
             or {}
         ),
     }
+    _refuse_graph_inputs_read_as_trigger_config(constant_inputs)
+    preset_inputs = dict(constant_inputs)
+    preset_inputs[node_input_mask_key(trigger_node.id)] = (
+        trigger_config_with_credentials
+    )
 
+    # What create_preset stores, checked before any webhook is registered. `payload`
+    # is not a row: delivery adds it to the trigger node's mask, counted below.
+    db.check_preset_text(name, description)
+    db.check_preset_inputs({**preset_inputs, **agent_credentials})
+    await db.check_preset_count(user_id)
+
+    # Validate the preset's inputs the same way the executor will — regular
+    # inputs as graph inputs, trigger config as the trigger node's mask — so an
+    # invalid preset is rejected before any webhook is registered. A placeholder
+    # `payload` stands in for the (not-yet-received) webhook event, which the
+    # trigger node requires to pass execution-input construction. It and the
+    # credentials are the only inputs left unchecked.
+    try:
+        await validate_and_construct_node_execution_input(
+            graph_id=graph.id,
+            user_id=user_id,
+            graph_inputs=constant_inputs,
+            graph_version=graph.version,
+            graph_credentials_inputs=agent_credentials,
+            nodes_input_masks={
+                trigger_node.id: {**trigger_config_with_credentials, "payload": {}}
+            },
+            trigger_setup=True,
+        )
+    except ValueError as e:
+        raise InvalidInputError(f"Invalid preset inputs: {e}")
+
+    # ``expert_id`` is the calling context's authoritative scope: a session
+    # expert for expert-scoped copilot sessions, ``None`` for Otto
+    # sessions AND for the HTTP route (which resolves graph-match attribution
+    # itself before calling in). No graph-match fallback here — re-attributing
+    # an Otto session's preset to an expert would make it invisible to
+    # that session's list/update/delete/run scope filters while its webhook
+    # stays live. create_preset re-validates the expert under the same
+    # transaction as the durable write.
+    if expert_id:
+        organization_id, team_id = await _resolve_private_expert_tenancy(
+            user_id,
+            expert_id,
+            not_found_message=f"Expert #{expert_id} not found",
+        )
+    else:
+        # Like a preset: the graph's org/team where the user belongs to it,
+        # their own otherwise.
+        organization_id, team_id = await resolve_member_tenancy(
+            user_id, graph.organization_id, graph.team_id
+        )
+
+    # The webhook lives in the preset's org/team, not the caller's active org.
     new_webhook, feedback = await setup_webhook_for_block(
         user_id=user_id,
         trigger_block=trigger_node.block,
         trigger_config=trigger_config_with_credentials,
+        organization_id=organization_id,
+        team_id=team_id,
     )
     if not new_webhook:
         raise InvalidInputError(f"Could not set up webhook: {feedback}")
 
-    return await db.create_preset(
-        user_id=user_id,
-        preset=models.LibraryAgentPresetCreatable(
-            graph_id=graph.id,
-            graph_version=graph.version,
-            name=name,
-            description=description,
-            inputs=trigger_config_with_credentials,
-            credentials=agent_credentials,
+    try:
+        return await db.create_preset(
+            user_id=user_id,
+            preset=models.LibraryAgentPresetCreatable(
+                graph_id=graph.id,
+                graph_version=graph.version,
+                name=name,
+                description=description,
+                inputs=preset_inputs,
+                credentials=agent_credentials,
+                is_active=True,
+            ),
             webhook_id=new_webhook.id,
-            is_active=True,
-        ),
-    )
+            expert_id=expert_id,
+        )
+    except Exception:
+        # Until it is attached, a webhook registered for this setup is orphaned.
+        await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
 
 async def update_triggered_preset(
@@ -113,14 +212,17 @@ async def update_triggered_preset(
 
     Raises:
         NotFoundError: if the preset (or, when reconfiguring, its graph) is gone.
+        MissingConfigError: if the private expert workspace is unavailable.
         InvalidInputError: if the webhook backend rejects the new trigger config.
     """
     current = await db.get_preset(user_id, preset_id)
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found")
 
-    trigger_inputs_updated, new_webhook = False, None
+    new_webhook = None
     if inputs is not None and credentials is not None:
+        # Refused before anything is registered with the provider.
+        db.check_preset_text(name, description)
         graph = await get_graph(
             current.graph_id, current.graph_version, user_id=user_id
         )
@@ -128,9 +230,28 @@ async def update_triggered_preset(
             raise NotFoundError(
                 f"Graph #{current.graph_id} is not accessible (anymore)"
             )
-        if trigger_node := graph.webhook_input_node:
+        trigger_node = graph.webhook_input_node
+        mask_key = node_input_mask_key(trigger_node.id) if trigger_node else ""
+        # A run-template preset on a trigger-bearing graph has no trigger to
+        # reconfigure; a triggered one is attached or already holds the mask.
+        if trigger_node and (
+            current.webhook_id or mask_key in current.inputs or mask_key in inputs
+        ):
+            # A flat preset the boot backfill has not reached is read as delivery
+            # reads it, and is stored nested below.
+            if mask_key not in inputs and mask_key in current.inputs:
+                raise InvalidInputError(
+                    f"Missing trigger configuration for node {trigger_node.id}"
+                )
+            graph_inputs, trigger_config = split_trigger_inputs(inputs, trigger_node.id)
+            if not isinstance(trigger_config, dict):
+                raise InvalidInputError(
+                    f"Trigger configuration for node {trigger_node.id} must be "
+                    "an object"
+                )
+            _refuse_graph_inputs_read_as_trigger_config(graph_inputs)
             trigger_config_with_credentials = {
-                **inputs,
+                **trigger_config,
                 **(
                     make_node_credentials_input_map(graph, credentials).get(
                         trigger_node.id
@@ -138,34 +259,77 @@ async def update_triggered_preset(
                     or {}
                 ),
             }
+            # The stored mask overrides preset.credentials at execution, so it
+            # must carry the new credentials, not the ones the caller echoed back.
+            stored_inputs = {**graph_inputs, mask_key: trigger_config_with_credentials}
+            # What update_preset stores; `payload` is the trigger node's, not a
+            # stored row — see setup_triggered_preset.
+            db.check_preset_inputs({**stored_inputs, **credentials})
+
+            # Validate as setup does, before the webhook is registered.
+            try:
+                await validate_and_construct_node_execution_input(
+                    graph_id=graph.id,
+                    user_id=user_id,
+                    graph_inputs=graph_inputs,
+                    graph_version=graph.version,
+                    graph_credentials_inputs=credentials,
+                    nodes_input_masks={
+                        trigger_node.id: {
+                            **trigger_config_with_credentials,
+                            "payload": {},
+                        }
+                    },
+                    trigger_setup=True,
+                )
+            except ValueError as e:
+                raise InvalidInputError(f"Invalid preset inputs: {e}")
+
+            if current.expert_id:
+                organization_id, team_id = await _resolve_private_expert_tenancy(
+                    user_id,
+                    current.expert_id,
+                    not_found_message=f"Preset #{preset_id} not found",
+                )
+            else:
+                organization_id, team_id = await resolve_member_tenancy(
+                    user_id, graph.organization_id, graph.team_id
+                )
             new_webhook, feedback = await setup_webhook_for_block(
                 user_id=user_id,
                 trigger_block=trigger_node.block,
                 trigger_config=trigger_config_with_credentials,
                 for_preset_id=preset_id,
+                organization_id=organization_id,
+                team_id=team_id,
             )
-            trigger_inputs_updated = True
             if not new_webhook:
                 raise InvalidInputError(
                     f"Could not update trigger configuration: {feedback}"
                 )
+            inputs = stored_inputs
 
-    updated = await db.update_preset(
-        user_id=user_id,
-        preset_id=preset_id,
-        inputs=inputs,
-        credentials=credentials,
-        name=name,
-        description=description,
-        is_active=is_active,
-    )
+    try:
+        updated = await db.update_preset(
+            user_id=user_id,
+            preset_id=preset_id,
+            inputs=inputs,
+            credentials=credentials,
+            name=name,
+            description=description,
+            is_active=is_active,
+        )
+        if new_webhook:
+            updated = await db.set_preset_webhook(user_id, preset_id, new_webhook.id)
+    except Exception:
+        # Until it is attached, a webhook registered for this update is orphaned.
+        if new_webhook and new_webhook.id != current.webhook_id:
+            await _prune_dangling_webhook(user_id, new_webhook.id)
+        raise
 
-    if trigger_inputs_updated:
-        new_webhook_id = new_webhook.id if new_webhook else None
-        updated = await db.set_preset_webhook(user_id, preset_id, new_webhook_id)
-        # Clean up the old webhook if it's no longer referenced.
-        if current.webhook_id and current.webhook_id != new_webhook_id:
-            await _prune_dangling_webhook(user_id, current.webhook_id)
+    # Clean up the old webhook if it's no longer referenced.
+    if new_webhook and current.webhook_id and current.webhook_id != new_webhook.id:
+        await _prune_dangling_webhook(user_id, current.webhook_id)
 
     return updated
 
@@ -191,6 +355,26 @@ async def delete_preset_with_webhook_cleanup(*, user_id: str, preset_id: str) ->
     await db.delete_preset(user_id, preset_id)
 
 
+def refuse_direct_run(preset: models.LibraryAgentPreset) -> None:
+    """Refuse running a webhook-triggered preset by hand: its trigger node only
+    gets a payload from a delivery, so the run could never start."""
+    if preset.webhook_id:
+        raise InvalidInputError(
+            "This preset runs when its webhook trigger fires, "
+            "so it can't be run directly"
+        )
+
+
+def _refuse_graph_inputs_read_as_trigger_config(graph_inputs: GraphInput) -> None:
+    # A reader without the graph would take such an input for the trigger config.
+    for name, value in graph_inputs.items():
+        if is_trigger_config_entry(name, value):
+            raise InvalidInputError(
+                f"Input {name!r} can't hold an object: names starting with "
+                f"{NODE_INPUT_MASK_PREFIX!r} are reserved for trigger settings"
+            )
+
+
 async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
     """Deregister + delete a webhook if no trigger references it anymore.
 
@@ -202,7 +386,9 @@ async def _prune_dangling_webhook(user_id: str, webhook_id: str) -> None:
     try:
         webhook = await get_webhook(webhook_id)
         credentials = (
-            await credentials_manager.get(user_id, webhook.credentials_id)
+            await credentials_manager.get(
+                user_id, webhook.credentials_id, allow_sdk_default=True
+            )
             if webhook.credentials_id
             else None
         )

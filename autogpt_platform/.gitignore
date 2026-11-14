@@ -2,5 +2,10 @@
 *.ign.*
 .application.logs
 
+# Local Postgres data (db service bind mount)
+data/db/data
+# Pre-rename location; still on disk for anyone who booted the old layout
+volumes/db/data
+
 # Claude Code local settings only — the rest of .claude/ is shared (skills etc.)
 .claude/settings.local.json

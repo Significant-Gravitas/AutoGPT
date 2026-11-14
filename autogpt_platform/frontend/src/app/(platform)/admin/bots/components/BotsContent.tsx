@@ -6,6 +6,7 @@ import { Select } from "@/components/atoms/Select/Select";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 import { MessageVolumeChart } from "./MessageVolumeChart";
+import { PlatformBadge } from "./PlatformBadge";
 import { ServerGrowthChart } from "./ServerGrowthChart";
 import { SimpleTable } from "./SimpleTable";
 import { SummaryCard } from "./SummaryCard";
@@ -22,6 +23,10 @@ import {
 export function BotsContent() {
   const state = useBotsContent();
   const { summary } = state;
+
+  // On "All platforms" the rows mix Discord and Slack, so lead each table with a
+  // platform badge. When a single platform is selected the column is redundant.
+  const showPlatform = state.platform === "all";
 
   const tiles = [
     { label: "Live servers", value: formatNumber(summary?.live_servers) },
@@ -91,24 +96,32 @@ export function BotsContent() {
           </div>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">
+            <h2 className="mb-4 text-lead font-semibold">
               Server growth & sharding outlook
             </h2>
             <ServerGrowthChart data={state.servers} />
           </Card>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">Message volume</h2>
+            <h2 className="mb-4 text-lead font-semibold">Message volume</h2>
             <MessageVolumeChart data={state.messages} />
           </Card>
 
           <Card>
-            <h2 className="mb-4 text-xl font-semibold">
+            <h2 className="mb-4 text-lead font-semibold">
               Top servers by activity
             </h2>
             <SimpleTable
-              columns={["Server", "Messages", "Commands"]}
+              columns={[
+                ...(showPlatform ? ["Platform"] : []),
+                "Server",
+                "Messages",
+                "Commands",
+              ]}
               rows={state.topServers.map((server) => [
+                ...(showPlatform
+                  ? [<PlatformBadge key="p" platform={server.platform} />]
+                  : []),
                 server.name || server.server_id,
                 formatNumber(server.messages),
                 formatNumber(server.commands),
@@ -118,10 +131,17 @@ export function BotsContent() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
-              <h2 className="mb-4 text-xl font-semibold">Command usage</h2>
+              <h2 className="mb-4 text-lead font-semibold">Command usage</h2>
               <SimpleTable
-                columns={["Command", "Uses"]}
+                columns={[
+                  ...(showPlatform ? ["Platform"] : []),
+                  "Command",
+                  "Uses",
+                ]}
                 rows={state.commands.map((command) => [
+                  ...(showPlatform
+                    ? [<PlatformBadge key="p" platform={command.platform} />]
+                    : []),
                   `/${command.command}`,
                   formatNumber(command.uses),
                 ])}
@@ -129,10 +149,18 @@ export function BotsContent() {
             </Card>
 
             <Card>
-              <h2 className="mb-4 text-xl font-semibold">Server roster</h2>
+              <h2 className="mb-4 text-lead font-semibold">Server roster</h2>
               <SimpleTable
-                columns={["Server", "Status", "Joined"]}
+                columns={[
+                  ...(showPlatform ? ["Platform"] : []),
+                  "Server",
+                  "Status",
+                  "Joined",
+                ]}
                 rows={state.roster.map((guild) => [
+                  ...(showPlatform
+                    ? [<PlatformBadge key="p" platform={guild.platform} />]
+                    : []),
                   guild.name || guild.server_id,
                   guild.active ? "Active" : "Left",
                   formatDate(guild.joined_at),

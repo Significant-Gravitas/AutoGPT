@@ -1,16 +1,29 @@
-import { GlobeSimple, KeyIcon, Lock, Password } from "@phosphor-icons/react";
-import { NotionLogoIcon } from "@radix-ui/react-icons";
-import {
-  FaDiscord,
-  FaGithub,
-  FaGoogle,
-  FaHubspot,
-  FaMedium,
-  FaTwitter,
-} from "react-icons/fa";
 import { CredentialsType } from "@/lib/autogpt-server-api/types";
+import {
+  DiscordIcon,
+  GithubIcon,
+  Globe02Icon,
+  GoogleIcon,
+  Key01Icon,
+  LockIcon,
+  LockPasswordIcon,
+  MediumIcon,
+  NotionIcon,
+  TwitterIcon,
+} from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
+import { z } from "zod";
 
-export const fallbackIcon = KeyIcon;
+export const fallbackIcon = createIconComponent(Key01Icon);
+const globeIcon = createIconComponent(Globe02Icon);
+const lockIcon = createIconComponent(LockIcon);
+const lockPasswordIcon = createIconComponent(LockPasswordIcon);
+const githubIcon = createIconComponent(GithubIcon);
+const googleIcon = createIconComponent(GoogleIcon);
+const notionIcon = createIconComponent(NotionIcon);
+const discordIcon = createIconComponent(DiscordIcon);
+const mediumIcon = createIconComponent(MediumIcon);
+const twitterIcon = createIconComponent(TwitterIcon);
 
 export const providerIcons: Partial<
   Record<string, React.FC<{ className?: string }>>
@@ -20,20 +33,20 @@ export const providerIcons: Partial<
   apollo: fallbackIcon,
   database: fallbackIcon,
   e2b: fallbackIcon,
-  github: FaGithub,
-  google: FaGoogle,
+  github: githubIcon,
+  google: googleIcon,
   groq: fallbackIcon,
   http: fallbackIcon,
-  notion: NotionLogoIcon,
+  notion: notionIcon,
   nvidia: fallbackIcon,
-  discord: FaDiscord,
+  discord: discordIcon,
   d_id: fallbackIcon,
   elevenlabs: fallbackIcon,
-  google_maps: FaGoogle,
+  google_maps: googleIcon,
   jina: fallbackIcon,
   ideogram: fallbackIcon,
   linear: fallbackIcon,
-  medium: FaMedium,
+  medium: mediumIcon,
   mem0: fallbackIcon,
   ollama: fallbackIcon,
   openai: fallbackIcon,
@@ -49,10 +62,10 @@ export const providerIcons: Partial<
   reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
-  twitter: FaTwitter,
+  twitter: twitterIcon,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
-  hubspot: FaHubspot,
+  hubspot: fallbackIcon,
   smartlead: fallbackIcon,
   todoist: fallbackIcon,
   zerobounce: fallbackIcon,
@@ -75,12 +88,14 @@ export function countSupportedTypes(
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
+  supportsDeviceCode: boolean = false,
 ): number {
   return [
     supportsOAuth2,
     supportsApiKey,
     supportsUserPassword,
     supportsHostScoped,
+    supportsDeviceCode,
   ].filter(Boolean).length;
 }
 
@@ -89,9 +104,11 @@ export function getSupportedTypes(
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
+  supportsDeviceCode: boolean = false,
 ): CredentialsType[] {
   const types: CredentialsType[] = [];
   if (supportsOAuth2) types.push("oauth2");
+  if (supportsDeviceCode) types.push("device_code");
   if (supportsApiKey) types.push("api_key");
   if (supportsUserPassword) types.push("user_password");
   if (supportsHostScoped) types.push("host_scoped");
@@ -103,6 +120,7 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
   api_key: "API Key",
   user_password: "Password",
   host_scoped: "Headers",
+  device_code: "Device Auth",
 };
 
 export function getCredentialTypeLabel(type: CredentialsType): string {
@@ -116,14 +134,14 @@ export function getCredentialTypeIcon(
   provider?: string,
 ): CredentialIcon {
   if (type === "oauth2" && provider) {
-    const icon = providerIcons[provider];
-    if (icon) return icon as CredentialIcon;
-    return GlobeSimple as CredentialIcon;
+    return providerIcons[provider] ?? globeIcon;
   }
-  if (type === "api_key") return KeyIcon as CredentialIcon;
-  if (type === "user_password") return Password as CredentialIcon;
-  if (type === "host_scoped") return Lock as CredentialIcon;
-  return KeyIcon as CredentialIcon;
+  if (type === "device_code" && provider) {
+    return providerIcons[provider] ?? globeIcon;
+  }
+  if (type === "user_password") return lockPasswordIcon;
+  if (type === "host_scoped") return lockIcon;
+  return fallbackIcon;
 }
 
 export function getActionButtonText(
@@ -132,6 +150,8 @@ export function getActionButtonText(
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
+  provider?: string,
+  supportsDeviceCode: boolean = false,
 ): string {
   const multipleTypes =
     countSupportedTypes(
@@ -139,20 +159,29 @@ export function getActionButtonText(
       supportsApiKey,
       supportsUserPassword,
       supportsHostScoped,
+      supportsDeviceCode,
     ) > 1;
 
   if (multipleTypes) {
     return hasExistingCredentials ? "Add another credential" : "Add credential";
   }
 
+  if (provider === "codex" && supportsOAuth2) {
+    return hasExistingCredentials
+      ? "Reconnect ChatGPT"
+      : "Sign in with ChatGPT";
+  }
+
   if (hasExistingCredentials) {
     if (supportsOAuth2) return "Connect another account";
+    if (supportsDeviceCode) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
     if (supportsUserPassword) return "Add a new username and password";
     if (supportsHostScoped) return "Update headers";
     return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
+    if (supportsDeviceCode) return "Add account";
     if (supportsApiKey) return "Add API key";
     if (supportsUserPassword) return "Add username and password";
     if (supportsHostScoped) return "Add headers";
@@ -161,11 +190,46 @@ export function getActionButtonText(
 }
 
 export function getCredentialDisplayName(
-  credential: { title?: string; username?: string },
+  credential: { title?: string | null; username?: string },
   displayName: string,
 ): string {
   return (
     credential.title || credential.username || `Your ${displayName} account`
+  );
+}
+
+export function getRemovedCredentialMessage(
+  removedCredentialTitle: string,
+  selectedCredential:
+    | { id: string; title?: string | null; username?: string }
+    | undefined,
+  providerName: string,
+): string {
+  if (!selectedCredential?.id) {
+    return `${removedCredentialTitle} was removed. Choose a connection to keep this workflow running.`;
+  }
+
+  const replacement = getCredentialDisplayName(
+    selectedCredential,
+    providerName,
+  );
+  return `${removedCredentialTitle} was removed — now using ${replacement}.`;
+}
+
+export function getMissingScopes(
+  requiredScopes: string[],
+  grantedScopes: string[] | null | undefined,
+): string[] {
+  const granted = new Set(grantedScopes ?? []);
+  return requiredScopes.filter((scope) => !granted.has(scope));
+}
+
+export function getScopeShortfallMessage(missingScopes: string[]): string {
+  const plural = missingScopes.length > 1;
+  return (
+    `The account connected, but the ${plural ? "permissions" : "permission"} ` +
+    `${missingScopes.join(", ")} ${plural ? "were" : "was"} not granted. ` +
+    `Reconnect and approve ${plural ? "them" : "it"} to use this account here.`
   );
 }
 
@@ -256,9 +320,61 @@ export function hasExistingHostCredential<
   );
 }
 
+// Mirrors SCOPE_RULES in backend/data/credential_scope.py: these providers'
+// blocks connect to a server the workflow names, so a login's scope says which
+// one, as <scheme>://host[:port].
+const SERVER_SCOPE_SCHEMES: Record<string, { value: string; label: string }[]> =
+  {
+    smtp: [{ value: "smtp", label: "SMTP" }],
+    database: [
+      { value: "postgresql", label: "PostgreSQL" },
+      { value: "mysql", label: "MySQL" },
+      { value: "mssql", label: "Microsoft SQL Server" },
+    ],
+  };
+
+export function getServerScopeSchemes(provider: string) {
+  return SERVER_SCOPE_SCHEMES[provider] ?? null;
+}
+
+// The examples in the server messages, as in SCOPE_RULES.
+const SERVER_EXAMPLES: Record<string, { host: string; port: number }> = {
+  smtp: { host: "smtp.example.com", port: 587 },
+  database: { host: "db.example.com", port: 5432 },
+};
+
+const SERVER_PATTERN =
+  /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+)(?::([0-9]{1,5}))?$/;
+
+export function isValidServer(server: string) {
+  const match = SERVER_PATTERN.exec(server.trim());
+  if (!match) return false;
+  if (match[2] === undefined) return true;
+  const port = Number(match[2]);
+  return port >= 1 && port <= 65535;
+}
+
+export function getInvalidServerMessage(provider: string) {
+  const { host, port } = SERVER_EXAMPLES[provider] ?? SERVER_EXAMPLES.smtp;
+  return `Enter a valid server, like ${host} or ${host}:${port} (port 1-65535)`;
+}
+
+export function getServerFieldSchema(provider: string) {
+  return z
+    .string()
+    .trim()
+    .min(1, "Server is required")
+    .refine(isValidServer, getInvalidServerMessage(provider));
+}
+
+export function buildServerScope(scheme: string, server: string) {
+  return `${scheme}://${server.trim().toLowerCase()}`;
+}
+
 export type ActionTarget =
   | "type_selector"
   | "oauth"
+  | "device_code"
   | "api_key"
   | "user_password"
   | "host_scoped"
@@ -270,9 +386,11 @@ export function resolveActionTarget(
   supportsApiKey: boolean,
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
+  supportsDeviceCode: boolean = false,
 ): ActionTarget {
   if (hasMultipleCredentialTypes) return "type_selector";
   if (supportsOAuth2) return "oauth";
+  if (supportsDeviceCode) return "device_code";
   if (supportsApiKey) return "api_key";
   if (supportsUserPassword) return "user_password";
   if (supportsHostScoped) return "host_scoped";

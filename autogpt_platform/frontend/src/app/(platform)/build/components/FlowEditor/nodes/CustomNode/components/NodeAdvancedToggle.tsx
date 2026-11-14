@@ -1,8 +1,9 @@
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 type Props = {
   nodeId: string;
@@ -25,26 +26,28 @@ export function NodeAdvancedToggle({
   return (
     <div
       className={cn(
-        "flex items-center justify-start gap-2 bg-white px-5 pb-3.5",
+        "flex items-center justify-start gap-2 bg-surface px-5 pb-3.5",
         isLastSection && "rounded-b-xlarge",
       )}
     >
       <Button
-        variant="ghost"
-        className="h-fit min-w-0 p-0 hover:border-transparent hover:bg-transparent"
+        variant="toggle"
+        size="inline"
         onClick={() => setShowAdvanced(nodeId, !showAdvanced)}
         aria-expanded={showAdvanced}
       >
         <Text
-          variant="body"
+          variant="body-semibold"
+          tone="body"
           as="span"
-          className="flex items-center gap-2 !font-semibold text-slate-700"
+          className="flex items-center gap-2"
         >
           Advanced{" "}
-          <CaretDownIcon
+          <Icon
+            icon={ArrowDown01Icon}
             size={16}
-            weight="bold"
-            className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+            motion="transform"
+            className={showAdvanced ? "rotate-180" : undefined}
             aria-hidden
           />
         </Text>

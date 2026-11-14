@@ -2,10 +2,11 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { BookOpenIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import sparklesImg from "./assets/sparkles.png";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
+import { BookOpen01Icon, PencilIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   agentName: string;
@@ -28,7 +29,7 @@ export function AgentSavedCard({
   const hideNavButtons = chatSurface === "builder";
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+    <div className="rounded-xl border border-border-base/60 bg-surface p-4 shadow-sm">
       <div className="flex items-baseline gap-2">
         <Image
           src={sparklesImg}
@@ -37,8 +38,8 @@ export function AgentSavedCard({
           height={24}
           className="relative top-1"
         />
-        <Text variant="body-medium" className="mb-2 text-[16px] text-black">
-          Agent <span className="text-violet-600">{agentName}</span> {message}
+        <Text variant="large-medium" className="mb-2 leading-inherit">
+          Workflow <span className="text-brand">{agentName}</span> {message}
         </Text>
       </div>
       {!hideNavButtons && (
@@ -50,7 +51,7 @@ export function AgentSavedCard({
             target="_blank"
             rel="noopener noreferrer"
           >
-            <BookOpenIcon size={14} weight="regular" />
+            <Icon icon={BookOpen01Icon} size={14} />
             Open in library
           </Button>
           <Button
@@ -61,7 +62,7 @@ export function AgentSavedCard({
             target="_blank"
             rel="noopener noreferrer"
           >
-            <PencilSimpleIcon size={14} weight="regular" />
+            <Icon icon={PencilIcon} size={14} />
             Open in builder
           </Button>
         </div>

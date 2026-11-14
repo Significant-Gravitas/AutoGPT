@@ -1,24 +1,28 @@
-import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
 
+from backend.api.features.experts import experts_db
 from backend.copilot.rate_limit import enforce_payment_paywall
-from backend.data.execution import GraphExecutionMeta
+from backend.data.execution import ExecutionTrigger, GraphExecutionMeta
 from backend.data.model import CredentialsMetaInput
 from backend.executor.utils import add_graph_execution
-from backend.util.exceptions import NotFoundError, WebhookRegistrationError
+from backend.util.exceptions import (
+    ExpertRunPausedError,
+    WebhookRegistrationError,
+    WebhookSetupUnavailableError,
+)
+from backend.util.models import MAX_PAGE
 
 from .. import db
 from .. import model as models
 from ..triggers import (
     delete_preset_with_webhook_cleanup,
+    refuse_direct_run,
     setup_triggered_preset,
     update_triggered_preset,
 )
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["presets"],
@@ -33,8 +37,8 @@ router = APIRouter(
 )
 async def list_presets(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = Query(default=10, ge=1, le=db.MAX_PRESETS_PER_PAGE),
     graph_id: Optional[str] = Query(
         description="Allows to filter presets by a specific agent graph"
     ),
@@ -51,18 +55,12 @@ async def list_presets(
     Returns:
         models.LibraryAgentPresetResponse: A response containing the list of presets.
     """
-    try:
-        return await db.list_presets(
-            user_id=user_id,
-            graph_id=graph_id,
-            page=page,
-            page_size=page_size,
-        )
-    except Exception as e:
-        logger.exception("Failed to list presets for user %s: %s", user_id, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+    return await db.list_presets(
+        user_id=user_id,
+        graph_id=graph_id,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get(
@@ -85,18 +83,9 @@ async def get_preset(
         models.LibraryAgentPreset: The preset details.
 
     Raises:
-        HTTPException: If the preset is not found or an error occurs.
+        HTTPException: If the preset is not found.
     """
-    try:
-        preset = await db.get_preset(user_id, preset_id)
-    except Exception as e:
-        logger.exception(
-            "Error retrieving preset %s for user %s: %s", preset_id, user_id, e
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-
+    preset = await db.get_preset(user_id, preset_id)
     if not preset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -107,6 +96,7 @@ async def get_preset(
 
 @router.post(
     "/presets",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Create a new preset",
     description="Create a new preset for the current user.",
 )
@@ -126,25 +116,21 @@ async def create_preset(
 
     Returns:
         models.LibraryAgentPreset: The created preset.
-
-    Raises:
-        HTTPException: If an error occurs while creating the preset.
     """
-    try:
-        if isinstance(preset, models.LibraryAgentPresetCreatable):
-            return await db.create_preset(user_id, preset)
-        else:
-            return await db.create_preset_from_graph_execution(user_id, preset)
-    except NotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except Exception as e:
-        logger.exception("Preset creation failed for user %s: %s", user_id, e)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+    # Errors are answered by the global handlers in rest_api.py: NotFoundError
+    # → 404, MissingConfigError → 503, any other ValueError → 400.
+    if isinstance(preset, models.LibraryAgentPresetCreatable):
+        return await db.create_preset(
+            user_id,
+            preset,
+            expert_id=await experts_db.resolve_expert_for_graph(
+                user_id, preset.graph_id
+            ),
         )
+    return await db.create_preset_from_graph_execution(user_id, preset)
 
 
-@router.post("/presets/setup-trigger")
+@router.post("/presets/setup-trigger", dependencies=[Depends(enforce_payment_paywall)])
 async def setup_trigger(
     params: models.TriggeredPresetSetupRequest = Body(),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
@@ -161,7 +147,22 @@ async def setup_trigger(
             name=params.name,
             description=params.description,
             trigger_config=params.trigger_config,
+            constant_inputs=params.constant_inputs,
             agent_credentials=params.agent_credentials,
+            # Graph-match attribution is resolved by the caller (mirroring
+            # create_preset above): setup_triggered_preset itself never
+            # infers an expert, so copilot Otto sessions get presets
+            # they can actually manage.
+            expert_id=await experts_db.resolve_expert_for_graph(
+                user_id, params.graph_id
+            ),
+        )
+    except WebhookSetupUnavailableError as e:
+        # Server-side availability problem (e.g. Redis lock), not a bad
+        # request — retryable, like MissingConfigError's global 503.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Trigger setup is temporarily unavailable: {e}",
         )
     except WebhookRegistrationError as e:
         raise HTTPException(
@@ -172,6 +173,7 @@ async def setup_trigger(
 
 @router.patch(
     "/presets/{preset_id}",
+    dependencies=[Depends(enforce_payment_paywall)],
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
 )
@@ -249,6 +251,9 @@ async def delete_preset(
 async def execute_preset(
     preset_id: str,
     user_id: str = Security(autogpt_auth_lib.get_user_id),
+    ctx: autogpt_auth_lib.RequestContext = Security(
+        autogpt_auth_lib.get_request_context
+    ),
     inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
     credential_inputs: dict[str, CredentialsMetaInput] = Body(
         ..., embed=True, default_factory=dict
@@ -275,16 +280,37 @@ async def execute_preset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found",
         )
+    refuse_direct_run(preset)
 
     # Merge input overrides with preset inputs
     merged_node_input = preset.inputs | inputs
     merged_credential_inputs = preset.credentials | credential_inputs
 
-    return await add_graph_execution(
-        user_id=user_id,
-        graph_id=preset.graph_id,
-        graph_version=preset.graph_version,
-        preset_id=preset_id,
-        inputs=merged_node_input,
-        graph_credentials_inputs=merged_credential_inputs,
+    # Resource-follows-parent: the execution attributes (visibility + org
+    # credit spend) to the preset's own org/team — set from its parent
+    # graph at creation — not the caller's active header org. Untagged
+    # legacy presets fall back to the caller's context.
+    exec_org_id, exec_team_id = (
+        (preset.organization_id, preset.team_id)
+        if preset.organization_id
+        else (ctx.org_id, ctx.team_id)
     )
+
+    try:
+        return await add_graph_execution(
+            user_id=user_id,
+            graph_id=preset.graph_id,
+            graph_version=preset.graph_version,
+            preset_id=preset_id,
+            expert_id=preset.expert_id,
+            inputs=merged_node_input,
+            graph_credentials_inputs=merged_credential_inputs,
+            organization_id=exec_org_id,
+            team_id=exec_team_id,
+            trigger=ExecutionTrigger.MANUAL,
+            trigger_ref="preset",
+        )
+    except ExpertRunPausedError as e:
+        # A paused/over-budget expert is a user-visible state, not a server
+        # error — tell the user how to unblock instead of 500ing.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))

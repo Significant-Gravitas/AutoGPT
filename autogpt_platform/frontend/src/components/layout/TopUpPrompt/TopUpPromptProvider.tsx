@@ -1,9 +1,11 @@
 "use client";
 
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 
 import useCredits from "@/hooks/useCredits";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 import { DailyTopUpAutoOpener } from "./DailyTopUpAutoOpener";
 import { TopUpDialog } from "./TopUpDialog/TopUpDialog";
@@ -14,10 +16,14 @@ interface Props {
 }
 
 export function TopUpPromptProvider({ children }: Props) {
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { user, isLoggedIn } = useAuth();
+  const identityKey = user?.id ?? null;
+  const { isPaymentEnabled: isBillingEnabled } = usePlatformPayment();
+  const { isOnboardingComplete } = useOnboarding();
   const { credits, autoTopUpConfig } = useCredits({
-    fetchInitialCredits: true,
-    fetchInitialAutoTopUpConfig: true,
+    identityKey,
+    fetchInitialCredits: isLoggedIn,
+    fetchInitialAutoTopUpConfig: isLoggedIn,
   });
 
   // Backend treats amount === 0 as disabled, so auto-refill only actually
@@ -29,14 +35,20 @@ export function TopUpPromptProvider({ children }: Props) {
   // spuriously. It is also fail-closed by design: if GET /credits/auto-top-up
   // errors, autoTopUpConfig stays null and the prompt stays hidden, rather than
   // risk nudging a user who actually has auto-refill enabled.
+  // A new account has 0 credits until onboarding sets up its plan.
   const isOutOfCredits =
     !!isBillingEnabled &&
+    isOnboardingComplete === true &&
     credits !== null &&
     credits <= 0 &&
     autoTopUpConfig !== null &&
     !autoRefillEnabled;
 
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [identityKey]);
 
   function openTopUp() {
     setIsOpen(true);
@@ -51,7 +63,11 @@ export function TopUpPromptProvider({ children }: Props) {
       value={{ isOutOfCredits, openTopUp, closeTopUp }}
     >
       {children}
-      <TopUpDialog isOpen={isOpen} onClose={closeTopUp} />
+      <TopUpDialog
+        key={identityKey ?? "anonymous"}
+        isOpen={isOpen}
+        onClose={closeTopUp}
+      />
       {isOutOfCredits && <DailyTopUpAutoOpener />}
     </TopUpPromptContext.Provider>
   );

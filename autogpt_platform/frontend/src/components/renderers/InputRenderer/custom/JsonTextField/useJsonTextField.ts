@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { FieldProps } from "@rjsf/utils";
+import { isJsonTextFor } from "@/lib/json-text";
 import { stringifyFormData, parseJsonValue, isValidJson } from "./helpers";
 
 type FieldOnChange = FieldProps["onChange"];
@@ -35,10 +36,13 @@ export function useJsonTextField({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasError, setHasError] = useState(false);
 
-  // Update text value when formData changes externally
+  // Update text value when formData changes externally. The user's own edits
+  // come back here as formData too; their text stays as typed rather than
+  // being swapped for the reformatted copy.
   useEffect(() => {
-    const newValue = stringifyFormData(formData);
-    setTextValue(newValue);
+    setTextValue((current) =>
+      isJsonTextFor(current, formData) ? current : stringifyFormData(formData),
+    );
     setHasError(false);
   }, [formData]);
 

@@ -4,41 +4,75 @@ import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
-import { Navbar } from "@/components/layout/Navbar/Navbar";
+import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
+import { ChangelogPopup } from "@/components/molecules/ChangelogPopup/ChangelogPopup";
 import {
+  getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
+import { cn } from "@/lib/utils";
 
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
+import { ContextualTips } from "../components/ContextualTips/ContextualTips";
+import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
+import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
+import { NpsPrompt } from "../components/NpsPrompt/NpsPrompt";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
+import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
+import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
 import { InsetHeaderActions } from "./components/InsetHeaderActions/InsetHeaderActions";
+import { InsetHeaderSidebarTrigger } from "./components/InsetHeaderSidebarTrigger/InsetHeaderSidebarTrigger";
 import { InsetHeaderTitle } from "./components/InsetHeaderTitle/InsetHeaderTitle";
 import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
+  // The request's sidebar cookie, for a server render.
+  persistedSidebarOpen?: boolean;
 }
 
-export function PlatformChrome({ children }: Props) {
-  const { showNewLayout, showTourSidebar } = usePlatformChrome();
-
-  const content = (
+// The provider and the NPS card sit above the shell's branches: moving between
+// them (into settings, say) remounts everything below, and an NPS card that
+// goes away can't come back, because its one showing is already used.
+export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
+  return (
     <TopUpPromptProvider>
-      <PaywallGate>{children}</PaywallGate>
+      <PlatformShell persistedSidebarOpen={persistedSidebarOpen}>
+        {children}
+      </PlatformShell>
+      <NpsPrompt />
     </TopUpPromptProvider>
   );
+}
 
-  // Logged-out marketplace visitors browse with the tour demo sidebar as an
-  // upsell — clicking a demo session takes them into /tour/chat.
+function PlatformShell({ children, persistedSidebarOpen }: Props) {
+  const {
+    showAppSidebar,
+    showChangelog,
+    showTourSidebar,
+    overlayInsetHeader,
+    hasInsetHeaderTitle,
+    isBuilderRoute,
+  } = usePlatformChrome();
+  // Not mounted under the walkthrough: on a phone it lands inside the
+  // walkthrough's window, over what it points at. It mounts, with its own
+  // reveal timer, once the walkthrough ends.
+  const isFirstRunTourOpen = useFirstRunTourStore(
+    (state) => state.source !== null,
+  );
+
+  const content = <PaywallGate>{children}</PaywallGate>;
+
+  // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
         <TourSidebar variant="marketplace" />
-        <SidebarInset className="bg-[#f9f9f9]">
+        <SidebarInset className="bg-surface-muted">
           <div className="flex shrink-0 items-center px-4 pt-4 md:hidden">
             <SidebarTrigger />
           </div>
@@ -48,33 +82,56 @@ export function PlatformChrome({ children }: Props) {
     );
   }
 
-  if (showNewLayout) {
+  if (showAppSidebar) {
+    // The browser's cookie stays current across client navigation; the layout's does not.
+    // Expanded until the user collapses it, so a new user can see their chats.
+    const openOutsideBuilder =
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? true;
     return (
-      <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
+      <SidebarProvider
+        persistState
+        defaultOpen={!isBuilderRoute && openOutsideBuilder}
+        style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
+      >
+        <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
+        <ArtifactsPanelNavCollapse />
         <AppSidebar />
-        <SidebarInset className="bg-[#f9f9f9]">
-          <header className="relative flex shrink-0 items-center pb-4 pt-6">
+        {showChangelog && !isFirstRunTourOpen ? <ChangelogPopup /> : null}
+        <FirstRunTour />
+        <ContextualTips />
+        <SidebarInset className="bg-surface-muted">
+          <header
+            className={cn(
+              "flex shrink-0 items-center pt-6 pb-4",
+              // Overlay mode (copilot): the header floats above the content
+              // instead of reserving vertical space, so the chat scrolls to
+              // the viewport top underneath it.
+              overlayInsetHeader
+                ? "pointer-events-none absolute inset-x-0 top-0 z-40"
+                : "relative z-10",
+              !overlayInsetHeader && !hasInsetHeaderTitle && "md:hidden",
+            )}
+          >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              <div className="md:hidden">
-                <SidebarTrigger />
-              </div>
+              <InsetHeaderSidebarTrigger />
               <InsetHeaderTitle />
-            </div>
-            <div className="absolute inset-y-0 right-4 flex items-center">
               <InsetHeaderActions />
             </div>
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
-          <section className="flex-1">{content}</section>
+          <AppSidebarToggleProvider>
+            <section className="flex-1">{content}</section>
+          </AppSidebarToggleProvider>
         </SidebarInset>
       </SidebarProvider>
     );
   }
 
+  // Settings and admin render their own sidebar shells (with a Back link);
+  // the unauthenticated routes (reset-password, auth errors) get a bare frame.
   return (
     <main className="flex h-screen w-full flex-col">
-      <Navbar />
       <AdminImpersonationBanner />
       <GlobalSearchOverlay />
       <section className="flex-1">{content}</section>

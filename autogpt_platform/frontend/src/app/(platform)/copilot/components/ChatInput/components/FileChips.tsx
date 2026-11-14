@@ -1,41 +1,42 @@
 "use client";
 
 import { getFileTypeIcon } from "@/app/(platform)/artifacts/components/ArtifactsList/helpers";
-import {
-  CircleNotch as CircleNotchIcon,
-  X as XIcon,
-} from "@phosphor-icons/react";
+import { isPreviewableImage } from "../../ArtifactPanel/helpers";
+import { ChipThumbnail } from "./ChipThumbnail";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   type Attachment,
+  attachmentKey,
   attachmentName,
 } from "../../../helpers/workspaceAttachments";
-
-function attachmentMimeType(attachment: Attachment): string {
-  return attachment.kind === "local"
-    ? attachment.file.type
-    : attachment.mimeType;
-}
-
-// Stable key so AnimatePresence animates the element that actually left, not
-// whatever shifted into its index.
-function attachmentKey(attachment: Attachment): string {
-  return attachment.kind === "workspace"
-    ? `ws-${attachment.fileId}`
-    : `local-${attachment.file.name}-${attachment.file.size}-${attachment.file.lastModified}`;
-}
+import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
+import {
+  Cancel01Icon,
+  Folder01Icon,
+  Loading03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 
 interface Props {
   attachments: Attachment[];
   onRemove: (index: number) => void;
   isUploading?: boolean;
+  /** Card composer chips: white with a hairline ring, sitting inside the
+   *  frame's own padding. */
+  stacked?: boolean;
 }
 
 // ease-out so chips settle naturally; kept under 300ms (Emil's timing rules).
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 const DURATION = 0.2;
 
-export function FileChips({ attachments, onRemove, isUploading }: Props) {
+export function FileChips({
+  attachments,
+  onRemove,
+  isUploading,
+  stacked = false,
+}: Props) {
   const reduceMotion = useReducedMotion();
 
   return (
@@ -49,13 +50,40 @@ export function FileChips({ attachments, onRemove, isUploading }: Props) {
           }
           exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
           transition={{ duration: DURATION, ease: EASE_OUT }}
-          className="w-full overflow-hidden"
+          // The pull towards the textarea belongs on the clipping box, not
+          // inside it: a negative bottom margin on the row would shrink this
+          // wrapper's auto height by the same amount and crop the chips.
+          className={cn("w-full overflow-hidden", stacked && "-mb-1.5")}
         >
-          <div className="flex w-full flex-wrap gap-2 px-3 pb-2 pt-2">
+          <div
+            className={cn(
+              "flex w-full flex-wrap gap-2 px-3 pt-2 pb-2",
+              stacked && "gap-1.5 p-0",
+            )}
+          >
             <AnimatePresence initial={false} mode="popLayout">
               {attachments.map((attachment, index) => {
                 const name = attachmentName(attachment);
-                const Icon = getFileTypeIcon(attachmentMimeType(attachment));
+                const isFolder = attachment.kind === "folder";
+                const mimeType =
+                  attachment.kind === "local"
+                    ? attachment.file.type
+                    : attachment.kind === "workspace"
+                      ? attachment.mimeType
+                      : "";
+                const chipIcon = (
+                  <Icon
+                    icon={isFolder ? Folder01Icon : getFileTypeIcon(mimeType)}
+                    tone={stacked ? "subtle" : "primary"}
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                );
+                const count = isFolder
+                  ? folderSummary(
+                      attachment.fileCount,
+                      attachment.subfolderCount,
+                    )
+                  : null;
                 // Workspace files are already stored — only local files show
                 // the upload spinner while a send is in flight.
                 const showSpinner = isUploading && attachment.kind === "local";
@@ -85,23 +113,51 @@ export function FileChips({ attachments, onRemove, isUploading }: Props) {
                     }
                     transition={{ duration: DURATION, ease: EASE_OUT }}
                     style={{ willChange: "transform, opacity, filter" }}
-                    className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700"
+                    aria-label={
+                      isFolder ? `Folder: ${name}, ${count}` : undefined
+                    }
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full bg-surface-hover px-3 py-1 text-body text-foreground-body",
+                      stacked &&
+                        "gap-1.5 border border-border-base bg-surface py-0.5 pr-1.5 pl-2 text-caption text-foreground-strong shadow-sm",
+                    )}
                   >
-                    <Icon
-                      weight="regular"
-                      className="h-3.5 w-3.5 shrink-0 text-zinc-900"
-                    />
+                    {isPreviewableImage(mimeType) ? (
+                      <ChipThumbnail
+                        attachment={attachment}
+                        stacked={stacked}
+                        fallback={chipIcon}
+                      />
+                    ) : (
+                      chipIcon
+                    )}
                     <span className="max-w-[160px] truncate">{name}</span>
+                    {count ? (
+                      <span className="shrink-0 text-foreground-tertiary">
+                        · {count}
+                      </span>
+                    ) : null}
                     {showSpinner ? (
-                      <CircleNotchIcon className="ml-0.5 h-3 w-3 animate-spin text-zinc-400" />
+                      <Icon
+                        icon={Loading03Icon}
+                        spin
+                        tone="subtle"
+                        className="ml-0.5 h-3 w-3"
+                      />
                     ) : (
                       <button
                         type="button"
-                        aria-label={`Remove ${name}`}
+                        aria-label={
+                          isFolder ? `Remove folder ${name}` : `Remove ${name}`
+                        }
                         onClick={() => onRemove(index)}
-                        className="ml-0.5 rounded-full p-0.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
+                        className={cn(
+                          "ml-0.5 rounded-full p-0.5 text-foreground-subtle transition-colors hover:bg-surface-active hover:text-foreground-secondary",
+                          stacked &&
+                            "hover:bg-surface-hover hover:text-foreground-strong",
+                        )}
                       >
-                        <XIcon className="h-3 w-3" weight="bold" />
+                        <Icon icon={Cancel01Icon} className="h-3 w-3" />
                       </button>
                     )}
                   </motion.span>

@@ -81,6 +81,7 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
 - `pnpm types` - Run TypeScript type checking
+- `pnpm knip` - Report unused files, exports and dependencies (run `pnpm generate:api` first)
 - `pnpm test:unit` - Run the Vitest integration and unit suite with coverage
 - `pnpm test` - Run the Playwright E2E suite used in CI
 - `pnpm test-ui` - Run the same Playwright E2E suite with UI
@@ -157,7 +158,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework
 - [**shadcn/ui**](https://ui.shadcn.com/) - Re-usable components built with Radix UI and Tailwind CSS
 - [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility
-- [**Phosphor Icons**](https://phosphoricons.com/) - Icon set used across the app
+- [**Hugeicons**](https://hugeicons.com/icons/stroke-rounded) - Icon set used across the app (stroke-rounded)
 - [**Framer Motion**](https://motion.dev/) - Animation library for React
 
 ### Development & Testing
@@ -166,10 +167,11 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Playwright**](https://playwright.dev/) - End-to-end testing framework
 - [**ESLint**](https://eslint.org/) - JavaScript/TypeScript linting
 - [**Prettier**](https://prettier.io/) - Code formatting
+- [**Knip**](https://knip.dev/) - Finds unused files, exports and dependencies
 
 ### Backend & Services
 
-- [**Supabase**](https://supabase.com/) - Backend-as-a-Service (database, auth, storage)
+- [**Better Auth**](https://www.better-auth.com/) - Authentication (sessions, OAuth, JWTs) served from `/api/auth/*`
 - [**Sentry**](https://sentry.io/) - Error monitoring and performance tracking
 
 ### Package Management

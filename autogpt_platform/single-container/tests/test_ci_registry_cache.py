@@ -1,0 +1,117 @@
+import importlib.util
+import re
+import unittest
+from pathlib import Path
+
+
+SCRIPT = (
+    Path(__file__).resolve().parents[3] / ".github/scripts/single_container_cache.py"
+)
+SPEC = importlib.util.spec_from_file_location("single_container_cache", SCRIPT)
+cache = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(cache)
+IMAGE = "ghcr.io/example/appliance-cache"
+
+
+class RegistryCacheTests(unittest.TestCase):
+    def settings(self, event, ref="refs/heads/dev", arch="amd64"):
+        return cache.cache_settings(event, ref, IMAGE, arch)
+
+    def test_pull_requests_read_but_never_write_registry_cache(self):
+        self.assertEqual(
+            self.settings("pull_request", "refs/pull/1/merge"),
+            [f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64"],
+        )
+        self.assertFalse(
+            any("cache-to" in s for s in self.settings("pull_request", arch="arm64"))
+        )
+
+    def test_only_pull_requests_tolerate_a_failed_cache_login(self):
+        workflow = (
+            SCRIPT.parents[1] / "workflows/platform-single-container-docker.yml"
+        ).read_text(encoding="utf-8")
+        login = workflow.split("      - name: Authenticate to GHCR build cache\n", 1)[
+            1
+        ].split("      - name:", 1)[0]
+        self.assertIn(
+            "continue-on-error: ${{ github.event_name == 'pull_request' }}", login
+        )
+        self.assertNotIn("if:", login)
+
+    def test_only_dev_push_writes_the_shared_validation_cache(self):
+        settings = self.settings("push")
+        self.assertIn(
+            f"single-container.cache-to=type=registry,ref={IMAGE}:v4-amd64,mode=max,oci-mediatypes=true,image-manifest=false,ignore-error=true",
+            settings,
+        )
+        self.assertFalse(
+            any("cache-to" in s for s in self.settings("push", "refs/heads/test"))
+        )
+
+    def test_dispatch_cache_is_stable_branch_scoped_and_never_shared_cache(self):
+        for ref in ("refs/heads/dev", "refs/heads/test"):
+            settings = self.settings("workflow_dispatch", ref)
+            writes = [s for s in settings if "cache-to" in s]
+            self.assertEqual(len(writes), 1)
+            self.assertIn(":v4-branch-", writes[0])
+            self.assertIn("mode=max", writes[0])
+            self.assertIn("ignore-error=true", writes[0])
+            self.assertIn(
+                f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64",
+                settings,
+            )
+            self.assertEqual(settings, self.settings("workflow_dispatch", ref))
+        self.assertNotEqual(
+            self.settings("workflow_dispatch", "refs/heads/one"),
+            self.settings("workflow_dispatch", "refs/heads/two"),
+        )
+
+    def test_only_the_final_bake_target_reads_the_validation_cache(self):
+        # The helper targets' stages are part of the single-container build, so
+        # they are still served from its cache. A helper reading the cache
+        # itself can own the shared import, and its short-lived session then
+        # breaks the final build's layer pulls ("no active session").
+        bake = (
+            SCRIPT.parents[2] / "autogpt_platform/single-container/docker-bake.hcl"
+        ).read_text(encoding="utf-8")
+        final = bake.split('target "single-container" {', 1)[1].split("\n}", 1)[0]
+        block = re.search(r"^\s*contexts\s*=\s*\{(.*?)^\s*\}", final, re.M | re.S)
+        self.assertIsNotNone(block, final)
+        contexts = dict(
+            re.findall(r'^\s*([\w-]+)\s*=\s*"target:([^"]+)"', block[1], re.MULTILINE)
+        )
+        self.assertEqual(
+            contexts,
+            {
+                "autogpt-backend-base": "backend-server-base",
+                "autogpt-backend": "backend-server",
+            },
+        )
+        for event in ("push", "pull_request", "workflow_dispatch"):
+            settings = self.settings(event)
+            self.assertIn(
+                f"single-container.cache-from=type=registry,ref={IMAGE}:v4-amd64",
+                settings,
+            )
+            self.assertTrue(
+                all(s.startswith("single-container.") for s in settings), settings
+            )
+
+    def test_validation_cache_reads_are_architecture_scoped(self):
+        settings = self.settings("release", "refs/tags/v1")
+        self.assertTrue(all("cache-from" in s and ":v4-amd64" in s for s in settings))
+        self.assertTrue(
+            all(":v4-arm64" in s for s in self.settings("release", arch="arm64"))
+        )
+
+    def test_release_digest_build_does_not_trust_writable_ci_cache(self):
+        workflow = (
+            SCRIPT.parents[1] / "workflows/platform-single-container-docker.yml"
+        ).read_text(encoding="utf-8")
+        release_job = workflow.split("  publish-platform-digests:", 1)[1].split(
+            "  publish-manifest:", 1
+        )[0]
+        self.assertNotIn("cache-from", release_job)
+        self.assertNotIn("cache-to", release_job)
+        self.assertNotIn("GHCR", release_job)
+        self.assertNotIn("packages:", release_job)

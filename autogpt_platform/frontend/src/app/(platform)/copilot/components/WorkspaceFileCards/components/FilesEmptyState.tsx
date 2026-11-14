@@ -1,0 +1,25 @@
+"use client";
+
+import {
+  File02Icon,
+  Image01Icon,
+  Table01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { PanelEmptyState } from "../../ContextPanel/components/PanelEmptyState/PanelEmptyState";
+
+// Only Otto's chats reach this: an expert's chat always lists that expert's
+// documents instead.
+export function FilesEmptyState() {
+  return (
+    <PanelEmptyState
+      tiles={[
+        <Icon key="image" icon={Image01Icon} size={22} className="text-sky" />,
+        <Icon key="table" icon={Table01Icon} size={22} tone="success" />,
+        <Icon key="doc" icon={File02Icon} size={22} tone="brand" />,
+      ]}
+      title="No files yet"
+      description="Files you attach and documents Otto creates in this chat will show up here."
+    />
+  );
+}

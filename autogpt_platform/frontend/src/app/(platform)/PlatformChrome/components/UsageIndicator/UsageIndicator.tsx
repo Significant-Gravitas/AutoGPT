@@ -1,8 +1,9 @@
 "use client";
 
 import { UsagePopover } from "@/app/(platform)/copilot/components/UsageLimits/UsagePopover/UsagePopover";
-import { GaugeIcon } from "@phosphor-icons/react";
 import { useUsageIndicator } from "./useUsageIndicator";
+import { GaugeIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function UsageIndicator() {
   const { percent } = useUsageIndicator();
@@ -16,10 +17,9 @@ export function UsageIndicator() {
         <button
           type="button"
           aria-label={label}
-          title={label}
-          className="relative flex size-8 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100 p-0 transition-colors hover:bg-zinc-200"
+          className="relative flex size-8 items-center justify-center rounded-lg p-0 transition-colors hover:bg-surface-hover"
         >
-          <GaugeIcon className="size-5 text-black" />
+          <Icon icon={GaugeIcon} tone="base" className="size-5" />
 
           {percent ? (
             <svg
@@ -33,12 +33,12 @@ export function UsageIndicator() {
                 y="1"
                 width="30"
                 height="30"
-                rx="11"
+                rx="8"
                 pathLength={100}
                 strokeDasharray={`${percent} 100`}
                 strokeLinecap="round"
                 strokeWidth={2}
-                className="stroke-purple-600"
+                className="stroke-brand-hover"
               />
             </svg>
           ) : null}

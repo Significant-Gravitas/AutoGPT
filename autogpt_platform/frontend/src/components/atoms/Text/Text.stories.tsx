@@ -1,6 +1,7 @@
 import { StoryCode } from "@/components/tokens/helpers/StoryCode";
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { Text, textVariants } from "./Text";
+import { tones } from "@/components/styles/tones";
+import { Text, textTones, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {
   title: "Atoms/Text",
@@ -25,6 +26,11 @@ const meta: Meta<typeof Text> = {
       options: textVariants,
       description: "Typography variant to apply",
     },
+    tone: {
+      control: { type: "select" },
+      options: [undefined, ...textTones],
+      description: "Semantic colour",
+    },
     as: {
       control: { type: "select" },
       options: ["h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "div", "code"],
@@ -47,8 +53,8 @@ export function AllVariants() {
   return (
     <div className="space-y-8">
       {/* Headings */}
-      <div className="mb-19 mb-20 space-y-6">
-        <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <div className="mb-20 space-y-6">
+        <h2 className="mb-4 border-b border-border-base pb-2 text-lead text-foreground-tertiary">
           Headings
         </h2>
         <Text variant="h1">Heading 1</Text>
@@ -65,7 +71,7 @@ export function AllVariants() {
         />
       </div>
       {/* Body Text */}
-      <h2 className="mb-4 border-b border-border pb-2 text-xl text-zinc-500">
+      <h2 className="mb-4 border-b border-border-base pb-2 text-lead text-foreground-tertiary">
         Body Text
       </h2>
       <div className="flex flex-row gap-8">
@@ -184,6 +190,164 @@ export function CustomElement() {
       <Text variant="body" as="h2">
         Body size rendered as h2
       </Text>
+    </div>
+  );
+}
+
+//=============================================================================
+// Tones
+//=============================================================================
+export function Tones() {
+  return (
+    <div className="space-y-6 p-8">
+      <Text variant="body">Default (black)</Text>
+      <Text variant="body" tone="primary">
+        Primary · zinc-900 · titles and values
+      </Text>
+      <Text variant="body" tone="secondary">
+        Secondary · zinc-600 · descriptions
+      </Text>
+      <Text variant="body" tone="muted">
+        Muted · zinc-500 · meta, captions, empty states
+      </Text>
+      <Text variant="body" tone="danger">
+        Danger · red-600 · destructive copy
+      </Text>
+      <StoryCode
+        code={`<Text variant="body" tone="primary">Primary</Text>
+<Text variant="body" tone="secondary">Secondary</Text>
+<Text variant="body" tone="muted">Muted</Text>
+<Text variant="body" tone="danger">Danger</Text>`}
+      />
+    </div>
+  );
+}
+
+//=============================================================================
+// All tones, each on every variant
+//=============================================================================
+export function AllTones() {
+  return (
+    <div className="space-y-8 p-8">
+      <Text variant="body">Default (foreground-base)</Text>
+      {textTones.map((tone) => (
+        <div key={tone} className="space-y-1">
+          <Text variant="small-medium" tone="muted">
+            {tone} · {tones[tone]}
+          </Text>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+            {textVariants.map((variant) => (
+              <Text key={variant} variant={variant} tone={tone}>
+                {variant}
+              </Text>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+//=============================================================================
+// Pinned line heights: a size role with its line height fixed (the -tight,
+// -loose, -relaxed, -inherit and -lh-* variants), for copy that keeps the
+// line height of the raw size it replaced. The parent's 30px line height
+// shows what the -inherit variants pick up.
+//=============================================================================
+export function PinnedLineHeights() {
+  const pinned = textVariants.filter((variant) =>
+    // `-tracking-tight` pins letter-spacing, not line height.
+    /(?<!-tracking)-(tight|loose|relaxed|inherit|lh-[a-z0-9]+)(-tracking)?$/.test(
+      variant,
+    ),
+  );
+  return (
+    <div className="space-y-3 p-8 leading-[30px]">
+      {pinned.map((variant) => (
+        <div key={variant} className="flex items-baseline gap-6">
+          <Text variant="small" tone="muted" className="w-56 shrink-0">
+            {variant}
+          </Text>
+          <Text variant={variant}>Find decision-makers at any company</Text>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+//=============================================================================
+// Text roles (Home / Team)
+//=============================================================================
+export function TextRoles() {
+  return (
+    <div className="max-w-md space-y-3 p-8">
+      <Text variant="eyebrow">Needs you</Text>
+      <Text variant="large-medium" tone="primary">
+        Section title · large-medium
+      </Text>
+      <Text variant="body-medium" tone="primary">
+        Row title · body-medium
+      </Text>
+      <Text variant="body" tone="secondary">
+        Description · body · secondary
+      </Text>
+      <Text variant="small" tone="muted" className="tabular-nums">
+        Meta · small · muted · 2 files · 1 action
+      </Text>
+      <Text variant="small-medium" tone="muted">
+        Chip label · small-medium
+      </Text>
+      <StoryCode
+        code={`<Text variant="eyebrow">Needs you</Text>
+<Text variant="large-medium" tone="primary">Section title</Text>
+<Text variant="body-medium" tone="primary">Row title</Text>
+<Text variant="body" tone="secondary">Description</Text>
+<Text variant="small" tone="muted" className="tabular-nums">Meta</Text>`}
+      />
+      <Text variant="small" tone="muted">
+        Floor is 12px (small). No arbitrary px sizes.
+      </Text>
+    </div>
+  );
+}
+
+//=============================================================================
+// Modifier props: adjust a variant without a className
+//=============================================================================
+export function Modifiers() {
+  return (
+    <div className="space-y-3 p-8">
+      <Text variant="body" weight="semibold">
+        weight=&quot;semibold&quot;
+      </Text>
+      <Text variant="body" mono>
+        mono · run_7f3a2c
+      </Text>
+      <Text variant="body" tabular>
+        tabular · 1,204.50 credits
+      </Text>
+      <Text variant="body" italic>
+        italic
+      </Text>
+      <Text variant="body" decoration="line-through" tone="muted">
+        decoration=&quot;line-through&quot;
+      </Text>
+      <Text variant="small" transform="uppercase" tone="muted">
+        transform=&quot;uppercase&quot;
+      </Text>
+      <Text variant="small" transform="uppercase" tracking="caps">
+        tracking=&quot;caps&quot;
+      </Text>
+      <Text variant="body" align="center">
+        align=&quot;center&quot;
+      </Text>
+      <StoryCode
+        code={`<Text variant="body" weight="semibold">…</Text>
+<Text variant="body" mono>…</Text>
+<Text variant="body" tabular>…</Text>
+<Text variant="body" decoration="line-through" tone="muted">…</Text>
+<Text variant="small" transform="uppercase" tone="muted">…</Text>`}
+      />
     </div>
   );
 }

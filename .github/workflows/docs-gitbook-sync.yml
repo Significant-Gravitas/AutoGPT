@@ -1,0 +1,58 @@
+name: Docs - Sync master to gitbook
+
+# GitBook publishes agpt.co/docs from the `gitbook` branch. This keeps that
+# branch a one-way, docs-only copy of master's docs/, so the published docs
+# match what is deployed and nothing flows back from GitBook into the repo.
+#
+# Runs as the batch-bot App: the rulesets in .github/rulesets/gitbook-*.json
+# restrict updates to `gitbook` to that App (4260672 there is its App ID), and
+# GITHUB_TOKEN cannot be put on a ruleset's bypass list. Those files are the
+# record of the rulesets; an admin applies them. The daily run is there to
+# notice a commit that reached `gitbook` some other way between pushes to master.
+on:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    # Only master's copy of this workflow may write to gitbook. Without this,
+    # a manual run from any other branch would run that branch's script with
+    # the App's credentials.
+    if: github.repository == 'Significant-Gravitas/AutoGPT' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # On the job, not the workflow: a run this job skips must not take the
+    # group and displace a pending sync.
+    concurrency:
+      group: docs-gitbook-sync
+      cancel-in-progress: false
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          app-id: ${{ vars.BATCH_BOT_APP_ID }}
+          private-key: ${{ secrets.BATCH_BOT_PRIVATE_KEY }}
+          permission-contents: write # fast-forward gitbook
+          permission-issues: write # report commits the sync did not write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/workflows/scripts
+          persist-credentials: false
+      - name: Sync docs/ to gitbook
+        run: python3 .github/workflows/scripts/gitbook_sync.py
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          SYNC_ACTOR: ${{ steps.app-token.outputs.app-slug }}[bot]
+          SOURCE_BRANCH: master
+          TARGET_BRANCH: gitbook
+          # Mentioned on the report. A team mention only notifies if the App
+          # can see the organization's teams, which it cannot today, so the
+          # default names a person as well. Set the repository variable to
+          # change who is told.
+          NOTIFY: ${{ vars.GITBOOK_SYNC_NOTIFY || '@Significant-Gravitas/maintainers @ntindle' }}

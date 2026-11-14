@@ -1,0 +1,58 @@
+import { capturePostHogEvent } from "@/services/analytics/posthog-capture";
+import { OnboardingEvent } from "@/services/analytics/posthog-events";
+import type { StepLayout } from "./store";
+
+export type OnboardingStepKey =
+  | "access"
+  | "team"
+  | "autopilot"
+  | "role"
+  | "pain_points"
+  | "subscription"
+  | "connect"
+  | "preparing";
+
+const POSTHOG_SENT_KEY_PREFIX = "posthog_onboarding_step_viewed_";
+
+/**
+ * Maps a wizard step number to a stable key.
+ *
+ * Step numbers differ between layouts, so the number alone is meaningless
+ * across cohorts — Preparing is 6 with a paywall and 7 self-hosted. Keying by
+ * name keeps a single funnel readable for all. The plan step is `subscription`
+ * with or without a paywall; with one it also sends `paywall_viewed`.
+ */
+export function onboardingStepKey(
+  steps: StepLayout,
+  step: number,
+): OnboardingStepKey | null {
+  if (step === steps.access) return "access";
+  if (step === steps.team) return "team";
+  if (step === steps.autopilot) return "autopilot";
+  if (step === steps.role) return "role";
+  if (step === steps.painPoints) return "pain_points";
+  if (step === steps.subscription) return "subscription";
+  if (step === steps.connect) return "connect";
+  if (step === steps.preparing) return "preparing";
+  return null;
+}
+
+/**
+ * Reports that the user reached a wizard step, at most once per tab.
+ *
+ * The wizard's steps share the `/onboarding` URL and the backend records
+ * only ONBOARDING_COMPLETE, so without this nothing distinguishes "abandoned on
+ * Role" from "abandoned on Preparing" — the drop between signup and copilot is
+ * a single opaque number. PostHog funnels order steps by their filter, so one
+ * event with a `step` property serves every step.
+ *
+ * The once-per-tab guard is marked only once the event is sent, never while it
+ * waits for the answer or when it is dropped for lack of consent.
+ */
+export function trackOnboardingStep(key: OnboardingStepKey) {
+  capturePostHogEvent(
+    OnboardingEvent.ONBOARDING_STEP_VIEWED,
+    { step: key },
+    { oncePerTabKey: `${POSTHOG_SENT_KEY_PREFIX}${key}` },
+  );
+}

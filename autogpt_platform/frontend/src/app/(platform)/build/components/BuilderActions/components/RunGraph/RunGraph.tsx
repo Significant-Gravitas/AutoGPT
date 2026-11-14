@@ -5,16 +5,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import {
-  CircleNotchIcon,
-  FlaskIcon,
-  PlayIcon,
-  StopIcon,
-} from "@phosphor-icons/react";
 import { useShallow } from "zustand/react/shallow";
 import { RunInputDialog } from "../RunInputDialog/RunInputDialog";
 import { useRunGraph } from "./useRunGraph";
 import { cn } from "@/lib/utils";
+import {
+  FlaskConicalIcon,
+  Loading03Icon,
+  PlayIcon,
+  StopIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 export const RunGraph = ({ flowID }: { flowID: string | null }) => {
   const {
@@ -35,25 +36,17 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
 
   // Determine which icon to show with proper animation
   const renderIcon = () => {
-    const iconClass = cn(
-      "size-4 transition-transform duration-200 ease-out",
-      !isLoading && "group-hover:scale-110",
-    );
+    const iconClass = cn("size-4", !isLoading && "group-hover:scale-110");
 
     if (isLoading) {
-      return (
-        <CircleNotchIcon
-          className={cn(iconClass, "animate-spin")}
-          weight="bold"
-        />
-      );
+      return <Icon icon={Loading03Icon} spin className={iconClass} />;
     }
 
     if (isGraphRunning) {
-      return <StopIcon className={iconClass} weight="fill" />;
+      return <Icon icon={StopIcon} motion="transform" className={iconClass} />;
     }
 
-    return <PlayIcon className={iconClass} weight="fill" />;
+    return <Icon icon={PlayIcon} motion="transform" className={iconClass} />;
   };
 
   return (
@@ -64,20 +57,21 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           <TooltipTrigger asChild>
             <Button
               size="icon"
-              variant="ghost"
+              variant="ghost-warning"
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}
-              className="group text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+              className="group"
             >
-              <FlaskIcon
-                className="size-4 transition-transform duration-200 ease-out group-hover:scale-110"
-                weight="fill"
+              <Icon
+                icon={FlaskConicalIcon}
+                motion="transform"
+                className="size-4 group-hover:scale-110"
               />
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            Simulate agent (no real execution — LLM-generated outputs)
+            Simulate workflow (no real execution — LLM-generated outputs)
           </TooltipContent>
         </Tooltip>
       )}
@@ -102,8 +96,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           {isLoading
             ? "Processing..."
             : isGraphRunning
-              ? "Stop agent"
-              : "Run agent"}
+              ? "Stop workflow"
+              : "Run workflow"}
         </TooltipContent>
       </Tooltip>
       <RunInputDialog

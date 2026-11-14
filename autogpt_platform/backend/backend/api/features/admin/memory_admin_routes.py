@@ -19,9 +19,11 @@ from autogpt_libs.auth import get_user_id, requires_admin_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Security
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import ResponseError
 
+from backend.api.features.experts import experts_db
+from backend.copilot.dream.cancel import cancel_dream_pass
 from backend.copilot.dream.job_status import (
     JobKind,
     JobState,
@@ -31,12 +33,16 @@ from backend.copilot.dream.job_status import (
     write_initial_status,
 )
 from backend.copilot.dream.nightly_batch import NightlyBatchResult
+from backend.copilot.dream.pass_record import dream_pass_result_from_row
 from backend.copilot.dream.ratification import RatificationResult
 from backend.copilot.dream.schemas import DreamPassResult
-from backend.copilot.graphiti.client import derive_group_id
-from backend.copilot.graphiti.config import graphiti_config
-from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.dream.store import read_dream_pass, read_user_passes
+from backend.copilot.graphiti.falkordb_driver import open_driver
+from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.dream_pass_models import DreamPassRecord
 from backend.util.clients import get_scheduler_client
+from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +62,7 @@ class MemoryOverview(BaseModel):
     """Counts surfaced in the visualizer's header strip."""
 
     user_id: str
+    expert_id: str | None = None
     group_id: str
     entities: int
     episodes: int
@@ -120,6 +127,9 @@ class GraphNode(BaseModel):
     type: str | None = None
     name: str | None = None
     summary: str | None = None
+    # Set on the tombstone a hard forget leaves of an episode; its text is
+    # gone, and only its title and this stamp are shown.
+    hard_deleted_at: str | None = None
 
 
 class GraphEdge(BaseModel):
@@ -137,6 +147,7 @@ class GraphEdge(BaseModel):
 
 class GraphResponse(BaseModel):
     user_id: str
+    expert_id: str | None = None
     group_id: str
     nodes: list[GraphNode]
     edges: list[GraphEdge]
@@ -184,12 +195,33 @@ def _resolve_user_id(user_id: str, caller_id: str) -> str:
     return caller_id if user_id == "me" else user_id
 
 
+async def _resolve_memory_scope(user_id: str, expert_id: str | None) -> MemoryScope:
+    """Derive an owned memory scope without trusting client group identifiers."""
+
+    if expert_id is None:
+        try:
+            return MemoryScope.for_user(user_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None:
+        raise HTTPException(status_code=404, detail="Expert not found")
+
+    try:
+        return MemoryScope.for_expert(user_id, expert.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 def _audit_cross_user_access(
     *,
     request: Request,
     caller_id: str,
     target_id: str,
     jwt_payload: dict,
+    expert_id: str | None = None,
+    group_id: str | None = None,
 ) -> None:
     """Log admin reads/writes against another user's memory.
 
@@ -203,10 +235,52 @@ def _audit_cross_user_access(
     caller_email = jwt_payload.get("email") or jwt_payload.get("user_metadata", {}).get(
         "email", ""
     )
+    memory_scope = f"expert {expert_id!r}" if expert_id is not None else "Otto"
+    if group_id is not None:
+        memory_scope = f"{memory_scope} (group {group_id})"
     logger.info(
         f"Admin memory access: {caller_id} ({caller_email}) "
-        f"acting on user {target_id} for {request.method} {request.url}"
+        f"acting on user {target_id!r}, scope {memory_scope}, "
+        # The URL is repr-escaped too: with path-scoped expert routes the
+        # expert_id is a path segment, so control characters would
+        # otherwise ride into the log line through the URL itself.
+        f"for {request.method} {redact_url(str(request.url))!r}"
     )
+
+
+async def _resolve_and_audit_memory_scope(
+    *,
+    request: Request,
+    caller_id: str,
+    target_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+) -> MemoryScope:
+    """Resolve an authorized scope while auditing successful and failed attempts.
+
+    ``expert_id`` is required so an account-only caller says so explicitly
+    instead of landing in the account graph by omission."""
+    try:
+        memory_scope = await _resolve_memory_scope(target_id, expert_id)
+    except Exception:
+        _audit_cross_user_access(
+            request=request,
+            caller_id=caller_id,
+            target_id=target_id,
+            jwt_payload=jwt_payload,
+            expert_id=expert_id,
+        )
+        raise
+
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target_id,
+        jwt_payload=jwt_payload,
+        expert_id=memory_scope.expert_id,
+        group_id=memory_scope.group_id,
+    )
+    return memory_scope
 
 
 async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> None:
@@ -225,29 +299,6 @@ async def _mark_schedule_failed(kind: JobKind, job_id: str, exc: Exception) -> N
             kind,
             job_id[:12],
         )
-
-
-def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
-    """Read-only driver — bypasses the full Graphiti client construction.
-
-    The visualizer's read paths only need Cypher; we avoid the
-    ~1s LLM-client + cross-encoder setup cost for what should be
-    snappy dashboard calls.
-
-    ``build_indices=False`` suppresses graphiti-core's per-init
-    fire-and-forget indexing task. For a user whose graph the admin
-    is inspecting, the indices are already in place from the
-    long-lived chat-write client; firing the index-creation task per
-    short-lived admin request creates a race with the route's own
-    queries and produces "Buffer is closed" log spam.
-    """
-    return AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-        build_indices=False,
-    )
 
 
 _MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
@@ -281,28 +332,40 @@ async def _count(driver, query: str) -> int:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+#
+# Memory scope is structural: account (Otto) reads live at
+# ``/{user_id}/...`` and expert reads at
+# ``/{user_id}/experts/{expert_id}/...``. Each pair shares one ``_impl``
+# so the route bodies aren't duplicated. Maintenance POSTs exist only
+# under the account paths — there is deliberately no expert-scoped
+# maintenance route, so a maintenance job can never be aimed at an
+# expert graph by construction.
+
+_USER_ID_PATH = Path(description="User id or 'me'")
+_EXPERT_ID_PATH = Path(
+    min_length=1, max_length=128, description="Expert id owned by the user"
+)
 
 
-@router.get("/{user_id}/overview", response_model=MemoryOverview)
-async def get_memory_overview(
+async def _get_memory_overview_impl(
+    *,
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
-    caller_id: Annotated[str, Depends(get_user_id)],
-    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
 ) -> MemoryOverview:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id = memory_scope.group_id
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         entities = await _count(driver, "MATCH (n:Entity) RETURN count(n) AS c")
         episodes = await _count(driver, "MATCH (n:Episodic) RETURN count(n) AS c")
@@ -318,6 +381,7 @@ async def get_memory_overview(
 
     return MemoryOverview(
         user_id=target,
+        expert_id=memory_scope.expert_id,
         group_id=group_id,
         entities=entities,
         episodes=episodes,
@@ -327,27 +391,64 @@ async def get_memory_overview(
     )
 
 
-@router.get("/{user_id}/entities", response_model=EntityListResponse)
-async def list_entities(
+@router.get("/{user_id}/overview", response_model=MemoryOverview)
+async def get_memory_overview(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+) -> MemoryOverview:
+    """Count summary of the user's account (Otto) memory graph."""
+    return await _get_memory_overview_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/overview",
+    response_model=MemoryOverview,
+)
+async def get_expert_memory_overview(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+) -> MemoryOverview:
+    """Count summary of one expert's isolated memory graph."""
+    return await _get_memory_overview_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+    )
+
+
+async def _list_entities_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    limit: int,
 ) -> EntityListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id = memory_scope.group_id
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         result = await driver.execute_query(
             """
@@ -378,34 +479,76 @@ async def list_entities(
     return EntityListResponse(user_id=target, items=items)
 
 
-@router.get("/{user_id}/facts", response_model=FactListResponse)
-async def list_facts(
+@router.get("/{user_id}/entities", response_model=EntityListResponse)
+async def list_entities(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    status: Annotated[
-        Literal["active", "superseded", "contradicted", "any"], Query()
-    ] = "any",
-    scope: Annotated[str | None, Query()] = None,
+) -> EntityListResponse:
+    """Entities in the user's account (Otto) memory graph."""
+    return await _list_entities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/entities",
+    response_model=EntityListResponse,
+)
+async def list_expert_entities(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+) -> EntityListResponse:
+    """Entities in one expert's isolated memory graph."""
+    return await _list_entities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        limit=limit,
+    )
+
+
+async def _list_facts_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    limit: int,
+    status: str,
+    scope: str | None,
 ) -> FactListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id = memory_scope.group_id
 
-    # Build optional filters
+    # Build optional filters. "active" means live and active under the recall
+    # policy, so a forgotten or expired fact never shows as active.
     where_clauses = ["e.group_id = $g"]
     params: dict[str, Any] = {"g": group_id, "limit": limit}
-    if status != "any":
+    if status == "active":
+        where_clauses.append(live_fact_predicate("e", include_tentative=False))
+    elif status != "any":
         where_clauses.append("e.status = $status")
         params["status"] = status
     if scope:
@@ -413,7 +556,7 @@ async def list_facts(
         params["scope"] = scope
     where = " AND ".join(where_clauses)
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         result = await driver.execute_query(
             f"""
@@ -422,8 +565,8 @@ async def list_facts(
             RETURN e.uuid AS uuid,
                    src.name AS source,
                    tgt.name AS target,
-                   e.name AS name,
-                   e.fact AS fact,
+                   coalesce(e.name_redacted, e.name) AS name,
+                   coalesce(e.fact_redacted, e.fact) AS fact,
                    e.status AS status,
                    e.scope AS scope,
                    e.confidence AS confidence,
@@ -460,27 +603,81 @@ async def list_facts(
     return FactListResponse(user_id=target, items=items)
 
 
-@router.get("/{user_id}/communities", response_model=CommunityListResponse)
-async def list_communities(
+_FACT_STATUS_QUERY = Annotated[
+    Literal["active", "superseded", "contradicted", "any"], Query()
+]
+
+
+@router.get("/{user_id}/facts", response_model=FactListResponse)
+async def list_facts(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    status: _FACT_STATUS_QUERY = "any",
+    scope: Annotated[str | None, Query()] = None,
+) -> FactListResponse:
+    """Facts (RELATES_TO edges) in the user's account (Otto) memory graph."""
+    return await _list_facts_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        limit=limit,
+        status=status,
+        scope=scope,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/facts",
+    response_model=FactListResponse,
+)
+async def list_expert_facts(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    status: _FACT_STATUS_QUERY = "any",
+    scope: Annotated[str | None, Query()] = None,
+) -> FactListResponse:
+    """Facts (RELATES_TO edges) in one expert's isolated memory graph."""
+    return await _list_facts_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        limit=limit,
+        status=status,
+        scope=scope,
+    )
+
+
+async def _list_communities_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    limit: int,
 ) -> CommunityListResponse:
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id = memory_scope.group_id
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     try:
         # Graphiti stores membership as (Community)-[HAS_MEMBER]->(Entity); match
         # in that direction so member_count and the size sort are correct.
@@ -519,38 +716,69 @@ async def list_communities(
     return CommunityListResponse(user_id=target, items=items)
 
 
-@router.get("/{user_id}/graph", response_model=GraphResponse)
-async def get_graph(
+@router.get("/{user_id}/communities", response_model=CommunityListResponse)
+async def list_communities(
     request: Request,
-    user_id: Annotated[str, Path(description="User id or 'me'")],
+    user_id: Annotated[str, _USER_ID_PATH],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
-    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
-    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
-    include_episodes: Annotated[bool, Query()] = False,
-    include_communities: Annotated[bool, Query()] = True,
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+) -> CommunityListResponse:
+    """Communities in the user's account (Otto) memory graph."""
+    return await _list_communities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/communities",
+    response_model=CommunityListResponse,
+)
+async def list_expert_communities(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    limit: Annotated[int, Query(ge=1, le=2000)] = 500,
+) -> CommunityListResponse:
+    """Communities in one expert's isolated memory graph."""
+    return await _list_communities_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        limit=limit,
+    )
+
+
+async def _get_graph_impl(
+    *,
+    request: Request,
+    user_id: str,
+    caller_id: str,
+    jwt_payload: dict,
+    expert_id: str | None,
+    node_limit: int,
+    edge_limit: int,
+    include_episodes: bool,
+    include_communities: bool,
 ) -> GraphResponse:
-    """Single-shot graph payload for the visualizer canvas.
-
-    Returns nodes + edges in one round-trip so the frontend can hand
-    the whole thing to a force-directed layout without N+1 fetches.
-
-    Defaults to entities + communities (the "what does my memory know
-    about" view). ``include_episodes=True`` adds the temporal
-    :Episodic nodes — useful for debugging extraction but noisy for the
-    typical inspector view.
-    """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    memory_scope = await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=expert_id,
     )
-    try:
-        group_id = derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    group_id = memory_scope.group_id
 
     # Build the labels-of-interest list for the node queries — one
     # Cypher per label so the label can travel through the result row
@@ -561,7 +789,7 @@ async def get_graph(
     if include_communities:
         labels.append("Community")
 
-    driver = _open_driver(group_id)
+    driver = open_driver(memory_scope)
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
     truncated = False
@@ -576,6 +804,7 @@ async def get_graph(
                 RETURN n.uuid AS uuid,
                        n.name AS name,
                        n.summary AS summary,
+                       toString(n.hard_deleted_at) AS hard_deleted_at,
                        labels(n) AS all_labels
                 LIMIT $limit
                 """,
@@ -600,6 +829,7 @@ async def get_graph(
                         type=custom_type,
                         name=r.get("name"),
                         summary=r.get("summary"),
+                        hard_deleted_at=r.get("hard_deleted_at"),
                     )
                 )
                 if len(nodes) >= node_limit:
@@ -630,8 +860,8 @@ async def get_graph(
                    type(e) AS label,
                    src.uuid AS source,
                    tgt.uuid AS target,
-                   e.name AS name,
-                   e.fact AS fact,
+                   coalesce(e.name_redacted, e.name) AS name,
+                   coalesce(e.fact_redacted, e.fact) AS fact,
                    e.status AS status,
                    e.scope AS scope
             LIMIT $limit
@@ -674,10 +904,74 @@ async def get_graph(
 
     return GraphResponse(
         user_id=target,
+        expert_id=memory_scope.expert_id,
         group_id=group_id,
         nodes=nodes,
         edges=edges,
         truncated=truncated,
+    )
+
+
+@router.get("/{user_id}/graph", response_model=GraphResponse)
+async def get_graph(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
+    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
+    include_episodes: Annotated[bool, Query()] = False,
+    include_communities: Annotated[bool, Query()] = True,
+) -> GraphResponse:
+    """Single-shot graph payload for the visualizer canvas (account scope).
+
+    Returns nodes + edges in one round-trip so the frontend can hand
+    the whole thing to a force-directed layout without N+1 fetches.
+
+    Defaults to entities + communities (the "what does my memory know
+    about" view). ``include_episodes=True`` adds the temporal
+    :Episodic nodes — useful for debugging extraction but noisy for the
+    typical inspector view.
+    """
+    return await _get_graph_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=None,
+        node_limit=node_limit,
+        edge_limit=edge_limit,
+        include_episodes=include_episodes,
+        include_communities=include_communities,
+    )
+
+
+@router.get(
+    "/{user_id}/experts/{expert_id}/graph",
+    response_model=GraphResponse,
+)
+async def get_expert_graph(
+    request: Request,
+    user_id: Annotated[str, _USER_ID_PATH],
+    expert_id: Annotated[str, _EXPERT_ID_PATH],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    node_limit: Annotated[int, Query(ge=1, le=20000)] = 5000,
+    edge_limit: Annotated[int, Query(ge=1, le=50000)] = 10000,
+    include_episodes: Annotated[bool, Query()] = False,
+    include_communities: Annotated[bool, Query()] = True,
+) -> GraphResponse:
+    """Visualizer graph payload for one expert's isolated memory graph."""
+    return await _get_graph_impl(
+        request=request,
+        user_id=user_id,
+        caller_id=caller_id,
+        jwt_payload=jwt_payload,
+        expert_id=expert_id,
+        node_limit=node_limit,
+        edge_limit=edge_limit,
+        include_episodes=include_episodes,
+        include_communities=include_communities,
     )
 
 
@@ -718,6 +1012,44 @@ class CommunityRebuildJobStatus(JobStatus[RebuildResult]):
     """JobStatus envelope for ``kind="rebuild"``."""
 
 
+class PublicDreamPassRecord(DreamPassRecord):
+    """Admin-visible pass record without the live lock credential."""
+
+    lease_token: str | None = Field(default=None, exclude=True)
+
+
+def _public_pass_record(record: DreamPassRecord) -> PublicDreamPassRecord:
+    return PublicDreamPassRecord.model_validate(record.model_dump())
+
+
+class DreamPassRecordResponse(BaseModel):
+    """One dream pass's durable record, and the ``DreamPassResult`` read off
+    it: what the eval driver scores, with usage for batch passes too."""
+
+    record: PublicDreamPassRecord
+    result: DreamPassResult
+
+
+class DreamPassListResponse(BaseModel):
+    """A user's dream passes, every scope, newest first."""
+
+    passes: list[PublicDreamPassRecord]
+
+
+# What a cancelled pass's record says when the admin gave no reason.
+ADMIN_CANCEL_REASON = "cancelled by an admin"
+
+
+class DreamPassCancelRequest(BaseModel):
+    """Why an admin cancels a dream pass, for the log; the pass records
+    ``cancelled: by_admin``."""
+
+    # Stripped before the length check, so a blank reason is refused.
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+
+
 @router.post(
     "/{user_id}/dream",
     response_model=JobTriggerResponse,
@@ -728,24 +1060,33 @@ async def trigger_dream_pass(
     user_id: Annotated[str, Path(description="User id or 'me'")],
     caller_id: Annotated[str, Depends(get_user_id)],
     jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+    force: Annotated[
+        bool,
+        Query(
+            description=(
+                "Expire a fresh open dream pass of the account first instead "
+                "of skipping behind it"
+            )
+        ),
+    ] = False,
 ) -> JSONResponse:
     """Fire a dream pass and return 202 + job_id immediately.
 
     Frontend polls ``GET /api/admin/memory/{user_id}/dream/{job_id}``
     for progress. Runs ONLY the dream pass submitter — for the full
-    nightly fan-out use ``POST /{user_id}/nightly``.
+    nightly fan-out use ``POST /{user_id}/nightly``. The pass goes through
+    the same guard as the nightly one: it skips behind a fresh open pass of
+    the account unless ``force`` expires that pass first. ``force`` does not
+    take a lock another pass holds.
     """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
-    try:
-        derive_group_id(target)  # validate before kicking off
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = str(_uuid.uuid4())
     status = await write_initial_status(
@@ -754,7 +1095,7 @@ async def trigger_dream_pass(
 
     try:
         await get_scheduler_client().schedule_immediate_dream_pass(
-            user_id=target, job_id=job_id
+            user_id=target, job_id=job_id, force=force
         )
     except Exception as exc:
         logger.warning(
@@ -777,6 +1118,41 @@ async def trigger_dream_pass(
         started_at=status.started_at,
     )
     return JSONResponse(status_code=202, content=payload.model_dump(mode="json"))
+
+
+# Declared before ``GET /{user_id}/dream/{job_id}``, which would otherwise
+# read "passes" as a job id.
+@router.get(
+    "/{user_id}/dream/passes",
+    response_model=DreamPassListResponse,
+)
+async def list_dream_pass_records(
+    request: Request,
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict[str, Any], Security(get_jwt_payload)],
+    status: Annotated[
+        Literal["open", "all"],
+        Query(description="Only the passes still running, or all of them"),
+    ] = "all",
+    limit: Annotated[
+        int, Query(ge=1, le=100, description="How many passes, newest first")
+    ] = 20,
+) -> DreamPassListResponse:
+    """List a user's dream passes, across the account and every expert,
+    newest first: the durable records, each as ``GET .../record`` returns
+    it. A finished pass keeps its phase outputs, operations and usage; its
+    input bundle went when it closed, and its lease with it, or, for a pass
+    whose close left a cleanup pending, once that cleanup finished."""
+    target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+    passes = await read_user_passes(target, open_only=status == "open", limit=limit)
+    return DreamPassListResponse(passes=[_public_pass_record(row) for row in passes])
 
 
 @router.get(
@@ -806,6 +1182,83 @@ async def get_dream_pass_status(
     return DreamJobStatus.model_validate(status.model_dump())
 
 
+@router.get(
+    "/{user_id}/dream/{pass_id}/record",
+    response_model=DreamPassRecordResponse,
+)
+async def get_dream_pass_record(
+    request: Request,
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    pass_id: Annotated[str, Path(description="The dream pass id")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict, Security(get_jwt_payload)],
+) -> DreamPassRecordResponse:
+    """Read one dream pass's durable record, on either route.
+
+    The job status above is a Redis row that lapses after six hours and, for
+    a batch pass, carries no usage; the record outlives the pass and holds
+    what its phases used, unless a cancel or a newer pass closed it first
+    (the cost log still has that usage). 404 for a pass that does not exist
+    or belongs to another user, alike.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+    record = await read_dream_pass(pass_id, user_id=target)
+    if record is None:
+        raise HTTPException(status_code=404, detail="dream pass not found")
+    return DreamPassRecordResponse(
+        record=_public_pass_record(record), result=dream_pass_result_from_row(record)
+    )
+
+
+@router.post(
+    "/{user_id}/dream/{pass_id}/cancel",
+    response_model=DreamPassRecordResponse,
+)
+async def cancel_dream_pass_run(
+    request: Request,
+    user_id: Annotated[str, Path(description="User id or 'me'")],
+    pass_id: Annotated[str, Path(description="The dream pass id")],
+    caller_id: Annotated[str, Depends(get_user_id)],
+    jwt_payload: Annotated[dict[str, Any], Security(get_jwt_payload)],
+    body: DreamPassCancelRequest | None = None,
+) -> DreamPassRecordResponse:
+    """Cancel an open dream pass and return its record, now CANCELLED.
+
+    The row closes at once; the pass itself stops at its next check (a phase
+    boundary, its batch submit, or just before apply, on either route)
+    without applying. A batch pass waiting on its provider has that batch
+    cancelled too, and the batch executor drops it at its next poll, which
+    releases the pass's lock. A pass already past its last check still
+    applies, once, and whatever a pass applied stays. 404 for a pass that
+    does not exist or belongs to another user, alike; 409 once the pass has
+    ended.
+    """
+    target = _resolve_user_id(user_id, caller_id)
+    _audit_cross_user_access(
+        request=request,
+        caller_id=caller_id,
+        target_id=target,
+        jwt_payload=jwt_payload,
+    )
+    reason = (body.reason if body else None) or ADMIN_CANCEL_REASON
+    cancel = await cancel_dream_pass(pass_id, user_id=target, reason=reason)
+    if cancel.record is None:
+        raise HTTPException(status_code=404, detail="dream pass not found")
+    if not cancel.cancelled:
+        ended = cancel.record.status.value.lower()
+        raise HTTPException(status_code=409, detail=f"dream pass already {ended}")
+    return DreamPassRecordResponse(
+        record=_public_pass_record(cancel.record),
+        result=dream_pass_result_from_row(cancel.record),
+    )
+
+
 @router.post("/{user_id}/ratification", response_model=RatificationResult)
 async def trigger_ratification_pass(
     request: Request,
@@ -821,16 +1274,13 @@ async def trigger_ratification_pass(
     without the full nightly fan-out.
     """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
-    try:
-        derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         result = await get_scheduler_client().execute_ratification_pass_now(
@@ -868,16 +1318,13 @@ async def trigger_nightly_batch(
     for cost-log attribution.
     """
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
-    try:
-        derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = str(_uuid.uuid4())
     status = await write_initial_status(kind="nightly", job_id=job_id, user_id=target)
@@ -966,16 +1413,13 @@ async def rebuild_communities(
     """
     _ = force  # not yet plumbed through the with_status wrapper
     target = _resolve_user_id(user_id, caller_id)
-    _audit_cross_user_access(
+    await _resolve_and_audit_memory_scope(
         request=request,
         caller_id=caller_id,
         target_id=target,
         jwt_payload=jwt_payload,
+        expert_id=None,
     )
-    try:
-        derive_group_id(target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = str(_uuid.uuid4())
     status = await write_initial_status(kind="rebuild", job_id=job_id, user_id=target)

@@ -4,9 +4,12 @@ import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Input } from "@/components/atoms/Input/Input";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { getErrorStatus } from "../../../helpers";
+import { TriggerNotFound } from "../../other/TriggerNotFound";
 import {
   getAgentCredentialsFields,
   getAgentInputFields,
+  getTriggerConfigFields,
 } from "../../modals/AgentInputsReadOnly/helpers";
 import { RunAgentInputs } from "../../modals/RunAgentInputs/RunAgentInputs";
 import { LoadingSelectedContent } from "../LoadingSelectedContent";
@@ -42,6 +45,8 @@ export function SelectedTriggerView({
     setDescription,
     inputs,
     setInputValue,
+    triggerConfig,
+    setTriggerConfigValue,
     credentials,
     setCredentialValue,
     handleSaveChanges,
@@ -54,7 +59,18 @@ export function SelectedTriggerView({
   const agentInputFields = getAgentInputFields(agent);
   const agentCredentialsFields = getAgentCredentialsFields(agent);
   const inputFields = Object.entries(agentInputFields);
+  const triggerConfigFields = Object.entries(getTriggerConfigFields(agent));
   const credentialFields = Object.entries(agentCredentialsFields);
+
+  if (getErrorStatus(error) === 404) {
+    return (
+      <TriggerNotFound
+        agent={agent}
+        banner={banner}
+        onClearSelection={onClearSelectedRun}
+      />
+    );
+  }
 
   if (error) {
     return (
@@ -128,6 +144,22 @@ export function SelectedTriggerView({
               />
             )}
 
+            {triggerConfigFields.length > 0 && (
+              <RunDetailCard title="Trigger Configuration">
+                <div className="flex flex-col gap-4">
+                  {triggerConfigFields.map(([key, inputSubSchema]) => (
+                    <RunAgentInputs
+                      key={key}
+                      schema={inputSubSchema}
+                      value={triggerConfig[key] ?? inputSubSchema.default}
+                      placeholder={inputSubSchema.description}
+                      onChange={(value) => setTriggerConfigValue(key, value)}
+                    />
+                  ))}
+                </div>
+              </RunDetailCard>
+            )}
+
             {inputFields.length > 0 && (
               <RunDetailCard title="Your Input">
                 <div className="flex flex-col gap-4">
@@ -159,7 +191,7 @@ export function SelectedTriggerView({
                       onSelectCredentials={(value) =>
                         setCredentialValue(key, value!)
                       }
-                      siblingInputs={inputs}
+                      siblingInputs={{ ...inputs, ...triggerConfig }}
                     />
                   ))}
                 </div>

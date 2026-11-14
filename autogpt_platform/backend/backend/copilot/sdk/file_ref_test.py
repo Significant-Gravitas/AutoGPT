@@ -77,16 +77,16 @@ def test_parse_file_ref_strips_whitespace():
     assert ref.uri == "workspace://abc123"
 
 
-def test_parse_file_ref_invalid_range_zero_start():
-    assert parse_file_ref("@@agptfile:workspace://abc123[0-5]") is None
-
-
-def test_parse_file_ref_invalid_range_end_less_than_start():
-    assert parse_file_ref("@@agptfile:workspace://abc123[10-5]") is None
-
-
-def test_parse_file_ref_invalid_range_zero_end():
-    assert parse_file_ref("@@agptfile:workspace://abc123[1-0]") is None
+@pytest.mark.parametrize(
+    "ref",
+    [
+        pytest.param("@@agptfile:workspace://abc123[0-5]", id="zero_start"),
+        pytest.param("@@agptfile:workspace://abc123[10-5]", id="end_less_than_start"),
+        pytest.param("@@agptfile:workspace://abc123[1-0]", id="zero_end"),
+    ],
+)
+def test_parse_file_ref_invalid_range(ref):
+    assert parse_file_ref(ref) is None
 
 
 # ---------------------------------------------------------------------------
@@ -97,23 +97,17 @@ def test_parse_file_ref_invalid_range_zero_end():
 TEXT = "line1\nline2\nline3\nline4\nline5\n"
 
 
-def test_apply_line_range_no_range():
-    assert _apply_line_range(TEXT, None, None) == TEXT
-
-
-def test_apply_line_range_start_only():
-    result = _apply_line_range(TEXT, 3, None)
-    assert result == "line3\nline4\nline5\n"
-
-
-def test_apply_line_range_full():
-    result = _apply_line_range(TEXT, 2, 4)
-    assert result == "line2\nline3\nline4\n"
-
-
-def test_apply_line_range_single_line():
-    result = _apply_line_range(TEXT, 2, 2)
-    assert result == "line2\n"
+@pytest.mark.parametrize(
+    "start, end, expected",
+    [
+        pytest.param(None, None, TEXT, id="no_range"),
+        pytest.param(3, None, "line3\nline4\nline5\n", id="start_only"),
+        pytest.param(2, 4, "line2\nline3\nline4\n", id="full"),
+        pytest.param(2, 2, "line2\n", id="single_line"),
+    ],
+)
+def test_apply_line_range(start, end, expected):
+    assert _apply_line_range(TEXT, start, end) == expected
 
 
 def test_apply_line_range_beyond_eof():
@@ -149,59 +143,40 @@ async def test_expand_no_refs():
 
 
 @pytest.mark.asyncio
-async def test_expand_single_ref():
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve_always),
-    ):
-        result = await expand_file_refs_in_string(
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        pytest.param(
             "@@agptfile:workspace://abc123",
-            user_id="u1",
-            session=_make_session(),
-        )
-    assert result == "content:workspace://abc123"
-
-
-@pytest.mark.asyncio
-async def test_expand_ref_with_range():
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve_always),
-    ):
-        result = await expand_file_refs_in_string(
+            "content:workspace://abc123",
+            id="single_ref",
+        ),
+        pytest.param(
             "@@agptfile:workspace://abc123[10-50]",
-            user_id="u1",
-            session=_make_session(),
-        )
-    assert result == "content:workspace://abc123[10-50]"
-
-
-@pytest.mark.asyncio
-async def test_expand_ref_embedded_in_text():
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=_resolve_always),
-    ):
-        result = await expand_file_refs_in_string(
+            "content:workspace://abc123[10-50]",
+            id="ref_with_range",
+        ),
+        pytest.param(
             "Here is the file: @@agptfile:workspace://abc123 — done",
-            user_id="u1",
-            session=_make_session(),
-        )
-    assert result == "Here is the file: content:workspace://abc123 — done"
-
-
-@pytest.mark.asyncio
-async def test_expand_multiple_refs():
+            "Here is the file: content:workspace://abc123 — done",
+            id="ref_embedded_in_text",
+        ),
+        pytest.param(
+            "@@agptfile:workspace://file1 and @@agptfile:workspace://file2[1-5]",
+            "content:workspace://file1 and content:workspace://file2[1-5]",
+            id="multiple_refs",
+        ),
+    ],
+)
+async def test_expand_refs(text, expected):
     with patch(
         "backend.copilot.sdk.file_ref.resolve_file_ref",
         new=AsyncMock(side_effect=_resolve_always),
     ):
         result = await expand_file_refs_in_string(
-            "@@agptfile:workspace://file1 and @@agptfile:workspace://file2[1-5]",
-            user_id="u1",
-            session=_make_session(),
+            text, user_id="u1", session=_make_session()
         )
-    assert result == "content:workspace://file1 and content:workspace://file2[1-5]"
+    assert result == expected
 
 
 @pytest.mark.asyncio
@@ -1976,3 +1951,93 @@ async def test_bare_ref_parquet_nan_replaced_with_none():
         for cell in row:
             if isinstance(cell, float):
                 assert not math.isnan(cell), f"NaN leaked: {row}"
+
+
+@pytest.mark.asyncio
+async def test_union_object_string_bare_ref_parses_to_dict():
+    """A bare ref in a slot typed ["object", "string"] (e.g. agent_json)
+    gets structured parsing — a JSON file arrives at the tool as a dict."""
+
+    async def _resolve(*_args, **_kwargs):
+        return '{"nodes": [{"id": "n1"}], "links": []}'
+
+    schema = {
+        "type": "object",
+        "properties": {"agent_json": {"type": ["object", "string"]}},
+        "required": ["agent_json"],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=_resolve),
+    ):
+        result = await expand_file_refs_in_args(
+            {"agent_json": "@@agptfile:/home/user/agent.json"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["agent_json"] == {"nodes": [{"id": "n1"}], "links": []}
+
+
+@pytest.mark.asyncio
+async def test_union_object_string_dict_skips_inner_expansion():
+    """An inline dict in a ["object", "string"]-typed slot with no declared
+    properties is left untouched — inner strings that merely mention
+    @@agptfile syntax (e.g. prompt text in an agent graph) must not be
+    expanded."""
+
+    schema = {
+        "type": "object",
+        "properties": {"agent_json": {"type": ["object", "string"]}},
+        "required": ["agent_json"],
+    }
+    agent = {
+        "nodes": [{"id": "n1", "input_default": {"prompt": "@@agptfile:/x.json"}}],
+        "links": [],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not be called")),
+    ):
+        result = await expand_file_refs_in_args(
+            {"agent_json": agent},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["agent_json"] is agent
+
+
+@pytest.mark.asyncio
+async def test_union_object_string_dict_with_properties_skips_inner_expansion():
+    """Same contract when the slot schema declares decoder-guiding
+    ``properties`` (the structured AGENT_JSON_SCHEMA shape): an inline graph
+    dict passes through untouched, so @@agptfile tokens inside metadata
+    strings like name/description are never expanded or raised on."""
+    from backend.copilot.tools.agent_json_input import AGENT_JSON_SCHEMA
+
+    schema = {
+        "type": "object",
+        "properties": {"agent_json": AGENT_JSON_SCHEMA},
+        "required": [],
+    }
+    agent = {
+        "name": "Uses @@agptfile:/x.json in its name",
+        "description": "@@agptfile:workspace:///notes.md",
+        "nodes": [{"id": "n1", "input_default": {"prompt": "@@agptfile:/x.json"}}],
+        "links": [],
+    }
+
+    with patch(
+        "backend.copilot.sdk.file_ref.resolve_file_ref",
+        new=AsyncMock(side_effect=AssertionError("should not be called")),
+    ):
+        result = await expand_file_refs_in_args(
+            {"agent_json": agent},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=schema,
+        )
+    assert result["agent_json"] is agent

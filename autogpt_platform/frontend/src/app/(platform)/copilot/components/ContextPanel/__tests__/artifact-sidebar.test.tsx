@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactRef } from "../../../store";
@@ -33,7 +34,7 @@ function resetCopilotStore() {
       isOpen: true,
       activeArtifact: null,
       history: [],
-      activeTab: "files",
+      activeTab: "artifacts",
     },
   }));
 }
@@ -42,6 +43,7 @@ function resetCopilotStore() {
 // swaps async and flaky in jsdom. Render them as plain divs so the swap is
 // synchronous — same approach as ChatContainer.test.tsx.
 vi.mock("framer-motion", () => ({
+  useReducedMotion: () => false,
   AnimatePresence: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   ),
@@ -119,19 +121,20 @@ describe("Context/Artifact panel (desktop)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the artifact panel when an artifact opens and returns to the context panel on close", async () => {
+  it("shows the artifact panel when an artifact opens and returns to the artifacts library on close", async () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact());
 
-    render(<RightRegion sessionId="session-1" />);
+    const { container } = render(<RightRegion sessionId="session-1" />);
 
     // Artifact open: the artifact takes over the right region — its header is
-    // visible and the Context Panel (tabs) is hidden.
+    // visible and the docked Context Panel is hidden.
     expect(await screen.findByText("notes.txt")).toBeDefined();
-    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(container.querySelector("[data-context-panel]")).toBeNull();
 
-    // Close the artifact → it disappears and the Context Panel is shown.
+    // Close the artifact → the preview clears and the artifacts library docks
+    // in its place.
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(await screen.findByRole("tablist")).toBeDefined();
-    expect(screen.queryByText("notes.txt")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("notes.txt")).toBeNull());
+    expect(container.querySelector("[data-context-panel]")).not.toBeNull();
   });
 });

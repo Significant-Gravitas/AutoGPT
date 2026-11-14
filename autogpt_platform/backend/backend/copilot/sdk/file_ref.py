@@ -14,7 +14,7 @@ Protocol
     - ``workspace://<file_id>#<mime>`` — same, MIME hint is ignored for reads
     - ``workspace:///<path>`` — workspace file by virtual path
     - ``/absolute/local/path`` — ephemeral or sdk_cwd file (validated by
-      :func:`~backend.copilot.sdk.tool_adapter.is_allowed_local_path`)
+      :func:`~backend.copilot.context.resolve_allowed_local_path`)
     - Any absolute path that resolves inside the E2B sandbox
       (``/home/user/...``) when a sandbox is active
 
@@ -31,9 +31,9 @@ Examples
     @@agptfile:/home/user/script.sh
 """
 
+import asyncio
 import itertools
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -42,9 +42,10 @@ from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     get_workspace_manager,
-    is_allowed_local_path,
+    resolve_allowed_local_path,
     resolve_sandbox_path,
 )
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.util.file import parse_workspace_uri
 from backend.util.file_content_parser import (
@@ -54,6 +55,7 @@ from backend.util.file_content_parser import (
     infer_format_from_uri,
     parse_file_content,
 )
+from backend.util.sandbox_output import read_sandbox_file
 from backend.util.type import MediaFileType
 
 
@@ -96,6 +98,16 @@ class FileRef:
 # ---------------------------------------------------------------------------
 # Public API  (top-down: main functions first, helpers below)
 # ---------------------------------------------------------------------------
+
+
+def text_outside_file_refs(text: str) -> str | None:
+    """Return *text* with every ``@@agptfile:`` reference cut out.
+
+    Returns None when *text* is nothing but references, since the expanded
+    content then stands in for the whole text.
+    """
+    rest = _FILE_REF_RE.sub(" ", text)
+    return rest if rest.strip() else None
 
 
 def parse_file_ref(text: str) -> FileRef | None:
@@ -159,12 +171,12 @@ async def read_file_bytes(
             )
         return data
 
-    if is_allowed_local_path(plain, get_sdk_cwd()):
-        resolved = os.path.realpath(os.path.expanduser(plain))
+    resolved = resolve_allowed_local_path(plain, get_sdk_cwd())
+    if resolved is not None:
         try:
             # Read with a one-byte overshoot to detect files that exceed the limit
             # without a separate os.path.getsize call (avoids TOCTOU race).
-            with open(resolved, "rb") as fh:
+            with open(resolved, "rb", opener=open_no_follow) as fh:
                 data = fh.read(_MAX_BARE_REF_BYTES + 1)
             if len(data) > _MAX_BARE_REF_BYTES:
                 raise ValueError(
@@ -186,7 +198,7 @@ async def read_file_bytes(
                 f"Path is not allowed (not in workspace, sdk_cwd, or sandbox): {plain}"
             ) from exc
         try:
-            data = bytes(await sandbox.files.read(remote, format="bytes"))
+            data = await read_sandbox_file(sandbox, remote, _MAX_BARE_REF_BYTES)
         except (FileNotFoundError, OSError, UnicodeDecodeError) as exc:
             raise ValueError(f"Failed to read from sandbox: {plain}: {exc}") from exc
         except Exception as exc:
@@ -206,12 +218,8 @@ async def read_file_bytes(
             # Re-raise unexpected exceptions (TypeError, AttributeError, etc.)
             # so they surface as real bugs rather than being silently masked.
             raise
-        # NOTE: E2B sandbox API does not support pre-read size checks;
-        # the full file is loaded before the size guard below.
         if len(data) > _MAX_BARE_REF_BYTES:
-            raise ValueError(
-                f"File too large ({len(data)} bytes, limit {_MAX_BARE_REF_BYTES})"
-            )
+            raise ValueError(f"File too large (limit {_MAX_BARE_REF_BYTES} bytes)")
         return data
 
     raise ValueError(
@@ -371,15 +379,28 @@ async def expand_file_refs_in_args(
                 value, user_id, session, raise_on_error=True
             )
         if isinstance(value, dict):
-            # When the schema says this is an object but doesn't define
-            # inner properties, skip expansion — the caller (e.g.
+            # When the schema says this is (or can be) an object but doesn't
+            # define inner properties, skip expansion — the caller (e.g.
             # RunBlockTool) will expand with the actual nested schema.
-            if (
-                prop_schema is not None
-                and prop_schema.get("type") == "object"
-                and "properties" not in prop_schema
-            ):
-                return value
+            # ``type`` may be a union list, e.g. ["object", "string"] on
+            # ``agent_json`` parameters. Union object/string slots are the
+            # "inline graph or file-ref" contract: an inline dict must pass
+            # through untouched even when the schema carries decoder-guiding
+            # ``properties`` — recursing would expand @@agptfile tokens found
+            # inside graph metadata strings (name/description) and corrupt
+            # them, or raise on ones that don't resolve.
+            if prop_schema is not None:
+                prop_type = prop_schema.get("type")
+                is_object_typed = prop_type == "object" or (
+                    isinstance(prop_type, list) and "object" in prop_type
+                )
+                accepts_ref_string = (
+                    isinstance(prop_type, list) and "string" in prop_type
+                )
+                if is_object_typed and (
+                    "properties" not in prop_schema or accepts_ref_string
+                ):
+                    return value
             nested_props = (prop_schema or {}).get("properties", {})
             return {
                 k: await _expand(v, prop_schema=nested_props.get(k))
@@ -579,7 +600,9 @@ async def _expand_bare_ref(
         # file) instead of silently returning garbled bytes.
         strict = fmt in BINARY_FORMATS
         try:
-            parsed = parse_file_content(content, fmt, strict=strict)
+            parsed = await asyncio.to_thread(
+                parse_file_content, content, fmt, strict=strict
+            )
         except PARSE_EXCEPTIONS as exc:
             raise FileRefExpansionError(f"Failed to parse {fmt} file: {exc}") from exc
         # Normalize bytes fallback to str so tools never

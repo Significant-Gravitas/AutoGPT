@@ -1,0 +1,64 @@
+"use client";
+
+import { ScrollArea } from "@/components/molecules/ScrollArea/ScrollArea";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
+import { PopoverClose } from "@radix-ui/react-popover";
+
+import { TaskGroup } from "../helpers";
+import { WalletRefill } from "./WalletRefill";
+import { TaskGroups } from "./WalletTaskGroups";
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
+
+interface Props {
+  groups: TaskGroup[];
+  formattedCredits: string;
+}
+
+export function WalletFullPanel({ groups, formattedCredits }: Props) {
+  const { isPaymentEnabled } = usePlatformPayment();
+
+  return (
+    <>
+      {/* Header */}
+      <div className="mx-1 flex items-start justify-between gap-3 border-b border-border-base pb-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <Text variant="h5-semibold" as="span" tone="primary">
+            Automation Credits
+          </Text>
+          <Text variant="small-tight" as="span" tone="muted">
+            Platform-only credits for automations. This is separate from your
+            subscription and is not usable for plan fees.
+          </Text>
+        </div>
+        <div className="flex shrink-0 items-center text-body leading-5 text-accent-strong">
+          <div className="rounded-lg bg-accent-surface px-3 py-2">
+            <Text variant="body-tight" as="div" tone="inherit">
+              Earn credits{" "}
+              <Text as="span" variant="body-semibold-tight" tone="inherit">
+                {formattedCredits}
+              </Text>
+            </Text>
+          </div>
+          <PopoverClose aria-label="Close wallet">
+            <Icon
+              icon={Cancel01Icon}
+              tone="emphasis"
+              className="ml-2 h-5 w-5 hover:text-foreground-base"
+            />
+          </PopoverClose>
+        </div>
+      </div>
+      <ScrollArea className="max-h-[85vh] overflow-y-auto">
+        {/* Top ups */}
+        {isPaymentEnabled && <WalletRefill />}
+        {/* Tasks */}
+        <Text variant="small-tight" as="p" tone="subtle" className="mx-1 my-3">
+          Complete the following tasks to earn more credits!
+        </Text>
+        <TaskGroups groups={groups} />
+      </ScrollArea>
+    </>
+  );
+}

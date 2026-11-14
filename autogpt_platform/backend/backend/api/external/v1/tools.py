@@ -3,8 +3,8 @@
 Note: These endpoints use ephemeral sessions that are not persisted to Redis.
 As a result, session-based rate limiting (max_agent_runs, max_agent_schedules)
 is not enforced for external API calls. Each request creates a fresh session
-with zeroed counters. Rate limiting for external API consumers should be
-handled separately (e.g., via API key quotas).
+with zeroed counters. Both routes use rate_limit.EXECUTION_LIMIT to share the
+per-user execution budget with the other v1 write operations.
 """
 
 import logging
@@ -15,6 +15,7 @@ from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field
 
 from backend.api.external.middleware import require_permission
+from backend.api.external.rate_limit import EXECUTION_LIMIT
 from backend.copilot.model import ChatSession
 from backend.copilot.tools import find_agent_tool, run_agent_tool
 from backend.copilot.tools.models import ToolResponseBase
@@ -70,13 +71,21 @@ class RunAgentRequest(BaseModel):
     )
 
 
-def _create_ephemeral_session(user_id: str) -> ChatSession:
-    """Create an ephemeral session for stateless API requests."""
-    return ChatSession.new(user_id, dry_run=False)
+def _create_ephemeral_session(
+    user_id: str, organization_id: str | None = None
+) -> ChatSession:
+    """Create an ephemeral session for stateless API requests.
+
+    ``organization_id`` should be the API key's org so tools launched
+    through this session attribute to the key's tenant (mirrors the
+    external ``execute_graph`` route).
+    """
+    return ChatSession.new(user_id, dry_run=False, organization_id=organization_id)
 
 
 @tools_router.post(
     path="/find-agent",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def find_agent(
     request: FindAgentRequest,
@@ -93,7 +102,7 @@ async def find_agent(
     Returns:
         List of matching agents or no results response
     """
-    session = _create_ephemeral_session(auth.user_id)
+    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
     result = await find_agent_tool._execute(
         user_id=auth.user_id,
         session=session,
@@ -104,6 +113,7 @@ async def find_agent(
 
 @tools_router.post(
     path="/run-agent",
+    dependencies=[EXECUTION_LIMIT],
 )
 async def run_agent(
     request: RunAgentRequest,
@@ -133,7 +143,7 @@ async def run_agent(
         - execution_started: If agent was run or scheduled successfully
         - error: If something went wrong
     """
-    session = _create_ephemeral_session(auth.user_id)
+    session = _create_ephemeral_session(auth.user_id, auth.organization_id)
     result = await run_agent_tool._execute(
         user_id=auth.user_id,
         session=session,

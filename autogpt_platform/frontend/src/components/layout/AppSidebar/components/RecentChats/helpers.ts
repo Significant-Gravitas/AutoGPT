@@ -1,69 +1,43 @@
-function startOfDay(date: Date): number {
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  ).getTime();
+import type { ExpertIdentity } from "@/app/(platform)/copilot/useExpertMap";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+
+// Fired experts can't be addressed, so their group gets no new-chat entry:
+// the deep link would only fall back to Otto. `new=1` keeps the page on the
+// fresh new-task state: without it `useChatSession` adopts the expert's
+// latest thread, which is exactly the chat the user is trying to leave.
+export function getNewChatHref(
+  expertId: string | null,
+  activeExpertIds: ReadonlySet<string>,
+) {
+  if (!expertId) return "/home";
+  if (!activeExpertIds.has(expertId)) return null;
+  return `/home?expertId=${encodeURIComponent(expertId)}&new=1`;
 }
 
-function diffInDays(iso: string): number {
-  const date = new Date(iso);
-  const dayMs = 86_400_000;
-  return Math.round((startOfDay(new Date()) - startOfDay(date)) / dayMs);
-}
+// How long a new expert keeps their own sidebar entry while they have no chat.
+export const NEW_EXPERT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-function ordinalSuffix(day: number): string {
-  if (day >= 11 && day <= 13) return "th";
-  switch (day % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
-}
-
-// e.g. "26th June" (current year) or "26th June 2024" (older).
-function formatDayLabel(date: Date): string {
-  const day = date.getDate();
-  const month = date.toLocaleDateString(undefined, { month: "long" });
-  const label = `${day}${ordinalSuffix(day)} ${month}`;
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  return sameYear ? label : `${label} ${date.getFullYear()}`;
-}
-
-export function getDateGroupLabel(iso: string): string {
-  const diffDays = diffInDays(iso);
-  if (diffDays <= 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  return formatDayLabel(new Date(iso));
-}
-
-// Buckets sessions by calendar day and orders groups most-recent-first. Doesn't
-// rely on the input being pre-sorted, so an unsorted list can never produce
-// duplicate day groups; within a group, input order is preserved.
-export function groupSessionsByDate<T extends { updated_at: string }>(
-  sessions: T[],
-): { label: string; sessions: T[] }[] {
-  const buckets = new Map<number, { label: string; sessions: T[] }>();
-
-  for (const session of sessions) {
-    const dayKey = startOfDay(new Date(session.updated_at));
-    const bucket = buckets.get(dayKey);
-    if (bucket) {
-      bucket.sessions.push(session);
-    } else {
-      buckets.set(dayKey, {
-        label: getDateGroupLabel(session.updated_at),
-        sessions: [session],
-      });
-    }
-  }
-
-  return [...buckets.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([, group]) => group);
+/** Experts who joined in the last week and have no chat yet, newest first.
+ *  Each gets a sidebar group leading to their first chat; once a chat exists
+ *  their normal group takes over. Only loaded chats are seen, so an expert
+ *  whose chats are all past the first page still gets one, and its link then
+ *  opens the chat they already have. */
+export function getNewExpertsWithoutChats(
+  activeExperts: ExpertIdentity[],
+  sessions: SessionSummaryResponse[],
+  now: number,
+) {
+  const withChats = new Set(sessions.map((session) => session.expert_id));
+  return activeExperts
+    .filter((expert) => {
+      const joined = expert.createdAt?.getTime();
+      return (
+        joined !== undefined &&
+        now - joined < NEW_EXPERT_WINDOW_MS &&
+        !withChats.has(expert.id)
+      );
+    })
+    .sort(
+      (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0),
+    );
 }

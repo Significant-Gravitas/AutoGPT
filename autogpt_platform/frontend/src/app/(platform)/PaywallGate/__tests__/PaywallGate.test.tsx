@@ -10,15 +10,23 @@ vi.mock("next/navigation", () => ({
 
 // Mock the auth hook — toggle logged-in vs logged-out per test.
 let mockIsLoggedIn = true;
-vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: () => ({ isLoggedIn: mockIsLoggedIn }),
+vi.mock("@/lib/auth/hooks/useAuth", () => ({
+  useAuth: () => ({ isLoggedIn: mockIsLoggedIn }),
 }));
 
-// Mock the LD flag hook — toggle paid-cohort vs beta-cohort per test.
-let mockIsPaymentEnabled: boolean | undefined = false;
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "enable-platform-payment" },
-  useGetFlag: () => mockIsPaymentEnabled,
+// Toggle the deployment's payment setting per test.
+let mockIsPaymentEnabled = false;
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({
+    isPaymentEnabled: mockIsPaymentEnabled,
+    isResolved: true,
+  }),
+}));
+
+// Whether the signed-in user has finished onboarding; null = not known yet.
+let mockIsOnboardingComplete: boolean | null = true;
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  useOnboarding: () => ({ isOnboardingComplete: mockIsOnboardingComplete }),
 }));
 
 // Mock the generated subscription-status hook — control isLoading + tier per test.
@@ -27,8 +35,12 @@ let mockSubscriptionResult: {
   data: MockSubscription | null | undefined;
   isLoading: boolean;
 } = { data: null, isLoading: false };
+let subscriptionQueryEnabled: boolean | undefined;
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
-  useGetSubscriptionStatus: () => mockSubscriptionResult,
+  useGetSubscriptionStatus: (options: { query?: { enabled?: boolean } }) => {
+    subscriptionQueryEnabled = options.query?.enabled;
+    return mockSubscriptionResult;
+  },
 }));
 
 // Mock environment — default to cloud so the gate logic is exercised; flip to
@@ -46,6 +58,12 @@ vi.mock("../PaywallModal", () => ({
   PaywallModal: () => <div data-testid="paywall-modal">paywall</div>,
 }));
 
+vi.mock("../../components/WorkflowsMovedNotice/WorkflowsMovedNotice", () => ({
+  WorkflowsMovedNotice: () => (
+    <div data-testid="migration-notice">migration</div>
+  ),
+}));
+
 import { PaywallGate } from "../PaywallGate";
 
 describe("PaywallGate", () => {
@@ -54,10 +72,12 @@ describe("PaywallGate", () => {
     mockIsLoggedIn = true;
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
+    subscriptionQueryEnabled = undefined;
     mockIsLocal = false;
+    mockIsOnboardingComplete = true;
   });
 
-  it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
+  it("renders children without modal when payment is off", () => {
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     render(
@@ -67,9 +87,10 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 
-  it("renders modal over children when paid cohort + tier is NO_TIER", () => {
+  it("renders modal over children when payment is on + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     render(
@@ -79,9 +100,10 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
   });
 
-  it("does not render modal once the user is logged out, even when paid cohort + tier is NO_TIER", () => {
+  it("does not render modal once the user is logged out, even when payment is on + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
     mockIsLoggedIn = false;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
@@ -92,9 +114,10 @@ describe("PaywallGate", () => {
     );
     expect(screen.getByText("protected")).toBeDefined();
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(subscriptionQueryEnabled).toBe(false);
   });
 
-  it("does not render modal in local dev even when paid cohort + tier is NO_TIER", () => {
+  it("does not render modal in local dev even when payment is on + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
     mockIsLocal = true;
     mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
@@ -107,7 +130,7 @@ describe("PaywallGate", () => {
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
-  it("does not render modal when paid cohort + tier is PRO/MAX/BUSINESS", () => {
+  it("does not render modal when payment is on + tier is PRO/MAX/BUSINESS", () => {
     mockIsPaymentEnabled = true;
     for (const tier of ["PRO", "MAX", "BUSINESS"]) {
       mockSubscriptionResult = { data: { tier }, isLoading: false };
@@ -117,6 +140,7 @@ describe("PaywallGate", () => {
         </PaywallGate>,
       );
       expect(screen.queryByTestId("paywall-modal")).toBeNull();
+      expect(screen.getByTestId("migration-notice")).toBeDefined();
       unmount();
     }
   });
@@ -127,6 +151,8 @@ describe("PaywallGate", () => {
     for (const path of [
       "/profile/credits",
       "/profile/account",
+      "/settings/billing",
+      "/settings/profile",
       "/admin/users",
       "/auth/callback",
       "/login",
@@ -156,5 +182,71 @@ describe("PaywallGate", () => {
       </PaywallGate>,
     );
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+  });
+
+  it("defers the migration notice until the paywall clears", () => {
+    mockIsPaymentEnabled = true;
+    mockSubscriptionResult = { data: undefined, isLoading: true };
+    const { rerender } = render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+
+    mockSubscriptionResult = { data: { tier: "PRO" }, isLoading: false };
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
+  });
+
+  // SECRT-3384: a brand-new account has no plan, so the paywall must not open
+  // on Home before onboarding (where the plan is picked) has started.
+  it("does not render modal for a NO_TIER user who has not finished onboarding", () => {
+    mockIsPaymentEnabled = true;
+    mockIsOnboardingComplete = false;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+  });
+
+  it("does not render modal while onboarding status is still unknown", () => {
+    mockIsPaymentEnabled = true;
+    mockIsOnboardingComplete = null;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    render(
+      <PaywallGate>
+        <div>protected</div>
+      </PaywallGate>,
+    );
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+  });
+
+  it("opens the paywall once onboarding is known to be complete", () => {
+    mockIsPaymentEnabled = true;
+    mockIsOnboardingComplete = null;
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
+    const { rerender } = render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
+
+    mockIsOnboardingComplete = true;
+    rerender(<PaywallGate>protected</PaywallGate>);
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
+    expect(screen.queryByTestId("migration-notice")).toBeNull();
+  });
+
+  it("shows the migration notice regardless of onboarding when payment is off", () => {
+    mockIsPaymentEnabled = false;
+    mockIsOnboardingComplete = null;
+    render(<PaywallGate>protected</PaywallGate>);
+    expect(screen.getByTestId("migration-notice")).toBeDefined();
   });
 });

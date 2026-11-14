@@ -13,23 +13,29 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "@/components/molecules/Sidebar/Sidebar";
+import Link, { useLinkStatus } from "next/link";
+import { memo, useRef } from "react";
 import {
-  CircleNotchIcon,
-  DotsThreeIcon,
-  DownloadSimpleIcon,
-  PencilSimpleIcon,
-  ShareNetworkIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-import Link from "next/link";
-import { useRef } from "react";
+  BookOpen01Icon,
+  Delete02Icon,
+  Download04Icon,
+  Loading03Icon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PinIcon,
+  PinOffIcon,
+  Share03Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { isKey } from "@/lib/keyboard";
 
 interface Session {
   id: string;
   title?: string | null;
   source_platform?: string | null;
   is_processing?: boolean | null;
+  is_pinned?: boolean | null;
   updated_at: string;
 }
 
@@ -43,14 +49,34 @@ interface Props {
   onCancelRename: () => void;
   isExporting: boolean;
   isDeleting: boolean;
-  chatSharingEnabled: boolean;
+  chatPinningEnabled: boolean;
+  onPin: (id: string, isPinned: boolean) => void;
   onRename: (id: string, title: string | null | undefined) => void;
   onExport: (id: string, title: string | null | undefined) => void;
   onShare: (id: string) => void;
+  isLearningEnabled: boolean;
+  onExcludeFromLearning: (id: string) => void;
   onDelete: (id: string, title: string | null | undefined) => void;
 }
 
-export function RecentChatItem({
+// Rendered inside the <Link>, so useLinkStatus reports that link's pending
+// navigation — mirrors the loader on the main sidebar nav links.
+function ChatLinkLoader() {
+  const { pending } = useLinkStatus();
+
+  if (!pending) return null;
+
+  return (
+    <LoadingSpinner
+      size="small"
+      className="ml-auto !size-4 shrink-0 text-foreground-tertiary"
+    />
+  );
+}
+
+// Memoised: the list hands every row the same shared callbacks (taking the
+// session id), so a list refetch only re-renders rows whose session changed.
+export const RecentChatItem = memo(function RecentChatItem({
   session,
   isActive,
   isEditing,
@@ -60,10 +86,13 @@ export function RecentChatItem({
   onCancelRename,
   isExporting,
   isDeleting,
-  chatSharingEnabled,
+  chatPinningEnabled,
+  onPin,
   onRename,
   onExport,
   onShare,
+  isLearningEnabled,
+  onExcludeFromLearning,
   onDelete,
 }: Props) {
   const title = session.title || "Untitled chat";
@@ -83,12 +112,12 @@ export function RecentChatItem({
           value={editingTitle}
           onChange={(e) => onEditingTitleChange(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (isKey(e, "Enter")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onSubmitRename(session.id);
               e.currentTarget.blur();
-            } else if (e.key === "Escape") {
+            } else if (isKey(e, "Escape")) {
               e.preventDefault();
               skipBlurSubmitRef.current = true;
               onCancelRename();
@@ -102,7 +131,7 @@ export function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+          className="w-full rounded-md border border-border-strong bg-surface px-2 py-1 text-body leading-5 text-foreground-emphasis outline-none focus:border-brand focus:ring-1 focus:ring-brand max-md:py-2 max-md:text-body-lg max-md:leading-6"
         />
       </SidebarMenuItem>
     );
@@ -114,18 +143,20 @@ export function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100"
+        // leading-5 keeps SidebarMenuButton's 20px line-height under max-md:text-body-md.
+        className="font-normal hover:!bg-surface-hover data-[active=true]:!bg-surface-hover data-[active=true]:font-normal max-md:h-11 max-md:!pr-11 max-md:text-body-md max-md:leading-5"
       >
-        <Link href={`/copilot?sessionId=${session.id}`}>
+        <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
             <LoadingSpinner
               size="small"
-              className="size-4 shrink-0 text-purple-600"
+              className="size-4 shrink-0 text-brand-hover"
             />
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
           <span className="truncate">{title}</span>
+          <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>
 
@@ -134,14 +165,26 @@ export function RecentChatItem({
           <SidebarMenuAction
             showOnHover
             aria-label="Chat actions"
-            className="border border-zinc-200 bg-white"
+            className="max-md:!top-1.5 max-md:w-8 max-md:[&>svg]:size-5"
           >
-            <DotsThreeIcon weight="bold" />
+            <Icon icon={MoreHorizontalIcon} tone="emphasis-soft" />
           </SidebarMenuAction>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {chatPinningEnabled && (
+            <DropdownMenuItem
+              onClick={() => onPin(session.id, !!session.is_pinned)}
+            >
+              {session.is_pinned ? (
+                <Icon icon={PinOffIcon} className="mr-2 h-4 w-4" />
+              ) : (
+                <Icon icon={PinIcon} className="mr-2 h-4 w-4" />
+              )}
+              {session.is_pinned ? "Unpin chat" : "Pin chat"}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => onRename(session.id, session.title)}>
-            <PencilSimpleIcon className="mr-2 h-4 w-4" />
+            <Icon icon={PencilIcon} className="mr-2 h-4 w-4" />
             Rename
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -152,28 +195,32 @@ export function RecentChatItem({
             disabled={isExporting}
           >
             {isExporting ? (
-              <CircleNotchIcon className="mr-2 h-4 w-4 animate-spin" />
+              <Icon icon={Loading03Icon} spin className="mr-2 h-4 w-4" />
             ) : (
-              <DownloadSimpleIcon className="mr-2 h-4 w-4" />
+              <Icon icon={Download04Icon} className="mr-2 h-4 w-4" />
             )}
             {isExporting ? "Exporting…" : "Export chat"}
           </DropdownMenuItem>
-          {chatSharingEnabled && (
-            <DropdownMenuItem onClick={() => onShare(session.id)}>
-              <ShareNetworkIcon className="mr-2 h-4 w-4" />
-              Share chat
+          <DropdownMenuItem onClick={() => onShare(session.id)}>
+            <Icon icon={Share03Icon} className="mr-2 h-4 w-4" />
+            Share chat
+          </DropdownMenuItem>
+          {isLearningEnabled && (
+            <DropdownMenuItem onClick={() => onExcludeFromLearning(session.id)}>
+              <Icon icon={BookOpen01Icon} className="mr-2 h-4 w-4" />
+              Exclude from learning
             </DropdownMenuItem>
           )}
           <DropdownMenuItem
             onClick={() => onDelete(session.id, session.title)}
             disabled={isDeleting}
-            className="text-red-600 focus:bg-red-50 focus:text-red-600"
+            className="text-error-foreground focus:bg-error-surface focus:text-error-foreground"
           >
-            <TrashIcon className="mr-2 h-4 w-4" />
+            <Icon icon={Delete02Icon} className="mr-2 h-4 w-4" />
             Delete chat
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
   );
-}
+});

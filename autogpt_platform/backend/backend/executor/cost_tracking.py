@@ -1,4 +1,4 @@
-"""Helpers for platform cost tracking on system-credential block executions."""
+"""Helpers for platform and user-subscription block usage tracking."""
 
 import asyncio
 import logging
@@ -203,7 +203,7 @@ async def log_system_credential_cost(
     stats: NodeExecutionStats,
     db_client: "DatabaseManagerAsyncClient",
 ) -> None:
-    """Check if a system credential was used and log the platform cost.
+    """Log platform-funded cost or user-subscription usage.
 
     Routes through DatabaseManagerAsyncClient so the write goes via the
     message-passing DB service rather than calling Prisma directly (which
@@ -229,7 +229,12 @@ async def log_system_credential_cost(
             if not cred_data or not isinstance(cred_data, dict):
                 continue
             cred_id = cred_data.get("id", "")
-            if not cred_id or not is_system_credential(cred_id):
+            provider_name = cred_data.get("provider", "unknown")
+            is_subscription = (
+                provider_name == ProviderName.CODEX.value
+                and cred_data.get("type") == "oauth2"
+            )
+            if not cred_id or not (is_system_credential(cred_id) or is_subscription):
                 continue
 
             model_name = _extract_model_name(input_data.get("model"))
@@ -242,7 +247,6 @@ async def log_system_credential_cost(
                 block=block, input_data=input_data, stats=stats
             )
 
-            provider_name = cred_data.get("provider", "unknown")
             tracking_type, tracking_amount = resolve_tracking(
                 provider=provider_name,
                 stats=stats,
@@ -267,9 +271,11 @@ async def log_system_credential_cost(
                 # the admin cost-logs Path column never renders "—".
                 # When the block layer opts into flex/batch in the
                 # future, write the actual mode here.
-                "execution_path": "sync",
+                "execution_path": ("codex_app_server" if is_subscription else "sync"),
                 "source": "block",
             }
+            if is_subscription:
+                meta["billing_mode"] = "user_subscription"
             if credit_cost is not None:
                 meta["credit_cost"] = credit_cost
             if stats.provider_cost is not None:

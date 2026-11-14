@@ -4,18 +4,29 @@ Covers:
 - ExecutionMode enum members exist and have stable values
 - EXTENDED_THINKING provider validation (anthropic/open_router allowed, others rejected)
 - EXTENDED_THINKING model-name validation (must start with "claude")
+- EXTENDED_THINKING options handed to the Claude Agent SDK
+- EXTENDED_THINKING sends the CLI one string prompt
 """
 
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterable
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import claude_agent_sdk
 import pytest
+from claude_agent_sdk import ClaudeAgentOptions, ResultMessage
+from pydantic import SecretStr
 
-from backend.blocks.llm import LlmModel
+from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import (
     ExecutionMode,
     OrchestratorBlock,
     _select_final_answer_parts,
+    format_sdk_conversation,
 )
+from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
+from backend.data.model import APIKeyCredentials
 
 # ---------------------------------------------------------------------------
 # ExecutionMode enum integrity
@@ -57,7 +68,7 @@ class TestExecutionModeEnum:
 
 
 def _make_model_stub(provider: str, value: str):
-    """Create a lightweight stub that behaves like LlmModel for validation."""
+    """Create a lightweight stub that behaves like LLMModel for validation."""
     metadata = MagicMock()
     metadata.provider = provider
     stub = MagicMock()
@@ -103,14 +114,14 @@ class TestExtendedThinkingProviderValidation:
         assert not model_name.startswith("claude")
 
     def test_real_gpt4o_model_rejected(self):
-        """Verify a real LlmModel enum member (GPT4O) fails the provider check."""
-        model = LlmModel.GPT4O
+        """Verify a real LLMModel enum member (GPT4O) fails the provider check."""
+        model = LLMModel.GPT4O
         provider = model.metadata.provider
         assert provider not in ("anthropic", "open_router")
 
     def test_real_claude_model_passes(self):
-        """Verify a real LlmModel enum member (CLAUDE_4_6_SONNET) passes."""
-        model = LlmModel.CLAUDE_4_6_SONNET
+        """Verify a real LLMModel enum member (CLAUDE_4_6_SONNET) passes."""
+        model = LLMModel.CLAUDE_4_6_SONNET
         provider = model.metadata.provider
         model_name = model.value
         assert provider in ("anthropic", "open_router")
@@ -150,7 +161,7 @@ class TestExtendedThinkingValidationRaisesInBlock:
     async def test_non_anthropic_provider_raises_valueerror(self):
         """EXTENDED_THINKING + openai provider raises ValueError."""
         block = OrchestratorBlock()
-        input_data = _make_input_data(model=LlmModel.GPT4O)
+        input_data = _make_input_data(model=LLMModel.GPT4O)
 
         with (
             patch.object(
@@ -307,3 +318,305 @@ class TestSelectFinalAnswerParts:
                 has_tool_calls=False,
                 current=["real final answer"],
             ) == ["real final answer"], f"blank={blank!r} clobbered current"
+
+
+# ---------------------------------------------------------------------------
+# Options handed to the Claude Agent SDK
+# ---------------------------------------------------------------------------
+
+
+# What ``ClaudeSDKClient.query()`` accepts; the block sends only the string.
+SDKPrompt = str | AsyncIterable[dict[str, Any]]
+
+
+class _ClientRecorder:
+    """Stands in for ``ClaudeSDKClient``: records its options and prompt."""
+
+    seen: list[ClaudeAgentOptions | SDKPrompt] = []
+
+    def __init__(self, options: ClaudeAgentOptions) -> None:
+        self.seen.append(options)
+
+    async def __aenter__(self) -> "_ClientRecorder":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def query(self, prompt: SDKPrompt, session_id: str = "default") -> None:
+        self.seen.append(prompt)
+
+    async def receive_response(self) -> AsyncGenerator[ResultMessage, None]:
+        yield ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="sess-1",
+        )
+
+
+async def _run_sdk_mode(
+    prompt_text: str,
+    cli_check: MagicMock,
+    prompt: list[dict] | None = None,
+) -> tuple[list[tuple[str, object]], list[ClaudeAgentOptions | SDKPrompt]]:
+    """Run SDK mode against ``_ClientRecorder``; return outputs and what it saw."""
+    input_data = MagicMock(sys_prompt="", prompt=prompt_text)
+    input_data.model.value = "claude-test"
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+    with (
+        patch.object(_ClientRecorder, "seen", []) as seen,
+        patch.object(claude_agent_sdk, "ClaudeSDKClient", _ClientRecorder),
+        patch("backend.blocks.orchestrator.require_verbatim_prompts_cli", cli_check),
+    ):
+        outputs: list[tuple[str, object]] = [
+            output
+            async for output in OrchestratorBlock()._execute_tools_sdk_mode(
+                input_data=input_data,
+                credentials=credentials,
+                tool_functions=[],
+                prompt=(
+                    prompt
+                    if prompt is not None
+                    else [{"role": "user", "content": prompt_text}]
+                ),
+                execution_params=MagicMock(graph_exec_id="graph-exec-1"),
+                execution_processor=MagicMock(),
+            )
+        ]
+    return outputs, seen
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_sends_slash_prompt_as_text() -> None:
+    """A graph prompt such as "/compact" goes to the checked CLI as text, with
+    the CLI's commands off, prompts delivered verbatim, and no settings or MCP
+    servers loaded from the host's config dir."""
+    cli_check = MagicMock(return_value="/opt/claude/claude")
+    _, seen = await _run_sdk_mode("/compact", cli_check)
+
+    options, prompt = seen
+    assert isinstance(options, ClaudeAgentOptions)
+    assert options.extra_args == {
+        "strict-mcp-config": None,
+        DISABLE_SLASH_COMMANDS_FLAG: None,
+    }
+    assert options.setting_sources == []
+    assert options.verbatim_prompts is True
+    assert prompt == " /compact"
+    cli_check.assert_called_once_with(None)
+    assert options.cli_path == "/opt/claude/claude"
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_does_not_start_a_cli_that_is_too_old() -> None:
+    """An older CLI ignores ``verbatim_prompts`` without an error, so the
+    block reports an error instead of starting it."""
+    cli_check = MagicMock(side_effect=RuntimeError("The Claude Code CLI is too old"))
+    outputs, seen = await _run_sdk_mode("hello", cli_check)
+
+    assert seen == []
+    assert outputs == [("error", "The Claude Code CLI is too old")]
+
+
+# ---------------------------------------------------------------------------
+# The prompt reaches the CLI as one string
+# ---------------------------------------------------------------------------
+
+
+def test_format_sdk_conversation_renders_the_turns_and_drops_the_rest() -> None:
+    """Every user, assistant and tool turn is rendered, with its label; an
+    entry that is none of those contributes nothing."""
+    rendered = format_sdk_conversation(
+        [
+            {"role": "user", "content": "find the invoice"},
+            {"role": "assistant", "content": "looking"},
+            {"role": "tool", "content": {"rows": 2}},
+            {"role": "assistant", "content": ""},
+            {"type": "not_a_user_turn"},
+            {"role": "developer", "content": "ignored"},
+        ]
+    )
+
+    assert rendered == (
+        "<conversation_history>\n"
+        "User: find the invoice\n"
+        "You responded: looking\n"
+        'Tool output: {"rows":2}\n'
+        "</conversation_history>"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_sends_a_history_entry_as_text() -> None:
+    history = [{"type": "not_a_user_turn"}, {"role": "assistant", "content": "ok"}]
+    _, seen = await _run_sdk_mode(
+        "hello", MagicMock(return_value="/opt/claude/claude"), prompt=history
+    )
+
+    _options, prompt = seen
+    assert isinstance(prompt, str), f"the CLI was sent a {type(prompt).__name__}"
+    assert "not_a_user_turn" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Usage of a query cut off before its ResultMessage
+# ---------------------------------------------------------------------------
+
+
+class _HangingClient(_ClientRecorder):
+    """Takes the query, then never replies, like a model still thinking."""
+
+    replying = asyncio.Event()
+
+    async def receive_response(self) -> AsyncGenerator[ResultMessage, None]:
+        self.replying.set()
+        await asyncio.Event().wait()
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+
+async def _sdk_mode_cut_off(cut_off) -> OrchestratorBlock:
+    """Run SDK mode against a model that never replies, end it with
+    ``cut_off(run)`` once the query is out, and return the block."""
+    block = OrchestratorBlock()
+    input_data = MagicMock(sys_prompt="", prompt="Plan a long trip. " * 50)
+    input_data.model.value = "claude-test"
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+
+    async def drive() -> None:
+        async for _ in block._execute_tools_sdk_mode(
+            input_data=input_data,
+            credentials=credentials,
+            tool_functions=[],
+            prompt=[{"role": "user", "content": input_data.prompt}],
+            execution_params=MagicMock(graph_exec_id="graph-exec-1"),
+            execution_processor=MagicMock(),
+        ):
+            pass
+
+    with (
+        patch.object(_HangingClient, "replying", asyncio.Event()) as replying,
+        patch.object(claude_agent_sdk, "ClaudeSDKClient", _HangingClient),
+        patch(
+            "backend.blocks.orchestrator.require_verbatim_prompts_cli",
+            MagicMock(return_value="/opt/claude/claude"),
+        ),
+    ):
+        run = asyncio.ensure_future(drive())
+        await asyncio.wait_for(replying.wait(), timeout=30)
+        await cut_off(run)
+    return block
+
+
+@pytest.mark.asyncio
+async def test_sdk_mode_cancelled_before_a_result_records_estimated_input() -> None:
+    """A stop before the ResultMessage leaves no reported usage, so the
+    prompt's estimated input tokens are recorded for it."""
+
+    async def stop(run: asyncio.Future) -> None:
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+    block = await _sdk_mode_cut_off(stop)
+
+    assert block.execution_stats.abandoned_input_token_count > 100
+    assert block.execution_stats.input_token_count == 0
+
+
+@pytest.mark.asyncio
+async def test_built_in_mode_stopped_mid_call_records_estimated_input() -> None:
+    block = OrchestratorBlock()
+    input_data = MagicMock(
+        conversation_compaction=False,
+        model=LLMModel.CLAUDE_4_5_HAIKU,
+        max_tokens=100,
+        ollama_host="localhost:11434",
+        multiple_tool_calls=False,
+    )
+    credentials = APIKeyCredentials(
+        id="test-anthropic-id",
+        provider="anthropic",
+        api_key=SecretStr("mock-anthropic-key"),
+        title="Mock Anthropic key",
+        expires_at=None,
+    )
+    request_sent = asyncio.Event()
+
+    async def provider(**_: object) -> None:
+        request_sent.set()
+        await asyncio.Event().wait()
+
+    with patch("backend.util.llm.providers.call_provider", provider):
+        run = asyncio.ensure_future(
+            block._attempt_llm_call_with_validation(
+                credentials=credentials,
+                input_data=input_data,
+                current_prompt=[{"role": "user", "content": "Plan a long trip. " * 50}],
+                tool_functions=[],
+            )
+        )
+        await asyncio.wait_for(request_sent.wait(), timeout=30)
+        run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await run
+
+    assert block.execution_stats.abandoned_input_token_count > 100
+    assert block.execution_stats.input_token_count == 0
+
+
+# ---------------------------------------------------------------------------
+# prompt_values keys with whitespace still fill their variables
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = OrchestratorBlock()
+    input_data = _make_input_data(model=LLMModel.GPT4O)
+    input_data.prompt = "Greet {{name}}"
+    input_data.sys_prompt = "You talk to {{name}}."
+    input_data.prompt_values = {"name ": "Ada"}
+
+    # The extended-thinking provider check fails right after the prompt is
+    # filled in, so the run stops before any model call.
+    with (
+        patch.object(
+            block,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        pytest.raises(ValueError, match="Anthropic-compatible"),
+    ):
+        await _collect_run_outputs(
+            block,
+            input_data,
+            credentials=MagicMock(),
+            graph_id="g",
+            node_id="n",
+            graph_exec_id="ge",
+            node_exec_id="ne",
+            user_id="u",
+            graph_version=1,
+            execution_context=MagicMock(),
+            execution_processor=MagicMock(),
+        )
+
+    assert input_data.prompt == "Greet Ada"
+    assert input_data.sys_prompt == "You talk to Ada."

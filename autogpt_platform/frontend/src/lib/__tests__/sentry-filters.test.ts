@@ -1,0 +1,304 @@
+import * as Sentry from "@sentry/nextjs";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+import {
+  logClientRequestFailure,
+  resetClientRequestFailureLog,
+} from "@/app/api/mutators/request-failure-log";
+import { CLIENT_IP_TOKEN_HEADER_NAME } from "@/lib/constants";
+
+import {
+  CLIENT_IGNORE_ERRORS,
+  isFromBot,
+  isNextRSCNavigationFallback,
+  stripLogUserPII,
+  stripSpanDataPII,
+  stripSpanPII,
+  stripUserPII,
+  tagDeploySkew,
+} from "../sentry-filters";
+
+// Drives a real Sentry client with the same console capture as
+// instrumentation-client.ts, so the events are built exactly as in production.
+const sent: Sentry.ErrorEvent[] = [];
+
+beforeAll(() => {
+  // Spy before init so the console patch wraps the spy.
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  Sentry.init({
+    dsn: "https://examplePublicKey@o0.ingest.sentry.io/0",
+    ignoreErrors: CLIENT_IGNORE_ERRORS,
+    // No network: a failed send is itself logged, and would be captured too.
+    transport: () => ({
+      send: () => Promise.resolve({}),
+      flush: () => Promise.resolve(true),
+    }),
+    integrations: [
+      Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
+    ],
+    beforeSend(event) {
+      if (!isNextRSCNavigationFallback(event)) sent.push(event);
+      return null;
+    },
+  });
+});
+
+beforeEach(() => {
+  sent.length = 0;
+});
+
+afterEach(() => {
+  resetClientRequestFailureLog();
+});
+
+afterAll(() => {
+  vi.restoreAllMocks();
+});
+
+describe("Sentry filter for Next's RSC navigation fallback", () => {
+  it("drops the handled 'Failed to fetch RSC payload' console error", async () => {
+    // Verbatim from next/dist/client/components/router-reducer/fetch-server-response.
+    console.error(
+      "Failed to fetch RSC payload for https://platform.agpt.co/login. Falling back to browser navigation.",
+      new TypeError("Failed to fetch"),
+    );
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(0);
+  });
+
+  it("still reports a fetch failure captured from our own code", async () => {
+    Sentry.captureException(new TypeError("Failed to fetch"));
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].exception?.values?.[0]).toMatchObject({
+      type: "TypeError",
+      value: "Failed to fetch",
+    });
+  });
+
+  it("still reports our own console error about a failed fetch", async () => {
+    console.error("Failed to fetch agents:", new TypeError("Failed to fetch"));
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].extra?.arguments).toEqual([
+      "Failed to fetch agents:",
+      expect.anything(),
+    ]);
+  });
+
+  it("still reports an API request failure logged by the mutator", async () => {
+    logClientRequestFailure({
+      status: 500,
+      method: "GET",
+      url: "/api/library/agents",
+      errorMessage: "Internal Server Error",
+    });
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0].message).toBe(
+      "Request failed on client: GET /api/library/agents 500",
+    );
+  });
+
+  it("still reports a message that only borrows the RSC wording", async () => {
+    console.error(
+      "Failed to fetch RSC payload for https://platform.agpt.co/login",
+      new TypeError("Failed to fetch"),
+    );
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
+  });
+});
+
+describe("Sentry filter for crawler noise", () => {
+  it("drops Cookiebot's 'included twice' warning", async () => {
+    console.warn(
+      "WARNING: Cookiebot script is included twice - please remove one instance to avoid unexpected results.",
+    );
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(0);
+  });
+
+  it("still reports our own warnings", async () => {
+    console.warn("Cookie consent banner failed to load");
+    await Sentry.flush(2000);
+
+    expect(sent).toHaveLength(1);
+  });
+
+  it.each([
+    "",
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 (compatible; GoogleOther)",
+    "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.0; +https://openai.com/gptbot)",
+    "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 Chrome-Lighthouse",
+  ])("treats %j as a bot", (userAgent) => {
+    expect(isFromBot(userAgent)).toBe(true);
+  });
+
+  it.each([
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0",
+    "Mozilla/5.0 (Linux; Android 10; Cubot P40) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+  ])("treats %j as a person", (userAgent) => {
+    expect(isFromBot(userAgent)).toBe(false);
+  });
+});
+
+describe("Sentry deploy skew tag", () => {
+  it("tags a failed chunk load and still sends it", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [
+          { type: "ChunkLoadError", value: "Loading chunk 34006 failed." },
+        ],
+      },
+      tags: { context: "application" },
+    });
+
+    expect(event.tags).toEqual({ context: "application", deploy_skew: true });
+  });
+
+  it("tags a failed CSS chunk load", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: {
+        values: [{ type: "Error", value: "Loading CSS chunk 123 failed." }],
+      },
+    });
+
+    expect(event.tags).toEqual({ deploy_skew: true });
+  });
+
+  it("leaves other errors untagged", () => {
+    const event = tagDeploySkew<Sentry.Event>({
+      exception: { values: [{ type: "TypeError", value: "Failed to fetch" }] },
+    });
+
+    expect(event).not.toHaveProperty("tags");
+  });
+});
+
+describe("Sentry user privacy filters", () => {
+  it("drops a user left with no id or role instead of sending an empty one", () => {
+    const event = stripUserPII({
+      user: { email: "ada@example.com", ip_address: "203.0.113.7" },
+    });
+
+    expect(event).not.toHaveProperty("user");
+  });
+
+  it("keeps log attributes that only mention an address or a user", () => {
+    const log = stripLogUserPII({
+      level: "info",
+      message: "rendered",
+      attributes: {
+        "server.address": "platform.agpt.co",
+        "users.count": 3,
+        "ip.allowlist_enabled": true,
+      },
+    });
+
+    expect(log.attributes).toEqual({
+      "server.address": "platform.agpt.co",
+      "users.count": 3,
+      "ip.allowlist_enabled": true,
+    });
+  });
+
+  // Request headers reach span attributes as http.request.header.<name>, with
+  // the name lowercased and its dashes turned into underscores by the SDK, or
+  // left as sent by other instrumentation.
+  const IP_ATTRIBUTES = [
+    "http.request.header.x_forwarded_for",
+    "http.request.header.x-forwarded-for",
+    "http.request.header.forwarded",
+    "http.request.header.x_real_ip",
+    "http.request.header.x-real-ip",
+    "http.request.header.cf_connecting_ip",
+    "http.request.header.true_client_ip",
+    "http.request.header.x_client_ip",
+    // The frontend's signed client-IP token carries the visitor's IP too.
+    `http.request.header.${CLIENT_IP_TOKEN_HEADER_NAME.toLowerCase().replace(/-/g, "_")}`,
+    "http.request.header.x_vercel_forwarded_for",
+    "http.request.header.x_vercel_proxied_for",
+    "http.request.header.x_vercel_ip_city",
+    "http.request.header.X-Vercel-IP-Country",
+    "http.client_ip",
+    "net.peer.ip",
+    "net.host.ip",
+    "net.sock.peer.addr",
+    "network.peer.address",
+    "client.address",
+    "user.ip_address",
+    "ip",
+  ];
+  const KEPT_ATTRIBUTES = {
+    "server.address": "platform.agpt.co",
+    "http.route": "/library",
+    "http.request.header.user_agent": "Mozilla/5.0",
+    "http.request.header.accept_language": "en",
+    "ip.allowlist_enabled": true,
+    "users.count": 3,
+    "user.id": "user-1",
+  };
+
+  function withIPAttributes() {
+    return {
+      ...Object.fromEntries(IP_ATTRIBUTES.map((key) => [key, "203.0.113.7"])),
+      ...KEPT_ATTRIBUTES,
+    };
+  }
+
+  it("drops every IP attribute from logs, transactions and spans", () => {
+    const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
+    const span = { ...trace, start_timestamp: 1, status: "ok" };
+
+    const log = stripLogUserPII({
+      level: "info",
+      message: "rendered",
+      attributes: withIPAttributes(),
+    });
+    const transaction = stripSpanPII({
+      type: "transaction",
+      contexts: { trace: { ...trace, data: withIPAttributes() } },
+      spans: [{ ...span, data: withIPAttributes() }],
+    });
+    const standalone = stripSpanDataPII({ ...span, data: withIPAttributes() });
+
+    expect(log.attributes).toEqual(KEPT_ATTRIBUTES);
+    expect(transaction.contexts?.trace?.data).toEqual(KEPT_ATTRIBUTES);
+    expect(transaction.spans?.[0].data).toEqual(KEPT_ATTRIBUTES);
+    expect(standalone.data).toEqual(KEPT_ATTRIBUTES);
+  });
+
+  it("leaves a transaction with no span data as it is", () => {
+    const trace = { trace_id: "a".repeat(32), span_id: "b".repeat(16) };
+    const event = { type: "transaction" as const, contexts: { trace } };
+
+    expect(stripSpanPII(event)).toEqual({
+      type: "transaction",
+      contexts: {
+        trace: { trace_id: "a".repeat(32), span_id: "b".repeat(16) },
+      },
+    });
+  });
+});

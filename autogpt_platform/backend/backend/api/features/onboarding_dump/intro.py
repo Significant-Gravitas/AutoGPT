@@ -1,0 +1,436 @@
+"""The copilot home's onboarding greeting: what Otto says it heard.
+
+Generated while the onboarding loading screen is still up, then stored —
+landing on ``/copilot`` must never wait on a model. If generation fails the
+greeting falls back to a template, so there is always something to show.
+
+The generation instructions live in Langfuse (``BRAIN_DUMP_GREETING_PROMPT_NAME``)
+so they can be tuned without a deploy; ``_LOCAL_PROMPT`` below is the
+fallback when Langfuse is unconfigured or unreachable.
+"""
+
+import asyncio
+import logging
+import os
+
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
+
+from backend.api.features.onboarding_dump.greeting_race import Attempt, IntroReply, race
+from backend.api.features.onboarding_dump.models import MAX_WHY_CHARS, SuggestedPrompt
+from backend.api.features.onboarding_dump.parsing import parse_response_json
+from backend.api.features.onboarding_dump.providers import (
+    known_providers,
+    provider_lines,
+)
+from backend.api.features.onboarding_dump.structured import NO_REASONING
+from backend.util.clients import get_openai_client
+from backend.util.langfuse_prompts import (
+    get_langfuse_prompt_client,
+    langfuse_prompts_configured,
+)
+
+logger = logging.getLogger(__name__)
+
+# OpenRouter's own spelling: the one its responses carry.
+_MODEL = os.environ.get("BRAIN_DUMP_GREETING_MODEL", "anthropic/claude-sonnet-5.5")
+_TIMEOUT_SECONDS = 45
+# The fast answer behind Sonnet (``greeting_race``): the model the team job
+# calls the same way. It starts when Sonnet fails, or once Sonnet has run
+# _HEDGE_SECONDS, so the tasks land inside the plan step's wait.
+_BACKUP_MODEL = os.environ.get(
+    "BRAIN_DUMP_GREETING_BACKUP_MODEL", "anthropic/claude-haiku-5.5"
+)
+_BACKUP_TIMEOUT_SECONDS = 25
+_HEDGE_SECONDS = 12
+# Reasoning is off (``structured.NO_REASONING``): the plan step waits on this
+# call, and adaptive thinking came before every token of the answer. The
+# answer alone, a greeting and six prompts at their longest, fits in this.
+_MAX_TOKENS = 4_000
+
+# The Langfuse copy of these instructions wins whenever it is reachable,
+# so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
+# change made only here is invisible in prod.
+LANGFUSE_PROMPT_NAME = os.environ.get(
+    "BRAIN_DUMP_GREETING_PROMPT_NAME", "Brain Dump Greeting"
+)
+LANGFUSE_PROMPT_CACHE_TTL_SECONDS = 300
+
+MIN_PROMPTS = 5
+MAX_PROMPTS = 6
+# Asked of the model by both copies of the instructions; MAX_GREETING_CHARS
+# clips what comes back.
+GREETING_CHAR_LIMIT = 600
+MAX_GREETING_CHARS = 650
+MAX_TITLE_CHARS = 120
+MAX_PROMPT_CHARS = 2_000
+
+# Phosphor icon slugs the model may pick from — the frontend maps these to
+# real icon components and falls back to "sparkle" for anything else.
+PROMPT_ICONS = frozenset(
+    {
+        "sparkle",
+        "chart-bar",
+        "envelope",
+        "magnifying-glass",
+        "calendar-check",
+        "bell",
+        "rocket-launch",
+        "file-text",
+        "globe",
+        "code",
+        "newspaper",
+        "users",
+        "shopping-cart",
+        "chats",
+        "lightning",
+        "target",
+        "robot",
+        "clock",
+        "megaphone",
+        "currency-dollar",
+    }
+)
+DEFAULT_PROMPT_ICON = "sparkle"
+
+# Sent as the system message on every generation, whichever copy of the
+# instructions is in use: the Langfuse copy wins in prod and predates it.
+COVERAGE_CONTRACT = f"""Leave out none of the problems the user described. \
+The greeting names every one, grouping those that belong together. Name a \
+problem no workflow or expert can take over too (a machine, a recipe, \
+on-site hardware, a personal decision), as something you will work through \
+with them yourself, never as a job for the team. When the transcript has \
+such a problem, make the last suggested prompt that work. The greeting may \
+run to {GREETING_CHAR_LIMIT} characters when it has to."""
+
+# The local fallback for the Langfuse-managed instructions. The greeting
+# diagnoses the dump so the user can see they were heard; the suggested
+# prompts are what turn that into an action. A Langfuse edit must keep the
+# same JSON contract — a malformed generation degrades to the template.
+_LOCAL_PROMPT = f"""You are Otto, this user's built-in Head of AI. \
+You are theirs alone, never shared, and you run a team for them: you can \
+build real recurring automations (watch sources, draft content, send \
+digests, run agents while they sleep) and you can bring in experts to own \
+whole areas of their work. A new user just recorded a short spoken brain \
+dump about their work. Write the greeting they will see when they first \
+open the app.
+
+Return ONLY valid JSON with exactly these keys:
+- "greeting": 2-3 sentences, max {GREETING_CHAR_LIMIT} characters, second person, warm and \
+concrete. Diagnose, the way a consultant would on day one: name the \
+specific problems you heard in their own terms ("you have a marketing \
+problem and a support problem"), then say you are putting a team \
+together to take them on. NEVER name a specific expert, and never say \
+anyone has been hired or assigned — the team is proposed separately, \
+below your text, and naming someone here would promise a colleague who \
+may not exist. This is their FIRST time in the app — never say "welcome \
+back" or imply any prior visit or conversation. The app already renders \
+"Hey, <name>" directly above this text, so NEVER use the user's name or \
+any other salutation ("good to have you here", "welcome") — open \
+directly with what you heard. Do not ask a question, do not promise \
+anything you were not told about, and never mention what you cannot do \
+or cannot reach — talk only about what you will take on.
+- "prompts": an array of 5-6 objects, each with:
+  - "title": 8-14 words. Each title must feel like a small product built \
+specifically for THIS person — assembled from the exact tools, projects, \
+clients and pains they named. The reaction you are engineering is "wait, \
+I can do THAT here?". Prefer compound automations that chain steps into \
+one flow (watch a source → extract what matters → draft the response → \
+deliver it on a schedule) over single actions. The test: if a title \
+could be shown to a random stranger and still make sense, it is too \
+generic — rewrite it until it could only belong to this user. Banned: \
+"automate repetitive tasks", "organize your work", "stay on top of", \
+"streamline", "boost productivity" and anything equally hollow.
+  - "prompt": the full message to send on their behalf if they pick it — \
+2-4 sentences, first person as the user, carrying over the concrete \
+details from the title so work can start immediately.
+  - "icon": the best-fitting slug from exactly this list: sparkle, \
+chart-bar, envelope, magnifying-glass, calendar-check, bell, \
+rocket-launch, file-text, globe, code, newspaper, users, shopping-cart, \
+chats, lightning, target, robot, clock, megaphone, currency-dollar.
+  - "why" (optional): one short clause, at most {MAX_WHY_CHARS} characters, \
+second person, naming the thing they said this task fixes ("Because \
+listings eat your evenings."). Leave the key out when nothing they said \
+ties to the task.
+
+Example of the required jump in specificity (do NOT copy these, derive \
+your own from the transcript):
+- weak: "Automate your email follow-ups"
+- strong: "Chase unpaid Shopify invoices with polite follow-ups that \
+escalate every 3 days"
+- weak: "Get a summary of your meetings"
+- strong: "Turn every sales call into a CRM update and a follow-up \
+draft before you're back at your desk"
+
+Order the prompts most-valuable first. If the transcript is thin, fill \
+the remaining slots with the most impressive broadly useful automations \
+you can offer (a morning digest of their industry's news, an always-on \
+competitor monitor, a weekly auto-drafted report) — but never invent \
+personal details that are not in the transcript.
+
+Transcript:
+"""
+
+
+async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
+    """Return ``(greeting, prompts)`` for ``transcript``.
+
+    Never raises: a failed or malformed generation degrades to the
+    template below rather than costing the user their greeting.
+
+    The greeting is unvalidated model output. ``transcript`` is the user's
+    own words, and the "only name real integrations" constraint in the
+    prompt is advisory, so an injected or hallucinated tool name can reach
+    the prose. That surface is deliberately left open: the text is shown
+    only to the person who recorded it, and the ids that become
+    connectable or recommended tiles are validated against
+    :func:`providers.known_providers` in ``recommend.py`` rather than
+    trusted from prose.
+    """
+    text = transcript.strip()
+    if not text:
+        return fallback_intro(text)
+
+    client = get_openai_client(prefer_openrouter=True)
+    if client is None:
+        logger.warning("Brain dump greeting: no LLM client configured")
+        return fallback_intro(text)
+
+    instructions = await _fetch_langfuse_prompt() or _LOCAL_PROMPT
+    content = f"{_integrations_block()}{instructions}{text}"
+    reply = await race(
+        Attempt(model=_MODEL, timeout=_TIMEOUT_SECONDS),
+        Attempt(model=_BACKUP_MODEL, timeout=_BACKUP_TIMEOUT_SECONDS),
+        lambda model, timeout: _generate(client, content, model, timeout),
+        hedge_after=_HEDGE_SECONDS,
+    )
+    if reply.greeting is None:
+        return fallback_intro(text)
+    if not reply.prompts:
+        # A greeting with two suggestions under it looks broken; the
+        # generic set is better than a half-empty one.
+        return reply.greeting, fallback_prompts()
+    return reply.greeting, reply.prompts
+
+
+async def _generate(
+    client: AsyncOpenAI, content: str, model: str, timeout: float
+) -> IntroReply:
+    """One model's greeting for ``content``. Never raises: a failed call or
+    an unusable answer, however malformed, is logged with the model and
+    comes back empty, so the other model still gets its turn."""
+    try:
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": COVERAGE_CONTRACT},
+                    {"role": "user", "content": content},
+                ],
+                temperature=0.6,
+                max_tokens=_MAX_TOKENS,
+                extra_body=NO_REASONING,
+            ),
+            timeout=timeout,
+        )
+        return _read_reply(response, model)
+    except Exception as e:  # the other model, or the template, answers instead
+        # The type too: a timeout's message is empty.
+        logger.warning(
+            "Brain dump greeting from %s failed: %s: %s", model, type(e).__name__, e
+        )
+        return IntroReply()
+
+
+def _read_reply(response: ChatCompletion, model: str) -> IntroReply:
+    """The greeting and tasks in ``response``, or why there are none."""
+    choice = response.choices[0] if response.choices else None
+    message = choice.message if choice else None
+    answer = (message.content if message else None) or ""
+    data = parse_response_json(answer)
+    if data is None:
+        # Why it stopped and any error the gateway sent, never the content:
+        # a reply cut off at the token cap reads "length".
+        logger.warning(
+            "Brain dump greeting from %s: no JSON (finish_reason=%s, %s chars, "
+            "error=%s)",
+            model,
+            choice.finish_reason if choice else None,
+            len(answer),
+            (response.model_extra or {}).get("error"),
+        )
+        return IntroReply()
+    greeting = data.get("greeting")
+    if not isinstance(greeting, str) or not greeting.strip():
+        logger.warning("Brain dump greeting from %s: no greeting", model)
+        return IntroReply()
+    prompts = _parse_prompts(data.get("prompts"))
+    if len(prompts) < MIN_PROMPTS:
+        logger.warning(
+            "Brain dump greeting from %s: %s usable prompts", model, len(prompts)
+        )
+        return IntroReply(greeting=_clip_greeting(greeting))
+    return IntroReply(greeting=_clip_greeting(greeting), prompts=prompts[:MAX_PROMPTS])
+
+
+def _integrations_block() -> str:
+    """The live provider registry, prepended to the instructions.
+
+    Without it the model invents the tools it promises to wire up, and the
+    user's first suggested automation is one we cannot run. Goes in front
+    of the instructions (which end with ``Transcript:``) so the whole
+    static half of the message stays a stable prefix.
+    """
+    lines = provider_lines(known_providers())
+    if not lines:
+        return ""
+    return (
+        "These are the integrations this platform can connect to. Only "
+        "promise automations that these can actually carry out, and never "
+        "name a tool that is not on this list:\n"
+        f"{lines}\n\n"
+    )
+
+
+async def _fetch_langfuse_prompt() -> str | None:
+    """Fetch the greeting instructions from Langfuse.
+
+    Returns the compiled prompt string, or None when Langfuse is
+    unconfigured or the fetch fails — the caller falls back to
+    ``_LOCAL_PROMPT`` so a Langfuse outage never blocks onboarding.
+    """
+    if not langfuse_prompts_configured():
+        return None
+    try:
+        prompt = await asyncio.to_thread(
+            get_langfuse_prompt_client().get_prompt,
+            LANGFUSE_PROMPT_NAME,
+            cache_ttl_seconds=LANGFUSE_PROMPT_CACHE_TTL_SECONDS,
+        )
+        return prompt.compile()
+    except Exception as e:  # local prompt is the fallback
+        logger.warning("Brain dump greeting: Langfuse prompt fetch failed: %s", e)
+        return None
+
+
+def _clip_greeting(greeting: str) -> str:
+    """``greeting`` within the cap, at its last sentence end if that keeps most
+    of it, otherwise at a word boundary."""
+    text = greeting.strip()
+    if len(text) <= MAX_GREETING_CHARS:
+        return text
+    window = text[: MAX_GREETING_CHARS + 1]
+    end = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if end >= MAX_GREETING_CHARS // 2:
+        return text[: end + 1]
+    cut = text[:MAX_GREETING_CHARS]
+    return cut[: cut.rfind(" ")].rstrip(",;:") + "…"
+
+
+def _parse_prompts(raw: object) -> list[SuggestedPrompt]:
+    if not isinstance(raw, list):
+        return []
+    prompts = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        title, prompt = item.get("title"), item.get("prompt")
+        if not (isinstance(title, str) and title.strip()):
+            continue
+        if not (isinstance(prompt, str) and prompt.strip()):
+            continue
+        icon = item.get("icon")
+        prompts.append(
+            SuggestedPrompt(
+                title=title.strip()[:MAX_TITLE_CHARS],
+                prompt=prompt.strip()[:MAX_PROMPT_CHARS],
+                icon=icon if icon in PROMPT_ICONS else DEFAULT_PROMPT_ICON,
+                why=parse_why(item.get("why")),
+            )
+        )
+    return prompts
+
+
+def parse_why(raw: object) -> str | None:
+    """The optional ``why`` clause, or None when it is missing, empty or
+    too long to read as one: a clipped clause reads worse than none."""
+    if not isinstance(raw, str):
+        return None
+    why = " ".join(raw.split())
+    return why if 0 < len(why) <= MAX_WHY_CHARS else None
+
+
+def fallback_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
+    """A greeting that is true even when the model gave us nothing.
+
+    Deliberately makes no claim about *what* was said, and names nobody —
+    inventing either would be worse than being generic.
+    """
+    if not transcript.strip():
+        return (
+            "I'm your Head of AI here. Tell me what your week looks like "
+            "and I'll work out who and what you need. Here are a few "
+            "places we could start.",
+            fallback_prompts(),
+        )
+    return (
+        "Thanks for talking me through your work — I've got it. I'm your "
+        "Head of AI here, and I'll start putting a team around this. "
+        "Here are a few places I can start.",
+        fallback_prompts(),
+    )
+
+
+def fallback_prompts() -> list[SuggestedPrompt]:
+    """Generic starters used when generation fails or there is no dump.
+
+    Phrased as things the user might genuinely want on day one, not as
+    claims about this particular user.
+    """
+    return [
+        SuggestedPrompt(
+            title="Build a workflow that drafts your Monday status report before you wake up",
+            prompt=(
+                "I want a recurring weekly summary of my work. Ask me what "
+                "sources to pull from, then draft the first report so I can "
+                "see the format before it goes on a schedule."
+            ),
+            icon="calendar-check",
+        ),
+        SuggestedPrompt(
+            title="Get a sourced research brief on any topic in minutes, not afternoons",
+            prompt=(
+                "I need research support. Let me give you a topic and I want "
+                "back a concise brief with sources — start by asking me what "
+                "I'm currently trying to learn about."
+            ),
+            icon="magnifying-glass",
+        ),
+        SuggestedPrompt(
+            title="Put an always-on watch on competitors and get pinged the moment they move",
+            prompt=(
+                "I want to monitor competitors. Help me pick who to track and "
+                "what changes matter — pricing, product launches, messaging — "
+                "and set up alerts for them."
+            ),
+            icon="bell",
+        ),
+        SuggestedPrompt(
+            title="Have your next post or newsletter drafted in your voice, ready to edit",
+            prompt=(
+                "I regularly need written content. Ask me what I publish and "
+                "how often, then draft the next one in my voice so I can see "
+                "how close you get."
+            ),
+            icon="megaphone",
+        ),
+        SuggestedPrompt(
+            title="Find the two tasks eating your week and hand them to an expert today",
+            prompt=(
+                "Help me find what to automate. Interview me briefly about "
+                "what repeats every week, then propose the two tasks you'd "
+                "take over first and how."
+            ),
+            icon="robot",
+        ),
+    ]

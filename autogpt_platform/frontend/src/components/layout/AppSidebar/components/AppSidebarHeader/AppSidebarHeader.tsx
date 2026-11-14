@@ -1,57 +1,85 @@
 "use client";
 
 import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
-import { SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+import {
+  SidebarHeader,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
-import { SidebarSimpleIcon } from "@phosphor-icons/react";
 import Link from "next/link";
+import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { SidebarSearch } from "../SidebarSearch/SidebarSearch";
 
 export function AppSidebarHeader() {
   const { state, toggleSidebar } = useSidebar();
   const isCollapsed = state === "collapsed";
 
-  return (
-    <SidebarHeader className="flex animate-fade-in flex-row items-center justify-between gap-2 p-2 group-data-[collapsible=icon]:flex-col">
-      <Link
-        href="/copilot"
-        aria-label="AutoGPT"
-        className={cn(
-          "flex items-center",
-          isCollapsed && "group-focus-within:hidden group-hover:hidden",
-        )}
-      >
-        {isCollapsed ? (
-          <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-8" />
-        ) : (
-          <AutoGPTLogo className="h-7 w-auto" />
-        )}
-      </Link>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            onClick={toggleSidebar}
-            className={cn(
-              "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
-              isCollapsed
-                ? "hidden group-focus-within:flex group-hover:flex"
-                : "flex",
-            )}
-          >
-            <SidebarSimpleIcon className="size-5 text-sidebar-foreground" />
-          </button>
-        </TooltipTrigger>
+  const toggleButton = (
+    <Tooltip inheritDelay>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={toggleSidebar}
+          className={cn(
+            "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-surface-active max-md:size-10",
+            isCollapsed
+              ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
+              : "flex",
+          )}
+        >
+          <Icon
+            icon={SidebarLeftIcon}
+            tone="emphasis-soft"
+            className="size-4 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
+          />
+        </button>
+      </TooltipTrigger>
+      <TooltipPortal>
         <TooltipContent side="right">
           {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         </TooltipContent>
-      </Tooltip>
+      </TooltipPortal>
+    </Tooltip>
+  );
+
+  return (
+    <SidebarHeader className="sticky top-0 z-10 mb-1 flex shrink-0 animate-fade-in flex-row items-center justify-between gap-2 bg-surface-muted p-2 group-data-[collapsible=icon]:flex-col">
+      <div
+        className={cn(
+          "relative flex items-center",
+          isCollapsed && "size-8 shrink-0",
+        )}
+      >
+        <Link
+          href="/home"
+          aria-label="AutoGPT"
+          className={cn(
+            "flex items-center",
+            isCollapsed &&
+              "size-8 items-center justify-center group-focus-within:hidden group-hover:hidden",
+          )}
+        >
+          {isCollapsed ? (
+            <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-7" />
+          ) : (
+            <AutoGPTLogo className="-mt-1 ml-2.5 h-7 w-auto max-md:mt-2 max-md:h-9" />
+          )}
+        </Link>
+        {isCollapsed ? toggleButton : null}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1 group-data-[collapsible=icon]:flex-col">
+        <SidebarSearch />
+        {isCollapsed ? null : toggleButton}
+      </div>
     </SidebarHeader>
   );
 }

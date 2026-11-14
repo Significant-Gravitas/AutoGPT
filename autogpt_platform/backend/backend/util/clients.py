@@ -14,7 +14,6 @@ settings = Settings()
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
     from openai import AsyncOpenAI
-    from supabase import AClient, Client
 
     from backend.copilot.bot.app import CoPilotChatBridgeClient
     from backend.data.db_manager import (
@@ -25,7 +24,7 @@ if TYPE_CHECKING:
         AsyncRedisExecutionEventBus,
         RedisExecutionEventBus,
     )
-    from backend.data.rabbitmq import AsyncRabbitMQ, SyncRabbitMQ
+    from backend.data.rabbitmq import AsyncRabbitMQ
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
@@ -53,12 +52,16 @@ def get_database_manager_async_client(
 
 
 @thread_cached
-def get_scheduler_client() -> "SchedulerClient":
-    """Get a thread-cached SchedulerClient."""
+def get_scheduler_client(should_retry: bool = False) -> "SchedulerClient":
+    """Get a thread-cached SchedulerClient.
+
+    ``should_retry`` repeats a call that failed in transit, such as on a pooled
+    connection the scheduler had just closed; only for calls safe to repeat.
+    """
     from backend.executor.scheduler import SchedulerClient
     from backend.util.service import get_service_client
 
-    return get_service_client(SchedulerClient)
+    return get_service_client(SchedulerClient, request_retry=should_retry)
 
 
 @thread_cached
@@ -111,17 +114,6 @@ def get_async_execution_event_bus() -> "AsyncRedisExecutionEventBus":
 
 
 @thread_cached
-def get_execution_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ execution queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.executor.utils import create_execution_queue_config
-
-    client = SyncRabbitMQ(create_execution_queue_config())
-    client.connect()
-    return client
-
-
-@thread_cached
 async def get_async_execution_queue() -> "AsyncRabbitMQ":
     """Get a thread-cached AsyncRabbitMQ execution queue client."""
     from backend.data.rabbitmq import AsyncRabbitMQ
@@ -155,29 +147,6 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
     return IntegrationCredentialsStore()
-
-
-# ============ Supabase Clients ============ #
-
-
-@cached(ttl_seconds=3600)
-def get_supabase() -> "Client":
-    """Get a process-cached synchronous Supabase client instance."""
-    from supabase import create_client
-
-    return create_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
-    )
-
-
-@cached(ttl_seconds=3600)
-async def get_async_supabase() -> "AClient":
-    """Get a process-cached asynchronous Supabase client instance."""
-    from supabase import create_async_client
-
-    return await create_async_client(
-        settings.secrets.supabase_url, settings.secrets.supabase_service_role_key
-    )
 
 
 # ============ OpenAI Client ============ #
@@ -223,7 +192,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
        (dry-run simulator, prompt compression, marketplace embeddings, …)
        silently route to the cloud just because legacy cloud-key fallbacks
        happen to be present. Returns a client pointed at the same
-       OpenAI-compatible endpoint AutoPilot uses, with the same generous
+       OpenAI-compatible endpoint Otto uses, with the same generous
        request timeout — those helpers fire under the same hardware
        constraints (CPU-only Ollama is slow). ``prefer_openrouter`` is
        intentionally ignored here: the local client is the only sane
@@ -314,21 +283,10 @@ def openrouter_helper_cost_provider() -> str:
 
 
 @thread_cached
-def get_notification_queue() -> "SyncRabbitMQ":
-    """Get a thread-cached SyncRabbitMQ notification queue client."""
-    from backend.data.rabbitmq import SyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
-
-    client = SyncRabbitMQ(create_notification_config())
-    client.connect()
-    return client
-
-
-@thread_cached
 async def get_async_notification_queue() -> "AsyncRabbitMQ":
     """Get a thread-cached AsyncRabbitMQ notification queue client."""
     from backend.data.rabbitmq import AsyncRabbitMQ
-    from backend.notifications.notifications import create_notification_config
+    from backend.notifications.queue import create_notification_config
 
     client = AsyncRabbitMQ(create_notification_config())
     await client.connect()

@@ -1,13 +1,22 @@
 """Tests for Graphiti client management — derive_group_id and evict_client."""
 
-from unittest.mock import MagicMock
+import asyncio
+import threading
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from backend.copilot.config import ChatConfig
 
 from . import client as client_mod
-from .client import derive_group_id, evict_client, make_flex_graphiti_client
+from . import falkordb_driver
+from .client import (
+    derive_group_id,
+    derive_memory_group_id,
+    derive_memory_scope_key,
+    evict_client,
+    make_flex_graphiti_client,
+)
 
 
 class TestDeriveGroupId:
@@ -35,6 +44,169 @@ class TestDeriveGroupId:
     def test_hyphens_and_underscores_allowed(self) -> None:
         result = derive_group_id("a-b_c")
         assert result == "user_a-b_c"
+
+
+class TestDeriveMemoryGroupId:
+    def test_autopilot_preserves_exact_legacy_namespace(self) -> None:
+        user_id = "883cc9da-fe37-4863-839b-acba022bf3ef"
+
+        assert derive_memory_group_id(user_id) == derive_group_id(user_id)
+        assert derive_memory_group_id(user_id) == f"user_{user_id}"
+
+    def test_experts_get_distinct_private_namespaces(self) -> None:
+        first = derive_memory_group_id("user-1", "expert-1")
+        second = derive_memory_group_id("user-1", "expert-2")
+
+        assert first.startswith("expert_")
+        assert second.startswith("expert_")
+        assert first != second
+        assert len(first) <= 128
+
+    def test_same_expert_keeps_namespace_across_callers(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") == derive_memory_group_id(
+            "user-2", "expert-1"
+        )
+
+    def test_different_experts_remain_distinct_across_callers(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") != derive_memory_group_id(
+            "user-2", "expert-2"
+        )
+
+    def test_expert_namespace_still_validates_caller_id(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_memory_group_id("user.with.dots", "expert-1")
+
+    def test_expert_namespace_is_deterministic(self) -> None:
+        assert derive_memory_group_id("user-1", "expert-1") == derive_memory_group_id(
+            "user-1", "expert-1"
+        )
+
+    def test_long_valid_expert_id_is_hashed_without_truncation(self) -> None:
+        expert_id = "expert_" + "a" * 256
+
+        result = derive_memory_group_id("user-1", expert_id)
+
+        assert result.startswith("expert_")
+        assert len(result) == len("expert_") + 64
+
+    def test_empty_expert_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="expert_id must be non-empty"):
+            derive_memory_group_id("user-1", "")
+
+    def test_invalid_expert_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_memory_group_id("user-1", "expert.with.dots")
+
+    def test_internal_scope_key_preserves_legacy_autopilot_key(self) -> None:
+        assert derive_memory_scope_key("user-1") == "user-1"
+
+    def test_internal_scope_key_validates_autopilot_user_id(self) -> None:
+        with pytest.raises(ValueError, match="invalid characters"):
+            derive_memory_scope_key("user.with.dots")
+
+    def test_internal_scope_key_uses_expert_namespace_for_experts(self) -> None:
+        assert derive_memory_scope_key("user-1", "expert-1") == derive_memory_group_id(
+            "user-1", "expert-1"
+        )
+
+
+class _Builds:
+    """Stands in for ``_new_graphiti_client``, which runs on the connect
+    pool: counts builds, notes their thread, and can hold one until
+    released or fail it."""
+
+    def __init__(self) -> None:
+        self.threads: list[int] = []
+        self.release = threading.Event()
+        self.hold = False
+        self.fail: Exception | None = None
+
+    def __call__(self, group_id: str) -> MagicMock:
+        self.threads.append(threading.get_ident())
+        if self.hold:
+            self.release.wait(timeout=10)
+        if self.fail is not None:
+            error, self.fail = self.fail, None
+            raise error
+        return MagicMock(name=group_id)
+
+
+class TestGetGraphitiClient:
+    """A cache miss builds the group's client once, in a task of its own,
+    on the connect pool rather than the event loop."""
+
+    @pytest.fixture
+    def builds(self, monkeypatch: pytest.MonkeyPatch):
+        builds = _Builds()
+        monkeypatch.setattr(client_mod, "_new_graphiti_client", builds)
+        yield builds
+        builds.release.set()
+
+    @pytest.mark.asyncio
+    async def test_the_client_is_built_off_the_event_loop(self, builds) -> None:
+        built = await client_mod.get_graphiti_client("user_a")
+
+        assert builds.threads and builds.threads[0] != threading.get_ident()
+        assert await client_mod.get_graphiti_client("user_a") is built
+        assert len(builds.threads) == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_misses_share_one_build(self, builds) -> None:
+        builds.hold = True
+        first = asyncio.create_task(client_mod.get_graphiti_client("user_a"))
+        second = asyncio.create_task(client_mod.get_graphiti_client("user_a"))
+        await asyncio.sleep(0.05)
+        builds.release.set()
+
+        assert await first is await second
+        assert len(builds.threads) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_slow_build_does_not_hold_up_other_groups(self, builds) -> None:
+        builds.hold = True
+        stuck = asyncio.create_task(client_mod.get_graphiti_client("user_slow"))
+        await asyncio.sleep(0.05)
+        builds.hold = False
+
+        other = await asyncio.wait_for(
+            client_mod.get_graphiti_client("user_fast"), timeout=5
+        )
+
+        assert other is not None and not stuck.done()
+        builds.release.set()
+        await stuck
+
+    @pytest.mark.asyncio
+    async def test_a_caller_that_stops_waiting_leaves_the_build_to_finish(
+        self, builds
+    ) -> None:
+        """A cancelled warm-context refresh must not cancel the build: the
+        client it was building serves the next turn."""
+        builds.hold = True
+        waiter = asyncio.create_task(client_mod.get_graphiti_client("user_a"))
+        await asyncio.sleep(0.05)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        build = client_mod._get_loop_state().building["user_a"]
+        builds.release.set()
+        await build
+
+        assert client_mod._get_loop_state().cache["user_a"] is build.result()
+        assert await client_mod.get_graphiti_client("user_a") is build.result()
+        assert len(builds.threads) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_build_is_retried_by_the_next_call(self, builds) -> None:
+        builds.fail = ConnectionError("falkordb down")
+
+        with pytest.raises(ConnectionError):
+            await client_mod.get_graphiti_client("user_a")
+        await asyncio.sleep(0)
+        assert "user_a" not in client_mod._get_loop_state().building
+
+        assert await client_mod.get_graphiti_client("user_a") is not None
+        assert len(builds.threads) == 2
 
 
 class TestEvictClient:
@@ -133,9 +305,10 @@ class TestMakeFlexGraphitiClient:
         )
         captured: dict = {}
 
-        def _fake_build_graphiti(group_id: str, llm_client):
+        def _fake_build_graphiti(group_id: str, llm_client, *, graph_driver):
             captured["llm_client"] = llm_client
             captured["group_id"] = group_id
+            captured["graph_driver"] = graph_driver
             return MagicMock(name="fake-graphiti")
 
         # Both clients have heavy constructor side effects (network
@@ -147,16 +320,19 @@ class TestMakeFlexGraphitiClient:
         monkeypatch.setattr(
             client_mod, "_build_llm_config", lambda: MagicMock(name="LLMConfig")
         )
+        driver = MagicMock(name="driver")
+        monkeypatch.setattr(
+            falkordb_driver, "connect_driver", AsyncMock(return_value=driver)
+        )
 
         # ``make_flex_graphiti_client`` imports both classes lazily;
         # patch them on their actual modules so the import inside the
         # function picks up the sentinel.
-        import graphiti_core.llm_client
-
         from . import flex_client as flex_module
+        from . import llm_client as llm_module
 
         monkeypatch.setattr(flex_module, "FlexOpenAIClient", flex_sentinel)
-        monkeypatch.setattr(graphiti_core.llm_client, "OpenAIClient", regular_sentinel)
+        monkeypatch.setattr(llm_module, "GraphitiOpenAIClient", regular_sentinel)
 
         await make_flex_graphiti_client("user_abc")
 
@@ -165,8 +341,10 @@ class TestMakeFlexGraphitiClient:
         assert (
             not flex_sentinel.called
         ), "flex client must not be constructed under local transport"
-        # And the constructed instance was passed into _build_graphiti.
+        # And the constructed instance was passed into _build_graphiti, on a
+        # driver built off the event loop.
         assert captured["llm_client"] is regular_sentinel.return_value
+        assert captured["graph_driver"] is driver
 
     @pytest.mark.asyncio
     async def test_returns_flex_client_when_transport_supports_flex(
@@ -178,13 +356,15 @@ class TestMakeFlexGraphitiClient:
             monkeypatch,
             ChatConfig(
                 use_openrouter=True,
+                use_claude_code_subscription=False,
+                use_local=False,
                 api_key="or-key",
                 base_url="https://openrouter.ai/api/v1",
             ),
         )
         captured: dict = {}
 
-        def _fake_build_graphiti(group_id: str, llm_client):
+        def _fake_build_graphiti(group_id: str, llm_client, *, graph_driver):
             captured["llm_client"] = llm_client
             return MagicMock(name="fake-graphiti")
 
@@ -194,13 +374,16 @@ class TestMakeFlexGraphitiClient:
         monkeypatch.setattr(
             client_mod, "_build_llm_config", lambda: MagicMock(name="LLMConfig")
         )
-
-        import graphiti_core.llm_client
+        driver = MagicMock(name="driver")
+        monkeypatch.setattr(
+            falkordb_driver, "connect_driver", AsyncMock(return_value=driver)
+        )
 
         from . import flex_client as flex_module
+        from . import llm_client as llm_module
 
         monkeypatch.setattr(flex_module, "FlexOpenAIClient", flex_sentinel)
-        monkeypatch.setattr(graphiti_core.llm_client, "OpenAIClient", regular_sentinel)
+        monkeypatch.setattr(llm_module, "GraphitiOpenAIClient", regular_sentinel)
 
         await make_flex_graphiti_client("user_abc")
 

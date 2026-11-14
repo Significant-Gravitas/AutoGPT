@@ -6,7 +6,7 @@ This guide covers integrating Google Gemini models with AutoGPT using OpenRouter
 
 ## Prerequisites
 
-1. Make sure you have completed the [AutoGPT Setup Guide](https://docs.agpt.co/platform/getting-started/) and have AutoGPT running locally at `http://localhost:3000`.
+1. Make sure you have completed the [AutoGPT Setup Guide](https://agpt.co/docs/platform/getting-started) and have AutoGPT running locally at `http://localhost:3000`.
 2. You have an **OpenRouter API key** from [OpenRouter](https://openrouter.ai/keys).
 
 ---
@@ -27,7 +27,7 @@ AutoGPT routes all Gemini models through OpenRouter. You need an OpenRouter API 
 ### 1. Start AutoGPT Locally
 
 Follow the official guide:
-[AutoGPT Getting Started Guide](https://docs.agpt.co/platform/getting-started/)
+[AutoGPT Getting Started Guide](https://agpt.co/docs/platform/getting-started)
 
 Ensure AutoGPT is running and accessible at:
 [http://localhost:3000](http://localhost:3000)
@@ -51,14 +51,16 @@ Click the AI Text Generator block to configure it.
 
 In the **LLM Model** dropdown, select one of the available Gemini models:
 
-| Model | Description | Best For |
-|-------|-------------|----------|
-| `google/gemini-3-pro-preview` | Latest Gemini model | Complex reasoning, coding, multimodal tasks |
-| `google/gemini-2.5-pro-preview-03-25` | High capability model | Complex reasoning, coding, multimodal tasks |
-| `google/gemini-2.5-flash` | Fast, efficient performance | Quick responses, high-volume tasks |
-| `google/gemini-2.5-flash-lite-preview-06-17` | Lightweight preview | Simple tasks, low latency requirements |
-| `google/gemini-2.0-flash-001` | Balanced speed and quality | General-purpose applications |
-| `google/gemini-2.0-flash-lite-001` | Lightweight, cost-effective | Simple tasks, low latency requirements |
+| Model | Model ID |
+| --- | --- |
+| Gemini 3.1 Pro Preview | `google/gemini-3.1-pro-preview` |
+| Gemini 3.1 Flash Lite Preview | `google/gemini-3.1-flash-lite-preview` |
+| Gemini 3 Flash Preview | `google/gemini-3-flash-preview` |
+| Gemini 2.5 Pro | `google/gemini-2.5-pro` |
+| Gemini 2.5 Flash | `google/gemini-2.5-flash` |
+| Gemini 2.5 Flash Lite | `google/gemini-2.5-flash-lite` |
+| Gemini 2.0 Flash 001 | `google/gemini-2.0-flash-001` |
+| Gemini 2.0 Flash Lite 001 | `google/gemini-2.0-flash-lite-001` |
 
 > Select the models prefixed with `google/` in the dropdown.
 
@@ -144,7 +146,7 @@ Pricing varies by model tier and usage volume.
 ### Rate Limiting
 - Free tier has request limits per minute
 - Upgrade to paid tier for production usage
-- Consider using `google/gemini-2.0-flash-lite` for cost-effective high-volume tasks
+- Consider using `google/gemini-2.5-flash-lite` for lower-cost, high-volume tasks
 
 ### Context Length Errors
 - Each Gemini model has a maximum context window
@@ -158,7 +160,7 @@ Pricing varies by model tier and usage volume.
 - [Gemini API Quickstart](https://ai.google.dev/gemini-api/docs/quickstart)
 - [Model Capabilities](https://ai.google.dev/gemini-api/docs/models)
 - [OpenRouter Documentation](https://openrouter.ai/docs)
-- [AutoGPT Platform Docs](https://docs.agpt.co/platform/)
+- [AutoGPT Platform Docs](https://agpt.co/docs/platform)
 
 ---
 

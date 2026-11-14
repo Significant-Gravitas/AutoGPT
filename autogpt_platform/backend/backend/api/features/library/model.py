@@ -1,4 +1,5 @@
 import datetime
+import logging
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -7,6 +8,7 @@ import prisma.models
 import pydantic
 
 from backend.data.graph import GraphModel, GraphSettings, GraphTriggerInfo
+from backend.data.includes import MAX_NODE_INPUT_OUTPUT_FETCH
 from backend.data.model import (
     CredentialsMetaInput,
     GraphInput,
@@ -14,9 +16,90 @@ from backend.data.model import (
 )
 from backend.util.json import loads as json_loads
 from backend.util.models import Pagination
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_NAME_LENGTH,
+    IDText,
+)
 
 if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
+    from backend.data.integrations import WebhookWithoutSecrets
+
+logger = logging.getLogger(__name__)
+
+
+NODE_INPUT_MASK_PREFIX = "_node_input_mask_"
+
+
+def node_input_mask_key(node_id: str) -> str:
+    """Per-node key under which a triggered preset stores that node's input mask
+    (the trigger config), nested alongside the regular graph inputs.
+
+    Shared by preset setup/update (``triggers.py``), webhook execution
+    (``_execute_webhook_preset_trigger``), and version migration
+    (``migrate_webhook_presets_to_new_version``) so all sites agree on the
+    format; the data migration mirrors it in SQL. Lives here (not in
+    ``triggers.py``) so ``db.py`` can use it without an import cycle.
+
+    Keyed on the node id's first UUID segment, which is collision-free only
+    because a graph has at most one trigger node.
+    """
+    return f"{NODE_INPUT_MASK_PREFIX}{node_id.split('-')[0]}"
+
+
+def split_trigger_inputs(
+    inputs: GraphInput, trigger_node_id: str
+) -> tuple[GraphInput, Any]:
+    """Split a triggered preset's inputs into ``(graph_inputs, trigger_config)``.
+
+    A legacy flat preset the boot backfill has not converted yet has no mask
+    key: all of its inputs are trigger config, as they were before the mask.
+    """
+    graph_inputs = dict(inputs)
+    mask_key = node_input_mask_key(trigger_node_id)
+    if mask_key not in graph_inputs:
+        return {}, graph_inputs
+    return graph_inputs, graph_inputs.pop(mask_key)
+
+
+def split_stored_trigger_inputs(
+    inputs: GraphInput, attached: bool
+) -> tuple[GraphInput, GraphInput | None]:
+    """``(graph_inputs, trigger_config)`` for a reader without the preset's graph;
+    ``None`` for a preset with no trigger. A preset ``attached`` to a webhook
+    with no mask key is a legacy flat one: all of its inputs are trigger config.
+    """
+    graph_inputs = dict(inputs)
+    if key := stored_trigger_mask_key(inputs):
+        return graph_inputs, graph_inputs.pop(key)
+    if attached:
+        return {}, graph_inputs
+    return graph_inputs, None
+
+
+def stored_trigger_mask_key(inputs: GraphInput) -> str | None:
+    """The key a triggered preset's trigger config is stored under, if any."""
+    return next(
+        (key for key, value in inputs.items() if is_trigger_config_entry(key, value)),
+        None,
+    )
+
+
+def preset_trigger_configs(inputs: GraphInput) -> list[GraphInput]:
+    """Every candidate trigger config of a triggered preset, for a reader without
+    its graph: each object under a mask-prefixed key, since a graph input may use
+    the prefix too. A legacy flat preset is all trigger config.
+    """
+    if not any(k.startswith(NODE_INPUT_MASK_PREFIX) for k in inputs):
+        return [inputs]
+    return [v for k, v in inputs.items() if is_trigger_config_entry(k, v)]
+
+
+def is_trigger_config_entry(key: str, value: object) -> bool:
+    """Whether a stored input reads as a trigger config; trigger setup and
+    reconfigure refuse a graph input that does, so a preset holds one."""
+    return key.startswith(NODE_INPUT_MASK_PREFIX) and isinstance(value, dict)
 
 
 class LibraryAgentStatus(str, Enum):
@@ -42,6 +125,8 @@ class LibraryFolder(pydantic.BaseModel):
     updated_at: datetime.datetime
     agent_count: int = 0  # Direct agents in folder
     subfolder_count: int = 0  # Direct child folders
+    organization_id: str | None = None
+    team_id: str | None = None
 
     @staticmethod
     def from_db(
@@ -61,6 +146,8 @@ class LibraryFolder(pydantic.BaseModel):
             updated_at=folder.updatedAt,
             agent_count=agent_count,
             subfolder_count=subfolder_count,
+            organization_id=folder.organizationId,
+            team_id=folder.teamId,
         )
 
 
@@ -73,33 +160,47 @@ class LibraryFolderTree(LibraryFolder):
 class FolderCreateRequest(pydantic.BaseModel):
     """Request model for creating a folder."""
 
-    name: str = pydantic.Field(..., min_length=1, max_length=100)
-    icon: str | None = None
+    name: str = pydantic.Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
+    icon: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
     color: str | None = pydantic.Field(
-        None, pattern=r"^#[0-9A-Fa-f]{6}$", description="Hex color code (#RRGGBB)"
+        None,
+        max_length=7,
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+        description="Hex color code (#RRGGBB)",
     )
-    parent_id: str | None = None
+    parent_id: str | None = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class FolderUpdateRequest(pydantic.BaseModel):
     """Request model for updating a folder."""
 
-    name: str | None = pydantic.Field(None, min_length=1, max_length=100)
-    icon: str | None = None
-    color: str | None = None
+    name: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=MAX_NAME_LENGTH
+    )
+    icon: str | None = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    color: str | None = pydantic.Field(
+        None,
+        max_length=7,
+        pattern=r"^#[0-9A-Fa-f]{6}$",
+        description="Hex color code (#RRGGBB)",
+    )
 
 
 class FolderMoveRequest(pydantic.BaseModel):
     """Request model for moving a folder to a new parent."""
 
-    target_parent_id: str | None = None  # None = move to root
+    # None = move to root
+    target_parent_id: str | None = pydantic.Field(
+        default=None, max_length=MAX_ID_LENGTH
+    )
 
 
 class BulkMoveAgentsRequest(pydantic.BaseModel):
     """Request model for moving multiple agents to a folder."""
 
-    agent_ids: list[str]
-    folder_id: str | None = None  # None = move to root
+    agent_ids: list[IDText]
+    # None = move to root
+    folder_id: str | None = pydantic.Field(default=None, max_length=MAX_ID_LENGTH)
 
 
 class FolderListResponse(pydantic.BaseModel):
@@ -130,6 +231,24 @@ class MarketplaceListing(pydantic.BaseModel):
     name: str
     slug: str
     creator: MarketplaceListingCreator
+
+
+class LibraryAgentRef(pydantic.BaseModel):
+    """Just enough of a library agent to label and deep-link a run.
+
+    Deliberately cheap: no relation includes, no schedule info, unlike
+    :class:`LibraryAgent`. Used where a caller only needs to turn a set of
+    graph ids into display names and links.
+    """
+
+    id: str
+    graph_id: str
+    name: str
+    # The agent's own picture, so a surface listing runs can show the agent
+    # instead of a generic glyph.
+    image_url: str | None = None
+    # A removed agent still names its past runs; it just cannot be linked.
+    is_deleted: bool = False
 
 
 class RecentExecution(pydantic.BaseModel):
@@ -175,6 +294,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    last_run_at: datetime.datetime | None = None
 
     name: str
     description: str
@@ -225,6 +345,8 @@ class LibraryAgent(pydantic.BaseModel):
         description="ISO 8601 timestamp of the next scheduled run, if any",
     )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
+    organization_id: str | None = None
+    team_id: str | None = None
     marketplace_listing: Optional["MarketplaceListing"] = None
 
     @staticmethod
@@ -232,7 +354,6 @@ class LibraryAgent(pydantic.BaseModel):
         agent: prisma.models.LibraryAgent,
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
-        profile: Optional[prisma.models.Profile] = None,
         execution_count_override: Optional[int] = None,
         schedule_info: Optional[dict[str, str]] = None,
     ) -> "LibraryAgent":
@@ -244,6 +365,11 @@ class LibraryAgent(pydantic.BaseModel):
             raise ValueError("Associated Agent record is required.")
 
         graph = GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
+        if agent.AgentGraph.userId != agent.userId:
+            # Someone else's agent in this user's library (e.g. from the
+            # marketplace): its input defaults mustn't carry the owner's
+            # picked files or the credentials embedded in them.
+            graph.clear_auto_credentials()
 
         created_at = agent.createdAt
 
@@ -283,7 +409,9 @@ class LibraryAgent(pydantic.BaseModel):
                 for e in executions
                 if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
             )
-            success_rate = (success_count / execution_count) * 100
+            # Over the included runs, not the total: an override counts runs
+            # the include never loaded, so their outcomes are unknown here.
+            success_rate = (success_count / len(executions)) * 100
 
             correctness_scores = []
             for e in executions:
@@ -323,19 +451,25 @@ class LibraryAgent(pydantic.BaseModel):
         can_access_graph = agent.AgentGraph.userId == agent.userId
         is_latest_version = True
 
-        marketplace_listing_data = None
-        if store_listing and store_listing.ActiveVersion and profile:
-            creator_data = MarketplaceListingCreator(
-                name=profile.name,
-                id=profile.id,
-                slug=profile.username,
-            )
-            marketplace_listing_data = MarketplaceListing(
+        active_listing = store_listing.ActiveVersion if store_listing else None
+        creator_profile = store_listing.CreatorProfile if store_listing else None
+        marketplace_listing_info = (
+            MarketplaceListing(
                 id=store_listing.id,
-                name=store_listing.ActiveVersion.name,
+                name=active_listing.name,
                 slug=store_listing.slug,
-                creator=creator_data,
+                creator=MarketplaceListingCreator(
+                    name=creator_profile.name,
+                    id=creator_profile.id,
+                    slug=creator_profile.username,
+                ),
             )
+            if store_listing
+            and active_listing
+            and creator_profile
+            and not store_listing.isDeleted
+            else None
+        )
 
         return LibraryAgent(
             id=agent.id,
@@ -347,8 +481,17 @@ class LibraryAgent(pydantic.BaseModel):
             status=status,
             created_at=created_at,
             updated_at=updated_at,
-            name=graph.name,
-            description=graph.description,
+            last_run_at=agent.lastRunAt,
+            # Prefer the marketplace title/description snapshotted at download
+            # time; fall back to the graph's own values for user-created agents
+            # (which have no snapshot). `is not None` so an intentionally empty
+            # published value is preserved rather than replaced by the graph's.
+            name=agent.name if agent.name is not None else graph.name,
+            description=(
+                agent.description
+                if agent.description is not None
+                else graph.description
+            ),
             instructions=graph.instructions,
             input_schema=graph.input_schema,
             output_schema=graph.output_schema,
@@ -369,6 +512,8 @@ class LibraryAgent(pydantic.BaseModel):
             is_favorite=agent.isFavorite,
             is_hidden=agent.isHidden,
             folder_id=agent.folderId,
+            organization_id=agent.organizationId,
+            team_id=agent.teamId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             is_scheduled=bool(schedule_info and agent.agentGraphId in schedule_info),
@@ -376,7 +521,7 @@ class LibraryAgent(pydantic.BaseModel):
                 schedule_info.get(agent.agentGraphId) if schedule_info else None
             ),
             settings=_parse_settings(agent.settings),
-            marketplace_listing=marketplace_listing_data,
+            marketplace_listing=marketplace_listing_info,
         )
 
 
@@ -436,6 +581,10 @@ class LibraryAgentResponse(pydantic.BaseModel):
 class LibraryAgentPresetCreatable(pydantic.BaseModel):
     """
     Request model used when creating a new preset for a library agent.
+
+    A preset's webhook is never caller-specified here; webhook-triggered presets
+    are created through ``POST /presets/setup-trigger``, which provisions a
+    webhook owned by the caller server-side.
     """
 
     graph_id: str
@@ -449,18 +598,16 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
 
     is_active: bool = True
 
-    webhook_id: Optional[str] = None
-
 
 class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
     """
     Request model used when creating a new preset for a library agent.
     """
 
-    graph_execution_id: str
+    graph_execution_id: str = pydantic.Field(..., max_length=MAX_ID_LENGTH)
 
-    name: str
-    description: str
+    name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    description: str = pydantic.Field(..., max_length=MAX_DESCRIPTION_LENGTH)
 
     is_active: bool = True
 
@@ -473,20 +620,25 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     inputs: Optional[GraphInput] = None
     credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = pydantic.Field(default=None, max_length=MAX_NAME_LENGTH)
+    description: Optional[str] = pydantic.Field(
+        default=None, max_length=MAX_DESCRIPTION_LENGTH
+    )
 
     is_active: Optional[bool] = None
 
 
 class TriggeredPresetSetupRequest(pydantic.BaseModel):
-    name: str
-    description: str = ""
+    name: str = pydantic.Field(..., max_length=MAX_NAME_LENGTH)
+    description: str = pydantic.Field(default="", max_length=MAX_DESCRIPTION_LENGTH)
 
-    graph_id: str
+    graph_id: str = pydantic.Field(..., max_length=MAX_ID_LENGTH)
     graph_version: int
 
     trigger_config: dict[str, Any]
+    constant_inputs: dict[str, Any] = pydantic.Field(
+        default_factory=dict, description="Regular graph input values"
+    )
     agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
         default_factory=dict
     )
@@ -500,17 +652,35 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
-    webhook: "Webhook | None"
+    # Resource-follows-parent tenancy: presets are tagged with the parent
+    # graph's org/team at creation. Executions of the preset attribute to
+    # THIS org/team, not the caller's active header context.
+    organization_id: str | None = None
+    team_id: str | None = None
+
+    # Read-only in responses; set server-side via the setup-trigger flow only.
+    webhook_id: Optional[str] = None
+    webhook: "WebhookWithoutSecrets | None"
+
+    # Expert attribution, resolved server-side at creation; every run this
+    # preset fires inherits it.
+    expert_id: Optional[str] = None
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
+        from backend.data.integrations import WebhookWithoutSecrets
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
         if preset.webhookId and preset.Webhook is None:
             raise ValueError(
                 "Webhook must be included in AgentPreset query when webhookId is set"
+            )
+
+        if len(preset.InputPresets) >= MAX_NODE_INPUT_OUTPUT_FETCH:
+            logger.warning(
+                f"Preset {preset.id} InputPresets rows hit "
+                "MAX_NODE_INPUT_OUTPUT_FETCH cap; result may be truncated"
             )
 
         input_data: GraphInput = {}
@@ -536,8 +706,15 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             is_active=preset.isActive,
             inputs=input_data,
             credentials=input_credentials,
+            organization_id=preset.organizationId,
+            team_id=preset.teamId,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
+            webhook=(
+                WebhookWithoutSecrets.from_db(preset.Webhook)
+                if preset.Webhook
+                else None
+            ),
+            expert_id=preset.expertId,
         )
 
 
@@ -546,6 +723,23 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
 
     presets: list[LibraryAgentPreset]
     pagination: Pagination
+
+
+class SkippedWebhookPreset(pydantic.BaseModel):
+    """A webhook preset that was left pinned to its old version because the
+    newly activated version swaps or reconfigures the trigger block. The user
+    needs to reconfigure the trigger on the new version for it to fire."""
+
+    id: str
+    name: str
+    pinned_version: int
+
+
+class WebhookPresetMigrationResult(pydantic.BaseModel):
+    """Outcome of migrating webhook-attached presets to a new graph version."""
+
+    migrated_count: int = 0
+    skipped_presets: list[SkippedWebhookPreset] = pydantic.Field(default_factory=list)
 
 
 class LibraryAgentFilter(str, Enum):
@@ -560,6 +754,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_RUN = "lastRunAt"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):
@@ -591,5 +786,6 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     folder_id: Optional[str] = pydantic.Field(
         default=None,
+        max_length=MAX_ID_LENGTH,
         description="Folder ID to move agent to (None to move to root)",
     )

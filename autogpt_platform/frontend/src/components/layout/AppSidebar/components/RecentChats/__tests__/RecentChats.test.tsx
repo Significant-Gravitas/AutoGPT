@@ -1,4 +1,5 @@
 import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
@@ -6,12 +7,14 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { RecentChats } from "../RecentChats";
+
+const mockEnabledFlags = new Set<string>();
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -20,7 +23,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
     >();
   return {
     ...actual,
-    useGetFlag: (flag: string) => flag === "chat-sharing",
+    useGetFlag: (flag: string) => mockEnabledFlags.has(flag),
   };
 });
 
@@ -28,6 +31,7 @@ interface SessionSeed {
   id: string;
   title: string;
   updated_at: string;
+  is_pinned?: boolean;
 }
 
 function makeSession(seed: SessionSeed) {
@@ -35,6 +39,7 @@ function makeSession(seed: SessionSeed) {
     id: seed.id,
     title: seed.title,
     is_processing: false,
+    is_pinned: seed.is_pinned ?? false,
     created_at: seed.updated_at,
     updated_at: seed.updated_at,
   };
@@ -55,11 +60,13 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-06-30T12:00:00"));
   useCopilotUIStore.setState({ sessionToDelete: null });
+  server.use(getListExpertIdentitiesMockHandler([]));
 });
 
 afterEach(() => {
   vi.useRealTimers();
   server.resetHandlers();
+  mockEnabledFlags.delete("chat-pinning");
 });
 
 describe("RecentChats — empty + loading", () => {
@@ -71,7 +78,7 @@ describe("RecentChats — empty + loading", () => {
 });
 
 describe("RecentChats — grouped list", () => {
-  it("renders sessions grouped under date labels", async () => {
+  it("keeps chats from different dates together under Otto", async () => {
     const sessions = [
       makeSession({ id: "a", title: "Today chat", updated_at: TODAY }),
       makeSession({
@@ -86,9 +93,67 @@ describe("RecentChats — grouped list", () => {
     renderRecentChats();
 
     expect(await screen.findByText("Today chat")).toBeDefined();
-    expect(screen.getByText("Yesterday chat")).toBeDefined();
-    expect(screen.getByText("Today")).toBeDefined();
-    expect(screen.getByText("Yesterday")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Otto chats" })).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load all Otto chats" }),
+    );
+    expect(await screen.findByText("Yesterday chat")).toBeDefined();
+    expect(screen.queryByText("Today")).toBeNull();
+    expect(screen.queryByText("Yesterday")).toBeNull();
+  });
+});
+
+describe("RecentChats — pinned split", () => {
+  const pinnedAndDated = [
+    makeSession({
+      id: "pinned",
+      title: "Pinned chat",
+      updated_at: YESTERDAY,
+      is_pinned: true,
+    }),
+    makeSession({ id: "loose", title: "Loose chat", updated_at: TODAY }),
+  ];
+
+  it("lifts pinned sessions out of the expert groups", async () => {
+    mockEnabledFlags.add("chat-pinning");
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: pinnedAndDated,
+        total: pinnedAndDated.length,
+      }),
+    );
+    renderRecentChats();
+
+    const pinnedGroup = (await screen.findByText("Pinned")).closest(
+      "div",
+    )?.parentElement;
+    if (!pinnedGroup) throw new Error("pinned group not found");
+    expect(within(pinnedGroup).getByText("Pinned chat")).toBeDefined();
+
+    const ottoGroup = screen
+      .getByRole("button", { name: "Otto chats" })
+      .closest("div")?.parentElement;
+    if (!ottoGroup) throw new Error("Otto group not found");
+    expect(within(ottoGroup).getByText("Loose chat")).toBeDefined();
+    expect(within(ottoGroup).queryByText("Pinned chat")).toBeNull();
+  });
+
+  it("keeps pinned sessions in their expert group when the pinning flag is off", async () => {
+    server.use(
+      getGetV2ListSessionsMockHandler200({
+        sessions: pinnedAndDated,
+        total: pinnedAndDated.length,
+      }),
+    );
+    renderRecentChats();
+
+    await screen.findByText("Pinned chat");
+    expect(screen.queryByText("Pinned")).toBeNull();
+    const ottoGroup = screen
+      .getByRole("button", { name: "Otto chats" })
+      .closest("div")?.parentElement;
+    if (!ottoGroup) throw new Error("Otto group not found");
+    expect(within(ottoGroup).getByText("Pinned chat")).toBeDefined();
   });
 });
 
@@ -123,6 +188,9 @@ describe("RecentChats — load more", () => {
     const loadMore = await screen.findByRole("button", { name: /load more/i });
     fireEvent.click(loadMore);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Load all Otto chats" }),
+    );
     expect(await screen.findByText("Page 1")).toBeDefined();
     expect(seenOffsets).toContain("1");
   });

@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from backend.util.file import store_media_file
+from backend.util.sandbox_output import read_sandbox_file, run_sandbox_command
+from backend.util.settings import Config
 from backend.util.type import MediaFileType
 
 if TYPE_CHECKING:
@@ -74,7 +76,52 @@ TEXT_EXTENSIONS = {
     ".tex",
     ".csv",
     ".log",
+    ".svg",  # SVG is XML-based text
 }
+
+# Binary file extensions we explicitly support extracting
+BINARY_EXTENSIONS = {
+    # Images
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".bmp",
+    ".tiff",
+    ".tif",
+    # Documents
+    ".pdf",
+    # Archives
+    ".zip",
+    ".tar",
+    ".gz",
+    ".7z",
+    # Audio
+    ".mp3",
+    ".aac",
+    ".wav",
+    ".ogg",
+    ".flac",
+    # Video
+    ".mp4",
+    ".webm",
+    ".mov",
+    ".avi",
+    # Fonts
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+    ".eot",
+}
+
+# Maximum file size for binary extraction (50MB)
+# Prevents OOM from accidentally extracting huge files
+MAX_BINARY_FILE_SIZE = 50 * 1024 * 1024
+# All files of one extraction together, held in memory at once.
+MAX_TOTAL_EXTRACTED_SIZE = Config().max_total_file_size_mb * 1024 * 1024
 
 
 class SandboxFileOutput(BaseModel):
@@ -120,12 +167,14 @@ async def extract_sandbox_files(
         sandbox: The E2B sandbox instance
         working_directory: Directory to search for files
         since_timestamp: ISO timestamp - only return files modified after this time
-        text_only: If True, only extract text files (default). If False, extract all files.
+        text_only: If True, only extract text files. If False, also extract
+                   supported binary files (images, PDFs, etc.).
 
     Returns:
         List of ExtractedFile objects with path, content, and metadata
     """
     files: list[ExtractedFile] = []
+    total_size = 0
 
     try:
         # Build find command
@@ -134,12 +183,13 @@ async def extract_sandbox_files(
         if since_timestamp:
             timestamp_filter = f"-newermt {shlex.quote(since_timestamp)} "
 
-        find_result = await sandbox.commands.run(
+        find_result = await run_sandbox_command(
+            sandbox,
             f"find {safe_working_dir} -type f "
             f"{timestamp_filter}"
             f"-not -path '*/node_modules/*' "
             f"-not -path '*/.git/*' "
-            f"2>/dev/null"
+            f"2>/dev/null",
         )
 
         if not find_result.stdout:
@@ -149,20 +199,55 @@ async def extract_sandbox_files(
             if not file_path:
                 continue
 
-            # Check if it's a text file
-            is_text = any(file_path.endswith(ext) for ext in TEXT_EXTENSIONS)
+            # Check file type (case-insensitive for extensions)
+            file_path_lower = file_path.lower()
+            is_text = any(
+                file_path_lower.endswith(ext.lower()) for ext in TEXT_EXTENSIONS
+            )
+            is_binary = any(
+                file_path_lower.endswith(ext.lower()) for ext in BINARY_EXTENSIONS
+            )
 
-            # Skip non-text files if text_only mode
+            # Skip files with unrecognized extensions
+            if not is_text and not is_binary:
+                continue
+
+            # In text_only mode, skip binary files
             if text_only and not is_text:
                 continue
 
             try:
-                # Read file content as bytes
-                content = await sandbox.files.read(file_path, format="bytes")
-                if isinstance(content, str):
-                    content = content.encode("utf-8")
-                elif isinstance(content, bytearray):
-                    content = bytes(content)
+                # Check file size before reading to prevent OOM
+                stat_result = await run_sandbox_command(
+                    sandbox, f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                )
+                if stat_result.exit_code != 0 or not stat_result.stdout:
+                    logger.debug(f"Skipping {file_path}: could not determine file size")
+                    continue
+
+                try:
+                    file_size = int(stat_result.stdout.strip())
+                except ValueError:
+                    logger.debug(
+                        f"Skipping {file_path}: unexpected stat output "
+                        f"{stat_result.stdout.strip()!r}"
+                    )
+                    continue
+
+                limit = min(MAX_BINARY_FILE_SIZE, MAX_TOTAL_EXTRACTED_SIZE - total_size)
+                if file_size > limit:
+                    logger.info(
+                        f"Skipping {file_path}: size {file_size} bytes "
+                        f"exceeds limit {limit}"
+                    )
+                    continue
+
+                # The read is bounded by the same limit.
+                content = await read_sandbox_file(sandbox, file_path, limit)
+                if len(content) > limit:
+                    logger.info(f"Skipping {file_path}: larger than {limit} bytes")
+                    continue
+                total_size += len(content)
 
                 # Extract filename from path
                 file_name = file_path.split("/")[-1]
@@ -239,8 +324,12 @@ async def store_sandbox_files(
                 content_str = result
         except Exception as e:
             logger.warning(f"Failed to store file {file.name} to workspace: {e}")
-            # For binary files, fall back to data URI to prevent data loss
-            if not file.is_text:
+            # For binary files, fall back to the data URI to prevent data loss —
+            # but respect the same configured size cap storage enforces, so a
+            # storage failure never balloons the execution payload with content
+            # that was too large (or unlucky enough) to store in the first place.
+            max_inline = Config().max_file_size_mb * 1024 * 1024
+            if not file.is_text and len(data_uri) <= max_inline:
                 content_str = data_uri
 
         outputs.append(

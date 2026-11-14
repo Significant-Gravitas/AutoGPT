@@ -1,17 +1,45 @@
 "use client";
-import { Separator } from "@/components/__legacy__/ui/separator";
+import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
+import type { PublishState } from "@/components/contextual/PublishAgentModal/usePublishAgentModal";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { AgentsSection } from "../AgentsSection/AgentsSection";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
+import { useState } from "react";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
-import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
-import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
+import { CategoryFilter } from "../CategoryFilter/CategoryFilter";
+import { ExpertsSection } from "../ExpertsSection/ExpertsSection";
 import { HeroSection } from "../HeroSection/HeroSection";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
+import { MarketplaceTabIntro } from "../MarketplaceTabIntro/MarketplaceTabIntro";
+import { AGENTS_SECTION_ID } from "../MarketplaceTabIntro/helpers";
+import { SkillsList } from "../SkillsList/SkillsList";
+import { WorkflowsShelf } from "../WorkflowsShelf/WorkflowsShelf";
 import { useMainMarketplacePage } from "./useMainMarketplacePage";
 
-export const MainMarkeplacePage = () => {
-  const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
-    useMainMarketplacePage();
+export function MainMarkeplacePage() {
+  const [publishState, setPublishState] = useState<PublishState>({
+    isOpen: false,
+    step: "select",
+    submissionData: null,
+  });
+  function openPublishing() {
+    setPublishState({ isOpen: true, step: "select", submissionData: null });
+  }
+  const {
+    featuredAgents,
+    topAgents,
+    category,
+    setCategory,
+    isLoading,
+    hasError,
+  } = useMainMarketplacePage();
+  const { isUserLoading } = useAuth();
+
+  const showExperts = !isUserLoading;
+  const hasWorkflowShelf = Boolean(
+    topAgents &&
+      (topAgents.agents.length > 0 ||
+        (!category && (featuredAgents?.agents.length ?? 0) > 0)),
+  );
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
@@ -19,7 +47,7 @@ export const MainMarkeplacePage = () => {
 
   if (hasError) {
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
+      <div className="mx-auto w-full max-w-[1360px]">
         <main className="px-4">
           <div className="flex min-h-[400px] items-center justify-center">
             <ErrorCard
@@ -38,28 +66,40 @@ export const MainMarkeplacePage = () => {
   return (
     // FRONTEND-TODO : Need better state location, need to fetch creators and agents in their respective file, Can't do it right now because these files are used in some other pages of marketplace, will fix it when encounter with those pages
     <div className="mx-auto w-full max-w-[1360px]">
-      <main className="px-4 pb-12">
+      <main className="px-6 pb-16 md:px-10 lg:px-14">
         <HeroSection />
-        {featuredAgents && (
-          <FeaturedSection featuredAgents={featuredAgents.agents} />
-        )}
-        {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24 bg-transparent" />
+        {/* Above all three shelves because it narrows all three: a filter
+            below its content changes what the reader has scrolled past. */}
+        <CategoryFilter selected={category} onSelect={setCategory} />
+        {showExperts ? <ExpertsSection category={category} /> : null}
 
+        <SkillsList key={category ?? "all"} category={category} />
         {topAgents && (
-          <AgentsSection sectionTitle="All Agents" agents={topAgents.agents} />
+          <WorkflowsShelf
+            id={AGENTS_SECTION_ID}
+            agents={topAgents.agents}
+            featuredAgents={category ? [] : (featuredAgents?.agents ?? [])}
+            total={topAgents.pagination.total_items}
+            onPublish={openPublishing}
+          />
         )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
-        {featuredCreators && (
-          <FeaturedCreators featuredCreators={featuredCreators.creators} />
-        )}
-        <Separator className="mb-[25px] mt-[60px] bg-transparent" />
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
+
+        {/* The expert layout invites publishing from under the workflows
+            shelf instead, where it cannot outshout the shelf itself. */}
+        {!hasWorkflowShelf ? (
+          <BecomeACreator
+            description="Join our ever-growing community of hackers and tinkerers"
+            buttonText="Publish your workflows"
+            onPublish={openPublishing}
+          />
+        ) : null}
       </main>
+      <PublishAgentModal
+        showTrigger={false}
+        targetState={publishState}
+        onStateChange={setPublishState}
+      />
+      <MarketplaceTabIntro canShow={!publishState.isOpen} />
     </div>
   );
-};
+}

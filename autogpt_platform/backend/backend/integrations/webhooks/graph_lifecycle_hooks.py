@@ -6,6 +6,7 @@ from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util.exceptions import GraphActivationError, SharedCredentialsRefusedError
 
 from . import get_webhook_manager, supports_webhooks
 
@@ -19,19 +20,11 @@ logger = logging.getLogger(__name__)
 credentials_manager = IntegrationCredentialsManager()
 
 
-class GraphActivationError(Exception):
-    """Raised when a graph cannot be activated (e.g. a required credential is
-    missing, revoked, or its OAuth token can no longer be refreshed).
-
-    Callers in the API layer should map this to HTTP 400 so the user sees a
-    clear, actionable message instead of an opaque 500.
-    """
-
-
 async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphModel":
     """
     Pre-activation hook: validates node credentials and clears stale optional
-    credential references in-memory. MUST be called BEFORE the graph is
+    credential references in-memory, along with picked files whose embedded
+    credentials don't belong to the user. MUST be called BEFORE the graph is
     persisted (and before it is marked active) — a failure here means nothing
     should be saved, and the returned graph carries cleanup mutations that
     need to be persisted by the caller.
@@ -45,11 +38,34 @@ async def before_graph_activate(graph: "GraphModel", user_id: str) -> "GraphMode
         GraphActivationError: when a required node credential is missing or
             unusable.
     """
+    await clear_unowned_auto_credentials(graph, user_id)
     graph = await _before_graph_activate(graph, user_id)
     graph.sub_graphs = await asyncio.gather(
         *(_before_graph_activate(sub_graph, user_id) for sub_graph in graph.sub_graphs)
     )
     return graph
+
+
+async def clear_unowned_auto_credentials(graph: "GraphModel", user_id: str) -> None:
+    """
+    Keep picker-selected files (e.g. from the Google Drive picker) that embed one
+    of the user's own credentials, and clear the rest. The user's own picks must
+    survive a save. An agent imported from someone else's export still embeds
+    their `_credentials_id`, which the executor can't resolve for this user.
+
+    `before_graph_activate` runs this; a save that skips activation (an inactive
+    version) must call it itself.
+    """
+    if not graph.auto_credentials_refs():
+        return
+    owned_ids = {c.id for c in await credentials_manager.store.get_all_creds(user_id)}
+    for node, field_name, credentials_id in graph.clear_auto_credentials(
+        keep_ids=owned_ids
+    ):
+        logger.warning(
+            f"Node #{node.id}: cleared the file picked for '{field_name}' because "
+            f"its credentials #{credentials_id} don't belong to user #{user_id}"
+        )
 
 
 @overload
@@ -69,9 +85,14 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     refs: list[tuple["Node | NodeModel", str, dict, BlockSchema]] = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
-        for creds_field_name in block_input_schema.get_credentials_fields().keys():
+        for creds_field_name in block_input_schema.get_credentials_fields():
             creds_meta = new_node.input_default.get(creds_field_name)
-            if not creds_meta:
+            # A meta without `id` means no credential was selected. The form
+            # can emit provider/type on their own, so this shape is reachable
+            # without any user action; treat it as unset instead of indexing
+            # it. Required-but-unset is caught by execution-time validation,
+            # which can name the block and field.
+            if not creds_meta or not creds_meta.get("id"):
                 continue
             refs.append((new_node, creds_field_name, creds_meta, block_input_schema))
 
@@ -111,7 +132,11 @@ def _apply_credential_result(
     (OAuth refresh raised, infra error) as "unusable" — failures are
     logged here so the caller doesn't have to.
     """
+    if isinstance(result, SharedCredentialsRefusedError):
+        raise GraphActivationError(str(result))
+
     refresh_error: str | None = None
+    unavailable = False
     if isinstance(result, BaseException):
         # Distinguish known credential-side failures (OAuth refresh rejected,
         # 401/403 from the provider) from infra failures (DB pool exhaustion,
@@ -136,9 +161,12 @@ def _apply_credential_result(
         )
         if is_known_credential_error:
             logger.warning(log_message)
+            # The provider's refusal describes the user's own credential.
+            refresh_error = str(result) or result.__class__.__name__
         else:
             logger.error(log_message, exc_info=result)
-        refresh_error = str(result) or result.__class__.__name__
+            # Ours, and can name a host or a pool: it stays in the log.
+            unavailable = True
         resolved = None
     else:
         resolved = result
@@ -180,6 +208,10 @@ def _apply_credential_result(
             "It may have been revoked or its access expired — please "
             "reconnect this integration and try again."
         )
+    if unavailable:
+        raise GraphActivationError(
+            f"{credential_ref} could not be loaded just now. Please try again."
+        )
     raise GraphActivationError(
         f"{credential_ref} no longer exists. Please pick a different "
         "credential and try again."
@@ -193,20 +225,34 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_deactivate` on all nodes in `graph`.
     """
-    get_credentials = credentials_manager.cached_getter(user_id)
+    # A webhook registered earlier on a platform key must still deregister.
+    get_credentials = credentials_manager.cached_getter(user_id, allow_sdk_default=True)
     updated_nodes = []
     for node in graph.nodes:
         block_input_schema = cast(BlockSchema, node.block.input_schema)
 
+        # First resolved credential wins. Assigning unconditionally per field
+        # meant a block with several credential fields passed only the last
+        # one, and a failed lookup on that last field discarded a credential
+        # an earlier field had resolved successfully.
         node_credentials = None
-        for creds_field_name in block_input_schema.get_credentials_fields().keys():
-            if (creds_meta := node.input_default.get(creds_field_name)) and not (
-                node_credentials := await get_credentials(creds_meta["id"])
-            ):
+        for creds_field_name in block_input_schema.get_credentials_fields():
+            # Same shape guard as activation: a meta without `id` means no
+            # credential was selected, and indexing it would raise KeyError.
+            # Persisted graphs can carry this id-less shape, so deactivation
+            # has to tolerate it.
+            creds_meta = node.input_default.get(creds_field_name)
+            if not creds_meta or not (creds_id := creds_meta.get("id")):
+                continue
+            resolved = await get_credentials(creds_id)
+            if not resolved:
                 logger.warning(
                     f"Node #{node.id} input '{creds_field_name}' referenced "
-                    f"non-existent credentials #{creds_meta['id']}"
+                    f"non-existent credentials #{creds_id}"
                 )
+                continue
+            if node_credentials is None:
+                node_credentials = resolved
 
         updated_node = await on_node_deactivate(
             user_id, node, credentials=node_credentials

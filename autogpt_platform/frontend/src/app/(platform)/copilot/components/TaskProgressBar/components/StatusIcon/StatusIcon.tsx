@@ -1,6 +1,11 @@
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { CheckIcon, CircleIcon, PauseCircleIcon } from "@phosphor-icons/react";
 import type { DisplayStatus } from "../../helpers";
+import {
+  CircleIcon,
+  PauseCircleIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   status: DisplayStatus;
@@ -9,39 +14,29 @@ interface Props {
 export function StatusIcon({ status }: Props) {
   if (status === "completed") {
     return (
-      <CheckIcon
-        size={14}
-        weight="bold"
-        className="text-emerald-500"
-        aria-label="completed"
-      />
+      <Icon icon={Tick02Icon} size={14} tone="success" aria-label="completed" />
     );
   }
   if (status === "in_progress") {
     return (
       <LoadingSpinner
         size="small"
-        className="h-3.5 w-3.5 text-purple-500 [animation-duration:0.5s]"
+        className="h-3.5 w-3.5 text-brand duration-500"
         aria-label="in progress"
       />
     );
   }
   if (status === "stopped") {
     return (
-      <PauseCircleIcon
+      <Icon
+        icon={PauseCircleIcon}
         size={15}
-        weight="fill"
-        className="text-amber-500"
+        tone="warning-bright"
         aria-label="stopped"
       />
     );
   }
   return (
-    <CircleIcon
-      size={14}
-      weight="regular"
-      className="text-zinc-400"
-      aria-label="pending"
-    />
+    <Icon icon={CircleIcon} size={14} tone="subtle" aria-label="pending" />
   );
 }

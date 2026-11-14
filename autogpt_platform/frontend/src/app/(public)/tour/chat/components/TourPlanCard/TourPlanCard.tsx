@@ -6,12 +6,14 @@ import {
 } from "@/app/(platform)/copilot/components/ToolAccordion/AccordionContent";
 import { ToolAccordion } from "@/app/(platform)/copilot/components/ToolAccordion/ToolAccordion";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  CheckCircleIcon,
-  CubeIcon,
-  PlusCircleIcon,
-} from "@phosphor-icons/react";
+import type { CSSProperties } from "react";
 import type { TourPlan, TourPlanStep } from "../../script/types";
+import {
+  CheckmarkCircle02Icon,
+  CubeIcon,
+  PlusSignCircleIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const STEP_STAGGER_MS = 200;
 
@@ -21,7 +23,7 @@ const STEP_STAGGER_MS = 200;
 export function TourPlanCard({ plan }: { plan: TourPlan }) {
   return (
     <ToolAccordion
-      icon={<PlusCircleIcon size={32} weight="light" />}
+      icon={<Icon icon={PlusSignCircleIcon} size={32} />}
       title={`Build Plan — ${plan.steps.length} steps`}
       description={plan.goal}
       defaultExpanded
@@ -31,7 +33,7 @@ export function TourPlanCard({ plan }: { plan: TourPlan }) {
           {`Here's the plan (${plan.steps.length} steps):`}
         </ContentMessage>
 
-        <div className="mb-6 rounded-lg bg-card p-3">
+        <div className="mb-6 rounded-lg bg-surface p-3">
           <div className="space-y-0.5">
             {plan.steps.map((step, index) => (
               <TourPlanStepItem
@@ -56,26 +58,26 @@ function TourPlanStepItem({
 }) {
   return (
     <div
-      className="flex items-start gap-3 py-1.5 duration-500 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
-      style={{ animationDelay: `${index * STEP_STAGGER_MS}ms` }}
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- per-row stagger delay set at runtime through --step-delay
+      className="flex items-start gap-3 py-1.5 duration-500 animate-in [animation-delay:var(--step-delay)] fade-in fill-mode-both slide-in-from-bottom-2"
+      style={
+        {
+          "--step-delay": `${index * STEP_STAGGER_MS}ms`,
+          "--check-delay": `${index * STEP_STAGGER_MS + 200}ms`,
+        } as CSSProperties
+      }
     >
-      <CheckCircleIcon
-        size={18}
-        weight="fill"
-        aria-label="completed"
-        className="mt-0.5 shrink-0 text-emerald-500 duration-300 animate-in fade-in zoom-in-50 fill-mode-both"
-        style={{ animationDelay: `${index * STEP_STAGGER_MS + 200}ms` }}
-      />
+      {/* oxlint-disable-next-line design-system/no-arbitrary-values -- per-row check pop-in delay set at runtime through --check-delay */}
+      <span className="mt-0.5 flex shrink-0 text-success duration-300 animate-in [animation-delay:var(--check-delay)] fade-in fill-mode-both zoom-in-50">
+        <Icon icon={CheckmarkCircle02Icon} size={18} aria-label="completed" />
+      </span>
       <div className="min-w-0 flex-1">
-        <Text variant="body-medium" className="text-base text-foreground">
+        <Text variant="large-medium-tight">
           {index + 1}. {step.description}
         </Text>
-        <div className="mt-0.5 flex items-center gap-1">
-          <CubeIcon size={12} className="text-muted-foreground" />
-          <Text
-            variant="small"
-            className="font-mono text-xs text-muted-foreground"
-          >
+        <div className="mt-0.5 flex items-center gap-1 text-foreground-tertiary">
+          <Icon icon={CubeIcon} size={12} />
+          <Text variant="small-mono-tight" as="p" tone="muted">
             {step.blockName}
           </Text>
         </div>

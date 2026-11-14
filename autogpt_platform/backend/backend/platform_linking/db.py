@@ -14,8 +14,14 @@ from prisma.errors import UniqueViolationError
 from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 
 from backend.copilot.db import get_chat_session_metadata
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import transaction
 from backend.data.workspace import get_workspace, get_workspace_file
+from backend.data.workspace_scope import (
+    WorkspaceAccessDeniedError,
+    WorkspaceScope,
+    resolve_expert_workspace_scope,
+)
 from backend.util.exceptions import (
     LinkAlreadyExistsError,
     LinkFlowMismatchError,
@@ -57,14 +63,21 @@ def _link_base_url() -> str:
 # by AppService's result validator.
 
 
-async def find_server_link_owner(platform: str, platform_server_id: str) -> str | None:
+async def find_server_link_owner(
+    platform: str, platform_server_id: str, *, open_only: bool = False
+) -> str | None:
+    """The user who linked the server; with *open_only*, None for a closed
+    account, checked in the same call so the bot pays no extra round trip."""
     link = await PlatformLink.prisma().find_first(
         where={"platform": platform, "platformServerId": platform_server_id}
     )
-    return link.userId if link else None
+    return await _owner(link.userId if link else None, open_only)
 
 
-async def find_user_link_owner(platform: str, platform_user_id: str) -> str | None:
+async def find_user_link_owner(
+    platform: str, platform_user_id: str, *, open_only: bool = False
+) -> str | None:
+    """The user who linked the DMs; *open_only* as in find_server_link_owner."""
     link = await PlatformUserLink.prisma().find_unique(
         where={
             "platform_platformUserId": {
@@ -73,7 +86,13 @@ async def find_user_link_owner(platform: str, platform_user_id: str) -> str | No
             }
         }
     )
-    return link.userId if link else None
+    return await _owner(link.userId if link else None, open_only)
+
+
+async def _owner(user_id: str | None, open_only: bool) -> str | None:
+    if user_id is None or not open_only:
+        return user_id
+    return None if await is_account_closed(user_id) else user_id
 
 
 async def resolve_server_link(
@@ -83,9 +102,35 @@ async def resolve_server_link(
     return ResolveResponse(linked=owner is not None)
 
 
-async def resolve_user_link(platform: str, platform_user_id: str) -> ResolveResponse:
-    owner = await find_user_link_owner(platform, platform_user_id)
-    return ResolveResponse(linked=owner is not None)
+async def resolve_user_link(
+    platform: str, platform_user_id: str, include_account: bool = False
+) -> ResolveResponse:
+    if not include_account:
+        owner = await find_user_link_owner(platform, platform_user_id)
+        return ResolveResponse(linked=owner is not None)
+    link = await PlatformUserLink.prisma().find_unique(
+        where={
+            "platform_platformUserId": {
+                "platform": platform,
+                "platformUserId": platform_user_id,
+            }
+        },
+        include={"User": True},
+    )
+    if not link:
+        return ResolveResponse(linked=False)
+    email = link.User.email if link.User else None
+    return ResolveResponse(linked=True, account_hint=mask_email(email))
+
+
+def mask_email(email: str | None) -> str | None:
+    """Mask an email for showing to its owner: 'bently@agpt.co' -> 'b***@agpt.co'."""
+    if not email or "@" not in email:
+        return None
+    local, domain = email.rsplit("@", 1)
+    if not local or not domain:
+        return None
+    return f"{local[0]}***@{domain}"
 
 
 # ── Token creation ────────────────────────────────────────────────────
@@ -244,7 +289,23 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
 # ── Confirmation (user-facing, JWT-authed) ────────────────────────────
 
 
-async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
+def _enforce_verified_identity(
+    token_platform_user_id: str, verified_platform_user_id: str | None
+) -> None:
+    """When the caller carries a platform-verified identity (Telegram
+    login_url payload), the token must have been minted for that same
+    platform user — a forwarded/leaked link URL then fails instead of
+    binding to whoever opened it."""
+    if (
+        verified_platform_user_id is not None
+        and token_platform_user_id != verified_platform_user_id
+    ):
+        raise NotAuthorizedError("This link was created for a different platform user.")
+
+
+async def confirm_server_link(
+    token: str, user_id: str, verified_platform_user_id: str | None = None
+) -> ConfirmLinkResponse:
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
@@ -257,6 +318,7 @@ async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
         raise LinkTokenExpiredError("This link has expired.")
     if not link_token.platformServerId:
         raise LinkFlowMismatchError("Server token missing server ID.")
+    _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
     owner = await find_server_link_owner(
         link_token.platform, link_token.platformServerId
@@ -308,7 +370,9 @@ async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
     )
 
 
-async def confirm_user_link(token: str, user_id: str) -> ConfirmUserLinkResponse:
+async def confirm_user_link(
+    token: str, user_id: str, verified_platform_user_id: str | None = None
+) -> ConfirmUserLinkResponse:
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
@@ -319,6 +383,7 @@ async def confirm_user_link(token: str, user_id: str) -> ConfirmUserLinkResponse
         raise LinkTokenExpiredError("This link has already been used.")
     if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise LinkTokenExpiredError("This link has expired.")
+    _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
     owner = await find_user_link_owner(link_token.platform, link_token.platformUserId)
     if owner:
@@ -494,7 +559,9 @@ async def fetch_workspace_artifact(
     The session→user→workspace→file chain is load-bearing: the LLM emits
     arbitrary ``workspace://`` URIs in the chat stream, so we must never
     serve a file just because the bot claimed an ID — only files owned by
-    the same user the session belongs to are returned.
+    the same user the session belongs to are returned. An expert session is
+    further confined to that expert's file scope, exactly like the copilot
+    tools; a file outside it is treated as not found.
     """
     session = await get_chat_session_metadata(session_id)
     if session is None:
@@ -525,11 +592,26 @@ async def fetch_workspace_artifact(
         )
         return None
 
+    scope: WorkspaceScope | None = None
+    if session.expert_id is not None:
+        scope = await resolve_expert_workspace_scope(session.user_id, session.expert_id)
+        scope = scope.with_session(session_id)
     manager = WorkspaceManager(
-        user_id=session.user_id, workspace_id=workspace.id, session_id=session_id
+        user_id=session.user_id,
+        workspace_id=workspace.id,
+        session_id=session_id,
+        scope=scope,
     )
     try:
         content = await manager.read_file_by_id(file_id)
+    except WorkspaceAccessDeniedError:
+        logger.warning(
+            "fetch_workspace_artifact: file %s is outside the scope of expert "
+            "session %s",
+            file_id,
+            session_id,
+        )
+        return None
     except FileNotFoundError:
         # DB row exists but the storage blob is gone — genuinely unexpected,
         # so keep this one at warning level.

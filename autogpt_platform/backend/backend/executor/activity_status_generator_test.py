@@ -17,8 +17,10 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
+    _get_deterministic_failure_response,
     generate_activity_status_for_execution,
 )
+from backend.util.exceptions import ExecutionFailureReason
 
 
 def _make_usage(
@@ -469,10 +471,6 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -533,10 +531,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
             patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
@@ -615,10 +609,6 @@ class TestGenerateActivityStatusForExecution:
                 return_value=client,
             ),
             patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
-            patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
             ) as mock_schedule_log,
         ):
@@ -667,10 +657,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
             patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
@@ -729,10 +715,6 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -780,10 +762,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
             patch(
                 "backend.executor.activity_status_generator.schedule_platform_cost_log"
@@ -851,10 +829,6 @@ class TestGenerateActivityStatusForExecution:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -872,27 +846,6 @@ class TestGenerateActivityStatusForExecution:
             assert create_mock.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_generate_status_feature_disabled(self, mock_execution_stats):
-        """Test activity status generation when feature is disabled."""
-        mock_db_client = AsyncMock()
-
-        with patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=False,
-        ):
-            result = await generate_activity_status_for_execution(
-                graph_exec_id="test_exec",
-                graph_id="test_graph",
-                graph_version=1,
-                execution_stats=mock_execution_stats,
-                db_client=mock_db_client,
-                user_id="test_user",
-            )
-
-            assert result is None
-            mock_db_client.get_node_executions.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_generate_status_no_openrouter_key(self, mock_execution_stats):
         """Test activity status generation when no OpenRouter key is configured.
 
@@ -905,10 +858,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=None,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
         ):
             result = await generate_activity_status_for_execution(
@@ -936,10 +885,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
         ):
             result = await generate_activity_status_for_execution(
@@ -981,10 +926,6 @@ class TestGenerateActivityStatusForExecution:
             patch(
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
-            ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
             ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
@@ -1045,10 +986,6 @@ class TestIntegration:
                 "backend.executor.activity_status_generator.get_openai_client",
                 return_value=client,
             ),
-            patch(
-                "backend.executor.activity_status_generator.is_feature_enabled",
-                return_value=True,
-            ),
         ):
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
 
@@ -1066,30 +1003,164 @@ class TestIntegration:
             assert result["correctness_score"] == 0.3
             create_mock.assert_awaited_once()
 
+
+class TestDeterministicFailureResponse:
+    """Tests for structured failures that skip LLM analysis."""
+
+    def test_structured_credit_failure_returns_zero_score(self):
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE
+        )
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.FAILED)
+
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert "enough credits" in result["activity_status"].lower()
+        assert "billing owner" not in result["activity_status"].lower()
+
+    def test_entitlement_failure_skips_llm_analysis(self):
+        """A plan-gated denial is as deterministic as an empty wallet. Without
+        a handler the run still reaches the LLM for a summary of something
+        already known — the exact cost this module exists to avoid."""
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.ENTITLEMENT_REQUIRED
+        )
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.FAILED)
+
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert "plan" in result["activity_status"].lower()
+
+    @pytest.mark.parametrize(
+        "status",
+        [ExecutionStatus.COMPLETED, ExecutionStatus.TERMINATED, None],
+    )
+    def test_non_failed_status_does_not_use_deterministic_response(self, status):
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE
+        )
+
+        assert _get_deterministic_failure_response(stats, status) is None
+
+    def test_credit_like_error_text_is_not_trusted(self):
+        stats = GraphExecutionStats(
+            error="Third-party API says insufficient balance to run this request"
+        )
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.FAILED)
+
+        assert result is None
+
+    def test_terminated_credit_text_does_not_use_deterministic_response(self):
+        stats = GraphExecutionStats(error="You have no credits left to run an agent.")
+
+        result = _get_deterministic_failure_response(stats, ExecutionStatus.TERMINATED)
+
+        assert result is None
+
     @pytest.mark.asyncio
-    async def test_manager_integration_with_disabled_feature(
-        self, mock_execution_stats
-    ):
-        """Test that when feature returns None, manager doesn't set activity_status."""
+    async def test_non_credit_failed_execution_reaches_llm_path(self):
+        stats = GraphExecutionStats(error="Connection timeout")
         mock_db_client = AsyncMock()
 
         with patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=False,
-        ):
+            "backend.executor.activity_status_generator.get_openai_client",
+            return_value=None,
+        ) as mock_get_openai_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
                 graph_version=1,
-                execution_stats=mock_execution_stats,
+                execution_stats=stats,
                 db_client=mock_db_client,
                 user_id="test_user",
+                execution_status=ExecutionStatus.FAILED,
             )
 
-            # Should return None when disabled
-            assert result is None
+        assert result is None
+        mock_get_openai_client.assert_called_once_with(prefer_openrouter=True)
 
-            # Verify no database calls were made
-            mock_db_client.get_node_executions.assert_not_called()
-            mock_db_client.get_graph_metadata.assert_not_called()
-            mock_db_client.get_graph.assert_not_called()
+    @pytest.mark.asyncio
+    async def test_generate_skips_llm_for_structured_credit_failure(self):
+        stats = GraphExecutionStats(
+            failure_reason=ExecutionFailureReason.INSUFFICIENT_BALANCE,
+            node_count=0,
+            node_error_count=0,
+        )
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.get_openai_client"
+        ) as mock_get_openai_client:
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+                execution_status=ExecutionStatus.FAILED,
+            )
+
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert "credits" in result["activity_status"].lower()
+        mock_db_client.get_node_executions.assert_not_called()
+        mock_db_client.get_graph_metadata.assert_not_called()
+        mock_db_client.get_graph.assert_not_called()
+        mock_get_openai_client.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("correctness_score", "skip_existing", "expect_existing"),
+        [(0.0, True, True), (None, True, False), (0.8, False, False)],
+    )
+    async def test_skip_existing_requires_complete_analysis(
+        self,
+        correctness_score,
+        skip_existing,
+        expect_existing,
+    ):
+        stats = GraphExecutionStats(
+            activity_status="Existing summary",
+            correctness_score=correctness_score,
+        )
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.get_openai_client",
+            return_value=None,
+        ) as mock_get_openai_client:
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+                skip_existing=skip_existing,
+            )
+
+        if expect_existing:
+            assert result == {
+                "activity_status": "Existing summary",
+                "correctness_score": correctness_score,
+            }
+            mock_get_openai_client.assert_not_called()
+        else:
+            assert result is None
+            mock_get_openai_client.assert_called_once()
+
+
+def test_paywall_is_a_known_graph_execution_error():
+    """Anything outside this set pages via Discord as an unexpected failure.
+    A plan-gated denial is a known business outcome, so leaving it out produced
+    a spurious "Unknown Graph Execution Error" alert with a stack trace — the
+    same reasoning that keeps it out of Sentry in util/metrics."""
+    from backend.executor.manager import KNOWN_GRAPH_EXECUTION_ERRORS
+    from backend.util.exceptions import UserPaywalledError
+
+    assert issubclass(UserPaywalledError, Exception)
+    assert UserPaywalledError in KNOWN_GRAPH_EXECUTION_ERRORS

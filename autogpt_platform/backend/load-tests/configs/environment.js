@@ -1,141 +1,142 @@
-// Environment configuration for AutoGPT Platform load tests
-export const ENV_CONFIG = {
-  DEV: {
-    API_BASE_URL: "https://dev-server.agpt.co",
-    BUILDER_BASE_URL: "https://dev-builder.agpt.co",
-    WS_BASE_URL: "wss://dev-ws-server.agpt.co",
-    SUPABASE_URL: "https://adfjtextkuilwuhzdjpf.supabase.co",
-    SUPABASE_ANON_KEY:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFkZmp0ZXh0a3VpbHd1aHpkanBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyNTE3MDIsImV4cCI6MjA0NTgyNzcwMn0.IuQNXsHEKJNxtS9nyFeqO0BGMYN8sPiObQhuJLSK9xk",
-  },
-  LOCAL: {
-    API_BASE_URL: "http://localhost:8006",
-    BUILDER_BASE_URL: "http://localhost:3000",
-    WS_BASE_URL: "ws://localhost:8001",
-    SUPABASE_URL: "http://localhost:8000",
-    SUPABASE_ANON_KEY:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE",
-  },
-  PROD: {
-    API_BASE_URL: "https://api.agpt.co",
-    BUILDER_BASE_URL: "https://builder.agpt.co",
-    WS_BASE_URL: "wss://ws-server.agpt.co",
-    SUPABASE_URL: "https://supabase.agpt.co",
-    SUPABASE_ANON_KEY:
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJnd3B3ZHN4YmxyeWloaW51dGJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzAyODYzMDUsImV4cCI6MjA0NTg2MjMwNX0.ISa2IofTdQIJmmX5JwKGGNajqjsD8bjaGBzK90SubE0",
-  },
+// Targets for the AutoGPT Platform load tests, picked by K6_ENVIRONMENT
+// (default PREVIEW, which also needs PR_NUMBER).
+//
+// - BACKEND_URL: the backend's origin; /health lives here.
+// - API_BASE_URL: the backend's REST root (BACKEND_URL + /api).
+// - FRONTEND_URL: the Next.js app. Better Auth runs under /api/auth there,
+//   and the backend verifies tokens against its /api/auth/jwks.
+// - WS_URL: the backend's WebSocket server (graph execution events).
+// - SIGNUP_ALLOWED: whether the authenticated tests may sign up throwaway
+//   accounts when LOAD_TEST_ACCOUNTS is unset (see lib/auth.js).
+// - SENTRY: where the target's backend traces land, for perf-compare.
+// - PRODUCTION: whether any of the URLs is production's.
+//
+// K6_BACKEND_URL, K6_FRONTEND_URL and K6_WS_URL override the URLs of any
+// target, for a stack on other ports or behind another name. The target's
+// name then says which were overridden, and a URL on one of production's
+// hosts needs K6_ALLOW_PROD=true whichever target it overrides.
+const PRODUCTION_URLS = {
+  backend: "https://backend.agpt.co",
+  frontend: "https://platform.agpt.co",
+  ws: "wss://ws-backend.agpt.co/ws",
 };
+const PRODUCTION_HOSTS = Object.values(PRODUCTION_URLS).map(hostOf);
 
-// Get environment config based on K6_ENVIRONMENT variable (default: DEV)
-export function getEnvironmentConfig() {
-  const env = __ENV.K6_ENVIRONMENT || "DEV";
-  return ENV_CONFIG[env];
+const ALLOW_PROD_HINT = "agree it with the team, then set K6_ALLOW_PROD=true";
+
+function hostOf(url) {
+  const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(String(url));
+  if (!match) return "";
+  return match[1]
+    .replace(/^.*@/, "")
+    .replace(/:\d*$/, "")
+    .replace(/\.$/, "")
+    .toLowerCase();
 }
 
-// Authentication configuration
-export const AUTH_CONFIG = {
-  // Test user credentials - REPLACE WITH ACTUAL TEST ACCOUNTS
-  TEST_USERS: [
-    {
-      email: "loadtest1@example.com",
-      password: "LoadTest123!",
-      user_id: "test-user-1",
-    },
-    {
-      email: "loadtest2@example.com",
-      password: "LoadTest123!",
-      user_id: "test-user-2",
-    },
-    {
-      email: "loadtest3@example.com",
-      password: "LoadTest123!",
-      user_id: "test-user-3",
-    },
-  ],
+function isProductionUrl(url) {
+  return PRODUCTION_HOSTS.includes(hostOf(url));
+}
 
-  // JWT token for API access (will be set during test execution)
-  JWT_TOKEN: null,
-};
+function target(name, urls, signupAllowed, sentry) {
+  const overridden = [];
+  function resolve(variable, fallback) {
+    const value = __ENV[variable];
+    if (!value) return fallback;
+    overridden.push(variable);
+    return value;
+  }
+  const backend = resolve("K6_BACKEND_URL", urls.backend);
+  const frontend = resolve("K6_FRONTEND_URL", urls.frontend);
+  const ws = resolve("K6_WS_URL", urls.ws);
 
-// Performance test configurations - Environment variable overrides supported
-export const PERFORMANCE_CONFIG = {
-  // Default load test parameters (override with env vars: VUS, DURATION, RAMP_UP, RAMP_DOWN)
-  DEFAULT_VUS: parseInt(__ENV.VUS) || 10,
-  DEFAULT_DURATION: __ENV.DURATION || "2m",
-  DEFAULT_RAMP_UP: __ENV.RAMP_UP || "30s",
-  DEFAULT_RAMP_DOWN: __ENV.RAMP_DOWN || "30s",
+  const atProduction = [
+    ["K6_BACKEND_URL", backend],
+    ["K6_FRONTEND_URL", frontend],
+    ["K6_WS_URL", ws],
+  ].filter(([, url]) => isProductionUrl(url));
+  const production = name === "PROD" || atProduction.length > 0;
+  if (production && __ENV.K6_ALLOW_PROD !== "true") {
+    const what =
+      name === "PROD"
+        ? "K6_ENVIRONMENT=PROD"
+        : `${atProduction.map(([variable]) => variable).join(", ")} on a production host`;
+    throw new Error(`${what} sends load at production; ${ALLOW_PROD_HINT}`);
+  }
 
-  // Stress test parameters (override with env vars: STRESS_VUS, STRESS_DURATION, etc.)
-  STRESS_VUS: parseInt(__ENV.STRESS_VUS) || 50,
-  STRESS_DURATION: __ENV.STRESS_DURATION || "5m",
-  STRESS_RAMP_UP: __ENV.STRESS_RAMP_UP || "1m",
-  STRESS_RAMP_DOWN: __ENV.STRESS_RAMP_DOWN || "1m",
-
-  // Spike test parameters (override with env vars: SPIKE_VUS, SPIKE_DURATION, etc.)
-  SPIKE_VUS: parseInt(__ENV.SPIKE_VUS) || 100,
-  SPIKE_DURATION: __ENV.SPIKE_DURATION || "30s",
-  SPIKE_RAMP_UP: __ENV.SPIKE_RAMP_UP || "10s",
-  SPIKE_RAMP_DOWN: __ENV.SPIKE_RAMP_DOWN || "10s",
-
-  // Volume test parameters (override with env vars: VOLUME_VUS, VOLUME_DURATION, etc.)
-  VOLUME_VUS: parseInt(__ENV.VOLUME_VUS) || 20,
-  VOLUME_DURATION: __ENV.VOLUME_DURATION || "10m",
-  VOLUME_RAMP_UP: __ENV.VOLUME_RAMP_UP || "2m",
-  VOLUME_RAMP_DOWN: __ENV.VOLUME_RAMP_DOWN || "2m",
-
-  // SLA thresholds (adjustable via env vars: THRESHOLD_P95, THRESHOLD_P99, etc.)
-  THRESHOLDS: {
-    http_req_duration: [
-      `p(95)<${__ENV.THRESHOLD_P95 || "2000"}`,
-      `p(99)<${__ENV.THRESHOLD_P99 || "5000"}`,
-    ],
-    http_req_failed: [`rate<${__ENV.THRESHOLD_ERROR_RATE || "0.05"}`],
-    http_reqs: [`rate>${__ENV.THRESHOLD_RPS || "10"}`],
-    checks: [`rate>${__ENV.THRESHOLD_CHECK_RATE || "0.95"}`],
-  },
-};
-
-// Helper function to get load test configuration based on test type
-export function getLoadTestConfig(testType = "default") {
-  const configs = {
-    default: {
-      vus: PERFORMANCE_CONFIG.DEFAULT_VUS,
-      duration: PERFORMANCE_CONFIG.DEFAULT_DURATION,
-      rampUp: PERFORMANCE_CONFIG.DEFAULT_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.DEFAULT_RAMP_DOWN,
-    },
-    stress: {
-      vus: PERFORMANCE_CONFIG.STRESS_VUS,
-      duration: PERFORMANCE_CONFIG.STRESS_DURATION,
-      rampUp: PERFORMANCE_CONFIG.STRESS_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.STRESS_RAMP_DOWN,
-    },
-    spike: {
-      vus: PERFORMANCE_CONFIG.SPIKE_VUS,
-      duration: PERFORMANCE_CONFIG.SPIKE_DURATION,
-      rampUp: PERFORMANCE_CONFIG.SPIKE_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.SPIKE_RAMP_DOWN,
-    },
-    volume: {
-      vus: PERFORMANCE_CONFIG.VOLUME_VUS,
-      duration: PERFORMANCE_CONFIG.VOLUME_DURATION,
-      rampUp: PERFORMANCE_CONFIG.VOLUME_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.VOLUME_RAMP_DOWN,
-    },
+  return {
+    NAME:
+      overridden.length > 0
+        ? `${name} (overridden by ${overridden.join(", ")})`
+        : name,
+    BACKEND_URL: backend,
+    API_BASE_URL: `${backend}/api`,
+    FRONTEND_URL: frontend,
+    WS_URL: ws,
+    SIGNUP_ALLOWED: signupAllowed && !production,
+    // A backend somewhere else reports to its own Sentry project, if any.
+    SENTRY: overridden.includes("K6_BACKEND_URL") ? null : sentry,
+    PRODUCTION: production,
   };
-
-  return configs[testType] || configs.default;
 }
 
-// Grafana Cloud K6 configuration
-export const GRAFANA_CONFIG = {
-  PROJECT_ID: __ENV.K6_CLOUD_PROJECT_ID || "",
-  TOKEN: __ENV.K6_CLOUD_TOKEN || "",
-  // Tags for organizing test results
-  TEST_TAGS: {
-    team: "platform",
-    service: "autogpt-platform",
-    environment: __ENV.K6_ENVIRONMENT || "dev",
-    version: __ENV.GIT_COMMIT || "unknown",
-  },
-};
+export function getEnvironmentConfig() {
+  const env = (__ENV.K6_ENVIRONMENT || "PREVIEW").toUpperCase();
+  switch (env) {
+    case "LOCAL": {
+      // k6.sh sets LOCAL_HOST so k6 inside Docker reaches the host's stack.
+      const host = __ENV.LOCAL_HOST || "localhost";
+      return target(
+        "LOCAL",
+        {
+          backend: `http://${host}:8006`,
+          frontend: `http://${host}:3000`,
+          ws: `ws://${host}:8001/ws`,
+        },
+        true,
+        null,
+      );
+    }
+    case "DEV":
+      return target(
+        "DEV",
+        {
+          backend: "https://dev-server.agpt.co",
+          frontend: "https://dev-builder.agpt.co",
+          ws: "wss://dev-ws-server.agpt.co/ws",
+        },
+        false,
+        { project: "autogpt-server", environment: "app:dev-behave:cloud" },
+      );
+    case "PREVIEW":
+      return getPreviewConfig(__ENV.PR_NUMBER);
+    case "PROD":
+      return target("PROD", PRODUCTION_URLS, false, {
+        project: "autogpt-server",
+        environment: "app:prod-behave:cloud",
+      });
+    default:
+      throw new Error(
+        `Unknown K6_ENVIRONMENT "${env}": use PREVIEW, DEV, LOCAL or PROD`,
+      );
+  }
+}
+
+// K6_ENVIRONMENT=PREVIEW PR_NUMBER=<n> targets the `!deploy` preview of PR <n>.
+function getPreviewConfig(prNumber) {
+  if (!/^[1-9]\d{0,6}$/.test(prNumber || "")) {
+    throw new Error(
+      "K6_ENVIRONMENT=PREVIEW needs PR_NUMBER=<pull request number>",
+    );
+  }
+  return target(
+    `PREVIEW pr-${prNumber}`,
+    {
+      backend: `https://pr-${prNumber}-server.agpt.co`,
+      frontend: `https://autogpt-pr-${prNumber}.vercel.app`,
+      ws: `wss://pr-${prNumber}-ws.agpt.co/ws`,
+    },
+    true,
+    { project: "autogpt-server-previews", environment: `pr-${prNumber}` },
+  );
+}

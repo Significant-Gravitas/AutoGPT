@@ -1,6 +1,7 @@
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 import type { SearchCommandBucket } from "@/components/organisms/SearchCommandModal/helpers";
-import { CopyIcon } from "@phosphor-icons/react";
 import type { ComponentType } from "react";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
 
 export const ACTIONS_BUCKET_KEY = "actions";
 export const ACTIONS_BUCKET_LABEL = "Actions";
@@ -22,7 +23,7 @@ const ACTION_TARGETS: ActionTarget[] = [
     id: COPY_USER_ID_ACTION,
     title: "Copy user ID",
     keywords: ["copy", "user", "id", "uid", "account"],
-    icon: CopyIcon,
+    icon: createIconComponent(Copy01Icon),
   },
 ];
 

@@ -9,7 +9,8 @@ on subsequent turns.
 Baseline needs this as a platform tool because OpenAI-compatible providers
 (Kimi, GPT, Grok, Gemini) do not ship a built-in equivalent. The SDK path
 continues to use the CLI's native ``TodoWrite`` — the MCP-wrapped version
-of this tool is filtered out of SDK's allowed_tools list (see
+of this tool is never registered on the SDK MCP server and is filtered out
+of SDK's allowed_tools list (see ``BASELINE_ONLY_MCP_TOOLS`` in
 ``sdk/tool_adapter.py``) to avoid name shadowing.
 """
 

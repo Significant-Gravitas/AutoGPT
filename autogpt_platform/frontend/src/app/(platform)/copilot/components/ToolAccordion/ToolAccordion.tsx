@@ -1,10 +1,12 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { CaretDownIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useId } from "react";
 import { useToolAccordion } from "./useToolAccordion";
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   icon: React.ReactNode;
@@ -39,7 +41,11 @@ export function ToolAccordion({
 
   return (
     <div
-      className={cn("mt-2 w-full rounded-lg bg-stone-50 px-3 py-2", className)}
+      className={cn(
+        "mt-2 w-full rounded-xl border border-border-base/70 bg-surface px-3 py-2 shadow-sm",
+        "duration-500 animate-in fade-in fill-mode-both slide-in-from-bottom-2",
+        className,
+      )}
     >
       <button
         type="button"
@@ -49,29 +55,30 @@ export function ToolAccordion({
         className="flex w-full items-center justify-between gap-3 py-1 text-left"
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex shrink-0 items-center text-gray-800">
+          <span className="flex shrink-0 items-center text-foreground-emphasis">
             {icon}
           </span>
           <div className="min-w-0">
             <p
               className={cn(
-                "truncate text-sm font-medium text-gray-800",
+                "truncate text-body font-medium text-foreground-emphasis",
                 titleClassName,
               )}
             >
               {title}
             </p>
             {description && (
-              <p className="truncate text-xs text-slate-800">{description}</p>
+              <Text variant="small-tight" tone="body" className="truncate">
+                {description}
+              </Text>
             )}
           </div>
         </div>
-        <CaretDownIcon
-          className={cn(
-            "h-4 w-4 shrink-0 text-slate-500 transition-transform",
-            isExpanded && "rotate-180",
-          )}
-          weight="bold"
+        <Icon
+          icon={ArrowDown01Icon}
+          tone="muted"
+          motion="transform"
+          className={cn("h-4 w-4 shrink-0", isExpanded && "rotate-180")}
         />
       </button>
 
@@ -90,7 +97,7 @@ export function ToolAccordion({
             className="overflow-hidden"
             style={{ willChange: "height, opacity, filter" }}
           >
-            <div className="max-h-[24rem] overflow-y-auto pb-2 pt-3">
+            <div className="max-h-[24rem] overflow-y-auto pt-3 pb-2">
               {children}
             </div>
           </motion.div>

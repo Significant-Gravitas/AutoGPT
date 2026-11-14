@@ -7,12 +7,18 @@ import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
-from backend.util.models import Pagination
+from backend.api.rest_api import app as rest_app
+from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.onboarding_steps import OnboardingStep
+from backend.util.exceptions import MissingConfigError
+from backend.util.models import MAX_PAGE, Pagination
 
 from . import model as library_model
+from .db import MAX_PRESETS_PER_PAGE
 from .routes import router as library_router
 
-app = fastapi.FastAPI()
+# The preset routes leave error mapping to the app-wide handlers.
+app = fastapi.FastAPI(exception_handlers=rest_app.exception_handlers)
 app.include_router(library_router)
 
 client = fastapi.testclient.TestClient(app)
@@ -20,12 +26,147 @@ client = fastapi.testclient.TestClient(app)
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 
+def test_create_expert_preset_missing_workspace_returns_503(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.library.routes.presets.experts_db.resolve_expert_for_graph",
+        new_callable=AsyncMock,
+        return_value="expert-1",
+    )
+    mocker.patch(
+        "backend.api.features.library.routes.presets.db.create_preset",
+        new_callable=AsyncMock,
+        side_effect=MissingConfigError(
+            "Your expert workspace is still being set up. Try again shortly."
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "inputs": {},
+            "credentials": {},
+            "name": "Preset",
+            "description": "",
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Your expert workspace is still being set up. Try again shortly."
+    )
+
+
+def test_create_preset_from_run_without_saved_credentials_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.library.db.get_graph_execution",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(credential_inputs=None),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(
+            regular_credentials_inputs={"credentials": mocker.MagicMock()}
+        ),
+    )
+
+    response = client.post(
+        "/presets",
+        json={"graph_execution_id": "exec-1", "name": "Preset", "description": ""},
+    )
+
+    assert response.status_code == 400
+    assert "can't be turned into a preset" in response.json()["detail"]
+
+
+def test_execute_a_webhook_triggered_preset_returns_400(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Its trigger node only gets a payload from a delivery."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    mocker.patch(
+        "backend.api.features.library.routes.presets.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgentPreset.model_validate(
+            {
+                "id": "p-1",
+                "user_id": "test-user-id",
+                "graph_id": "graph-1",
+                "graph_version": 1,
+                "name": "Preset",
+                "description": "",
+                "inputs": {},
+                "credentials": {},
+                "created_at": now,
+                "updated_at": now,
+                "webhook_id": "hook-1",
+                "webhook": None,
+            }
+        ),
+    )
+    add = mocker.patch(
+        "backend.api.features.library.routes.presets.add_graph_execution",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/presets/p-1/execute", json={})
+
+    assert response.status_code == 400
+    assert "can't be run directly" in response.json()["detail"]
+    add.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "page,page_size,refused",
+    [
+        (MAX_PAGE, MAX_PRESETS_PER_PAGE, False),
+        (MAX_PAGE + 1, 10, True),
+        (1, MAX_PRESETS_PER_PAGE + 1, True),
+    ],
+)
+def test_list_presets_refuses_a_page_past_its_bounds_before_the_query(
+    page: int, page_size: int, refused: bool, mocker: pytest_mock.MockFixture
+) -> None:
+    list_presets = mocker.patch(
+        "backend.api.features.library.routes.presets.db.list_presets",
+        new_callable=AsyncMock,
+        return_value=library_model.LibraryAgentPresetResponse(
+            presets=[],
+            pagination=Pagination(
+                total_items=0, total_pages=0, current_page=page, page_size=page_size
+            ),
+        ),
+    )
+
+    response = client.get(
+        "/presets",
+        params={"graph_id": "graph-1", "page": page, "page_size": page_size},
+    )
+
+    assert response.status_code == (422 if refused else 200)
+    assert list_presets.await_count == (0 if refused else 1)
+    if not refused:
+        assert list_presets.await_args.kwargs["page"] == page
+        assert list_presets.await_args.kwargs["page_size"] == page_size
+
+
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     """Setup auth overrides for all tests in this module"""
+    from autogpt_libs.auth.dependencies import get_request_context
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
     app.dependency_overrides.clear()
 
@@ -116,6 +257,7 @@ async def test_get_library_agents_success(
         folder_id=None,
         include_root_only=False,
         is_hidden=None,
+        organization_id="test-org",
     )
 
 
@@ -170,8 +312,36 @@ async def test_get_favorite_library_agents_success(
 
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,
+        search_term=None,
         page=1,
         page_size=15,
+    )
+
+
+def test_get_favorite_library_agents_passes_search_term(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mock_db_call = mocker.patch(
+        "backend.api.features.library.db.list_favorite_library_agents"
+    )
+    mock_db_call.return_value = library_model.LibraryAgentResponse(
+        agents=[],
+        pagination=Pagination(
+            total_items=0, total_pages=0, current_page=2, page_size=10
+        ),
+    )
+
+    response = client.get(
+        "/agents/favorites", params={"search_term": "foo", "page": 2, "page_size": 10}
+    )
+    assert response.status_code == 200
+
+    mock_db_call.assert_called_once_with(
+        user_id=test_user_id,
+        search_term="foo",
+        page=2,
+        page_size=10,
     )
 
 
@@ -224,7 +394,9 @@ def test_add_agent_to_library_success(
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id=test_user_id
     )
-    mock_complete_onboarding.assert_awaited_once()
+    mock_complete_onboarding.assert_awaited_once_with(
+        test_user_id, OnboardingStep.MARKETPLACE_ADD_AGENT
+    )
 
 
 @pytest.mark.asyncio

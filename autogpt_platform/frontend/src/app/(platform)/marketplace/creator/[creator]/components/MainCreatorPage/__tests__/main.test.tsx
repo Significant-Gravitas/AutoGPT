@@ -51,7 +51,7 @@ describe("MainCreatorPage", () => {
     expect(screen.getByTestId("creator-description").textContent).toContain(
       "Creator profile used for integration coverage.",
     );
-    expect(screen.getByText("Agents by Creator One")).toBeDefined();
+    expect(screen.getByText("AI Workflows by Creator One")).toBeDefined();
     expect(screen.getAllByText("Creator Agent").length).toBeGreaterThan(0);
   });
 });

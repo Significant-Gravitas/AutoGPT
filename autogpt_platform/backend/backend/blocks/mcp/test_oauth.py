@@ -5,11 +5,13 @@ Tests for MCP OAuth handler.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiohttp import web
 from pydantic import SecretStr
 
 from backend.blocks.mcp.client import MCPClient
 from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
+from backend.util.request import Requests
 
 
 def _mock_response(json_data: dict, status: int = 200) -> MagicMock:
@@ -24,16 +26,18 @@ def _mock_response(json_data: dict, status: int = 200) -> MagicMock:
 class TestMCPOAuthHandler:
     """Tests for the MCPOAuthHandler."""
 
-    def _make_handler(self, **overrides) -> MCPOAuthHandler:
-        defaults = {
-            "client_id": "test-client-id",
-            "client_secret": "test-client-secret",
-            "redirect_uri": "https://app.example.com/callback",
-            "authorize_url": "https://auth.example.com/authorize",
-            "token_url": "https://auth.example.com/token",
-        }
-        defaults.update(overrides)
-        return MCPOAuthHandler(**defaults)
+    def _make_handler(
+        self, *, revoke_url: str | None = None, resource_url: str | None = None
+    ) -> MCPOAuthHandler:
+        return MCPOAuthHandler(
+            client_id="test-client-id",
+            client_secret="<test-client-secret>",
+            redirect_uri="https://app.example.com/callback",
+            authorize_url="https://auth.example.com/authorize",
+            token_url="https://auth.example.com/token",
+            revoke_url=revoke_url,
+            resource_url=resource_url,
+        )
 
     def test_get_login_url_basic(self):
         handler = self._make_handler()
@@ -238,5 +242,117 @@ class TestMCPClientDiscovery:
             )
 
         assert result is not None
-        assert result["authorization_endpoint"] == "https://auth.example.com/authorize"
-        assert result["token_endpoint"] == "https://auth.example.com/token"
+        metadata, expected_issuer = result
+        assert (
+            metadata["authorization_endpoint"] == "https://auth.example.com/authorize"
+        )
+        assert metadata["token_endpoint"] == "https://auth.example.com/token"
+        # RFC 8414 §3.3: a document served at the well-known root must declare
+        # the bare origin as its issuer.
+        assert expected_issuer == "https://auth.example.com"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_discovers_oidc_metadata_under_issuer_path(self):
+        client = MCPClient("https://mcp.example.com/mcp")
+        issuer = "https://auth.example.com/v1/oauth2/console"
+        metadata = {
+            "issuer": issuer,
+            "authorization_endpoint": f"{issuer}/authorize",
+            "token_endpoint": f"{issuer}/token",
+        }
+
+        async def get_metadata(url):
+            return _mock_response(
+                metadata if url == f"{issuer}/.well-known/openid-configuration" else {},
+                status=(
+                    200 if url == f"{issuer}/.well-known/openid-configuration" else 404
+                ),
+            )
+
+        with patch("backend.blocks.mcp.client.Requests") as requests:
+            requests.return_value.get = AsyncMock(side_effect=get_metadata)
+            result = await client.discover_auth_server_metadata(issuer)
+
+        assert result == (metadata, issuer)
+
+
+class TestMCPOAuthRedirects:
+    """The token and revocation POSTs carry the client secret, the code or a
+    token in the form body, and ``Requests`` re-sends the body on every hop, so
+    a redirect from the endpoint must not be followed."""
+
+    @pytest.mark.parametrize("call", ["exchange", "refresh", "revoke"])
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_redirect_does_not_forward_client_form(self, call: str):
+        received: list[dict[str, str]] = []
+
+        async def collect(request: web.Request) -> web.Response:
+            form = await request.post()
+            received.append({key: str(value) for key, value in form.items()})
+            return web.json_response({"access_token": "attacker-token"})
+
+        attacker = web.Application()
+        attacker.router.add_post("/collect", collect)
+        attacker_runner = web.AppRunner(attacker)
+        await attacker_runner.setup()
+        await web.TCPSite(attacker_runner, "127.0.0.1", 0).start()
+        attacker_port = attacker_runner.addresses[0][1]
+
+        async def redirect(_request: web.Request) -> web.Response:
+            raise web.HTTPTemporaryRedirect(f"http://127.0.0.1:{attacker_port}/collect")
+
+        origin = web.Application()
+        origin.router.add_post("/token", redirect)
+        origin.router.add_post("/revoke", redirect)
+        origin_runner = web.AppRunner(origin)
+        await origin_runner.setup()
+        await web.TCPSite(origin_runner, "127.0.0.1", 0).start()
+        origin_port = origin_runner.addresses[0][1]
+
+        handler = MCPOAuthHandler(
+            client_id="client",
+            client_secret="<platform-app-secret>",
+            redirect_uri="https://app.example.com/callback",
+            authorize_url="",
+            token_url=f"http://127.0.0.1:{origin_port}/token",
+            revoke_url=f"http://127.0.0.1:{origin_port}/revoke",
+            token_endpoint_auth_method="client_secret_post",
+        )
+        credentials = OAuth2Credentials(
+            provider="mcp",
+            access_token=SecretStr("<access-token>"),
+            refresh_token=SecretStr("<refresh-token>"),
+            scopes=[],
+        )
+
+        def local_requests(**kwargs):
+            return Requests(trusted_origins=["127.0.0.1"], **kwargs)
+
+        async def attempt() -> bool | None:
+            if call == "exchange":
+                await handler.exchange_code_for_tokens(
+                    code="<code>", scopes=[], code_verifier="<verifier>"
+                )
+            elif call == "refresh":
+                await handler._refresh_tokens(credentials)
+            else:
+                return await handler.revoke_tokens(credentials)
+            return None
+
+        error: RuntimeError | None = None
+        revoked: bool | None = None
+        try:
+            with patch("backend.blocks.mcp.oauth.Requests", local_requests):
+                try:
+                    revoked = await attempt()
+                except RuntimeError as e:
+                    error = e
+        finally:
+            await origin_runner.cleanup()
+            await attacker_runner.cleanup()
+
+        assert received == []
+        if call == "revoke":
+            assert revoked is False
+        else:
+            assert error is not None and "redirect" in str(error)

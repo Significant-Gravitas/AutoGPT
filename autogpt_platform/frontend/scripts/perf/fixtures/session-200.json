@@ -1,0 +1,2348 @@
+{
+  "messages": [
+    {
+      "id": "perf-msg-0000",
+      "role": "user",
+      "content": "Turn 1: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 0,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:00:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0001",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 1 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 1,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T09:00:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0002",
+      "role": "user",
+      "content": "Turn 2: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 2,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:01:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0003",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 122 | +4% |\n| Tuesday | 100 | -2% |\n| Wednesday | 145 | +11% |\n| Thursday | 162 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 3,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T09:02:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0004",
+      "role": "user",
+      "content": "Turn 3: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 4,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:03:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0005",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 2.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 5,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T09:03:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0006",
+      "role": "user",
+      "content": "Turn 4: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 6,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:04:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0007",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 4 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 7,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T09:05:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0008",
+      "role": "user",
+      "content": "Turn 5: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 8,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:06:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0009",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_5",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"invoice reconciliation\",\"page\":5}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 9,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T09:06:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0010",
+      "role": "tool",
+      "content": "{\"query\":\"invoice reconciliation\",\"results\":3,\"turn\":5}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_5",
+      "sequence": 10,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:07:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0011",
+      "role": "assistant",
+      "content": "Here is what I found for the invoice reconciliation. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 5 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 11,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T09:08:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0012",
+      "role": "user",
+      "content": "Turn 6: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 12,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:09:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0013",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 126 | +4% |\n| Tuesday | 104 | -2% |\n| Wednesday | 149 | +11% |\n| Thursday | 166 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 13,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T09:09:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0014",
+      "role": "user",
+      "content": "Turn 7: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 14,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:10:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0015",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 6.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 15,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T09:11:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0016",
+      "role": "user",
+      "content": "Turn 8: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 16,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:12:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0017",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 8 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 17,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T09:12:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0018",
+      "role": "user",
+      "content": "Turn 9: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 18,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:13:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0019",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 9 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 19,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T09:14:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0020",
+      "role": "user",
+      "content": "Turn 10: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 20,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:15:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0021",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_10",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"competitor price tracking\",\"page\":10}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 21,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T09:15:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0022",
+      "role": "tool",
+      "content": "{\"query\":\"competitor price tracking\",\"results\":3,\"turn\":10}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_10",
+      "sequence": 22,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:16:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0023",
+      "role": "assistant",
+      "content": "Here is what I found for the competitor price tracking. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 10 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 23,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T09:17:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0024",
+      "role": "user",
+      "content": "Turn 11: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 24,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:18:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0025",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 10.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 25,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T09:18:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0026",
+      "role": "user",
+      "content": "Turn 12: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 26,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:19:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0027",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 12 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 27,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T09:20:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0028",
+      "role": "user",
+      "content": "Turn 13: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 28,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:21:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0029",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 13 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 29,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T09:21:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0030",
+      "role": "user",
+      "content": "Turn 14: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 30,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:22:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0031",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 134 | +4% |\n| Tuesday | 112 | -2% |\n| Wednesday | 157 | +11% |\n| Thursday | 174 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 31,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T09:23:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0032",
+      "role": "user",
+      "content": "Turn 15: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 32,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:24:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0033",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_15",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"social media calendar\",\"page\":15}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 33,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T09:24:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0034",
+      "role": "tool",
+      "content": "{\"query\":\"social media calendar\",\"results\":3,\"turn\":15}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_15",
+      "sequence": 34,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:25:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0035",
+      "role": "assistant",
+      "content": "Here is what I found for the social media calendar. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 15 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 35,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T09:26:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0036",
+      "role": "user",
+      "content": "Turn 16: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 36,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:27:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0037",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 16 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 37,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T09:27:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0038",
+      "role": "user",
+      "content": "Turn 17: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 38,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:28:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0039",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 17 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 39,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T09:29:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0040",
+      "role": "user",
+      "content": "Turn 18: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 40,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:30:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0041",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 138 | +4% |\n| Tuesday | 116 | -2% |\n| Wednesday | 161 | +11% |\n| Thursday | 178 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 41,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T09:30:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0042",
+      "role": "user",
+      "content": "Turn 19: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 42,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:31:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0043",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 18.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 43,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T09:32:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0044",
+      "role": "user",
+      "content": "Turn 20: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 44,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:33:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0045",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_20",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"blog post outline\",\"page\":20}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 45,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T09:33:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0046",
+      "role": "tool",
+      "content": "{\"query\":\"blog post outline\",\"results\":3,\"turn\":20}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_20",
+      "sequence": 46,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:34:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0047",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 20 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 47,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T09:35:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0048",
+      "role": "user",
+      "content": "Turn 21: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 48,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:36:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0049",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 21 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 49,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T09:36:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0050",
+      "role": "user",
+      "content": "Turn 22: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 50,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:37:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0051",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 142 | +4% |\n| Tuesday | 120 | -2% |\n| Wednesday | 165 | +11% |\n| Thursday | 182 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 51,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T09:38:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0052",
+      "role": "user",
+      "content": "Turn 23: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 52,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:39:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0053",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 22.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 53,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T09:39:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0054",
+      "role": "user",
+      "content": "Turn 24: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 54,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:40:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0055",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 24 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 55,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T09:41:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0056",
+      "role": "user",
+      "content": "Turn 25: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 56,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:42:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0057",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_25",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"customer onboarding emails\",\"page\":25}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 57,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T09:42:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0058",
+      "role": "tool",
+      "content": "{\"query\":\"customer onboarding emails\",\"results\":3,\"turn\":25}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_25",
+      "sequence": 58,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:43:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0059",
+      "role": "assistant",
+      "content": "Here is what I found for the customer onboarding emails. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 25 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 59,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T09:44:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0060",
+      "role": "user",
+      "content": "Turn 26: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 60,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:45:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0061",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 146 | +4% |\n| Tuesday | 124 | -2% |\n| Wednesday | 169 | +11% |\n| Thursday | 186 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 61,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T09:45:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0062",
+      "role": "user",
+      "content": "Turn 27: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 62,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:46:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0063",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 26.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 63,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T09:47:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0064",
+      "role": "user",
+      "content": "Turn 28: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 64,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:48:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0065",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 28 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 65,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T09:48:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0066",
+      "role": "user",
+      "content": "Turn 29: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 66,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:49:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0067",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 29 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 67,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T09:50:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0068",
+      "role": "user",
+      "content": "Turn 30: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 68,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:51:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0069",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_30",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"meeting notes summary\",\"page\":30}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 69,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T09:51:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0070",
+      "role": "tool",
+      "content": "{\"query\":\"meeting notes summary\",\"results\":3,\"turn\":30}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_30",
+      "sequence": 70,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:52:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0071",
+      "role": "assistant",
+      "content": "Here is what I found for the meeting notes summary. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 30 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 71,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T09:53:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0072",
+      "role": "user",
+      "content": "Turn 31: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 72,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:54:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0073",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 30.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 73,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T09:54:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0074",
+      "role": "user",
+      "content": "Turn 32: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 74,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:55:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0075",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 32 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 75,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T09:56:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0076",
+      "role": "user",
+      "content": "Turn 33: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 76,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:57:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0077",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 33 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 77,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T09:57:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0078",
+      "role": "user",
+      "content": "Turn 34: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 78,
+      "duration_ms": null,
+      "created_at": "2026-01-05T09:58:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0079",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 154 | +4% |\n| Tuesday | 132 | -2% |\n| Wednesday | 177 | +11% |\n| Thursday | 194 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 79,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T09:59:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0080",
+      "role": "user",
+      "content": "Turn 35: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 80,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:00:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0081",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_35",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"support ticket triage\",\"page\":35}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 81,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T10:00:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0082",
+      "role": "tool",
+      "content": "{\"query\":\"support ticket triage\",\"results\":3,\"turn\":35}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_35",
+      "sequence": 82,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:01:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0083",
+      "role": "assistant",
+      "content": "Here is what I found for the support ticket triage. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 35 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 83,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T10:02:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0084",
+      "role": "user",
+      "content": "Turn 36: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 84,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:03:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0085",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 36 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 85,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T10:03:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0086",
+      "role": "user",
+      "content": "Turn 37: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 86,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:04:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0087",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 37 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 87,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T10:05:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0088",
+      "role": "user",
+      "content": "Turn 38: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 88,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:06:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0089",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 158 | +4% |\n| Tuesday | 136 | -2% |\n| Wednesday | 181 | +11% |\n| Thursday | 198 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 89,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T10:06:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0090",
+      "role": "user",
+      "content": "Turn 39: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 90,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:07:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0091",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 38.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 91,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T10:08:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0092",
+      "role": "user",
+      "content": "Turn 40: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 92,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:09:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0093",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_40",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"weekly sales report\",\"page\":40}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 93,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T10:09:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0094",
+      "role": "tool",
+      "content": "{\"query\":\"weekly sales report\",\"results\":3,\"turn\":40}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_40",
+      "sequence": 94,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:10:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0095",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 40 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 95,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T10:11:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0096",
+      "role": "user",
+      "content": "Turn 41: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 96,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:12:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0097",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 41 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 97,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T10:12:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0098",
+      "role": "user",
+      "content": "Turn 42: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 98,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:13:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0099",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 162 | +4% |\n| Tuesday | 140 | -2% |\n| Wednesday | 185 | +11% |\n| Thursday | 202 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 99,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T10:14:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0100",
+      "role": "user",
+      "content": "Turn 43: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 100,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:15:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0101",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 42.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 101,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T10:15:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0102",
+      "role": "user",
+      "content": "Turn 44: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 102,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:16:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0103",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 44 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 103,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T10:17:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0104",
+      "role": "user",
+      "content": "Turn 45: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 104,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:18:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0105",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_45",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"invoice reconciliation\",\"page\":45}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 105,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T10:18:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0106",
+      "role": "tool",
+      "content": "{\"query\":\"invoice reconciliation\",\"results\":3,\"turn\":45}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_45",
+      "sequence": 106,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:19:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0107",
+      "role": "assistant",
+      "content": "Here is what I found for the invoice reconciliation. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 45 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 107,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T10:20:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0108",
+      "role": "user",
+      "content": "Turn 46: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 108,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:21:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0109",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 166 | +4% |\n| Tuesday | 144 | -2% |\n| Wednesday | 189 | +11% |\n| Thursday | 206 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 109,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T10:21:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0110",
+      "role": "user",
+      "content": "Turn 47: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 110,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:22:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0111",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 46.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 111,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T10:23:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0112",
+      "role": "user",
+      "content": "Turn 48: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 112,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:24:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0113",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 48 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 113,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T10:24:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0114",
+      "role": "user",
+      "content": "Turn 49: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 114,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:25:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0115",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 49 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 115,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T10:26:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0116",
+      "role": "user",
+      "content": "Turn 50: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 116,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:27:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0117",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_50",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"competitor price tracking\",\"page\":50}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 117,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T10:27:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0118",
+      "role": "tool",
+      "content": "{\"query\":\"competitor price tracking\",\"results\":3,\"turn\":50}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_50",
+      "sequence": 118,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:28:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0119",
+      "role": "assistant",
+      "content": "Here is what I found for the competitor price tracking. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 50 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 119,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T10:29:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0120",
+      "role": "user",
+      "content": "Turn 51: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 120,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:30:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0121",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 50.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 121,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T10:30:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0122",
+      "role": "user",
+      "content": "Turn 52: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 122,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:31:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0123",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 52 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 123,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T10:32:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0124",
+      "role": "user",
+      "content": "Turn 53: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 124,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:33:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0125",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 53 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 125,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T10:33:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0126",
+      "role": "user",
+      "content": "Turn 54: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 126,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:34:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0127",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 174 | +4% |\n| Tuesday | 152 | -2% |\n| Wednesday | 197 | +11% |\n| Thursday | 214 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 127,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T10:35:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0128",
+      "role": "user",
+      "content": "Turn 55: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 128,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:36:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0129",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_55",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"social media calendar\",\"page\":55}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 129,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T10:36:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0130",
+      "role": "tool",
+      "content": "{\"query\":\"social media calendar\",\"results\":3,\"turn\":55}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_55",
+      "sequence": 130,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:37:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0131",
+      "role": "assistant",
+      "content": "Here is what I found for the social media calendar. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 55 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 131,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T10:38:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0132",
+      "role": "user",
+      "content": "Turn 56: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 132,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:39:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0133",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 56 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 133,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T10:39:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0134",
+      "role": "user",
+      "content": "Turn 57: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 134,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:40:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0135",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 57 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 135,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T10:41:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0136",
+      "role": "user",
+      "content": "Turn 58: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 136,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:42:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0137",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 178 | +4% |\n| Tuesday | 156 | -2% |\n| Wednesday | 201 | +11% |\n| Thursday | 218 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 137,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T10:42:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0138",
+      "role": "user",
+      "content": "Turn 59: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 138,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:43:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0139",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 58.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 139,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T10:44:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0140",
+      "role": "user",
+      "content": "Turn 60: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 140,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:45:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0141",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_60",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"blog post outline\",\"page\":60}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 141,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T10:45:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0142",
+      "role": "tool",
+      "content": "{\"query\":\"blog post outline\",\"results\":3,\"turn\":60}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_60",
+      "sequence": 142,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:46:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0143",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 60 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 143,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T10:47:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0144",
+      "role": "user",
+      "content": "Turn 61: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 144,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:48:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0145",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 61 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 145,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T10:48:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0146",
+      "role": "user",
+      "content": "Turn 62: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 146,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:49:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0147",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 182 | +4% |\n| Tuesday | 160 | -2% |\n| Wednesday | 205 | +11% |\n| Thursday | 222 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 147,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T10:50:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0148",
+      "role": "user",
+      "content": "Turn 63: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 148,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:51:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0149",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 62.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 149,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T10:51:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0150",
+      "role": "user",
+      "content": "Turn 64: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 150,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:52:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0151",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 64 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 151,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T10:53:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0152",
+      "role": "user",
+      "content": "Turn 65: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 152,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:54:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0153",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_65",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"customer onboarding emails\",\"page\":65}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 153,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T10:54:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0154",
+      "role": "tool",
+      "content": "{\"query\":\"customer onboarding emails\",\"results\":3,\"turn\":65}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_65",
+      "sequence": 154,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:55:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0155",
+      "role": "assistant",
+      "content": "Here is what I found for the customer onboarding emails. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 65 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 155,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T10:56:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0156",
+      "role": "user",
+      "content": "Turn 66: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 156,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:57:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0157",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 186 | +4% |\n| Tuesday | 164 | -2% |\n| Wednesday | 209 | +11% |\n| Thursday | 226 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 157,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T10:57:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0158",
+      "role": "user",
+      "content": "Turn 67: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 158,
+      "duration_ms": null,
+      "created_at": "2026-01-05T10:58:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0159",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 66.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 159,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T10:59:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0160",
+      "role": "user",
+      "content": "Turn 68: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 160,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:00:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0161",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 68 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 161,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T11:00:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0162",
+      "role": "user",
+      "content": "Turn 69: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 162,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:01:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0163",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 69 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 163,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T11:02:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0164",
+      "role": "user",
+      "content": "Turn 70: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 164,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:03:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0165",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_70",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"meeting notes summary\",\"page\":70}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 165,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T11:03:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0166",
+      "role": "tool",
+      "content": "{\"query\":\"meeting notes summary\",\"results\":3,\"turn\":70}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_70",
+      "sequence": 166,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:04:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0167",
+      "role": "assistant",
+      "content": "Here is what I found for the meeting notes summary. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 70 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 167,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T11:05:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0168",
+      "role": "user",
+      "content": "Turn 71: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 168,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:06:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0169",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 70.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 169,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T11:06:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0170",
+      "role": "user",
+      "content": "Turn 72: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 170,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:07:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0171",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 72 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 171,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T11:08:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0172",
+      "role": "user",
+      "content": "Turn 73: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 172,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:09:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0173",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 73 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 173,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T11:09:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0174",
+      "role": "user",
+      "content": "Turn 74: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 174,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:10:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0175",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 194 | +4% |\n| Tuesday | 172 | -2% |\n| Wednesday | 217 | +11% |\n| Thursday | 234 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 175,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T11:11:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0176",
+      "role": "user",
+      "content": "Turn 75: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 176,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:12:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0177",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_75",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"support ticket triage\",\"page\":75}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 177,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T11:12:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0178",
+      "role": "tool",
+      "content": "{\"query\":\"support ticket triage\",\"results\":3,\"turn\":75}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_75",
+      "sequence": 178,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:13:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0179",
+      "role": "assistant",
+      "content": "Here is what I found for the support ticket triage. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 75 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 179,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T11:14:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0180",
+      "role": "user",
+      "content": "Turn 76: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 180,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:15:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0181",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 76 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 181,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T11:15:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0182",
+      "role": "user",
+      "content": "Turn 77: can you help with the invoice reconciliation?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 182,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:16:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0183",
+      "role": "assistant",
+      "content": "This script prepares the invoice reconciliation data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 77 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 183,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T11:17:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0184",
+      "role": "user",
+      "content": "Turn 78: can you help with the meeting notes summary?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 184,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:18:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0185",
+      "role": "assistant",
+      "content": "Breakdown for the meeting notes summary:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 198 | +4% |\n| Tuesday | 176 | -2% |\n| Wednesday | 221 | +11% |\n| Thursday | 238 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 185,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T11:18:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0186",
+      "role": "user",
+      "content": "Turn 79: can you help with the social media calendar?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 186,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:19:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0187",
+      "role": "assistant",
+      "content": "Next steps for the social media calendar:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 78.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 187,
+      "duration_ms": 2550,
+      "created_at": "2026-01-05T11:20:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0188",
+      "role": "user",
+      "content": "Turn 80: can you help with the weekly sales report?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 188,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:21:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0189",
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_perf_80",
+          "type": "function",
+          "function": {
+            "name": "perf_lookup",
+            "arguments": "{\"query\":\"weekly sales report\",\"page\":80}"
+          }
+        }
+      ],
+      "tool_call_id": null,
+      "sequence": 189,
+      "duration_ms": 1800,
+      "created_at": "2026-01-05T11:21:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0190",
+      "role": "tool",
+      "content": "{\"query\":\"weekly sales report\",\"results\":3,\"turn\":80}",
+      "tool_calls": null,
+      "tool_call_id": "call_perf_80",
+      "sequence": 190,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:22:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0191",
+      "role": "assistant",
+      "content": "Here is what I found for the weekly sales report. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 80 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 191,
+      "duration_ms": 2100,
+      "created_at": "2026-01-05T11:23:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0192",
+      "role": "user",
+      "content": "Turn 81: can you help with the customer onboarding emails?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 192,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:24:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0193",
+      "role": "assistant",
+      "content": "This script prepares the customer onboarding emails data:\n\n```ts\nexport function summarise(rows: { day: string; total: number }[]) {\n  const total = rows.reduce((sum, row) => sum + row.total, 0);\n  const best = rows.reduce((a, b) => (b.total > a.total ? b : a));\n  return { total, best: best.day, turn: 81 };\n}\n```\n\nRun it once per day and paste the result here.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 193,
+      "duration_ms": 2400,
+      "created_at": "2026-01-05T11:24:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0194",
+      "role": "user",
+      "content": "Turn 82: can you help with the competitor price tracking?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 194,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:25:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0195",
+      "role": "assistant",
+      "content": "Breakdown for the competitor price tracking:\n\n| Day | Items | Change |\n| --- | ---: | ---: |\n| Monday | 202 | +4% |\n| Tuesday | 180 | -2% |\n| Wednesday | 225 | +11% |\n| Thursday | 242 | +9% |\n\nWednesday and Thursday carry most of the week.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 195,
+      "duration_ms": 2700,
+      "created_at": "2026-01-05T11:26:15.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0196",
+      "role": "user",
+      "content": "Turn 83: can you help with the support ticket triage?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 196,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:27:00.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0197",
+      "role": "assistant",
+      "content": "Next steps for the support ticket triage:\n\n1. Pull the latest export from the shared drive.\n2. Remove duplicate rows and empty lines.\n3. Compare against the numbers from turn 82.\n4. Send the short summary to the team channel.\n\n- **Owner:** you\n- **Due:** Friday",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 197,
+      "duration_ms": 1950,
+      "created_at": "2026-01-05T11:27:45.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0198",
+      "role": "user",
+      "content": "Turn 84: can you help with the blog post outline?",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 198,
+      "duration_ms": null,
+      "created_at": "2026-01-05T11:28:30.000Z",
+      "metadata": {}
+    },
+    {
+      "id": "perf-msg-0199",
+      "role": "assistant",
+      "content": "Here is what I found for the blog post outline. The numbers from last week are steady, with a small rise on Thursday after the newsletter went out.\n\nI would keep the current plan and check again on Monday. If the trend holds, we can move turn 84 into the regular schedule.",
+      "tool_calls": null,
+      "tool_call_id": null,
+      "sequence": 199,
+      "duration_ms": 2250,
+      "created_at": "2026-01-05T11:29:15.000Z",
+      "metadata": {}
+    }
+  ]
+}

@@ -135,6 +135,10 @@ export const ActiveState: Story = {
           activeArtifact: makeArtifact({ id: "active-card" }),
           history: [],
           activeTab: "files",
+          lastArtifact: null,
+          mode: "artifact",
+          computer: null,
+          isComputerOpen: false,
         },
       });
       return <Story />;

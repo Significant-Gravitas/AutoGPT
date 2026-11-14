@@ -31,6 +31,12 @@ CHUNK_FLUSH_AT = 1900
 # link-to-chat button.
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
+# Discord's hard cap on a thread name.
+MAX_THREAD_NAME_LENGTH = 100
+
+# Discord's typing indicator auto-expires after ~10s; refresh under that.
+TYPING_REFRESH_SECONDS = 8.0
+
 # Sensible default Discord permissions for the "Add to server" invite URL —
 # covers send messages, embed links, attach files, read history, add
 # reactions, use external emoji, slash commands, public threads, and sending

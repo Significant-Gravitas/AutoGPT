@@ -28,20 +28,28 @@ interface Props {
   triggerSlot: React.ReactNode;
   agent: LibraryAgent;
   initialInputValues?: Record<string, any>;
+  initialTriggerConfigValues?: Record<string, any>;
   initialInputCredentials?: Record<string, any>;
   onRunCreated?: (execution: GraphExecutionMeta) => void;
   onTriggerSetup?: (preset: LibraryAgentPreset) => void;
   onScheduleCreated?: (schedule: GraphExecutionJobInfo) => void;
+  /** Hosts that call agents something else (the expert page's workflows)
+   *  override the dialog title. */
+  title?: string;
+  dialogVariant?: "default" | "compact";
 }
 
 export function RunAgentModal({
   triggerSlot,
   agent,
   initialInputValues,
+  initialTriggerConfigValues,
   initialInputCredentials,
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
+  title = "Run Workflow",
+  dialogVariant = "default",
 }: Props) {
   const {
     // UI state
@@ -54,6 +62,11 @@ export function RunAgentModal({
     // Form: regular inputs
     inputValues,
     setInputValues,
+
+    // Form: trigger config (the trigger node's config on a triggered agent)
+    triggerConfigValues,
+    setTriggerConfigValues,
+    triggerConfigFields,
 
     // Form: credentials
     inputCredentials,
@@ -71,6 +84,7 @@ export function RunAgentModal({
     // Schemas
     agentInputFields,
     agentCredentialsInputFields,
+    hasInputFields,
 
     // Async states
     isExecuting,
@@ -83,6 +97,7 @@ export function RunAgentModal({
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
     initialInputValues,
+    initialTriggerConfigValues,
     initialInputCredentials,
   });
 
@@ -101,8 +116,7 @@ export function RunAgentModal({
   );
 
   const hasAnySetupFields =
-    Object.keys(agentInputFields || {}).length > 0 ||
-    Object.keys(agentCredentialsInputFields || {}).length > 0;
+    hasInputFields || Object.keys(agentCredentialsInputFields || {}).length > 0;
 
   const isTriggerRunType = defaultRunType.includes("trigger");
 
@@ -145,6 +159,13 @@ export function RunAgentModal({
 
   function handleInputChange(key: string, value: string) {
     setInputValues((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }
+
+  function handleTriggerConfigChange(key: string, value: string) {
+    setTriggerConfigValues((prev) => ({
       ...prev,
       [key]: value,
     }));
@@ -201,7 +222,8 @@ export function RunAgentModal({
   return (
     <>
       <Dialog
-        title="Run Agent"
+        title={title}
+        variant={dialogVariant}
         controlled={{ isOpen, set: handleSetOpen }}
         styling={{ maxWidth: "600px", maxHeight: "90vh" }}
       >
@@ -226,6 +248,9 @@ export function RunAgentModal({
                       inputValues,
                       setInputValue: handleInputChange,
                       agentInputFields,
+                      triggerConfigValues,
+                      setTriggerConfigValue: handleTriggerConfigChange,
+                      triggerConfigFields,
                       inputCredentials,
                       setInputCredentialsValue: handleCredentialsChange,
                       agentCredentialsInputFields,
@@ -238,9 +263,11 @@ export function RunAgentModal({
             </div>
 
             <Dialog.Footer
-              className={`sticky bottom-0 z-10 bg-white pt-4 ${
+              // oxlint-disable-next-line design-system/no-restyle -- a sticky footer over scrolling content needs its own fill and gap
+              className={`sticky bottom-0 z-10 bg-surface pt-4 ${
                 hasOverflow
-                  ? "border-t border-neutral-100 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+                  ? // oxlint-disable-next-line design-system/no-restyle, design-system/no-arbitrary-values -- the overflow divider and its soft top shadow have no Dialog.Footer variant or shadow token
+                    "border-t border-separator shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
                   : ""
               }`}
             >

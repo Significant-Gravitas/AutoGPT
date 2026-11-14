@@ -1,10 +1,11 @@
-import { BookOpenIcon, ChatCircleIcon } from "@phosphor-icons/react";
 import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SearchCommandBucket } from "../helpers";
 import { SearchCommandModal } from "../SearchCommandModal";
+import { BookOpen01Icon, BubbleChatIcon } from "@hugeicons/core-free-icons";
+import { createIconComponent } from "@/components/atoms/Icon/Icon";
 
 const BASE_BUCKETS: SearchCommandBucket[] = [
   {
@@ -15,13 +16,13 @@ const BASE_BUCKETS: SearchCommandBucket[] = [
         id: "a1",
         title: "Alpha agent",
         subtitle: "library row",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
       {
         id: "a2",
         title: "Bravo store",
         subtitle: "by acme",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
     ],
   },
@@ -33,7 +34,7 @@ const BASE_BUCKETS: SearchCommandBucket[] = [
         id: "f1",
         title: "notes.md",
         subtitle: "/docs",
-        icon: BookOpenIcon,
+        icon: createIconComponent(BookOpen01Icon),
       },
     ],
   },
@@ -44,7 +45,7 @@ const BASE_BUCKETS: SearchCommandBucket[] = [
       {
         id: "c1",
         title: "Charlie chat",
-        icon: ChatCircleIcon,
+        icon: createIconComponent(BubbleChatIcon),
       },
     ],
   },

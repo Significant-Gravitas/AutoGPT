@@ -1,9 +1,9 @@
-import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
 import { useEdgeStore } from "../../../stores/edgeStore";
 import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
-import { cn } from "@/lib/utils";
 import { useNodeStore } from "../../../stores/nodeStore";
+import { CircleIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 const InputNodeHandle = ({
   handleId,
@@ -25,17 +25,16 @@ const InputNodeHandle = ({
       type={"target"}
       position={Position.Left}
       id={cleanedHandleId}
-      className={"-ml-6 mr-2"}
+      className={"mr-2 -ml-6"}
       data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">
-        <CircleIcon
+        <Icon
+          icon={CircleIcon}
           size={16}
-          weight={isInputConnected ? "fill" : "duotone"}
-          className={cn(
-            "text-gray-400 opacity-100",
-            isInputBroken && "text-red-500",
-          )}
+          fill={isInputConnected ? "currentColor" : "none"}
+          tone={isInputBroken ? "error" : undefined}
+          className={isInputBroken ? undefined : "text-handle"}
         />
       </div>
     </Handle>
@@ -45,18 +44,12 @@ const InputNodeHandle = ({
 const OutputNodeHandle = ({
   field_name,
   nodeId,
-  hexColor,
   isBroken,
 }: {
   field_name: string;
   nodeId: string;
-  hexColor: string;
   isBroken: boolean;
 }) => {
-  const isOutputConnected = useEdgeStore((state) =>
-    state.isOutputConnected(nodeId, field_name),
-  );
-
   return (
     <Handle
       type={"source"}
@@ -66,14 +59,11 @@ const OutputNodeHandle = ({
       data-tutorial-id={`output-handler-${nodeId}-${field_name}`}
     >
       <div className="pointer-events-none">
-        <CircleIcon
+        <Icon
+          icon={CircleIcon}
           size={16}
-          weight={"duotone"}
-          color={isOutputConnected ? hexColor : "gray"}
-          className={cn(
-            "text-gray-400 opacity-100",
-            isBroken && "text-red-500",
-          )}
+          tone={isBroken ? "error" : undefined}
+          className={isBroken ? undefined : "text-handle"}
         />
       </div>
     </Handle>

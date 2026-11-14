@@ -14,18 +14,25 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
 
   const keyName = `E2E CLI Key ${randomUUID().slice(0, 8)}`;
 
-  await page.goto("/profile/api-keys");
-  await expect(page).toHaveURL(/\/profile\/api-keys/);
+  await page.goto("/settings/api-keys");
+  await expect(page).toHaveURL(/\/settings\/api-keys/);
   await expect(
     page.getByText(
-      "Manage your AutoGPT Platform API keys for programmatic access",
+      "Manage API keys that let external tools access your AutoGPT account.",
     ),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Create Key" }).click();
-  await page.getByLabel("Name").fill(keyName);
-  const executeGraphCheckbox = page.getByRole("checkbox", {
-    name: /EXECUTE_GRAPH/i,
+  // The header renders a compact and a full-size "Create Key" button and hides
+  // one per breakpoint, so match on the one actually rendered.
+  await page
+    .getByRole("button", { name: "Create Key" })
+    .filter({ visible: true })
+    .click();
+
+  const createDialog = page.getByRole("dialog", { name: "Create API key" });
+  await createDialog.getByLabel("Name", { exact: true }).fill(keyName);
+  const executeGraphCheckbox = createDialog.getByRole("checkbox", {
+    name: "Execute Graph",
   });
   const executeGraphChecked =
     (await executeGraphCheckbox.getAttribute("aria-checked")) === "true";
@@ -34,11 +41,9 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
   }
   await expect(executeGraphCheckbox).toHaveAttribute("aria-checked", "true");
 
-  await page.getByRole("button", { name: "Create" }).click();
+  await createDialog.getByRole("button", { name: "Create Key" }).click();
 
-  const secretDialog = page.getByRole("dialog", {
-    name: "AutoGPT Platform API Key Created",
-  });
+  const secretDialog = page.getByRole("dialog", { name: "Your new API key" });
   await expect
     .poll(
       async () => {
@@ -47,7 +52,7 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
         }
 
         const creationFailed = await page
-          .getByText("Failed to create AutoGPT Platform API key")
+          .getByText("Failed to create API key")
           .isVisible()
           .catch(() => false);
         if (creationFailed) {
@@ -70,8 +75,8 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
   ).trim();
   expect(createdSecret.length).toBeGreaterThan(0);
 
-  await secretDialog.getByRole("button").first().click();
-  await expect(page.getByText("Copied", { exact: true })).toBeVisible({
+  await secretDialog.getByRole("button", { name: "Copy" }).click();
+  await expect(page.getByText("Copied to clipboard")).toBeVisible({
     timeout: 15000,
   });
   await expect
@@ -80,21 +85,21 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
     })
     .toBe(createdSecret);
 
+  // Both the header "X" and the footer button are labelled "Close"; either one
+  // closes the dialog and resets the form.
   await secretDialog.getByRole("button", { name: "Close" }).first().click();
 
-  const createdKeyRow = page
-    .getByTestId("api-key-row")
-    .filter({ hasText: keyName })
-    .first();
-  await expect(createdKeyRow).toBeVisible({ timeout: 15000 });
+  const deleteCreatedKeyButton = page.getByRole("button", {
+    name: `Delete ${keyName}`,
+  });
+  await expect(deleteCreatedKeyButton).toBeVisible({ timeout: 15000 });
 
-  await createdKeyRow.getByTestId("api-key-actions").click();
-  await page.getByRole("menuitem", { name: "Revoke" }).click();
+  await deleteCreatedKeyButton.click();
+  const revokeDialog = page.getByRole("dialog", { name: "Revoke API key?" });
+  await revokeDialog.getByRole("button", { name: "Revoke key" }).click();
 
-  await expect(
-    page.getByText("AutoGPT Platform API key revoked successfully"),
-  ).toBeVisible({ timeout: 15000 });
-  await expect(
-    page.getByTestId("api-key-row").filter({ hasText: keyName }),
-  ).toHaveCount(0);
+  await expect(page.getByText("API key revoked")).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(deleteCreatedKeyButton).toHaveCount(0);
 });

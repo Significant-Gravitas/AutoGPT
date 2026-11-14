@@ -3,7 +3,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Bell, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
@@ -12,6 +11,12 @@ import {
   EXECUTION_DISPLAY_WITH_SEARCH,
   useActivityDropdown,
 } from "./useActivityDropdown";
+import {
+  BellIcon,
+  Cancel01Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
   activeExecutions: AgentExecutionWithInfo[];
@@ -57,7 +62,7 @@ export function ActivityDropdown({
 
   // Static height for the virtualised list (react-window)
   const itemHeight = 72; // Height of each ActivityItem in pixels
-  const maxHeight = 400; // Maximum height of the dropdown
+  const maxHeight = 320; // Maximum height of the dropdown
 
   const listHeight = Math.min(
     maxHeight,
@@ -69,8 +74,8 @@ export function ActivityDropdown({
   return (
     <div className="overflow-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-10 px-4 pb-1 pt-0">
-        <div className="flex h-[60px] items-center justify-between">
+      <div className="sticky top-0 z-10 px-4">
+        <div className="flex items-center justify-between pt-3 pb-1">
           {isSearchVisible && withSearch ? (
             <div
               className={`${styles.searchContainer} ${
@@ -80,42 +85,44 @@ export function ActivityDropdown({
               <div className="relative w-full">
                 <Input
                   id="agent-search"
-                  label="Search agents"
-                  placeholder="Search runs by agent name..."
+                  label="Search workflows"
+                  placeholder="Search runs by workflow name..."
                   hideLabel
                   size="small"
                   value={searchQuery}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="!focus:border-1 w-full pr-10"
+                  className="w-full pr-10"
                   wrapperClassName="!mb-0"
                   autoComplete="off"
                   autoFocus
                 />
                 <button
                   onClick={handleClearSearch}
-                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
+                  className="absolute top-1/2 right-1 flex h-6 w-6 -translate-y-1/2 items-center justify-center"
                   aria-label="Clear search"
                 >
-                  <X size={16} className="text-gray-500" />
+                  <Icon icon={Cancel01Icon} size={16} tone="muted" />
                 </button>
               </div>
             </div>
           ) : (
-            <div className={styles.headerContainer}>
-              <Text variant="large-semibold" className="!text-black">
-                Agent Activity
-              </Text>
+            <div className={`${styles.headerContainer} py-0.5`}>
+              <span className="text-caption font-medium text-foreground-tertiary uppercase">
+                Workflow Activity
+              </span>
               {withSearch ? (
                 <Button
-                  variant="ghost"
-                  size="small"
+                  variant="toggle"
+                  size="inline"
                   onClick={toggleSearch}
-                  aria-label="Search agents"
-                  className="relative left-3 hover:border-transparent hover:bg-transparent"
+                  aria-label="Search workflows"
+                  className="w-fit"
                 >
-                  <MagnifyingGlass
+                  <Icon
+                    icon={Search01Icon}
                     size={16}
-                    className="h-4 w-4 text-gray-600"
+                    tone="secondary"
+                    className="h-4 w-4"
                   />
                 </Button>
               ) : null}
@@ -136,23 +143,23 @@ export function ActivityDropdown({
             rowHeight={itemHeight}
             rowProps={{ executions: filteredExecutions }}
             rowComponent={VirtualizedActivityItem}
-            style={{ width: 320, height: listHeight }}
+            style={{ width: "100%", height: listHeight }}
           />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
-            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-bgLightGrey p-6">
-              <Bell className="h-6 w-6 text-zinc-300" />
+          <div className="flex h-full flex-col items-center justify-center gap-5 pt-6 pb-8">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-surface-hover p-6">
+              <Icon icon={BellIcon} tone="disabled" className="h-6 w-6" />
             </div>
             <div className="flex flex-col items-center justify-center">
-              <Text variant="body-medium" className="!text-black">
+              <Text variant="body-medium">
                 {searchQuery
-                  ? "No matching agents found"
+                  ? "No matching workflows found"
                   : "No recent runs to show yet"}
               </Text>
-              <Text variant="body" className="!text-zinc-500">
+              <Text variant="body" tone="muted">
                 {searchQuery
                   ? "Try another search term"
-                  : "Start an agent to get updates"}
+                  : "Start a workflow to get updates"}
               </Text>
             </div>
           </div>

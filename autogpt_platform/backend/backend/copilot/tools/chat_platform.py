@@ -1,17 +1,19 @@
 """Tools for the copilot to post to a linked chat platform on the user's behalf.
 
-``post_to_chat_platform`` lets AutoPilot send a standalone message or open a new
-thread in a channel of a chat platform (Discord today; Slack/Telegram as their
-adapters land) the user has linked. The headline use case is *scheduled*
-output: "every Monday post an update in #standup" — AutoPilot schedules a
-follow-up turn (via ``schedule_followup``) whose message instructs it to post,
-and at fire time it calls this tool.
+``post_to_chat_platform`` lets Otto send a standalone message or open a
+new thread in a channel of a chat platform (Discord, Slack, Telegram, or
+Microsoft Teams) the user has linked. The headline use case is *scheduled*
+output: "every Monday post an
+update in #standup" — Otto schedules a follow-up turn (via
+``schedule_followup``) whose message instructs it to post, and at fire time it
+calls this tool.
 
 A single ``platform`` enum keeps the tool surface flat as platforms are added,
 instead of one ``post_to_<platform>`` tool per platform. Delivery and
 authorization live in the bot bridge (``CoPilotChatBridge``): the tool only
 forwards over RPC, and a post is only allowed into channels of a server the
-calling user has linked — enforced bridge-side.
+calling user has linked, or (``target='dm'``) into the user's own DM with the
+bot via their DM link — enforced bridge-side.
 
 ``list_chat_platform_channels`` backs channel-name disambiguation and the
 "pick a channel" flow.
@@ -19,7 +21,7 @@ calling user has linked — enforced bridge-side.
 
 import logging
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal, cast
 
 from backend.copilot.model import ChatSession
 from backend.platform_linking.models import Platform
@@ -30,6 +32,7 @@ from .base import BaseTool
 from .models import (
     ChatPlatformChannelListResponse,
     ChatPlatformChannelSummary,
+    ChatPlatformEditedResponse,
     ChatPlatformPostedResponse,
     ErrorResponse,
     ToolResponseBase,
@@ -40,7 +43,27 @@ logger = logging.getLogger(__name__)
 # Chat platforms with a wired bridge adapter. Add a value here (and its bot
 # token check in ``_any_chat_platform_configured``) when a new adapter ships —
 # the tool surface stays the same.
-SUPPORTED_PLATFORMS: tuple[str, ...] = ("discord",)
+SUPPORTED_PLATFORMS: tuple[str, ...] = ("discord", "slack", "telegram", "teams")
+
+# A search naming a platform ("discord") keeps a platform tool only when its
+# indexed text names that platform, so each one is indexed by name whatever
+# the description says; "microsoft" for "microsoft teams".
+_PLATFORM_KEYWORDS: tuple[str, ...] = (*SUPPORTED_PLATFORMS, "microsoft")
+
+# Telegram's Bot API can't enumerate a bot's chats, so name→ID resolution is
+# impossible there — posts must target a linked group's numeric chat ID.
+_TELEGRAM_TARGETING_HINT = (
+    "Telegram can't list channels — post using the numeric chat ID of a "
+    "group that's linked to this account."
+)
+
+# Teams offers no channel enumeration either (needs a Graph permission the bot
+# doesn't hold), and without it there is no channel→team mapping to authorize
+# a raw conversation id against — so channel posting is DM-only for now.
+_TEAMS_TARGETING_HINT = (
+    "Teams channels can't be targeted for proactive posts yet — "
+    "the bot can only deliver to users who linked their personal chat."
+)
 
 # Maps the bridge's stable DeliveryResult error codes to user-facing text the
 # model can relay or act on. Anything unmapped falls back to the raw code.
@@ -51,7 +74,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     ),
     "channel_not_found": (
         "No channel matching that reference was found in your linked server(s). "
-        "Call list_chat_platform_channels to see valid options."
+        "Call tool:list_chat_platform_channels to see valid options."
     ),
     "not_authorized": (
         "That channel belongs to a server that isn't linked to your account, "
@@ -59,7 +82,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     ),
     "ambiguous_channel": (
         "More than one channel matches that name across your linked servers. "
-        "Use the numeric channel ID, or call list_chat_platform_channels."
+        "Use the numeric channel ID, or call tool:list_chat_platform_channels."
     ),
     "send_failed": (
         "The platform rejected the message — the bot likely lacks permission "
@@ -69,27 +92,121 @@ _ERROR_MESSAGES: dict[str, str] = {
         "Couldn't create the thread — the bot likely lacks permission to "
         "create public threads in that channel."
     ),
+    "no_dm_link": (
+        "The user's DMs aren't linked on that platform yet. They can link "
+        "them by DMing the bot and running its setup command."
+    ),
+    "dm_unavailable": (
+        "The bot couldn't open a DM with the user's linked account on that " "platform."
+    ),
+    "edit_unsupported": (
+        "This platform doesn't support editing a message after it's " "posted."
+    ),
+    "message_not_found": (
+        "That message could not be found — it may have been deleted or is too "
+        "old to edit."
+    ),
+    "edit_failed": (
+        "The platform rejected the edit — the bot may lack permission, or the "
+        "message wasn't posted by the bot."
+    ),
+    "not_sender": (
+        "That message isn't one this account had the bot post, so it can't be "
+        "edited. Only a message from an earlier post_to_chat_platform call in "
+        "this account can be edited, and only for 30 days. Post a new message "
+        "instead."
+    ),
+    "edit_chunked": (
+        "That post was too long for one message and was split across several, "
+        "so editing it would rewrite only the first part and leave the rest "
+        "stale. Post a shorter replacement instead."
+    ),
+    "edit_unsupported_ref": (
+        "That thread was created but its opening message never posted, so "
+        "there is nothing to edit. Post into the thread instead."
+    ),
 }
 
 
-@lru_cache(maxsize=1)
 def _any_chat_platform_configured() -> bool:
-    """Whether any chat-platform bot is configured, gating tool availability.
+    return bool(_configured_chat_platforms())
+
+
+@lru_cache(maxsize=1)
+def _configured_chat_platforms() -> frozenset[str]:
+    """The chat platforms this deployment can deliver to.
 
     Cached because ``get_available_tools`` reads ``is_available`` for every tool
     on every request, and constructing ``Settings()`` re-parses the env each
-    time. The bot token is fixed at deploy time, so a one-time read is safe.
+    time. Bot tokens are fixed at deploy time, so a one-time read is safe.
 
-    Assumes the copilot/executor process shares the bot token env with the
-    bridge pod (true for ``poetry run app`` and the standard deployment).
+    Mirrors each platform's adapter gate (``_build_socket_adapters`` /
+    ``build_webhook_adapters``) so the tool only appears when at least one
+    platform could actually deliver. Assumes the copilot/executor process
+    shares the bot token env with the bridge pod (true for ``poetry run app``
+    and the standard deployment).
     """
-    return bool(Settings().secrets.autopilot_bot_discord_token)
+    secrets = Settings().secrets
+    slack_configured = bool(
+        secrets.autopilot_bot_slack_signing_secret
+        and (
+            (
+                secrets.autopilot_bot_slack_client_id
+                and secrets.autopilot_bot_slack_client_secret
+            )
+            or secrets.autopilot_bot_slack_token
+        )
+    )
+    telegram_configured = bool(
+        secrets.autopilot_bot_telegram_token
+        and secrets.autopilot_bot_telegram_webhook_secret
+    )
+    # Stricter than teams_config.is_configured(): the Playground bypass mounts
+    # the inbound route without credentials, but posting needs a real token.
+    teams_configured = bool(
+        secrets.microsoft_client_id
+        and secrets.microsoft_client_secret
+        and secrets.microsoft_tenant_id
+    )
+    return frozenset(
+        platform
+        for platform, configured in {
+            "discord": bool(secrets.autopilot_bot_discord_token),
+            "slack": slack_configured,
+            "telegram": telegram_configured,
+            "teams": teams_configured,
+        }.items()
+        if configured
+    )
 
 
-def _error_message(code: str | None) -> str:
+def _error_message(code: str | None, platform_name: str = "") -> str:
     if not code:
         return "The post could not be completed."
-    return _ERROR_MESSAGES.get(code, f"The post failed ({code}).")
+    message = _ERROR_MESSAGES.get(code, f"The post failed ({code}).")
+    if platform_name == "telegram" and code in (
+        "channel_not_found",
+        "ambiguous_channel",
+    ):
+        # The generic messages steer toward list_chat_platform_channels,
+        # which can't help on Telegram — replace them entirely.
+        return f"That chat could not be resolved. {_TELEGRAM_TARGETING_HINT}"
+    if platform_name == "teams" and code in (
+        "channel_not_found",
+        "ambiguous_channel",
+        "not_authorized",
+    ):
+        return f"That channel could not be posted to. {_TEAMS_TARGETING_HINT}"
+    return message
+
+
+def _default_target(platform_name: str) -> str:
+    """Teams only delivers to a linked personal chat, so that is its default.
+
+    Leaving the generic "channel" default in place would send every Teams call
+    that omits ``target`` on a doomed round-trip to the bridge.
+    """
+    return "dm" if platform_name == "teams" else "channel"
 
 
 def _platform_param() -> dict[str, Any]:
@@ -118,12 +235,24 @@ class PostToChatPlatformTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Post to a linked chat platform (e.g. Discord) for the user. "
-            "mode='message' sends a message; mode='thread' opens a new thread "
-            "(needs thread_name). 'channel' is a name (#standup) or numeric ID. "
-            "Pair with schedule_followup for recurring posts. If the channel "
-            "can't be resolved, call list_chat_platform_channels first."
+            "Send a message, report or update as the AutoGPT bot to Discord, "
+            "Slack, Telegram or Microsoft Teams where the user linked it; no "
+            "credential needed. target='dm' DMs the user from the bot. "
+            "mode='thread' opens a thread (needs thread_name; channels only). "
+            "'channel' is a name (#standup) or numeric ID — on Telegram, a "
+            "linked group's numeric chat ID. Teams supports target='dm' only. "
+            "Pair with tool:schedule_followup for recurring posts; call "
+            "tool:list_chat_platform_channels if a Discord/Slack channel won't "
+            "resolve. Edit a post later with tool:edit_chat_platform_message "
+            "using the channel_id and ref_id it returns — for mode='thread' "
+            "those address the body message inside the new thread, so posting "
+            "again with that channel_id "
+            "continues the thread."
         )
+
+    @property
+    def search_keywords(self) -> tuple[str, ...]:
+        return _PLATFORM_KEYWORDS
 
     @property
     def requires_auth(self) -> bool:
@@ -139,13 +268,27 @@ class PostToChatPlatformTool(BaseTool):
             "type": "object",
             "properties": {
                 "platform": _platform_param(),
+                "target": {
+                    "type": "string",
+                    "enum": ["channel", "dm"],
+                    "description": (
+                        "'channel' (default) posts to a server channel; 'dm' "
+                        "goes to the user's own DMs with the bot (needs their "
+                        "DM link, no channel)."
+                    ),
+                },
                 "channel": {
                     "type": "string",
-                    "description": "Channel name (#standup) or numeric ID.",
+                    "description": (
+                        "Channel name (#standup) or numeric ID. Required "
+                        "unless target='dm'."
+                    ),
+                    "entity": None,
                 },
                 "content": {
                     "type": "string",
                     "description": "Message body to post.",
+                    "title": "Message",
                 },
                 "mode": {
                     "type": "string",
@@ -157,7 +300,7 @@ class PostToChatPlatformTool(BaseTool):
                     "description": "Thread title; required when mode='thread'.",
                 },
             },
-            "required": ["channel", "content"],
+            "required": ["content"],
         }
 
     @staticmethod
@@ -170,10 +313,29 @@ class PostToChatPlatformTool(BaseTool):
                 error="unsupported_platform",
                 session_id=session_id,
             )
+        target: str = kwargs.get("target") or _default_target(platform_name)
+        if target not in ("channel", "dm"):
+            return ErrorResponse(
+                message="`target` must be 'channel' or 'dm'.",
+                error="invalid_target",
+                session_id=session_id,
+            )
+        if platform_name == "teams" and target != "dm":
+            return ErrorResponse(
+                message=_TEAMS_TARGETING_HINT,
+                error="unsupported_target",
+                session_id=session_id,
+            )
         channel: str | None = kwargs.get("channel")
         content: str | None = kwargs.get("content")
         mode: str = kwargs.get("mode") or "message"
-        if not channel or not channel.strip():
+        if target == "dm" and mode == "thread":
+            return ErrorResponse(
+                message="Threads can't be created in a DM — use mode='message'.",
+                error="invalid_mode",
+                session_id=session_id,
+            )
+        if target == "channel" and (not channel or not channel.strip()):
             return ErrorResponse(
                 message="`channel` is required.",
                 error="missing_channel",
@@ -225,12 +387,19 @@ class PostToChatPlatformTool(BaseTool):
                 error="unsupported_platform",
                 session_id=session_id,
             )
-        channel: str = kwargs["channel"]
+        target: str = kwargs.get("target") or _default_target(platform_name)
+        channel: str = kwargs.get("channel") or ""
         content: str = kwargs["content"]
         mode: str = kwargs.get("mode") or "message"
 
         client = get_copilot_chat_bridge_client()
-        if mode == "thread":
+        if target == "dm":
+            result = await client.send_dm_to_user(
+                platform=platform,
+                user_id=user_id,
+                content=content,
+            )
+        elif mode == "thread":
             result = await client.create_thread_in_channel(
                 platform=platform,
                 user_id=user_id,
@@ -248,12 +417,14 @@ class PostToChatPlatformTool(BaseTool):
 
         if not result.ok:
             return ErrorResponse(
-                message=_error_message(result.error),
+                message=_error_message(result.error, platform_name),
                 error=result.error or "chat_platform_post_failed",
+                # A scheduled chat's failure streak reads which platform.
+                details={"provider": platform_name},
                 session_id=session_id,
             )
 
-        where = "thread" if result.kind == "thread" else "message"
+        where = {"thread": "thread", "dm": "DM"}.get(result.kind, "message")
         link_note = f" ({result.url})" if result.url else ""
         return ChatPlatformPostedResponse(
             message=f"Posted {where} to {platform_name}{link_note}.",
@@ -262,6 +433,171 @@ class PostToChatPlatformTool(BaseTool):
             channel_id=result.channel_id or channel,
             ref_id=result.ref_id,
             url=result.url,
+            session_id=session_id,
+        )
+
+
+class EditChatPlatformMessageTool(BaseTool):
+    """Edit a message the bot previously posted via ``post_to_chat_platform``."""
+
+    @property
+    def name(self) -> str:
+        return "edit_chat_platform_message"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Edit a message the bot previously sent with post_to_chat_platform "
+            "on Discord, Slack, Telegram or Microsoft Teams. Pass the same "
+            "`channel_id` and `ref_id` that call returned (and the same "
+            "`target`/`platform` it used) along with the new `content` — the "
+            "old content is replaced entirely. Only a message this account "
+            "itself had the bot post is editable, and only for 30 days — not "
+            "the bot's replies to anyone, not another user's posts, and not a "
+            "long post that was split across several messages. A failure "
+            "(message too old, deleted, not yours, or the platform rejecting "
+            "the edit) returns an error, never silent."
+        )
+
+    @property
+    def requires_auth(self) -> bool:
+        return True
+
+    @property
+    def is_available(self) -> bool:
+        return _any_chat_platform_configured()
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "platform": _platform_param(),
+                "target": {
+                    "type": "string",
+                    "enum": ["channel", "dm"],
+                    "description": (
+                        "Must match the `target` used in the original "
+                        "post_to_chat_platform call."
+                    ),
+                },
+                "channel_id": {
+                    "type": "string",
+                    "description": (
+                        "The `channel_id` post_to_chat_platform returned for "
+                        "the message being edited."
+                    ),
+                    "entity": None,
+                },
+                "ref_id": {
+                    "type": "string",
+                    "description": (
+                        "The `ref_id` post_to_chat_platform returned for the "
+                        "message being edited."
+                    ),
+                    "title": "Message",
+                    "entity": None,
+                },
+                "content": {
+                    "type": "string",
+                    "description": "New message body, replacing the original content.",
+                    "title": "New text",
+                },
+            },
+            "required": ["channel_id", "ref_id", "content"],
+        }
+
+    @staticmethod
+    def _validate_params(session_id: str | None, **kwargs) -> ErrorResponse | None:
+        _platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if _platform is None:
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
+        target: str = kwargs.get("target") or _default_target(platform_name)
+        if target not in ("channel", "dm"):
+            return ErrorResponse(
+                message="`target` must be 'channel' or 'dm'.",
+                error="invalid_target",
+                session_id=session_id,
+            )
+        channel_id = kwargs.get("channel_id")
+        if not channel_id or not str(channel_id).strip():
+            return ErrorResponse(
+                message="`channel_id` is required.",
+                error="missing_channel_id",
+                session_id=session_id,
+            )
+        ref_id = kwargs.get("ref_id")
+        if not ref_id or not str(ref_id).strip():
+            return ErrorResponse(
+                message="`ref_id` is required.",
+                error="missing_ref_id",
+                session_id=session_id,
+            )
+        content = kwargs.get("content")
+        if not content or not content.strip():
+            return ErrorResponse(
+                message="`content` is required.",
+                error="missing_content",
+                session_id=session_id,
+            )
+        return None
+
+    async def _execute(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        **kwargs,
+    ) -> ToolResponseBase:
+        session_id = session.session_id if session else None
+        if not user_id:
+            return ErrorResponse(
+                message="Authentication required.",
+                error="auth_required",
+                session_id=session_id,
+            )
+        invalid = self._validate_params(session_id, **kwargs)
+        if invalid is not None:
+            return invalid
+
+        platform, platform_name = _resolve_platform(kwargs.get("platform"))
+        if platform is None:  # already validated; narrows the type
+            return ErrorResponse(
+                message=f"Unsupported platform '{platform_name}'.",
+                error="unsupported_platform",
+                session_id=session_id,
+            )
+        target_value: str = kwargs.get("target") or _default_target(platform_name)
+        # Already validated to be one of these two literals above.
+        target = cast(Literal["channel", "dm"], target_value)
+        channel_id = str(kwargs["channel_id"])
+        ref_id = str(kwargs["ref_id"])
+        content: str = kwargs["content"]
+
+        client = get_copilot_chat_bridge_client()
+        result = await client.edit_message_in_channel(
+            platform=platform,
+            user_id=user_id,
+            target=target,
+            channel_id=channel_id,
+            ref_id=ref_id,
+            content=content,
+        )
+        if not result.ok:
+            return ErrorResponse(
+                message=_error_message(result.error, platform_name),
+                error=result.error or "chat_platform_edit_failed",
+                details={"provider": platform_name},
+                session_id=session_id,
+            )
+        return ChatPlatformEditedResponse(
+            message=f"Edited the message on {platform_name}.",
+            platform=platform_name,
+            channel_id=channel_id,
+            ref_id=ref_id,
             session_id=session_id,
         )
 
@@ -276,9 +612,12 @@ class ListChatPlatformChannelsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List channels the bot can post to on a linked chat platform "
-            "(e.g. Discord). Use to resolve a channel name to an ID or pick "
-            "one before post_to_chat_platform."
+            "List server channels the bot can post to on Discord or Slack — "
+            "use to resolve a channel name to an ID before "
+            "tool:post_to_chat_platform. Telegram can't list channels (use a "
+            "linked group's numeric chat ID) and neither can Teams (post to "
+            "target='dm'). The user's own DMs never appear here — use "
+            "target='dm' instead."
         )
 
     @property
@@ -334,6 +673,10 @@ class ListChatPlatformChannelsTool(BaseTool):
             message = (
                 f"Found {len(summaries)} channel(s) you can post to on {platform_name}."
             )
+        elif platform_name == "telegram":
+            message = _TELEGRAM_TARGETING_HINT
+        elif platform_name == "teams":
+            message = _TEAMS_TARGETING_HINT
         else:
             message = (
                 f"No postable {platform_name} channels found. Link a server via "
