@@ -319,15 +319,47 @@ class AuditWriter:
         # Open-append-fsync per record. Slow for high throughput but the
         # audit log is one-line-per-shim-event, not a hot path. A log removed
         # since the last write is recreated owner-only, like the first one.
+        # Unbuffered, so that a record cut short can be cut off again with
+        # nothing left to write after it; its line ends as text mode's did.
+        data = line.replace("\n", os.linesep).encode("utf-8")
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0)
-        with open(os.open(self.path, flags, 0o600), "a", encoding="utf-8") as f:
-            f.write(line)
-            f.flush()
+        with open(os.open(self.path, flags, 0o600), "ab", buffering=0) as f:
+            # Every writer appends holding the log's lock, so this record
+            # starts at the log's end as it is now.
+            start = os.fstat(f.fileno()).st_size
+            try:
+                view = memoryview(data)
+                while view:
+                    written = f.write(view)
+                    if not written:
+                        raise OSError(errno.EIO, "The audit log took none of the record")
+                    view = view[written:]
+            except BaseException:
+                self._cut_off_part_written(f.fileno(), start, len(data))
+                raise
             try:
                 os.fsync(f.fileno())
             except OSError:
                 # Best-effort: some filesystems (procfs, etc.) reject fsync.
                 logger.debug("fsync failed on audit log", exc_info=True)
+
+    def _cut_off_part_written(self, fd: int, start: int, length: int) -> None:
+        """Cut off what landed of a record whose write failed part way (a
+        full disk), back to `start`, where it began. Left at the log's end,
+        it kept every later write from reading the last record, and the next
+        start refused the log as tampered with. A record written whole stays,
+        and so does a log not as long as when the record began."""
+        try:
+            size = os.fstat(fd).st_size
+            if start < size < start + length:
+                os.ftruncate(fd, start)
+        except OSError as exc:
+            logger.warning(
+                "Part of a record that couldn't be written whole is left at the end of the "
+                "audit log at %s (%s): until it is cut off, the log fails verification",
+                self.path,
+                exc,
+            )
 
     # ── Rotation ────────────────────────────────────────────────────────
 

@@ -264,6 +264,97 @@ async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkey
     assert AuditWriter.verify(rotated, KEY) == []
 
 
+class _DiskFullPartWay:
+    """The audit log's file on a disk that fills part way through a record:
+    the first half of what is written lands, then the write fails."""
+
+    def __init__(self, file: Any) -> None:
+        self._file = file
+
+    def write(self, data: Any) -> int:
+        self._file.write(data[: len(data) // 2])
+        self._file.flush()
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._file, name)
+
+    def __enter__(self) -> _DiskFullPartWay:
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        self._file.close()
+        return False
+
+
+def _appends_fill_the_disk(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_open = open
+
+    def full_disk_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        handle = real_open(file, mode, *args, **kwargs)
+        # Only an append, which opens the log by its descriptor.
+        return _DiskFullPartWay(handle) if isinstance(file, int) and "a" in mode else handle
+
+    monkeypatch.setattr(audit_module, "open", full_disk_open, raising=False)
+
+
+@pytest.mark.asyncio
+async def test_a_record_a_full_disk_cut_short_is_cut_off_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write the disk filled part way through left the first part of its
+    record at the end of the log. Every later write then failed to read the
+    log's last record, and the next start refused the log as tampered with,
+    until someone cut the part off by hand. It is cut off when the write
+    fails, so the log still ends with its last whole record, and the next
+    write and start go on."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+    whole = writer.path.read_bytes()
+
+    with monkeypatch.context() as full_disk:
+        _appends_fill_the_disk(full_disk)
+        with pytest.raises(OSError) as raised:
+            await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+
+    assert raised.value.errno == errno.ENOSPC
+    assert writer.path.read_bytes() == whole
+    await writer.write("EXECUTE_COMMAND", request_id="c", details={}, result={})
+    restarted = AuditWriter(path=writer.path, audit_key=KEY)
+    await restarted.write("EXECUTE_COMMAND", request_id="d", details={}, result={})
+
+    assert AuditWriter.verify(writer.path, KEY) == []
+    records = [json.loads(line) for line in writer.path.read_text(encoding="utf-8").splitlines()]
+    assert [(record["request_id"], record["seq"]) for record in records] == [
+        ("a", 1),
+        ("c", 2),
+        ("d", 3),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_record_written_whole_is_kept_when_what_follows_its_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a record cut short is cut off: one written whole stays, though
+    the flush to disk after it failed, as some filesystems' fsync does."""
+    writer = _writer(tmp_path)
+    await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
+
+    def no_fsync(_fd: int) -> None:
+        raise OSError(errno.EINVAL, "Invalid argument")
+
+    with monkeypatch.context() as unsynced:
+        unsynced.setattr(audit_module.os, "fsync", no_fsync)
+        await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
+
+    assert AuditWriter.verify(writer.path, KEY) == []
+    assert [
+        json.loads(line)["request_id"]
+        for line in writer.path.read_text(encoding="utf-8").splitlines()
+    ] == ["a", "b"]
+
+
 @pytest.mark.asyncio
 async def test_force_rotate_collision_safe(tmp_path: Path) -> None:
     """If two rotations happen in the same second, the second gets a -N suffix."""

@@ -331,7 +331,11 @@ require shipping a CA flow we don't need for v0.
 ## What this catches
 
 - **A record cut off part way** — a partial final line is reported as
-  `truncated`.
+  `truncated`. The writer cuts off what landed of a record whose write
+  failed part way (a full disk, say), so the log still ends with its last
+  whole record and the next write and start go on; a partial line left
+  some other way (the machine losing power mid-write, say) stays to be
+  reported.
 - **Record deletion** — `seq` jumps, prev_hmac mismatches.
 - **Field tampering** — HMAC mismatch on the tampered record.
 - **Wholesale log replacement** — verifier needs the audit key; an
