@@ -104,7 +104,7 @@ class TranscribeYoutubeVideoBlock(Block):
     def extract_video_id(url: str) -> str:
         url = url.strip()
         parsed_url = urlparse(url)
-        hostname = (parsed_url.hostname or "").lower()
+        hostname = parsed_url.hostname or ""
 
         if hostname in ("youtu.be", "www.youtu.be"):
             parts = [seg for seg in parsed_url.path.split("/") if seg]
