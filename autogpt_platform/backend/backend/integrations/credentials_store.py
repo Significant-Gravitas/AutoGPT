@@ -303,11 +303,74 @@ DEFAULT_CREDENTIALS = [
 # ``ProviderBuilder.with_api_key`` as ``"{provider}-default"`` (see
 # ``backend.sdk.registry``). Both are the platform's key, billed in credits, and
 # must behave the same everywhere: ask "is this ours?" with
-# ``is_system_credential`` / ``is_system_provider``, never with these sets.
+# ``is_system_credential`` / ``is_system_provider``, never with this set.
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
 
-# Set of providers that have built-in system credentials available
-SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
+
+def available_system_credentials() -> list[Credentials]:
+    """The built-in system credentials whose platform key is configured."""
+    credentials: list[Credentials] = []
+
+    # These will always be added
+    credentials.append(ollama_credentials)
+
+    # These will only be added if the API key is set
+    if settings.secrets.ideogram_api_key:
+        credentials.append(ideogram_credentials)
+    if settings.secrets.groq_api_key:
+        credentials.append(groq_credentials)
+    if settings.secrets.replicate_api_key:
+        credentials.append(replicate_credentials)
+    if settings.secrets.openai_api_key:
+        credentials.append(openai_credentials)
+    if settings.secrets.aiml_api_key:
+        credentials.append(aiml_api_credentials)
+    if settings.secrets.anthropic_api_key:
+        credentials.append(anthropic_credentials)
+    if settings.secrets.did_api_key:
+        credentials.append(did_credentials)
+    if settings.secrets.jina_api_key:
+        credentials.append(jina_credentials)
+    if settings.secrets.unreal_speech_api_key:
+        credentials.append(unreal_credentials)
+    if settings.secrets.open_router_api_key:
+        credentials.append(open_router_credentials)
+    if settings.secrets.enrichlayer_api_key:
+        credentials.append(enrichlayer_credentials)
+    if settings.secrets.fal_api_key:
+        credentials.append(fal_credentials)
+    if settings.secrets.exa_api_key:
+        credentials.append(exa_credentials)
+    if settings.secrets.e2b_api_key:
+        credentials.append(e2b_credentials)
+    if settings.secrets.nvidia_api_key:
+        credentials.append(nvidia_credentials)
+    if settings.secrets.screenshotone_api_key:
+        credentials.append(screenshotone_credentials)
+    if settings.secrets.mem0_api_key:
+        credentials.append(mem0_credentials)
+    if settings.secrets.apollo_api_key:
+        credentials.append(apollo_credentials)
+    if settings.secrets.smartlead_api_key:
+        credentials.append(smartlead_credentials)
+    if settings.secrets.zerobounce_api_key:
+        credentials.append(zerobounce_credentials)
+    if settings.secrets.google_maps_api_key:
+        credentials.append(google_maps_credentials)
+    if settings.secrets.llama_api_key:
+        credentials.append(llama_api_credentials)
+    if settings.secrets.v0_api_key:
+        credentials.append(v0_credentials)
+    if (
+        settings.secrets.webshare_proxy_username
+        and settings.secrets.webshare_proxy_password
+    ):
+        credentials.append(webshare_proxy_credentials)
+    if settings.secrets.openweathermap_api_key:
+        credentials.append(openweathermap_credentials)
+    if settings.secrets.elevenlabs_api_key:
+        credentials.append(elevenlabs_credentials)
+    return credentials
 
 
 def is_system_credential(credential_id: str) -> bool:
@@ -327,7 +390,7 @@ def system_providers() -> set[str]:
     """Providers the platform supplies a usable key for."""
     from backend.sdk.registry import AutoRegistry
 
-    return SYSTEM_PROVIDERS | {
+    return {cred.provider for cred in available_system_credentials()} | {
         str(getattr(cred.provider, "value", cred.provider))
         for cred in AutoRegistry.get_all_credentials()
         if is_system_credential(cred.id)
@@ -406,65 +469,7 @@ class IntegrationCredentialsStore:
         """
         all_credentials = await self._get_persisted_user_creds_unlocked(user_id)
 
-        # These will always be added
-        all_credentials.append(ollama_credentials)
-
-        # These will only be added if the API key is set
-        if settings.secrets.ideogram_api_key:
-            all_credentials.append(ideogram_credentials)
-        if settings.secrets.groq_api_key:
-            all_credentials.append(groq_credentials)
-        if settings.secrets.replicate_api_key:
-            all_credentials.append(replicate_credentials)
-        if settings.secrets.openai_api_key:
-            all_credentials.append(openai_credentials)
-        if settings.secrets.aiml_api_key:
-            all_credentials.append(aiml_api_credentials)
-        if settings.secrets.anthropic_api_key:
-            all_credentials.append(anthropic_credentials)
-        if settings.secrets.did_api_key:
-            all_credentials.append(did_credentials)
-        if settings.secrets.jina_api_key:
-            all_credentials.append(jina_credentials)
-        if settings.secrets.unreal_speech_api_key:
-            all_credentials.append(unreal_credentials)
-        if settings.secrets.open_router_api_key:
-            all_credentials.append(open_router_credentials)
-        if settings.secrets.enrichlayer_api_key:
-            all_credentials.append(enrichlayer_credentials)
-        if settings.secrets.fal_api_key:
-            all_credentials.append(fal_credentials)
-        if settings.secrets.exa_api_key:
-            all_credentials.append(exa_credentials)
-        if settings.secrets.e2b_api_key:
-            all_credentials.append(e2b_credentials)
-        if settings.secrets.nvidia_api_key:
-            all_credentials.append(nvidia_credentials)
-        if settings.secrets.screenshotone_api_key:
-            all_credentials.append(screenshotone_credentials)
-        if settings.secrets.mem0_api_key:
-            all_credentials.append(mem0_credentials)
-        if settings.secrets.apollo_api_key:
-            all_credentials.append(apollo_credentials)
-        if settings.secrets.smartlead_api_key:
-            all_credentials.append(smartlead_credentials)
-        if settings.secrets.zerobounce_api_key:
-            all_credentials.append(zerobounce_credentials)
-        if settings.secrets.google_maps_api_key:
-            all_credentials.append(google_maps_credentials)
-        if settings.secrets.llama_api_key:
-            all_credentials.append(llama_api_credentials)
-        if settings.secrets.v0_api_key:
-            all_credentials.append(v0_credentials)
-        if (
-            settings.secrets.webshare_proxy_username
-            and settings.secrets.webshare_proxy_password
-        ):
-            all_credentials.append(webshare_proxy_credentials)
-        if settings.secrets.openweathermap_api_key:
-            all_credentials.append(openweathermap_credentials)
-        if settings.secrets.elevenlabs_api_key:
-            all_credentials.append(elevenlabs_credentials)
+        all_credentials.extend(available_system_credentials())
         return all_credentials
 
     async def get_creds_by_id(
