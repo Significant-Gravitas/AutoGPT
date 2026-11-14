@@ -84,4 +84,4 @@ This strategy allows us to share previously closed-source components, fostering 
 
 - Read the [Getting Started docs](https://agpt.co/docs/platform/getting-started) to self-host
 - [Join the waitlist](https://agpt.co/waitlist) for the cloud-hosted beta
-- [Contribute](contribute/index.md)
+- [Contribute](../platform/contributing/contributing-to-the-docs.md)
