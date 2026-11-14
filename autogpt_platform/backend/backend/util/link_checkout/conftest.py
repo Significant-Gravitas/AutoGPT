@@ -98,11 +98,20 @@ class FakeWorker:
         # Link's refusal of the next create: "link_rejected", "link_duplicate".
         self.create_error: Literal["link_rejected", "link_duplicate"] | None = None
         self.delegated_error: Literal["link_rejected", "link_duplicate"] | None = None
+        self.raise_error: Literal["link_rejected"] | None = None
+        # The total each job carried, in order: a raise sends the new one.
+        self.amounts: list[int] = []
         # Link answers a create with a request for another amount.
         self.mismatched_create = False
+        # The next cancel fails, so Link never confirms it.
+        self.cancel_fails = False
+        # Each create gets its own request; a canceled one stays canceled.
+        self.created = 0
+        self.canceled: set[str] = set()
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
+        self.amounts.append(job.intent.plan.amount)
         if job.action == "pay":
             directory = runtime.session_home(job.intent.session_id)
             self.sealed_when_paying.append(
@@ -114,11 +123,25 @@ class FakeWorker:
             return WorkerResult(error=self.delegated_error)
         if job.action == "create" and self.create_error:
             return WorkerResult(error=self.create_error)
+        if job.action == "cancel" and self.cancel_fails:
+            self.cancel_fails = False
+            return WorkerResult(error="private_checkout_failed")
+        if job.action == "raise" and self.raise_error:
+            return WorkerResult(error=self.raise_error)
         spend = await synthetic_spend(job)
+        if job.action in ("create", "create_delegated"):
+            self.created += 1
+            spend.id = f"lsrq_fixture{self.created}"
         if job.action == "create" and self.mismatched_create:
             spend.amount += 1
         if job.action == "cancel":
             spend.status = "canceled"
+            self.canceled.add(spend.id)
+        elif spend.id in self.canceled:
+            spend.status = "canceled"
+        elif job.action == "raise":
+            # Raised, then waiting for the customer's approval in Link again.
+            spend.status = "pending_approval"
         elif job.action != "create":
             spend.status = self.status
         return WorkerResult(spend=spend)

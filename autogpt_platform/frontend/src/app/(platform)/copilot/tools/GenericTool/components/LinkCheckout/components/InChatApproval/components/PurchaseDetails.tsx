@@ -2,6 +2,8 @@ interface Props {
   merchant: string;
   host: string;
   total: string;
+  previousTotal: string;
+  reason: string;
   context: string;
   testMode: boolean;
 }
@@ -10,6 +12,8 @@ export function PurchaseDetails({
   merchant,
   host,
   total,
+  previousTotal,
+  reason,
   context,
   testMode,
 }: Props) {
@@ -25,6 +29,14 @@ export function PurchaseDetails({
       <dd className="font-medium text-foreground-strong">
         {testMode ? `${total} · test, no charge` : total}
       </dd>
+      {previousTotal && (
+        <>
+          <dt className="text-foreground-tertiary">Raised from</dt>
+          <dd className="text-foreground-body">
+            {reason ? `${previousTotal} · ${reason}` : previousTotal}
+          </dd>
+        </>
+      )}
       <dt className="text-foreground-tertiary">For</dt>
       <dd className="whitespace-pre-line text-foreground-body">{context}</dd>
     </dl>

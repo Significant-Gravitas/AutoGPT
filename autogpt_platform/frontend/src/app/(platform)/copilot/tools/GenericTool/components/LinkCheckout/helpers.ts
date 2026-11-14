@@ -26,6 +26,7 @@ const LINK_ACTION_DOMAINS = ["link.com", "stripe.com"];
 // type must not get a card with Approve on it.
 const CHECKOUT_TOOLS = [
   "browser_request_link_payment",
+  "browser_raise_link_payment",
   "browser_complete_link_payment",
   "browser_link_payment_status",
   "browser_reset_after_payment",
@@ -90,6 +91,11 @@ export function purchaseDetails(record: LinkPurchaseApproval) {
     merchant: record.merchant_name,
     host: purchaseHost(record.merchant_url),
     total: formatTotal(record.amount, record.currency),
+    previousTotal:
+      typeof record.previous_amount === "number"
+        ? formatTotal(record.previous_amount, record.currency)
+        : "",
+    reason: record.reason ?? "",
     context: record.context,
     testMode: record.test_mode,
   };

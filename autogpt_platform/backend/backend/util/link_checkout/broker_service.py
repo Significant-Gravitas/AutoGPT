@@ -34,8 +34,10 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutView,
     CreateCheckout,
     Principal,
+    RaiseCheckout,
     ResetCheckout,
 )
+from backend.util.link_checkout.broker_raise import raise_checkout
 from backend.util.link_checkout.refusals import CheckoutRefused
 
 
@@ -120,6 +122,15 @@ def create_app(tenant_id: str, secret: bytes) -> FastAPI:
     async def complete(request: AuthorizedCheckout):
         require_tenant(request)
         return await complete_checkout(request)
+
+    @app.post(
+        "/v1/checkout/raise",
+        dependencies=[Security(authorize)],
+        response_model=CheckoutView,
+    )
+    async def raise_total(request: RaiseCheckout):
+        require_tenant(request)
+        return await raise_checkout(request)
 
     @app.post(
         "/v1/checkout/status",

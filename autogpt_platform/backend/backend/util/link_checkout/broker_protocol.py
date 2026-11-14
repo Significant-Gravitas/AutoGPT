@@ -10,6 +10,7 @@ from pydantic import Field, SecretStr, SerializationInfo, field_serializer
 
 from backend.util.link_checkout.models import (
     CHECKOUT_ID,
+    Amount,
     ApprovalDetails,
     ApprovalMode,
     CheckoutPlan,
@@ -66,8 +67,22 @@ class CheckoutReference(Principal):
 
 class AuthorizedCheckout(CheckoutReference):
     access_token: SecretStr
-    # The customer's in-chat approval, when the checkout is waiting for one.
+    # The customer's in-chat approval, when the checkout is waiting for one,
+    # and the revision of the purchase it was given for. Link's
+    # approval_details names no amount, so this is what ties the approval to a
+    # total: one raised since needs an approval of its own.
     approval: ApprovalDetails | None = None
+    approved_revision: int | None = Field(default=None, ge=0)
+
+    _serialize_token = field_serializer("access_token")(reveal_token)
+
+
+class RaiseCheckout(CheckoutReference):
+    access_token: SecretStr
+    amount: Amount
+    # Where the customer approves the new total while nothing exists in Link
+    # yet; a request already in Link is always raised and re-approved there.
+    approval_mode: ApprovalMode = "link"
 
     _serialize_token = field_serializer("access_token")(reveal_token)
 
@@ -84,6 +99,7 @@ class CheckoutView(StrictModel):
     checkout_id: str
     spend_request_id: str | None = None
     credentials_id: str
+    payment_method_id: str = ""
     merchant_name: str
     # The page the card goes to, without query or fragment (``merchant_url``).
     merchant_url: str
@@ -100,4 +116,6 @@ class CheckoutView(StrictModel):
     paid: bool = False
     attempted: bool = False
     expires_at: float = 0
+    # The purchase's revision: bumped each time its total is raised.
+    revision: int = 0
     receipt: WorkerReceipt | None = None

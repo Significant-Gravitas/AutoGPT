@@ -13,6 +13,7 @@ _OPERATIONS = frozenset(
         "checkout/create",
         "checkout/get",
         "checkout/complete",
+        "checkout/raise",
         "checkout/status",
         "checkout/reset",
     }

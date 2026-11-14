@@ -93,6 +93,7 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     "browser_request_link_payment": "pays from the chat owner's Link wallet",
     "browser_complete_link_payment": "pays from the chat owner's Link wallet",
     "browser_link_payment_status": "reads a payment the chat prepared",
+    "browser_raise_link_payment": "raises a purchase the chat prepared",
     "browser_reset_after_payment": "browser state is bound to the chat session",
     "expert_onboarding": "renders the expert intake card in a chat session",
     "render_ui": "renders visual cards in the copilot UI",

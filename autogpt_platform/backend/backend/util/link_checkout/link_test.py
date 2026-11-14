@@ -13,7 +13,13 @@ from backend.util.link_checkout.link import (
     request_spend,
     validate_spend,
 )
-from backend.util.link_checkout.models import ApprovalDetails, SpendRequest, WorkerJob
+from backend.util.link_checkout.models import (
+    ApprovalDetails,
+    CheckoutPlan,
+    PayToken,
+    SpendRequest,
+    WorkerJob,
+)
 
 
 @pytest.fixture
@@ -107,7 +113,7 @@ async def test_delegated_create_carries_the_customers_approval(intent, link_api)
 async def test_card_details_are_requested_only_to_pay(intent, link_api):
     sent, _ = link_api
     await request_spend(job(intent, "status"))
-    await request_spend(job(intent, "pay"), include_card=True)
+    await request_spend(job(intent, "pay"), include_credential=True)
 
     assert "include" not in sent[0].url.params
     assert sent[1].url.params["include"] == "card"
@@ -269,3 +275,147 @@ async def test_cancel_posts_to_the_spend_requests_cancel_endpoint(intent, link_a
     )
     assert sent[0].content == b""
     assert spend.status == "canceled"
+
+
+def pay_token_checkout(intent):
+    """The intent as a Stripe checkout paid with a Link Pay Token."""
+    plan = intent.plan.model_dump(
+        exclude={"number", "cvc", "expiry", "exp_month", "exp_year"}
+    )
+    intent.plan = CheckoutPlan.model_validate(
+        {**plan, "execution": "link_pay_token", "test_mode": False}
+    )
+    intent.browser.pay_token = PayToken(
+        frame_url="https://js.stripe.com/v3/checkout", merchant_account_id="acct_123"
+    )
+    return intent
+
+
+@pytest.mark.asyncio
+async def test_a_raise_updates_the_request_then_asks_for_approval_again(
+    intent, monkeypatch
+):
+    sent: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        if request.url.path.endswith("/request_approval"):
+            return httpx.Response(
+                200,
+                json={
+                    "id": "lsrq_test",
+                    "approval_link": "https://app.link.com/activity/approve/lsrq_test",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "id": "lsrq_test",
+                "status": "pending_approval",
+                "merchant_url": "https://shop.example/checkout",
+                "amount": 250,
+                "currency": "usd",
+            },
+        )
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        link.httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(**kwargs, transport=httpx.MockTransport(respond)),
+    )
+    intent.plan = intent.plan.model_copy(update={"amount": 250})
+
+    spend = await request_spend(job(intent, "raise"))
+
+    assert [(r.method, r.url.path) for r in sent] == [
+        ("POST", "/spend_requests/lsrq_test"),
+        ("POST", "/spend_requests/lsrq_test/request_approval"),
+        ("GET", "/spend_requests/lsrq_test"),
+    ]
+    # Link's update takes the new total, not the difference.
+    assert json.loads(sent[0].content) == {
+        "amount": 250,
+        "totals": [{"type": "total", "display_text": "Total", "amount": 250}],
+    }
+    assert spend.status == "pending_approval"
+    assert spend.approval_url == "https://app.link.com/activity/approve/lsrq_test"
+
+
+@pytest.mark.asyncio
+async def test_link_refusing_a_raise_is_a_rejection(intent, link_api):
+    _, reply = link_api
+    reply["status"] = 400
+    with pytest.raises(LinkRejected):
+        await request_spend(job(intent, "raise"))
+
+
+@pytest.mark.asyncio
+async def test_a_raised_purchase_never_reuses_the_old_totals_idempotency_key(
+    intent, link_api
+):
+    """A retried create for a raised total must not get back the request made
+    for the old one, so each revision has its own key."""
+    sent, _ = link_api
+    intent.spend_request_id = None
+    intent.revision = 2
+    await request_spend(job(intent, "create"))
+    approval = ApprovalDetails(
+        approved_at=1_790_000_000,
+        external_user_id="owner",
+        external_session_id="chat",
+        agent_log_id=intent.id,
+    )
+    await request_spend(job(intent, "create_delegated", approval))
+
+    assert json.loads(sent[0].content)["idempotency_key"] == f"{intent.id}-r2"
+    assert json.loads(sent[1].content)["idempotency_key"] == f"{intent.id}-in-app-r2"
+
+
+@pytest.mark.asyncio
+async def test_a_pay_token_request_names_the_pages_stripe_account_only(
+    intent, link_api
+):
+    sent, _ = link_api
+    intent = pay_token_checkout(intent)
+    intent.spend_request_id = None
+
+    await request_spend(job(intent, "create"))
+
+    body = json.loads(sent[0].content)
+    assert body["execution_method"] == "link_pay_token"
+    assert body["merchant_account_id"] == "acct_123"
+    # Link resolves the merchant itself; there is no test mode for tokens.
+    assert not {"merchant_name", "merchant_url", "test"} & body.keys()
+
+
+@pytest.mark.asyncio
+async def test_a_pay_token_checkout_fetches_the_token_only_to_pay(intent, link_api):
+    sent, _ = link_api
+    intent = pay_token_checkout(intent)
+    await request_spend(job(intent, "status"))
+    await request_spend(job(intent, "pay"), include_credential=True)
+
+    assert "include" not in sent[0].url.params
+    assert sent[1].url.params["include"] == "link_pay_token"
+
+
+def test_a_pay_token_must_be_approved_and_present(intent):
+    intent = pay_token_checkout(intent)
+    base = {"id": "lsrq_test", "merchant_url": "https://link.example/merchant"}
+    base |= {"amount": 100, "currency": "usd"}
+
+    approved = SpendRequest.model_validate(
+        {**base, "status": "approved", "link_pay_token": "lpt_0123456789"}
+    )
+    # Link names the merchant itself, so its URL may differ from the page.
+    validate_spend(intent, approved, require_card=True)
+
+    for spend in (
+        SpendRequest.model_validate({**base, "status": "approved"}),
+        SpendRequest.model_validate(
+            {**base, "status": "pending_approval", "link_pay_token": "lpt_0123456789"}
+        ),
+    ):
+        with pytest.raises(RuntimeError):
+            validate_spend(intent, spend, require_card=True)

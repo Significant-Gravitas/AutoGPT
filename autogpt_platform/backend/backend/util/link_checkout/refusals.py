@@ -17,8 +17,8 @@ FIELDS_NOT_READY = (
     "match exactly one element, and each frame URL one loaded frame."
 )
 FRAME_NOT_FOUND = (
-    "No loaded frame has that frame URL. A frame URL must be the frame's exact "
-    "address, including its query string."
+    "No single loaded frame has that frame URL. Give the frame's address; if "
+    "several frames share it, include its full query string."
 )
 INVALID_SELECTOR = (
     "Each selector must be plain CSS that document.querySelectorAll accepts; "
@@ -49,6 +49,25 @@ LINK_NOT_GRANTED = (
     "This expert has not been granted the Stripe Link account to pay with. Use "
     "tool:request_credential_grant to ask the user for access."
 )
+PAY_TOKEN_UNAVAILABLE = (
+    "This page has no single Stripe 'I am an AI agent' payment option that "
+    "takes a Link Pay Token, or it did not respond when ticked. Pay through "
+    "the card fields instead (execution card)."
+)
+RAISE_NOT_HIGHER = (
+    "The new total must be higher than the checkout's current total. A lower "
+    "final price needs no change: the approved amount covers it."
+)
+RAISE_CLOSED = (
+    "This purchase is no longer open in Link: it was declined, canceled, paid "
+    "or has expired, so its total can't change. Prepare a new checkout if the "
+    "customer still wants it."
+)
+APPROVAL_SUPERSEDED = (
+    "The total was raised after the customer approved it, so that approval no "
+    "longer pays. Nothing was charged. Wait for them to approve the new total "
+    "in the chat, then call tool:browser_complete_link_payment again."
+)
 
 MESSAGES = frozenset(
     {
@@ -62,6 +81,10 @@ MESSAGES = frozenset(
         LINK_NOT_CONNECTED,
         LINK_ACCOUNT_NOT_CHOSEN,
         LINK_NOT_GRANTED,
+        PAY_TOKEN_UNAVAILABLE,
+        RAISE_NOT_HIGHER,
+        RAISE_CLOSED,
+        APPROVAL_SUPERSEDED,
     }
 )
 
