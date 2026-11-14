@@ -309,6 +309,27 @@ describe("LinkCheckout in-chat approval", () => {
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
   });
 
+  it("points to Link when a raised total moved the approval there", async () => {
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        approval("in_link", {
+          amount: 2499,
+          revision: 1,
+          previous_amount: 1299,
+        }),
+      ),
+    );
+    renderCard();
+
+    expect(
+      await screen.findByText(
+        "The new total is waiting for your approval in Link.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/expired/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+  });
+
   it("never offers the decision on a shared conversation", async () => {
     server.use(
       getGetV2GetALinkPurchaseApprovalMockHandler(() => approval("awaiting")),

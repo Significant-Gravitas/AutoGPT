@@ -30799,7 +30799,7 @@
           "checkout_id": { "type": "string", "title": "Checkout Id" },
           "state": {
             "type": "string",
-            "enum": ["awaiting", "approved", "declined", "expired"],
+            "enum": ["awaiting", "approved", "declined", "expired", "in_link"],
             "title": "State"
           },
           "merchant_name": { "type": "string", "title": "Merchant Name" },

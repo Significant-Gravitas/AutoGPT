@@ -4,6 +4,7 @@ const SETTLED: Record<string, string> = {
   approved: "Approved. Completing the purchase…",
   declined: "Declined. Nothing was charged.",
   expired: "This purchase request expired. Nothing was charged.",
+  in_link: "The new total is waiting for your approval in Link.",
 };
 
 interface Props {

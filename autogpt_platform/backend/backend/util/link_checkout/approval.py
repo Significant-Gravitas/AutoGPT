@@ -46,6 +46,9 @@ class PendingApproval(BaseModel):
     revision: int = 0
     previous_amount: int | None = None
     reason: str = ""
+    # Set when a raise moved the approval to Link: the customer approves the
+    # new total there, and no card in the chat can decide it.
+    in_link: bool = False
 
 
 class Decision(BaseModel):
@@ -54,7 +57,7 @@ class Decision(BaseModel):
     user_agent: str | None = None
 
 
-ApprovalState = Literal["awaiting", "approved", "declined", "expired"]
+ApprovalState = Literal["awaiting", "approved", "declined", "expired", "in_link"]
 
 
 class ApprovalView(BaseModel):
@@ -128,6 +131,8 @@ async def decide(
     if revision != view.pending.revision:
         raise ApprovalConflict("This purchase changed; review its new total")
     if view.decision is None:
+        if view.state == "in_link":
+            raise ApprovalConflict("This purchase now waits for approval in Link")
         if view.state == "expired":
             raise ApprovalConflict("This purchase request has expired")
         decision = Decision(
@@ -173,6 +178,8 @@ def approval_details(view: ApprovalView) -> ApprovalDetails:
 def _state(pending: PendingApproval, decision: Decision | None) -> ApprovalState:
     if decision is not None:
         return "approved" if decision.approved else "declined"
+    if pending.in_link:
+        return "in_link"
     return "expired" if pending.expires_at <= time.time() else "awaiting"
 
 

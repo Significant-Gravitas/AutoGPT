@@ -182,9 +182,9 @@ async def test_a_raise_beyond_the_chat_policy_moves_to_link(tools, plan, monkeyp
     assert raised.status == "pending_approval"
     assert tools.calls == ["create"]
     assert tools.amounts == [250]
-    # No card left in the chat can approve it there any more.
+    # The chat's card now points to Link, where the new total is approved.
     record = await approval.read_approval(created.checkout_id)
-    assert record is not None and record.state == "expired"
+    assert record is not None and record.state == "in_link"
 
 
 @pytest.mark.asyncio

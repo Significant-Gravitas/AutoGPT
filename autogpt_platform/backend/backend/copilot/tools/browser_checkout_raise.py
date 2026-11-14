@@ -170,9 +170,10 @@ async def _record_raise(
     view: CheckoutView, current: CheckoutView, reason: str, principal: Principal
 ) -> ApprovalView | None:
     """The chat's approval record for the raised total: a new revision for
-    the user to approve, or, when the approval moved to Link, a closed one so
-    no card in the chat can approve the purchase any more. Written once per
-    revision, so a retry that finishes a raise never undoes a decision."""
+    the user to approve, or, when the approval moved to Link, one marked so
+    the card points there and no card in the chat can approve the purchase.
+    Written once per revision, so a retry that finishes a raise never undoes
+    a decision."""
     previous = await read_approval(view.checkout_id)
     if previous is not None and previous.pending.revision >= view.revision:
         return previous
@@ -195,6 +196,7 @@ async def _record_raise(
             # a raise, the checkout already carries the new one.
             previous_amount=previous.pending.amount if previous else current.amount,
             reason=reason,
+            in_link=view.approval_mode != "in_app",
         )
     )
     return await read_approval(view.checkout_id)

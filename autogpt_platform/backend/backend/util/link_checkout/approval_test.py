@@ -94,6 +94,22 @@ async def test_an_expired_purchase_cannot_be_approved(fake_redis):
 
 
 @pytest.mark.asyncio
+async def test_a_purchase_moved_to_link_is_decided_there(fake_redis):
+    """A raise past the chat's policy moves the approval to Link: the card
+    says so, rather than that the request expired, and cannot decide it."""
+    await open_approval(pending())
+    await reopen_approval(
+        pending(amount=250, revision=1, previous_amount=100, in_link=True)
+    )
+
+    assert (await read_approval(CHECKOUT)).state == "in_link"
+    with pytest.raises(ApprovalConflict, match="in Link"):
+        await decide(
+            CHECKOUT, "owner", "chat", approve=True, user_agent=None, revision=1
+        )
+
+
+@pytest.mark.asyncio
 async def test_a_purchase_is_recorded_once(fake_redis):
     await open_approval(pending())
     with pytest.raises(RuntimeError):
