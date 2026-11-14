@@ -1311,5 +1311,9 @@ when one it sent left `computer_use` out only for want of the desktop's
 display (a Linux systemd service started at login, before the desktop
 exported it) and the display is up now. It waits until nothing is under
 way on that connection, and on the machine connection, whose next session
-stops every chat's, until no chat's work is either.
+stops every chat's, until no chat's work is either. From the moment it
+decides, that session, and on the machine connection every chat's, refuses
+requests with `SHIM_OVERLOADED` (`details.reason: "reconnecting"`) until the
+next connection, so none starts during the close and the backoff only to be
+cut off; nothing ran, so each can be sent again, as after an idle detach.
 Any in-flight requests at disconnect time are considered failed; platform retries if safe.
