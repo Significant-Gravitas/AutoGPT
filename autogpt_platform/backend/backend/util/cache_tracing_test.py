@@ -16,7 +16,7 @@ class _SpanPerPageRedis:
         self._page_size = page_size
         self.deleted: list[str] = []
 
-    def scan_iter(self, match, target_nodes=None):
+    def scan_iter(self, match, count=None, target_nodes=None):
         for start in range(0, len(self._keys), self._page_size):
             with sentry_sdk.start_span(op="db.redis", name=f"SCAN {start}"):
                 page = self._keys[start : start + self._page_size]

@@ -529,10 +529,9 @@ changelog) is not covered.
 
 ## Account deletion
 
-Self-serve account deletion (SECRT-2877), behind the
-`self-serve-account-deletion` flag; nothing is sent while it is off. These
-events are anonymous: the backend sends each one with `capture_anonymous()`,
-under a fresh random `distinct_id` and with `$process_person_profile: false`,
+Self-serve account deletion (SECRT-2877), open to every user. These events
+are anonymous: the backend sends each one with `capture_anonymous()`, under a
+fresh random `distinct_id` and with `$process_person_profile: false`,
 so PostHog creates no person and nothing links the event to an account. The
 backend never adds the user id, email or name to them, so they cannot be
 joined to the person's other events.

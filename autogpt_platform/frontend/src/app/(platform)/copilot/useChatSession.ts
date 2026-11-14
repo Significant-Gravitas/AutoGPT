@@ -7,8 +7,13 @@ import {
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CreateSessionRequest } from "@/app/api/__generated__/models/createSessionRequest";
+import type { PublicChatSessionMetadata } from "@/app/api/__generated__/models/publicChatSessionMetadata";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
-import { type CopilotLlmAuthSelection, useCopilotUIStore } from "./store";
+import {
+  type CopilotLlmAuthSelection,
+  type NewChatExecutionTarget,
+  useCopilotUIStore,
+} from "./store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
@@ -52,17 +57,23 @@ import { backgroundRefreshInterval } from "./helpers/backgroundSubtasks";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
+  executionTarget?: NewChatExecutionTarget;
   expertId?: string | null;
   /** Off = keep the fresh new-task state addressed to the expert instead of
    *  jumping into their latest thread (``/copilot?expertId=…&new=1``). */
   adoptLatestExpertThread?: boolean;
 }
 
+type ExecutionTargetRequest = NonNullable<
+  CreateSessionRequest["execution_target"]
+>;
+
 interface CreateSessionBodyArgs {
   copilotLlmAuth: CopilotLlmAuthSelection | null;
   resolvedLLMAuth: CopilotLlmAuthSelection;
   dryRun: boolean;
   expertId: string | null;
+  executionTarget: ExecutionTargetRequest | null;
   options?: { expertKickoff?: boolean };
 }
 
@@ -78,6 +89,7 @@ function createSessionData(
     resolvedLLMAuth,
     dryRun,
     expertId,
+    executionTarget,
     options,
   }: CreateSessionBodyArgs,
 ) {
@@ -94,6 +106,7 @@ function createSessionData(
       sessionData.llm_credential_id = resolvedLLMAuth.credentialId;
     }
   }
+  if (executionTarget) sessionData.execution_target = executionTarget;
   if (dryRun) sessionData.dry_run = true;
   if (expertId) sessionData.expert_id = expertId;
   // Same rule as the route: only a mode the user picked travels, so a new
@@ -128,11 +141,21 @@ function createdSessionId(response: postV2CreateSessionResponse) {
 
 export function useChatSession({
   dryRun = false,
+  executionTarget,
   expertId = null,
   adoptLatestExpertThread = true,
 }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
+  const setExecutionTargetPickerOpen = useCopilotUIStore(
+    (state) => state.setExecutionTargetPickerOpen,
+  );
+  const setExecutionTargetError = useCopilotUIStore(
+    (state) => state.setExecutionTargetError,
+  );
+  const setNewChatExecutionTarget = useCopilotUIStore(
+    (state) => state.setNewChatExecutionTarget,
+  );
   const copilotLlmAuth = useCopilotUIStore((state) => state.copilotLlmAuth);
   const clearNewChatChoice = useAutopilotModeStore(
     (state) => state.clearNewChatChoice,
@@ -403,6 +426,20 @@ export function useChatSession({
       });
     }
 
+    const target = sessionExecutionTargetRequest(executionTarget);
+    if (executionTarget?.kind === "local" && !target) {
+      const message =
+        "Choose a connected computer and folder before starting a Local PC chat.";
+      setExecutionTargetError(message);
+      setExecutionTargetPickerOpen(true);
+      toast({
+        variant: "destructive",
+        title: "Choose a Local PC folder",
+        description: message,
+      });
+      throw new ReportedSendError(message);
+    }
+
     try {
       const response = await createSessionMutation({
         data: createSessionData(pendingCreateRef, {
@@ -410,6 +447,7 @@ export function useChatSession({
           resolvedLLMAuth,
           dryRun,
           expertId,
+          executionTarget: target,
           options,
         }),
       });
@@ -429,6 +467,25 @@ export function useChatSession({
       return newSessionId;
     } catch (error) {
       if (!(error instanceof TypeError)) pendingCreateRef.current = null;
+      if (isLocalTargetConflict(error) && executionTarget?.kind === "local") {
+        const message =
+          "The selected computer or folder changed. Reconnect it and choose the folder again.";
+        setNewChatExecutionTarget({
+          ...executionTarget,
+          connectionID: null,
+          browseID: null,
+          directoryRef: null,
+          displayPath: null,
+        });
+        setExecutionTargetError(message);
+        setExecutionTargetPickerOpen(true);
+        toast({
+          variant: "destructive",
+          title: "Local PC connection changed",
+          description: message,
+        });
+        throw new ReportedSendError(message);
+      }
       // The caller owns the one toast for this failure (see
       // toastSendFailure); toasting here as well stacked two contradictory
       // messages. A paywall is an account state, not a fault.
@@ -468,6 +525,11 @@ export function useChatSession({
   const sessionDryRun = freshSessionData
     ? resolveSessionDryRun(sessionQuery.data)
     : false;
+
+  const sessionExecutionTarget =
+    sessionId && sessionQuery.data?.status === 200
+      ? readSessionExecutionTarget(sessionQuery.data.data.metadata)
+      : null;
 
   const sessionChatStatus = (
     freshSessionData as { chat_status?: string } | undefined
@@ -549,10 +611,56 @@ export function useChatSession({
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
   };
+}
+
+function sessionExecutionTargetRequest(
+  target: NewChatExecutionTarget | undefined,
+): ExecutionTargetRequest | null {
+  if (!target) return null;
+  if (target.kind === "cloud") return { kind: "cloud" };
+  if (
+    !target.machineID ||
+    !target.connectionID ||
+    !target.browseID ||
+    !target.directoryRef
+  ) {
+    return null;
+  }
+  return {
+    kind: "local",
+    machine_id: target.machineID,
+    expected_connection_id: target.connectionID,
+    browse_id: target.browseID,
+    directory_ref: target.directoryRef,
+  };
+}
+
+function readSessionExecutionTarget(metadata?: PublicChatSessionMetadata) {
+  const target = metadata?.execution_target;
+  if (!target || target.kind === "cloud") return { kind: "cloud" as const };
+  if (!("machine_id" in target)) return null;
+  return {
+    kind: "local" as const,
+    machine_id: target.machine_id,
+    allowed_root: target.allowed_root,
+  };
+}
+
+// A client-named id another session already holds: the next send names a
+// fresh one, so the chosen computer and folder still stand.
+const SESSION_ID_IN_USE = "Session id already in use";
+
+function isLocalTargetConflict(error: unknown) {
+  return (
+    error instanceof ApiError &&
+    error.status === 409 &&
+    error.message !== SESSION_ID_IN_USE
+  );
 }
 
 function isDefinitiveSessionFailure(error: unknown) {

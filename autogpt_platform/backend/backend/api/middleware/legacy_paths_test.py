@@ -1,7 +1,10 @@
 """The internal API still answers at the paths it had before /api/internal."""
 
+import re
+
 import pytest
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from starlette.routing import Match
 from starlette.types import Receive, Scope, Send
@@ -64,6 +67,21 @@ async def test_paths_outside_the_internal_api_are_left_alone(path):
     scope = await _rewritten({"type": "http", "method": "GET", "path": path})
 
     assert scope["path"] == path
+
+
+async def test_every_route_still_answers_at_its_own_path():
+    """A router mounted at `/api/<segment>` 404s once the rewrite takes that segment."""
+    unreachable = []
+    for route in rest_api.app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        path = re.sub(r"\{[^}]+\}", "1", route.path)
+        method = sorted(route.methods)[0]
+        scope = await _rewritten({"type": "http", "method": method, "path": path})
+        if route.matches(scope)[0] != Match.FULL:
+            unreachable.append(route.path)
+
+    assert not unreachable
 
 
 async def test_a_versioned_path_is_never_read_as_an_internal_one():

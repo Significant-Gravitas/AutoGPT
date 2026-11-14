@@ -9,13 +9,28 @@ original call. :func:`wake` starts that turn when none is running; a running
 turn's end wakes it instead, once that turn has left its executor
 (``stream_registry.mark_session_completed``). An answer on an idle chat waits
 for the chat's last card, so a burst of answers starts one turn.
+
+A tool outside ``TOOL_REGISTRY`` (an MCP tool the SDK engine registers, such
+as Local PC computer use) runs through the handler the engine hands
+:func:`resolve_answered`, wrapped as it registers it, so its own gate seam
+finds and spends the approval.
 """
 
 import json
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Iterable, Literal
+from functools import partial
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Literal,
+    Mapping,
+)
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError
@@ -65,6 +80,10 @@ _KEY = "copilot:gate:held:"
 _MAX_RESULT_CHARS = 120_000
 
 Outcome = Literal["approved", "rejected", "expired", "closed", "unknown"]
+# An MCP handler as the engine registers it: arguments in, MCP result out.
+McpHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+# An approved call, ready to run.
+_Run = Callable[[], Awaitable[tuple[Outcome, str]]]
 
 WAKE_MESSAGE = "I answered an action that was waiting for my approval."
 # Metadata on the user rows an answered card writes: the wake, and each result.
@@ -215,13 +234,15 @@ async def resolve_answered(
     session: ChatSession,
     deliver: Callable[[PendingMessage], None],
     cap: Callable[[str], str] = lambda text: text,
+    mcp_handlers: Mapping[str, McpHandler] | None = None,
 ) -> AsyncIterator[StreamStatus]:
     """Run every answered held call once and ``deliver`` its result as a user row.
 
     Yields a status before an approved call runs, which the engine streams:
     nothing else reaches the chat while it does. Call only once the turn's
     execution context is set. ``cap`` is the engine's own last step on a
-    direct tool result, so a late one reads the same. The HDEL claims the
+    direct tool result, so a late one reads the same. ``mcp_handlers`` runs
+    the engine's MCP tools outside ``TOOL_REGISTRY``. The HDEL claims the
     call, so two turns racing over one card cannot both run it; the gate's own
     consume stays the second lock behind it.
     """
@@ -236,16 +257,16 @@ async def resolve_answered(
             logger.warning(f"Held call {call.review_id} unreadable", exc_info=True)
             continue
         row = rows.get(call.review_id)
-        tool = _due(call, row, user_id)
+        run = _due(user_id, session, call, row, mcp_handlers or {})
         # Before the claim: a stream closed at this yield leaves the call held.
-        if tool:
+        if run:
             yield StreamStatus(
                 message=f"Running the action you approved: {_headline(call, row)}"
             )
         if not await _claim(session.session_id, call.review_id):
             continue
         try:
-            await _resolve(user_id, session, call, row, tool, deliver, cap)
+            await _resolve(user_id, session, call, row, run, deliver, cap)
         except Exception:
             logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
             for result in await _recover(user_id, session.session_id, call):
@@ -437,7 +458,7 @@ async def _resolve(
     session: ChatSession,
     call: HeldCall,
     row: "PendingHumanReviewModel | None",
-    tool: "BaseTool | None",
+    run: _Run | None,
     deliver: Callable[[PendingMessage], None],
     cap: Callable[[str], str],
 ) -> None:
@@ -446,8 +467,8 @@ async def _resolve(
         deliver(_result_row(call, _RESEND, "closed"))
         return
     with restore_cost_context(user_id, call.cost_context):
-        if tool:
-            outcome, output = await _run(user_id, session, call, tool)
+        if run:
+            outcome, output = await run()
         else:
             outcome, output = await _settled(user_id, session, call, row)
     shown = _card_copy(row)
@@ -547,10 +568,14 @@ def _card_copy(card: "PendingHumanReviewModel | None") -> dict[str, Any]:
 
 
 def _due(
-    call: HeldCall, row: "PendingHumanReviewModel | None", user_id: str
-) -> "BaseTool | None":
-    """The tool an answered card's approved call runs with; None when it runs
-    nothing, which :func:`_resolve` then says."""
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+    mcp_handlers: Mapping[str, McpHandler],
+) -> _Run | None:
+    """How an answered card's approved call runs; None when it runs nothing,
+    which :func:`_resolve` then says."""
     from backend.copilot.tools import get_tool
 
     from .reads import is_held_read
@@ -565,7 +590,13 @@ def _due(
         or call.cost_context.user_id != user_id
     ):
         return None
-    return get_tool(call.tool_name)
+    tool = get_tool(call.tool_name)
+    if tool is not None:
+        return partial(_run, user_id, session, call, tool)
+    handler = mcp_handlers.get(call.tool_name)
+    if handler is not None:
+        return partial(_run_handler, user_id, call, handler)
+    return None
 
 
 async def _settled(
@@ -637,6 +668,43 @@ async def _run(
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)
+
+
+async def _run_handler(
+    user_id: str, call: HeldCall, handler: McpHandler
+) -> tuple[Outcome, str]:
+    # The handler's own seam finds the approval for exactly these arguments
+    # and spends it; spend it here too, as ``_run`` does.
+    result = await handler(call.args)
+    await review_store.consume(call.review_id, user_id)
+    blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
+    text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
+    images = [b for b in blocks if b.get("type") == "image" and b.get("data")]
+    # A late result carries one image: the last that reads, which shows what
+    # the call left on screen (a script's after, not its before). The rest
+    # are named rather than dropped unsaid.
+    shown = next(
+        (image for image in map(_tool_image, reversed(images)) if image is not None),
+        None,
+    )
+    if left_out := len(images) - (shown is not None):
+        text += (
+            f"\n\n({left_out} more image(s) from this call aren't shown: a result "
+            "that waited for approval carries only its last. Take a fresh "
+            "screenshot if you need one.)"
+        )
+    if shown is None:
+        return "approved", text
+    return "approved", HeldImage(text=text, image=shown).model_dump_json()
+
+
+def _tool_image(block: dict[str, Any]) -> ToolImage | None:
+    try:
+        return ToolImage.model_validate(
+            {"mime_type": block.get("mimeType"), "data_base64": str(block["data"])}
+        )
+    except ValidationError:
+        return None
 
 
 async def _restore(

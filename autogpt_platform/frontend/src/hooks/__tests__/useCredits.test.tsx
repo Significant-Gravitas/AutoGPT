@@ -573,3 +573,83 @@ describe("useCredits identity scope", () => {
     ).toBeNull();
   });
 });
+
+describe("useCredits balance reads", () => {
+  test("keeps the newer balance when an older read answers after it", async () => {
+    let reads = 0;
+    let answerOlderRead: ((value: { credits: number }) => void) | undefined;
+    server.use(
+      getGetV1GetUserCreditsMockHandler(() => {
+        reads += 1;
+        if (reads === 1) {
+          return new Promise<{ credits: number }>((resolve) => {
+            answerOlderRead = resolve;
+          });
+        }
+        return { credits: 929 };
+      }),
+    );
+    const view = renderHook(() => useCredits({ identityKey: "user-a" }));
+
+    let olderRead: Promise<void> | undefined;
+    act(() => {
+      olderRead = Promise.resolve(view.result.current.fetchCredits());
+    });
+    try {
+      await waitFor(() => expect(reads).toBe(1));
+      await act(async () => {
+        await Promise.resolve(view.result.current.fetchCredits());
+      });
+      expect(view.result.current.credits).toBe(929);
+    } finally {
+      await act(async () => {
+        answerOlderRead?.({ credits: 979 });
+        await olderRead;
+      });
+    }
+
+    expect(view.result.current.credits).toBe(929);
+  });
+
+  test("keeps an older read's answer when the newer read fails", async () => {
+    let reads = 0;
+    let answerOlderRead: ((balance: number) => void) | undefined;
+    server.use(
+      http.get("*/api/internal/credits", async () => {
+        reads += 1;
+        if (reads === 1) return HttpResponse.json({ credits: 979 });
+        if (reads === 2) {
+          const balance = await new Promise<number>((resolve) => {
+            answerOlderRead = resolve;
+          });
+          return HttpResponse.json({ credits: balance });
+        }
+        return HttpResponse.json({ detail: "failed" }, { status: 500 });
+      }),
+    );
+    const view = renderHook(() =>
+      useCredits({ identityKey: "user-a", fetchInitialCredits: true }),
+    );
+    await waitFor(() => expect(view.result.current.credits).toBe(979));
+
+    let olderRead: Promise<void> | undefined;
+    act(() => {
+      olderRead = Promise.resolve(view.result.current.fetchCredits());
+    });
+    try {
+      await waitFor(() => expect(reads).toBe(2));
+      await act(async () => {
+        await Promise.resolve(view.result.current.fetchCredits());
+      });
+      expect(reads).toBe(3);
+      expect(view.result.current.credits).toBe(979);
+    } finally {
+      await act(async () => {
+        answerOlderRead?.(929);
+        await olderRead;
+      });
+    }
+
+    expect(view.result.current.credits).toBe(929);
+  });
+});
