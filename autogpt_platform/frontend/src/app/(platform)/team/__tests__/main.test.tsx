@@ -237,7 +237,7 @@ describe("TeamPage", () => {
     const raise = await screen.findByRole("link", { name: "Create an Expert" });
     expect(raise.getAttribute("href")).toBe("/raise");
     expect(
-      screen.getByRole("link", { name: "Hire expert" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Hire an Expert" }).getAttribute("href"),
     ).toBe("/marketplace#experts");
 
     expect(screen.queryByRole("button", { name: "New Pod" })).toBeNull();
