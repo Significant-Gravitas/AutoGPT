@@ -2,11 +2,11 @@
 
 Step 1 (update_expert_soul): compute the before/after diff, store the exact
 proposal server-side, and return a one-time confirmation_id — nothing written.
-Step 2 (confirm_expert_soul_update): after the user approves the diff, apply
-exactly the stored proposal by confirmation_id. New field values are rejected
-at this step, the id is single-use, and a Soul that changed since the preview
-aborts the apply. Mirrors the memory_forget_search -> memory_forget_confirm
-flow in graphiti_forget.py.
+Step 2 (confirm_expert_soul_update): once the user approves the diff on its
+card, apply exactly the stored proposal by confirmation_id. New field values
+are rejected at this step, the id is single-use, and a Soul that changed since
+the preview aborts the apply. Mirrors the memory_forget_search ->
+memory_forget_confirm flow in graphiti_forget.py.
 """
 
 import uuid

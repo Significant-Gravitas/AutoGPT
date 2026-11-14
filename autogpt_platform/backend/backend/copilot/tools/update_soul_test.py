@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.gate.card_approval import record_card_decisions
+
 from ._test_data import make_session
+from .expert_change_test import _card_answers
 from .models import ErrorResponse, ExpertSoulUpdatedResponse
 from .soul_proposal import proposal_key
 from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
@@ -62,6 +65,7 @@ def _current_expert():
 @contextmanager
 def _patch_databases(mock_db):
     with (
+        _card_answers(),
         patch(f"{_MODULE}.experts_db", MagicMock(return_value=mock_db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=mock_db)),
     ):
@@ -89,6 +93,13 @@ async def _preview(session, **fields):
 
 
 async def _confirm(session, **kwargs):
+    """Confirm as the user does: their Approve on the card, then the confirm."""
+    if confirmation_id := kwargs.get("confirmation_id"):
+        await record_card_decisions(
+            _TEST_USER_ID,
+            session.session_id,
+            f"Approved: update your Soul (confirmation_id: {confirmation_id}).",
+        )
     return await ConfirmExpertSoulUpdateTool()._execute(
         user_id=_TEST_USER_ID, session=session, **kwargs
     )

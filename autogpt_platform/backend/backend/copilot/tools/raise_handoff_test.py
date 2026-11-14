@@ -16,11 +16,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.executor.utils import TurnPublishUnconfirmed
-from backend.copilot.model import ChatMessage
+from backend.copilot.gate.card_approval import record_card_decisions
 from backend.copilot.sdk.session_waiter import SessionResult, TurnNotDispatched
 
 from ._test_data import make_session
 from .confirm_expert_change import ConfirmExpertChangeTool
+from .expert_change_test import _card_answers
 from .models import (
     ErrorResponse,
     ExpertChangeAppliedResponse,
@@ -117,6 +118,7 @@ def _env(
 
     delegate = "backend.copilot.tools.delegate_to_expert"
     with (
+        _card_answers(),
         patch("backend.copilot.tools.raise_expert.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_proposal.experts_db", return_value=db),
         patch("backend.copilot.tools.expert_delegation.experts_db", return_value=db),
@@ -134,9 +136,12 @@ def _env(
         yield SimpleNamespace(db=db, turn=turn, threads=threads, deleted=deleted)
 
 
-def _approve(session):
-    session.messages.append(
-        ChatMessage(role="user", content="approved", sequence=len(session.messages))
+async def _approve(session, confirmation_id: str):
+    """The user's Approve on the card, recorded as the chat route records it."""
+    await record_card_decisions(
+        _USER,
+        session.session_id,
+        f"Approved: create Nadia (confirmation_id: {confirmation_id}).",
     )
     return session
 
@@ -163,7 +168,10 @@ async def _propose_with_task(session) -> ExpertChangeProposedResponse:
 async def _create_and_start(session) -> ExpertChangeAppliedResponse:
     preview = await _propose_with_task(session)
     assert preview.handoff_confirmation_id
-    resp = await _confirm(_approve(session), preview.handoff_confirmation_id)
+    resp = await _confirm(
+        await _approve(session, preview.handoff_confirmation_id),
+        preview.handoff_confirmation_id,
+    )
     assert isinstance(resp, ExpertChangeAppliedResponse)
     return resp
 
@@ -316,7 +324,10 @@ class TestCreateAndStartInOneApproval:
         with _env() as env:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
-            resp = await _confirm(_approve(session), preview.confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.confirmation_id),
+                preview.confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.db.create_raised_expert.assert_awaited_once()
@@ -333,8 +344,14 @@ class TestCreateAndStartInOneApproval:
             session = make_session(_USER)
             preview = await _propose_with_task(session)
             assert preview.handoff_confirmation_id
-            first = await _confirm(_approve(session), preview.handoff_confirmation_id)
-            second = await _confirm(_approve(session), preview.confirmation_id)
+            first = await _confirm(
+                await _approve(session, preview.handoff_confirmation_id),
+                preview.handoff_confirmation_id,
+            )
+            second = await _confirm(
+                await _approve(session, preview.confirmation_id),
+                preview.confirmation_id,
+            )
 
         assert isinstance(first, ExpertChangeAppliedResponse)
         assert isinstance(second, ErrorResponse)
@@ -361,7 +378,10 @@ class TestANewExpertWithNoTask:
             session = make_session(_USER)
             preview = await _raise(session)
             assert isinstance(preview, ExpertChangeProposedResponse)
-            resp = await _confirm(_approve(session), preview.confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.confirmation_id),
+                preview.confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         env.turn.assert_not_called()
@@ -383,7 +403,10 @@ class TestAChatPlatformConversation:
             session.metadata.source_platform = "slack"
             preview = await _raise(session)
             assert isinstance(preview, ExpertChangeProposedResponse)
-            resp = await _confirm(_approve(session), preview.confirmation_id)
+            resp = await _confirm(
+                await _approve(session, preview.confirmation_id),
+                preview.confirmation_id,
+            )
 
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert "Nadia has no chat yet" in resp.message

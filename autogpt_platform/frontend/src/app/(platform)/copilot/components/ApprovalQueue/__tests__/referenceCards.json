@@ -302,8 +302,8 @@
           }
         ],
         "reference_totals": {
-          "folder_id": 1,
-          "agent_ids": 7
+          "agent_ids": 7,
+          "folder_id": 1
         },
         "tool_call_id": "call-move_agents_to_folder",
         "turn": 1,
@@ -594,8 +594,8 @@
           }
         ],
         "reference_totals": {
-          "expert_id": 1,
-          "credential_id": 1
+          "credential_id": 1,
+          "expert_id": 1
         },
         "tool_call_id": "call-grant_expert_credential",
         "turn": 1,
@@ -1206,14 +1206,14 @@
           "kind": "tool",
           "key": "confirm_expert_change",
           "name": "Confirm the team change",
-          "effect": "platform",
+          "effect": "ungated",
           "irreversible": false,
           "block_id": null
         },
         "reason": "Ask First is on for this chat, so this action needs your approval.",
         "reason_kind": "mode",
         "decided_by": null,
-        "chat_rules_allowed": ["allow", "judge"],
+        "chat_rules_allowed": [],
         "headline": {
           "ask": "Confirm the team change",
           "object": "Grace",
