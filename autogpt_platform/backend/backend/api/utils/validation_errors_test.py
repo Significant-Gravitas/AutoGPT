@@ -98,7 +98,7 @@ def _rest_client() -> fastapi.testclient.TestClient:
 def test_the_rest_api_bounds_its_422(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.ERROR, logger="backend.api.utils.exceptions"):
+    with caplog.at_level(logging.WARNING, logger="backend.api.utils.exceptions"):
         response = _rest_client().post(
             "/ids", json={"ids": TOO_MANY, "filler": OVER_CAP}
         )

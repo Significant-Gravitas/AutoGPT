@@ -132,11 +132,12 @@ async def _handle_validation_error(
     else:
         errors = str(exc)
 
-    logger.error(
-        "Validation failed for %s %s: %s. Fix the request payload and try again.",
-        request.method,
-        redact_url(request.url.path),
-        errors,
+    # A request that misses the route's schema is the client's error; a bare
+    # ValidationError means our own code built a model from bad data.
+    logger.log(
+        logging.WARNING if isinstance(exc, RequestValidationError) else logging.ERROR,
+        f"Validation failed for {request.method} {redact_url(request.url.path)}: "
+        f"{errors}. Fix the request payload and try again.",
     )
 
     response_content = {
