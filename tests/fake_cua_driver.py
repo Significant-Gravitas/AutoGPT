@@ -23,6 +23,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_TOOLS_LIST    JSON object merged into tools/list's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
   FAKE_CUA_SCREEN_SLOW_SECONDS  how long get_screen_size takes to answer (default at once)
+  FAKE_CUA_SCREEN_EXIT   exit instead of answering get_screen_size
   FAKE_CUA_IGNORE_TERM   ignore SIGTERM (POSIX), so only a kill stops the fake
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
   FAKE_CUA_APPS          JSON list of the installed apps list_apps returns: names, or
@@ -204,6 +205,9 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
         ]
         return text_result(f"Found {len(apps)} app(s).", {"apps": apps, "processes": []})
     if name == "get_screen_size":
+        if os.environ.get("FAKE_CUA_SCREEN_EXIT"):
+            log(event="exiting")
+            os._exit(3)
         if os.environ.get("FAKE_CUA_SCREEN_SLOW_SECONDS"):
             time.sleep(float(os.environ["FAKE_CUA_SCREEN_SLOW_SECONDS"]))
         if os.environ.get("FAKE_CUA_SCREEN_ERROR"):
