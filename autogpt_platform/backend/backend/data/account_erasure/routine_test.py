@@ -27,7 +27,7 @@ REQUEST_ID = "9d4f6a2b-1c3e-4b5a-8f7d-2e6c0a9b1d34"
 STEP_NAMES = [
     "stop_work",
     "confirmation",
-    "org_subscriptions",
+    "subscriptions",
     "shared_agents",
     "marketplace",
     "files",
@@ -57,7 +57,7 @@ class Steps:
         targets = {
             "stop_work": "stop_work",
             "confirmation": "send_confirmation",
-            "org_subscriptions": "cancel_org_subscriptions",
+            "subscriptions": "cancel_subscriptions",
             "shared_agents": "transfer_shared_agents",
             "marketplace": "delete_marketplace",
             "files": "delete_files",
@@ -350,7 +350,7 @@ async def test_a_refused_id_runs_no_step_even_in_a_dry_run(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("step", ["org_subscriptions", "files", "memory", "mailerlite"])
+@pytest.mark.parametrize("step", ["subscriptions", "files", "memory", "mailerlite"])
 async def test_a_step_skipped_for_want_of_its_service_stops_before_the_rows(
     monkeypatch, account, unused_services, step
 ):

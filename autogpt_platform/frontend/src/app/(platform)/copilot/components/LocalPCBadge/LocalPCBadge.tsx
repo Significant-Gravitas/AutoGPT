@@ -1,0 +1,149 @@
+"use client";
+
+import { Text } from "@/components/atoms/Text/Text";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/molecules/Popover/Popover";
+import { ComputerIcon } from "@hugeicons/core-free-icons";
+import { useLocalPCExecutor } from "../../hooks/useLocalPCExecutor";
+
+const PLATFORM_DISPLAY: Record<string, string> = {
+  darwin: "macOS",
+  linux: "Linux",
+  windows: "Windows",
+  wsl2: "Windows (WSL2)",
+};
+
+interface Props {
+  sessionID: string | null;
+  machineID?: string | null;
+  allowedRoot?: string | null;
+}
+
+export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
+  const {
+    data: executor,
+    isError,
+    isLoading,
+    isSuccess,
+  } = useLocalPCExecutor(sessionID);
+
+  const connected = isSuccess && executor?.kind === "shim";
+  const platformLabel = executor?.platform
+    ? (PLATFORM_DISPLAY[executor.platform] ?? executor.platform)
+    : "unknown platform";
+  const label = isLoading
+    ? "Checking Local PC…"
+    : isError
+      ? "Local PC status unavailable"
+      : connected
+        ? `Local PC connected: ${platformLabel}${executor?.arch ? ` ${executor.arch}` : ""}`
+        : sessionID
+          ? "Local PC disconnected"
+          : "Local PC";
+
+  const consentLabel =
+    executor?.computer_use_consent === "approved"
+      ? "Computer control allowed for this session"
+      : executor?.computer_use_consent === "denied"
+        ? "Computer control denied for this session"
+        : executor?.computer_use_consent === "pending"
+          ? "Computer control awaiting your decision"
+          : null;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${label}. Open Local PC details`}
+          aria-live="polite"
+          className={
+            connected
+              ? "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-success/40 bg-success-surface px-2.5 py-1 text-left text-success-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+              : "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-warning-border bg-warning-surface px-2.5 py-1 text-left text-warning-foreground outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2"
+          }
+        >
+          <Icon
+            icon={ComputerIcon}
+            className="h-3.5 w-3.5 shrink-0"
+            aria-hidden="true"
+          />
+          <Text variant="small-medium-tight" className="min-w-0 break-words">
+            {label}
+          </Text>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        sideOffset={6}
+        align="start"
+        className="w-[min(24rem,calc(100vw-2rem))]"
+      >
+        <div className="flex min-w-0 flex-col gap-2 text-body">
+          {connected ? (
+            <>
+              <div>
+                Files and commands route to{" "}
+                <span className="font-mono">autogpt-local-executor</span> on
+                your machine.
+              </div>
+              {executor?.capabilities?.includes("shell") ? (
+                <div className="text-caption text-foreground-secondary">
+                  Shell commands are not limited by that file root and run with
+                  your full user-level permissions.
+                </div>
+              ) : null}
+              {executor?.machine_id ? (
+                <div className="text-caption break-all text-foreground-secondary">
+                  machine {executor.machine_id.slice(0, 12)}
+                </div>
+              ) : null}
+              {executor?.computer_use_driver ? (
+                <div className="text-caption break-words text-foreground-secondary">
+                  computer use: {executor.computer_use_driver},{" "}
+                  {executor.computer_use_tools?.length ?? 0} tools
+                </div>
+              ) : null}
+              {consentLabel ? (
+                <div className="text-caption text-foreground-secondary">
+                  {consentLabel}
+                </div>
+              ) : null}
+              <div className="text-caption text-foreground-secondary">
+                Review with{" "}
+                <span className="font-mono">autogpt-shim audit tail</span>
+              </div>
+            </>
+          ) : (
+            <div>
+              {isLoading
+                ? "Checking whether your local executor is connected."
+                : isError
+                  ? "The local executor status could not be loaded. It will retry automatically."
+                  : "The Local PC selected for this chat is offline. Restart autogpt-shim on that computer to reconnect."}
+            </div>
+          )}
+
+          {executor?.allowed_root || allowedRoot ? (
+            <div>
+              File root (<span className="font-mono">FILE_*</span> only):{" "}
+              <span className="font-mono break-all">
+                {executor?.allowed_root ?? allowedRoot}
+              </span>
+            </div>
+          ) : null}
+
+          {!connected && machineID ? (
+            <div className="text-caption break-all text-foreground-secondary">
+              machine {machineID.slice(0, 12)}
+            </div>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

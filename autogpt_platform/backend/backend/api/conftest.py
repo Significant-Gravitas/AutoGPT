@@ -29,6 +29,7 @@ _BAN_CHECK_SITES = (
     "backend.api.external.middleware.is_user_banned",
     "backend.api.ws_api.is_user_banned",
     "backend.data.auth.oauth.is_user_banned",
+    "backend.api.features.account_deletion.restore.is_user_banned",
 )
 # Background work is refused for a banned or a closed account.
 _REFUSAL_CHECK_SITES = (
