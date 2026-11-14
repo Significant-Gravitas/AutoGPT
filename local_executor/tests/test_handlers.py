@@ -567,6 +567,76 @@ async def test_a_glob_matches_by_the_folders_case_rule_where_the_shim_cant_write
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("names", [[], ["1", "22"]], ids=["empty", "no-letters"])
+async def test_a_listing_never_writes_to_the_folder_to_tell_its_case_rule(
+    tmp_path: Path, names: list[str]
+) -> None:
+    """Where none of the folder's entries could be looked up again with its
+    case swapped (an empty folder, or names without a letter), a probe file
+    was made in the folder for a moment, which sync clients and file
+    watchers saw, though PROTOCOL.md calls FILE_LIST a pure read. The OS's
+    default decides there now, and nothing is written."""
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    for name in names:
+        (folder / name).write_text("x")
+    # Whole seconds long past, which any filesystem's timestamps hold.
+    long_ago = 1_000_000_000 * 1_000_000_000
+    os.utime(folder, ns=(long_ago, long_ago))
+
+    response = await FileHandler(make_config(tmp_path)).handle_list(
+        FileListMessage(
+            id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(folder), glob="*")
+        )
+    )
+
+    assert isinstance(response, FileListResponseMessage)
+    assert sorted(entry.name for entry in response.payload.entries) == names
+    assert sorted(os.listdir(folder)) == names
+    assert os.stat(folder).st_mtime_ns == long_ago
+
+
+@pytest.mark.asyncio
+async def test_a_folder_with_no_entry_to_look_up_is_looked_at_again_once_it_has_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The OS's default stands in for a folder with no entry to look up only
+    while it has none: kept, an empty folder's default would decide its
+    globs after it gained one, on a filesystem whose rule is the other."""
+    folds = sys.platform not in ("win32", "darwin")
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    folders = {os.path.normcase(str(folder)), os.path.normcase(os.path.realpath(folder))}
+    real_stat = os.stat
+
+    def stat_in_a_folder_with_the_other_rule(path, *args, **kwargs):
+        parent, name = os.path.split(os.fspath(path))
+        if os.path.normcase(parent) not in folders or name in os.listdir(parent):
+            return real_stat(path, *args, **kwargs)
+        same = [entry for entry in os.listdir(parent) if entry.lower() == name.lower()]
+        if folds and same:
+            return real_stat(os.path.join(parent, same[0]), *args, **kwargs)
+        raise FileNotFoundError(errno.ENOENT, "No such file or directory", os.fspath(path))
+
+    monkeypatch.setattr(os, "stat", stat_in_a_folder_with_the_other_rule)
+    handler = FileHandler(make_config(tmp_path))
+
+    def listing(glob: str) -> FileListMessage:
+        return FileListMessage(
+            id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(folder), glob=glob)
+        )
+
+    empty = await handler.handle_list(listing("*.CSV"))
+    (folder / "data.csv").write_text("a")
+    response = await handler.handle_list(listing("*.CSV"))
+
+    assert isinstance(empty, FileListResponseMessage)
+    assert empty.payload.entries == []
+    assert isinstance(response, FileListResponseMessage)
+    assert {entry.name for entry in response.payload.entries} == ({"data.csv"} if folds else set())
+
+
+@pytest.mark.asyncio
 async def test_list_max_entries_truncates(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     for i in range(5):

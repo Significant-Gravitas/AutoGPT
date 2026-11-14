@@ -14,6 +14,7 @@ Everything in this module is sync — the daemon calls it once at startup.
 
 from __future__ import annotations
 
+import concurrent.futures
 import importlib.util
 import logging
 import os
@@ -204,6 +205,11 @@ SESSION_DISPLAY_VARIABLES = (
 )
 _MANAGER_READ_EVERY_SECONDS = 10.0
 _MANAGER_TIMEOUT_SECONDS = 2.0
+# How long `SessionDisplay.follow` waits for the read under way: systemctl's
+# run and a second more. A read that takes longer (systemctl looked up on a
+# stalled PATH mount, say) goes on in its own thread, and the caller with
+# the display as it is.
+MANAGER_WAIT_SECONDS = _MANAGER_TIMEOUT_SECONDS + 1.0
 
 
 class SessionDisplay:
@@ -221,7 +227,12 @@ class SessionDisplay:
     session left doesn't open the new display), which come back once the
     session ends, and so does a session's lack of an XAUTHORITY: Xlib then
     reads ~/.Xauthority. A shim run by hand, or one that started with a
-    display, keeps its own environment."""
+    display, keeps its own environment.
+
+    The manager is read in a thread of its own, one read at a time and
+    apart from the lock (refresh), and each caller waits for the read under
+    way no longer than it can: a read that stalls holds no caller past its
+    wait, and no thread but its own."""
 
     def __init__(
         self,
@@ -238,6 +249,8 @@ class SessionDisplay:
         self._own: dict[str, str] | None = None
         self._taken: set[str] = set()
         self._read_at: float | None = None
+        # The manager's read under way, or the last (refresh).
+        self._reading: concurrent.futures.Future[bool] | None = None
 
     def _started_with(self) -> dict[str, str]:
         return {key: value for key in SESSION_DISPLAY_VARIABLES if (value := self._env.get(key))}
@@ -251,63 +264,127 @@ class SessionDisplay:
             own = self._own if self._own is not None else self._started_with()
             return not {"DISPLAY", "WAYLAND_DISPLAY"} & own.keys()
 
-    def follow(self) -> bool:
+    def follow(self, timeout: float | None = None) -> bool:
         """Bring this process's display variables in line with the
         manager's, reading them at most every 10 s. Returns whether any
-        changed."""
+        changed. Waits for the read (refresh) at most `timeout` seconds,
+        MANAGER_WAIT_SECONDS if not given; past that it returns False and
+        leaves the read to finish."""
+        try:
+            return self.refresh().result(MANAGER_WAIT_SECONDS if timeout is None else timeout)
+        except TimeoutError:
+            return False
+
+    def refresh(self) -> concurrent.futures.Future[bool]:
+        """The manager's read `follow` waits for, as a future of whether any
+        variable changed: the read under way, else a new one when one is
+        due, else an answer already in (False).
+
+        The read runs in a thread of its own, one at a time, apart from the
+        lock. It was made under the lock, systemctl's lookup on PATH with
+        it, and a stalled mount on PATH (NFS, FUSE) holds that lookup for as
+        long as it stalls: every later caller waited for the lock, HELLO's
+        `following` too, each in one of the worker threads every session's
+        file and audit work shares, until they were all held. A caller now
+        waits for the one read as long as it can, one on the event loop
+        with asyncio.wrap_future, in no thread at all, and the read goes on
+        without it."""
         with self._lock:
             if self._env.get("AUTOGPT_SHIM_SUPERVISOR") != "systemd":
-                return False
+                return _answered(False)
             if self._own is None:
                 self._own = self._started_with()
             if {"DISPLAY", "WAYLAND_DISPLAY"} & self._own.keys():
-                return False
+                return _answered(False)
+            reading = self._reading
+            if reading is not None and not reading.done():
+                return reading
             now = self._clock()
             if self._read_at is not None and now - self._read_at < _MANAGER_READ_EVERY_SECONDS:
-                return False
+                return _answered(False)
             self._read_at = now
+            reading = self._reading = concurrent.futures.Future()
+            # Running from here on, so a caller that stops waiting
+            # (asyncio.wrap_future passes its cancel on) can't cancel the
+            # read for the others.
+            reading.set_running_or_notify_cancel()
+        try:
+            threading.Thread(
+                target=self._read_into,
+                args=(reading,),
+                name="autogpt-shim-session-display",
+                daemon=True,
+            ).start()
+        except RuntimeError as exc:
+            # No thread to read in: nothing changed, and the next read is
+            # tried in 10 s.
+            logger.warning("Could not read the systemd user manager's environment: %s", exc)
+            reading.set_result(False)
+        return reading
+
+    def _read_into(self, reading: concurrent.futures.Future[bool]) -> None:
+        """Read the manager and take its display variables, in the read's
+        thread, answering `reading` whatever happens: a read never answered
+        would be waited for by every caller, and none would start again."""
+        try:
             manager = self._read()
-            if manager is None:
-                return False
-            usable = {
-                key: value
-                for key in SESSION_DISPLAY_VARIABLES
-                if _usable(value := manager.get(key))
-            }
-            if "DISPLAY" not in usable and "WAYLAND_DISPLAY" not in usable:
-                usable = {}
-            changed = False
-            for key in SESSION_DISPLAY_VARIABLES:
-                if key in usable:
-                    # The session's, even over one this process started
-                    # with: an XAUTHORITY an earlier session left doesn't
-                    # open this session's display.
-                    value = usable[key]
-                    self._taken.add(key)
-                elif key == "XAUTHORITY" and usable:
-                    # Nor for a session without one: Xlib reads only the
-                    # file XAUTHORITY names, and ~/.Xauthority without it.
-                    value = None
-                    self._taken.add(key)
-                elif key in self._taken:
-                    # Gone with the session: this process's own comes back.
-                    value = self._own.get(key)
-                    self._taken.discard(key)
+            with self._lock:
+                changed = self._take(manager)
+        except BaseException as exc:
+            reading.set_exception(exc)
+        else:
+            reading.set_result(changed)
+
+    def _take(self, manager: Mapping[str, str] | None) -> bool:
+        """Take the display variables from `manager`, the manager's
+        environment (None if it couldn't be read). Returns whether any
+        changed. Called with the lock held."""
+        if manager is None or self._own is None:
+            return False
+        usable = {
+            key: value for key in SESSION_DISPLAY_VARIABLES if _usable(value := manager.get(key))
+        }
+        if "DISPLAY" not in usable and "WAYLAND_DISPLAY" not in usable:
+            usable = {}
+        changed = False
+        for key in SESSION_DISPLAY_VARIABLES:
+            if key in usable:
+                # The session's, even over one this process started
+                # with: an XAUTHORITY an earlier session left doesn't
+                # open this session's display.
+                value = usable[key]
+                self._taken.add(key)
+            elif key == "XAUTHORITY" and usable:
+                # Nor for a session without one: Xlib reads only the
+                # file XAUTHORITY names, and ~/.Xauthority without it.
+                value = None
+                self._taken.add(key)
+            elif key in self._taken:
+                # Gone with the session: this process's own comes back.
+                value = self._own.get(key)
+                self._taken.discard(key)
+            else:
+                continue
+            if self._env.get(key) != value:
+                if value is None:
+                    self._env.pop(key, None)
                 else:
-                    continue
-                if self._env.get(key) != value:
-                    if value is None:
-                        self._env.pop(key, None)
-                    else:
-                        self._env[key] = value
-                    changed = True
-            if changed:
-                logger.info(
-                    "Display from the systemd user manager: DISPLAY=%s WAYLAND_DISPLAY=%s",
-                    self._env.get("DISPLAY"),
-                    self._env.get("WAYLAND_DISPLAY"),
-                )
-            return changed
+                    self._env[key] = value
+                changed = True
+        if changed:
+            logger.info(
+                "Display from the systemd user manager: DISPLAY=%s WAYLAND_DISPLAY=%s",
+                self._env.get("DISPLAY"),
+                self._env.get("WAYLAND_DISPLAY"),
+            )
+        return changed
+
+
+def _answered(changed: bool) -> concurrent.futures.Future[bool]:
+    """A SessionDisplay read's answer, already in: no read was due."""
+    answer: concurrent.futures.Future[bool] = concurrent.futures.Future()
+    answer.set_result(changed)
+    return answer
 
 
 def session_display_values(environ: Mapping[str, str] | None = None) -> tuple[str | None, ...]:
@@ -322,9 +399,24 @@ def _usable(value: str | None) -> bool:
     return len(value) <= 4096 and "\x00" not in value and "\n" not in value
 
 
+# systemctl's path, once found on PATH (_systemctl).
+_systemctl_path: str | None = None
+
+
+def _systemctl() -> str | None:
+    """systemctl's path, looked up on PATH until it is found and then kept:
+    shutil.which stats a file in each PATH folder, and a stalled mount there
+    (NFS, FUSE) holds it for as long as it stalls. The service's PATH stays
+    as it started."""
+    global _systemctl_path
+    if _systemctl_path is None:
+        _systemctl_path = shutil.which("systemctl")
+    return _systemctl_path
+
+
 def _manager_environment() -> dict[str, str] | None:
     """The systemd user manager's environment, or None."""
-    systemctl = shutil.which("systemctl")
+    systemctl = _systemctl()
     if systemctl is None:
         return None
     try:
@@ -499,17 +591,21 @@ def default_audit_log_path() -> Path:
 # ── Filesystem case-sensitivity probe ────────────────────────────────────────
 
 
-@lru_cache(maxsize=64)
 def is_case_insensitive_fs(path: str | os.PathLike[str]) -> bool:
     """Probe the filesystem that contains `path`.
 
     Per CROSS_PLATFORM.md: macOS / Windows default to insensitive, Linux
     to sensitive, but all three have toggles per volume / per directory.
     One of the folder's own entries is looked up again with its letters'
-    case swapped, which reads only (_folds_case_by_lookup); a folder with
-    no entry to look up gets a probe file made in it for a moment instead.
-    Where neither can be done (an empty folder on a read-only mount), the
-    OS's default answers.
+    case swapped, which reads only (_folds_case_by_lookup). Where no entry
+    serves (an empty folder, say), the OS's default answers.
+
+    Nothing is written to tell. A folder with no entry to look up got a
+    probe file made in it for a moment, which sync clients and file
+    watchers saw, though FILE_LIST, the caller, is a pure read
+    (PROTOCOL.md). Nor is an answer kept: an empty folder's default would
+    stand after the folder had an entry to look up, where the probe file
+    had told, and looking again costs an entry or two.
     """
     p = Path(path)
     # Walk up until we find something that exists, so we can probe its parent.
@@ -524,27 +620,9 @@ def is_case_insensitive_fs(path: str | os.PathLike[str]) -> bool:
             # Fall back to OS default if we can't probe anything.
             return sys.platform in ("win32", "darwin")
     folds = _folds_case_by_lookup(probe_dir)
-    if folds is not None:
-        return folds
-    try:
-        # Create a temporary probe file; check whether its upper-cased name
-        # resolves to the same inode.
-        import tempfile
-
-        with tempfile.NamedTemporaryFile(
-            dir=probe_dir, prefix=".aple_case_probe_", delete=False
-        ) as f:
-            probe_path = Path(f.name)
-        try:
-            upper = probe_path.parent / probe_path.name.upper()
-            return upper.exists()
-        finally:
-            try:
-                probe_path.unlink()
-            except OSError:
-                pass
-    except (OSError, PermissionError):
+    if folds is None:
         return sys.platform in ("win32", "darwin")
+    return folds
 
 
 # Swaps the case of ASCII letters alone, which every filesystem that folds
@@ -644,6 +722,7 @@ def resolve_shell(shell: str) -> tuple[str, list[str]] | None:
 
 
 __all__ = [
+    "MANAGER_WAIT_SECONDS",
     "SESSION_DISPLAY_VARIABLES",
     "SessionDisplay",
     "can_do_computer_use",

@@ -92,8 +92,13 @@ decides whether to offer computer use and before each call, together with
 `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `DESKTOP_SESSION`, `SWAYSOCK`,
 `HYPRLAND_INSTANCE_SIGNATURE`). It follows them when a new login brings a
 new display (on GNOME, a new `XAUTHORITY` too) and restarts cua-driver with
-them, and lets them go when the session ends. The session's values stand in
-for any the service started with, such as an `XAUTHORITY` an earlier session
+them, and lets them go when the session ends. One read runs at a time, in a
+thread of its own. While one stalls (`systemctl` looked up on a stalled
+`PATH` mount, say), the shim waits for it 3 seconds at most when it decides
+whether to offer computer use, and again when it starts cua-driver, then
+goes on with the display as it is; a call waits for it until its own
+deadline (`COMMAND_TIMEOUT` with `started: false`). The session's values
+stand in for any the service started with, such as an `XAUTHORITY` an earlier session
 left, which come back once it ends. A session without an `XAUTHORITY` takes
 the service's away while it lasts, so Xlib reads `~/.Xauthority`, as it does
 for the session's own programs. GNOME and KDE export them, as

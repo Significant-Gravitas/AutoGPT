@@ -2595,20 +2595,14 @@ async def test_a_call_gives_up_on_a_display_check_that_hangs(fake_log) -> None:
     hung, or waited for a thread while every one was busy, kept the call
     waiting past its deadline, holding the driver's turn every chat's calls
     share."""
-    import threading
     from unittest.mock import patch
 
     from autogpt_local_executor import platform_info
 
-    released = threading.Event()
-
-    def follow() -> bool:
-        released.wait(60)
-        return False
-
+    read = _HeldDisplayRead()
     bridge = _bridge()
     try:
-        with patch.object(platform_info.session_display, "follow", follow):
+        with patch.object(platform_info, "session_display", read.display):
             call = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
             done, _ = await asyncio.wait({call}, timeout=20)
             assert call in done
@@ -2616,7 +2610,83 @@ async def test_a_call_gives_up_on_a_display_check_that_hangs(fake_log) -> None:
                 call.result()
             assert not bridge._turn.locked()
     finally:
-        released.set()
+        read.go.set()
+        await bridge.close()
+
+
+class _HeldDisplayRead:
+    """The systemd service's look at the desktop's display (`display`),
+    whose read of the manager's environment hangs until `go` is set, as
+    systemctl's lookup on a stalled PATH mount does."""
+
+    def __init__(self) -> None:
+        from autogpt_local_executor import platform_info
+
+        self.reads = 0
+        self.go = threading.Event()
+        self.display = platform_info.SessionDisplay(
+            {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}, read=self._read
+        )
+
+    def _read(self) -> dict[str, str] | None:
+        self.reads += 1
+        self.go.wait(60)
+        return None
+
+
+async def test_calls_that_give_up_on_a_display_check_that_hangs_hold_no_thread(
+    fake_log,
+) -> None:
+    """A call that gave up on a display check that hung left its worker
+    thread running the check, and each later call another, waiting for the
+    lock the first held, until the threads every session's file and audit
+    work shares were all held. The calls now wait for the one check under
+    way, each until its own deadline, in no thread of their own."""
+    from concurrent.futures import ThreadPoolExecutor
+    from unittest.mock import patch
+
+    from autogpt_local_executor import platform_info
+
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=2))
+    read = _HeldDisplayRead()
+    bridge = _bridge()
+    try:
+        with patch.object(platform_info, "session_display", read.display):
+            for _ in range(3):
+                call = asyncio.ensure_future(bridge.call_tool("get_screen_size", {}, timeout=0.3))
+                done, _ = await asyncio.wait({call}, timeout=20)
+                assert call in done
+                with pytest.raises(driver.CallNotStarted):
+                    call.result()
+
+            assert await asyncio.wait_for(asyncio.to_thread(lambda: "free"), timeout=20) == "free"
+            assert read.reads == 1
+    finally:
+        read.go.set()
+        await bridge.close()
+
+
+async def test_a_start_goes_on_past_a_display_check_that_hangs(fake_log, monkeypatch) -> None:
+    """HELLO waits for the owner's first start in full, and the start looked
+    at the desktop's display first, with no deadline: a check that hung kept
+    HELLO from going out, so the machine couldn't connect. The start waits
+    for the check under way at most MANAGER_WAIT_SECONDS, and goes on with
+    the display as it is."""
+    from autogpt_local_executor import platform_info
+
+    monkeypatch.setattr(platform_info, "MANAGER_WAIT_SECONDS", 0.2, raising=False)
+    read = _HeldDisplayRead()
+    monkeypatch.setattr(platform_info, "session_display", read.display)
+    bridge = _bridge()
+    try:
+        snapshot = asyncio.ensure_future(bridge.snapshot())
+        done, _ = await asyncio.wait({snapshot}, timeout=20)
+
+        assert snapshot in done
+        assert snapshot.result().info.name == "cua-driver"
+    finally:
+        read.go.set()
         await bridge.close()
 
 

@@ -430,12 +430,12 @@ class CuaDriverBridge:
         The look at the desktop's display first (systemctl, under the
         systemd service) is no wait for anyone else, so it ends at the
         call's own deadline, `call_deadline` (`deadline` if not given): one
-        that hangs, or waits for a free thread, can't hold the driver's turn
-        past it, and a call whose start window went on waiting for the turn
-        still reaches a driver that is running."""
+        that hangs can't hold the driver's turn past it, and a call whose
+        start window went on waiting for the turn still reaches a driver
+        that is running. Every call waits for the one look under way
+        (_display_followed)."""
         try:
-            async with asyncio.timeout_at(deadline if call_deadline is None else call_deadline):
-                await asyncio.to_thread(platform_info.session_display.follow)
+            await _display_followed(deadline if call_deadline is None else call_deadline)
         except TimeoutError:
             raise CallNotStarted(
                 f"{name}'s deadline passed while the desktop's display was checked"
@@ -457,7 +457,14 @@ class CuaDriverBridge:
         return start.result()
 
     async def _ensure_client(self) -> StdioMcpClient:
-        await asyncio.to_thread(platform_info.session_display.follow)
+        # The look at the display under way, for MANAGER_WAIT_SECONDS at
+        # most: HELLO waits for the owner's first start in full. Past that
+        # the driver starts with the display as it is, and one the look
+        # brings later restarts it at the next call (_same_display).
+        with contextlib.suppress(TimeoutError):
+            await _display_followed(
+                asyncio.get_running_loop().time() + platform_info.MANAGER_WAIT_SECONDS
+            )
         async with self._lock:
             if self._client is not None and self._client.alive:
                 if self._same_display():
@@ -679,6 +686,19 @@ class CuaDriverBridge:
         logger.info("Stopping cua-driver (pid %s) to end a call that overran", client.pid)
         with contextlib.suppress(Exception):
             await client.close(now=True)
+
+
+async def _display_followed(deadline: float) -> None:
+    """Wait until `deadline` (loop time) for the look at the desktop's
+    display (SessionDisplay.refresh): the one under way, else a new one when
+    one is due. Past the deadline, TimeoutError, and the look goes on in its
+    own thread. Nothing waits for it in a thread: a call that gave up on a
+    look that hung (systemctl looked up on a stalled PATH mount) left a
+    worker thread running it, and each later call another, waiting for the
+    first, until the threads every session's file and audit work shares
+    were all held."""
+    async with asyncio.timeout_at(deadline):
+        await asyncio.wrap_future(platform_info.session_display.refresh())
 
 
 def _retrieved(task: asyncio.Future[Any]) -> None:

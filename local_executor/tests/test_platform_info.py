@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import subprocess
 import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -439,6 +443,117 @@ def test_a_manager_that_cannot_be_read_changes_nothing() -> None:
     assert environ == {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
 
 
+class _HeldManager(_Manager):
+    """A read of the manager's environment that hangs until `go` is set, as
+    systemctl's lookup on a stalled PATH mount (NFS, FUSE) does."""
+
+    def __init__(self, **env: str) -> None:
+        super().__init__(**env)
+        self.reading = threading.Event()
+        self.go = threading.Event()
+
+    def __call__(self) -> dict[str, str] | None:
+        self.reads += 1
+        self.reading.set()
+        self.go.wait(60)
+        return None if self.env is None else dict(self.env)
+
+
+def _answer_within(seconds: float, call: Callable[[], Any]) -> Any:
+    """What `call()` returns, called in a thread of its own; TimeoutError
+    when it hasn't returned within `seconds`."""
+    answer: concurrent.futures.Future[Any] = concurrent.futures.Future()
+
+    def run() -> None:
+        try:
+            answer.set_result(call())
+        except BaseException as exc:
+            answer.set_exception(exc)
+
+    threading.Thread(target=run, daemon=True).start()
+    return answer.result(seconds)
+
+
+def test_a_manager_read_that_hangs_holds_no_caller_past_its_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The manager was read under the lock every caller takes, systemctl's
+    lookup on PATH included, and a stalled mount there holds that lookup for
+    as long as it stalls. HELLO's look at whether computer use waits for a
+    display (following) waited for the lock, and so did every later caller,
+    each in a thread of its own. The read runs apart from the lock now, one
+    at a time: a caller waits for the one under way within its wait, and
+    goes on without it."""
+    monkeypatch.setattr(platform_info, "MANAGER_WAIT_SECONDS", 0.2, raising=False)
+    environ = {"AUTOGPT_SHIM_SUPERVISOR": "systemd"}
+    manager = _HeldManager(DISPLAY=":0")
+    clock = _Clock()
+    follower = _follower(environ, manager, clock)
+    try:
+        threading.Thread(target=follower.follow, daemon=True).start()
+        assert manager.reading.wait(20)
+
+        assert _answer_within(20, follower.following) is True
+        # Even once the next read is due, the one under way is waited for.
+        clock.now += 11
+        assert _answer_within(20, follower.follow) is False
+
+        assert manager.reads == 1
+        assert "DISPLAY" not in environ
+    finally:
+        manager.go.set()
+
+
+def test_hello_goes_on_while_the_manager_read_hangs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HELLO's capabilities (can_do_computer_use) waited for the manager's
+    read to the end, so a read that hung kept HELLO from going out at all.
+    It goes without computer use now, and says HELLO again once the display
+    is up."""
+    _session(monkeypatch, AUTOGPT_SHIM_SUPERVISOR="systemd")
+    monkeypatch.setattr(platform_info, "MANAGER_WAIT_SECONDS", 0.2, raising=False)
+    # No display to take: the read, let go at the end, writes os.environ,
+    # and may finish after the test has put it back.
+    manager = _HeldManager()
+    monkeypatch.setattr(
+        platform_info, "session_display", platform_info.SessionDisplay(read=manager)
+    )
+    try:
+        caps = _answer_within(
+            20, lambda: platform_info.detect_capabilities(enable_computer_use=True)
+        )
+
+        assert "computer_use" not in caps
+        assert _answer_within(20, platform_info.computer_use_waits_for_a_display) is True
+    finally:
+        manager.go.set()
+
+
+def test_systemctl_is_looked_up_on_path_until_it_is_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """shutil.which stats a file in each PATH folder, and every read of the
+    manager looked systemctl up again, where a stalled mount holds the
+    lookup for as long as it stalls. The service's PATH stays as it
+    started, so the path is kept once found."""
+    lookups: list[str] = []
+
+    def which(name: str) -> str | None:
+        lookups.append(name)
+        return None if len(lookups) == 1 else "/usr/bin/systemctl"
+
+    def run(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, b"DISPLAY=:0\n", b"")
+
+    monkeypatch.setattr(platform_info, "_systemctl_path", None, raising=False)
+    monkeypatch.setattr(platform_info.shutil, "which", which)
+    monkeypatch.setattr(platform_info.subprocess, "run", run)
+
+    assert platform_info._manager_environment() is None
+    assert platform_info._manager_environment() == {"DISPLAY": ":0"}
+    assert platform_info._manager_environment() == {"DISPLAY": ":0"}
+    assert lookups == ["systemctl", "systemctl"]
+
+
 def test_the_systemd_service_advertises_computer_use_once_the_desktop_exports_its_display(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -491,6 +606,7 @@ def test_reading_the_manager_environment_parses_systemctl(monkeypatch: pytest.Mo
         b"UNKNOWN=$'\\q'\n"
         b"notavariable\n"
     )
+    monkeypatch.setattr(platform_info, "_systemctl_path", None, raising=False)
     monkeypatch.setattr(platform_info.shutil, "which", lambda name: "/usr/bin/systemctl")
 
     def run(argv, **kwargs):

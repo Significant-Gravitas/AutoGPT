@@ -707,14 +707,13 @@ the OS lists them, and passes over an entry whose name has no ASCII
 letter, a file with another hard link (which could hold both names), an
 entry with no inode number or whose own stat fails, and one whose swapped
 name can't be looked up for a reason other than it not being there (a
-permission error, say). When none of them serves, a probe file is made in
-the folder for a moment instead, and where that can't be made either (a
-read-only mount, a folder the shim can't write to), the OS's default
-decides: case-insensitive on macOS and Windows, case-sensitive elsewhere,
-even where an entry past the first 100 would have shown that the folder
-folds case. The listed folder's rule holds for the whole walk. The glob
-is matched against the **basename**, not the full path; combine with
-`recursive: true` to descend.
+permission error, say). When none of them serves (an empty folder, say),
+the OS's default decides: case-insensitive on macOS and Windows,
+case-sensitive elsewhere, even where an entry past the first 100 would
+have shown that the folder folds case. Nothing is written to the folder to
+tell, and each listing looks again. The listed folder's rule holds for the
+whole walk. The glob is matched against the **basename**, not the full
+path; combine with `recursive: true` to descend.
 
 #### `FILE_DELETE` (platform → shim)
 
