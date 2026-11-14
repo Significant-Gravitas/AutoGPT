@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -459,6 +460,48 @@ def test_a_grant_on_btrfs_whose_subvolume_cant_be_read_keeps_to_its_device(
     _renumber_the_device(monkeypatch, root)
     with pytest.raises(RootGrantError, match="changed"):
         signer.verify(issued.root_grant, "session-1")
+
+
+def _statfs_fails(monkeypatch: pytest.MonkeyPatch, how: str) -> None:
+    """From now on statfs(2) tells no folder's filesystem type: the call
+    `fails`, the C library has no statfs (`missing`), or the C library is
+    `unloadable`."""
+
+    def statfs(_path: bytes, _result: Any) -> int:
+        return -1
+
+    def library(*_args: Any, **_kwargs: Any) -> Any:
+        if how == "unloadable":
+            raise OSError("the C library can't be loaded")
+        return SimpleNamespace(statfs=statfs) if how == "fails" else SimpleNamespace()
+
+    monkeypatch.setattr(session_grants.ctypes, "CDLL", library)
+
+
+@_btrfs_only
+@pytest.mark.parametrize("how", ["fails", "missing", "unloadable"])
+def test_a_grant_where_the_filesystem_type_cant_be_read_keeps_to_its_device(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """Where statfs can't tell a folder's filesystem type, the folder may be
+    on Btrfs, where a snapshot keeps its inode number and creation time. It
+    was taken for another filesystem, so its grant held neither the device
+    number nor the subvolume, and a snapshot put in its place matched it.
+    The device number counts there, as where the subvolume can't be read."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, "ns:1700000000123456789")
+    _statfs_fails(monkeypatch, how)
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", root, 1)
+
+    assert signer.verify(issued.root_grant, "session-1") == issued
+    # A snapshot in the folder's place: the same inode number and creation
+    # time, and a device number of its own.
+    _renumber_the_device(monkeypatch, root)
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+    assert session_grants._on_btrfs(root) is None
 
 
 def _fingerprint_of(canonical: Path, **identity: Any) -> str:

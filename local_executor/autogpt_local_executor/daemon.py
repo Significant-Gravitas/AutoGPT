@@ -48,7 +48,7 @@ from .audit import (
     get_or_create_audit_key,
 )
 from .auth import CredentialScope, CredentialScopeError, KeychainTokenStore
-from .computer_use import DriverUnavailable, find_driver_binary
+from .computer_use import DriverUnavailable
 from .computer_use.driver import COMPUTER_USE_INSTALL
 from .computer_use.mcp_client import McpError
 from .config import ShimConfig
@@ -2474,7 +2474,9 @@ class ShimDaemon:
         """Computer use needs cua-driver, and on macOS its Accessibility and
         Screen Recording grants: without Screen Recording a capture shows
         only the wallpaper and menu bar."""
-        if find_driver_binary(self.config.cua_driver_path) is None:
+        # Looked for off the event loop, which the machine's other sessions
+        # share, and once for all of them (CuaDriverBridge.find_binary).
+        if await self._computer_handler.driver.find_binary() is None:
             await self._fail_preflight(
                 "Computer use is enabled but cua-driver is not installed. Reinstall with "
                 f"`{COMPUTER_USE_INSTALL}`, then run `autogpt-shim doctor`.",

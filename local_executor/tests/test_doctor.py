@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -546,7 +547,10 @@ def _daemon(config: ShimConfig):
 
     audit = AuditWriter(path=config.audit_log_path, audit_key=b"a" * 32)
     daemon = ShimDaemon(config=config, token_store=MagicMock(), audit=audit)
-    daemon._computer_handler._driver = fake_bridge(platform="darwin")
+    # The driver the config names, as the daemon's own bridge has.
+    daemon._computer_handler._driver = fake_bridge(
+        platform="darwin", binary=config.cua_driver_path or FAKE
+    )
     return daemon
 
 
@@ -573,6 +577,30 @@ async def test_daemon_preflight_needs_no_grants_off_macos(tmp_path, monkeypatch,
     await daemon._preflight_or_raise()
 
     assert daemon._computer_handler.driver.info is None  # never started
+
+
+async def test_daemon_preflight_looks_for_the_driver_off_the_event_loop(
+    tmp_path, monkeypatch, fake_log
+) -> None:
+    """Each session's start looked for cua-driver (the named one, the
+    wheel's on sys.path, or one on PATH) on the event loop the machine's
+    other sessions share, where a stalled mount (NFS, FUSE) in one of those
+    folders held a stat for as long as it stalled, and every session too."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "linux")
+    loop_thread = threading.get_ident()
+    looked_from: list[int] = []
+    is_file = Path.is_file
+
+    def watched(self: Path) -> bool:
+        if self == FAKE.absolute():
+            looked_from.append(threading.get_ident())
+        return is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", watched)
+
+    await _daemon(_with_driver(tmp_path))._preflight_or_raise()
+
+    assert looked_from and loop_thread not in looked_from
 
 
 @pytest.mark.parametrize(

@@ -28,6 +28,8 @@ _FAKE_SETTINGS = (
     "FAKE_CUA_IMAGE_BYTES",
     "FAKE_CUA_EXIT_AT_START",
     "FAKE_CUA_RPC_ERROR",
+    "FAKE_CUA_RPC_ERROR_CODE",
+    "FAKE_CUA_NESTED_LINE",
     "FAKE_CUA_NEXT_CURSOR",
     "FAKE_CUA_SLOW_SECONDS",
     "FAKE_CUA_INITIALIZE",
@@ -46,11 +48,15 @@ def fake_client(argv: list[str], **kwargs: Any) -> StdioMcpClient:
 
 
 def fake_bridge(
-    *, clipboard: bool = False, platform: str = "linux", **kwargs: Any
+    *,
+    clipboard: bool = False,
+    platform: str = "linux",
+    binary: str | Path = FAKE,
+    **kwargs: Any,
 ) -> CuaDriverBridge:
     return CuaDriverBridge(
         tools=catalog.offered_tools(enable_clipboard=clipboard),
-        binary=FAKE,
+        binary=binary,
         platform=platform,
         client_factory=fake_client,
         **kwargs,

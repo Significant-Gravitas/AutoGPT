@@ -17,6 +17,9 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_IMAGE_BYTES   size of the image get_window_state returns
   FAKE_CUA_EXIT_AT_START exit before answering initialize
   FAKE_CUA_RPC_ERROR     comma-separated tools answered with a JSON-RPC error
+  FAKE_CUA_RPC_ERROR_CODE  those errors' code, as JSON (default -32603)
+  FAKE_CUA_NESTED_LINE   comma-separated tools answered after a line nested past what
+                         Python's json reads
   FAKE_CUA_NEXT_CURSOR   tools/list pages without end: `same` cursor or a `new` one
   FAKE_CUA_SLOW_SECONDS  how long the slow drag (pid -2) takes (default 30)
   FAKE_CUA_INITIALIZE    JSON object merged into initialize's result
@@ -323,14 +326,19 @@ def handle(message: dict) -> None:
         params = message["params"]
         pid = (params.get("arguments") or {}).get("pid")
         if params["name"] in os.environ.get("FAKE_CUA_RPC_ERROR", "").split(","):
+            code = json.loads(os.environ.get("FAKE_CUA_RPC_ERROR_CODE") or "-32603")
             send(
                 {
                     "jsonrpc": "2.0",
                     "id": request_id,
-                    "error": {"code": -32603, "message": f"{params['name']} broke"},
+                    "error": {"code": code, "message": f"{params['name']} broke"},
                 }
             )
             return
+        if params["name"] in os.environ.get("FAKE_CUA_NESTED_LINE", "").split(","):
+            with _write_lock:
+                sys.stdout.write("[" * 100_000 + "]" * 100_000 + "\n")
+                sys.stdout.flush()
         if params["name"] == "set_window_frame" and pid in (-4, -5):
             # A JSON-RPC error instead of a tool result.
             code, text = (-32602, "width must be positive") if pid == -4 else (-32603, "boom")

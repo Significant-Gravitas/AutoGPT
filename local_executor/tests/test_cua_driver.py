@@ -10,11 +10,13 @@ import json
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import autogpt_local_executor.handlers as handlers_module
 from autogpt_local_executor.audit import AuditWriter
 from autogpt_local_executor.computer_use import catalog, concealed, driver, mcp_client
 from autogpt_local_executor.computer_use.driver import CuaDriverBridge, DriverUnavailable
@@ -27,6 +29,7 @@ from autogpt_local_executor.protocol import (
     ComputerToolCallMessage,
     ComputerToolCallPayload,
     ComputerToolResultMessage,
+    ComputerToolResultPayload,
     ComputerToolsRequestMessage,
     ComputerToolsResponseMessage,
     ErrorCode,
@@ -376,6 +379,50 @@ async def test_closing_the_client_closes_the_drivers_stdin(fake_log: Path) -> No
     await client.close()
 
     assert _records(fake_log, "stdin_closed")
+
+
+@pytest.mark.parametrize("code", ['"-32602x"', '{"code": -32602}', "[-32602]", "NaN", "Infinity"])
+async def test_an_error_whose_code_isnt_an_integer_fails_only_its_own_request(
+    fake_log: Path, monkeypatch, code: str
+) -> None:
+    """int() of a JSON-RPC error's code raised for a string, an object, a
+    list, NaN or Infinity, in the task that reads the driver's answers: it
+    ended, and every request then failed as if the driver had exited."""
+    from autogpt_local_executor.computer_use.mcp_client import McpError
+
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR", "get_screen_size")
+    monkeypatch.setenv("FAKE_CUA_RPC_ERROR_CODE", code)
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=30)
+    try:
+        with pytest.raises(McpError) as raised:
+            await client.call_tool("get_screen_size", {}, timeout=30)
+        later = await client.call_tool("click", {"x": 1, "y": 2}, timeout=30)
+    finally:
+        await client.close()
+
+    assert raised.value.code == mcp_client.INTERNAL_ERROR
+    assert raised.value.message.startswith("get_screen_size broke")
+    # The reader went on: the driver's next answer came in.
+    assert later["structuredContent"] == {"arguments": {"x": 1, "y": 2}}
+
+
+async def test_a_line_nested_past_pythons_limit_is_passed_over(fake_log: Path, monkeypatch) -> None:
+    """json.loads raises RecursionError, not ValueError, for a line nested
+    past Python's limit: the task that reads the driver's answers ended, and
+    every request then failed as if the driver had exited. It's passed over
+    like any line that isn't JSON."""
+    monkeypatch.setenv("FAKE_CUA_NESTED_LINE", "click")
+    client = _fake_client([str(FAKE), "mcp"])
+    await client.start(timeout=30)
+    try:
+        answer = await client.call_tool("click", {"x": 1, "y": 2}, timeout=30)
+        alive = client.alive
+    finally:
+        await client.close()
+
+    assert answer["structuredContent"] == {"arguments": {"x": 1, "y": 2}}
+    assert alive
 
 
 # ── Bridge ───────────────────────────────────────────────────────────────
@@ -894,6 +941,69 @@ def test_an_explicit_driver_path_that_cannot_be_expanded_is_not_found(monkeypatc
     monkeypatch.setattr(driver.Path, "expanduser", no_home)
 
     assert driver.find_driver_binary("~nobody-here/cua-driver") is None
+
+
+async def test_a_driver_is_looked_for_off_the_event_loop(fake_log: Path, monkeypatch) -> None:
+    """A start looked for the driver on the event loop: the wheel's on
+    sys.path, else one on PATH, then its execute bit, statting files in each
+    folder on the way. A stalled mount there (NFS, FUSE) holds a stat for as
+    long as it stalls, and held every session's work and keepalive with it."""
+    loop_thread = threading.get_ident()
+    seen: dict[str, list[int]] = {"find_driver_binary": [], "ensure_executable": []}
+    for name in seen:
+        real = getattr(driver, name)
+
+        def watched(*args: Any, _real: Any = real, _name: str = name) -> Any:
+            seen[_name].append(threading.get_ident())
+            return _real(*args)
+
+        monkeypatch.setattr(driver, name, watched)
+    bridge = fake_bridge()
+
+    try:
+        snapshot = await bridge.snapshot()
+    finally:
+        await bridge.close()
+
+    assert snapshot.tools
+    for name, threads in seen.items():
+        assert threads and loop_thread not in threads, name
+
+
+async def test_a_look_for_the_driver_its_caller_gave_up_on_is_the_next_callers(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A look a stalled mount holds goes on in its thread once its caller
+    gives up (a HELLO whose connection closed, a chat's start undone). One
+    made again for each caller would stall too, until every worker thread
+    the sessions' file work shares was held: the next caller waits for it."""
+    started, released = threading.Event(), threading.Event()
+    looks: list[int] = []
+    find = driver.find_driver_binary
+
+    def stalled(explicit: Any = None) -> Path | None:
+        looks.append(threading.get_ident())
+        started.set()
+        released.wait(60)
+        return find(explicit)
+
+    monkeypatch.setattr(driver, "find_driver_binary", stalled)
+    bridge = fake_bridge()
+    first = asyncio.ensure_future(bridge.find_binary())
+    try:
+        assert await asyncio.to_thread(started.wait, 60)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        second = asyncio.ensure_future(bridge.find_binary())
+        await asyncio.sleep(0)  # as far as its wait for a look
+        released.set()
+
+        assert await asyncio.wait_for(second, 60) == FAKE.absolute()
+        assert len(looks) == 1
+    finally:
+        released.set()
+        await bridge.close()
 
 
 # ── Catalog ──────────────────────────────────────────────────────────────
@@ -1752,6 +1862,39 @@ async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
     ]
 
 
+async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """On Linux a launch's name is looked up on PATH (shutil.which), which
+    stats a file in each of its folders. A stalled mount there (NFS, FUSE)
+    holds a stat for as long as it stalls, and on the event loop it held
+    every session's work and keepalive with it."""
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    loop_thread = threading.get_ident()
+    looked_up_from: list[int] = []
+    check = handlers_module.check_arguments
+
+    def on_path(word: str) -> str | None:
+        looked_up_from.append(threading.get_ident())
+        return None
+
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = ()) -> None:
+        # Linux's check on every OS, with a PATH where no program has the name.
+        check(tool, arguments, approved, platform="linux", on_path=on_path)
+
+    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is False
+    assert looked_up_from and loop_thread not in looked_up_from
+
+
 @pytest.mark.parametrize(
     ("platform", "app"),
     [
@@ -2118,6 +2261,37 @@ async def test_a_cut_down_result_fits_the_negotiated_limit_as_json(make_handler)
     assert sum(len(json.dumps(text, ensure_ascii=False).encode()) for text in texts) <= 1000
     assert any("cut down" in text for text in texts)
     assert texts[0] and set(texts[0]) == {"\x00"}
+
+
+@pytest.mark.parametrize("budget", [32, 120, 170, 200, 1000])
+async def test_a_cut_down_result_fits_its_budget_as_sent(make_handler, budget: int) -> None:
+    """The budget was held against the blocks' text alone, not the payload's
+    fields or each block's wrapper, and the note added once the text was
+    cut wasn't counted either: with max_file_size_bytes 32, a long text
+    became an empty block and a note that alone took 196 bytes on the wire.
+    Where not even the note fits, the smallest result the protocol allows
+    goes, with no content."""
+    handler = make_handler()
+    handler.config.max_file_size_bytes = budget
+    text = "z" * 5000
+
+    payload, _summary = handler._result_payload(
+        "get_window_state",
+        {"content": [{"type": "text", "text": text}], "structuredContent": {"elements": []}},
+    )
+
+    def sent(result: ComputerToolResultPayload) -> int:
+        return len(result.model_dump_json().encode("utf-8"))
+
+    note = ComputerTextContent(text=handlers_module._CUT_DOWN_NOTE)
+    if sent(ComputerToolResultPayload(tool="get_window_state", content=[note])) > budget:
+        assert payload == ComputerToolResultPayload(tool="get_window_state")
+    else:
+        assert sent(payload) <= budget
+        *texts, last = payload.content
+        assert last == note
+        assert all(isinstance(b, ComputerTextContent) and text.startswith(b.text) for b in texts)
+        assert payload.structured_content is None
 
 
 async def test_a_call_cancelled_again_while_its_driver_stops_keeps_the_turn(

@@ -2021,7 +2021,16 @@ class ComputerUseHandler:
                 details={"tool": tool},
             )
         try:
-            check_arguments(tool, arguments, approved)
+            # In a worker thread: on Linux a launch's name is looked up on
+            # PATH (shutil.which), which stats a file in each of its folders,
+            # and a stalled mount (NFS, FUSE) holds a stat for as long as it
+            # stalls. On the event loop it held every session's work and
+            # keepalive. As with a file request's path checks, the call keeps
+            # its slot, and the computer's turn, until the thread ends: one
+            # let go at its deadline would leave the lookup holding a worker
+            # thread, and each later launch another. A check that ends past
+            # the deadline never reaches the driver (CallNotStarted, below).
+            await _read_in_a_thread(check_arguments, tool, arguments, approved)
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,
@@ -2268,18 +2277,24 @@ class ComputerUseHandler:
             )
         structured = raw.get("structuredContent")
         structured = structured if isinstance(structured, dict) else None
+        is_error = bool(raw.get("isError"))
 
         # Every operation's payload stays within the negotiated
-        # max_file_size_bytes (PROTOCOL.md), and within the frame, the notes
-        # added below included.
+        # max_file_size_bytes (PROTOCOL.md), and within the frame: the whole
+        # payload as it is sent, its fields, each block's wrapper and the
+        # notes added below included.
         budget = min(self.config.max_file_size_bytes, MAX_WIRE_BASE64_CONTENT_BYTES)
 
-        def size() -> int:
-            return (
-                sum(_block_size(block) for block in content)
-                + sum(_json_text_size(note) for note in notes)
-                + len(json.dumps(structured) if structured is not None else "")
+        def built() -> ComputerToolResultPayload:
+            return ComputerToolResultPayload(
+                tool=tool,
+                is_error=is_error,
+                content=[*content, *(ComputerTextContent(text=note) for note in notes)],
+                structured_content=structured,
             )
+
+        def size() -> int:
+            return _wire_size(built())
 
         if size() > budget:
             images = [block for block in content if isinstance(block, ComputerImageContent)]
@@ -2296,30 +2311,34 @@ class ComputerUseHandler:
                 (block for block in content if isinstance(block, ComputerTextContent)), None
             )
             content = []
-            notes.append("The result was cut down to fit the connection's message limit.")
+            notes.append(_CUT_DOWN_NOTE)
             if first_text is not None:
-                # Measured as JSON writes it: a control character takes six
-                # bytes there, so its UTF-8 length can be far less.
-                room = min(budget, MAX_WIRE_TEXT_CONTENT_BYTES) - size()
-                content.append(ComputerTextContent(text=_truncate_json_text(first_text.text, room)))
+                # As much of it as fits beside the notes, measured as JSON
+                # writes it: a control character takes six bytes there, so
+                # its UTF-8 length can be far less.
+                content = [ComputerTextContent(text="")]
+                room = min(budget - size() + _json_text_size(""), MAX_WIRE_TEXT_CONTENT_BYTES)
+                text = _truncate_json_text(first_text.text, room)
+                content = [ComputerTextContent(text=text)] if text else []
+        if size() > budget:
+            # Too small a budget for every note: the one that says the
+            # result was cut down, else none. That leaves the smallest result
+            # the protocol allows, the tool's name, is_error and no content,
+            # which goes even past a budget smaller than itself.
+            notes = notes[-1:]
+            if size() > budget:
+                notes = []
         for block in content:
             if isinstance(block, ComputerImageContent):
                 self._screenshot_rate.allow()
-        content.extend(ComputerTextContent(text=note) for note in notes)
-
-        payload = ComputerToolResultPayload(
-            tool=tool,
-            is_error=bool(raw.get("isError")),
-            content=content,
-            structured_content=structured,
-        )
+        payload = built()
         summary = {
             "is_error": payload.is_error,
-            "images": sum(isinstance(block, ComputerImageContent) for block in content),
+            "images": sum(isinstance(block, ComputerImageContent) for block in payload.content),
             "images_withheld": withheld,
             "text_bytes": sum(
                 len(block.text.encode("utf-8"))
-                for block in content
+                for block in payload.content
                 if isinstance(block, ComputerTextContent)
             ),
         }
@@ -2349,6 +2368,9 @@ CHILD_DRIVER_WAIT_SECONDS = 2.0
 # How long one computer tool call may run unless the platform asks for less
 # or more. The driver's own bounded waits (verify_state, run_script) fit.
 DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS = 120
+
+# The note a computer-use result cut down to its size limit ends with.
+_CUT_DOWN_NOTE = "The result was cut down to fit the connection's message limit."
 
 # Arguments whose values the audit log keeps only the length of: what the
 # agent typed, pasted, or scripted.
@@ -2468,12 +2490,11 @@ def _types_a_character(keys: list[Any], platform: str) -> bool:
     return False
 
 
-def _block_size(block: ComputerTextContent | ComputerImageContent) -> int:
-    """The block's bytes as JSON carries them: a control character takes six,
-    a quote or backslash two."""
-    if isinstance(block, ComputerImageContent):
-        return len(block.data)
-    return _json_text_size(block.text)
+def _wire_size(payload: ComputerToolResultPayload) -> int:
+    """The payload's bytes as the frame carries them (dump_message writes
+    model_dump_json): a control character takes six, a quote or backslash
+    two, and its fields and each block's wrapper count too."""
+    return len(payload.model_dump_json().encode("utf-8"))
 
 
 def _json_text_size(text: str) -> int:
