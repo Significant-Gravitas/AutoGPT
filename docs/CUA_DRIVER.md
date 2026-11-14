@@ -243,7 +243,9 @@ Known gaps:
   out), so the shim refuses such a `bundle_id`, and lets a `name` through
   only when an installed app, as `list_apps` lists it, would match it the
   way the driver matches: the exact name, ignoring case and a trailing
-  `.exe`, or one that starts with it. On every OS it refuses a `name`,
+  `.exe`, or one that starts with it. Either way it lists the installed
+  apps for each launch it checks, just before the launch, so an app removed
+  since an earlier listing doesn't let its name through. On every OS it refuses a `name`,
   `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
 - `set_value` writes a field's value directly, without visible keystrokes.

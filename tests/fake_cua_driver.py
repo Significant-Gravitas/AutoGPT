@@ -27,6 +27,8 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
   FAKE_CUA_APPS          JSON list of the installed apps list_apps returns: names, or
                          {"name", "bundle_id"} objects
+  FAKE_CUA_APPS_FILE     a file holding that list, read for each list_apps, so the
+                         installed apps can change while the fake runs
   FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
 """
 
@@ -133,15 +135,19 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
             error=True,
         )
     if name == "list_apps" and (
-        os.environ.get("FAKE_CUA_APPS") or os.environ.get("FAKE_CUA_LIST_APPS_ERROR")
+        os.environ.get("FAKE_CUA_APPS")
+        or os.environ.get("FAKE_CUA_APPS_FILE")
+        or os.environ.get("FAKE_CUA_LIST_APPS_ERROR")
     ):
         if os.environ.get("FAKE_CUA_LIST_APPS_ERROR"):
             return text_result(os.environ["FAKE_CUA_LIST_APPS_ERROR"], error=True)
+        if os.environ.get("FAKE_CUA_APPS_FILE"):
+            with open(os.environ["FAKE_CUA_APPS_FILE"], encoding="utf-8") as handle:
+                listed = json.load(handle)
+        else:
+            listed = json.loads(os.environ["FAKE_CUA_APPS"])
         # Each a name, or {"name", "bundle_id"} (on Linux the desktop-file id).
-        installed = [
-            app if isinstance(app, dict) else {"name": app}
-            for app in json.loads(os.environ["FAKE_CUA_APPS"])
-        ]
+        installed = [app if isinstance(app, dict) else {"name": app} for app in listed]
         # cua-driver 0.38 on Windows and Linux: installed apps carry their
         # launch_path; a running process no installed app matched has none.
         apps = [

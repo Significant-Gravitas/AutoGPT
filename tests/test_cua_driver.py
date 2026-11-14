@@ -1413,10 +1413,11 @@ async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
     for response in (first, second):
         assert isinstance(response, ComputerToolResultMessage)
         assert response.payload.is_error is False
-    # The installed apps are listed once and kept for a while.
+    # The installed apps are listed for each launch by name.
     assert [call["tool"] for call in _records(fake_log, "call")] == [
         "list_apps",
         "launch_app",
+        "list_apps",
         "launch_app",
     ]
 
@@ -1541,11 +1542,49 @@ async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
     for response in (first, second):
         assert isinstance(response, ComputerToolResultMessage)
         assert response.payload.is_error is False
-    # The installed apps are listed once and kept for a while.
+    # The installed apps are listed for each launch by name.
     assert [call["tool"] for call in _records(fake_log, "call")] == [
         "list_apps",
         "launch_app",
+        "list_apps",
         "launch_app",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("platform", "app"),
+    [
+        ("linux", {"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}),
+        ("win32", "Notepad"),
+    ],
+)
+async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_refused(
+    make_handler, fake_log, monkeypatch, tmp_path, platform: str, app: Any
+) -> None:
+    """The installed apps were kept for a minute, so the name of an app
+    removed meanwhile still went through. The driver, finding no app of that
+    name, hands it on Linux to xdg-open when a file or folder of that name
+    is in its working folder, and on Windows to ShellExecuteEx, which runs a
+    program of that name from PATH, neither with the person's approval."""
+    apps = tmp_path / "apps.json"
+    apps.write_text(json.dumps([app]), encoding="utf-8")
+    monkeypatch.setenv("FAKE_CUA_APPS_FILE", str(apps))
+    name = app["name"] if isinstance(app, dict) else app
+    handler = make_handler(platform=platform)
+
+    first = await handler.handle(_call("launch_app", {"name": name}))
+    apps.write_text("[]", encoding="utf-8")
+    second = await handler.handle(_call("launch_app", {"name": name}))
+
+    assert isinstance(first, ComputerToolResultMessage)
+    assert first.payload.is_error is False
+    assert isinstance(second, ErrorMessage)
+    assert second.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert second.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "list_apps",
+        "launch_app",
+        "list_apps",
     ]
 
 
