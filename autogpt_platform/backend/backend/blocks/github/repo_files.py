@@ -21,6 +21,7 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+from ._utils import canonical_repo_url
 
 
 class GithubReadFileBlock(Block):
@@ -35,9 +36,9 @@ class GithubReadFileBlock(Block):
             placeholder="path/to/file",
         )
         branch: str = SchemaField(
-            description="Branch to read from",
+            description="Branch to read from; leave empty for the repository default branch",
             placeholder="branch_name",
-            default="main",
+            default="",
         )
 
     class Output(BlockSchemaOutput):
@@ -79,9 +80,10 @@ class GithubReadFileBlock(Block):
     ) -> tuple[str, int]:
         api = get_api(credentials)
         content_url = (
-            repo_url
-            + f"/contents/{quote(file_path, safe='')}?ref={quote(branch, safe='')}"
+            canonical_repo_url(repo_url) + f"/contents/{quote(file_path, safe='')}"
         )
+        if branch.strip():
+            content_url += f"?ref={quote(branch, safe='')}"
         response = await api.get(content_url)
         data = response.json()
 
@@ -129,9 +131,9 @@ class GithubReadFolderBlock(Block):
             placeholder="path/to/folder",
         )
         branch: str = SchemaField(
-            description="Branch name to read from (defaults to main)",
+            description="Branch to read from; leave empty for the repository default branch",
             placeholder="branch_name",
-            default="main",
+            default="",
         )
 
     class Output(BlockSchemaOutput):
@@ -196,9 +198,10 @@ class GithubReadFolderBlock(Block):
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
         api = get_api(credentials)
         contents_url = (
-            repo_url
-            + f"/contents/{quote(folder_path, safe='/')}?ref={quote(branch, safe='')}"
+            canonical_repo_url(repo_url) + f"/contents/{quote(folder_path, safe='/')}"
         )
+        if branch.strip():
+            contents_url += f"?ref={quote(branch, safe='')}"
         response = await api.get(contents_url)
         data = response.json()
 
@@ -318,6 +321,7 @@ class GithubCreateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         contents_url = repo_url + f"/contents/{quote(file_path, safe='/')}"
         content_base64 = base64.b64encode(content.encode()).decode()
         data = {
@@ -418,6 +422,7 @@ class GithubUpdateFileBlock(Block):
         commit_message: str,
     ) -> tuple[str, str]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         contents_url = repo_url + f"/contents/{quote(file_path, safe='/')}"
         params = {"ref": branch}
         response = await api.get(contents_url, params=params)
@@ -690,6 +695,7 @@ class GithubGetRepositoryTreeBlock(Block):
         recursive: bool,
     ) -> tuple[bool, list[Output.TreeEntry]]:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
         tree_url = repo_url + f"/git/trees/{quote(branch, safe='')}"
         params = {"recursive": "1"} if recursive else {}
         response = await api.get(tree_url, params=params)

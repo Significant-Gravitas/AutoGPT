@@ -21,6 +21,7 @@ from ._auth import (
     GithubFineGrainedAPICredentialsField,
     GithubFineGrainedAPICredentialsInput,
 )
+from ._utils import canonical_repo_url
 
 
 class StatusState(Enum):
@@ -132,6 +133,7 @@ class GithubCreateStatusBlock(Block):
         context: str = "default",
     ) -> dict:
         api = get_api(credentials)
+        repo_url = canonical_repo_url(repo_url)
 
         class StatusData(BaseModel):
             state: str
