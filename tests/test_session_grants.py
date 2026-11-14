@@ -141,6 +141,37 @@ def _creation_time(monkeypatch: pytest.MonkeyPatch, birth: str | None) -> None:
     monkeypatch.setattr(session_grants, "directory_birth", lambda path: birth)
 
 
+def _mounts(monkeypatch: pytest.MonkeyPatch, table: Path, root: Path, source: str | None) -> None:
+    """From now on the shim's mount table (/proc/self/mountinfo) has the
+    folder that holds `root` mounted over NFS from `source`, on the device
+    `root` reports, and the system's root folder on another device. With no
+    `source`, no mount of that device."""
+    number = Path(os.path.realpath(root)).stat().st_dev
+    point = str(Path(os.path.realpath(root)).parent)
+    for char, escape in (("\\", "\\134"), (" ", "\\040"), ("\t", "\\011"), ("\n", "\\012")):
+        point = point.replace(char, escape)
+    lines = [
+        f"22 1 {os.major(number + 1)}:{os.minor(number + 1)} / / rw shared:1 - ext4 /dev/sda2 rw"
+    ]
+    if source is not None:
+        lines.append(
+            f"98 22 {os.major(number)}:{os.minor(number)} /export {point} rw,relatime "
+            f"shared:60 - nfs4 {source} rw,vers=4.2"
+        )
+    table.write_text("\n".join(lines) + "\n")
+    monkeypatch.setattr(session_grants, "_MOUNTINFO", str(table), raising=False)
+
+
+def _no_mount_table(monkeypatch: pytest.MonkeyPatch, missing: Path) -> None:
+    """From now on the shim can't read its mount table (no /proc, say)."""
+    monkeypatch.setattr(session_grants, "_MOUNTINFO", str(missing), raising=False)
+
+
+_linux_only = pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="on Linux a grant names its folder's mount"
+)
+
+
 def _grant(key: bytes, claims: dict[str, Any]) -> str:
     """A grant of `claims`, signed as RootGrantSigner signs one."""
     encoded = (
@@ -227,10 +258,12 @@ def test_a_grant_for_a_folder_with_no_creation_time_keeps_to_its_device(
     its path later: the root folders of two filesystems of one type usually
     share an inode number (2 on ext4). Without the device number in its
     fingerprint, the folder's grant restored on a filesystem the person
-    never chose. It restores while the device number holds."""
+    never chose. Where the folder's mount can't be found (or off Linux), it
+    restores while the device number holds."""
     root = tmp_path / "workspace"
     root.mkdir()
     _creation_time(monkeypatch, None)
+    _no_mount_table(monkeypatch, tmp_path / "no-mountinfo")
     signer = RootGrantSigner(b"a" * 32, "machine-1")
     issued = signer.issue("session-1", root, 1)
 
@@ -274,3 +307,97 @@ def test_a_grant_with_neither_a_device_number_nor_a_creation_time_is_refused(
 
     with pytest.raises(RootGrantError, match="changed"):
         RootGrantSigner(key, "machine-1").verify(grant, "session-1")
+
+
+@_linux_only
+def test_a_grant_for_a_folder_with_no_creation_time_keeps_to_its_mount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Linux numbers a share or a FUSE folder from a pool, its number freed
+    when it is unmounted, so another filesystem mounted at the folder's path
+    later can be given that number, and its root folder the same inode
+    number. With no creation time to tell them apart, the folder's grant
+    restored on that filesystem, one the person never chose. The grant names
+    the folder's mount now, and the same share mounted again restores."""
+    root = tmp_path / "shared folder" / "workspace"
+    root.mkdir(parents=True)
+    _creation_time(monkeypatch, None)
+    table = tmp_path / "mountinfo"
+    _mounts(monkeypatch, table, root, "nas.local:/export/projects")
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", root, 1)
+
+    assert signer.verify(issued.root_grant, "session-1") == issued
+    # Another share mounted at the path, given the freed device number.
+    _mounts(monkeypatch, table, root, "nas.local:/export/scratch")
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+    # The folder's own share, mounted again with that number.
+    _mounts(monkeypatch, table, root, "nas.local:/export/projects")
+    assert signer.verify(issued.root_grant, "session-1") == issued
+
+
+@_linux_only
+def test_a_grant_naming_its_mount_is_refused_where_the_mount_cant_be_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant that names its folder's mount isn't checked on the device
+    number alone, which a reused number matches, once the mount can't be
+    found: it is refused."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, None)
+    table = tmp_path / "mountinfo"
+    _mounts(monkeypatch, table, root, "nas.local:/export/projects")
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", root, 1)
+
+    _mounts(monkeypatch, table, root, None)
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+    _no_mount_table(monkeypatch, tmp_path / "no-mountinfo")
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+
+
+@_linux_only
+def test_a_grant_from_before_mounts_were_named_restores_while_its_device_number_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant for a folder with no creation time issued before grants named
+    the folder's mount holds its device number, inode number and path. It
+    still restores while that number holds: a chat holding one can't select
+    its folder again."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, None)
+    _mounts(monkeypatch, tmp_path / "mountinfo", root, "nas.local:/export/projects")
+    canonical = Path(os.path.realpath(root))
+    stat = canonical.stat(follow_symlinks=False)
+    identity = {
+        "device": stat.st_dev,
+        "inode": stat.st_ino,
+        "path": os.path.normcase(str(canonical)),
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    key = b"a" * 32
+    grant = _grant(
+        key,
+        {
+            "allowed_root": str(canonical),
+            "birth": None,
+            "fingerprint": fingerprint,
+            "issued_at": 1.0,
+            "machine_id": "machine-1",
+            "revision": 1,
+            "session_id": "session-1",
+        },
+    )
+    signer = RootGrantSigner(key, "machine-1")
+
+    assert signer.verify(grant, "session-1").fingerprint == fingerprint
+    _renumber_the_device(monkeypatch, root)
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(grant, "session-1")

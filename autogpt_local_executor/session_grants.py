@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -49,7 +50,7 @@ class RootGrantSigner:
             raise ValueError("revision must be positive")
         root = canonical_directory(allowed_root)
         birth = directory_birth(root)
-        fingerprint = _fingerprint(root, device=_needs_device(birth))
+        fingerprint = _issued_fingerprint(root, birth)
         claims = {
             "allowed_root": str(root),
             "birth": birth,
@@ -103,10 +104,13 @@ class RootGrantSigner:
             # A grant issued while every system's fingerprint held st_dev
             # restores while that number holds. Without a creation time
             # nothing else tells the folder from another filesystem mounted
-            # at its path, so such a grant needs the number.
+            # at its path, so such a grant needs the number, and on Linux
+            # one issued since names the folder's mount too.
             accepted = {_fingerprint(root, device=True)}
             if not _needs_device(birth):
                 accepted.add(_fingerprint(root, device=False))
+            elif birth is None and (mounted := _mount_fingerprint(root)) is not None:
+                accepted.add(mounted)
             if fingerprint not in accepted:
                 raise RootGrantError("The selected directory changed after the grant was issued")
             # A filesystem that reuses a freed inode (ext4, tmpfs) gives a
@@ -162,9 +166,17 @@ def directory_fingerprint(path: Path) -> str:
     filesystems of one type usually share an inode number (2 on ext4).
     There the device number counts, and a renumbered device asks for the
     folder again.
+
+    On Linux the number alone doesn't tell them apart either: a share or a
+    FUSE folder is numbered from a pool, its number freed when it is
+    unmounted, and the next one mounted can be given it. So there the
+    fingerprint also names the mount that holds the folder, by its source
+    (server:/export, /dev/sdb1) and filesystem type, which the same
+    filesystem mounted again keeps. Where the mount can't be found, the
+    device number counts alone.
     """
     root = canonical_directory(path)
-    return _fingerprint(root, device=_needs_device(directory_birth(root)))
+    return _issued_fingerprint(root, directory_birth(root))
 
 
 def _needs_device(birth: str | None) -> bool:
@@ -173,19 +185,104 @@ def _needs_device(birth: str | None) -> bool:
     return sys.platform == "win32" or birth is None
 
 
+def _issued_fingerprint(root: Path, birth: str | None) -> str:
+    """The fingerprint a grant issued now holds for `root`, whose creation
+    time is `birth`."""
+    if birth is None:
+        mounted = _mount_fingerprint(root)
+        if mounted is not None:
+            return mounted
+    return _fingerprint(root, device=_needs_device(birth))
+
+
 def _fingerprint(root: Path, *, device: bool) -> str:
+    return _digest(root, _root_stat(root), device=device)
+
+
+def _mount_fingerprint(root: Path) -> str | None:
+    """The fingerprint of a Linux folder with no creation time: its device
+    number, inode number and path, and the mount that holds it. None
+    elsewhere, and where the mount can't be found."""
+    if not sys.platform.startswith("linux"):
+        return None
+    stat = _root_stat(root)
+    mount = _linux_mount(root, stat.st_dev)
+    if mount is None:
+        return None
+    return _digest(root, stat, device=True, mount=mount)
+
+
+def _root_stat(root: Path) -> os.stat_result:
     try:
-        stat = root.stat(follow_symlinks=False)
+        return root.stat(follow_symlinks=False)
     except OSError as exc:
         raise RootGrantError("Selected root is unavailable") from exc
-    identity: dict[str, int | str] = {
+
+
+def _digest(
+    root: Path,
+    stat: os.stat_result,
+    *,
+    device: bool,
+    mount: dict[str, str] | None = None,
+) -> str:
+    identity: dict[str, object] = {
         "inode": stat.st_ino,
         "path": os.path.normcase(str(root)),
     }
     if device:
         identity["device"] = stat.st_dev
+    if mount is not None:
+        identity["mount"] = mount
     raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+# The mounts the shim can see, one a line (proc(5)): mount ID, parent ID,
+# major:minor, the mount's root, its mount point, options, optional fields,
+# "-", filesystem type, source, superblock options. A space, tab, newline or
+# backslash in a field is written as an octal escape (\040 for a space).
+_MOUNTINFO = "/proc/self/mountinfo"
+_MOUNTINFO_ESCAPE = re.compile(rb"\\([0-7]{3})")
+
+
+def _linux_mount(root: Path, device: int) -> dict[str, str] | None:
+    """The source and filesystem type of the mount that holds `root`, a
+    canonical path on device `device`: of the mounts of that device, the one
+    whose mount point is the longest that holds the path. None if the mount
+    table can't be read or no mount matches."""
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        with open(_MOUNTINFO, "rb") as table:
+            lines = table.read().splitlines()
+    except OSError:
+        return None
+    path = os.fsencode(root)
+    found: tuple[bytes, bytes, bytes] | None = None
+    for line in lines:
+        fields = line.split(b" ")
+        try:
+            separator = fields.index(b"-", 6)
+            major, minor = fields[2].split(b":")
+            number = os.makedev(int(major), int(minor))
+            point = _unescape(fields[4])
+            fs_type = _unescape(fields[separator + 1])
+            source = _unescape(fields[separator + 2])
+        except (IndexError, ValueError, OverflowError):
+            continue
+        holds = point == b"/" or path == point or path.startswith(point + b"/")
+        if number != device or not holds:
+            continue
+        if found is None or len(point) >= len(found[0]):
+            found = (point, fs_type, source)
+    if found is None:
+        return None
+    return {"source": os.fsdecode(found[2]), "type": os.fsdecode(found[1])}
+
+
+def _unescape(field: bytes) -> bytes:
+    return _MOUNTINFO_ESCAPE.sub(lambda match: bytes([int(match.group(1), 8)]), field)
 
 
 def directory_birth(path: Path) -> str | None:
