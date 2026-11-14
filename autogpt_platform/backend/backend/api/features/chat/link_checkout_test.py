@@ -13,6 +13,7 @@ import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.chat import link_checkout as routes
+from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.link_checkout import approval
 from backend.util.link_checkout.approval import (
     PendingApproval,
@@ -46,6 +47,9 @@ class FakeRedis:
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    # Deciding needs a plan; that rule is the paywall's own, covered by
+    # api/paywall_routes_test.py.
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
     yield
     app.dependency_overrides.clear()
 

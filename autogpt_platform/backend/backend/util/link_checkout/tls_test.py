@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import ipaddress
+import logging
 import os
 import socket
 import ssl
@@ -103,6 +104,12 @@ async def test_broker_requires_client_certificate_controller_secret_and_tenant(
         AsyncMock(return_value=BrowserOutput(code=0, output="synthetic")),
     )
     monkeypatch.delenv("COPILOT_LINK_PRIVATE_CHECKOUT", raising=False)
+    # uvicorn applies access_log=False by emptying the process-wide
+    # "uvicorn.access" logger and detaching it; restore both afterwards, or
+    # every later test that reads the access log sees nothing.
+    access = logging.getLogger("uvicorn.access")
+    monkeypatch.setattr(access, "handlers", list(access.handlers))
+    monkeypatch.setattr(access, "propagate", access.propagate)
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     origin = f"https://127.0.0.1:{listener.getsockname()[1]}"

@@ -18,9 +18,9 @@ the safety argument:
 """
 
 import json
-import time
 import uuid
 from pathlib import Path
+from time import time as wall_clock
 
 from pydantic import SecretStr
 
@@ -80,7 +80,7 @@ async def create_checkout(request: CreateCheckout) -> CheckoutView:
             user_id=request.user_id,
             session_id=key,
             approval_mode=request.approval_mode,
-            expires_at=time.time() + CHECKOUT_TTL_SECONDS,
+            expires_at=wall_clock() + CHECKOUT_TTL_SECONDS,
             plan=request.plan,
             browser=await prepare_browser(
                 await browser_endpoint(directory), request.plan
@@ -99,7 +99,7 @@ async def complete_checkout(request: AuthorizedCheckout) -> CheckoutView:
         intent = load_checkout(directory, request)
         if intent.attempted:
             return await _reconcile(directory, intent, request.access_token)
-        if intent.expires_at <= time.time():
+        if intent.expires_at <= wall_clock():
             return await _expired(directory, intent, request.access_token)
         require_payable(intent.plan.test_mode)
         if intent.spend_request_id is not None:
