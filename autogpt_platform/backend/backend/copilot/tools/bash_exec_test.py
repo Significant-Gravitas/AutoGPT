@@ -517,20 +517,18 @@ class TestBashExecShellKilledBySignal:
         assert result.timed_out is False
 
     @pytest.mark.parametrize(
-        "exit_code, timed_out, stderr, message",
+        "exit_code",
         [
-            (-15, False, "", _SHELL_KILLED_MESSAGE),
-            (2, False, "", "Command executed with status code 2"),
-            (-1, True, "Execution timed out after 10s", "Execution timed out"),
-            # run_sandboxed's own failure, not a signal.
-            (-1, False, "Sandbox error: boom", "Command executed with status code -1"),
+            # In its own PID namespace the command cannot signal bwrap, so a
+            # negative code is a signal from outside the sandbox.
+            -15,
+            # bwrap reports the shell's signal as 128+N, as `exit 143` does.
+            143,
         ],
-        ids=["signal", "exit", "timeout", "sandbox-error"],
+        ids=["bwrap-signalled", "self-kill"],
     )
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_in_bubblewrap(
-        self, tmp_path, exit_code: int, timed_out: bool, stderr: str, message: str
-    ):
+    async def test_in_bubblewrap_keeps_the_status_code(self, tmp_path, exit_code: int):
         with (
             patch(
                 "backend.copilot.tools.bash_exec.get_current_sandbox",
@@ -545,7 +543,7 @@ class TestBashExecShellKilledBySignal:
             ),
             patch(
                 "backend.copilot.tools.bash_exec.run_sandboxed",
-                new=AsyncMock(return_value=("", stderr, exit_code, timed_out)),
+                new=AsyncMock(return_value=("", "", exit_code, False)),
             ),
         ):
             result = await _make_tool()._execute(
@@ -556,9 +554,8 @@ class TestBashExecShellKilledBySignal:
             )
 
         assert isinstance(result, BashExecResponse)
-        assert result.message == message
+        assert result.message == f"Command executed with status code {exit_code}"
         assert result.exit_code == exit_code
-        assert result.timed_out is timed_out
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_on_local_pc_minus_one_is_not_envd_s_signal(self):

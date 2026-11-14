@@ -301,14 +301,12 @@ class BashExecTool(BaseTool):
             timeout=timeout,
         )
 
-        if timed_out:
-            message = "Execution timed out"
-        elif exit_code < -1:  # -N for signal N; -1 is run_sandboxed's own failure.
-            message = _SHELL_KILLED_MESSAGE
-        else:
-            message = f"Command executed with status code {exit_code}"
         return BashExecResponse(
-            message=message,
+            message=(
+                "Execution timed out"
+                if timed_out
+                else f"Command executed with status code {exit_code}"
+            ),
             stdout=stdout,
             stderr=stderr,
             exit_code=exit_code,
