@@ -35,7 +35,7 @@ _THREAD_SUSPEND_RESUME = 0x0002
 _TH32CS_SNAPTHREAD = 0x00000004
 # JOBOBJECTINFOCLASS values.
 _BASIC_ACCOUNTING_INFORMATION = 1
-_BASIC_LIMIT_INFORMATION = 2
+_EXTENDED_LIMIT_INFORMATION = 9
 _JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x00000800
 # ResumeThread's answer when it fails: (DWORD)-1.
 _RESUME_FAILED = 0xFFFFFFFF
@@ -82,6 +82,32 @@ class _BasicLimits(ctypes.Structure):
         ("Affinity", ctypes.c_size_t),
         ("PriorityClass", ctypes.c_uint32),
         ("SchedulingClass", ctypes.c_uint32),
+    ]
+
+
+class _IoCounters(ctypes.Structure):
+    # IO_COUNTERS (winnt.h).
+    _fields_ = [
+        ("ReadOperationCount", ctypes.c_uint64),
+        ("WriteOperationCount", ctypes.c_uint64),
+        ("OtherOperationCount", ctypes.c_uint64),
+        ("ReadTransferCount", ctypes.c_uint64),
+        ("WriteTransferCount", ctypes.c_uint64),
+        ("OtherTransferCount", ctypes.c_uint64),
+    ]
+
+
+class _ExtendedLimits(ctypes.Structure):
+    # JOBOBJECT_EXTENDED_LIMIT_INFORMATION (winnt.h). JOB_OBJECT_LIMIT_BREAKAWAY_OK
+    # is one of the limits Windows takes only through this structure: in the
+    # basic one, SetInformationJobObject refuses it (ERROR_INVALID_PARAMETER).
+    _fields_ = [
+        ("BasicLimitInformation", _BasicLimits),
+        ("IoInfo", _IoCounters),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
     ]
 
 
@@ -198,9 +224,10 @@ def _job_holding(kernel32: Any, pid: int) -> CommandJob:
         raise _last_error()
     job = CommandJob(handle)
     try:
-        limits = _BasicLimits(LimitFlags=_JOB_OBJECT_LIMIT_BREAKAWAY_OK)
+        limits = _ExtendedLimits()
+        limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_BREAKAWAY_OK
         if not kernel32.SetInformationJobObject(
-            handle, _BASIC_LIMIT_INFORMATION, ctypes.byref(limits), ctypes.sizeof(limits)
+            handle, _EXTENDED_LIMIT_INFORMATION, ctypes.byref(limits), ctypes.sizeof(limits)
         ):
             raise _last_error()
         process = kernel32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)

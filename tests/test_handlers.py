@@ -1728,6 +1728,8 @@ async def test_a_stopped_windows_command_takes_the_processes_it_started_with_it(
     try:
         assert await _wait_until(ready.exists, timeout=60)
         assert not _released(held)
+        # The command got its job: without one, the stop ends it alone.
+        assert len(handlers_module._command_jobs) == 1
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
