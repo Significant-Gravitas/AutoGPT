@@ -93,118 +93,6 @@ _KILL_TIMEOUT_SECONDS = 10
 # stream setup. Capping this far below it lets the tool's own timeout land first.
 _HUNG_CAP_MARGIN_SECONDS = 120
 
-# envd's kill reaches only the shell it started, and at a timeout envd has
-# already killed and reaped that shell itself, leaving what it started (`npm
-# install && npm run build`) running under new parents. Those are found by the
-# session the command runs in (`_follow_command`) as well as under the shell.
-# This stops the shell if it is still there, so it cannot start the next step
-# once a child dies, then stops and kills the rest. The shell itself is left for
-# envd's kill. Exits non-zero if any of them is still alive afterwards (e.g. one
-# run as root).
-# /proc is read through cat because awk aborts on an input file that vanished
-# after the glob expanded, which any process exiting meanwhile causes, and the
-# listing would then come back empty. A child can fork between a listing and
-# its STOP, so the stopping repeats until the listing holds still; if it never
-# does, whatever forked after the last listing may survive, so that exits 1 too.
-_KILL_TREE_SCRIPT = r"""
-p=__PID__
-kill -STOP "$p" 2>/dev/null
-under() {
-  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
-    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
-      parent[pid] = f[2]; state[pid] = f[1]
-      if (f[4] == root && pid != root) { mine[pid] = 1; q[++n] = pid } }
-    END { q[++n] = root
-          while (n) { r = q[n--]
-                      for (k in parent) if (parent[k] == r && !(k in mine)) {
-                        mine[k] = 1; q[++n] = k } }
-          for (k in mine) if (state[k] != "Z") print k }
-  ' | sort -n
-}
-kids= settled=
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
-  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
-done
-[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
-[ -n "$settled" ] || exit 1
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [ -z "$(under)" ] && exit 0
-  sleep 0.1
-done
-exit 1
-"""
-
-
-class _E2BRun(BaseModel):
-    """How a command on the box ended, with all the output we received."""
-
-    stdout: str
-    stderr: str
-    elapsed: float
-    exit_code: int | None = None
-    timed_out: bool = False
-    # It printed more than MAX_OUTPUT_SIZE on one stream; the rest is not kept.
-    output_exceeded: bool = False
-    # Kill sent after either: True done, False not found, None unknown.
-    killed: bool | None = None
-    # Nothing the command started is left: every process in its session or
-    # under its shell was killed, or had ended.
-    children_killed: bool = False
-    # Why we stopped following a command that had not ended: the stream
-    # error's type name.
-    lost: str | None = None
-    # The command ended while we were not attached: no exit code.
-    ended_unseen: bool = False
-    reconnects: int = 0
-
-
-def _build_completion_response(
-    stdout: str | None,
-    stderr: str | None,
-    exit_code: int,
-    secret_values: list[str],
-    session_id: str | None,
-    *,
-    timed_out: bool = False,
-    output_truncated: bool = False,
-) -> BashExecResponse:
-    """The command's result, with any injected token replaced by [REDACTED].
-
-    Not a security control: a literal match on one command's output, beaten by
-    base64, ``rev`` or a newline, blind to files read back and to anything sent
-    over the network.  It only keeps an accidental ``env`` from printing a
-    token into the chat.  Behind the swap proxy there is no token in the box
-    and nothing to redact.
-    """
-    out = stdout or ""
-    err = stderr or ""
-    for secret in secret_values:
-        out = out.replace(secret, "[REDACTED]")
-        err = err.replace(secret, "[REDACTED]")
-    return BashExecResponse(
-        message=(
-            "Execution timed out and output was truncated by the Local PC executor limit."
-            if timed_out and output_truncated
-            else (
-                "Execution timed out"
-                if timed_out
-                else (
-                    f"Command executed with status code {exit_code}. Output was truncated "
-                    "by the Local PC executor limit."
-                    if output_truncated
-                    else f"Command executed with status code {exit_code}"
-                )
-            )
-        ),
-        stdout=out,
-        stderr=err,
-        exit_code=exit_code,
-        timed_out=timed_out,
-        output_truncated=output_truncated,
-        session_id=session_id,
-    ).from_outside(out, err)
-
 
 class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
@@ -587,6 +475,29 @@ class BashExecTool(BaseTool):
         return _run_response(run, timeout, secret_values, session_id)
 
 
+class _E2BRun(BaseModel):
+    """How a command on the box ended, with all the output we received."""
+
+    stdout: str
+    stderr: str
+    elapsed: float
+    exit_code: int | None = None
+    timed_out: bool = False
+    # It printed more than MAX_OUTPUT_SIZE on one stream; the rest is not kept.
+    output_exceeded: bool = False
+    # Kill sent after either: True done, False not found, None unknown.
+    killed: bool | None = None
+    # Nothing the command started is left: every process in its session or
+    # under its shell was killed, or had ended.
+    children_killed: bool = False
+    # Why we stopped following a command that had not ended: the stream
+    # error's type name.
+    lost: str | None = None
+    # The command ended while we were not attached: no exit code.
+    ended_unseen: bool = False
+    reconnects: int = 0
+
+
 async def _follow_command(
     sandbox: AsyncSandbox, command: str, timeout: int, envs: dict[str, str]
 ) -> _E2BRun:
@@ -677,10 +588,6 @@ async def _follow_command(
                 return outcome(lost=type(exc).__name__)
 
 
-class _OutputExceeded(Exception):
-    """A command printed more than ``MAX_OUTPUT_SIZE`` on one stream."""
-
-
 class _CappedOutput:
     """One output stream of a command, kept up to ``MAX_OUTPUT_SIZE``."""
 
@@ -697,6 +604,10 @@ class _CappedOutput:
         if len(kept) < len(chunk):
             self.exceeded = True
             raise _OutputExceeded
+
+
+class _OutputExceeded(Exception):
+    """A command printed more than ``MAX_OUTPUT_SIZE`` on one stream."""
 
 
 async def _kill(sandbox: AsyncSandbox, pid: int) -> dict[str, Any]:
@@ -724,6 +635,49 @@ async def _kill_children(sandbox: AsyncSandbox, pid: int) -> bool:
     return result.exit_code == 0
 
 
+# envd's kill reaches only the shell it started, and at a timeout envd has
+# already killed and reaped that shell itself, leaving what it started (`npm
+# install && npm run build`) running under new parents. Those are found by the
+# session the command runs in (`_follow_command`) as well as under the shell.
+# This stops the shell if it is still there, so it cannot start the next step
+# once a child dies, then stops and kills the rest. The shell itself is left for
+# envd's kill. Exits non-zero if any of them is still alive afterwards (e.g. one
+# run as root).
+# /proc is read through cat because awk aborts on an input file that vanished
+# after the glob expanded, which any process exiting meanwhile causes, and the
+# listing would then come back empty. A child can fork between a listing and
+# its STOP, so the stopping repeats until the listing holds still; if it never
+# does, whatever forked after the last listing may survive, so that exits 1 too.
+_KILL_TREE_SCRIPT = r"""
+p=__PID__
+kill -STOP "$p" 2>/dev/null
+under() {
+  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
+    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
+      parent[pid] = f[2]; state[pid] = f[1]
+      if (f[4] == root && pid != root) { mine[pid] = 1; q[++n] = pid } }
+    END { q[++n] = root
+          while (n) { r = q[n--]
+                      for (k in parent) if (parent[k] == r && !(k in mine)) {
+                        mine[k] = 1; q[++n] = k } }
+          for (k in mine) if (state[k] != "Z") print k }
+  ' | sort -n
+}
+kids= settled=
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
+  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
+done
+[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+[ -n "$settled" ] || exit 1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [ -z "$(under)" ] && exit 0
+  sleep 0.1
+done
+exit 1
+"""
+
+
 def _run_response(
     run: _E2BRun, timeout: int, secret_values: list[str], session_id: str | None
 ) -> BashExecResponse:
@@ -731,6 +685,9 @@ def _run_response(
         response = _build_completion_response(
             run.stdout, run.stderr, run.exit_code, secret_values, session_id
         )
+        # envd reports Go's ExitCode(), which is -1 for a process a signal ended.
+        if run.exit_code == -1:
+            response.message = _SHELL_KILLED_MESSAGE
         if run.reconnects:
             response.message += (
                 f" (the connection to the sandbox dropped {run.reconnects} "
@@ -788,6 +745,64 @@ def _run_response(
     response.message = message
     response.timed_out = run.timed_out
     return response
+
+
+def _build_completion_response(
+    stdout: str | None,
+    stderr: str | None,
+    exit_code: int,
+    secret_values: list[str],
+    session_id: str | None,
+    *,
+    timed_out: bool = False,
+    output_truncated: bool = False,
+) -> BashExecResponse:
+    """The command's result, with any injected token replaced by [REDACTED].
+
+    Not a security control: a literal match on one command's output, beaten by
+    base64, ``rev`` or a newline, blind to files read back and to anything sent
+    over the network.  It only keeps an accidental ``env`` from printing a
+    token into the chat.  Behind the swap proxy there is no token in the box
+    and nothing to redact.
+    """
+    out = stdout or ""
+    err = stderr or ""
+    for secret in secret_values:
+        out = out.replace(secret, "[REDACTED]")
+        err = err.replace(secret, "[REDACTED]")
+    return BashExecResponse(
+        message=(
+            "Execution timed out and output was truncated by the Local PC executor limit."
+            if timed_out and output_truncated
+            else (
+                "Execution timed out"
+                if timed_out
+                else (
+                    f"Command executed with status code {exit_code}. Output was truncated "
+                    "by the Local PC executor limit."
+                    if output_truncated
+                    else f"Command executed with status code {exit_code}"
+                )
+            )
+        ),
+        stdout=out,
+        stderr=err,
+        exit_code=exit_code,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
+        session_id=session_id,
+    ).from_outside(out, err)
+
+
+# `bash -c '<command>'` carries the whole command in its own argv, which is
+# what a `pkill -f` pattern taken from that command then matches.
+_SHELL_KILLED_MESSAGE = (
+    "The command's shell was killed by a signal before it finished, so later "
+    "steps in the command did not run. The usual cause is a `pkill -f` whose "
+    "pattern matches this command's own text. Use `pkill -x <name>`, or "
+    "`pkill -f '[n]pm install'` if the command does not also contain "
+    "`npm install`."
+)
 
 
 async def _lands_on(path: str) -> bool:
