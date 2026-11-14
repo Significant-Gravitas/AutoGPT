@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -472,6 +473,24 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
 
     assert websocket.closed is not None and websocket.closed[0] == close_code
     assert daemon._disable_reconnect is True
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_control_hello_ack_is_reported_without_what_it_held(
+    tmp_path: Path,
+) -> None:
+    """The error a control daemon stops with carried pydantic's, whose text
+    quotes the values the HELLO_ACK held, in its traceback."""
+    daemon = _control_daemon(tmp_path)
+    websocket = _AckSocket({**_CONTROL_ACK, "granted_capabilities": "hunter2-held-value"})
+
+    with pytest.raises(RuntimeError) as raised:
+        await daemon._handshake(websocket)
+
+    told = "".join(traceback.format_exception(raised.value))
+    assert "hunter2" not in told
+    assert "HELLO_ACK.payload.granted_capabilities: list_type" in told
+    assert websocket.closed is not None and websocket.closed[0] == 4400
 
 
 @pytest.mark.asyncio

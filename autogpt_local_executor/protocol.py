@@ -1266,10 +1266,17 @@ def parse_message(raw: str | bytes) -> Any:
     Parse a raw WebSocket frame into a typed message.
 
     Returns one of the *Message classes from this module. Raises
-    ValidationError on malformed/unknown frames.
+    ValidationError on malformed/unknown frames, and ValueError on a frame
+    that isn't UTF-8 or JSON or that the checks below refuse; their text
+    quotes nothing the frame held. pydantic's does: describe_parse_failure
+    says what was wrong without it.
     """
     if isinstance(raw, bytes):
-        raw = raw.decode("utf-8")
+        try:
+            raw = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            # The decoder's own text quotes the byte it couldn't read.
+            raise ValueError(f"frame is not UTF-8 (byte {exc.start}: {exc.reason})") from None
     try:
         data = json.loads(
             raw,
@@ -1292,7 +1299,7 @@ def parse_message(raw: str | bytes) -> Any:
 def _finite_float(text: str) -> float:
     value = float(text)
     if not math.isfinite(value):
-        raise ValueError(f"frame holds a number that isn't finite: {text}")
+        raise ValueError("frame holds a number that isn't finite")
     return value
 
 
@@ -1303,12 +1310,39 @@ def _double_range_int(text: str) -> int:
     try:
         float(value)
     except OverflowError:
-        raise ValueError(f"frame holds a number too large for a double: {text[:32]}...") from None
+        raise ValueError("frame holds a number too large for a double") from None
     return value
 
 
-def _no_constant(name: str) -> Any:
-    raise ValueError(f"frame holds a number that isn't finite: {name}")
+def _no_constant(_name: str) -> Any:
+    raise ValueError("frame holds a number that isn't finite")
+
+
+# How many of a refused frame's errors describe_parse_failure names.
+_NAMED_PARSE_ERRORS = 5
+
+
+def describe_parse_failure(exc: ValueError) -> str:
+    """Why parse_message refused a frame, without what the frame held.
+
+    pydantic's text quotes the value each error is about, and for a missing
+    field or an unknown type that is the whole object around it: a malformed
+    computer tool call put the text it was to type into the log, past the
+    audit log's redaction. A ValidationError is told by where each error is
+    (the message type, field names, list positions, and the name of a map's
+    key or of a field the frame shouldn't have) and its kind. parse_message's
+    other errors quote nothing the frame held, so their text is kept."""
+    if not isinstance(exc, ValidationError):
+        return str(exc)
+    errors = exc.errors(include_url=False, include_context=False, include_input=False)
+    named = [
+        f"{'.'.join(str(part) for part in error['loc']) or 'frame'}: {error['type']}"
+        for error in errors[:_NAMED_PARSE_ERRORS]
+    ]
+    if len(errors) > _NAMED_PARSE_ERRORS:
+        named.append(f"{len(errors) - _NAMED_PARSE_ERRORS} more")
+    noun = "error" if len(errors) == 1 else "errors"
+    return f"{len(errors)} validation {noun} ({', '.join(named)})"
 
 
 # How deeply an inbound frame may nest. No message comes close: a run_steps
@@ -1496,6 +1530,7 @@ __all__ = [
     "ValidationError",
     "ValueType",
     "WorkflowRecording",
+    "describe_parse_failure",
     "dump_message",
     "make_ack",
     "make_error",

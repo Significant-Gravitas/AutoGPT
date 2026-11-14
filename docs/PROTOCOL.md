@@ -72,6 +72,9 @@ frame whose objects and arrays nest more than 64 levels deep is logged and
 dropped the same way; no message comes close. So is one holding `NaN`,
 `Infinity` or a number too large for a double (`1e999`, or a whole number
 309 digits long): JSON has none of them, though some encoders write them.
+The shim's log says where such a frame failed and how
+(`COMPUTER_TOOL_CALL.payload.tool: missing`), never what it held, so the
+text a malformed computer tool call was to type stays out of it.
 
 ### Frame-level `version`
 

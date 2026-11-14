@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -349,3 +351,84 @@ async def _coro_noop() -> None:
 
 async def _coro_arg_noop(*_args: Any, **_kwargs: Any) -> None:
     return None
+
+
+# ── A frame that fails to parse ────────────────────────────────────────────
+
+# What a computer tool call would have typed: the audit log keeps only its
+# length. pydantic cuts a long value short in the middle, keeping its end.
+_TYPED = "hunter2-typed-password"
+_TYPED_END = _TYPED[-14:]
+# The leading digits of a number too large for a double.
+_DIGITS = "31415926535897932384626433832795"
+
+
+def _call_frame(payload: dict[str, Any], kind: str = "COMPUTER_TOOL_CALL") -> str:
+    return json.dumps(
+        {"type": kind, "id": "call-1", "ts": 1.0, "version": VERSION, "payload": payload}
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "where", "held"),
+    [
+        (
+            _call_frame({"tool": "type_text", "arguments": [_TYPED]}),
+            "COMPUTER_TOOL_CALL.payload.arguments: dict_type",
+            _TYPED_END,
+        ),
+        (
+            _call_frame({"arguments": {"text": _TYPED}}),
+            "COMPUTER_TOOL_CALL.payload.tool: missing",
+            _TYPED_END,
+        ),
+        (
+            _call_frame({"tool": "type_text", "arguments": {"text": _TYPED}}, "COMPUTER_TOOL_CAL"),
+            "frame: union_tag_invalid",
+            _TYPED_END,
+        ),
+        (
+            '{"type": "PING", "id": "p", "ts": ' + _DIGITS + "0" * 400 + ', "payload": {}}',
+            "frame holds a number too large for a double",
+            _DIGITS[:8],
+        ),
+        (b'{"type": "PING", "id": "\xff"}', "frame is not UTF-8", "0xff"),
+    ],
+    ids=["arguments-not-an-object", "no-tool", "unknown-type", "huge-number", "not-utf8"],
+)
+async def test_a_frame_that_fails_to_parse_is_logged_without_what_it_held(
+    daemon: ShimDaemon,
+    caplog: pytest.LogCaptureFixture,
+    raw: str | bytes,
+    where: str,
+    held: str,
+) -> None:
+    """pydantic's text quotes each value it refused, and for a missing field
+    or an unknown type the whole object around it, so a malformed computer
+    tool call put the text it was to type into the log, past the audit
+    log's redaction. The log says where the frame failed and how instead."""
+    with caplog.at_level(logging.DEBUG):
+        await daemon._on_frame(_FakeWebSocket([]), raw)
+
+    assert held not in caplog.text
+    assert where in caplog.text
+
+
+async def test_a_malformed_hello_ack_is_reported_without_what_it_held(daemon: ShimDaemon) -> None:
+    """A session's handshake passed pydantic's error on, and the reconnect
+    loop logs it: the values of the HELLO_ACK, or of a frame sent in its
+    place, went into the log."""
+    ack = {
+        "type": "HELLO_ACK",
+        "id": "__HELLO_ID__",
+        "ts": now_ts(),
+        "payload": {"session_id": "test-session", "granted_capabilities": _TYPED},
+    }
+    ws = _FakeWebSocket(inbound=[json.dumps(ack)])
+
+    with pytest.raises(ValueError) as raised:
+        await daemon._handshake(ws)
+
+    told = "".join(traceback.format_exception(raised.value))
+    assert _TYPED not in told
+    assert "HELLO_ACK.payload.granted_capabilities: list_type" in told
