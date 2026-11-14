@@ -1,6 +1,7 @@
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getPostHogSessionHeader } from "@/services/analytics/posthog-request-context";
 import { getWebSocketToken } from "@/lib/auth/actions";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -33,7 +34,8 @@ export const COPILOT_COMPLETION_NOTIFICATION = {
  * impersonation works consistently across the entire copilot feature.
  */
 export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
-  const { token, error } = await getWebSocketToken();
+  const { token, error, retryable } = await getWebSocketToken();
+  if (error && retryable) throw new AuthTokenUnavailableError();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
     throw new CopilotAuthError();
