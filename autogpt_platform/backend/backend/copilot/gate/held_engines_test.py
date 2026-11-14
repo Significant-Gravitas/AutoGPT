@@ -393,10 +393,7 @@ def _baseline_patches(resolve, persist, model_loop) -> Iterator[None]:
             f"{svc}.normalize_model_for_transport",
             new=MagicMock(side_effect=lambda model, cfg=None: model),
         ),
-        patch(
-            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
-            new=AsyncMock(return_value=None),
-        ),
+        patch(f"{svc}.get_or_create_sandbox", new=AsyncMock(return_value=None)),
         patch(
             f"{svc}._build_system_prompt",
             new=AsyncMock(return_value=("system prompt", None)),

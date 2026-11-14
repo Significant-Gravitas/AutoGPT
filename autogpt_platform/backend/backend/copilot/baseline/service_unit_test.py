@@ -3237,7 +3237,7 @@ async def _run_baseline_until_experts_gate(*, user_id: str | None) -> AsyncMock:
             new=MagicMock(side_effect=lambda model, cfg=None: model),
         ),
         patch(
-            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            "backend.copilot.baseline.service.get_or_create_sandbox",
             new=AsyncMock(return_value=None),
         ),
         patch(
@@ -3304,7 +3304,7 @@ async def test_execution_context_is_set_before_attachments_are_prepared() -> Non
             new=MagicMock(side_effect=lambda model, cfg=None: model),
         ),
         patch(
-            "backend.copilot.tools.e2b_sandbox.get_or_create_sandbox",
+            "backend.copilot.baseline.service.get_or_create_sandbox",
             new=AsyncMock(return_value=None),
         ),
         patch(

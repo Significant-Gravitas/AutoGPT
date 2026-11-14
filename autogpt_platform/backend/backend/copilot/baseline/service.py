@@ -170,6 +170,7 @@ from backend.copilot.tools import (
     tool_names_in_groups,
 )
 from backend.copilot.tools.e2b_sandbox import (
+    SandboxUnavailableError,
     count_expert_turn,
     forget_turn_ceiling,
     get_or_create_sandbox,
@@ -2042,6 +2043,7 @@ async def stream_chat_completion_baseline(
         e2b_sandbox = None
         e2b_api_key = config.active_e2b_api_key
         if e2b_api_key:
+            refusal: SandboxLimitError | SandboxUnavailableError | None = None
             try:
                 # An expert session runs on the expert's own persistent box;
                 # everything else gets a per-session sandbox.
@@ -2061,9 +2063,14 @@ async def stream_chat_completion_baseline(
                     # unpaused at every later turn end.
                     count_turn=False,
                 )
-            except SandboxLimitError as refusal:
-                # Refused under a running-box limit: the turn ends here rather
-                # than running its commands on the local fallback.
+            except SandboxLimitError as limit:
+                refusal = limit
+            except Exception:
+                logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+                refusal = SandboxUnavailableError()
+            if refusal is not None:
+                # E2B is configured but the box did not start: the turn ends
+                # here rather than running its commands on the local fallback.
                 await forget_turn_ceiling(session_id, session.expert_id)
                 await _requeue_pending(session_id, drained_at_start_pending)
                 # Saved before the yield, as on the outer error path, so a
@@ -2078,9 +2085,6 @@ async def stream_chat_completion_baseline(
                         )
                 yield StreamError(errorText=str(refusal), code=refusal.code)
                 return
-            except Exception:
-                logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
-                await forget_turn_ceiling(session_id, session.expert_id)
 
         # --- Transcript support (feature parity with SDK path) ---
         transcript_builder = TranscriptBuilder()
