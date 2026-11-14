@@ -1,5 +1,6 @@
 """Tests for CreateAgentTool."""
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from ._test_data import make_session
 
 _TEST_USER_ID = "test-user-create-agent"
 _PIPELINE = "backend.copilot.tools.agent_generator.pipeline"
+_TOOL = "backend.copilot.tools.create_agent"
 
 
 @pytest.fixture
@@ -52,33 +54,9 @@ async def test_local_mode_empty_nodes_returns_error(tool, session):
 @pytest.mark.asyncio
 async def test_local_mode_preview(tool, session):
     """Local mode with save=false returns AgentPreviewResponse."""
-    agent_json = {
-        "name": "Test Agent",
-        "description": "A test agent",
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "block-1",
-                "input_default": {},
-                "metadata": {"position": {"x": 0, "y": 0}},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent(name="Test Agent", description="A test agent")
 
-    mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = MagicMock(return_value=agent_json)
-    mock_fixer.get_fixes_applied.return_value = []
-
-    mock_validator = MagicMock()
-    mock_validator.validate.return_value = (True, None)
-    mock_validator.errors = []
-
-    with (
-        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
-        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
-        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
-    ):
+    with _patched_pipeline(agent_json):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -94,31 +72,9 @@ async def test_local_mode_preview(tool, session):
 @pytest.mark.asyncio
 async def test_local_mode_validation_failure(tool, session):
     """Local mode returns ErrorResponse when validation fails after fixing."""
-    agent_json = {
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "bad-block",
-                "input_default": {},
-                "metadata": {},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent({"block_id": "bad-block", "metadata": {}})
 
-    mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = MagicMock(return_value=agent_json)
-    mock_fixer.get_fixes_applied.return_value = []
-
-    mock_validator = MagicMock()
-    mock_validator.validate.return_value = (False, "Block 'bad-block' not found")
-    mock_validator.errors = ["Block 'bad-block' not found"]
-
-    with (
-        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
-        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
-        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
-    ):
+    with _patched_pipeline(agent_json, errors=["Block 'bad-block' not found"]):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -138,30 +94,9 @@ async def test_is_hidden_passes_through_to_pipeline(tool, session, is_hidden):
     fix_validate_and_save unchanged so trigger agents land in the DB
     hidden. Regression for an earlier review finding that the kwarg
     plumbing was untested."""
-    agent_json = {
-        "name": "Trigger Watcher",
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "block-1",
-                "input_default": {},
-                "metadata": {"position": {"x": 0, "y": 0}},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent(name="Trigger Watcher")
 
-    mock_fix = MagicMock(name="fix_validate_and_save_result")
-    with (
-        patch(
-            "backend.copilot.tools.create_agent.fetch_library_agents",
-            new=AsyncMock(return_value=[]),
-        ),
-        patch(
-            "backend.copilot.tools.create_agent.fix_validate_and_save",
-            new=AsyncMock(return_value=mock_fix),
-        ) as mock_fix_validate,
-    ):
+    with _patched_save() as mock_fix_validate:
         await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -181,18 +116,7 @@ async def test_create_agent_gated_until_library_check(tool):
     """Without prior find_library_agent, create_agent must refuse."""
     session = make_session(_TEST_USER_ID, library_check=False)
 
-    agent_json = {
-        "name": "Test Agent",
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "block-1",
-                "input_default": {},
-                "metadata": {"position": {"x": 0, "y": 0}},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent(name="Test Agent")
 
     result = await tool._execute(
         user_id=_TEST_USER_ID,
@@ -211,30 +135,9 @@ async def test_create_agent_skipped_with_ack(tool):
     was never called this session."""
     session = make_session(_TEST_USER_ID, library_check=False)
 
-    agent_json = {
-        "name": "Test Agent",
-        "description": "A test agent",
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "block-1",
-                "input_default": {},
-                "metadata": {"position": {"x": 0, "y": 0}},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent(name="Test Agent", description="A test agent")
 
-    with (
-        patch(
-            "backend.copilot.tools.create_agent.fetch_library_agents",
-            new=AsyncMock(return_value=[]),
-        ),
-        patch(
-            "backend.copilot.tools.create_agent.fix_validate_and_save",
-            new=AsyncMock(return_value=MagicMock()),
-        ) as mock_fix_validate,
-    ):
+    with _patched_save() as mock_fix_validate:
         await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -251,30 +154,9 @@ async def test_create_agent_skipped_in_builder_context(tool):
     session = make_session(_TEST_USER_ID, library_check=False)
     session.metadata.builder_graph_id = "some-graph-id"
 
-    agent_json = {
-        "name": "Test Agent",
-        "description": "A test agent",
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "block-1",
-                "input_default": {},
-                "metadata": {"position": {"x": 0, "y": 0}},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent(name="Test Agent", description="A test agent")
 
-    with (
-        patch(
-            "backend.copilot.tools.create_agent.fetch_library_agents",
-            new=AsyncMock(return_value=[]),
-        ),
-        patch(
-            "backend.copilot.tools.create_agent.fix_validate_and_save",
-            new=AsyncMock(return_value=MagicMock()),
-        ) as mock_fix_validate,
-    ):
+    with _patched_save() as mock_fix_validate:
         await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -287,31 +169,9 @@ async def test_create_agent_skipped_in_builder_context(tool):
 @pytest.mark.asyncio
 async def test_local_mode_no_auth_returns_error(tool, session):
     """Local mode with save=true and no user returns ErrorResponse."""
-    agent_json = {
-        "nodes": [
-            {
-                "id": "node-1",
-                "block_id": "block-1",
-                "input_default": {},
-                "metadata": {},
-            }
-        ],
-        "links": [],
-    }
+    agent_json = _agent({"metadata": {}})
 
-    mock_fixer = MagicMock()
-    mock_fixer.apply_all_fixes = MagicMock(return_value=agent_json)
-    mock_fixer.get_fixes_applied.return_value = []
-
-    mock_validator = MagicMock()
-    mock_validator.validate.return_value = (True, None)
-    mock_validator.errors = []
-
-    with (
-        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
-        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
-        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
-    ):
+    with _patched_pipeline(agent_json):
         result = await tool._execute(
             user_id=None,
             session=session,
@@ -321,3 +181,47 @@ async def test_local_mode_no_auth_returns_error(tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert "logged in" in result.message.lower()
+
+
+def _agent(nodes_extra: dict | None = None, **fields) -> dict:
+    """A one-node agent JSON: nodes_extra overrides the node, fields go on top."""
+    node = {
+        "id": "node-1",
+        "block_id": "block-1",
+        "input_default": {},
+        "metadata": {"position": {"x": 0, "y": 0}},
+    }
+    if nodes_extra:
+        node.update(nodes_extra)
+    return {**fields, "nodes": [node], "links": []}
+
+
+@contextmanager
+def _patched_pipeline(fixed_agent: dict, errors: list[str] | None = None):
+    """The pipeline's fixer returns fixed_agent with no fixes; its validator
+    passes unless given errors."""
+    errors = errors or []
+    fixer = MagicMock()
+    fixer.apply_all_fixes.return_value = fixed_agent
+    fixer.get_fixes_applied.return_value = []
+    validator = MagicMock()
+    validator.validate.return_value = (False, errors[0]) if errors else (True, None)
+    validator.errors = errors
+    with (
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=validator),
+    ):
+        yield
+
+
+@contextmanager
+def _patched_save():
+    """Stub the library lookup and the pipeline; yields the pipeline's mock."""
+    with (
+        patch(f"{_TOOL}.fetch_library_agents", new=AsyncMock(return_value=[])),
+        patch(
+            f"{_TOOL}.fix_validate_and_save", new=AsyncMock(return_value=MagicMock())
+        ) as fix_validate,
+    ):
+        yield fix_validate

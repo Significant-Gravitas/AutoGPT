@@ -1,5 +1,6 @@
 """Tests for ValidateAgentGraphTool."""
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from backend.copilot.tools.validate_agent import ValidateAgentGraphTool
 from ._test_data import make_session
 
 _TEST_USER_ID = "test-user-validate-agent"
+_VALIDATE = "backend.copilot.tools.validate_agent"
 
 
 @pytest.fixture
@@ -58,20 +60,7 @@ async def test_valid_agent_returns_success(tool, session):
         "links": [],
     }
 
-    mock_validator = MagicMock()
-    mock_validator.validate.return_value = (True, None)
-    mock_validator.errors = []
-
-    with (
-        patch(
-            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.validate_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
-    ):
+    with _patched_validator((True, None)):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -99,23 +88,12 @@ async def test_invalid_agent_returns_errors(tool, session):
         "links": [],
     }
 
-    mock_validator = MagicMock()
-    mock_validator.validate.return_value = (False, "Validation failed")
-    mock_validator.errors = [
+    errors = [
         "Block 'nonexistent-block' not found in registry",
         "Missing required input field 'prompt'",
     ]
 
-    with (
-        patch(
-            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.validate_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
-    ):
+    with _patched_validator((False, "Validation failed"), errors):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -136,19 +114,7 @@ async def test_validation_exception_returns_error(tool, session):
         "links": [],
     }
 
-    mock_validator = MagicMock()
-    mock_validator.validate.side_effect = RuntimeError("unexpected error")
-
-    with (
-        patch(
-            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.validate_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
-    ):
+    with _patched_validator(RuntimeError("unexpected error")):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -170,20 +136,8 @@ async def test_a_validator_failure_tells_an_external_caller_no_internals(
         "nodes": [{"id": "n1", "block_id": "b1", "input_default": {}, "metadata": {}}],
         "links": [],
     }
-    mock_validator = MagicMock()
-    mock_validator.validate.side_effect = AttributeError(
-        "'Node' object has no attribute 'secret_column'"
-    )
-
-    with (
-        patch(
-            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.validate_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
+    with _patched_validator(
+        AttributeError("'Node' object has no attribute 'secret_column'")
     ):
         result = await tool._execute(
             user_id=_TEST_USER_ID, session=session, agent_json=agent_json
@@ -202,20 +156,7 @@ async def test_agent_json_as_json_string(tool, session):
         '"links": []}'
     )
 
-    mock_validator = MagicMock()
-    mock_validator.validate.return_value = (True, None)
-    mock_validator.errors = []
-
-    with (
-        patch(
-            "backend.copilot.tools.validate_agent.get_blocks_as_dicts",
-            return_value=[],
-        ),
-        patch(
-            "backend.copilot.tools.validate_agent.AgentValidator",
-            return_value=mock_validator,
-        ),
-    ):
+    with _patched_validator((True, None)):
         result = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -238,3 +179,21 @@ async def test_agent_json_unresolved_file_ref_string_returns_error(tool, session
     assert isinstance(result, ErrorResponse)
     assert "agent.json" in result.message
     assert "/home/user" not in result.message
+
+
+@contextmanager
+def _patched_validator(
+    verdict: tuple[bool, str | None] | Exception, errors: list[str] | None = None
+):
+    """The validator returns verdict with errors, or raises it."""
+    validator = MagicMock()
+    if isinstance(verdict, Exception):
+        validator.validate.side_effect = verdict
+    else:
+        validator.validate.return_value = verdict
+        validator.errors = errors or []
+    with (
+        patch(f"{_VALIDATE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_VALIDATE}.AgentValidator", return_value=validator),
+    ):
+        yield
