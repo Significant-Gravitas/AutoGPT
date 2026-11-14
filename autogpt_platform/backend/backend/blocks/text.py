@@ -503,20 +503,17 @@ class FileReadBlock(Block):
                     chunks.append(chunk)
             return chunks
 
-        # Process items and yield as content chunks
-        if items:
-            full_content = (
-                input_data.delimiter.join(items)
-                if input_data.delimiter
-                else "".join(items)
-            )
-
-            # Create chunks of the full content based on size_limit
-            content_chunks = create_chunks(full_content, input_data.size_limit)
-            for chunk in content_chunks:
-                yield "content", chunk
-        else:
+        # Yield each selected row separately. Joining the rows again would
+        # defeat delimiter-based chunking and could split across row boundaries.
+        if not items:
             yield "content", ""
+            return
+
+        for item in items:
+            # A blank row still gets its own (empty) output so every selected
+            # row produces at least one event.
+            for chunk in create_chunks(item, input_data.size_limit) or [""]:
+                yield "content", chunk
 
 
 def _check_output_length(label: str, length: int) -> None:
