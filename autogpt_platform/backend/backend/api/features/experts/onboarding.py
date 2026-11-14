@@ -42,7 +42,7 @@ async def get_expert_onboarding(
           END AS content
         FROM {schema_prefix}"ChatMessage" m
         JOIN {schema_prefix}"ChatSession" s ON s.id = m."sessionId"
-        WHERE s."userId" = $1 AND s."expertId" = $2
+        WHERE s."userId" = $1 AND s."expertId" = $2 AND s."archivedAt" IS NULL
           AND (
             (m.role = 'tool' AND m.content LIKE '%"expert_onboarding"%')
             OR m.role = 'user'

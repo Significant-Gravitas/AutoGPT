@@ -59,7 +59,7 @@ describe("SettingsApiKeysPage - create flow", () => {
     expect(within(dialog).getByText(/permissions/i)).toBeDefined();
   });
 
-  test("lists every permission once, under the API version that checks it", async () => {
+  test("lists every permission once, under the API version that checks it, except the OAuth-only one", async () => {
     server.use(getGetV1ListUserApiKeysMockHandler([]));
 
     render(<SettingsApiKeysPage />);
@@ -79,8 +79,11 @@ describe("SettingsApiKeysPage - create flow", () => {
         .map((box) => box.getAttribute("aria-labelledby")),
     );
 
+    // Only the Local PC companion's OAuth token can carry it; an API key
+    // with it would do nothing.
     expect(listed.sort()).toEqual(
       Object.values(APIKeyPermission)
+        .filter((permission) => permission !== "CONNECT_LOCAL_EXECUTOR")
         .map((permission) => `api-key-scope-${permission}`)
         .sort(),
     );

@@ -36,7 +36,7 @@ jobs:
       # Mint the batch-bot App token (same identity as the listener/handler) so
       # reconcile can close members and delete batch/rollup — the branch delete is
       # push-restricted to the App, so it must run as the App, not a PAT.
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
           app-id: ${{ vars.BATCH_BOT_APP_ID }}

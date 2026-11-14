@@ -5,8 +5,14 @@ An API key is matched on its head and then hashed with Scrypt; an OAuth access
 token is looked up by its digest. A bearer in the token format must never be
 tried as a key: one old key headed like a token would otherwise make every
 forged token cost a hash, ahead of every rate limit.
+
+A closed account's key or token is refused with a 401: deletion revokes every
+key and grant, but one minted while the account was closing, or by an admin
+acting as the user afterwards, would otherwise keep working until the
+account's data is erased.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -14,12 +20,14 @@ import fastapi
 import pytest
 import pytest_mock
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 from prisma.enums import APIKeyPermission, APIKeyStatus
 
 from backend.api.external import middleware
+from backend.api.external.auth_rate_limit import APIKeyValidationBudget
 from backend.api.external.middleware import resolve_auth_info
 from backend.data.auth.api_key import APIKeyInfo
 from backend.data.auth.base import APIAuthorizationInfo
@@ -32,12 +40,7 @@ from backend.data.auth.oauth import (
 
 _NOW = datetime.now(UTC)
 
-
-@pytest.mark.parametrize(
-    "state, status",
-    [("banned", 403), ("until_tomorrow", 403), ("lapsed", 200), ("unbanned", 200)],
-)
-@pytest.mark.parametrize(
+EVERY_CREDENTIAL = pytest.mark.parametrize(
     "headers",
     [
         {"X-API-Key": "key"},
@@ -47,6 +50,13 @@ _NOW = datetime.now(UTC)
     ],
     ids=["api-key", "api-key-as-bearer", "access-token"],
 )
+
+
+@pytest.mark.parametrize(
+    "state, status",
+    [("banned", 403), ("until_tomorrow", 403), ("lapsed", 200), ("unbanned", 200)],
+)
+@EVERY_CREDENTIAL
 def test_a_credential_answers_by_its_owners_ban_state(
     mocker, auth_row, state, status, headers
 ):
@@ -63,6 +73,99 @@ def test_a_credential_answers_by_its_owners_ban_state(
         assert response.json()["detail"]["code"] == "account_banned"
     else:
         assert response.json() == {"user_id": user_id}
+
+
+@pytest.mark.parametrize(
+    "api_key, bearer",
+    [
+        ("agpt_header_key", "agpt_bearer_key"),
+        ("agpt_header_key", "agpt_xt_token"),
+        ("agpt_xt_header_key", "agpt_xt_token"),
+    ],
+)
+@pytest.mark.parametrize("valid", [True, False])
+def test_explicit_key_wins_for_admission_and_validation(mocker, api_key, bearer, valid):
+    admit = mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=None
+    )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _principal() if valid else None
+
+    validate_key = mocker.patch.object(
+        middleware, "validate_api_key", side_effect=validate
+    )
+    validate_token = mocker.patch.object(middleware, "validate_access_token")
+    mocker.patch.object(middleware, "is_user_banned", return_value=False)
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+
+    with _client() as client:
+        response = client.get(
+            "/auth", headers={"X-API-Key": api_key, "Authorization": f"Bearer {bearer}"}
+        )
+
+    assert response.status_code == (200 if valid else 401)
+    assert admit.await_args.args[1] == api_key
+    validate_key.assert_awaited_once()
+    assert validate_key.await_args.args == (api_key,)
+    validate_token.assert_not_awaited()
+    if valid:
+        refund.assert_awaited_once_with(None)
+    else:
+        refund.assert_not_awaited()
+
+
+@pytest.fixture
+def closed_owner(auth_row) -> Iterator[str]:
+    """Closing an account bans its sign-in too; the closed answer wins."""
+    user_id = auth_row("banned")
+    remember_account_closed(user_id)
+    yield user_id
+    forget_account_state(user_id)
+
+
+@EVERY_CREDENTIAL
+def test_a_closed_accounts_credential_is_refused_as_closed(
+    mocker, closed_owner, headers
+):
+    mocker.patch.object(middleware, "validate_api_key", return_value=_key(closed_owner))
+    mocker.patch.object(
+        middleware, "validate_access_token", return_value=(_token(closed_owner), None)
+    )
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{"X-API-Key": "agpt_key"}, {"Authorization": "Bearer agpt_key"}],
+    ids=["api-key", "api-key-as-bearer"],
+)
+def test_a_closed_accounts_key_keeps_its_validation_reservation(
+    mocker, closed_owner, headers
+):
+    budget = APIKeyValidationBudget(head_key="budget")
+    admit = mocker.patch.object(
+        middleware, "enforce_api_key_validate_rate_limit", return_value=budget
+    )
+
+    async def validate(value, *, before_verify):
+        await before_verify()
+        return _key(closed_owner)
+
+    mocker.patch.object(middleware, "validate_api_key", side_effect=validate)
+    refund = mocker.patch.object(middleware, "refund_api_key_validate_rate_limit")
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+    admit.assert_awaited_once()
+    refund.assert_not_awaited()
 
 
 def _bearer(token: str) -> HTTPAuthorizationCredentials:

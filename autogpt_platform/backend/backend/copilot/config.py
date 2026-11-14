@@ -363,7 +363,9 @@ class ChatConfig(BaseSettings):
     # Session TTL Configuration - 12 hours
     session_ttl: int = Field(default=43200, description="Session TTL in seconds")
 
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_agent_runs: int = Field(default=30, description="Maximum number of agent runs")
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_agent_schedules: int = Field(
         default=30, description="Maximum number of agent schedules"
     )
@@ -435,12 +437,14 @@ class ChatConfig(BaseSettings):
     # PostHog, every account resolves to NO_TIER → BASIC multiplier and
     # would otherwise inherit these cloud ceilings. The defaults here stay
     # positive so a PostHog outage on cloud never removes the cap.
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
         description="Max cost per day in microdollars, resets at midnight UTC. "
         "0 means no spend allowed (will block); a negative value disables the "
         "daily cap (the self-hosted default).",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
         description="Max cost per week in microdollars, resets Monday 00:00 UTC. "
@@ -451,11 +455,13 @@ class ChatConfig(BaseSettings):
     # Cost (in credits / cents) to reset the daily rate limit using credits.
     # When a user hits their daily limit, they can spend this amount to reset
     # the daily counter and keep working.  Set to 0 to disable the feature.
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     rate_limit_reset_cost: int = Field(
         default=500,
         ge=0,
         description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
     )
+    # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_daily_resets: int = Field(
         default=5,
         ge=0,
@@ -811,6 +817,24 @@ class ChatConfig(BaseSettings):
     e2b_sandbox_on_timeout: Literal["kill", "pause"] = Field(
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
+    )
+
+    # --- Local PC executor ---
+    local_pc_executor_oauth_client_id: str = Field(
+        default="autogpt-local-executor",
+        min_length=1,
+        description="Only OAuth access tokens issued to this client may bind a local executor.",
+    )
+    local_llm_policy: Literal["never", "prefer_for_fast", "always"] = Field(
+        default="never",
+        description=(
+            "When the local PC shim advertises local_llm + a non-empty "
+            "local_llm_models list AND the LD flag LOCAL_LLM_ROUTING is on "
+            "for the user, this field sets routing aggression: 'never' "
+            "disables, 'prefer_for_fast' routes fast-mode only, 'always' "
+            "routes any mode that has a tier-matched model. See "
+            "autogpt-local-executor/docs/LOCAL_LLM.md."
+        ),
     )
 
     @property

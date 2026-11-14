@@ -1143,7 +1143,17 @@ async def test_autopilot_session_skips_expert_tenancy_normalization() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
+@pytest.mark.parametrize(
+    "refusal, message, code",
+    [
+        ("banned", "This account has been banned.", "account_banned"),
+        # Kept within 14 days, the chat must not say the account is banned.
+        ("closed", "This account is closed.", "account_closed"),
+    ],
+)
+async def test_a_refused_owners_turn_ends_before_anything_runs(
+    refusal: str, message: str, code: str
+) -> None:
     """Every copilot turn reaches the executor, whatever queued it: schedules,
     the AutoPilot block, approval wakes, sub-sessions and chat bots."""
     entry = _make_entry().model_copy(
@@ -1154,8 +1164,8 @@ async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
 
     with (
         patch(
-            "backend.copilot.executor.processor.is_user_banned",
-            new=AsyncMock(return_value=True),
+            "backend.copilot.executor.processor.account_refusal",
+            new=AsyncMock(return_value=refusal),
         ),
         patch("backend.copilot.model.get_chat_session", new=get_session),
         patch(
@@ -1173,8 +1183,8 @@ async def test_a_banned_owners_turn_ends_before_anything_runs() -> None:
     get_session.assert_not_awaited()
     mark_completed.assert_awaited_once_with(
         "sess-1",
-        error_message="This account has been banned.",
-        error_code="account_banned",
+        error_message=message,
+        error_code=code,
         turn_id="turn-1",
         skip_error_publish=False,
     )
@@ -2652,6 +2662,36 @@ class TestExecuteSafetyNet:
             pool.shutdown(wait=True)
 
 
+class TestLocalPCPinsSdk:
+    """Only the SDK engine is bound to the user's machine. A Local PC chat
+    must never run on the baseline engine, whose tools use a cloud sandbox."""
+
+    @pytest.mark.parametrize(
+        ("kind", "use_sdk", "thinking_available", "expected"),
+        [
+            ("local", False, True, True),
+            ("local", True, True, True),
+            # No SDK transport: stays on baseline, which refuses the turn.
+            ("local", False, False, False),
+            ("cloud", False, True, False),
+        ],
+    )
+    def test_a_local_pc_chat_runs_on_the_sdk_engine(
+        self, kind: str, use_sdk: bool, thinking_available: bool, expected: bool
+    ):
+        from backend.copilot.executor.processor import _pin_local_pc_to_sdk
+
+        session = MagicMock()
+        session.metadata.execution_target.kind = kind
+
+        assert (
+            _pin_local_pc_to_sdk(
+                session, use_sdk, thinking_available=thinking_available
+            )
+            is expected
+        )
+
+
 class TestBuildingModeForcesSdk:
     """Engine pinning: a session whose history shows building mode must run
     on the SDK engine even when the request asked for Fast."""
@@ -2852,8 +2892,8 @@ class TestExecuteAsyncLoadTestAccounts:
     async def test_a_banned_load_test_accounts_turn_is_still_tagged(self) -> None:
         with (
             patch(
-                "backend.copilot.executor.processor.is_user_banned",
-                new=AsyncMock(return_value=True),
+                "backend.copilot.executor.processor.account_refusal",
+                new=AsyncMock(return_value="banned"),
             ),
             patch.object(TurnTrace, "load_test_account", autospec=True) as tagged,
         ):
