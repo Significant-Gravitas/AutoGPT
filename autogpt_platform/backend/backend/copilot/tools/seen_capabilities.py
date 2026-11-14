@@ -170,7 +170,8 @@ def render_seen_capabilities(seen: SeenCapabilities) -> str:
     if seen.described:
         lines.append(
             "Already described or run this session (do not call "
-            "describe_capability on these again; call run_capability "
+            "describe_capability on these again, except with expand=true when "
+            "the summarised schema lacks what you need; call run_capability "
             "directly — an input error returns the schema): "
             + ", ".join(seen.described)
         )

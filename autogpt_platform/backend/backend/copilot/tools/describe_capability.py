@@ -6,7 +6,10 @@ from typing import Any
 
 from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
 from backend.copilot.capabilities.registry import configured_tool
-from backend.copilot.capabilities.schema_trim import collapse_large_enums
+from backend.copilot.capabilities.schema_trim import (
+    collapse_large_enums,
+    collapse_nested_objects,
+)
 from backend.copilot.capabilities.sources import expert_dispatch
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
@@ -60,12 +63,11 @@ class DescribeCapabilityTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Inputs and outputs of one capability by id, before its first use. "
-            "Skip ids listed in the <seen_capabilities> block of the current "
-            "user message: those were already described this session. "
-            "Blocks return their schema; MCP servers list their tools; platform "
-            "tools return their parameters. Large enums are sampled unless "
-            "expand=true."
+            "Inputs and outputs of one capability, before its first use. "
+            "Skip ids in the latest <seen_capabilities> block unless you need "
+            "expand=true. Blocks return their schema, MCP servers their tools, "
+            "platform tools their parameters. Large enums are sampled and "
+            "nested block outputs list field names only, unless expand=true."
         )
 
     @property
@@ -79,7 +81,7 @@ class DescribeCapabilityTool(BaseTool):
                 },
                 "expand": {
                     "type": "boolean",
-                    "description": "Return every enum value instead of a sample.",
+                    "description": "Every enum value and nested output field.",
                     "default": False,
                 },
             },
@@ -149,7 +151,16 @@ async def _describe_block(
         )
         if not expand:
             result.block.inputs = collapse_large_enums(result.block.inputs)
-            result.block.outputs = collapse_large_enums(result.block.outputs)
+            # Inputs stay whole: the model has to build them. Outputs it only
+            # reads or links, and a nested output model is most of a large
+            # block's schema (SECRT-2682).
+            outputs = collapse_large_enums(result.block.outputs)
+            result.block.outputs = collapse_nested_objects(outputs)
+            if result.block.outputs != outputs:
+                result.message += (
+                    " Nested output objects list their field names only; "
+                    "describe again with expand=true for their types."
+                )
     return result
 
 
