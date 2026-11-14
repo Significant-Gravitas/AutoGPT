@@ -18,6 +18,8 @@ from backend.util.link_checkout.approval import read_approval
 from backend.util.link_checkout.broker_protocol import (
     AuthorizedCheckout,
     CheckoutReference,
+    CheckoutView,
+    ResetCheckout,
 )
 from backend.util.link_checkout.models import CompleteCheckout
 from backend.util.link_checkout.refusals import CheckoutRefused
@@ -114,12 +116,10 @@ class BrowserResetAfterPaymentTool(BaseTool):
         try:
             principal = principal_for(user_id, session)
             request = CompleteCheckout.model_validate(kwargs)
-            view = await engine.reset(
-                CheckoutReference(
-                    **principal.model_dump(), checkout_id=request.checkout_id
-                )
+            reference = CheckoutReference(
+                **principal.model_dump(), checkout_id=request.checkout_id
             )
-            return checkout_response(view, session)
+            return checkout_response(await reset_checkout(reference, session), session)
         except Exception as error:
             log_failure("reset", error)
             return failure(
@@ -127,3 +127,25 @@ class BrowserResetAfterPaymentTool(BaseTool):
                 "The payment browser cannot be reset yet. Check the Link status "
                 "first; it must be final.",
             )
+
+
+async def reset_checkout(
+    reference: CheckoutReference, session: ChatSession
+) -> CheckoutView:
+    """Retire the payment browser. A checkout never attempted has its Link
+    request canceled on the way; with no usable Link connection the request
+    is left to expire."""
+    current = await engine.get(reference)
+    if current.attempted or current.spend_request_id is None:
+        return await engine.reset(ResetCheckout(**reference.model_dump()))
+    try:
+        async with link_credentials(
+            reference.user_id, current.credentials_id, expert_id=session.expert_id
+        ) as credentials:
+            return await engine.reset(
+                ResetCheckout(
+                    **reference.model_dump(), access_token=credentials.access_token
+                )
+            )
+    except CheckoutRefused:
+        return await engine.reset(ResetCheckout(**reference.model_dump()))

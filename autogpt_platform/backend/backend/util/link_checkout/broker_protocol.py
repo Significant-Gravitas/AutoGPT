@@ -41,11 +41,13 @@ class BrowserOutput(StrictModel):
     image: str = ""
 
 
-def reveal_token(value: SecretStr, info: SerializationInfo) -> str | SecretStr:
+def reveal_token(
+    value: SecretStr | None, info: SerializationInfo
+) -> str | SecretStr | None:
     """The Link token crosses to a remote broker only when the sender asks
     for it explicitly (``context={"reveal_secrets": True}``); any other dump,
     a log line included, keeps it masked."""
-    if info.context and info.context.get("reveal_secrets"):
+    if value is not None and info.context and info.context.get("reveal_secrets"):
         return value.get_secret_value()
     return value
 
@@ -66,6 +68,14 @@ class AuthorizedCheckout(CheckoutReference):
     access_token: SecretStr
     # The customer's in-chat approval, when the checkout is waiting for one.
     approval: ApprovalDetails | None = None
+
+    _serialize_token = field_serializer("access_token")(reveal_token)
+
+
+class ResetCheckout(CheckoutReference):
+    # Cancels the Link request of a checkout never attempted. Without one (no
+    # usable Link connection) that request is left to expire.
+    access_token: SecretStr | None = None
 
     _serialize_token = field_serializer("access_token")(reveal_token)
 

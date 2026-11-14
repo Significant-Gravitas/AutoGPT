@@ -30,6 +30,7 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutReference,
     CheckoutView,
     CreateCheckout,
+    ResetCheckout,
     session_key,
 )
 from backend.util.link_checkout.cdp import prepare_browser
@@ -129,7 +130,7 @@ async def get_checkout(request: CheckoutReference) -> CheckoutView:
         return view(load_checkout(directory, request))
 
 
-async def reset_browser(request: CheckoutReference) -> CheckoutView:
+async def reset_browser(request: ResetCheckout) -> CheckoutView:
     key = session_key(request)
     async with browser_operation(key, allow_sealed=True) as directory:
         intent = load_checkout(directory, request)
@@ -137,6 +138,10 @@ async def reset_browser(request: CheckoutReference) -> CheckoutView:
             raise CheckoutRefused(ATTEMPT_UNRECONCILED)
         if not await retire_payment_browser(key):
             raise RuntimeError("The sensitive browser has not closed")
+        if not intent.attempted and request.access_token is not None:
+            # Given up, as when a new checkout replaces it: nothing was
+            # charged, and its Link request is canceled.
+            await broker_link.cancel(intent, request.access_token)
         archive_intent(directory, intent)
         return view(intent).model_copy(
             update={
@@ -259,8 +264,10 @@ async def _first_spend(
         spend = await broker_link.create(intent, token)
         intent.approval_url = link_action_url(spend.approval_url)
     intent.spend_request_id = spend.id
-    validate_spend(intent, spend)
+    # Recorded before it is checked: Link holds the request either way, and
+    # only a recorded request is canceled when the checkout is given up.
     replace_intent(directory, intent)
+    validate_spend(intent, spend)
     return spend
 
 

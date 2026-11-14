@@ -197,6 +197,54 @@ async def test_status_is_read_only_and_reset_needs_a_final_status(tools, plan):
 
 
 @pytest.mark.asyncio
+async def test_a_checkout_given_up_with_a_reset_cancels_its_link_request(tools, plan):
+    """As when a new checkout replaces it: nothing was charged, and a Link
+    request left open would refuse the next one as a duplicate."""
+    created = parsed(await run("browser_request_link_payment", **plan.model_dump()))
+
+    reset = parsed(
+        await run("browser_reset_after_payment", checkout_id=created.checkout_id)
+    )
+
+    assert reset.status == "browser_reset"
+    assert tools.calls == ["create", "cancel"]
+
+
+@pytest.mark.asyncio
+async def test_a_reset_without_a_usable_link_connection_still_resets(
+    tools, plan, monkeypatch
+):
+    """The browser is retired all the same, and the Link request expires."""
+    created = parsed(await run("browser_request_link_payment", **plan.model_dump()))
+
+    def disconnected(user_id: str, credentials_id: str, *, expert_id: str | None):
+        raise CheckoutRefused(LINK_NOT_CONNECTED)
+
+    monkeypatch.setattr(status_tools, "link_credentials", disconnected)
+    reset = parsed(
+        await run("browser_reset_after_payment", checkout_id=created.checkout_id)
+    )
+
+    assert reset.status == "browser_reset"
+    assert tools.calls == ["create"]
+
+
+@pytest.mark.asyncio
+async def test_a_link_request_that_fails_its_check_is_canceled_later(tools, plan):
+    """Link holds a request it created even when its answer does not match
+    the checkout, so the request is recorded and the next checkout cancels it."""
+    tools.mismatched_create = True
+    refused = await run("browser_request_link_payment", **plan.model_dump())
+    assert '"error":"private_checkout_unavailable"' in refused.output
+
+    tools.mismatched_create = False
+    created = parsed(await run("browser_request_link_payment", **plan.model_dump()))
+
+    assert created.status == "pending_approval"
+    assert tools.calls == ["create", "cancel", "create"]
+
+
+@pytest.mark.asyncio
 async def test_wrong_user_never_reaches_the_broker(tools, plan):
     await run("browser_request_link_payment", user_id="mallory", **plan.model_dump())
     assert tools.calls == []

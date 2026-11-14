@@ -98,6 +98,8 @@ class FakeWorker:
         # Link's refusal of the next create: "link_rejected", "link_duplicate".
         self.create_error: Literal["link_rejected", "link_duplicate"] | None = None
         self.delegated_error: Literal["link_rejected", "link_duplicate"] | None = None
+        # Link answers a create with a request for another amount.
+        self.mismatched_create = False
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
@@ -113,6 +115,8 @@ class FakeWorker:
         if job.action == "create" and self.create_error:
             return WorkerResult(error=self.create_error)
         spend = await synthetic_spend(job)
+        if job.action == "create" and self.mismatched_create:
+            spend.amount += 1
         if job.action == "cancel":
             spend.status = "canceled"
         elif job.action != "create":

@@ -26,6 +26,7 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutView,
     CreateCheckout,
     Principal,
+    ResetCheckout,
 )
 from backend.util.link_checkout.broker_routing import configured as remote_broker
 from backend.util.link_checkout.broker_routing import routed
@@ -141,7 +142,7 @@ async def status(request: AuthorizedCheckout) -> CheckoutView:
     return await broker_checkout.reconcile(request)
 
 
-async def reset(request: CheckoutReference) -> CheckoutView:
+async def reset(request: ResetCheckout) -> CheckoutView:
     if remote_broker():
         return await _remote("checkout/reset", request)
     return await broker_checkout.reset_browser(request)

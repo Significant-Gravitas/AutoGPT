@@ -34,6 +34,7 @@ from backend.util.link_checkout.broker_protocol import (
     CheckoutView,
     CreateCheckout,
     Principal,
+    ResetCheckout,
 )
 from backend.util.link_checkout.refusals import CheckoutRefused
 
@@ -134,7 +135,7 @@ def create_app(tenant_id: str, secret: bytes) -> FastAPI:
         dependencies=[Security(authorize)],
         response_model=CheckoutView,
     )
-    async def reset(request: CheckoutReference):
+    async def reset(request: ResetCheckout):
         require_tenant(request)
         return await reset_browser(request)
 
