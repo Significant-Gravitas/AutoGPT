@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from prisma.enums import AccountDeletionSource
+from prisma.enums import AccountDeletionSource, APIKeyStatus
 from prisma.errors import UniqueViolationError
 
 import backend.data.account_deletion as account_deletion
@@ -41,6 +41,10 @@ def tx(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
         "platformlink",
         "platformuserlink",
         "user",
+        "apikey",
+        "oauthauthorizationcode",
+        "oauthrefreshtoken",
+        "oauthaccesstoken",
     ):
         actions = getattr(tx, table)
         for action in ("create", "update_many", "delete_many"):
@@ -171,6 +175,30 @@ async def test_reopening_deletes_the_request_only_before_its_erasure_date(
 
 
 @pytest.mark.asyncio
+async def test_reopening_revokes_the_keys_and_grants_made_since_the_close(
+    tx: MagicMock,
+):
+    """In the reopen's transaction: a revoke that fails leaves the account
+    closed, and only the call that reopens it revokes anything."""
+    now = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    tx.accountdeletionrequest.delete_many.return_value = 1
+
+    await reopen_account(USER_ID, now=now)
+
+    tx.apikey.update_many.assert_awaited_once_with(
+        where={"userId": USER_ID, "status": {"not": APIKeyStatus.REVOKED}},
+        data={"status": APIKeyStatus.REVOKED, "revokedAt": now},
+    )
+    tx.oauthauthorizationcode.delete_many.assert_awaited_once_with(
+        where={"userId": USER_ID, "usedAt": None}
+    )
+    for table in (tx.oauthrefreshtoken, tx.oauthaccesstoken):
+        table.update_many.assert_awaited_once_with(
+            where={"userId": USER_ID, "revokedAt": None}, data={"revokedAt": now}
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "still_closed, outcome",
     [(True, ReopenOutcome.TOO_LATE), (False, ReopenOutcome.NOT_CLOSED)],
@@ -188,6 +216,10 @@ async def test_nothing_to_reopen(
 
     assert await reopen_account(USER_ID) is outcome
     tx.user.update_many.assert_not_awaited()
+    # A second Keep, or one too late: the keys made since are the owner's,
+    # or the erasure's to remove.
+    tx.apikey.update_many.assert_not_awaited()
+    tx.oauthaccesstoken.update_many.assert_not_awaited()
 
 
 def test_the_grace_period_is_fourteen_days():

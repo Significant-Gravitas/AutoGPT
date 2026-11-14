@@ -1186,6 +1186,9 @@ logs a warning, and startup continues without the catalog. Set
 - Required email verification is unsupported.
 - The prebuilt frontend cannot configure Google Picker public keys at runtime.
 - Remote TLS termination is operator-supplied.
-- The local `bash_exec` fallback depends on host support for Bubblewrap user and
-  network namespaces. Do not make the entire appliance privileged to work
-  around a host that disables them.
+- The local `bash_exec` fallback depends on host support for Bubblewrap user,
+  network and PID namespaces, and on a host `/proc` the sandbox can mount its
+  own copy of: an appliance started with Docker's default masked `/proc` runs no
+  command, and reports the setting to change (`--security-opt
+  systempaths=unconfined`, or `procMount: Unmasked` on Kubernetes). Do not make
+  the entire appliance privileged to work around a host that disables them.

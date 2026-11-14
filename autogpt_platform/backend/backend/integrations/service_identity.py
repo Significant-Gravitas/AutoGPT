@@ -77,6 +77,20 @@ def service_for_credential(credential: Credentials) -> ServiceIdentity:
     return ServiceIdentity(service=f"mcp:{host}", name=host)
 
 
+def credential_display_name(credential: Credentials) -> str:
+    """What to call a stored credential when listing it beside others.
+
+    Most OAuth sign-ins (Google, GitHub, Discord, Reddit, X, Todoist) store no
+    title, only the account's email or handle, so falling back to the provider
+    alone would list every account for that provider under the same name.
+    """
+    if credential.title:
+        return credential.title
+    if isinstance(credential, OAuth2Credentials) and credential.username:
+        return credential.username
+    return str(credential.provider)
+
+
 def _warn_once(credential_id: str, reason: str) -> None:
     if credential_id in _warned_credential_ids:
         return

@@ -1,4 +1,4 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import { getGetV2ListSessionGroupsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import { Flag } from "@/services/feature-flags/use-get-flag";
@@ -159,7 +159,9 @@ beforeEach(() => {
   getAnimations.mockReturnValue([]);
   Element.prototype.scrollTo = scrollTo;
   Element.prototype.getAnimations = getAnimations;
-  server.use(getGetV2ListSessionsMockHandler200({ sessions: [], total: 0 }));
+  server.use(
+    getGetV2ListSessionGroupsMockHandler200({ groups: [], pinned: [] }),
+  );
 });
 
 afterEach(() => {

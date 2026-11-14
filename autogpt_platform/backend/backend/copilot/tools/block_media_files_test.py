@@ -14,6 +14,7 @@ from backend.blocks._base import BlockType
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.data.execution import ExecutionContext
+from backend.data.model import NodeExecutionStats
 from backend.util import file as file_module
 from backend.util.file import get_exec_file_path, store_media_file
 from backend.util.type import MediaFileType
@@ -51,6 +52,7 @@ def _media_block(run: BlockRun) -> MagicMock:
     block.block_type = BlockType.STANDARD
     block.input_schema.get_credentials_fields_info.return_value = {}
     block.input_schema.validate_data.return_value = None
+    block.execution_stats = NodeExecutionStats()
 
     async def execute(
         input_data: dict, **kwargs: Any

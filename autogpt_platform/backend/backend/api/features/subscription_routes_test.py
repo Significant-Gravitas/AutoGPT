@@ -103,6 +103,11 @@ def _stub_cancel_pending_trial(mocker: pytest_mock.MockFixture) -> None:
         new_callable=AsyncMock,
         return_value=None,
     )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.end_trial_without_card",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
 
 
 @pytest.fixture(autouse=True)
