@@ -6,10 +6,11 @@ invoice through its hosted page restores the plan, and the billing period
 then restarts from the payment (``subscription_billing_restart``). A new
 Checkout would instead start a second plan, whose arrival cancels the old
 one and voids its bill, so Stripe's retries stop. While such a bill is
-payable, the paywall offers it and Checkout for that same plan and billing
-cycle is refused. A different choice goes through Checkout, and the new
-plan's activation ends the old one and voids its bill
-(``end_plans_replaced_by``).
+payable, the paywall offers it and Checkout for that same plan is refused,
+in either billing cycle: a new plan of the tier the account would get back
+by paying changes no tier, so its activation runs no cleanup. A different
+plan goes through Checkout, and its activation ends the old one and voids
+its bill (``end_plans_replaced_by``).
 """
 
 import asyncio
@@ -17,6 +18,7 @@ import logging
 from collections.abc import AsyncIterator
 
 import stripe
+from prisma.enums import SubscriptionTier
 
 from backend.data.credit import build_price_to_tier_map, replaced_by_newer_plan
 from backend.data.stripe_client import stripe_call, stripe_list_items
@@ -54,28 +56,30 @@ async def get_subscription_payment_due(
     return await PAYMENTS_DUE.read(customer_id, lambda: _read_payment_due(customer_id))
 
 
-async def unpaid_bill_blocks_checkout(customer_id: str | None, price_id: str) -> bool:
-    """Whether a Checkout for ``price_id`` would start the very plan and
-    billing cycle whose open bill the customer can pay instead. Read fresh
+async def unpaid_bill_blocks_checkout(
+    customer_id: str | None, tier: SubscriptionTier
+) -> bool:
+    """Whether a Checkout for ``tier``, in either billing cycle, would start
+    the plan whose open bill the customer can pay instead. Paying that bill
+    during the Checkout revives the old plan at this same tier, and the new
+    plan's activation then cancels nothing, so both would bill. Read fresh
     from Stripe."""
     if not customer_id:
         return False
-    async for _, owed_price_id in _payable_bills(customer_id):
-        if owed_price_id == price_id:
+    async for due in _payable_bills(customer_id):
+        if due.plan == tier.value:
             return True
     return False
 
 
 async def _read_payment_due(customer_id: str) -> SubscriptionPaymentDue | None:
-    async for due, _ in _payable_bills(customer_id):
+    async for due in _payable_bills(customer_id):
         return due
     return None
 
 
-async def _payable_bills(
-    customer_id: str,
-) -> AsyncIterator[tuple[SubscriptionPaymentDue, str]]:
-    """Each payable renewal bill, newest plan first, with its plan's price."""
+async def _payable_bills(customer_id: str) -> AsyncIterator[SubscriptionPaymentDue]:
+    """Each payable renewal bill, newest plan first."""
     # Stripe lists one status at a time; both lists are read together.
     pages = await asyncio.gather(
         *(
@@ -98,7 +102,7 @@ async def _payable_bills(
 
 async def _payment_due(
     customer_id: str, subscription: dict
-) -> tuple[SubscriptionPaymentDue, str] | None:
+) -> SubscriptionPaymentDue | None:
     invoice = subscription.get("latest_invoice")
     if not isinstance(invoice, dict) or subscription.get("pending_update"):
         # A pending update's invoice holds a change, not the plan itself.
@@ -120,11 +124,10 @@ async def _payment_due(
         # A price no longer on sale: paying keeps the account on NO_TIER, so
         # the customer is offered the plans instead.
         return None
-    due = SubscriptionPaymentDue(
+    return SubscriptionPaymentDue(
         amount_due=invoice["amount_due"],
         currency=invoice["currency"],
         payment_url=invoice["hosted_invoice_url"],
         plan=tier.value,
         due_since=current_period_start(subscription),
     )
-    return due, price_id

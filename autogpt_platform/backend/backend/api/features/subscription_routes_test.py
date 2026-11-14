@@ -2747,6 +2747,7 @@ def test_status_of_a_paying_customer_reads_no_bill(
 
 _PRICES = {
     (SubscriptionTier.PRO, "monthly"): "price_pro",
+    (SubscriptionTier.PRO, "yearly"): "price_pro_yearly",
     (SubscriptionTier.MAX, "monthly"): "price_max",
     (SubscriptionTier.MAX, "yearly"): "price_max_yearly",
 }
@@ -2833,25 +2834,29 @@ def _choose(client: fastapi.testclient.TestClient, tier: str, cycle: str):
     )
 
 
-def test_checkout_for_the_owed_plan_and_cycle_is_refused_while_its_bill_is_open(
+@pytest.mark.parametrize("cycle", ["yearly", "monthly"])
+def test_checkout_for_the_owed_plan_in_either_cycle_is_refused_while_its_bill_is_open(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     set_platform_payment,
+    cycle: str,
 ) -> None:
     """Paying the open bill restores that plan; a new Checkout for it would
-    start it a second time."""
+    start it a second time. In the other cycle too: paying the old bill
+    during that Checkout revives the old plan at the same tier, so the new
+    plan's activation changes no tier and cancels nothing."""
     set_platform_payment(True)
     checkout = _owes_a_yearly_max_renewal(mocker)
 
-    response = _choose(client, "MAX", "yearly")
+    response = _choose(client, "MAX", cycle)
 
     assert response.status_code == 409
     assert response.json()["detail"] == UNPAID_BILL_BLOCKS_CHECKOUT
     checkout.assert_not_awaited()
 
 
-@pytest.mark.parametrize("tier,cycle", [("PRO", "monthly"), ("MAX", "monthly")])
-def test_a_different_plan_or_cycle_goes_through_checkout_while_a_bill_is_open(
+@pytest.mark.parametrize("tier,cycle", [("PRO", "monthly"), ("PRO", "yearly")])
+def test_a_different_plan_goes_through_checkout_while_a_bill_is_open(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
     set_platform_payment,
