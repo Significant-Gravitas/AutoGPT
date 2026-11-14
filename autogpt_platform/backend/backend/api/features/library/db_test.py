@@ -3040,3 +3040,26 @@ async def test_list_library_agents_filters_on_folder_ids(mocker):
     await db.list_library_agents("test-user", folder_ids=["f1", "f2"])
 
     assert find_many.call_args.kwargs["where"]["folderId"] == {"in": ["f1", "f2"]}
+
+
+@pytest.mark.asyncio
+async def test_bulk_move_agents_to_folder_skips_archived_agents(mocker):
+    """An archived agent is not in the library, so moving it must not count
+    as a move: both the update and the read-back filter it out."""
+    library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    library_agent.return_value.update_many = mocker.AsyncMock(return_value=0)
+    library_agent.return_value.find_many = mocker.AsyncMock(return_value=[])
+    mocker.patch.object(
+        db, "_fetch_schedule_info", new=mocker.AsyncMock(return_value={})
+    )
+
+    moved = await db.bulk_move_agents_to_folder(["agent-1"], None, "test-user")
+
+    assert moved == []
+    for call_args in (
+        library_agent.return_value.update_many.await_args,
+        library_agent.return_value.find_many.await_args,
+    ):
+        where = call_args.kwargs["where"]
+        assert where["isDeleted"] is False
+        assert where["isArchived"] is False
