@@ -10,7 +10,12 @@ import { Label } from "@/components/atoms/Label/Label";
 import { BaseInput } from "@/components/atoms/Input/BaseInput";
 import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
-import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
+import {
+  CronFrequency,
+  CUSTOM_INTERVAL_MAX,
+  clampCustomIntervalValue,
+  makeCronExpression,
+} from "@/lib/cron-expression-utils";
 
 const weekDays = [
   { label: "Su", value: 0 },
@@ -273,19 +278,26 @@ export function CronScheduler({
             <BaseInput
               type="number"
               min="1"
+              max={CUSTOM_INTERVAL_MAX[customInterval.unit]}
               className="w-20"
               value={customInterval.value}
               onChange={(e) =>
                 setCustomInterval({
                   ...customInterval,
-                  value: parseInt(e.target.value),
+                  value: clampCustomIntervalValue(
+                    customInterval.unit,
+                    parseInt(e.target.value),
+                  ),
                 })
               }
             />
             <Select
               value={customInterval.unit}
               onValueChange={(value: any) =>
-                setCustomInterval({ ...customInterval, unit: value })
+                setCustomInterval({
+                  unit: value,
+                  value: clampCustomIntervalValue(value, customInterval.value),
+                })
               }
             >
               <SelectTrigger className="w-32">
