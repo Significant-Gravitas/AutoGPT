@@ -423,8 +423,12 @@ async def test_enable_routine_names_the_jobs_its_new_times_replace():
         patch(f"{_ROUTINES}.create_routine_schedules", schedules),
     ):
         with pytest.raises(_StopAfterScheduling):
-            await enable_routine("user-1", None, "routine-1", crons=["0 9 * * *"])
+            await enable_routine(
+                "user-1", None, "routine-1", crons=["0 9 * * *"], permissions=_LIMITS
+            )
     assert schedules.await_args.kwargs["replaces"] == ["old-1", "old-2"]
+    # And the filter of the turn switching it on, which its jobs fire under.
+    assert schedules.await_args.kwargs["permissions"] == _LIMITS
 
 
 _ROUTINES = "backend.api.features.experts.routines"

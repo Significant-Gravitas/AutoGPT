@@ -2726,6 +2726,7 @@ async def test_a_followup_fires_under_the_filter_of_the_turn_that_scheduled_it()
     client.add_copilot_turn_schedule = AsyncMock(
         side_effect=lambda **kwargs: service.add_copilot_turn_schedule(**kwargs)
     )
+    client.get_execution_schedules = AsyncMock(return_value=[])
     users = MagicMock()
     users.get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
     session = make_session("user-1")
