@@ -138,7 +138,7 @@ def linux_launch(arguments: dict) -> dict:
         log(event="xdg-open", target=os.path.abspath(name))
         return text_result(f"Opened '{name}' via xdg-open.")
     return text_result(
-        f"'{name}' is not an executable on PATH and matches no installed .desktop " "application.",
+        f"'{name}' is not an executable on PATH and matches no installed .desktop application.",
         error=True,
     )
 
