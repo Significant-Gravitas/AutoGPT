@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from backend.util.link_checkout import broker_commands, broker_link, broker_service
+from backend.util.link_checkout import (
+    broker_checkout,
+    broker_commands,
+    broker_link,
+    broker_service,
+)
 from backend.util.link_checkout.models import ApprovalDetails, WorkerReceipt
 from backend.util.link_checkout.refusals import (
     ATTEMPT_UNRECONCILED,
@@ -319,7 +324,9 @@ async def test_an_expired_checkout_is_closed_and_its_request_canceled(
 ):
     async with client(broker) as api:
         created = await create(api, plan)
-        monkeypatch.setattr(time, "time", lambda: created["expires_at"] + 1)
+        monkeypatch.setattr(
+            broker_checkout, "wall_clock", lambda: created["expires_at"] + 1
+        )
         result = await api.post(
             "/v1/checkout/complete",
             json={

@@ -1,4 +1,4 @@
-import time
+from time import monotonic
 
 from pydantic import BaseModel
 
@@ -11,7 +11,7 @@ class NetworkMetadata(BaseModel):
 class NetworkDrain:
     def __init__(self):
         self.pending: set[tuple[str, str]] = set()
-        self.started = time.monotonic()
+        self.started = monotonic()
         self.changed = self.started
 
     def observe(self, method: str, session: str, metadata: NetworkMetadata) -> None:
@@ -20,14 +20,14 @@ class NetworkDrain:
             if len(self.pending) >= 1000:
                 raise RuntimeError("Checkout network activity exceeds its bound")
             self.pending.add(key)
-            self.changed = time.monotonic()
+            self.changed = monotonic()
         elif method in {"Network.loadingFinished", "Network.loadingFailed"}:
             self.pending.discard(key)
-            self.changed = time.monotonic()
+            self.changed = monotonic()
 
     def settled(self) -> bool:
-        now = time.monotonic()
+        now = monotonic()
         return not self.pending and now - self.started >= 3 and now - self.changed >= 1
 
     def start_wait(self) -> None:
-        self.started = time.monotonic()
+        self.started = monotonic()
