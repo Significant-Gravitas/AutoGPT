@@ -21,6 +21,16 @@ import { useOnboardingWizardStore } from "../store";
 import { progressStorageKey } from "../progress";
 import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
+vi.mock("../steps/AccessStep/AccessStep", () => ({
+  AccessStep: () => (
+    <button
+      data-testid="step-access"
+      onClick={() => useOnboardingWizardStore.getState().nextStep()}
+    >
+      Continue
+    </button>
+  ),
+}));
 vi.mock("../steps/RoleStep", () => ({
   RoleStep: () => (
     <button
@@ -263,6 +273,20 @@ function atPaywall() {
 }
 
 describe("onboarding before payment", () => {
+  it("starts a Microsoft sign-up on its Microsoft 365 connection", async () => {
+    // Paywall off, so the connection comes first. With it on, the connection
+    // waits until after the plan (store.test.ts).
+    flags = {};
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["microsoft"] }),
+      ),
+    );
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-access"));
+    expect(await screen.findByTestId("step-team")).toBeDefined();
+  });
+
   it("collects role and pain points before showing the card requirement", async () => {
     render(<OnboardingPage />);
     await completePersonalization();

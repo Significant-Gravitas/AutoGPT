@@ -260,7 +260,7 @@ async def test_a_turn_refused_before_its_engine_is_counted_under_no_engine(
 ) -> None:
     """A banned owner's turn never reaches a model: PostHog's LLM analytics
     gets nothing, and the counter keeps it apart from model turns."""
-    with patch(f"{_PROCESSOR}.is_user_banned", new=AsyncMock(return_value=True)):
+    with patch(f"{_PROCESSOR}.account_refusal", new=AsyncMock(return_value="banned")):
         await _run([])
 
     [turn] = sentry_transactions

@@ -5,6 +5,7 @@ Workspace API routes for managing user file storage.
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
@@ -12,7 +13,7 @@ import aiohttp
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Depends, Query, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, Field, field_validator
 
@@ -79,20 +80,23 @@ router = fastapi.APIRouter(
 
 
 def _create_streaming_response(
-    content: bytes, file: WorkspaceFile, *, inline: bool = False
-) -> Response:
-    """Create a streaming response for file content."""
+    content: AsyncIterator[bytes], file: WorkspaceFile, *, inline: bool = False
+) -> StreamingResponse:
+    """Create a streaming response for file content.
+
+    Sent chunked, without Content-Length: the size on the file record is not
+    measured from the stored bytes, and a wrong one would break the download.
+    """
     disposition = _sanitize_filename_for_header(
         file.name, disposition="inline" if inline else "attachment"
     )
-    return Response(
+    return StreamingResponse(
         content=content,
         media_type=file.mime_type,
         headers={
             "Content-Disposition": disposition,
             "Content-Security-Policy": "sandbox",
             "X-Content-Type-Options": "nosniff",
-            "Content-Length": str(len(content)),
         },
     )
 
@@ -100,19 +104,22 @@ def _create_streaming_response(
 _STORAGE_READ_ATTEMPTS = 2
 
 
-async def _read_file_content(
+async def _stream_file_content(
     storage: WorkspaceStorageBackend, file: WorkspaceFile
-) -> bytes:
-    """Read a file's bytes, retrying once on a transient storage error.
+) -> AsyncIterator[bytes]:
+    """Stream a file's bytes, retrying the first read once on a transient error.
 
-    Content missing from storage is a 404, not a server error. A storage read
-    that keeps failing (a GCS body cut off mid-transfer, a timeout, a 5xx from
-    the bucket) is a 502, logged with its traceback so it reaches Sentry.
+    The first chunk is read here, while the status can still change. Content
+    missing from storage is a 404, not a server error. A first read that keeps
+    failing (a timeout, a 5xx from the bucket) is a 502, logged with its
+    traceback so it reaches Sentry; a failure after it ends the response early.
     """
     attempt = 1
     while True:
+        chunks = storage.retrieve_stream(file.storage_path)
         try:
-            return await storage.retrieve(file.storage_path)
+            first_chunk = await anext(chunks, b"")
+            return _prepend(first_chunk, chunks)
         except FileNotFoundError:
             logger.warning(
                 f"File {file.id} has a record but no content in storage "
@@ -160,8 +167,14 @@ async def create_file_download_response(
         if url and not url.startswith("/api/"):
             return fastapi.responses.RedirectResponse(url=url, status_code=302)
 
-    content = await _read_file_content(storage, file)
+    content = await _stream_file_content(storage, file)
     return _create_streaming_response(content, file, inline=inline)
+
+
+async def _prepend(first: bytes, rest: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+    yield first
+    async for chunk in rest:
+        yield chunk
 
 
 class WorkspaceFileUploadResponse(BaseModel):

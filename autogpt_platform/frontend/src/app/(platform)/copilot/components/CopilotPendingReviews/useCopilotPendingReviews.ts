@@ -1,5 +1,5 @@
 import { useQueries } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getGetV2GetPendingReviewsForExecutionQueryKey,
   getGetV2GetPendingReviewsForExecutionQueryOptions,
@@ -17,8 +17,9 @@ import type { RunReviewTarget } from "../ChatMessagesContainer/helpers";
 interface Args {
   runs?: RunReviewTarget[];
   chatSessionId?: string;
-  // Off for the chat's own list: it polls only while it holds cards, and
-  // fetches again whenever ``refetchKey`` changes (a new held call).
+  // Off for the chat's own list once its turn is over: it then polls only
+  // while it holds cards, and fetches again whenever ``refetchKey`` changes
+  // (a new held call, or a block run that returned).
   pollWhileEmpty?: boolean;
   refetchKey?: number;
 }
@@ -107,9 +108,17 @@ export function useCopilotPendingReviews({
   }, [pendingReviews.length]);
 
   const refetchChat = forChat.refetch;
+  const chatFetching = forChat.isFetching;
+  // The key the chat's list was last fetched for. A key that changes while a
+  // fetch is in flight waits for it to land: one with nothing loaded yet is
+  // reused rather than restarted, so it can predate the card that moved the key.
+  const fetchedKey = useRef(refetchKey);
   useEffect(() => {
-    if (refetchKey !== undefined) refetchChat();
-  }, [refetchKey, refetchChat]);
+    if (refetchKey === undefined || chatFetching) return;
+    if (fetchedKey.current === refetchKey) return;
+    fetchedKey.current = refetchKey;
+    refetchChat();
+  }, [refetchKey, chatFetching, refetchChat]);
 
   async function refetch(): Promise<PendingHumanReviewModel[]> {
     if (chatSessionId) return okData((await refetchChat()).data) ?? [];

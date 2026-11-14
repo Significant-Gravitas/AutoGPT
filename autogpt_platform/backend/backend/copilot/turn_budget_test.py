@@ -64,7 +64,7 @@ async def test_uncapped_or_unreadable_allowance_gets_the_task_cap(limits, remain
     _, remaining_mock, _ = limits
     remaining_mock.return_value = remaining
     budget = await resolve_turn_budget("u-1")
-    assert budget == TurnBudget(usd=10.0, limiting="task")
+    assert budget == TurnBudget(usd=10.0, limiting="task", tier="PRO")
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_task_cap_binds_when_the_account_has_more_left(limits):
     _, remaining_mock, status_mock = limits
     remaining_mock.return_value = 80.0
     budget = await resolve_turn_budget("u-1")
-    assert budget == TurnBudget(usd=10.0, limiting="task")
+    assert budget == TurnBudget(usd=10.0, limiting="task", tier="PRO")
     status_mock.assert_not_awaited()
 
 
@@ -82,7 +82,9 @@ async def test_daily_window_binds_with_its_reset(limits):
     remaining_mock.return_value = 0.5
     status_mock.return_value = _status(daily_used=2_500_000, weekly_used=1_000_000)
     budget = await resolve_turn_budget("u-1")
-    assert budget == TurnBudget(usd=0.5, limiting="daily", resets_at=DAILY_RESET)
+    assert budget == TurnBudget(
+        usd=0.5, limiting="daily", resets_at=DAILY_RESET, tier="PRO"
+    )
 
 
 @pytest.mark.asyncio
@@ -103,7 +105,9 @@ async def test_weekly_window_binds_when_it_is_tighter(limits):
     remaining_mock.return_value = 0.25
     status_mock.return_value = _status(daily_used=1_000_000, weekly_used=5_750_000)
     budget = await resolve_turn_budget("u-1")
-    assert budget == TurnBudget(usd=0.25, limiting="weekly", resets_at=WEEKLY_RESET)
+    assert budget == TurnBudget(
+        usd=0.25, limiting="weekly", resets_at=WEEKLY_RESET, tier="PRO"
+    )
 
 
 @pytest.mark.asyncio
@@ -114,7 +118,9 @@ async def test_both_windows_empty_names_the_one_that_resets_last(limits):
     remaining_mock.return_value = 0.0
     status_mock.return_value = _status(daily_used=3_000_000, weekly_used=6_000_000)
     budget = await resolve_turn_budget("u-1")
-    assert budget == TurnBudget(usd=0.0, limiting="weekly", resets_at=WEEKLY_RESET)
+    assert budget == TurnBudget(
+        usd=0.0, limiting="weekly", resets_at=WEEKLY_RESET, tier="PRO"
+    )
 
 
 @pytest.mark.asyncio
@@ -123,7 +129,7 @@ async def test_unreadable_windows_still_name_a_window(limits):
     remaining_mock.return_value = 0.5
     status_mock.side_effect = RateLimitUnavailable("brown-out")
     budget = await resolve_turn_budget("u-1")
-    assert budget == TurnBudget(usd=0.5, limiting="daily")
+    assert budget == TurnBudget(usd=0.5, limiting="daily", tier="PRO")
 
 
 @pytest.fixture
@@ -147,7 +153,7 @@ async def test_trial_allowance_binds_without_a_reset(trial_limits):
         weekly_limit=20_000_000,
     )
     budget = await resolve_turn_budget("trial-user")
-    assert budget == TurnBudget(usd=0.05, limiting="trial", hard_cap=True)
+    assert budget == TurnBudget(usd=0.05, limiting="trial", hard_cap=True, tier="TRIAL")
 
 
 @pytest.mark.asyncio
@@ -163,7 +169,7 @@ async def test_trial_with_a_tighter_daily_window_resets_daily(trial_limits):
     )
     budget = await resolve_turn_budget("trial-user")
     assert budget == TurnBudget(
-        usd=0.1, limiting="daily", resets_at=DAILY_RESET, hard_cap=True
+        usd=0.1, limiting="daily", resets_at=DAILY_RESET, hard_cap=True, tier="TRIAL"
     )
 
 
