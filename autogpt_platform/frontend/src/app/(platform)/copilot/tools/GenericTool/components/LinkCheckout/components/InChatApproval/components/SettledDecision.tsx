@@ -8,21 +8,28 @@ const SETTLED: Record<string, string> = {
 
 interface Props {
   state: string;
+  assistantName: string;
   agentNotTold: boolean;
   onTellAgent: () => void;
 }
 
-export function SettledDecision({ state, agentNotTold, onTellAgent }: Props) {
+export function SettledDecision({
+  state,
+  assistantName,
+  agentNotTold,
+  onTellAgent,
+}: Props) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-body text-foreground-secondary">{SETTLED[state]}</p>
       {agentNotTold && (
         <>
           <p role="alert" className="text-body text-error-foreground">
-            Your decision is saved, but the message to the agent did not send.
+            Your decision is saved, but the message to {assistantName} did not
+            send.
           </p>
           <Button size="small" variant="secondary" onClick={onTellAgent}>
-            Tell the agent
+            {`Tell ${assistantName}`}
           </Button>
         </>
       )}
