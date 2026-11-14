@@ -588,10 +588,6 @@ async def _follow_command(
                 return outcome(lost=type(exc).__name__)
 
 
-class _OutputExceeded(Exception):
-    """A command printed more than ``MAX_OUTPUT_SIZE`` on one stream."""
-
-
 class _CappedOutput:
     """One output stream of a command, kept up to ``MAX_OUTPUT_SIZE``."""
 
@@ -608,6 +604,10 @@ class _CappedOutput:
         if len(kept) < len(chunk):
             self.exceeded = True
             raise _OutputExceeded
+
+
+class _OutputExceeded(Exception):
+    """A command printed more than ``MAX_OUTPUT_SIZE`` on one stream."""
 
 
 async def _kill(sandbox: AsyncSandbox, pid: int) -> dict[str, Any]:
