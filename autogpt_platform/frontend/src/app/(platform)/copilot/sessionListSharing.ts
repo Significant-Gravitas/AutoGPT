@@ -1,5 +1,6 @@
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { replaceEqualDeep } from "@tanstack/react-query";
+import type { SessionGroupsResult } from "./sessionGroups";
 import type { SessionListInfiniteData } from "./useSessionList";
 
 /**
@@ -51,6 +52,62 @@ export function shareSessionListData(
     pages.length === previous.pages.length &&
     pages.every((page, index) => page === previous.pages[index]);
   return unchanged ? previous : { ...next, pages, pageParams };
+}
+
+/**
+ * `structuralSharing` for the sidebar's grouped read, for the same reason as
+ * {@link shareSessionListData}: each unchanged session, and each group whose
+ * total and chats are unchanged, keeps its cached object, and an unchanged
+ * read returns the cached result itself, so a poll that brings nothing new
+ * redraws nothing.
+ */
+export function shareSessionGroupsData(
+  oldData: unknown,
+  newData: unknown,
+): unknown {
+  const previous = oldData as SessionGroupsResult | undefined;
+  const next = newData as SessionGroupsResult | undefined;
+  if (previous?.status !== 200 || next?.status !== 200) return newData;
+
+  const cachedById = new Map<string, SessionSummaryResponse>();
+  for (const session of previous.data.pinned ?? []) {
+    cachedById.set(session.id, session);
+  }
+  for (const group of previous.data.groups) {
+    for (const session of group.sessions) cachedById.set(session.id, session);
+  }
+  function share(sessions: SessionSummaryResponse[]) {
+    return sessions.map((session) => {
+      const cached = cachedById.get(session.id);
+      return cached && haveSameFields(cached, session) ? cached : session;
+    });
+  }
+
+  const cachedGroups = new Map(
+    previous.data.groups.map((group) => [group.expert_id ?? null, group]),
+  );
+  const groups = next.data.groups.map((group) => {
+    const sessions = share(group.sessions);
+    const cached = cachedGroups.get(group.expert_id ?? null);
+    return cached &&
+      isSameList(cached.sessions, sessions) &&
+      haveSameFields(cached, group, "sessions")
+      ? cached
+      : { ...group, sessions };
+  });
+  const previousPinned = previous.data.pinned ?? [];
+  const sharedPinned = share(next.data.pinned ?? []);
+  const pinned = isSameList(previousPinned, sharedPinned)
+    ? previous.data.pinned
+    : sharedPinned;
+
+  // `groups` and `pinned` are the whole payload. The response headers are
+  // never read, and a `Headers` object never compares equal, so they alone
+  // must not make an unchanged read new.
+  const unchanged =
+    pinned === previous.data.pinned && isSameList(previous.data.groups, groups);
+  if (unchanged) return previous;
+  return { ...next, data: { ...next.data, groups, pinned } };
 }
 
 function isSameList(a: unknown[], b: unknown[]) {

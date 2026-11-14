@@ -35,6 +35,7 @@ export enum Key {
   HOME_SUGGESTED_TASKS_COLLAPSED = "home.suggestedTasks.collapsed",
   GITHUB_STAR_PROMPT_COUNT = "github-star-prompt-count",
   NPS_CHECK = "nps-check",
+  RECENT_CHATS_COLLAPSED_GROUPS = "recent-chats.collapsedGroups",
 }
 
 export const storage = createSafeStorage<Key>("local");

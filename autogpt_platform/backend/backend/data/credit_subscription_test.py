@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import stripe
+from fastapi import HTTPException
 from prisma.enums import SubscriptionTier
 from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import User
@@ -431,7 +432,9 @@ async def test_sync_subscription_from_stripe_cancelled(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -468,7 +471,9 @@ async def test_sync_subscription_from_stripe_past_due_downgrades_to_no_tier(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.NO_TIER, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -492,6 +497,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
     async def _set_tier(
         _user_id: str,
         tier: SubscriptionTier,
+        **_kwargs: object,
     ) -> None:
         mock_user.subscriptionTier = tier
 
@@ -1169,8 +1175,13 @@ def checkout_guard():
             "backend.data.credit._expire_open_subscription_sessions",
             new_callable=AsyncMock,
         ),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as closed,
     ):
-        yield
+        yield closed
 
 
 @pytest.mark.asyncio
@@ -1313,7 +1324,9 @@ async def test_sync_subscription_from_stripe_business_tier(billing_boundaries):
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1368,7 +1381,9 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price(
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BASIC, track_lifecycle=False
+        )
 
 
 @pytest.mark.asyncio
@@ -1424,7 +1439,9 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs(billing_boundari
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+        mock_set.assert_awaited_once_with(
+            "user-1", SubscriptionTier.BUSINESS, track_lifecycle=False
+        )
         # Only the stale sub should be cancelled — never the new one.
         mock_cancel.assert_called_once_with("sub_old")
 
@@ -2538,6 +2555,11 @@ async def test_top_up_intent_uses_inline_product_data_when_flag_unset():
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         await credit_system.top_up_intent(user_id="user-1", amount=500)
 
@@ -2577,6 +2599,11 @@ async def test_top_up_intent_references_product_id_when_flag_set():
             new=create_mock,
         ),
         patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
+        patch(
+            "backend.data.account_deletion.is_account_closed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         await credit_system.top_up_intent(user_id="user-1", amount=2500)
 
@@ -4622,6 +4649,79 @@ async def test_admin_get_user_history_include_inactive_omits_filter():
 
 
 @pytest.mark.asyncio
+async def test_admin_get_user_history_shows_a_deleted_accounts_rows():
+    """The ledger outlives the account (no foreign key to User), so a row
+    whose account is gone lists without an email instead of failing the
+    whole page."""
+    from datetime import datetime, timezone
+
+    from prisma.enums import CreditTransactionType
+
+    from backend.data.credit import admin_get_user_history
+
+    row = MagicMock(
+        transactionKey="tx-1",
+        createdAt=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        type=CreditTransactionType.USAGE,
+        amount=-5,
+        runningBalance=10,
+        userId="deleted-user-id",
+        metadata={},
+    )
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[row]),
+        count=AsyncMock(return_value=1),
+    )
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+        patch(
+            "backend.data.credit.get_user_credit_model",
+            AsyncMock(
+                return_value=MagicMock(
+                    _get_credits=AsyncMock(
+                        return_value=(10, datetime.now(timezone.utc))
+                    )
+                )
+            ),
+        ),
+    ):
+        result = await admin_get_user_history()
+
+    assert result.history[0].user_id == "deleted-user-id"
+    assert result.history[0].user_email is None
+    assert "include" not in prisma_mock.find_many.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_admin_get_user_history_searches_emails_through_the_lookup():
+    """A search matches the user ID, email or name, as before; emails and
+    names are matched in SQL since the ledger has no relation to User."""
+    from backend.data.credit import admin_get_user_history
+
+    prisma_mock = MagicMock(
+        find_many=AsyncMock(return_value=[]),
+        count=AsyncMock(return_value=0),
+    )
+    search = AsyncMock(return_value=([("tx-1", "u1")], 1))
+    with (
+        patch("backend.data.credit.CreditTransaction.prisma", return_value=prisma_mock),
+        patch("backend.data.credit.search_history_keys", search),
+        patch("backend.data.credit.user_emails", AsyncMock(return_value={})),
+    ):
+        result = await admin_get_user_history(search="sam@", page=2, page_size=10)
+
+    kwargs = search.await_args.kwargs
+    assert search.await_args.args == ("sam@",)
+    assert (kwargs["skip"], kwargs["take"]) == (10, 10)
+    assert kwargs["include_inactive"] is False
+    where = prisma_mock.find_many.await_args.kwargs["where"]
+    assert where == {"OR": [{"transactionKey": "tx-1", "userId": "u1"}]}
+    assert result.pagination.total_items == 1
+    prisma_mock.count.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_modify_stripe_subscription_same_tier_yearly_to_monthly_schedules_downgrade():
     """Same-tier yearly→monthly is a cycle downgrade: defer to period end via
     Subscription Schedule, NOT immediate always_invoice modify.
@@ -4941,3 +5041,75 @@ async def test_build_price_to_tier_map_skips_unconfigured_prices():
         price_to_tier = await build_price_to_tier_map()
 
     assert price_to_tier == {"price_pro_monthly": SubscriptionTier.PRO}
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_checkout_refuses_a_closed_account(checkout_guard):
+    """Asked of the database first, before a Stripe customer is made: for a
+    few seconds after the close, another worker's cache can still let an old
+    token through."""
+    checkout_guard.return_value = True
+    with (
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ) as customer,
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create_async",
+            new_callable=AsyncMock,
+        ) as create,
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await _checkout_pro()
+
+    assert (refused.value.status_code, refused.value.detail) == (
+        401,
+        "This account is closed.",
+    )
+    checkout_guard.assert_awaited_once_with("user-1")
+    customer.assert_not_awaited()
+    create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_made_as_the_account_closed_is_expired(checkout_guard):
+    """The account closed while Stripe made the Checkout: closing's sweep may
+    have run already, so the Checkout is expired here instead."""
+    checkout_guard.side_effect = [False, True]
+    session = MagicMock(id="cs_late", url="https://checkout.stripe.com/c/cs_late")
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create_async",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "backend.data.subscription_checkout.stripe.checkout.Session.expire_async",
+            new_callable=AsyncMock,
+        ) as expire,
+    ):
+        with pytest.raises(HTTPException) as refused:
+            await _checkout_pro()
+
+    assert refused.value.status_code == 401
+    expire.assert_awaited_once_with("cs_late")
+
+
+async def _checkout_pro() -> str:
+    return await create_subscription_checkout(
+        user_id="user-1",
+        tier=SubscriptionTier.PRO,
+        success_url="https://app.example.com/success",
+        cancel_url="https://app.example.com/cancel",
+    )

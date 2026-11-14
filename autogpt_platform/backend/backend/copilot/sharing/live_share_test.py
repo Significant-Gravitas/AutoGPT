@@ -23,13 +23,18 @@ async def test_an_allowlisted_file_needs_the_chat_still_shared_under_its_token()
         assert await get_shared_chat_file(TOKEN, FILE_ID) is None
 
     where = file_prisma.return_value.find_first.await_args.kwargs["where"]
+    # A reset expert's archived chats stop serving, share link or not.
     assert where == {
         "shareToken": TOKEN,
         "fileId": FILE_ID,
-        "Session": {"is": {"shareToken": TOKEN, "isShared": True}},
+        "Session": {"is": {"shareToken": TOKEN, "isShared": True, "archivedAt": None}},
     }
     session_where = session_prisma.return_value.find_first.await_args.kwargs["where"]
-    assert session_where == {"shareToken": TOKEN, "isShared": True}
+    assert session_where == {
+        "shareToken": TOKEN,
+        "isShared": True,
+        "archivedAt": None,
+    }
 
 
 @pytest.mark.asyncio

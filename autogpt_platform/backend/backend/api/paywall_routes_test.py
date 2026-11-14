@@ -181,6 +181,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/builder/suggestions",
     "GET /api/chat/connections",
     "GET /api/chat/model-tiers",
+    "GET /api/chat/session-groups",
     "GET /api/chat/sessions",
     "GET /api/chat/sessions/{session_id}",
     "GET /api/chat/sessions/{session_id}/at-reset",
@@ -264,6 +265,8 @@ OPEN_WHILE_PAYWALLED = {
     "DELETE /api/chat/sessions/{session_id}/stream",
     "DELETE /api/executions/{graph_exec_id}",
     "DELETE /api/experts/{expert_id}",
+    # Erases what an expert learned, like DELETE /api/memory; runs nothing.
+    "POST /api/experts/{expert_id}/reset",
     "DELETE /api/experts/{expert_id}/credentials/{credential_id}",
     "DELETE /api/experts/{expert_id}/workflows/{workflow_id}",
     "DELETE /api/graphs/{graph_id}",
@@ -311,6 +314,7 @@ OPEN_WHILE_PAYWALLED = {
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
     "GET /.well-known/oauth-protected-resource/api/v2/mcp",
+    "POST /api/auth/email/ban-record",
     "POST /api/auth/email/send",
     "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
