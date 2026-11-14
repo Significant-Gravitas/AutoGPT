@@ -12,7 +12,10 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
-from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
+from backend.integrations.oauth.stripe_link import (
+    DEVICE_GRANT_METADATA,
+    StripeLinkDeviceAuthHandler,
+)
 
 
 def mock_http(status_code: int, payload: dict, text: str = ""):
@@ -111,6 +114,33 @@ async def test_poll_returns_credentials_once_approved():
     assert result.credentials.access_token.get_secret_value() == "new-access"
     assert result.credentials.provider == "stripe_link"
     assert result.credentials.access_token_expires_at is not None
+    # Names its own client, so a reconnect that replaces a hosted grant
+    # overwrites the hosted marker (see router_test's merge test).
+    assert result.credentials.metadata == DEVICE_GRANT_METADATA
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "granted",
+    ["userinfo:read payment_methods.agentic", "userinfo:read,payment_methods.agentic"],
+)
+async def test_poll_records_granted_scopes_with_either_delimiter(granted):
+    """link-cli notes the token endpoint can echo `scope` comma-delimited; kept
+    whole, the one bogus scope fails every `payment_methods.agentic` check."""
+    patcher, _ = mock_http(
+        200,
+        {
+            "access_token": "new-access",
+            "refresh_token": "new-refresh",
+            "expires_in": 3600,
+            "scope": granted,
+        },
+    )
+    with patcher:
+        result = await StripeLinkDeviceAuthHandler().poll_for_tokens("dc")
+
+    assert result.credentials is not None
+    assert result.credentials.scopes == ["userinfo:read", "payment_methods.agentic"]
 
 
 @pytest.mark.asyncio
