@@ -523,6 +523,7 @@ async def schedule_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    spawner_envelope: TurnEnvelope | None = None,
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
@@ -605,6 +606,7 @@ async def schedule_turn(
             request_arrival_at=request_arrival_at,
             spawn=spawn,
             message_metadata=message_metadata,
+            spawner_envelope=spawner_envelope,
             unattended=unattended,
             credential_pins=credential_pins,
             scheduled=scheduled,
@@ -633,6 +635,7 @@ async def dispatch_turn(
     request_arrival_at: float = 0.0,
     spawn: SpawnRequest | None = None,
     message_metadata: dict[str, Any] | None = None,
+    spawner_envelope: TurnEnvelope | None = None,
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
@@ -681,7 +684,13 @@ async def dispatch_turn(
     trace_headers = None if admitted_here and not root else {}
     if envelope is None:
         envelope = await _admitted_turn_envelope(
-            turn_id, session_id, user_id, permissions, spawn, root=root
+            turn_id,
+            session_id,
+            user_id,
+            permissions,
+            spawn,
+            spawner_envelope,
+            root=root,
         )
     else:
         await readmit_turn(envelope, user_id=user_id)
@@ -783,6 +792,7 @@ async def queue_spawned_turn(
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
     message_metadata: dict[str, Any] | None,
+    spawner_envelope: TurnEnvelope | None = None,
     impersonated: bool = False,
 ) -> None:
     """Queue a turn another session started, to begin when a slot frees.
@@ -802,7 +812,7 @@ async def queue_spawned_turn(
             inflight_turn_limit_message(inflight_cap), cap=inflight_cap, used=inflight
         )
     envelope = await _admitted_turn_envelope(
-        str(uuid4()), session_id, user_id, permissions, spawn
+        str(uuid4()), session_id, user_id, permissions, spawn, spawner_envelope
     )
     try:
         await enqueue_turn(
@@ -832,6 +842,7 @@ async def _admitted_turn_envelope(
     user_id: str | None,
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
+    spawner_envelope: TurnEnvelope | None = None,
     *,
     root: bool = False,
 ) -> TurnEnvelope:
@@ -842,7 +853,11 @@ async def _admitted_turn_envelope(
     outside any turn — the HTTP route, the scheduler, a graph block — is a
     root by construction rather than by declaration.
     """
-    spawner = None if root else get_current_envelope()
+    # An explicit spawner wins over the contextvar: a turn started from the
+    # graph executor is in a different process, so the contextvar is empty
+    # there even though the turn genuinely has a parent (AutoPilotBlock
+    # rebuilds it from the execution context).
+    spawner = None if root else spawner_envelope or get_current_envelope()
     if spawn is not None and spawner is None:
         # A caller that passed a SpawnRequest is by construction a spawn tool
         # running inside a turn, so a missing spawner envelope means the
