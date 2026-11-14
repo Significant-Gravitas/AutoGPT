@@ -93,71 +93,6 @@ _KILL_TIMEOUT_SECONDS = 10
 # stream setup. Capping this far below it lets the tool's own timeout land first.
 _HUNG_CAP_MARGIN_SECONDS = 120
 
-# envd's kill reaches only the shell it started, and at a timeout envd has
-# already killed and reaped that shell itself, leaving what it started (`npm
-# install && npm run build`) running under new parents. Those are found by the
-# session the command runs in (`_follow_command`) as well as under the shell.
-# This stops the shell if it is still there, so it cannot start the next step
-# once a child dies, then stops and kills the rest. The shell itself is left for
-# envd's kill. Exits non-zero if any of them is still alive afterwards (e.g. one
-# run as root).
-# /proc is read through cat because awk aborts on an input file that vanished
-# after the glob expanded, which any process exiting meanwhile causes, and the
-# listing would then come back empty. A child can fork between a listing and
-# its STOP, so the stopping repeats until the listing holds still; if it never
-# does, whatever forked after the last listing may survive, so that exits 1 too.
-_KILL_TREE_SCRIPT = r"""
-p=__PID__
-kill -STOP "$p" 2>/dev/null
-under() {
-  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
-    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
-      parent[pid] = f[2]; state[pid] = f[1]
-      if (f[4] == root && pid != root) { mine[pid] = 1; q[++n] = pid } }
-    END { q[++n] = root
-          while (n) { r = q[n--]
-                      for (k in parent) if (parent[k] == r && !(k in mine)) {
-                        mine[k] = 1; q[++n] = k } }
-          for (k in mine) if (state[k] != "Z") print k }
-  ' | sort -n
-}
-kids= settled=
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
-  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
-done
-[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
-[ -n "$settled" ] || exit 1
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [ -z "$(under)" ] && exit 0
-  sleep 0.1
-done
-exit 1
-"""
-
-
-class _E2BRun(BaseModel):
-    """How a command on the box ended, with all the output we received."""
-
-    stdout: str
-    stderr: str
-    elapsed: float
-    exit_code: int | None = None
-    timed_out: bool = False
-    # It printed more than MAX_OUTPUT_SIZE on one stream; the rest is not kept.
-    output_exceeded: bool = False
-    # Kill sent after either: True done, False not found, None unknown.
-    killed: bool | None = None
-    # Nothing the command started is left: every process in its session or
-    # under its shell was killed, or had ended.
-    children_killed: bool = False
-    # Why we stopped following a command that had not ended: the stream
-    # error's type name.
-    lost: str | None = None
-    # The command ended while we were not attached: no exit code.
-    ended_unseen: bool = False
-    reconnects: int = 0
-
 
 class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
@@ -542,6 +477,29 @@ class BashExecTool(BaseTool):
         return _run_response(run, timeout, secret_values, session_id)
 
 
+class _E2BRun(BaseModel):
+    """How a command on the box ended, with all the output we received."""
+
+    stdout: str
+    stderr: str
+    elapsed: float
+    exit_code: int | None = None
+    timed_out: bool = False
+    # It printed more than MAX_OUTPUT_SIZE on one stream; the rest is not kept.
+    output_exceeded: bool = False
+    # Kill sent after either: True done, False not found, None unknown.
+    killed: bool | None = None
+    # Nothing the command started is left: every process in its session or
+    # under its shell was killed, or had ended.
+    children_killed: bool = False
+    # Why we stopped following a command that had not ended: the stream
+    # error's type name.
+    lost: str | None = None
+    # The command ended while we were not attached: no exit code.
+    ended_unseen: bool = False
+    reconnects: int = 0
+
+
 async def _follow_command(
     sandbox: AsyncSandbox, command: str, timeout: int, envs: dict[str, str]
 ) -> _E2BRun:
@@ -677,6 +635,49 @@ async def _kill_children(sandbox: AsyncSandbox, pid: int) -> bool:
         logger.warning("[E2B] Could not kill the children of pid %s: %s", pid, exc)
         return False
     return result.exit_code == 0
+
+
+# envd's kill reaches only the shell it started, and at a timeout envd has
+# already killed and reaped that shell itself, leaving what it started (`npm
+# install && npm run build`) running under new parents. Those are found by the
+# session the command runs in (`_follow_command`) as well as under the shell.
+# This stops the shell if it is still there, so it cannot start the next step
+# once a child dies, then stops and kills the rest. The shell itself is left for
+# envd's kill. Exits non-zero if any of them is still alive afterwards (e.g. one
+# run as root).
+# /proc is read through cat because awk aborts on an input file that vanished
+# after the glob expanded, which any process exiting meanwhile causes, and the
+# listing would then come back empty. A child can fork between a listing and
+# its STOP, so the stopping repeats until the listing holds still; if it never
+# does, whatever forked after the last listing may survive, so that exits 1 too.
+_KILL_TREE_SCRIPT = r"""
+p=__PID__
+kill -STOP "$p" 2>/dev/null
+under() {
+  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
+    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
+      parent[pid] = f[2]; state[pid] = f[1]
+      if (f[4] == root && pid != root) { mine[pid] = 1; q[++n] = pid } }
+    END { q[++n] = root
+          while (n) { r = q[n--]
+                      for (k in parent) if (parent[k] == r && !(k in mine)) {
+                        mine[k] = 1; q[++n] = k } }
+          for (k in mine) if (state[k] != "Z") print k }
+  ' | sort -n
+}
+kids= settled=
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
+  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
+done
+[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+[ -n "$settled" ] || exit 1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [ -z "$(under)" ] && exit 0
+  sleep 0.1
+done
+exit 1
+"""
 
 
 def _run_response(
