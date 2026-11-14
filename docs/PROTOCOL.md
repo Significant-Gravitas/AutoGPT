@@ -932,8 +932,9 @@ approval card, but a chat that runs Unsupervised approves without asking,
 and a standing rule the person set on an earlier card ("from now on")
 approves later calls of that kind whatever their arguments. The shim can't
 tell which and trusts the field. An argument in a tool's
-`approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
-`file_path` / `image_path`, `browser_set_input_files.files`, and
+`approval_arguments` can reach the disk (`screenshot_out_file`, macOS
+`click.debug_image_out`, clipboard `file_path` / `image_path`,
+`browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to
 a file where the shim can't check them) or runs a program out of sight
 (`launch_app`'s `launch_path`, `path`, `additional_arguments`, `urls` and
@@ -944,9 +945,10 @@ an approval argument of the called tool may be named.
 
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
 doesn't offer, and, with `details.argument` too, an argument it never
-accepts: `check_permissions` with `prompt: true`; any approval argument
-inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
-`bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
+accepts: `check_permissions` with `prompt: true`; any tool's approval
+argument inside a `run_steps` step, whatever tool the step names, or its
+`observe`; and a `launch_app` `name`, `bundle_id` or `aumid` that isn't an
+app's name or id (a path, a URL scheme,
 a leading `-`, a control character, on Linux a name whose first word is
 a program, a program's own name included, or, unless `urls` or `launch_path`
 is given, one that isn't an installed app's name or desktop-file id in

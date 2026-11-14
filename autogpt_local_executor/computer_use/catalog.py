@@ -147,6 +147,8 @@ def policy_document(tools: Iterable[str]) -> str:
 APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
     "get_window_state": {"screenshot_out_file": "writes the screenshot to this file"},
     "get_desktop_state": {"screenshot_out_file": "writes the screenshot to this file"},
+    # On a Mac: a screenshot of the window, with a crosshair at the point.
+    "click": {"debug_image_out": "writes a screenshot to this file before it clicks"},
     "clipboard_write": {
         "file_path": "puts this file on the clipboard, to paste into an app",
         "image_path": "puts this image file on the clipboard",
@@ -176,10 +178,18 @@ APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
 # with "linux" for every Linux); it takes each other one everywhere. The
 # contract tests check them against the driver of the system they run on.
 APPROVAL_ARGUMENT_PLATFORMS: dict[tuple[str, str], frozenset[str]] = {
+    ("click", "debug_image_out"): frozenset({"darwin"}),
     ("launch_app", "launch_path"): frozenset({"linux", "win32"}),
     ("launch_app", "path"): frozenset({"win32"}),
     ("launch_app", "webkit_inspector_port"): frozenset({"darwin", "win32"}),
 }
+
+# Every argument that needs approval on some tool. A run_steps step may use
+# none of them, whatever tool it names: the driver runs some steps as
+# another tool (a `press` with a target, and a `triple_click`, as a click).
+_STEP_DISK_ARGUMENTS = tuple(
+    dict.fromkeys(argument for arguments in APPROVAL_ARGUMENTS.values() for argument in arguments)
+)
 
 # The launch_app arguments that name an app rather than a program to run.
 _APP_IDENTITIES = ("name", "bundle_id", "aumid")
@@ -209,11 +219,11 @@ class ApprovalRequired(Exception):
 
 def approval_arguments(tool: str, arguments: Mapping[str, Any]) -> list[str]:
     """The arguments of this call that need the person's approval."""
-    return [
-        argument
-        for argument in APPROVAL_ARGUMENTS.get(tool, {})
-        if arguments.get(argument) not in (None, "", [])
-    ]
+    return _given(APPROVAL_ARGUMENTS.get(tool, {}), arguments)
+
+
+def _given(names: Iterable[str], arguments: Mapping[str, Any]) -> list[str]:
+    return [name for name in names if arguments.get(name) not in (None, "", [])]
 
 
 def check_arguments(
@@ -255,7 +265,7 @@ def check_arguments(
     if tool == "run_steps":
         for index, step in enumerate(arguments.get("steps") or []):
             for step_tool, step_args in _step_calls(step):
-                if used := approval_arguments(step_tool, step_args):
+                if used := _given(_STEP_DISK_ARGUMENTS, step_args):
                     raise ArgumentRefused(
                         tool,
                         f"steps[{index}].{used[0]}",
