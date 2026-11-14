@@ -1,12 +1,19 @@
 """The fake provider and the platform ledger each billing scenario runs on."""
 
 from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack
 
 import pytest
 import pytest_asyncio
 
 from .ledger import PlatformLedger
 from .provider import FakeProvider
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def client_cleanup() -> AsyncIterator[AsyncExitStack]:
+    async with AsyncExitStack() as cleanup:
+        yield cleanup
 
 
 @pytest_asyncio.fixture(loop_scope="function")

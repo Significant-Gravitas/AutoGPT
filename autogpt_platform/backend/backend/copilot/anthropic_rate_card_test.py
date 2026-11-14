@@ -256,20 +256,22 @@ class TestHaiku5_5Rates:
     def test_haiku_5_5_billed_at_published_rates_without_fallback(self, caplog):
         cost = compute_anthropic_cost_usd(
             model="claude-haiku-5-5",
-            prompt_tokens=1_000_000,
-            completion_tokens=1_000_000,
+            prompt_tokens=100_000,
+            completion_tokens=100_000,
         )
-        assert cost == pytest.approx(0.6)
+        assert cost == pytest.approx(0.06)
         assert "falling back" not in caplog.text
 
-    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 0.135), ("1h", 0.21)])
+    @pytest.mark.parametrize(
+        "cache_ttl, expected_cost", [("5m", 0.00675), ("1h", 0.0105)]
+    )
     def test_haiku_5_5_cache_rates(self, cache_ttl, expected_cost):
         cost = compute_anthropic_cost_usd(
             model="claude-haiku-5-5",
-            prompt_tokens=2_000_000,
+            prompt_tokens=100_000,
             completion_tokens=0,
-            cache_read_tokens=1_000_000,
-            cache_creation_tokens=1_000_000,
+            cache_read_tokens=50_000,
+            cache_creation_tokens=50_000,
             cache_ttl=cache_ttl,
         )
         assert cost == pytest.approx(expected_cost)
