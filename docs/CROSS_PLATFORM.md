@@ -235,7 +235,11 @@ not open yet on macOS (Files and Folders), a missing permission that exits
 | WSL2 | `~/autogpt-workspace` inside the distro | Avoid `/mnt/c` by default; user can override. |
 
 Shim creates the directory on first run if missing. User can override via
-`--allowed-root /some/path` on the CLI or in `config.toml`.
+`--allowed-root /some/path` on the CLI or in `config.toml`. A relative path
+in `config.toml` is taken from the folder the shim starts in, which for the
+autostart service is the home folder (systemd) rather than the one `install`
+ran in, so `install` refuses one; a relative `--allowed-root` given to
+`install` is made absolute against its folder.
 
 ### OAuth callback port
 

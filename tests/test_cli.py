@@ -922,6 +922,45 @@ def test_install_gives_the_service_a_home_relative_root_expanded(
     )
 
 
+@pytest.mark.parametrize(("root", "refused"), [(".", True), ("files", True), ("~/ws", False)])
+def test_install_refuses_a_relative_root_from_the_config_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    root: str,
+    refused: bool,
+) -> None:
+    """A relative allowed_root from the config file went to the service as
+    it was, and the service, which starts in another folder (the home
+    folder, under systemd), resolved it there: `.` in a project's config
+    gave a legacy session the whole home folder, not the project. install
+    says so instead, and writes no autostart entry. A home-relative root is
+    the home folder's wherever the service starts."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    config = tmp_path / "config.toml"
+    config.write_text(f'session_id = "session-1"\nallowed_root = "{root}"\n', encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "install"])
+
+    if not refused:
+        cli.main()
+        install_autostart.assert_called_once()
+        return
+    with pytest.raises(SystemExit) as exited:
+        cli.main()
+
+    assert exited.value.code == 78
+    error = capsys.readouterr().err
+    assert "allowed_root" in error and str(config) in error
+    install_autostart.assert_not_called()
+
+
 def test_an_install_flag_outranks_the_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
