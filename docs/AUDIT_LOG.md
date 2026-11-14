@@ -168,7 +168,9 @@ Two starts at once that find no key (the service, and a `start` run by
 hand) make one between them: a key is made, and the file fallback's is
 read, under a lock every start takes, `.audit-key.lock` in
 `AUTOGPT_SHIM_FALLBACK_DIR` (default `~/.autogpt-local-executor`), and a
-start that waited for it uses the key the other stored.
+start that waited for it uses the key the other stored, even when the
+other has made the log meanwhile: only the look under the lock decides
+that a log rules a new key out.
 
 Malformed stored keys are preserved and rejected rather than regenerated.
 Before appending to an existing active log, startup verifies its chain using

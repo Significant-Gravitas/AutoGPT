@@ -1753,6 +1753,99 @@ def test_a_file_key_is_made_and_read_under_the_same_lock(
     assert outcome == [the_other_starts]
 
 
+def test_a_start_looks_for_the_key_again_before_it_refuses_for_the_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start that found no key refused for good when the log it is for
+    existed, before taking the lock it looks again under. Another start
+    could store the key and make the log just after this one looked, so the
+    refusal came while the key that signed the log was stored, and a
+    supervised start stayed stopped."""
+    import secrets
+
+    import keyring
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    log = tmp_path / "audit.log"
+    other_key = secrets.token_bytes(32)
+    keychain: dict[tuple[str, str], str] = {}
+    reads = 0
+
+    def read(service: str, user: str) -> str | None:
+        nonlocal reads
+        reads += 1
+        found = keychain.get((service, user))
+        if reads == 1:
+            # The other start stores its key and makes its log just after.
+            keychain[(service, user)] = other_key.hex()
+            log.write_text("")
+        return found
+
+    stored: list[str] = []
+    with (
+        patch.object(keyring, "get_password", side_effect=read),
+        patch.object(keyring, "set_password", side_effect=lambda *args: stored.append(args[2])),
+    ):
+        key = get_or_create_audit_key(log)
+
+    assert key == other_key
+    assert stored == []
+
+
+def test_without_the_keyring_package_a_start_looks_for_the_file_key_again_before_it_refuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without the keyring package, a start that found no file key refused
+    for good when the log existed, before taking the lock the file key is
+    read under, though another start could have made that key and signed
+    the log with it just after this one looked."""
+    import secrets
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    log = tmp_path / "audit.log"
+    fallback = tmp_path / "audit-key.enc"
+    other_key = secrets.token_bytes(32)
+    real_exists = Path.exists
+    looked = False
+
+    def exists(self: Path, *args: Any, **kwargs: Any) -> bool:
+        nonlocal looked
+        found = real_exists(self, *args, **kwargs)
+        if self == fallback and not looked:
+            looked = True
+            # The other start makes the file key and its log just after.
+            salt = secrets.token_bytes(16)
+            ciphertext = audit_module._xor_encrypt("passphrase", salt, other_key)
+            fallback.write_text(f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8")
+            log.write_text("")
+        return found
+
+    monkeypatch.setattr(Path, "exists", exists)
+
+    assert get_or_create_audit_key(log) == other_key
+
+
+def test_without_the_keyring_package_an_audit_command_with_no_file_key_stops_at_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An audit command makes no key, so it has nothing to wait for the lock
+    for: with no file key it stops before taking it, and makes no folder."""
+    from autogpt_local_executor.audit import AuditKeyError
+
+    fallback_dir = tmp_path / "fallback"
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(fallback_dir))
+    monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
+    monkeypatch.setitem(sys.modules, "keyring", None)
+
+    with pytest.raises(AuditKeyError, match="none to read"):
+        audit_module.load_audit_key()
+
+    assert not fallback_dir.exists()
+
+
 # ── Export: descriptors, a prune meanwhile, the default name ───────────
 
 

@@ -35,7 +35,7 @@ import re
 import secrets
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
@@ -615,17 +615,19 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
     doesn't exist yet, since a log another key signed would never verify
     with it. With `create` false no key is made at all (load_audit_key).
     A key is made under a lock all starts share, after a second look for
-    one another start stored meanwhile (_holding_key_lock).
+    one another start stored meanwhile (_holding_key_lock), and only that
+    look decides whether the log rules a new key out: another start may
+    store the key and make the log just after the first look.
     """
     try:
         import keyring
         import keyring.errors
     except ImportError:
+        holder = "No keyring package is installed, and the file fallback"
         if not _fallback_path().exists():
-            _refuse_a_new_key(
-                audit_log, create, "No keyring package is installed, and the file fallback"
-            )
-        return _fallback_audit_key()
+            # An audit command, which makes no key, stops here.
+            _refuse_a_new_key(None, create, holder)
+        return _fallback_audit_key(may_make=lambda: _refuse_a_new_key(audit_log, create, holder))
     try:
         _load_keyring_backend(keyring)
         stored = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME)
@@ -636,7 +638,8 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
             # it signed the log; a new keychain key couldn't verify it.
             logger.info("The keychain holds no audit key; using the file fallback's.")
             return _fallback_audit_key()
-        _refuse_a_new_key(audit_log, create, "The OS keychain")
+        # An audit command, which makes no key, stops here.
+        _refuse_a_new_key(None, create, "The OS keychain")
         with _holding_key_lock():
             # Another start may have stored a key while this one waited: in
             # the keychain (the service, and a `start` run by hand), or in the
@@ -659,6 +662,7 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
                     )
                 logger.info("The keychain holds no audit key; using the file fallback's.")
                 return _fallback_key_held(_fallback_path(), passphrase)
+            _refuse_a_new_key(audit_log, create, "The OS keychain")
             key = secrets.token_bytes(32)
             keyring.set_password(KEYCHAIN_SERVICE, KEYCHAIN_AUDIT_KEY_USERNAME, key.hex())
             return key
@@ -729,18 +733,14 @@ def _refuse_a_new_key(audit_log: Path | None, create: bool, holder: str) -> None
     """Raise AuditKeyError unless a new audit key may be made: never for the
     audit commands (`create` false), and never while `audit_log`, the log
     the key is for, exists, since a new key couldn't verify a log another
-    key signed. `holder` names where no key was found."""
+    key signed. `holder` names where no key was found. The log is checked
+    with the lock held, once no key turned up there either (None skips it)."""
     if not create:
         raise AuditKeyError(f"{holder} holds no audit key, so there is none to read")
     if audit_log is not None and os.path.lexists(audit_log):
-        hint = (
-            " (the file fallback has one: set AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE to read it)"
-            if _fallback_path().exists()
-            else ""
-        )
         raise AuditKeyError(
             f"{holder} holds no audit key, but the audit log at {audit_log} was signed "
-            f"with one{hint}, which a new key couldn't verify. Restore that key, or move "
+            "with one, which a new key couldn't verify. Restore that key, or move "
             "the log aside to start a new log with a new key"
         )
 
@@ -775,14 +775,18 @@ def _no_keychain_yet(exc: Exception, audit_log: Path | None, *, create: bool = T
         ) from exc
 
 
-def _fallback_audit_key(keyring: Any = None) -> bytes:
+def _fallback_audit_key(
+    keyring: Any = None, *, may_make: Callable[[], None] | None = None
+) -> bytes:
     """Legacy audit-only obfuscation; the existing log authenticates the key.
 
     This format has no authentication tag or slow password KDF. OAuth tokens
     require an OS keychain, so this is not a headless token-storage solution.
     With `keyring` (the module), a start that found no keychain looks in it
     again under the lock before it makes a file key (_keychain_key_meanwhile).
-    A storage error making its folder or key raises AuditKeyStorageError.
+    `may_make`, called under the lock when there is still no file key, raises
+    if none may be made. A storage error making its folder or key raises
+    AuditKeyStorageError.
     """
     fallback_path = _fallback_path()
     folder = fallback_path.parent
@@ -807,10 +811,13 @@ def _fallback_audit_key(keyring: Any = None) -> bytes:
     # Under the lock a new key is made under: two starts would each write
     # their own, and one could read the other's half written.
     with _holding_key_lock():
-        if keyring is not None and not fallback_path.exists():
-            stored = _keychain_key_meanwhile(keyring)
-            if stored is not None:
-                return stored
+        if not fallback_path.exists():
+            if keyring is not None:
+                stored = _keychain_key_meanwhile(keyring)
+                if stored is not None:
+                    return stored
+            if may_make is not None:
+                may_make()
         return _fallback_key_held(fallback_path, passphrase)
 
 
