@@ -330,8 +330,18 @@ from ._test_data import make_session
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 83,410
 #     + headroom                       +300       83,710
+# Raised for the four Link checkout tools (browser_request_link_payment,
+# browser_complete_link_payment, browser_link_payment_status,
+# browser_reset_after_payment). Their descriptions were cut first, and the
+# payment fields are flat strings rather than nested objects, so what remains
+# is the tools themselves. They only reach a session when an operator turns
+# the private checkout on. Measured on #14927 merged with dev d318f72d25
+# (2026-11-13):
+#     merged tree without them                    83,440 (92 tools)
+#     + four checkout tools          +3,626       87,066 (96 tools)
+#     + headroom                       +300       87,366
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 83_710
+_CHAR_BUDGET = 87_366
 
 
 @pytest.fixture(scope="module")
@@ -578,8 +588,14 @@ def test_total_schema_char_budget() -> None:
 # Measured on PR #16677 merged with latest dev:
 #     merged tree                                 75,382
 #     + headroom                       +300       75,682
+# The same four Link checkout tools as ``_CHAR_BUDGET`` above; no group hides
+# them from an Otto chat, so their whole wire share lands here. Measured on
+# #14927 merged with dev d318f72d25 (2026-11-13):
+#     merged tree without them                    75,411
+#     + four checkout tools          +3,222       78,633
+#     + headroom                       +300       78,933
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 75_682
+_SESSION_WIRE_BUDGET = 78_933
 
 
 def test_largest_declared_session_wire_budget() -> None:

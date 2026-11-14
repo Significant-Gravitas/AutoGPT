@@ -57,6 +57,15 @@ def _is_github_oauth_configured() -> bool:
     return GITHUB_OAUTH_IS_CONFIGURED
 
 
+def _is_stripe_link_oauth_configured() -> bool:
+    """Lazy for the same reason as :func:`_is_github_oauth_configured`."""
+    from backend.integrations.oauth.stripe_link_hosted import (
+        STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    )
+
+    return STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+
+
 # -- Registry ----------------------------------------------------------------
 # Add new providers here.  Both env-var injection and the setup-card tool read
 # from this single registry.
@@ -87,12 +96,43 @@ SUPPORTED_PROVIDERS: dict[str, ProviderEntry] = {
 }
 
 
+class ConnectOnlyEntry(TypedDict):
+    """A provider the setup card connects that nothing in a sandbox may use."""
+
+    name: str
+    default_scopes: list[str]
+
+
+# Connected through the setup card like the providers above, but kept out of
+# SUPPORTED_PROVIDERS, which also decides what a sandbox can be handed (its
+# variables, the swap proxy's hosts, a run's providers ceiling).
+CONNECT_ONLY_PROVIDERS: dict[str, ConnectOnlyEntry] = {
+    # Only the private checkout uses a Link wallet token; listed so the agent
+    # can ask for a Link connection before a checkout.
+    "stripe_link": {
+        "name": "Stripe Link",
+        "default_scopes": ["payment_methods.agentic", "userinfo:read"],
+    },
+}
+
+
+def setup_card_entry(provider: str) -> ProviderEntry | ConnectOnlyEntry | None:
+    """The registry entry the setup card connects *provider* with, if any."""
+    return SUPPORTED_PROVIDERS.get(provider) or CONNECT_ONLY_PROVIDERS.get(provider)
+
+
 def get_provider_auth_types(provider: str) -> list[str]:
     """Return the supported credential types for *provider* at runtime.
 
     OAuth types are only offered when the corresponding OAuth client env vars
     are configured.
     """
+    if provider == "stripe_link":
+        # Same rule as the Link blocks' credential field: `device_code` is how
+        # the public client connects, `oauth2` what its grant is stored as.
+        if _is_stripe_link_oauth_configured():
+            return ["oauth2"]
+        return ["oauth2", "device_code"]
     if provider == "github":
         if _is_github_oauth_configured():
             return ["api_key", "oauth2"]

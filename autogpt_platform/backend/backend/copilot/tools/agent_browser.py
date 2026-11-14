@@ -41,6 +41,7 @@ from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.data.workspace_internal import WORKING_FILE_METADATA
 from backend.util.egress_proxy import egress_proxy_url
+from backend.util.link_checkout import engine as private_browser
 from backend.util.request import validate_url_host
 
 from .base import BaseTool
@@ -139,6 +140,10 @@ async def _run(
     """
     if any(_OPTION_LIKE.fullmatch(arg) and arg not in _OWN_OPTIONS for arg in args):
         return 1, "", "Refused an argument that looks like an agent-browser option."
+    if private_browser.serves(session_name):
+        # A payment may later happen in this browser, so it runs where the
+        # agent cannot script it (see backend/util/link_checkout).
+        return await private_browser.run_browser_command(session_name, args)
     try:
         proxy = egress_proxy_url()
     except Exception:
@@ -313,6 +318,10 @@ async def _save_browser_state(
 
     Best-effort: errors are logged but never propagate to the tool response.
     """
+    # A private browser's cookies and storage never leave it: after a payment
+    # they are exactly what must not be copied anywhere.
+    if private_browser.serves(session_name):
+        return
     try:
         # Gather state in parallel
         (
@@ -357,6 +366,8 @@ async def _restore_browser_state(
     Best-effort: errors are logged but never propagate to the tool response.
     Returns True on success (or no state to restore), False on failure.
     """
+    if private_browser.serves(session_name):
+        return True
     try:
         manager = await get_workspace_manager(user_id, session.session_id)
 
@@ -644,7 +655,7 @@ class BrowserNavigateTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return shutil.which("agent-browser") is not None
+        return private_browser.remote() or shutil.which("agent-browser") is not None
 
     async def _execute(
         self,
@@ -824,7 +835,7 @@ class BrowserActTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return shutil.which("agent-browser") is not None
+        return private_browser.remote() or shutil.which("agent-browser") is not None
 
     async def _execute(
         self,
@@ -992,7 +1003,7 @@ class BrowserScreenshotTool(BaseTool):
 
     @property
     def is_available(self) -> bool:
-        return shutil.which("agent-browser") is not None
+        return private_browser.remote() or shutil.which("agent-browser") is not None
 
     async def _execute(
         self,

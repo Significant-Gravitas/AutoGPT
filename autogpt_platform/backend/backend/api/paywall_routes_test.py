@@ -186,6 +186,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/chat/sessions/{session_id}",
     "GET /api/chat/sessions/{session_id}/at-reset",
     "GET /api/chat/sessions/{session_id}/computer",
+    # A Link purchase the chat prepared; deciding on it stores a decision.
+    "GET /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}",
     "GET /api/chat/sessions/{session_id}/messages/pending",
     "GET /api/chat/sessions/{session_id}/share/state",
     "GET /api/chat/sessions/{session_id}/stream",
