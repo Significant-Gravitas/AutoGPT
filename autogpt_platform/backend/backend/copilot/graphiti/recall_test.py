@@ -352,3 +352,39 @@ class TestSearchForgottenFacts:
             "min_score": DEFAULT_MIN_SCORE,
             "limit": 2,
         }
+
+
+class TestALongQuery:
+    """text-embedding-3-small refuses more than 8,192 tokens and makes at
+    most one per UTF-8 byte, so a query over that many bytes is cut to a
+    start that fits, the ask kept, instead of failing the whole search."""
+
+    _ASK = "What did I tell you about the Atlas launch?"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "search, embedded",
+        [
+            (recall.search_facts, lambda c: c.search_.await_args.kwargs["query"]),
+            (
+                recall.search_forgotten_facts,
+                lambda c: c.embedder.create.await_args.kwargs["input_data"][0],
+            ),
+        ],
+        ids=["search_facts", "search_forgotten_facts"],
+    )
+    async def test_is_cut_to_a_start_the_embedder_takes(self, search, embedded):
+        client = MagicMock()
+        client.search_ = AsyncMock(return_value=SearchResults(edges=[]))
+        client.embedder.create = AsyncMock(return_value=[0.25, 0.75])
+        client.driver.provider = GraphProvider.FALKORDB
+        client.driver.execute_query = AsyncMock(return_value=([], [], None))
+        long_query = f"{self._ASK} {'🙂' * 10_000}"
+        with patch.object(
+            recall, "get_graphiti_client", AsyncMock(return_value=client)
+        ):
+            await search(_SCOPE, long_query, limit=10)
+
+        text = embedded(client)
+        assert text.startswith(self._ASK)
+        assert len(text.encode("utf-8")) <= 8_192
