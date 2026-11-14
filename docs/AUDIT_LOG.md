@@ -312,7 +312,9 @@ destination and moved into place when it is complete.
 Export bundles all current+rotated files into a `.zip` with an
 embedded `manifest.json` (per-file `name`/`size`/`sha256`) and a
 `manifest.sig` containing HMAC-SHA256 over the manifest using the
-local audit key. The signature is symmetric (not RSA): the user
+local audit key. It refuses a log named `manifest.json` or
+`manifest.sig`, in any case, which the archive would hold beside, or in
+place of, its own. The signature is symmetric (not RSA): the user
 shares the audit key out-of-band with support / a platform-side
 viewer when they upload the bundle. This is intentional — there is no
 public PKI for the per-machine audit key, and adding one would

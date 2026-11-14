@@ -822,6 +822,10 @@ def _read_audit_file(path: Path) -> bytes | None:
         return None
 
 
+# The names an export archive keeps its manifest and signature under.
+_EXPORT_METADATA = frozenset({"manifest.json", "manifest.sig"})
+
+
 def _audit_export(current: Path, output: Path | None) -> int:
     """Zip current + rotated files and sign the manifest with the audit key.
 
@@ -891,6 +895,13 @@ def _audit_export(current: Path, output: Path | None) -> int:
         if _same_file(output.parent, current.parent) and output.name.startswith(current.name + "."):
             print(f"Refusing to name the export like a rotated audit log: {output}")
             return 2
+        # Nor holding a log under a name the archive's manifest takes: two
+        # members of one name, where a reader by name gets the manifest, or,
+        # unpacked where case is ignored, one in place of the other.
+        for path in files:
+            if path.name.casefold() in _EXPORT_METADATA:
+                print(f"Refusing to export an audit log named like the export's manifest: {path}")
+                return 2
         for path in files:
             if path == current:
                 current_data = path.read_bytes()
