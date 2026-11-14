@@ -629,8 +629,13 @@ def test_a_refused_frames_description_holds_no_name_the_frame_chose(kind: str) -
     have, which the frame chooses: text it meant to keep private, or a
     newline that starts a line of the frame's own in the shim's log."""
     chosen = "hunter2\nforged"
+    # On the envelope, with no payload, there are at most two errors, all
+    # of them named; in the payload, a message's required fields can take
+    # up the errors named.
+    on_the_envelope = {"type": kind, "id": "f", "ts": 1.0, "version": VERSION, chosen: 1}
 
-    told = _refusal(_frame(kind, {chosen: 1}, **{chosen: 2}))
+    for frame in (on_the_envelope, _frame(kind, {chosen: 1})):
+        told = _refusal(frame)
 
-    assert "hunter2" not in told
-    assert "\n" not in told
+        assert "hunter2" not in told
+        assert "\n" not in told
