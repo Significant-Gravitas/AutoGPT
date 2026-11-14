@@ -100,7 +100,15 @@ End-user install: `scoop bucket add autogpt https://github.com/Significant-Gravi
   RELEASE_BRANCH=experimental/local-pc-executor  # the branch step 1 tags
   git checkout "$RELEASE_BRANCH" && git pull
   git fetch origin sync/from-monorepo
-  git merge --no-ff --no-commit FETCH_HEAD  # "Already up to date": nothing to bring back
+  git merge --no-ff --no-commit FETCH_HEAD
+  ```
+
+  If it answers `Already up to date.`, the release branch has everything
+  the monorepo changed, and there is no merge to finish: skip the rest of
+  this step, restoring and committing too, and check the release branch
+  (below). Otherwise:
+
+  ```bash
   git restore --source=HEAD --staged --worktree -- .github README.md pyproject.toml
   git rm -rqf --ignore-unmatch -- AGENTS.md CLAUDE.md
   git diff HEAD...FETCH_HEAD -- README.md pyproject.toml  # what the monorepo changed there
