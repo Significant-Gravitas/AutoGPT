@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from pathlib import Path, PurePath
 from typing import BinaryIO
 
-from .fsops import temporary_sibling
+from .fsops import file_acl, temporary_sibling
 from .platform_info import detect_platform
 
 # Windows reserved device names (case-insensitive, with or without extension).
@@ -325,8 +325,9 @@ def write_jail_file(
     umask. Where the directory takes no new entries, (on Windows) another
     program has the file open, the shim may not give the new file the old
     one's owner and group (a file another account owns, a group the shim
-    isn't in), or (on Windows) the old file's owner or DACL isn't what the
-    new one gets from the folder, the file is overwritten in place.
+    isn't in), the old file's ACL isn't what the new one gets from the
+    folder (on Linux and macOS), or (on Windows) its owner or DACL isn't,
+    the file is overwritten in place.
     """
     path = assert_inside_jail(requested_path, allowed_root)
     owner: tuple[int, int] | None = None
@@ -393,6 +394,8 @@ def _replace_with(
                 os.fchmod(file.fileno(), mode)
             if mode is not None and sys.platform == "win32":
                 _refuse_other_windows_permissions(path, temp)
+            elif mode is not None:
+                _refuse_another_acl(path, file.fileno())
             file.write(data)
             file.flush()
             os.fsync(file.fileno())
@@ -403,6 +406,26 @@ def _replace_with(
         with contextlib.suppress(OSError):
             os.unlink(temp)
         raise
+
+
+def _refuse_another_acl(path: Path, descriptor: int) -> None:
+    """PermissionError, which writes the file in place, unless the new file
+    beside `path`, open on `descriptor` and given the old mode, has the ACL
+    `path` has (Linux, macOS). The rename keeps the new file's ACL, none or
+    the folder's default entries, so a file with entries of its own would
+    lose them, and the new one could get the folder's. On Linux the mode's
+    group bits are an ACL's mask: a file that let another account in and
+    kept its own group out would come back open to the group. Checked
+    before any content is written; written in place, the file keeps its
+    own ACL. One that can't be read is taken for one that differs."""
+    try:
+        same = file_acl(descriptor) == file_acl(path)
+    except OSError as exc:
+        raise PermissionError(
+            errno.EACCES, f"The ACL of {path} couldn't be compared ({exc})"
+        ) from exc
+    if not same:
+        raise PermissionError(errno.EACCES, f"{path} has an ACL a replacement wouldn't keep")
 
 
 def _refuse_other_windows_permissions(path: Path, temp: Path) -> None:

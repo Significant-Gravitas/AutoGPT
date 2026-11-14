@@ -1551,6 +1551,250 @@ async def test_a_write_still_replaces_a_windows_file_with_the_folders_permission
     assert _windows_acl(target) == inherited
 
 
+# A Linux POSIX ACL as its extended attribute holds it: a version, then each
+# entry's tag, permissions and id, in order of tag and id (acl_ea.h).
+_ACL_USER_OBJ, _ACL_USER, _ACL_GROUP_OBJ, _ACL_MASK, _ACL_OTHER = 0x01, 0x02, 0x04, 0x10, 0x20
+_ACL_NO_ID = 0xFFFFFFFF
+_ANOTHER_UID = 12345
+
+
+def _linux_acl(*entries: tuple[int, int, int]) -> bytes:
+    import struct
+
+    return struct.pack("<I", 2) + b"".join(struct.pack("<HHI", *entry) for entry in entries)
+
+
+# Another account may read and write; the file's own group may not.
+_ANOTHER_ACCOUNT_ONLY = (
+    (_ACL_USER_OBJ, 0o6, _ACL_NO_ID),
+    (_ACL_USER, 0o6, _ANOTHER_UID),
+    (_ACL_GROUP_OBJ, 0o0, _ACL_NO_ID),
+    (_ACL_MASK, 0o6, _ACL_NO_ID),
+    (_ACL_OTHER, 0o0, _ACL_NO_ID),
+)
+
+
+def _set_linux_acl(path: Path, value: bytes, *, default: bool = False) -> None:
+    name = "system.posix_acl_default" if default else "system.posix_acl_access"
+    try:
+        os.setxattr(path, name, value)
+    except OSError as exc:
+        if exc.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+            pytest.skip(f"{path.parent} keeps no POSIX ACLs")
+        raise
+
+
+def _linux_acl_of(path: Path) -> bytes | None:
+    try:
+        return os.getxattr(path, "system.posix_acl_access")
+    except OSError as exc:
+        if exc.errno == errno.ENODATA:
+            return None
+        raise
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux POSIX ACLs")
+@pytest.mark.asyncio
+async def test_a_write_keeps_a_linux_files_own_acl(tmp_path: Path) -> None:
+    """A rewrite renamed a new file over the old one with the old mode, but
+    not the old file's ACL. With an ACL the mode's group bits are its mask,
+    so a file that let another account in and kept its own group out
+    (group::---, mask::rw-) came back as group::rw-, open to the whole
+    group, and the other account lost its entry. Such a file is written in
+    place now."""
+    target = tmp_path / "shared.txt"
+    target.write_text("the person's notes")
+    target.chmod(0o600)
+    _set_linux_acl(target, _linux_acl(*_ANOTHER_ACCOUNT_ONLY))
+    acl = _linux_acl_of(target)
+    inode = target.stat().st_ino
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+    assert _linux_acl_of(target) == acl
+    assert target.stat().st_ino == inode
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux POSIX ACLs")
+@pytest.mark.asyncio
+async def test_a_write_doesnt_give_a_linux_file_its_folders_default_acl(tmp_path: Path) -> None:
+    """The new file took the folder's default ACL, which the rename kept: a
+    file made before it, which another account couldn't read, became
+    readable to the account the default named. It is written in place,
+    keeping its own permissions."""
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    target = folder / "notes.txt"
+    target.write_text("the person's notes")
+    target.chmod(0o660)
+    _set_linux_acl(folder, _linux_acl(*_ANOTHER_ACCOUNT_ONLY), default=True)
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+    assert _linux_acl_of(target) is None
+    assert target.stat().st_mode & 0o777 == 0o660
+    assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux POSIX ACLs")
+@pytest.mark.asyncio
+async def test_a_write_still_replaces_a_linux_file_with_its_folders_acl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file whose ACL is the one its folder gives a new file, as every file
+    made there has, is still replaced, so a write that fails part way leaves
+    it whole."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    _set_linux_acl(folder, _linux_acl(*_ANOTHER_ACCOUNT_ONLY), default=True)
+    target = folder / "notes.txt"
+    target.write_text("old")
+    acl = _linux_acl_of(target)
+    assert acl is not None
+    replaced: list[Path] = []
+    real_replace = path_jail.os.replace
+
+    def replace(src, dst) -> None:
+        replaced.append(Path(dst))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(path_jail.os, "replace", replace)
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert replaced == [target]
+    assert target.read_text() == "new"
+    assert _linux_acl_of(target) == acl
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux extended attributes")
+@pytest.mark.asyncio
+async def test_a_write_goes_in_place_when_the_files_acl_cant_be_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An ACL the shim can't read may be one a replacement would drop, so the
+    file is written in place."""
+    target = tmp_path / "notes.txt"
+    target.write_text("old")
+    inode = target.stat().st_ino
+    real_getxattr = os.getxattr
+
+    def getxattr(path, *args, **kwargs):
+        if not isinstance(path, int) and Path(path) == target:
+            raise OSError(errno.EIO, os.strerror(errno.EIO))
+        return real_getxattr(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "getxattr", getxattr)
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+    assert target.stat().st_ino == inode
+
+
+def _macos_acl(path: Path) -> list[str]:
+    """`path`'s ACL entries as `ls -le` prints them, one per line."""
+    import subprocess
+
+    printed = subprocess.run(
+        ["ls", "-led", str(path)], capture_output=True, text=True, check=True
+    ).stdout
+    return [line.strip() for line in printed.splitlines()[1:] if line.strip()]
+
+
+def _chmod_acl(path: Path, entry: str) -> None:
+    import subprocess
+
+    subprocess.run(["chmod", "+a", entry, str(path)], capture_output=True, check=True)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS ACLs")
+@pytest.mark.asyncio
+async def test_a_write_keeps_a_macos_files_own_acl(tmp_path: Path) -> None:
+    """A rewrite renamed a new file over the old one with the old mode, but
+    not its ACL: a file anyone could read but one account (a deny entry),
+    came back readable to that account too. Such a file is written in
+    place now."""
+    target = tmp_path / "notes.txt"
+    target.write_text("the person's notes")
+    target.chmod(0o644)
+    _chmod_acl(target, "user:nobody deny read")
+    acl = _macos_acl(target)
+    assert acl
+    inode = target.stat().st_ino
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+    assert _macos_acl(target) == acl
+    assert target.stat().st_ino == inode
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS ACLs")
+@pytest.mark.asyncio
+async def test_a_write_doesnt_give_a_macos_file_its_folders_inherited_acl(
+    tmp_path: Path,
+) -> None:
+    """The new file took the folder's inherited entries, which the rename
+    kept: a private file made before them became readable to the account
+    they name. It is written in place, keeping its own permissions."""
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    target = folder / "notes.txt"
+    target.write_text("the person's notes")
+    target.chmod(0o600)
+    _chmod_acl(folder, "user:nobody allow read,file_inherit")
+    assert _macos_acl(target) == []
+
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert target.read_text() == "new"
+    assert _macos_acl(target) == []
+    assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS ACLs")
+@pytest.mark.asyncio
+async def test_a_write_still_replaces_a_macos_file_with_its_folders_acl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file whose entries are the ones its folder gives a new file is still
+    replaced, so a write that fails part way leaves it whole."""
+    import autogpt_local_executor.path_jail as path_jail
+
+    folder = tmp_path / "shared"
+    folder.mkdir()
+    _chmod_acl(folder, "user:nobody allow read,file_inherit")
+    target = folder / "notes.txt"
+    target.write_text("old")
+    acl = _macos_acl(target)
+    assert acl
+    replaced: list[Path] = []
+    real_replace = path_jail.os.replace
+
+    def replace(src, dst) -> None:
+        replaced.append(Path(dst))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(path_jail.os, "replace", replace)
+    response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
+
+    assert isinstance(response, AckMessage)
+    assert replaced == [target]
+    assert target.read_text() == "new"
+    assert _macos_acl(target) == acl
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
 @pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes any file")
 @pytest.mark.asyncio
