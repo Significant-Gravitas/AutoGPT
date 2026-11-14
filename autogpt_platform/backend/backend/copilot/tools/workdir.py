@@ -216,6 +216,10 @@ async def set_executable(
             )
             if isinstance(validated, ErrorResponse):
                 raise PermissionError(validated.message)
+            if os.name == "nt":
+                raise NotImplementedError(
+                    "POSIX executable modes are unavailable on Windows"
+                )
             fd = open_no_follow(validated, os.O_RDONLY)
             try:
                 mode = os.fstat(fd).st_mode

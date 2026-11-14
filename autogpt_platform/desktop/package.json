@@ -1,0 +1,25 @@
+{
+  "name": "autogpt",
+  "productName": "AutoGPT",
+  "version": "0.0.0-dev.0",
+  "private": true,
+  "description": "Experimental desktop distribution of the AutoGPT Platform",
+  "homepage": "https://agpt.co",
+  "author": "Significant Gravitas <info@agpt.co>",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --config electron-builder.config.js --publish never",
+    "dist:dir": "electron-builder --config electron-builder.config.js --dir --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "graceful-fs": "4.2.11"
+  }
+}

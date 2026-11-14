@@ -13,14 +13,25 @@ import stat
 import sys
 
 # O_PATH walks a directory with search permission only, as path lookup does.
-_DIR_ACCESS = os.O_PATH if sys.platform == "linux" else os.O_RDONLY
-_DIR_FLAGS = _DIR_ACCESS | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+if os.name == "nt":
+    from backend.copilot import host_fs_windows
+else:
+    _DIR_ACCESS = os.O_PATH if sys.platform == "linux" else os.O_RDONLY
+    _DIR_FLAGS = _DIR_ACCESS | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
 
 
 def open_no_follow(path: str, flags: int, *, make_parents: bool = False) -> int:
     """``os.open`` for a ``realpath``-resolved *path*, refusing a link at any
     component and anything but a regular file.  Fits ``open(..., opener=...)``."""
+    if os.name == "nt":
+        try:
+            return host_fs_windows.open_no_follow(
+                path, flags, make_parents=make_parents
+            )
+        except OSError as exc:
+            exc.filename = path
+            raise
     *parents, name = _components(path)
     dir_fd = _open_dir(parents, make_parents=make_parents, path=path)
     try:
@@ -43,6 +54,12 @@ def open_no_follow(path: str, flags: int, *, make_parents: bool = False) -> int:
 def unlink_no_follow(path: str) -> None:
     """Remove the entry *path* names, refusing a link among its parents.  A link
     as the last component is removed itself, as ``rm`` does."""
+    if os.name == "nt":
+        try:
+            return host_fs_windows.unlink_no_follow(path)
+        except OSError as exc:
+            exc.filename = path
+            raise
     *parents, name = _components(path)
     dir_fd = _open_dir(parents, make_parents=False, path=path)
     try:
@@ -59,6 +76,8 @@ def save_new_file(directory: str, filename: str, content: bytes) -> str:
     dangling link included, is a collision and is never written.  *directory* is
     used as given: pass the working directory's root or one this process made."""
     safe = _UNSAFE_FILENAME.sub("_", filename)
+    if os.name == "nt":
+        safe = host_fs_windows.normalize_filename(safe)
     if safe in ("", ".", ".."):
         safe = "file"
     stem, ext = os.path.splitext(safe)
@@ -91,6 +110,10 @@ def _components(path: str) -> list[str]:
 
 
 def _open_dir(parents: list[str], *, make_parents: bool, path: str) -> int:
+    if os.name == "nt":
+        raise NotImplementedError(
+            "POSIX directory descriptors are unavailable on Windows"
+        )
     dir_fd = os.open(os.sep, _DIR_FLAGS)
     try:
         for parent in parents:
