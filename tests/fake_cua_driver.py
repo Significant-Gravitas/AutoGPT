@@ -21,6 +21,7 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_TOOLS_LIST    JSON object merged into tools/list's result
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
   FAKE_CUA_SCREEN_SLOW_SECONDS  how long get_screen_size takes to answer (default at once)
+  FAKE_CUA_IGNORE_TERM   ignore SIGTERM (POSIX), so only a kill stops the fake
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
   FAKE_CUA_APPS          JSON list of the installed apps list_apps returns: names, or
                          {"name", "bundle_id"} objects
@@ -32,6 +33,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -307,6 +309,9 @@ def main() -> None:
         sys.stderr.write("fake driver failed to start\n")
         sys.stderr.flush()
         sys.exit(4)
+    if os.environ.get("FAKE_CUA_IGNORE_TERM"):
+        # POSIX: slow to stop, so the shim waits KILL_GRACE_SECONDS to kill it.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     for line in sys.stdin:
         line = line.strip()
         if line:

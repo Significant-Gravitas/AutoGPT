@@ -5,6 +5,7 @@ a fake driver (tests/fake_cua_driver.py) that speaks MCP over stdio."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import shutil
 import sys
@@ -2615,6 +2616,58 @@ async def test_a_child_session_waits_only_briefly_for_a_screen_size_that_stalls(
     finally:
         if probe is not None:
             probe.cancel()
+        await parent._computer_handler.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows ends a process at once on terminate")
+async def test_a_chats_hello_does_not_wait_for_a_stalled_driver_to_stop(
+    tmp_path, fake_log, monkeypatch, linux_with_display
+) -> None:
+    """A screen-size probe out of time waited for its driver to be stopped,
+    and a driver slow to go (terminated, then killed after two seconds, then
+    waited for two more) held a chat's HELLO up to four seconds past the
+    probe's two, past the eight the platform gives the session. HELLO goes
+    on at the probe's deadline; the stop keeps the driver's turn until the
+    old driver is gone, so no call starts another one meanwhile."""
+    from autogpt_local_executor import handlers
+    from autogpt_local_executor.computer_use import mcp_client
+
+    monkeypatch.setattr(handlers, "CHILD_DRIVER_WAIT_SECONDS", 0.2, raising=False)
+    monkeypatch.setattr(handlers, "SCREEN_SIZE_SECONDS", 60.0)
+    monkeypatch.setattr(mcp_client, "KILL_GRACE_SECONDS", 60.0)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_SLOW_SECONDS", "60")
+    monkeypatch.setenv("FAKE_CUA_IGNORE_TERM", "1")
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    bridge = parent._computer_handler.driver
+    stalled: StdioMcpClient | None = None
+    hello: asyncio.Future[Any] | None = None
+    try:
+        await bridge.snapshot()
+        stalled = bridge._client
+        assert stalled is not None and stalled._process is not None
+        hello = asyncio.ensure_future(child._build_hello())
+        done, _ = await asyncio.wait({hello}, timeout=30)
+
+        assert hello in done
+        assert "computer_use" in hello.result().payload.capabilities
+        assert hello.result().payload.screen_resolution is None
+        # The old driver is still being stopped, and keeps the turn.
+        assert stalled._process.returncode is None
+        assert bridge._turn.locked()
+        stalled._process.kill()
+        loop = asyncio.get_running_loop()
+        until = loop.time() + 30
+        while bridge._turn.locked():
+            assert loop.time() < until, "the stop never let go of the driver's turn"
+            await asyncio.sleep(0.01)
+    finally:
+        if hello is not None:
+            hello.cancel()
+        if stalled is not None and stalled._process is not None:
+            with contextlib.suppress(ProcessLookupError):
+                stalled._process.kill()
         await parent._computer_handler.close()
 
 

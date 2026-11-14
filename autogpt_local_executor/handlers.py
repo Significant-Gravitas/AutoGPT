@@ -1608,9 +1608,11 @@ class ComputerUseHandler:
 
     async def screen_size(self) -> tuple[int, int] | None:
         """The main display's logical size, from the driver, for HELLO. The
-        whole call fits in HELLO's wait, its run as well as its start: a
-        driver that takes the call and stalls would otherwise hold HELLO past
-        the point the platform gives up on it, for a size HELLO can leave out."""
+        whole call fits in HELLO's wait, its run as well as its start, and
+        the stop of a driver that overran it isn't waited for: a driver that
+        takes the call and stalls, or is slow to go, would otherwise hold
+        HELLO past the point the platform gives up on it, for a size HELLO
+        can leave out."""
         wait = self._hello_wait
         try:
             raw = await self.call_driver(
@@ -1618,6 +1620,7 @@ class ComputerUseHandler:
                 {"session": self.session_label},
                 timeout=SCREEN_SIZE_SECONDS if wait is None else min(SCREEN_SIZE_SECONDS, wait),
                 start_within=wait,
+                wait_for_stop=False,
             )
         except (DriverUnavailable, McpError, TimeoutError):
             # HELLO goes out without the size rather than not at all.
@@ -1672,6 +1675,7 @@ class ComputerUseHandler:
         *,
         timeout: float,
         start_within: float | None = None,
+        wait_for_stop: bool = True,
     ) -> dict[str, Any]:
         """One driver call, as `CuaDriverBridge.call_tool`. cua-driver ends a
         named session left idle for five minutes and refuses every later call
@@ -1684,7 +1688,11 @@ class ComputerUseHandler:
         deadline = loop.time() + timeout
         start_by = None if start_within is None else loop.time() + start_within
         raw = await self.driver.call_tool(
-            tool, arguments, timeout=timeout, start_within=start_within
+            tool,
+            arguments,
+            timeout=timeout,
+            start_within=start_within,
+            wait_for_stop=wait_for_stop,
         )
         if arguments.get("session") != self.session_label or not _session_ended(raw):
             return raw
@@ -1702,6 +1710,7 @@ class ComputerUseHandler:
             arguments,
             timeout=remaining,
             start_within=None if start_by is None else max(start_by - now, 0.0),
+            wait_for_stop=wait_for_stop,
         )
 
     async def handle(self, msg: Any, *, received_at: float | None = None) -> Any:

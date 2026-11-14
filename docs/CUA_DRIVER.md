@@ -332,7 +332,9 @@ seconds to connect, so if another chat's call holds the driver for more
 than two of them, the new session goes ahead unchecked: the grants are the
 app's, checked when the shim started, and a busy driver is a working one.
 Its HELLO waits as briefly for the screen size, the call's run as well as
-its start, and leaves it out instead,
+its start, and leaves it out instead, without waiting for a driver that
+overran the call to be stopped (the stop keeps the driver's turn, so no
+call starts another driver until the old one is gone),
 and as briefly for a driver that is starting again (after another chat's
 call overran, say), and then lists the tools the driver offered when it
 last ran, which its next start offers again.
