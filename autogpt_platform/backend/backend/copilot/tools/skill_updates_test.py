@@ -3,7 +3,9 @@ unedited copy is replaced, an edited one is merged with the owner's side
 winning, a retired one is left alone and flagged. All of it rides on the
 baseline an install records and the checksums the workspace already keeps."""
 
+import asyncio
 import hashlib
+import threading
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -274,6 +276,49 @@ async def test_a_conflict_keeps_the_owners_side_and_says_so():
     assert skill.baseline is not None and skill.baseline.merge_conflicts == (
         "SKILL.md",
     )
+
+
+@pytest.mark.asyncio
+async def test_a_cold_turn_leaves_alone_a_copy_another_turn_is_merging():
+    """Until the first update's write lands every cold turn finds the copy
+    behind; only the first one merges it."""
+    fake = _FakeWorkspaceManager()
+    v1 = _package("cold-email", "v1", "# Cold\n\nintro\nkeep\noutro\n")
+    v2 = _package("cold-email", "v2", "# Cold\n\nnew intro\nkeep\noutro\n")
+    merging, release = threading.Event(), threading.Event()
+    merge_copy = skills_module._merge_copy
+
+    def held_merge(*args):
+        if not merging.is_set():
+            merging.set()
+            release.wait(timeout=30)
+        return merge_copy(*args)
+
+    with (
+        _patch_skills_path(fake) as patched,
+        patch.object(skills_module, "_merge_copy", side_effect=held_merge) as merge,
+    ):
+        await _install(v1)
+        await store_user_skill(
+            USER,
+            name="cold-email",
+            description="cold-email description",
+            body="# Cold\n\nintro\nkeep\nmy addition\noutro\n",
+        )
+        _marketplace(patched, v1, v2)
+        first = asyncio.create_task(list_user_skills(USER))
+        try:
+            assert await asyncio.to_thread(merging.wait, 30)
+            [second] = await list_user_skills(USER)
+        finally:
+            release.set()
+        [merged] = await first
+
+    assert merge.call_count == 1
+    assert second.update == UPDATE_AVAILABLE
+    assert merged.update == UPDATE_MERGED
+    body = fake.files["/skills/cold-email/SKILL.md"].decode()
+    assert "new intro\nkeep\nmy addition\noutro" in body
 
 
 @pytest.mark.asyncio

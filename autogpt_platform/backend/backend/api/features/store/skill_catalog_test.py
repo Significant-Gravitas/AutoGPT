@@ -194,7 +194,8 @@ async def test_a_retirement_delists_without_deleting_and_can_be_undone(
     assert len(await _versions("cold-email")) == 1
 
 
-async def test_a_slug_a_user_owns_aborts_the_whole_publish(tmp_path: Path):
+@pytest.fixture
+async def listing_owner():
     user = await prisma.models.User.prisma().create(
         data={"id": str(uuid.uuid4()), "email": f"{uuid.uuid4().hex}@example.com"}
     )
@@ -207,8 +208,23 @@ async def test_a_slug_a_user_owns_aborts_the_whole_publish(tmp_path: Path):
             "links": [],
         }
     )
+    yield user.id
+    await prisma.models.SkillListing.prisma().delete_many(
+        where={"owningUserId": user.id}
+    )
+    await prisma.models.Profile.prisma().delete_many(where={"userId": user.id})
+    await prisma.models.User.prisma().delete(where={"id": user.id})
+
+
+async def test_a_slug_a_user_had_approved_aborts_the_whole_publish(
+    tmp_path: Path, listing_owner: str
+):
     await prisma.models.SkillListing.prisma().create(
-        data={"slug": "cold-email", "owningUserId": user.id}
+        data={
+            "slug": "cold-email",
+            "owningUserId": listing_owner,
+            "hasApprovedVersion": True,
+        }
     )
     write_catalog(tmp_path, {"cold-email": {}, "warm-intro": {}})
 
@@ -222,9 +238,47 @@ async def test_a_slug_a_user_owns_aborts_the_whole_publish(tmp_path: Path):
         is None
     )
     assert await prisma.models.SkillCatalogRelease.prisma().count() == 0
-    await prisma.models.SkillListing.prisma().delete_many(where={"slug": "cold-email"})
-    await prisma.models.Profile.prisma().delete_many(where={"userId": user.id})
-    await prisma.models.User.prisma().delete(where={"id": user.id})
+
+
+async def test_a_slug_nobody_approved_goes_to_the_catalog(
+    tmp_path: Path, listing_owner: str
+):
+    """The catalog takes the slug of a listing nobody approved, and the listing
+    keeps its owner under a slug of its own."""
+    held = await prisma.models.SkillListing.prisma().create(
+        data={"slug": "cold-email", "owningUserId": listing_owner}
+    )
+    pending = await prisma.models.SkillListingVersion.prisma().create(
+        data={
+            "skillListingId": held.id,
+            "name": "cold-email",
+            "description": "cold-email description",
+            "body": "# mine\n",
+            "categories": ["content"],
+            "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
+        }
+    )
+    write_catalog(tmp_path, {"cold-email": {}, "warm-intro": {}})
+
+    planned = await _publish(tmp_path, dry_run=True)
+    after_dry_run = await prisma.models.SkillListing.prisma().find_unique(
+        where={"id": held.id}
+    )
+    summary = await _publish(tmp_path)
+
+    assert sorted(planned.created) == ["cold-email", "warm-intro"]
+    assert after_dry_run is not None and after_dry_run.slug == "cold-email"
+    assert sorted(summary.created) == ["cold-email", "warm-intro"]
+    assert (await _listing("cold-email")).owningUserId is None
+    moved = await prisma.models.SkillListing.prisma().find_unique(where={"id": held.id})
+    assert moved is not None and moved.owningUserId == listing_owner
+    assert moved.slug.startswith("cold-email-")
+    answered = await prisma.models.SkillListingVersion.prisma().find_unique(
+        where={"id": pending.id}
+    )
+    assert answered is not None
+    assert answered.submissionStatus == prisma.enums.SubmissionStatus.REJECTED
+    assert "cold-email" in (answered.reviewComments or "")
 
 
 async def test_a_dry_run_reports_the_plan_and_writes_nothing(tmp_path: Path):

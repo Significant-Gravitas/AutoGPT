@@ -2191,11 +2191,17 @@ async def _reconcile_marketplace_copies(
             # of attempts is spent: the copy waits, and the index says so.
             flags[skill.name] = UPDATE_AVAILABLE
             continue
+        if manager is None:
+            manager = await _get_user_skill_manager(user_id, scope)
+        updating = (user_id, expert_id, skill.name)
+        if updating in _UPDATING:
+            # Another request of this process is updating it: the copy waits.
+            flags[skill.name] = UPDATE_AVAILABLE
+            continue
         # An attempt spends budget whether or not it lands, so copies that
         # cannot be updated bound the turn like the ones that can.
         budget -= 1
-        if manager is None:
-            manager = await _get_user_skill_manager(user_id, scope)
+        _UPDATING.add(updating)
         try:
             outcome = await _update_copy(
                 manager, user_id, expert_id, scope, skill, current
@@ -2208,6 +2214,8 @@ async def _reconcile_marketplace_copies(
             logger.exception("[skills] could not update copy %r", skill.name)
             flags[skill.name] = UPDATE_AVAILABLE
             continue
+        finally:
+            _UPDATING.discard(updating)
         if outcome is None:
             failed[skill.name] = current.version_id
             flags[skill.name] = UPDATE_AVAILABLE
@@ -2228,6 +2236,9 @@ async def _reconcile_marketplace_copies(
 
 _FAST_FORWARDED = "fast-forwarded"
 _STAMPED = "stamped"
+# Copies this process is updating now, as (user, expert, slug): until the write
+# lands every cold turn finds the copy behind and would merge it again.
+_UPDATING: set[tuple[str, str | None, str]] = set()
 
 
 async def _update_copy(

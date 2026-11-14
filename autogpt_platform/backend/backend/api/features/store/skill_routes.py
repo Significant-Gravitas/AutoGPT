@@ -46,7 +46,10 @@ async def list_marketplace_skills(
     status_code=201,
     responses={
         404: {"description": "Skill not in the caller's library"},
-        428: {"description": "Marketplace profile required, or slug taken"},
+        428: {
+            "description": "Marketplace profile required, slug taken, "
+            "or too many submissions waiting for review"
+        },
     },
     dependencies=[
         Security(autogpt_libs.auth.requires_user),
