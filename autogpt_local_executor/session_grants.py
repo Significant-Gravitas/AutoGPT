@@ -177,7 +177,9 @@ def directory_fingerprint(path: Path) -> str:
     put it in the folder's place without root. So there the fingerprint
     holds the subvolume's UUID, which the snapshot doesn't share and a
     renumbered device keeps. Where it can't be read (Linux before 4.18), the
-    device number counts, as for a folder with no creation time.
+    device number counts, as for a folder with no creation time, and so it
+    does wherever statfs can't tell the filesystem's type, which may be
+    Btrfs's.
     """
     root = canonical_directory(path)
     return _issued_fingerprint(root, directory_birth(root))
@@ -197,11 +199,16 @@ def _issued_fingerprint(root: Path, birth: str | None) -> str:
         mounted = _mount_fingerprint(root)
         if mounted is not None:
             return mounted
-    elif not _needs_device(birth) and _on_btrfs(root):
-        subvolume = _btrfs_subvolume(root)
-        if subvolume is None:
+    elif not _needs_device(birth):
+        btrfs = _on_btrfs(root)
+        subvolume = _btrfs_subvolume(root) if btrfs else None
+        if subvolume is not None:
+            return _digest(root, _root_stat(root), device=False, subvolume=subvolume)
+        if btrfs is not False:
+            # On Btrfs with no subvolume to read, or where the filesystem's
+            # type is unknown and could be Btrfs's: only the device number
+            # tells a snapshot put in the folder's place from the folder.
             return _fingerprint(root, device=True)
-        return _digest(root, _root_stat(root), device=False, subvolume=subvolume)
     return _fingerprint(root, device=_needs_device(birth))
 
 
@@ -271,20 +278,21 @@ class _Statfs(ctypes.Structure):
     ]
 
 
-def _on_btrfs(root: Path) -> bool:
-    """Whether `root` is on Btrfs, by statfs(2). False off Linux, and where
-    statfs can't be called."""
+def _on_btrfs(root: Path) -> bool | None:
+    """Whether `root` is on Btrfs, by statfs(2): False off Linux, which has
+    the only Btrfs, and None where statfs can't be called or fails, which
+    leaves the filesystem's type unknown."""
     if not sys.platform.startswith("linux"):
         return False
     try:
         statfs = ctypes.CDLL(None, use_errno=True).statfs
     except (AttributeError, OSError):
-        return False
+        return None
     statfs.argtypes = [ctypes.c_char_p, ctypes.POINTER(_Statfs)]
     statfs.restype = ctypes.c_int
     result = _Statfs()
     if statfs(os.fsencode(root), ctypes.byref(result)):
-        return False
+        return None
     return result.f_type & 0xFFFFFFFF == _BTRFS_SUPER_MAGIC
 
 
