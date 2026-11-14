@@ -17,6 +17,28 @@ from backend.util.file_content_parser import check_xlsx_unpacked_size
 from backend.util.type import MediaFileType
 
 
+def _unique_name(name: str, used: set[str]) -> str:
+    if name not in used:
+        return name
+    n = 2
+    while f"{name}_{n}" in used:
+        n += 1
+    return f"{name}_{n}"
+
+
+def _unique_column_names(header: list[str]) -> list[str]:
+    """Make header names usable as dict keys: blank cells become
+    ``column_<n>`` and repeats get ``_2``, ``_3``… so no column overwrites
+    another."""
+    used: set[str] = set()
+    names = []
+    for i, name in enumerate(header):
+        name = _unique_name(name or f"column_{i + 1}", used)
+        used.add(name)
+        names.append(name)
+    return names
+
+
 class ReadSpreadsheetBlock(Block):
     class Input(BlockSchemaInput):
         contents: str | None = SchemaField(
@@ -146,9 +168,14 @@ class ReadSpreadsheetBlock(Block):
                         # values: "N/A"/"NULL"/"NaN" stay text instead of being read as
                         # missing, and a gap in a numeric column no longer upcasts the
                         # whole column to float (turning 12 into "12.0").
+                        # header=None hands every row, header included, to the CSV
+                        # reader below, so pandas doesn't rename duplicate or blank
+                        # headers ("a.1", "Unnamed: 2") and Excel gets the same
+                        # header handling as CSV.
                         return pd.read_excel(
                             io.BytesIO(workbook),
                             sheet_name=input_data.sheet_name or 0,
+                            header=None,
                             dtype=object,
                             keep_default_na=False,
                         )
@@ -161,6 +188,7 @@ class ReadSpreadsheetBlock(Block):
                     df.to_csv(
                         csv_buffer,
                         index=False,
+                        header=False,
                         sep=input_data.delimiter,
                         quotechar=input_data.quotechar,
                     )
@@ -189,26 +217,44 @@ class ReadSpreadsheetBlock(Block):
             escapechar=input_data.escapechar,
         )
 
+        # Leading blank lines skipped while finding the header count toward
+        # skip_rows, so the same data rows come out as before. Empty header
+        # cells are still columns; skipping them would discard the first data row.
+        skip_rows = input_data.skip_rows
         header = None
         if input_data.has_header:
-            header = next(reader)
-            if input_data.strip:
-                header = [h.strip() for h in header]
+            # Empty input has no header row; don't let StopIteration escape
+            # the async generator (it becomes a RuntimeError).
+            header = next(reader, None)
+            while header == []:
+                skip_rows = max(skip_rows - 1, 0)
+                header = next(reader, None)
+            if header is not None:
+                if input_data.strip:
+                    header = [h.strip() for h in header]
+                header = _unique_column_names(header)
 
-        for _ in range(input_data.skip_rows):
-            next(reader)
+        for _ in range(skip_rows):
+            if next(reader, None) is None:
+                break
+
+        def column_key(i: int) -> str:
+            if not header:
+                return str(i)
+            if i < len(header):
+                return header[i]
+            # A row with more fields than the header keeps the extra values.
+            return _unique_name(f"column_{i + 1}", set(header))
 
         def process_row(row):
             data = {}
             for i, value in enumerate(row):
                 if str(i) not in input_data.skip_columns:
-                    if input_data.has_header and header:
-                        data[header[i]] = value.strip() if input_data.strip else value
-                    else:
-                        data[str(i)] = value.strip() if input_data.strip else value
+                    data[column_key(i)] = value.strip() if input_data.strip else value
             return data
 
-        rows = [process_row(row) for row in reader]
+        # csv.reader yields [] for a blank line; don't turn those into {} rows.
+        rows = [process_row(row) for row in reader if row]
 
         if input_data.produce_singular_result:
             for processed_row in rows:
