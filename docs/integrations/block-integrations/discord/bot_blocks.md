@@ -136,7 +136,7 @@ Reads new messages from a Discord channel using a bot token and triggers when a 
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-The block uses a Discord bot to log into a server and listen for new messages. When a message is received, it extracts the content, channel name, and username of the sender. If the message contains a text file attachment, the block also retrieves and includes the file's content.
+The block uses a Discord bot to log into a server and listen for new messages. When a message is received, it extracts the content, channel name, and username of the sender. If the message's first attachment is a `.txt` or `.py` file, the block also includes the file's content, up to its first 1 MiB; a longer file is cut there, with a note saying so.
 <!-- END MANUAL -->
 
 ### Outputs

@@ -3,7 +3,7 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Literal, Self, cast
+from typing import Annotated, Any, AsyncIterator, Literal, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -92,6 +92,43 @@ CHAT_STATUS_RUNNING = "running"
 # ===================== Chat data models ===================== #
 
 
+class CloudExecutionTargetMetadata(BaseModel):
+    kind: Literal["cloud"] = "cloud"
+
+
+class LocalExecutionTargetMetadata(BaseModel):
+    kind: Literal["local"] = "local"
+    machine_id: str = Field(min_length=1, max_length=128)
+    directory_ref: str = Field(min_length=1, max_length=256)
+    allowed_root: str = Field(min_length=1, max_length=32_767)
+    root_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    root_grant: str = Field(min_length=1, max_length=131_072)
+    revision: int = Field(default=1, ge=1)
+
+
+ExecutionTargetMetadata = Annotated[
+    CloudExecutionTargetMetadata | LocalExecutionTargetMetadata,
+    Field(discriminator="kind"),
+]
+
+
+class PublicCloudExecutionTargetMetadata(BaseModel):
+    kind: Literal["cloud"]
+
+
+class PublicLocalExecutionTargetMetadata(BaseModel):
+    kind: Literal["local"]
+    machine_id: str
+    allowed_root: str
+    revision: int
+
+
+PublicExecutionTargetMetadata = Annotated[
+    PublicCloudExecutionTargetMetadata | PublicLocalExecutionTargetMetadata,
+    Field(discriminator="kind"),
+]
+
+
 class PendingQuestion(BaseModel):
     """The last unanswered question a session asked the user."""
 
@@ -111,12 +148,23 @@ class ChatSessionMetadata(BaseModel):
     llm_credential_id: str | None = None
     llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
 
+    # Executor locality is immutable for the lifetime of a chat. Sessions
+    # created before this field existed validate as Cloud, preserving the
+    # existing hosted execution path without a data migration.
+    execution_target: ExecutionTargetMetadata = Field(
+        default_factory=CloudExecutionTargetMetadata
+    )
+
     # Builder-panel binding: when set, the session is locked to the given
     # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
     # this graph and reject calls targeting a different agent.  Also used
     # as a lookup key so refreshing the builder resumes the same chat.
     builder_graph_id: str | None = None
     source_platform: str | None = None
+    # Whoever opened this session keeps only the final text, so visual cards
+    # would lose what they show. Not the same as ``origin="automation"``: a
+    # scheduled follow-up is machine-authored, and a person reads it.
+    text_only_result: bool = False
 
     # ``None`` means the row was persisted before this field existed, and is
     # NOT a synonym for either value: session metadata is immutable after
@@ -174,6 +222,65 @@ def child_session_origin(parent: ChatSessionMetadata) -> ChatSessionOrigin:
     cannot prove a human drove it, the child must not claim one did.
     """
     return parent.origin or "automation"
+
+
+class PublicChatSessionMetadata(BaseModel):
+    """Browser-safe projection of session metadata.
+
+    The durable Local PC root grant stays server-side because it authorizes a
+    host to restore access to the selected directory after reconnect.
+    """
+
+    dry_run: bool = False
+    llm_auth_provider: CopilotLlmAuthProvider = "platform"
+    llm_credential_id: str | None = None
+    llm_provider_session_ids: dict[str, str] = Field(default_factory=dict)
+    execution_target: PublicExecutionTargetMetadata = Field(
+        default_factory=lambda: PublicCloudExecutionTargetMetadata(kind="cloud")
+    )
+    builder_graph_id: str | None = None
+    source_platform: str | None = None
+    origin: ChatSessionOrigin | None = None
+    autopilot_mode: AutopilotMode | None = None
+    kind: str = "normal"
+    dream_pass_id: str | None = None
+    delegated_by_expert_id: str | None = None
+    delegated_by_session_id: str | None = None
+    handed_off_from_expert_id: str | None = None
+    purpose: str | None = None
+    pending_question: PendingQuestion | None = None
+
+    @classmethod
+    def from_internal(cls, metadata: ChatSessionMetadata) -> Self:
+        target = metadata.execution_target
+        public_target: PublicExecutionTargetMetadata
+        if target.kind == "local":
+            public_target = PublicLocalExecutionTargetMetadata(
+                kind="local",
+                machine_id=target.machine_id,
+                allowed_root=target.allowed_root,
+                revision=target.revision,
+            )
+        else:
+            public_target = PublicCloudExecutionTargetMetadata(kind="cloud")
+        return cls(
+            dry_run=metadata.dry_run,
+            llm_auth_provider=metadata.llm_auth_provider,
+            llm_credential_id=metadata.llm_credential_id,
+            llm_provider_session_ids=metadata.llm_provider_session_ids,
+            execution_target=public_target,
+            builder_graph_id=metadata.builder_graph_id,
+            source_platform=metadata.source_platform,
+            origin=metadata.origin,
+            autopilot_mode=metadata.autopilot_mode,
+            kind=metadata.kind,
+            dream_pass_id=metadata.dream_pass_id,
+            delegated_by_expert_id=metadata.delegated_by_expert_id,
+            delegated_by_session_id=metadata.delegated_by_session_id,
+            handed_off_from_expert_id=metadata.handed_off_from_expert_id,
+            purpose=metadata.purpose,
+            pending_question=metadata.pending_question,
+        )
 
 
 # Deeper than any delegation chain a session may build: past it, the chat the
@@ -438,6 +545,8 @@ class ChatSessionInfo(BaseModel):
     is_pinned: bool = False
     # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
+    # Set when that expert was reset: the chat is kept but closed.
+    archived_at: datetime | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -491,7 +600,18 @@ class ChatSessionInfo(BaseModel):
             team_id=prisma_session.teamId,
             is_pinned=prisma_session.isPinned,
             expert_id=prisma_session.expertId,
+            archived_at=prisma_session.archivedAt,
         )
+
+
+class ChatSessionGroup(BaseModel):
+    """One expert's sessions as the sidebar lists them; Otto's own when
+    ``expert_id`` is None. ``sessions`` holds only the newest few, while
+    ``total`` counts all of them."""
+
+    expert_id: str | None = None
+    total: int
+    sessions: list[ChatSessionInfo]
 
 
 class ChatSession(ChatSessionInfo):
@@ -563,6 +683,7 @@ class ChatSession(ChatSessionInfo):
         origin: ChatSessionOrigin = "interactive",
         organization_id: str | None = None,
         team_id: str | None = None,
+        execution_target: ExecutionTargetMetadata | None = None,
         llm_auth_provider: CopilotLlmAuthProvider = "platform",
         llm_credential_id: str | None = None,
         expert_id: str | None = None,
@@ -570,6 +691,7 @@ class ChatSession(ChatSessionInfo):
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
         autopilot_mode: AutopilotMode | None = None,
+        text_only_result: bool = False,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -584,6 +706,7 @@ class ChatSession(ChatSessionInfo):
                 dry_run=dry_run,
                 builder_graph_id=builder_graph_id,
                 source_platform=source_platform,
+                execution_target=execution_target or CloudExecutionTargetMetadata(),
                 origin=origin,
                 llm_auth_provider=llm_auth_provider,
                 llm_credential_id=llm_credential_id,
@@ -591,6 +714,7 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
                 autopilot_mode=autopilot_mode,
+                text_only_result=text_only_result,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1423,6 +1547,7 @@ async def create_chat_session(
     organization_id: str | None = None,
     team_id: str | None = None,
     source_platform: str | None = None,
+    execution_target: ExecutionTargetMetadata | None = None,
     origin: ChatSessionOrigin = "interactive",
     llm_auth_provider: CopilotLlmAuthProvider = "platform",
     llm_credential_id: str | None = None,
@@ -1432,6 +1557,7 @@ async def create_chat_session(
     handed_off_from_expert_id: str | None = None,
     autopilot_mode: AutopilotMode | None = None,
     inherited_autopilot_mode: AutopilotMode | None = None,
+    text_only_result: bool = False,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1490,6 +1616,7 @@ async def create_chat_session(
         origin=origin,
         organization_id=organization_id,
         team_id=team_id,
+        execution_target=execution_target,
         llm_auth_provider=llm_auth_provider,
         llm_credential_id=llm_credential_id,
         expert_id=expert_id,
@@ -1497,6 +1624,7 @@ async def create_chat_session(
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
         autopilot_mode=autopilot_mode,
+        text_only_result=text_only_result,
     )
 
     # Create in database first - fail fast if this fails
@@ -1598,6 +1726,17 @@ async def get_or_create_expert_kickoff_session(
 
     session_id = expert_kickoff_session_id(user_id, expert_id, organization_id)
     existing = await get_chat_session(session_id, user_id)
+    # Resetting the expert archived that thread. The next kickoff gets an id
+    # derived from it and its archive time: still the same id for every
+    # browser racing to start it, and a new one after each reset.
+    while existing is not None and existing.archived_at is not None:
+        session_id = str(
+            uuid.uuid5(
+                _EXPERT_KICKOFF_SESSION_NAMESPACE,
+                f"{session_id}:{existing.archived_at.isoformat()}",
+            )
+        )
+        existing = await get_chat_session(session_id, user_id)
     if existing is not None:
         return existing
 
@@ -1676,6 +1815,52 @@ async def get_or_create_client_chat_session(
         organization_id=organization_id,
         team_id=team_id,
         expert_id=expert_id,
+        execution_kind="cloud",
+    ):
+        raise SessionIdConflictError(session_id)
+    return existing
+
+
+async def get_adoptable_local_client_chat_session(
+    user_id: str,
+    session_id: str,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+    machine_id: str,
+    directory_ref: str,
+) -> ChatSession | None:
+    """The Local PC session a client-named retry should adopt, or None if the
+    id is still free.
+
+    Attaching a machine folder has side effects, so unlike the cloud path the
+    caller checks before it creates anything.
+
+    Raises:
+        SessionIdConflictError: the id names a session this create could not
+            have made: another user's, or one bound to another machine or
+            folder.
+    """
+    existing = await get_chat_session(session_id, user_id)
+    if existing is None:
+        # Another user's id would fail the insert only after the machine
+        # had attached a folder; refuse it before anything happens.
+        if await get_chat_session(session_id) is not None:
+            raise SessionIdConflictError(session_id)
+        return None
+    target = existing.metadata.execution_target
+    if (
+        not _client_session_in_scope(
+            existing,
+            organization_id=organization_id,
+            team_id=team_id,
+            expert_id=expert_id,
+            execution_kind="local",
+        )
+        or target.kind != "local"
+        or target.machine_id != machine_id
+        or target.directory_ref != directory_ref
     ):
         raise SessionIdConflictError(session_id)
     return existing
@@ -1687,6 +1872,7 @@ def _client_session_in_scope(
     organization_id: str | None,
     team_id: str | None,
     expert_id: str | None,
+    execution_kind: Literal["cloud", "local"],
 ) -> bool:
     """Whether a create with these arguments could have made *session*.
 
@@ -1694,11 +1880,14 @@ def _client_session_in_scope(
     external platform, delegation or handoff, so a session that has any of
     those came from another path and is never adopted. An expert session's
     tenancy comes from the expert (``create_chat_session`` pins it to the
-    owner's private tenancy), so the expert match covers it.
+    owner's private tenancy), so the expert match covers it. Execution
+    locality is fixed at creation, so a Cloud create never adopts a Local PC
+    session or the other way round.
     """
     metadata = session.metadata
     if (
         session.expert_id != expert_id
+        or metadata.execution_target.kind != execution_kind
         or metadata.origin != "interactive"
         or metadata.builder_graph_id
         or metadata.source_platform
@@ -1778,6 +1967,8 @@ async def get_user_sessions(
     title_contains: str | None = None,
     expert_id: str | None = None,
     pinned_first: bool = True,
+    autopilot_only: bool = False,
+    pinned: bool | None = None,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1785,7 +1976,9 @@ async def get_user_sessions(
     /search/global so sessions are findable by literal title match
     without waiting on async embedding.
 
-    ``expert_id`` restricts the listing to sessions scoped to that expert.
+    ``expert_id`` restricts the listing to sessions scoped to that expert,
+    ``autopilot_only`` to Otto's own sessions (no expert). ``pinned`` keeps
+    only pinned (``True``) or only unpinned (``False``) sessions.
 
     Returns:
         A tuple of (sessions, total_count) where total_count is the overall
@@ -1800,14 +1993,68 @@ async def get_user_sessions(
             organization_id=organization_id,
             title_contains=title_contains,
             expert_id=expert_id,
+            autopilot_only=autopilot_only,
             pinned_first=pinned_first,
+            pinned=pinned,
         ),
         db.get_user_session_count(
-            user_id, organization_id=organization_id, expert_id=expert_id
+            user_id,
+            organization_id=organization_id,
+            expert_id=expert_id,
+            autopilot_only=autopilot_only,
+            pinned=pinned,
         ),
     )
 
     return sessions, total_count
+
+
+# The most pinned sessions the sidebar lists, newest first, so the 10-second
+# poll's read stays bounded. Older pinned sessions aren't listed past it, since
+# the groups leave every pinned session out.
+MAX_PINNED_SESSIONS = 100
+
+
+async def get_user_session_groups(
+    user_id: str,
+    min_per_group: int,
+    fill_to: int,
+    organization_id: str | None = None,
+    pinned_separately: bool = False,
+) -> tuple[list[ChatSessionGroup], list[ChatSessionInfo]]:
+    """The sidebar's sessions: one group per expert, Otto's own included, most
+    recently active first, each with its real total. Every group shows its
+    ``min_per_group`` newest sessions, and the newest of the rest fill the
+    read up to ``fill_to`` in all.
+
+    With ``pinned_separately`` the newest ``MAX_PINNED_SESSIONS`` pinned
+    sessions come back on their own, and every pinned session is left out of
+    the groups and their totals; without it the second list is empty.
+    """
+    db = chat_db()
+    if not pinned_separately:
+        groups = await db.get_user_chat_session_groups(
+            user_id, min_per_group, fill_to, organization_id=organization_id
+        )
+        return groups, []
+    groups, pinned = await asyncio.gather(
+        db.get_user_chat_session_groups(
+            user_id,
+            min_per_group,
+            fill_to,
+            organization_id=organization_id,
+            pinned=False,
+        ),
+        db.get_user_chat_sessions(
+            user_id,
+            MAX_PINNED_SESSIONS,
+            0,
+            organization_id=organization_id,
+            pinned_first=False,
+            pinned=True,
+        ),
+    )
+    return groups, pinned
 
 
 async def delete_chat_session(

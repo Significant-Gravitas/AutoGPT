@@ -19,3 +19,11 @@ const meta: Meta<typeof SessionNotFound> = {
 export default meta;
 
 export const Default: StoryObj<typeof SessionNotFound> = {};
+
+export const RemovedByReset: StoryObj<typeof SessionNotFound> = {
+  args: { removedChat: { expertId: "expert-1", expertName: "Remy" } },
+};
+
+export const RemovedByResetExpertGone: StoryObj<typeof SessionNotFound> = {
+  args: { removedChat: { expertId: null, expertName: "Remy" } },
+};

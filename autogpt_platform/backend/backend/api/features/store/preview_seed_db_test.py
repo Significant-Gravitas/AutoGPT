@@ -12,6 +12,7 @@ import prisma.enums
 import prisma.models
 import pytest
 
+from backend.api.features import oauth
 from backend.api.features.orgs.db import get_user_default_team
 from backend.data.graph import create_graph, make_graph_model
 
@@ -19,6 +20,8 @@ from . import db as store_db
 from . import model as store_model
 from . import preview_seed, skill_db
 from .preview_seed_content import ADMIN, CREATORS, LISTINGS, SKILLS
+
+LOCAL_EXECUTOR_CLIENT_ID = "autogpt-local-executor"
 
 CREATOR_USERNAMES = [creator.username for creator in CREATORS]
 # What the store_browse load test searches for.
@@ -59,6 +62,11 @@ async def _remove_seed() -> None:
         where={"bootstrapUserId": {"in": user_ids}}
     )
     await prisma.models.User.prisma().delete_many(where={"id": {"in": user_ids}})
+    # Its owner's delete cascades to it; one another test left would make the
+    # seed find it instead of creating it.
+    await prisma.models.OAuthApplication.prisma().delete_many(
+        where={"clientId": LOCAL_EXECUTOR_CLIENT_ID}
+    )
 
 
 async def test_the_first_run_publishes_everything(seeded):
@@ -67,6 +75,31 @@ async def test_the_first_run_publishes_everything(seeded):
     assert set(first.listings.values()) == {"created"}
     assert set(first.skills.values()) == {"created"}
     assert first.reviews == sum(len(listing.reviews) for listing in LISTINGS)
+
+
+async def test_the_seed_registers_the_local_pc_companions_oauth_app(seeded):
+    """A preview starts without the companion's OAuth app, and the API can't
+    register one, so `autogpt-shim auth` had nothing to sign in through."""
+    first, second = seeded
+    assert first.oauth_apps == {"local-executor": "created"}
+    assert second.oauth_apps == {"local-executor": "existing"}
+
+    app = await prisma.models.OAuthApplication.prisma().find_unique(
+        where={"clientId": LOCAL_EXECUTOR_CLIENT_ID}
+    )
+
+    assert app is not None
+    assert app.isPublic and app.isActive
+    assert app.ownerId == preview_seed.seed_user_id(ADMIN)
+    assert app.scopes == [prisma.enums.APIKeyPermission.CONNECT_LOCAL_EXECUTOR]
+    assert app.grantTypes == ["authorization_code", "refresh_token"]
+    # The companion's sign-in checks out at the authorize endpoint, on any of
+    # the ports `autogpt-shim auth` may listen on.
+    for port in (41899, 41910):
+        found = await oauth._get_valid_authorization_app(
+            LOCAL_EXECUTOR_CLIENT_ID, f"http://localhost:{port}/callback"
+        )
+        assert found.is_public
 
 
 async def test_a_second_run_changes_nothing(seeded):

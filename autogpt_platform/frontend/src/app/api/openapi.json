@@ -138,7 +138,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "403": {
-            "description": "Account deletion isn't available while impersonating a user."
+            "description": "Account deletion isn't available while impersonating a user. Or the account is banned (`account_banned`)."
           },
           "409": {
             "description": "It's too late to keep this account: its data is being erased. Contact contact@agpt.co if you need help."
@@ -3563,6 +3563,54 @@
         }
       }
     },
+    "/api/auth/email/ban-record": {
+      "post": {
+        "tags": ["auth-email"],
+        "summary": "Check whether an address belongs to an erased, banned account",
+        "description": "Asked by sign-up before it creates an account: an address whose banned\naccount was erased can't sign up again while its ban record lasts\n(`account_erasure/ban_record.py`).",
+        "operationId": "checkAuthEmailBanRecord",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthEmailBanRecordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthEmailBanRecordResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Service token is missing the required scope"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Service-token verification is not configured"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/email/send": {
       "post": {
         "tags": ["auth-email"],
@@ -4499,6 +4547,7 @@
                       "$ref": "#/components/schemas/ExpertSoulUpdatedResponse"
                     },
                     { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "$ref": "#/components/schemas/UIBlocksResponse" },
                     {
                       "$ref": "#/components/schemas/FeedbackPromptToolResponse"
                     }
@@ -4511,11 +4560,85 @@
         }
       }
     },
+    "/api/chat/session-groups": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List Session Groups",
+        "description": "List the user's chats grouped by expert, for the sidebar.\n\nEvery group, Otto's own (``expert_id`` null) included, carries its real\nchat count and at least its ``min_per_group`` newest chats; the newest of\nthe rest fill the list up to ``limit``, so the groups in use show more.\nThe most recently active group comes first. Page further into a group\nwith ``GET /sessions`` and ``expert_id``, or ``autopilot_only`` for\nOtto's.",
+        "operationId": "getV2ListSessionGroups",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "min_per_group",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "description": "The newest chats every group lists, however old.",
+              "default": 3,
+              "title": "Min Per Group"
+            },
+            "description": "The newest chats every group lists, however old."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Chats to list in all: the newest beyond each group's minimum fill up to this. The minimums alone can pass it.",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "Chats to list in all: the newest beyond each group's minimum fill up to this. The minimums alone can pass it."
+          },
+          {
+            "name": "pinned_separately",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Return pinned chats in `pinned` and leave them out of the groups and their totals.",
+              "default": false,
+              "title": "Pinned Separately"
+            },
+            "description": "Return pinned chats in `pinned` and leave them out of the groups and their totals."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSessionGroupsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
-        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
+        "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nwith pinned sessions first and most-recently-updated as the tiebreaker.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n    expert_id: Restrict the listing to sessions scoped to this expert.\n    pinned_first: Whether pinned sessions precede strict recency ordering.\n    autopilot_only: Restrict the listing to sessions with no expert.\n    pinned: Restrict the listing to pinned or to unpinned sessions.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4565,6 +4688,29 @@
               "title": "Pinned First"
             },
             "description": "Keep pinned sessions before recent sessions. Set false for strict recency when adopting the latest expert thread."
+          },
+          {
+            "name": "autopilot_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only Otto's own chats, those with no expert.",
+              "default": false,
+              "title": "Autopilot Only"
+            },
+            "description": "Only Otto's own chats, those with no expert."
+          },
+          {
+            "name": "pinned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+              "description": "Only pinned (true) or only unpinned (false) chats; both when left out.",
+              "title": "Pinned"
+            },
+            "description": "Only pinned (true) or only unpinned (false) chats; both when left out."
           }
         ],
         "responses": {
@@ -4717,6 +4863,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "410": {
+            "description": "The chat was removed when its expert was reset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatRemovedResponse" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -5185,6 +5339,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "The chat runs on a Local PC, not in a cloud box"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -5342,9 +5499,21 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" },
+          "429": {
+            "description": "Call-frequency cap exceeded or pending message buffer full",
+            "headers": {
+              "X-Error-Code": {
+                "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+                "schema": { "type": "string", "enum": ["pending_buffer_full"] }
+              },
+              "Retry-After": {
+                "description": "Seconds to wait before retrying admission",
+                "schema": { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
           "503": {
-            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (queue state or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -5662,10 +5831,20 @@
             }
           },
           "429": {
-            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded"
+            "description": "Cost rate-limit, call-frequency cap, or per-user concurrent-turn limit exceeded, or pending message buffer full",
+            "headers": {
+              "X-Error-Code": {
+                "description": "pending_buffer_full identifies a full pending-message buffer; absent for other limits",
+                "schema": { "type": "string", "enum": ["pending_buffer_full"] }
+              },
+              "Retry-After": {
+                "description": "Seconds to wait before retrying admission",
+                "schema": { "type": "integer", "minimum": 0 }
+              }
+            }
           },
           "503": {
-            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (rate limits, stream registry, or pending-message history unavailable); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -6114,6 +6293,358 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/UserTierResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/executors": {
+      "get": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "List Local Executors",
+        "description": "List this user's currently connected persistent Local PC executors.",
+        "operationId": "getExperimentalListLocalExecutors",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutorsResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/executors/{machine_id}/directories": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "List Local Executor Directories",
+        "description": "Browse directories through an owner-scoped persistent machine channel.",
+        "operationId": "postExperimentalListLocalExecutorDirectories",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "machine_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+              "title": "Machine Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DirectoryListRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor": {
+      "get": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Get Session Executor",
+        "description": "Return executor metadata only when the caller owns the session.",
+        "operationId": "getExperimentalGetSessionExecutor",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExecutorStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/consent": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Set Session Computer Use Consent",
+        "description": "Persist the authenticated owner's explicit per-session decision.",
+        "operationId": "postExperimentalSetSessionComputerUseConsent",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputerUseConsentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerUseConsentResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/recording/start": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Start Session Recording",
+        "description": "Request native shim consent, then start recording without exposing its token.",
+        "operationId": "postExperimentalStartSessionRecording",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecordingStartRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingStartResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/recording/stop": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Stop Session Recording",
+        "description": "Stop and fetch the redacted recording for user review.",
+        "operationId": "postExperimentalStopSessionRecording",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RecordingStopRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingStopResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/sessions/{session_id}/executor/recording/{recording_id}/review": {
+      "post": {
+        "tags": ["experimental", "local-executor", "copilot"],
+        "summary": "Review Session Recording",
+        "description": "Apply the owner's removals and redactions to shim-owned recording data.",
+        "operationId": "postExperimentalReviewSessionRecording",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9-]+$",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "recording_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Recording Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordingReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingReviewApplied"
+                }
               }
             }
           },
@@ -8674,6 +9205,51 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/experts/{expert_id}/reset": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Reset Expert",
+        "description": "Factory-reset a hired expert. Cannot be undone, unlike firing.",
+        "operationId": "reset_expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertResetResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert not found" },
+          "409": {
+            "description": "The expert has a turn running; reset once it ends"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "The reset did not finish; it is safe to retry"
           }
         }
       }
@@ -13023,6 +13599,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/oauth/authorize/deny": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Deny Authorization",
+        "operationId": "postOauthDenyAuthorization",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DenyAuthorizeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuthorizeResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown or inactive client, or an unregistered redirect_uri"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/oauth/introspect": {
       "post": {
         "tags": ["oauth"],
@@ -13065,7 +13681,7 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Revoke",
-        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nNote: Revoking a refresh token does NOT revoke associated access tokens.\nRevoking an access token does NOT revoke the associated refresh token.",
+        "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nRevoking a refresh token revokes its rotation family and associated access\ntokens. Revoking an access token does not revoke its refresh-token family.",
         "operationId": "postOauthRevoke",
         "requestBody": {
           "content": {
@@ -13078,7 +13694,15 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": { "type": "string" },
+                  "type": "object",
+                  "title": "Response Postoauthrevoke"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -13095,17 +13719,146 @@
       "post": {
         "tags": ["oauth"],
         "summary": "Token",
-        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
+        "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, code_verifier\n   - client_secret is required only for confidential clients\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id\n   - client_secret is required only for confidential clients\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
         "operationId": "postOauthToken",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  { "$ref": "#/components/schemas/TokenRequestByCode" },
-                  { "$ref": "#/components/schemas/TokenRequestByRefreshToken" }
+                "oneOf": [
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "authorization_code",
+                        "title": "Grant Type"
+                      },
+                      "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Authorization code"
+                      },
+                      "redirect_uri": {
+                        "type": "string",
+                        "title": "Redirect Uri",
+                        "description": "Redirect URI (must match authorization request)"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      },
+                      "code_verifier": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Code Verifier",
+                        "description": "PKCE code verifier"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "code",
+                      "redirect_uri",
+                      "client_id",
+                      "code_verifier"
+                    ],
+                    "title": "TokenRequestByCode"
+                  },
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "refresh_token",
+                        "title": "Grant Type"
+                      },
+                      "refresh_token": {
+                        "type": "string",
+                        "title": "Refresh Token"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      }
+                    },
+                    "type": "object",
+                    "required": ["grant_type", "refresh_token", "client_id"],
+                    "title": "TokenRequestByRefreshToken"
+                  }
                 ],
-                "title": "Request"
+                "discriminator": { "propertyName": "grant_type" }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "authorization_code",
+                        "title": "Grant Type"
+                      },
+                      "code": {
+                        "type": "string",
+                        "title": "Code",
+                        "description": "Authorization code"
+                      },
+                      "redirect_uri": {
+                        "type": "string",
+                        "title": "Redirect Uri",
+                        "description": "Redirect URI (must match authorization request)"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      },
+                      "code_verifier": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Code Verifier",
+                        "description": "PKCE code verifier"
+                      }
+                    },
+                    "type": "object",
+                    "required": [
+                      "grant_type",
+                      "code",
+                      "redirect_uri",
+                      "client_id",
+                      "code_verifier"
+                    ],
+                    "title": "TokenRequestByCode"
+                  },
+                  {
+                    "properties": {
+                      "grant_type": {
+                        "type": "string",
+                        "const": "refresh_token",
+                        "title": "Grant Type"
+                      },
+                      "refresh_token": {
+                        "type": "string",
+                        "title": "Refresh Token"
+                      },
+                      "client_id": { "type": "string", "title": "Client Id" },
+                      "client_secret": {
+                        "type": "string",
+                        "title": "Client Secret",
+                        "default": ""
+                      }
+                    },
+                    "type": "object",
+                    "required": ["grant_type", "refresh_token", "client_id"],
+                    "title": "TokenRequestByRefreshToken"
+                  }
+                ],
+                "discriminator": { "propertyName": "grant_type" }
               }
             }
           },
@@ -13120,14 +13873,7 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
+          "422": { "description": "The token request is malformed" }
         }
       }
     },
@@ -20042,7 +20788,8 @@
           "WRITE_RUN_REVIEW",
           "READ_CREDITS",
           "READ_FILES",
-          "WRITE_FILES"
+          "WRITE_FILES",
+          "CONNECT_LOCAL_EXECUTOR"
         ],
         "title": "APIKeyPermission"
       },
@@ -21018,6 +21765,25 @@
         "enum": ["IP", "EMAIL_DOMAIN"],
         "title": "AuthAccessBlockKind"
       },
+      "AuthEmailBanRecordRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "AuthEmailBanRecordRequest"
+      },
+      "AuthEmailBanRecordResponse": {
+        "properties": { "banned": { "type": "boolean", "title": "Banned" } },
+        "type": "object",
+        "required": ["banned"],
+        "title": "AuthEmailBanRecordResponse"
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
@@ -21086,6 +21852,7 @@
           },
           "state": {
             "type": "string",
+            "maxLength": 16384,
             "title": "State",
             "description": "Anti-CSRF token from client"
           },
@@ -21098,7 +21865,7 @@
           "code_challenge": {
             "type": "string",
             "title": "Code Challenge",
-            "description": "PKCE code challenge (required)"
+            "description": "RFC 7636 PKCE code challenge (required)"
           },
           "code_challenge_method": {
             "type": "string",
@@ -21689,13 +22456,13 @@
             "description": "Client identifier"
           },
           "client_secret": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Client Secret",
             "description": "Client secret"
           }
         },
         "type": "object",
-        "required": ["token", "client_id", "client_secret"],
+        "required": ["token", "client_id"],
         "title": "Body_postOauthRevoke"
       },
       "Body_postOauthUploadAppLogo": {
@@ -22367,6 +23134,129 @@
         "required": ["version", "changes_summary", "date"],
         "title": "ChangelogEntry"
       },
+      "ChartAnnotation": {
+        "properties": {
+          "x": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "X",
+            "description": "One of x_labels."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["x", "label"],
+        "title": "ChartAnnotation"
+      },
+      "ChartBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "chart", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["line", "area", "bar"],
+            "title": "Kind"
+          },
+          "x_labels": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "X Labels"
+          },
+          "series": {
+            "items": { "$ref": "#/components/schemas/ChartSeries" },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Series"
+          },
+          "unit": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Unit"
+          },
+          "annotation": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ChartAnnotation" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "kind", "x_labels", "series"],
+        "title": "ChartBlock",
+        "description": "A trend or comparison over labelled points."
+      },
+      "ChartSeries": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "values": {
+            "items": { "type": "number" },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["name", "values"],
+        "title": "ChartSeries"
+      },
+      "ChatRemovedDetail": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "chat_removed",
+            "title": "Type",
+            "default": "chat_removed"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "expert_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Name"
+          },
+          "message": { "type": "string", "title": "Message" }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "ChatRemovedDetail",
+        "description": "Why the chat cannot be opened, and whose reset removed it."
+      },
+      "ChatRemovedResponse": {
+        "properties": {
+          "detail": { "$ref": "#/components/schemas/ChatRemovedDetail" }
+        },
+        "type": "object",
+        "required": ["detail"],
+        "title": "ChatRemovedResponse",
+        "description": "The 410 body; FastAPI wraps an HTTPException's detail like this."
+      },
       "ChatRequest": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -22389,85 +23279,6 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
-      },
-      "ChatSessionMetadata": {
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "title": "Dry Run",
-            "default": false
-          },
-          "llm_auth_provider": {
-            "type": "string",
-            "enum": ["platform", "codex", "microsoft_365_copilot"],
-            "title": "Llm Auth Provider",
-            "default": "platform"
-          },
-          "llm_credential_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Llm Credential Id"
-          },
-          "llm_provider_session_ids": {
-            "additionalProperties": { "type": "string" },
-            "type": "object",
-            "title": "Llm Provider Session Ids"
-          },
-          "builder_graph_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Builder Graph Id"
-          },
-          "source_platform": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Source Platform"
-          },
-          "origin": {
-            "anyOf": [
-              { "type": "string", "enum": ["interactive", "automation"] },
-              { "type": "null" }
-            ],
-            "title": "Origin"
-          },
-          "autopilot_mode": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": ["ask_first", "auto", "unsupervised"]
-              },
-              { "type": "null" }
-            ],
-            "title": "Autopilot Mode"
-          },
-          "kind": { "type": "string", "title": "Kind", "default": "normal" },
-          "dream_pass_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dream Pass Id"
-          },
-          "delegated_by_expert_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Delegated By Expert Id"
-          },
-          "delegated_by_session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Delegated By Session Id"
-          },
-          "handed_off_from_expert_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Handed Off From Expert Id"
-          },
-          "purpose": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Purpose"
-          },
-          "pending_question": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/PendingQuestion" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "title": "ChatSessionMetadata",
-        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
       },
       "ChatShareResponse": {
         "properties": {
@@ -22627,6 +23438,18 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "CloudExecutionTargetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "cloud",
+            "title": "Kind",
+            "default": "cloud"
+          }
+        },
+        "type": "object",
+        "title": "CloudExecutionTargetRequest"
       },
       "CloudStorageUploadResponse": {
         "properties": {
@@ -22928,6 +23751,51 @@
         "required": ["owner_kind", "owner_id", "e2b_active"],
         "title": "ComputerInfo",
         "description": "The owner's computer: its one box, whether its screen is on, its volumes."
+      },
+      "ComputerUseConsentRequest": {
+        "properties": {
+          "approved": { "type": "boolean", "title": "Approved" },
+          "expected_machine_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Expected Machine Id"
+          },
+          "expected_driver": {
+            "anyOf": [
+              { "type": "string", "maxLength": 129, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Expected Driver"
+          },
+          "expected_tools": {
+            "anyOf": [
+              {
+                "items": { "type": "string", "maxLength": 64, "minLength": 1 },
+                "type": "array",
+                "maxItems": 128
+              },
+              { "type": "null" }
+            ],
+            "title": "Expected Tools"
+          }
+        },
+        "type": "object",
+        "required": ["approved"],
+        "title": "ComputerUseConsentRequest"
+      },
+      "ComputerUseConsentResponse": {
+        "properties": {
+          "computer_use_consent": {
+            "type": "string",
+            "enum": ["pending", "approved", "denied"],
+            "title": "Computer Use Consent"
+          }
+        },
+        "type": "object",
+        "required": ["computer_use_consent"],
+        "title": "ComputerUseConsentResponse"
       },
       "ConfirmLinkRequest": {
         "properties": {
@@ -23734,6 +24602,20 @@
               { "type": "null" }
             ],
             "title": "Autopilot Mode"
+          },
+          "execution_target": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/CloudExecutionTargetRequest" },
+              { "$ref": "#/components/schemas/LocalExecutionTargetRequest" }
+            ],
+            "title": "Execution Target",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "cloud": "#/components/schemas/CloudExecutionTargetRequest",
+                "local": "#/components/schemas/LocalExecutionTargetRequest"
+              }
+            }
           }
         },
         "additionalProperties": false,
@@ -23750,11 +24632,12 @@
             "title": "User Id"
           },
           "metadata": {
-            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "$ref": "#/components/schemas/PublicChatSessionMetadata",
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
+              "execution_target": { "kind": "cloud" },
               "kind": "normal"
             }
           },
@@ -24047,6 +24930,12 @@
           "is_managed": {
             "type": "boolean",
             "title": "Is Managed",
+            "default": false
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System",
+            "description": "One of the platform's own keys, billed in credits, rather than a credential the user connected",
             "default": false
           },
           "service": { "type": "string", "title": "Service", "default": "" },
@@ -24463,6 +25352,32 @@
         "title": "DemotionSummary",
         "description": "One line per demoted RELATES_TO edge."
       },
+      "DenyAuthorizeRequest": {
+        "properties": {
+          "client_id": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Client Id",
+            "description": "Client identifier"
+          },
+          "redirect_uri": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Redirect Uri",
+            "description": "Redirect URI"
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 16384,
+            "title": "State",
+            "description": "Anti-CSRF token from client"
+          }
+        },
+        "type": "object",
+        "required": ["client_id", "redirect_uri", "state"],
+        "title": "DenyAuthorizeRequest",
+        "description": "OAuth 2.0 authorization denial request."
+      },
       "DesktopStream": {
         "properties": {
           "kind": {
@@ -24536,6 +25451,103 @@
         "type": "object",
         "required": ["status"],
         "title": "DeviceAuthPollResponse"
+      },
+      "DirectoryEntry": {
+        "properties": {
+          "directory_ref": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Directory Ref"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 32767,
+            "minLength": 1,
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": ["directory_ref", "name", "path"],
+        "title": "DirectoryEntry"
+      },
+      "DirectoryListRequest": {
+        "properties": {
+          "expected_connection_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Expected Connection Id"
+          },
+          "browse_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Browse Id"
+          },
+          "directory_ref": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Directory Ref"
+          },
+          "cursor": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Cursor"
+          }
+        },
+        "type": "object",
+        "required": ["expected_connection_id"],
+        "title": "DirectoryListRequest"
+      },
+      "DirectoryListResponse": {
+        "properties": {
+          "connection_id": { "type": "string", "title": "Connection Id" },
+          "browse_id": { "type": "string", "title": "Browse Id" },
+          "current": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/DirectoryEntry" },
+              { "type": "null" }
+            ]
+          },
+          "parent_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Ref"
+          },
+          "entries": {
+            "items": { "$ref": "#/components/schemas/DirectoryEntry" },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Entries"
+          },
+          "next_cursor": {
+            "anyOf": [
+              { "type": "string", "maxLength": 256, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Next Cursor"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "expires_at": { "type": "number", "title": "Expires At" }
+        },
+        "type": "object",
+        "required": ["connection_id", "browse_id", "entries", "expires_at"],
+        "title": "DirectoryListResponse"
       },
       "DiscoverToolsRequest": {
         "properties": {
@@ -25904,6 +26916,113 @@
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
+      "ExecutorMachine": {
+        "properties": {
+          "machine_id": { "type": "string", "title": "Machine Id" },
+          "connection_id": { "type": "string", "title": "Connection Id" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "platform": { "type": "string", "title": "Platform" },
+          "arch": { "type": "string", "title": "Arch" },
+          "shim_version": { "type": "string", "title": "Shim Version" },
+          "capabilities": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Capabilities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine_id",
+          "connection_id",
+          "display_name",
+          "platform",
+          "arch",
+          "shim_version",
+          "capabilities"
+        ],
+        "title": "ExecutorMachine"
+      },
+      "ExecutorStatus": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["shim", "none"],
+            "title": "Kind"
+          },
+          "computer_use_consent": {
+            "type": "string",
+            "enum": ["pending", "approved", "denied"],
+            "title": "Computer Use Consent"
+          },
+          "platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Platform"
+          },
+          "arch": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Arch"
+          },
+          "allowed_root": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Allowed Root"
+          },
+          "machine_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Machine Id"
+          },
+          "shim_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Shim Version"
+          },
+          "capabilities": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Capabilities"
+          },
+          "computer_use_driver": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Computer Use Driver"
+          },
+          "computer_use_tools": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Computer Use Tools"
+          },
+          "recording_channels": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Recording Channels"
+          },
+          "recording_routes": {
+            "anyOf": [
+              { "items": { "type": "string" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Recording Routes"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "computer_use_consent"],
+        "title": "ExecutorStatus"
+      },
+      "ExecutorsResponse": {
+        "properties": {
+          "executors": {
+            "items": { "$ref": "#/components/schemas/ExecutorMachine" },
+            "type": "array",
+            "title": "Executors"
+          }
+        },
+        "type": "object",
+        "required": ["executors"],
+        "title": "ExecutorsResponse"
+      },
       "Experiment": {
         "type": "string",
         "enum": [
@@ -26487,6 +27606,33 @@
         "type": "object",
         "title": "ExpertRecommendations",
         "description": "The team Otto proposes after the dump.\n\n``source`` says where it came from: \"llm\" for a real read of the\ntranscript, \"fallback\" for the deterministic role/pain-point mapping,\nand \"disabled\" for a run where the feature flag was off (recorded so\nthe reader can tell it apart from a job that never finished)."
+      },
+      "ExpertResetResult": {
+        "properties": {
+          "memory_nodes_erased": {
+            "type": "integer",
+            "title": "Memory Nodes Erased"
+          },
+          "computer_erased": { "type": "boolean", "title": "Computer Erased" },
+          "soul_reset": { "type": "boolean", "title": "Soul Reset" },
+          "routines_reset": { "type": "integer", "title": "Routines Reset" },
+          "chats_archived": { "type": "integer", "title": "Chats Archived" },
+          "approvals_cleared": {
+            "type": "integer",
+            "title": "Approvals Cleared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "memory_nodes_erased",
+          "computer_erased",
+          "soul_reset",
+          "routines_reset",
+          "chats_archived",
+          "approvals_cleared"
+        ],
+        "title": "ExpertResetResult",
+        "description": "What one reset did."
       },
       "ExpertRun": {
         "properties": {
@@ -27419,6 +28565,8 @@
         "enum": [
           "marketplace-search-terms",
           "chat-mode-option",
+          "local-pc-executor",
+          "workflow-recording",
           "generic-trigger-agents",
           "chat-workspace-files",
           "chat-pinning",
@@ -27440,6 +28588,8 @@
         "x-enum-varnames": [
           "MARKETPLACE_SEARCH_TERMS",
           "CHAT_MODE_OPTION",
+          "LOCAL_PC_EXECUTOR",
+          "WORKFLOW_RECORDING",
           "GENERIC_TRIGGER_AGENTS",
           "CHAT_WORKSPACE_FILES",
           "CHAT_PINNING",
@@ -27475,6 +28625,50 @@
         "type": "object",
         "required": ["flags", "configured"],
         "title": "FrontendFlagValues"
+      },
+      "GalleryBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "gallery", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "images": {
+            "items": { "$ref": "#/components/schemas/GalleryImage" },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Images"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "images"],
+        "title": "GalleryBlock",
+        "description": "Images from the user's workspace."
+      },
+      "GalleryImage": {
+        "properties": {
+          "src": {
+            "type": "string",
+            "pattern": "^workspace://[A-Za-z0-9_-]+(#image/[a-z0-9.+-]+)?$",
+            "title": "Src",
+            "description": "workspace://<file_id> image."
+          },
+          "caption": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Caption"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["src", "caption"],
+        "title": "GalleryImage"
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -30206,6 +31400,25 @@
         "required": ["files"],
         "title": "ListFilesResponse"
       },
+      "ListSessionGroupsResponse": {
+        "properties": {
+          "groups": {
+            "items": { "$ref": "#/components/schemas/SessionGroupResponse" },
+            "type": "array",
+            "title": "Groups"
+          },
+          "pinned": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Pinned",
+            "description": "Pinned chats, newest first, when asked for separately."
+          }
+        },
+        "type": "object",
+        "required": ["groups"],
+        "title": "ListSessionGroupsResponse",
+        "description": "The sidebar's chats, grouped by expert, most recently active first."
+      },
       "ListSessionsResponse": {
         "properties": {
           "sessions": {
@@ -30219,6 +31432,49 @@
         "required": ["sessions", "total"],
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
+      },
+      "LocalExecutionTargetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "local",
+            "title": "Kind",
+            "default": "local"
+          },
+          "machine_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+            "title": "Machine Id"
+          },
+          "expected_connection_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Expected Connection Id"
+          },
+          "browse_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Browse Id"
+          },
+          "directory_ref": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Directory Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "machine_id",
+          "expected_connection_id",
+          "browse_id",
+          "directory_ref"
+        ],
+        "title": "LocalExecutionTargetRequest"
       },
       "LoginResponse": {
         "properties": {
@@ -31654,6 +32910,11 @@
           },
           "owner_id": { "type": "string", "title": "Owner Id" },
           "is_active": { "type": "boolean", "title": "Is Active" },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -31899,6 +33160,55 @@
         "type": "object",
         "required": ["items"],
         "title": "OpenDecisionsResponse"
+      },
+      "OptionItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "description": "Sent as the user's reply when clicked."
+          },
+          "description": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Description"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "OptionItem"
+      },
+      "OptionsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "options", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/OptionItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 2,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "OptionsBlock",
+        "description": "Next steps the user can pick with one click."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -33418,6 +34728,111 @@
         "required": ["providers"],
         "title": "ProviderTiersResponse"
       },
+      "PublicChatSessionMetadata": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "llm_auth_provider": {
+            "type": "string",
+            "enum": ["platform", "codex", "microsoft_365_copilot"],
+            "title": "Llm Auth Provider",
+            "default": "platform"
+          },
+          "llm_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Llm Credential Id"
+          },
+          "llm_provider_session_ids": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Llm Provider Session Ids"
+          },
+          "execution_target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PublicCloudExecutionTargetMetadata"
+              },
+              {
+                "$ref": "#/components/schemas/PublicLocalExecutionTargetMetadata"
+              }
+            ],
+            "title": "Execution Target",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "cloud": "#/components/schemas/PublicCloudExecutionTargetMetadata",
+                "local": "#/components/schemas/PublicLocalExecutionTargetMetadata"
+              }
+            }
+          },
+          "builder_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Builder Graph Id"
+          },
+          "source_platform": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Platform"
+          },
+          "origin": {
+            "anyOf": [
+              { "type": "string", "enum": ["interactive", "automation"] },
+              { "type": "null" }
+            ],
+            "title": "Origin"
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
+          "kind": { "type": "string", "title": "Kind", "default": "normal" },
+          "dream_pass_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dream Pass Id"
+          },
+          "delegated_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Expert Id"
+          },
+          "delegated_by_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Delegated By Session Id"
+          },
+          "handed_off_from_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Handed Off From Expert Id"
+          },
+          "purpose": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Purpose"
+          },
+          "pending_question": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/PendingQuestion" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PublicChatSessionMetadata",
+        "description": "Browser-safe projection of session metadata.\n\nThe durable Local PC root grant stays server-side because it authorizes a\nhost to restore access to the selected directory after reconnect."
+      },
+      "PublicCloudExecutionTargetMetadata": {
+        "properties": {
+          "kind": { "type": "string", "const": "cloud", "title": "Kind" }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "PublicCloudExecutionTargetMetadata"
+      },
       "PublicDreamPassRecord": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -33578,6 +34993,17 @@
         "title": "PublicDreamPassRecord",
         "description": "Admin-visible pass record without the live lock credential."
       },
+      "PublicLocalExecutionTargetMetadata": {
+        "properties": {
+          "kind": { "type": "string", "const": "local", "title": "Kind" },
+          "machine_id": { "type": "string", "title": "Machine Id" },
+          "allowed_root": { "type": "string", "title": "Allowed Root" },
+          "revision": { "type": "integer", "title": "Revision" }
+        },
+        "type": "object",
+        "required": ["kind", "machine_id", "allowed_root", "revision"],
+        "title": "PublicLocalExecutionTargetMetadata"
+      },
       "PushSubscribeRequest": {
         "properties": {
           "endpoint": {
@@ -33677,11 +35103,11 @@
           },
           "message_id": {
             "anyOf": [
-              { "type": "string", "maxLength": 64 },
+              { "type": "string", "maxLength": 64, "minLength": 1 },
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-send UUID, scoped like ``StreamChatRequest.message_id``. A retransmit of a follow-up already queued is answered as accepted without queueing it again."
+            "description": "Per-send idempotency key, scoped to the user and session. Reuse on retries; use a new key for a separate send."
           }
         },
         "type": "object",
@@ -34018,6 +35444,123 @@
         "required": ["terms_version", "marketing_opt_out"],
         "title": "RecordUserConsentRequest"
       },
+      "RecordingReviewApplied": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id",
+            "default": ""
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "RecordingReviewApplied",
+        "description": "Authoritative shim acknowledgement after applying user review edits."
+      },
+      "RecordingReviewRequest": {
+        "properties": {
+          "removed_step_seqs": {
+            "items": { "type": "integer", "minimum": 0.0 },
+            "type": "array",
+            "title": "Removed Step Seqs"
+          },
+          "redacted_step_seqs": {
+            "items": { "type": "integer", "minimum": 0.0 },
+            "type": "array",
+            "title": "Redacted Step Seqs"
+          }
+        },
+        "type": "object",
+        "title": "RecordingReviewRequest"
+      },
+      "RecordingStartRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["copilot", "demonstration"],
+            "title": "Mode",
+            "default": "copilot"
+          },
+          "interpretation_route": {
+            "type": "string",
+            "enum": ["extract_then_cloud", "local_vlm", "screenshots_to_cloud"],
+            "title": "Interpretation Route",
+            "default": "extract_then_cloud"
+          },
+          "channels": {
+            "items": {
+              "type": "string",
+              "enum": ["floor", "browser", "desktop_ax"]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Channels"
+          }
+        },
+        "type": "object",
+        "title": "RecordingStartRequest"
+      },
+      "RecordingStartResponse": {
+        "properties": {
+          "recording_id": { "type": "string", "title": "Recording Id" }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "RecordingStartResponse"
+      },
+      "RecordingStopRequest": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Recording Id"
+          }
+        },
+        "type": "object",
+        "required": ["recording_id"],
+        "title": "RecordingStopRequest"
+      },
+      "RecordingStopResponse": {
+        "properties": {
+          "summary": { "$ref": "#/components/schemas/RecordingSummary" },
+          "recording": { "$ref": "#/components/schemas/WorkflowRecording" }
+        },
+        "type": "object",
+        "required": ["summary", "recording"],
+        "title": "RecordingStopResponse"
+      },
+      "RecordingSummary": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id",
+            "default": ""
+          },
+          "step_count": {
+            "type": "integer",
+            "title": "Step Count",
+            "default": 0
+          },
+          "enrichment_coverage": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Enrichment Coverage"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "title": "RecordingSummary",
+        "description": "RECORDING_SUMMARY payload after STOP_RECORDING (§6)."
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -34317,6 +35860,7 @@
           "expert_chat_list",
           "expert_chat_transcript",
           "expert_onboarding",
+          "ui_blocks",
           "feedback_prompt",
           "team_consult",
           "session_list",
@@ -35089,11 +36633,12 @@
             "default": 0
           },
           "metadata": {
-            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "$ref": "#/components/schemas/PublicChatSessionMetadata",
             "default": {
               "dry_run": false,
               "llm_auth_provider": "platform",
               "llm_provider_session_ids": {},
+              "execution_target": { "kind": "cloud" },
               "kind": "normal"
             }
           },
@@ -35115,6 +36660,29 @@
         "required": ["id", "created_at", "updated_at", "user_id", "messages"],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
+      },
+      "SessionGroupResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Every chat in the group, not just those listed."
+          },
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions",
+            "description": "The group's newest chats, newest first."
+          }
+        },
+        "type": "object",
+        "required": ["total", "sessions"],
+        "title": "SessionGroupResponse",
+        "description": "One expert's chats in the sidebar; Otto's own when ``expert_id`` is null."
       },
       "SessionRow": {
         "properties": {
@@ -35936,6 +37504,43 @@
         "required": ["text"],
         "title": "SpeechRequest"
       },
+      "StatItem": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "change": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Change"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["neutral", "positive", "negative", "warning"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Tone"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label", "value"],
+        "title": "StatItem"
+      },
       "Stats": {
         "properties": {
           "cost": {
@@ -36006,6 +37611,68 @@
         "additionalProperties": true,
         "type": "object",
         "title": "Stats"
+      },
+      "StatsBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "stats", "title": "Type" },
+          "items": {
+            "items": { "$ref": "#/components/schemas/StatItem" },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "StatsBlock",
+        "description": "Headline numbers."
+      },
+      "StepEnrichment": {
+        "properties": {
+          "kind": { "type": "string", "title": "Kind", "default": "none" },
+          "selectors": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Selectors"
+          },
+          "ax_path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Ax Path"
+          },
+          "role": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Role"
+          },
+          "label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Label"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "title": "StepEnrichment",
+        "description": "The additive enrichment block on a TrajectoryStep (§1).\n\n``kind`` is ``dom`` | ``ax`` | ``none``; the floor is always present\nregardless. ``selectors`` are browser-DOM only, most-stable-first (§7)."
+      },
+      "StepValue": {
+        "properties": {
+          "raw": { "title": "Raw" },
+          "type": { "type": "string", "title": "Type", "default": "text" },
+          "is_parameter": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Parameter"
+          }
+        },
+        "type": "object",
+        "title": "StepValue",
+        "description": "The value block on a TrajectoryStep (§1).\n\n``raw`` is the demonstration value — handled per interpretation route.\n``is_parameter`` is ``None`` until inferred AND confirmed during\ngeneralization (§8); a None here means \"not yet decided\", which is\nwhy a single-row recording can't auto-save (§8)."
       },
       "StopExecutionRequest": {
         "properties": {
@@ -37276,6 +38943,40 @@
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
+      "TableBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "table", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "columns": {
+            "items": { "type": "string", "maxLength": 60, "minLength": 1 },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": { "type": "string", "maxLength": 200, "minLength": 1 },
+              "type": "array"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Rows"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "columns", "rows"],
+        "title": "TableBlock",
+        "description": "Rows of exact values, when nothing more visual fits."
+      },
       "TaskDecompositionResponse": {
         "properties": {
           "type": {
@@ -37382,6 +39083,65 @@
         "enum": ["full", "e2e"],
         "title": "TestDataScriptType",
         "description": "Available test data generation scripts."
+      },
+      "TimelineBlock": {
+        "properties": {
+          "type": { "type": "string", "const": "timeline", "title": "Type" },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/TimelineItem" },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "items"],
+        "title": "TimelineBlock",
+        "description": "Events or plan steps over time."
+      },
+      "TimelineItem": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Date"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 200, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "anyOf": [
+              { "type": "string", "enum": ["ok", "warning", "error", "idle"] },
+              { "type": "null" }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["title"],
+        "title": "TimelineItem"
       },
       "TimezoneResponse": {
         "properties": {
@@ -38106,62 +39866,6 @@
         "title": "TokenRateDisplay",
         "description": "Public per-1M-token USD rates surfaced to the builder UI.\n\nPopulated only on LLM block costs whose model has a TOKEN_COST rate.\ncache_* fields are set only when the provider publishes a distinct\ncached-token rate (Anthropic). Display-only — billing always uses the\ninternal credit math in `BlockCost.cost_amount`."
       },
-      "TokenRequestByCode": {
-        "properties": {
-          "grant_type": {
-            "type": "string",
-            "const": "authorization_code",
-            "title": "Grant Type"
-          },
-          "code": {
-            "type": "string",
-            "title": "Code",
-            "description": "Authorization code"
-          },
-          "redirect_uri": {
-            "type": "string",
-            "title": "Redirect Uri",
-            "description": "Redirect URI (must match authorization request)"
-          },
-          "client_id": { "type": "string", "title": "Client Id" },
-          "client_secret": { "type": "string", "title": "Client Secret" },
-          "code_verifier": {
-            "type": "string",
-            "title": "Code Verifier",
-            "description": "PKCE code verifier"
-          }
-        },
-        "type": "object",
-        "required": [
-          "grant_type",
-          "code",
-          "redirect_uri",
-          "client_id",
-          "client_secret",
-          "code_verifier"
-        ],
-        "title": "TokenRequestByCode"
-      },
-      "TokenRequestByRefreshToken": {
-        "properties": {
-          "grant_type": {
-            "type": "string",
-            "const": "refresh_token",
-            "title": "Grant Type"
-          },
-          "refresh_token": { "type": "string", "title": "Refresh Token" },
-          "client_id": { "type": "string", "title": "Client Id" },
-          "client_secret": { "type": "string", "title": "Client Secret" }
-        },
-        "type": "object",
-        "required": [
-          "grant_type",
-          "refresh_token",
-          "client_id",
-          "client_secret"
-        ],
-        "title": "TokenRequestByRefreshToken"
-      },
       "TokenResponse": {
         "properties": {
           "token_type": {
@@ -38198,6 +39902,57 @@
         ],
         "title": "TokenResponse",
         "description": "OAuth 2.0 token response"
+      },
+      "TrajectoryStep": {
+        "properties": {
+          "seq": { "type": "integer", "title": "Seq", "default": 0 },
+          "ts": { "type": "number", "title": "Ts", "default": 0.0 },
+          "actor": { "type": "string", "title": "Actor", "default": "human" },
+          "action": { "type": "string", "title": "Action", "default": "" },
+          "screenshot_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Screenshot Ref"
+          },
+          "cursor": {
+            "anyOf": [
+              { "items": { "type": "integer" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Cursor"
+          },
+          "active_app": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Active App"
+          },
+          "active_window": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Active Window"
+          },
+          "enrichment": { "$ref": "#/components/schemas/StepEnrichment" },
+          "value": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/StepValue" },
+              { "type": "null" }
+            ]
+          },
+          "narration": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Narration"
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome",
+            "default": "unknown"
+          },
+          "redacted": {
+            "type": "boolean",
+            "title": "Redacted",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TrajectoryStep",
+        "description": "One ordered step in a recording (§1 TrajectoryStep)."
       },
       "TransactionHistory": {
         "properties": {
@@ -38490,6 +40245,50 @@
         "required": ["entry_id", "rows", "sequence"],
         "title": "TurnCheckpoint",
         "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
+      "UIBlocksResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "ui_blocks"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "blocks": {
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/StatsBlock" },
+                { "$ref": "#/components/schemas/ChartBlock" },
+                { "$ref": "#/components/schemas/WorkflowDiagramBlock" },
+                { "$ref": "#/components/schemas/GalleryBlock" },
+                { "$ref": "#/components/schemas/TimelineBlock" },
+                { "$ref": "#/components/schemas/OptionsBlock" },
+                { "$ref": "#/components/schemas/TableBlock" }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "chart": "#/components/schemas/ChartBlock",
+                  "gallery": "#/components/schemas/GalleryBlock",
+                  "options": "#/components/schemas/OptionsBlock",
+                  "stats": "#/components/schemas/StatsBlock",
+                  "table": "#/components/schemas/TableBlock",
+                  "timeline": "#/components/schemas/TimelineBlock",
+                  "workflow_diagram": "#/components/schemas/WorkflowDiagramBlock"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Blocks"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "UIBlocksResponse",
+        "description": "The cards the chat draws for this call."
       },
       "UnderstandingUpdatedResponse": {
         "properties": {
@@ -40263,6 +42062,99 @@
         ],
         "title": "WebhookWithoutSecrets",
         "description": "Webhook variant that excludes the signing secret and the provider's webhook\nid from serialization (GHSA-4m2w-qfr5-9f3v).\n\nUsed where a webhook leaves the backend: API responses and the\ndatabase-manager RPC. The defaults let the payload validate back on the\nother side, so a preset survives the trip instead of arriving as a dict."
+      },
+      "WorkflowDiagramBlock": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "workflow_diagram",
+            "title": "Type"
+          },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 120, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/WorkflowStep" },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 2,
+            "title": "Steps"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["type", "steps"],
+        "title": "WorkflowDiagramBlock",
+        "description": "Steps of a workflow in order, showing where things stand."
+      },
+      "WorkflowRecording": {
+        "properties": {
+          "recording_id": {
+            "type": "string",
+            "title": "Recording Id",
+            "default": ""
+          },
+          "version": { "type": "string", "title": "Version", "default": "1.0" },
+          "created_at": {
+            "type": "number",
+            "title": "Created At",
+            "default": 0.0
+          },
+          "machine_id": {
+            "type": "string",
+            "title": "Machine Id",
+            "default": ""
+          },
+          "interpretation_route": {
+            "type": "string",
+            "title": "Interpretation Route",
+            "default": "extract_then_cloud"
+          },
+          "steps": {
+            "items": { "$ref": "#/components/schemas/TrajectoryStep" },
+            "type": "array",
+            "title": "Steps"
+          },
+          "redaction_applied": {
+            "type": "boolean",
+            "title": "Redaction Applied",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "WorkflowRecording",
+        "description": "A full recording as returned by RECORDING_DATA / RECORDING_FETCH (§1)."
+      },
+      "WorkflowStep": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              { "type": "string", "maxLength": 60, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Detail"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["ok", "warning", "error", "idle"],
+            "title": "Status",
+            "default": "idle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["label"],
+        "title": "WorkflowStep"
       },
       "WorkspaceFile": {
         "properties": {

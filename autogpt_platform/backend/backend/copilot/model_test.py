@@ -26,6 +26,9 @@ from backend.util.exceptions import NotFoundError, RedisError
 from .model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+    PublicChatSessionMetadata,
     Usage,
     _save_session_to_db,
     append_and_save_message,
@@ -62,6 +65,67 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+def test_legacy_session_metadata_defaults_to_cloud_execution() -> None:
+    metadata = ChatSessionMetadata.model_validate({"dry_run": False})
+    assert metadata.execution_target.kind == "cloud"
+
+
+def test_chat_session_new_preserves_generated_id_and_local_binding() -> None:
+    binding = LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+        revision=1,
+    )
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        session_id="generated-session-id",
+        execution_target=binding,
+    )
+
+    assert session.session_id == "generated-session-id"
+    assert session.metadata.execution_target == binding
+
+
+def test_public_local_session_metadata_redacts_restore_credentials() -> None:
+    metadata = ChatSessionMetadata(
+        llm_auth_provider="codex",
+        llm_credential_id="credential-1",
+        origin="interactive",
+        delegated_by_expert_id="expert-1",
+        delegated_by_session_id="parent-session",
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+            revision=2,
+        ),
+    )
+
+    public = PublicChatSessionMetadata.from_internal(metadata).model_dump()
+
+    assert public["execution_target"] == {
+        "kind": "local",
+        "machine_id": "machine-1",
+        "allowed_root": "/workspace",
+        "revision": 2,
+    }
+    assert public["llm_auth_provider"] == "codex"
+    assert public["llm_credential_id"] == "credential-1"
+    assert public["origin"] == "interactive"
+    assert public["delegated_by_expert_id"] == "expert-1"
+    assert public["delegated_by_session_id"] == "parent-session"
+    serialized = str(public)
+    assert "root_grant" not in serialized
+    assert "root_fingerprint" not in serialized
+    assert "directory_ref" not in serialized
 
 
 @pytest.mark.asyncio
@@ -2352,6 +2416,45 @@ async def test_get_or_create_client_chat_session_reraises_real_db_failure(
 
     with pytest.raises(DatabaseError, match="database unavailable"):
         await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_never_adopts_a_local_pc_session(
+    mocker: MockerFixture,
+) -> None:
+    """Locality is fixed at creation: a Cloud create naming a Local PC chat's
+    id is a conflict, not a way back into that machine's folder."""
+    from .model import (
+        LocalExecutionTargetMetadata,
+        SessionIdConflictError,
+        get_or_create_client_chat_session,
+    )
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+    create_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio

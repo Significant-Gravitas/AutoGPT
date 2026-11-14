@@ -1,4 +1,5 @@
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
@@ -9,7 +10,14 @@ import prisma
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from prisma.enums import ResourceVisibility, SubmissionStatus
-from prisma.models import AgentGraph, AgentNode, LibraryAgent, User
+from prisma.models import (
+    AgentGraph,
+    AgentNode,
+    LibraryAgent,
+    StoreListing,
+    StoreListingVersion,
+    User,
+)
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.library.db as library_db
@@ -17,7 +25,7 @@ import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
 from backend.blocks import _all_subclasses, load_all_blocks
-from backend.blocks._base import Block, BlockSchema, BlockSchemaInput
+from backend.blocks._base import Block, BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
@@ -40,11 +48,13 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+    copy_graph,
 )
 from backend.data.graph import create_graph as db_create_graph
 from backend.data.graph import (
     delete_graph,
     fork_graph,
+    get_copied_graph_ids,
     get_graph,
     get_graph_all_versions,
     get_graph_at_version,
@@ -244,10 +254,6 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         create_graph, DEFAULT_USER_ID
     )
 
-    class ExpectedInputSchema(BlockSchemaInput):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
-
     class ExpectedOutputSchema(BlockSchema):
         # Note: Graph output schemas are dynamically generated and don't inherit
         # from BlockSchemaOutput, so we use BlockSchema as the base instead
@@ -259,7 +265,21 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    assert input_schema == ExpectedInputSchema.jsonschema()
+    # Both inputs are advanced, so both are optional, with or without a default.
+    assert input_schema == {
+        "title": "ExpectedInputSchema",
+        "type": "object",
+        "properties": {
+            "in_key_a": {
+                "advanced": True,
+                "default": "A",
+                "secret": False,
+                "title": "Key A",
+            },
+            "in_key_b": {"advanced": True, "secret": False, "title": "in_key_b"},
+        },
+        "required": [],
+    }
 
     # Add snapshot testing for the schemas
     snapshot.snapshot_dir = "snapshots"
@@ -1083,6 +1103,147 @@ async def test_fork_graph_clears_picked_files(
         assert forked.nodes[0].input_default["spreadsheet"] is None
     finally:
         await delete_graph(forked.id, user_id=DEFAULT_USER_ID)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_duplicate_saved_again_in_the_builder_is_still_a_copy(
+    server: SpinTestServer,
+):
+    original = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "greeting"})),
+        DEFAULT_USER_ID,
+    )
+    entry = await library_db.get_library_agent_by_graph_id(DEFAULT_USER_ID, original.id)
+    assert entry is not None
+    duplicate = await library_db.fork_library_agent(entry.id, DEFAULT_USER_ID)
+    copy = await get_graph(duplicate.graph_id, None, DEFAULT_USER_ID)
+    assert copy is not None
+    value_node, output_node = sorted(
+        copy.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    # The builder sends the graph back without ``forked_from_id``.
+    edited = _value_to_output_graph({"name": "hello"}, value_node.id, output_node.id)
+    edited.id = copy.id
+    await graphs_routes.update_graph(
+        copy.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    latest = await get_graph(copy.id, None, DEFAULT_USER_ID)
+    assert latest is not None and latest.version > copy.version
+    assert latest.forked_from_id is None
+
+    assert await get_copied_graph_ids([original.id, copy.id]) == [copy.id]
+
+
+@pytest.mark.parametrize("copy_with", [fork_graph, copy_graph], ids=["dup", "copy"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflow_copied_with_its_workflow_is_a_copy(
+    server: SpinTestServer, copy_with: Callable[..., Awaitable[GraphModel]]
+):
+    owner = await create_test_user()
+    workflow = await _workflow_with_a_sub_workflow(owner.id)
+
+    copy = await copy_with(workflow.id, workflow.version, owner.id)
+
+    [sub_copy] = copy.sub_graphs
+    copies = await get_copied_graph_ids([copy.id, sub_copy.id])
+    assert set(copies) == {copy.id, sub_copy.id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflow_saved_with_another_users_workflow_is_a_copy(
+    server: SpinTestServer,
+):
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    workflow = await _workflow_with_a_sub_workflow(owner.id)
+    await _in_library_from_the_marketplace(workflow, other.id)
+    stored = await get_graph(
+        workflow.id, workflow.version, owner.id, include_subgraphs=True
+    )
+    assert stored is not None and len(stored.sub_graphs) == 1
+    unrelated = await db_create_graph(_graph("Not a sub-workflow"), owner.id)
+    sent = Graph.model_validate(stored.model_dump())
+    sent.sub_graphs += [
+        BaseGraph(
+            id=unrelated.id,
+            version=unrelated.version,
+            name="Sent along",
+            description="",
+        ),
+        BaseGraph(name="Never stored", description=""),
+    ]
+
+    copy, _ = await library_db.fork_graph_in_library(
+        sent, other.id, forked_from_version=workflow.version
+    )
+
+    [sub_copy_id] = [
+        node.input_default["graph_id"]
+        for node in copy.nodes
+        if node.block_id == AgentExecutorBlock().id
+    ]
+    copies = await get_copied_graph_ids([copy.id, sub_copy_id])
+    assert set(copies) == {copy.id, sub_copy_id}
+    assert not await AgentGraph.prisma().find_many(where={"forkedFromId": unrelated.id})
+
+
+async def _workflow_with_a_sub_workflow(user_id: str) -> GraphModel:
+    child = await db_create_graph(
+        _value_to_output_graph({"name": "greeting"}, str(uuid4()), str(uuid4())),
+        user_id,
+    )
+    return await db_create_graph(
+        Graph(
+            name=f"Calls a sub-workflow {uuid4()}",
+            description="",
+            nodes=[
+                Node(
+                    block_id=AgentExecutorBlock().id,
+                    input_default={
+                        "user_id": user_id,
+                        "graph_id": child.id,
+                        "graph_version": child.version,
+                        "inputs": {},
+                        "input_schema": child.input_schema,
+                        "output_schema": child.output_schema,
+                    },
+                )
+            ],
+        ),
+        user_id,
+    )
+
+
+async def _in_library_from_the_marketplace(graph: GraphModel, user_id: str) -> None:
+    listing = await StoreListing.prisma().create(
+        data={
+            "slug": f"sub-workflow-{uuid4()}",
+            "agentGraphId": graph.id,
+            "owningUserId": graph.user_id,
+            "hasApprovedVersion": True,
+        }
+    )
+    await StoreListingVersion.prisma().create(
+        data={
+            "storeListingId": listing.id,
+            "version": 1,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "name": graph.name,
+            "subHeading": "",
+            "description": "",
+            "imageUrls": [],
+            "categories": [],
+            "submissionStatus": SubmissionStatus.APPROVED,
+        }
+    )
+    await LibraryAgent.prisma().create(
+        data={
+            "userId": user_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+        }
+    )
 
 
 def _value_to_output_graph(

@@ -36,6 +36,7 @@ from backend.api.features.memory.models import (
     MemoryScopeOverview,
     MemoryUnderstanding,
 )
+from backend.copilot.graphiti.erase import erase_scope
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
 from backend.copilot.graphiti.memory_model import MemoryForgetFailureCode
 from backend.copilot.graphiti.recall import live_fact_predicate
@@ -268,20 +269,7 @@ async def forget_my_expert_memory_fact(
 
 async def _erase_scope_impl(user_id: str, expert_id: str | None) -> EraseMemoryResponse:
     scope = await _resolve_scope(user_id, expert_id)
-    driver = open_driver(scope)
-    deleted = 0
-    try:
-        deleted = await _count(driver, "MATCH (n) RETURN count(n) AS c")
-        if deleted:
-            await driver.execute_query("MATCH (n) DETACH DELETE n")
-    except ResponseError as exc:
-        # A missing-graph error here means the graph vanished between the
-        # count and the delete — the scope is gone either way, so keep the
-        # counted value instead of misreporting 0.
-        if not _is_missing_graph_error(exc):
-            raise
-    finally:
-        await driver.close()
+    deleted = await erase_scope(scope)
 
     logger.info(
         f"Memory erase: user {user_id[:12]} wiped scope "
