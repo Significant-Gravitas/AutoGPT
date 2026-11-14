@@ -209,7 +209,7 @@ describe("routeTemplate", () => {
     [`/api/library/agents/${SESSION_A}`, "/api/library/agents/{id}"],
     ["/api/executions/12345?page=2", "/api/executions/{id}"],
     ["/api/files/3f9a8b7c6d5e4f30", "/api/files/{id}"],
-    ["/api/store/agents/V1StGXR8_Z5jdHi6B-myT", "/api/store/agents/{id}"],
+    ["/api/store/agents/V1StGXR8_Z5jdHi6B-myT", "/api/store/agents/{id}"], // pragma: allowlist secret
     [
       "/api/store/agents/alice/email-digest",
       "/api/store/agents/alice/email-digest",
