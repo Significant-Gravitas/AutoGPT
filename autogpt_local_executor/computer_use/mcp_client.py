@@ -13,6 +13,7 @@ import collections
 import contextlib
 import json
 import logging
+import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -73,11 +74,14 @@ class StdioMcpClient:
         argv: Sequence[str],
         *,
         env: Mapping[str, str] | None = None,
+        cwd: str | os.PathLike[str] | None = None,
         client_name: str = "autogpt-local-executor",
         client_version: str = "0",
     ) -> None:
         self._argv = list(argv)
         self._env = dict(env) if env is not None else None
+        # The folder the process starts in; the caller's own when None.
+        self._cwd = cwd
         self._client_info = {"name": client_name, "version": client_version}
         self._process: asyncio.subprocess.Process | None = None
         self._reader: asyncio.Task[None] | None = None
@@ -107,6 +111,7 @@ class StdioMcpClient:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=self._env,
+            cwd=self._cwd,
             limit=STDOUT_LINE_LIMIT_BYTES,
             **kwargs,
         )

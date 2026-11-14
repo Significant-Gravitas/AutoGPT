@@ -30,6 +30,11 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_APPS_FILE     a file holding that list, read for each list_apps, so the
                          installed apps can change while the fake runs
   FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
+  FAKE_CUA_LINUX_LAUNCH  launch_app routes a name as cua-driver 0.38 on Linux does: an
+                         installed app, else xdg-open (logged) when a file or folder of
+                         that name is in the working folder, else an error
+  FAKE_CUA_APPS_GONE_AT_LAUNCH  that routing finds no installed app, as when one is
+                         removed after list_apps listed it
 """
 
 from __future__ import annotations
@@ -107,6 +112,37 @@ def text_result(text: str, structured: dict | None = None, *, error: bool = Fals
     return result
 
 
+def installed_apps() -> list[dict]:
+    """The installed apps FAKE_CUA_APPS_FILE or FAKE_CUA_APPS lists, each
+    {"name", "bundle_id"} (on Linux the bundle_id is the desktop-file id)."""
+    if os.environ.get("FAKE_CUA_APPS_FILE"):
+        with open(os.environ["FAKE_CUA_APPS_FILE"], encoding="utf-8") as handle:
+            listed = json.load(handle)
+    else:
+        listed = json.loads(os.environ.get("FAKE_CUA_APPS") or "[]")
+    return [app if isinstance(app, dict) else {"name": app} for app in listed]
+
+
+def linux_launch(arguments: dict) -> dict:
+    """cua-driver 0.38's launch_app on Linux for a name no program has: an
+    installed app it matches, else xdg-open when a file or folder of that
+    name is in its working folder, else an error."""
+    name = arguments.get("name") or ""
+    installed = [] if os.environ.get("FAKE_CUA_APPS_GONE_AT_LAUNCH") else installed_apps()
+    query = name.lower()
+    if any(
+        query in (app["name"].lower(), (app.get("bundle_id") or "").lower()) for app in installed
+    ):
+        return text_result(f"Launched {name} in background.", {"pid": 4242})
+    if "://" in name or os.path.exists(name):
+        log(event="xdg-open", target=os.path.abspath(name))
+        return text_result(f"Opened '{name}' via xdg-open.")
+    return text_result(
+        f"'{name}' is not an executable on PATH and matches no installed .desktop " "application.",
+        error=True,
+    )
+
+
 def call_tool(request_id: int, name: str, arguments: dict) -> dict:
     log(event="call", tool=name, arguments=arguments)
     allowed = allowed_tools()
@@ -134,6 +170,8 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
             },
             error=True,
         )
+    if name == "launch_app" and os.environ.get("FAKE_CUA_LINUX_LAUNCH"):
+        return linux_launch(arguments)
     if name == "list_apps" and (
         os.environ.get("FAKE_CUA_APPS")
         or os.environ.get("FAKE_CUA_APPS_FILE")
@@ -141,13 +179,7 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
     ):
         if os.environ.get("FAKE_CUA_LIST_APPS_ERROR"):
             return text_result(os.environ["FAKE_CUA_LIST_APPS_ERROR"], error=True)
-        if os.environ.get("FAKE_CUA_APPS_FILE"):
-            with open(os.environ["FAKE_CUA_APPS_FILE"], encoding="utf-8") as handle:
-                listed = json.load(handle)
-        else:
-            listed = json.loads(os.environ["FAKE_CUA_APPS"])
-        # Each a name, or {"name", "bundle_id"} (on Linux the desktop-file id).
-        installed = [app if isinstance(app, dict) else {"name": app} for app in listed]
+        installed = installed_apps()
         # cua-driver 0.38 on Windows and Linux: installed apps carry their
         # launch_path; a running process no installed app matched has none.
         apps = [
@@ -252,9 +284,11 @@ def handle(message: dict) -> None:
                     "CUA_DRIVER_CAPABILITY_MANIFEST_FILE",
                     "DISPLAY",
                     "XAUTHORITY",
+                    "PWD",
                 )
             },
             policy=sorted(allowed_tools() or []),
+            cwd=os.getcwd(),
         )
         initialized = {
             "protocolVersion": message["params"]["protocolVersion"],

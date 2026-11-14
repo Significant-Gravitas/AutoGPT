@@ -93,6 +93,16 @@ launches need `DISPLAY`, the session bus and the rest), with these changes:
   telemetry by default; the shim's driver sends none and never checks for
   updates.
 
+**Working folder.** On Linux the driver starts in an empty folder of its
+own, a new one for each start, which nothing can be written to and which
+the shim removes when it stops. The driver hands a `launch_app` `name`
+that matches no installed app to `xdg-open` when a file or folder of that
+name is in its working folder (below); there no name finds anything. The
+apps the driver starts start there too, and a relative path in an approved
+argument names nothing there, so give absolute paths. On macOS and Windows
+the driver starts in the shim's own folder, from which it opens nothing by
+name.
+
 ## What the platform gets
 
 `COMPUTER_TOOLS_REQUEST` returns the driver's own instructions with the
@@ -229,9 +239,10 @@ Known gaps:
   word is a program, a program's own name included (`reboot` would run it;
   an app goes by the name `list_apps` shows, such as `Firefox`). A `name`
   no installed app matches it then hands to `xdg-open` if a file or folder
-  of that name is in its working folder, the person's home under systemd
-  (`.bash_history` would open in an editor, for a screenshot to read, past
-  the path jail and the approval `urls` needs), so where the driver acts on
+  of that name is in its working folder (in the person's home, where it ran
+  under systemd, `.bash_history` would open in an editor, for a screenshot
+  to read, past the path jail and the approval `urls` needs). So the driver
+  runs in an empty folder of its own (above), and where it acts on
   the `name` (no `urls`, no `launch_path`) the shim lets it through only
   when it is an installed app's name or desktop-file id, as `list_apps`
   lists them, ignoring ASCII case as the driver does. The driver's looser

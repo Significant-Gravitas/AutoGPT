@@ -1978,10 +1978,13 @@ class ComputerUseHandler:
         On Linux, once no program has the name's first word
         (check_arguments), the driver looks for an installed app and, when
         none matches, hands the name to xdg-open if a file or folder of that
-        name is in its working folder, the person's home under systemd:
-        `.bash_history` opens in an editor, for a screenshot to read, past
-        the path jail and the approval `urls` needs. Links to open, and then
-        a launch_path, take precedence over the name, so those calls aren't
+        name is in its working folder: in the person's home, where it ran
+        under systemd, `.bash_history` opened in an editor, for a screenshot
+        to read, past the path jail and the approval `urls` needs. It runs in
+        an empty folder of its own now (CuaDriverBridge._new_working_folder),
+        where no name finds anything, even one whose app went between this
+        check and the driver's own look. Links to open, and then a
+        launch_path, take precedence over the name, so those calls aren't
         checked."""
         name = arguments.get("name")
         platform = self.driver.platform

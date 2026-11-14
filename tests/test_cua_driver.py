@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -446,6 +447,43 @@ async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: 
     await bridge.close()
 
     assert not policy.exists()
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
+async def test_a_linux_driver_runs_in_an_empty_folder_of_its_own(
+    fake_log: Path, tmp_path: Path, monkeypatch, platform: str
+) -> None:
+    """On Linux cua-driver hands a launch_app name that matches no installed
+    app to xdg-open when a file or folder of that name is in its working
+    folder, which was the shim's: the person's home, under systemd. There
+    it runs in an empty folder of its own now, made for each start, which
+    nothing is written to, and removed with the bridge. On macOS and
+    Windows, where no name is opened from it, it keeps the shim's."""
+    import stat
+
+    monkeypatch.chdir(tmp_path)
+    bridge = _bridge(platform=platform)
+    try:
+        await bridge.snapshot()
+        [started] = _records(fake_log, "initialize")
+        folder = Path(started["cwd"])
+        policy_folder = Path(started["env"]["CUA_DRIVER_POLICY_FILE"]).parent
+        if platform == "linux":
+            assert not os.path.samefile(folder, tmp_path)
+            assert not os.path.samefile(folder, policy_folder)
+            assert list(folder.iterdir()) == []
+            assert os.path.samefile(started["env"]["PWD"], folder)
+            if os.name != "nt":
+                assert stat.S_IMODE(folder.stat().st_mode) == 0o500
+                if os.geteuid() != 0:
+                    with pytest.raises(PermissionError):
+                        (folder / "notes.txt").write_text("x")
+        else:
+            assert os.path.samefile(folder, tmp_path)
+    finally:
+        await bridge.close()
+
+    assert folder.exists() is (platform != "linux")
 
 
 async def test_only_catalog_tools_are_offered(fake_log: Path, monkeypatch) -> None:
@@ -1586,6 +1624,35 @@ async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_ref
         "launch_app",
         "list_apps",
     ]
+
+
+async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_looks_opens_no_file(
+    make_handler, fake_log, monkeypatch, tmp_path
+) -> None:
+    """The shim lets a Linux launch by name through only when an installed
+    app has that name, but the driver looks again: an app removed between
+    the two left the driver no app, and it handed the name to xdg-open,
+    which opened a file of that name in its working folder, the shim's (the
+    person's home, under systemd), past the path jail and the approval
+    `urls` needs. In the driver's own empty folder the name finds nothing."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "Zebra Notes").write_text("the person's notes", encoding="utf-8")
+    monkeypatch.chdir(home)
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    monkeypatch.setenv("FAKE_CUA_LINUX_LAUNCH", "1")
+    monkeypatch.setenv("FAKE_CUA_APPS_GONE_AT_LAUNCH", "1")
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is True
+    assert _records(fake_log, "xdg-open") == []
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps", "launch_app"]
 
 
 @pytest.mark.parametrize(
