@@ -1,5 +1,7 @@
 """Unit tests for helpers and async functions in platform_cost module."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -432,7 +434,6 @@ class TestGetPlatformCostDashboard:
         mock_user.id = "u1"
         mock_user.email = "a@b.com"
 
-        mock_actions = MagicMock()
         group_mock = AsyncMock(
             side_effect=[
                 [provider_row],  # by_provider
@@ -442,30 +443,14 @@ class TestGetPlatformCostDashboard:
                 [provider_row],  # total agg (tracking_type=None → same as unfiltered)
             ]
         )
-        mock_actions.find_many = AsyncMock(return_value=[mock_user])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                new_callable=AsyncMock,
-                side_effect=[
-                    [{"p50": 1000, "p75": 2000, "p95": 4000, "p99": 5000}],
-                    [{"bucket": "$0-0.50", "count": 3}],
-                ],
-            ),
-        ):
+        raw_mock = AsyncMock(
+            side_effect=[
+                [{"p50": 1000, "p75": 2000, "p95": 4000, "p99": 5000}],
+                [{"bucket": "$0-0.50", "count": 3}],
+            ]
+        )
+        with _patched_dashboard_queries(group_mock, raw_mock, users=[mock_user]):
             dashboard = await get_platform_cost_dashboard()
 
         assert dashboard.total_cost_microdollars == 5000
@@ -513,7 +498,6 @@ class TestGetPlatformCostDashboard:
             "trackingType": "tokens",
         }
 
-        mock_actions = MagicMock()
         group_mock = AsyncMock(
             side_effect=[
                 [total_row],  # by_provider
@@ -527,27 +511,9 @@ class TestGetPlatformCostDashboard:
                 [total_row],  # total agg (no tracking_type filter)
             ]
         )
-        mock_actions.find_many = AsyncMock(return_value=[])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                new_callable=AsyncMock,
-                side_effect=[[], []],
-            ),
-        ):
+        raw_mock = AsyncMock(side_effect=[[], []])
+        with _patched_dashboard_queries(group_mock, raw_mock):
             dashboard = await get_platform_cost_dashboard(tracking_type="tokens")
 
         # by_user has 1 user with 5 total requests (tokens rows only due to filter)
@@ -570,7 +536,6 @@ class TestGetPlatformCostDashboard:
             provider="openai", tracking_type="cost_usd", cost=10_000, count=4
         )
 
-        mock_actions = MagicMock()
         group_mock = AsyncMock(
             side_effect=[
                 [tokens_row],  # by_provider
@@ -581,27 +546,9 @@ class TestGetPlatformCostDashboard:
                 [tokens_row, cost_usd_row],  # total agg (no tracking_type filter)
             ]
         )
-        mock_actions.find_many = AsyncMock(return_value=[])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                new_callable=AsyncMock,
-                side_effect=[[], []],
-            ),
-        ):
+        raw_mock = AsyncMock(side_effect=[[], []])
+        with _patched_dashboard_queries(group_mock, raw_mock):
             dashboard = await get_platform_cost_dashboard(tracking_type="tokens")
 
         # avg_cost_microdollars_per_request must be non-zero: cost_usd row
@@ -627,7 +574,6 @@ class TestGetPlatformCostDashboard:
         )
         user_row = _make_group_by_row(user_id="u2", cost=1000, count=1)
 
-        mock_actions = MagicMock()
         group_mock = AsyncMock(
             side_effect=[
                 [provider_row],  # by_provider
@@ -637,30 +583,14 @@ class TestGetPlatformCostDashboard:
                 [provider_row],  # total agg (tracking_type=None → same as unfiltered)
             ]
         )
-        mock_actions.find_many = AsyncMock(return_value=[])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                new_callable=AsyncMock,
-                side_effect=[
-                    [{"p50": 0, "p75": 0, "p95": 0, "p99": 0}],
-                    [],
-                ],
-            ),
-        ):
+        raw_mock = AsyncMock(
+            side_effect=[
+                [{"p50": 0, "p75": 0, "p95": 0, "p99": 0}],
+                [],
+            ]
+        )
+        with _patched_dashboard_queries(group_mock, raw_mock):
             dashboard = await get_platform_cost_dashboard()
 
         assert len(dashboard.by_provider) == 1
@@ -670,29 +600,10 @@ class TestGetPlatformCostDashboard:
 
     @pytest.mark.asyncio
     async def test_returns_empty_dashboard(self):
-        mock_actions = MagicMock()
         group_mock = AsyncMock(side_effect=[[], [], [], [], []])
-        mock_actions.find_many = AsyncMock(return_value=[])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                new_callable=AsyncMock,
-                side_effect=[[], []],
-            ),
-        ):
+        raw_mock = AsyncMock(side_effect=[[], []])
+        with _patched_dashboard_queries(group_mock, raw_mock):
             dashboard = await get_platform_cost_dashboard()
 
         assert dashboard.total_cost_microdollars == 0
@@ -707,29 +618,10 @@ class TestGetPlatformCostDashboard:
     async def test_passes_filters_to_queries(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
-        mock_actions = MagicMock()
         group_mock = AsyncMock(side_effect=[[], [], [], [], []])
-        mock_actions.find_many = AsyncMock(return_value=[])
 
         raw_mock = AsyncMock(side_effect=[[], []])
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                raw_mock,
-            ),
-        ):
+        with _patched_dashboard_queries(group_mock, raw_mock):
             await get_platform_cost_dashboard(
                 start=start, provider="openai", user_id="u1"
             )
@@ -754,29 +646,10 @@ class TestGetPlatformCostDashboard:
     async def test_user_tracking_groups_excludes_tracking_type_filter(self):
         """by_user_tracking_groups must NOT apply the tracking_type filter so that
         cost_usd rows are always included even when the caller filters by 'tokens'."""
-        mock_actions = MagicMock()
         group_mock = AsyncMock(side_effect=[[], [], [], [], [], []])
-        mock_actions.find_many = AsyncMock(return_value=[])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                new_callable=AsyncMock,
-                side_effect=[[], []],
-            ),
-        ):
+        raw_mock = AsyncMock(side_effect=[[], []])
+        with _patched_dashboard_queries(group_mock, raw_mock):
             await get_platform_cost_dashboard(tracking_type="tokens")
 
         # Call index 2 is by_user_tracking_groups (0=by_provider, 1=by_user,
@@ -792,29 +665,10 @@ class TestGetPlatformCostDashboard:
     @pytest.mark.asyncio
     async def test_graph_exec_id_filter_passed_to_queries(self):
         """graph_exec_id must be forwarded to both prisma and raw SQL queries."""
-        mock_actions = MagicMock()
         group_mock = AsyncMock(side_effect=[[], [], [], [], []])
-        mock_actions.find_many = AsyncMock(return_value=[])
         raw_mock = AsyncMock(side_effect=[[], []])
 
-        with (
-            patch(
-                "backend.data.platform_cost.PrismaLog.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost.PrismaUser.prisma",
-                return_value=mock_actions,
-            ),
-            patch(
-                "backend.data.platform_cost._group_platform_cost_logs",
-                group_mock,
-            ),
-            patch(
-                "backend.data.platform_cost.query_raw_with_schema",
-                raw_mock,
-            ),
-        ):
+        with _patched_dashboard_queries(group_mock, raw_mock):
             await get_platform_cost_dashboard(graph_exec_id="exec-xyz")
 
         first_call = group_mock.call_args_list[0][1]
@@ -823,6 +677,21 @@ class TestGetPlatformCostDashboard:
         # Raw SQL params must include the exec id
         raw_params = raw_mock.call_args_list[0][0][1:]
         assert "exec-xyz" in raw_params
+
+
+@contextmanager
+def _patched_dashboard_queries(
+    group_mock: AsyncMock, raw_mock: AsyncMock, users: list[MagicMock] | None = None
+) -> Iterator[None]:
+    actions = MagicMock()
+    actions.find_many = AsyncMock(return_value=users or [])
+    with (
+        patch("backend.data.platform_cost.PrismaLog.prisma", return_value=actions),
+        patch("backend.data.platform_cost.PrismaUser.prisma", return_value=actions),
+        patch("backend.data.platform_cost._group_platform_cost_logs", group_mock),
+        patch("backend.data.platform_cost.query_raw_with_schema", raw_mock),
+    ):
+        yield
 
 
 def _make_prisma_log_row(
