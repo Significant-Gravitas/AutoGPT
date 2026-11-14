@@ -129,6 +129,32 @@ def test_stop_is_a_noop_without_a_process():
     assert service.process is None
 
 
+class _UnstartableProcess:
+    """A ``multiprocessing.Process`` whose start fails, as a failed fork does."""
+
+    def __init__(self, **_kwargs):
+        pass
+
+    def start(self):
+        raise OSError("fork failed")
+
+
+def test_a_process_that_failed_to_start_is_not_kept(monkeypatch):
+    """stop() terminates the process start() kept, and an unstarted one can't
+    be terminated. Kept, it would make stop() raise, and a caller stopping
+    several services in turn would leave the rest running."""
+    monkeypatch.setattr(process_module, "Process", _UnstartableProcess)
+    monkeypatch.setattr(process_module, "check_secrets", lambda: None)
+    monkeypatch.setattr(process_module, "internal_api_key", lambda: None)
+    service = _NoopProcess()
+
+    with pytest.raises(OSError, match="fork failed"):
+        service.start(background=True)
+
+    assert service.process is None
+    service.stop()
+
+
 STARTS_FLAGS = ["initialize_flags", "run", "cleanup", "shutdown_flags"]
 NO_FLAGS = ["run", "cleanup"]
 
