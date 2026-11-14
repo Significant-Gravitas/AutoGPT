@@ -438,6 +438,25 @@ async def test_an_x_display_that_stops_answering_fails_doctor(
     assert "no answer" in check.detail
 
 
+@pytest.mark.parametrize("plat", ["linux", "darwin"])
+def test_a_driver_that_exits_during_the_screen_probe_fails_doctor(
+    tmp_path, monkeypatch, capsys, driver_commands, a_fake_driver, plat: str
+) -> None:
+    """A driver that exited while it read the screen's size made doctor warn
+    and exit 0, though no computer-use call would reach it."""
+    monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: plat)
+    a_fake_driver["platform"] = plat
+    monkeypatch.setattr(doctor, "_request_macos_grants", lambda _missing: None)
+    monkeypatch.setenv("FAKE_CUA_SCREEN_EXIT", "1")
+
+    rc = doctor.run_doctor(_with_driver(tmp_path))
+
+    lines = _report(capsys.readouterr().out)
+    assert lines["display"][0] == "FAIL"
+    assert "cua-driver stopped during the call" in lines["display"][1]
+    assert rc == doctor.EX_CONFIG
+
+
 def test_doctor_blocks_computer_use_on_wsl2(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(doctor.platform_info, "detect_platform", lambda: "wsl2")
 

@@ -118,25 +118,31 @@ class StdioMcpClient:
         self._reader = asyncio.create_task(self._read_stdout(), name="mcp-stdout")
         self._stderr_reader = asyncio.create_task(self._read_stderr(), name="mcp-stderr")
         try:
-            result = await self.request(
-                "initialize",
-                {
-                    "protocolVersion": MCP_PROTOCOL_VERSION,
-                    "capabilities": {},
-                    "clientInfo": self._client_info,
-                },
-                timeout=timeout,
-            )
-            # Checked before the process is handed over: an error past this
-            # block would leave it running, unheld.
-            server = result.get("serverInfo") or {}
-            capabilities = result.get("capabilities") or {}
-            if not isinstance(server, dict) or not isinstance(capabilities, dict):
-                raise McpError(
-                    INTERNAL_ERROR,
-                    "initialize answered with a serverInfo or capabilities that isn't an object",
+            # One deadline for the whole handshake, the notice that ends it
+            # included: a driver that stops reading its input holds a write
+            # in drain(), the notice's or the reader's answer to one of its
+            # pings, which holds the write lock while it waits.
+            async with asyncio.timeout(timeout):
+                result = await self.request(
+                    "initialize",
+                    {
+                        "protocolVersion": MCP_PROTOCOL_VERSION,
+                        "capabilities": {},
+                        "clientInfo": self._client_info,
+                    },
+                    timeout=timeout,
                 )
-            await self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+                # Checked before the process is handed over: an error past
+                # this block would leave it running, unheld.
+                server = result.get("serverInfo") or {}
+                capabilities = result.get("capabilities") or {}
+                if not isinstance(server, dict) or not isinstance(capabilities, dict):
+                    raise McpError(
+                        INTERNAL_ERROR,
+                        "initialize answered with a serverInfo or capabilities that isn't an "
+                        "object",
+                    )
+                await self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         except BaseException:
             await self.close()
             raise

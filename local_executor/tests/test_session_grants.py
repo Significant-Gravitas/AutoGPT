@@ -5,6 +5,8 @@ import hashlib
 import hmac
 import json
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -401,3 +403,174 @@ def test_a_grant_from_before_mounts_were_named_restores_while_its_device_number_
     _renumber_the_device(monkeypatch, root)
     with pytest.raises(RootGrantError, match="changed"):
         signer.verify(grant, "session-1")
+
+
+_btrfs_only = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Btrfs is Linux's")
+
+
+def _in_btrfs_subvolume(monkeypatch: pytest.MonkeyPatch, subvolume: str | None) -> None:
+    """From now on every folder is on Btrfs, in the subvolume with the UUID
+    `subvolume`: None for one whose subvolume can't be read (Linux before
+    4.18)."""
+    monkeypatch.setattr(session_grants, "_on_btrfs", lambda _root: True, raising=False)
+    monkeypatch.setattr(session_grants, "_btrfs_subvolume", lambda _root: subvolume, raising=False)
+
+
+@_btrfs_only
+def test_a_grant_on_btrfs_is_refused_once_a_snapshot_takes_its_folders_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Btrfs snapshot keeps its subvolume's inode numbers and creation
+    times, and only its device number differs, which the fingerprint of a
+    folder with a creation time leaves out. So the subvolume's owner could
+    snapshot it, put the snapshot in the folder's place, and the grant
+    restored on the copy. The grant holds the subvolume's UUID now, and
+    still restores once the folder's own device is numbered afresh."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, "ns:1700000000123456789")
+    _in_btrfs_subvolume(monkeypatch, "5d1bc3a8a3524f2b9d0a41b1ab3c1d01")
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", root, 1)
+    _renumber_the_device(monkeypatch, root)
+
+    assert signer.verify(issued.root_grant, "session-1") == issued
+    # A snapshot of the subvolume, in the folder's place.
+    _in_btrfs_subvolume(monkeypatch, "93f0d1e3b7f04e7c8b5a7d6c2e1f0a99")
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+
+
+@_btrfs_only
+def test_a_grant_on_btrfs_whose_subvolume_cant_be_read_keeps_to_its_device(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where a Btrfs folder's subvolume can't be read, nothing else tells a
+    snapshot from it but the device number, so that counts, as it does for
+    a folder with no creation time: the grant restores while it holds."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _creation_time(monkeypatch, "ns:1700000000123456789")
+    _in_btrfs_subvolume(monkeypatch, None)
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", root, 1)
+
+    assert signer.verify(issued.root_grant, "session-1") == issued
+    _renumber_the_device(monkeypatch, root)
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")
+
+
+def _fingerprint_of(canonical: Path, **identity: Any) -> str:
+    stat = canonical.stat(follow_symlinks=False)
+    held = {"inode": stat.st_ino, "path": os.path.normcase(str(canonical)), **identity}
+    return hashlib.sha256(
+        json.dumps(held, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _grant_for(key: bytes, canonical: Path, fingerprint: str, birth: str | None) -> str:
+    return _grant(
+        key,
+        {
+            "allowed_root": str(canonical),
+            "birth": birth,
+            "fingerprint": fingerprint,
+            "issued_at": 1.0,
+            "machine_id": "machine-1",
+            "revision": 1,
+            "session_id": "session-1",
+        },
+    )
+
+
+@_btrfs_only
+def test_a_grant_on_btrfs_with_neither_its_device_nor_its_subvolume_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant issued for a Btrfs folder while the fingerprint of a folder
+    with a creation time held neither its device number nor its subvolume is
+    what a snapshot put in the folder's place matched, so it no longer
+    restores, even unchanged."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    birth = "ns:1700000000123456789"
+    _creation_time(monkeypatch, birth)
+    _in_btrfs_subvolume(monkeypatch, "5d1bc3a8a3524f2b9d0a41b1ab3c1d01")
+    canonical = Path(os.path.realpath(root))
+    key = b"a" * 32
+    grant = _grant_for(key, canonical, _fingerprint_of(canonical), birth)
+
+    with pytest.raises(RootGrantError, match="changed"):
+        RootGrantSigner(key, "machine-1").verify(grant, "session-1")
+
+
+@_btrfs_only
+def test_a_grant_on_btrfs_with_its_device_number_restores_while_that_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A grant issued while every fingerprint held the device number (as
+    installs from the platform's setup card issue them) still restores on
+    Btrfs while that number holds: a chat holding one can't select its
+    folder again."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    birth = "ns:1700000000123456789"
+    _creation_time(monkeypatch, birth)
+    _in_btrfs_subvolume(monkeypatch, "5d1bc3a8a3524f2b9d0a41b1ab3c1d01")
+    canonical = Path(os.path.realpath(root))
+    fingerprint = _fingerprint_of(canonical, device=canonical.stat().st_dev)
+    key = b"a" * 32
+    grant = _grant_for(key, canonical, fingerprint, birth)
+    signer = RootGrantSigner(key, "machine-1")
+
+    assert signer.verify(grant, "session-1").fingerprint == fingerprint
+    _renumber_the_device(monkeypatch, root)
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(grant, "session-1")
+
+
+@_btrfs_only
+def test_the_btrfs_check_reads_the_filesystem_type_statfs_reports(tmp_path: Path) -> None:
+    """_on_btrfs calls statfs(2) through ctypes, and coreutils' stat -f
+    reports the same call's type; off Btrfs no subvolume is read."""
+    stat_command = shutil.which("stat")
+    if stat_command is None:
+        pytest.skip("needs coreutils' stat")
+    reported = subprocess.run(
+        [stat_command, "-f", "-c", "%t", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    on_btrfs = int(reported, 16) == 0x9123683E
+
+    assert session_grants._on_btrfs(tmp_path) is on_btrfs
+    subvolume = session_grants._btrfs_subvolume(tmp_path)
+    if on_btrfs:
+        assert subvolume is not None and len(subvolume) == 32
+    else:
+        assert subvolume is None
+
+
+@_btrfs_only
+def test_a_real_btrfs_snapshot_in_a_folders_place_is_refused(tmp_path: Path) -> None:
+    """On a real Btrfs filesystem (skipped elsewhere): a subvolume's own user
+    snapshots it and puts the snapshot in its place, which keeps its inode
+    number and creation time."""
+    btrfs = shutil.which("btrfs")
+    if btrfs is None or not session_grants._on_btrfs(tmp_path):
+        pytest.skip("needs a temporary folder on Btrfs and the btrfs command")
+    folder = tmp_path / "workspace"
+    subprocess.run([btrfs, "-q", "subvolume", "create", str(folder)], check=True)
+    signer = RootGrantSigner(b"a" * 32, "machine-1")
+    issued = signer.issue("session-1", folder, 1)
+    assert signer.verify(issued.root_grant, "session-1") == issued
+
+    moved = folder.rename(tmp_path / "workspace.orig")
+    subprocess.run([btrfs, "-q", "subvolume", "snapshot", str(moved), str(folder)], check=True)
+    assert folder.stat().st_ino == moved.stat().st_ino
+    assert directory_birth(folder) == directory_birth(moved)
+
+    with pytest.raises(RootGrantError, match="changed"):
+        signer.verify(issued.root_grant, "session-1")

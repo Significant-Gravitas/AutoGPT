@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from autogpt_local_executor.audit import AuditWriter
-from autogpt_local_executor.computer_use import catalog, concealed, driver
+from autogpt_local_executor.computer_use import catalog, concealed, driver, mcp_client
 from autogpt_local_executor.computer_use.driver import CuaDriverBridge, DriverUnavailable
 from autogpt_local_executor.computer_use.mcp_client import McpClosedError, StdioMcpClient
 from autogpt_local_executor.config import ShimConfig
@@ -325,6 +325,33 @@ async def test_a_cancel_notice_the_driver_does_not_read_does_not_hold_the_call()
         assert b"notifications/cancelled" in stdin.written[-1]
     finally:
         task.cancel()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="the fake fills its pipe by fcntl")
+async def test_a_driver_that_stops_reading_once_it_answers_initialize_cant_hold_the_start(
+    fake_log: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start's deadline covered the initialize request, not the notice
+    sent once it was answered. A driver that answered, pinged the client
+    until the client's answers filled its input, and read no more held that
+    notice in drain(), or held the write lock there through the client's
+    answer to a ping, for good, and the bridge's start with it."""
+    monkeypatch.setattr(mcp_client, "CLOSE_GRACE_SECONDS", 0.5)
+    monkeypatch.setenv("FAKE_CUA_STALL_AT_INITIALIZE", "1")
+    client = _fake_client([str(FAKE), "mcp"])
+    start = asyncio.ensure_future(client.start(timeout=5))
+    try:
+        done, _ = await asyncio.wait({start}, timeout=60)
+        assert start in done
+        with pytest.raises(TimeoutError):
+            start.result()
+        assert _records(fake_log, "stalled")
+        assert not client.alive
+    finally:
+        if not start.done():
+            start.cancel()
+            await asyncio.wait({start}, timeout=30)
+        await client.close()
 
 
 async def test_the_client_answers_the_servers_ping(fake_log: Path) -> None:

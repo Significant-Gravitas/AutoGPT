@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from pydantic_settings import EnvSettingsSource
 
+import autogpt_local_executor.config as config_module
 from autogpt_local_executor.config import ShimConfig, load_config
 
 
@@ -68,6 +70,46 @@ def test_the_environment_outranks_the_config_file(
     assert from_env.platform_url == "http://localhost:9000"
     assert from_env.oauth_redirect_port == 42020
     assert overridden.oauth_redirect_port == 42050
+
+
+class _PrefixlessEnvSource(EnvSettingsSource):
+    """EnvSettingsSource as pydantic-settings 2.0.0 builds it, which the
+    dependency range allows: without an env_prefix passed in it reads no
+    prefix, where 2.0.1 and later take the model's."""
+
+    def __init__(
+        self, settings_cls, case_sensitive=None, env_prefix=None, env_nested_delimiter=None
+    ) -> None:
+        super().__init__(
+            settings_cls,
+            case_sensitive=False if case_sensitive is None else case_sensitive,
+            env_prefix="" if env_prefix is None else env_prefix,
+            env_nested_delimiter=env_nested_delimiter,
+        )
+
+
+@pytest.mark.parametrize(
+    "source", [EnvSettingsSource, _PrefixlessEnvSource], ids=["installed", "2.0.0"]
+)
+def test_only_prefixed_variables_set_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: type[EnvSettingsSource]
+) -> None:
+    """With pydantic-settings 2.0.0 the environment was read without the
+    AUTOGPT_SHIM_ prefix: AUTOGPT_SHIM_ALLOWED_ROOT no longer outranked the
+    config file, and another program's PLATFORM_URL or ENABLE_SHELL set the
+    shim's own."""
+    monkeypatch.setattr(config_module, "EnvSettingsSource", source)
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_text(f'allowed_root = "{(tmp_path / "from-file").as_posix()}"\n')
+    monkeypatch.setenv("AUTOGPT_SHIM_ALLOWED_ROOT", str(tmp_path / "from-env"))
+    monkeypatch.setenv("PLATFORM_URL", "https://elsewhere.example")
+    monkeypatch.setenv("ENABLE_SHELL", "true")
+
+    config = load_config(config_path=toml_file)
+
+    assert config.allowed_root == tmp_path / "from-env"
+    assert config.platform_url == ShimConfig.model_fields["platform_url"].default
+    assert config.enable_shell is False
 
 
 def test_derived_ws_url_from_https() -> None:

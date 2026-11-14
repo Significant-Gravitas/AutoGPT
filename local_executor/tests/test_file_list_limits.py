@@ -138,7 +138,10 @@ async def test_a_walk_stops_part_way_through_a_directory_larger_than_its_budget(
     response = await _listing(tmp_path, recursive=recursive, glob="*.nothing")
 
     assert response.payload.truncated is True
-    assert read <= 13
+    # The walk reads one entry past its budget to know it is spent, and the
+    # glob's case rule is read from the folder's first entry, whose name has
+    # a letter (platform_info.is_case_insensitive_fs).
+    assert read <= 13 + 1
 
 
 @pytest.mark.asyncio

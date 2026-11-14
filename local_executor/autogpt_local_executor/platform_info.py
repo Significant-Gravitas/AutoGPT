@@ -20,6 +20,7 @@ import os
 import platform as _platform
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -495,8 +496,11 @@ def is_case_insensitive_fs(path: str | os.PathLike[str]) -> bool:
 
     Per CROSS_PLATFORM.md: macOS / Windows default to insensitive, Linux
     to sensitive, but all three have toggles per volume / per directory.
-    The cheapest reliable check is to probe `os.path.exists` of the
-    case-toggled basename.
+    One of the folder's own entries is looked up again with its letters'
+    case swapped, which reads only (_folds_case_by_lookup); a folder with
+    no entry to look up gets a probe file made in it for a moment instead.
+    Where neither can be done (an empty folder on a read-only mount), the
+    OS's default answers.
     """
     p = Path(path)
     # Walk up until we find something that exists, so we can probe its parent.
@@ -510,6 +514,9 @@ def is_case_insensitive_fs(path: str | os.PathLike[str]) -> bool:
         if not probe_dir.exists():
             # Fall back to OS default if we can't probe anything.
             return sys.platform in ("win32", "darwin")
+    folds = _folds_case_by_lookup(probe_dir)
+    if folds is not None:
+        return folds
     try:
         # Create a temporary probe file; check whether its upper-cased name
         # resolves to the same inode.
@@ -529,6 +536,49 @@ def is_case_insensitive_fs(path: str | os.PathLike[str]) -> bool:
                 pass
     except (OSError, PermissionError):
         return sys.platform in ("win32", "darwin")
+
+
+# Swaps the case of ASCII letters alone, which every filesystem that folds
+# case folds alike.
+_ASCII_CASE_SWAP = str.maketrans(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+)
+# The most entries of a folder looked at for one to look up again.
+_CASE_LOOKUP_ENTRIES = 100
+
+
+def _folds_case_by_lookup(folder: Path) -> bool | None:
+    """Whether `folder`'s filesystem folds case, from one of its entries
+    looked up again with its letters' case swapped: the same file where it
+    folds, none (or another file) where it keeps case. None if no entry
+    serves: none has an ASCII letter in its name, or a hard link could hold
+    both names, or no file identity can be read."""
+    try:
+        with os.scandir(folder) as entries:
+            for looked_at, entry in enumerate(entries):
+                if looked_at >= _CASE_LOOKUP_ENTRIES:
+                    return None
+                swapped = entry.name.translate(_ASCII_CASE_SWAP)
+                if swapped == entry.name:
+                    continue
+                try:
+                    # os.stat, not the entry's: Windows leaves its inode out.
+                    own = os.stat(entry.path, follow_symlinks=False)
+                except OSError:
+                    continue
+                if not own.st_ino or (not stat.S_ISDIR(own.st_mode) and own.st_nlink > 1):
+                    continue
+                try:
+                    other = os.stat(os.path.join(folder, swapped), follow_symlinks=False)
+                except FileNotFoundError:
+                    return False
+                except OSError:
+                    continue
+                return (other.st_dev, other.st_ino) == (own.st_dev, own.st_ino)
+    except OSError:
+        return None
+    return None
 
 
 # ── Shell detection (used by EXECUTE_COMMAND handler) ────────────────────────
