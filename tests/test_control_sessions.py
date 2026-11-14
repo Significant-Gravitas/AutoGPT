@@ -480,20 +480,32 @@ async def test_a_control_hello_ack_missing_a_required_field_stops_the_daemon(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "where"),
+    [
+        (
+            {**_CONTROL_ACK, "granted_capabilities": "hunter2-held-value"},
+            "HELLO_ACK.payload.granted_capabilities: list_type",
+        ),
+        ({**_CONTROL_ACK, "hunter2-held-value": 1}, "HELLO_ACK.payload.*: extra_forbidden"),
+    ],
+    ids=["a-value", "a-field-name"],
+)
 async def test_a_malformed_control_hello_ack_is_reported_without_what_it_held(
-    tmp_path: Path,
+    tmp_path: Path, payload: dict[str, Any], where: str
 ) -> None:
     """The error a control daemon stops with carried pydantic's, whose text
-    quotes the values the HELLO_ACK held, in its traceback."""
+    quotes the values the HELLO_ACK held, in its traceback, and then the
+    name of a field it shouldn't have, which its location holds."""
     daemon = _control_daemon(tmp_path)
-    websocket = _AckSocket({**_CONTROL_ACK, "granted_capabilities": "hunter2-held-value"})
+    websocket = _AckSocket(payload)
 
     with pytest.raises(RuntimeError) as raised:
         await daemon._handshake(websocket)
 
     told = "".join(traceback.format_exception(raised.value))
     assert "hunter2" not in told
-    assert "HELLO_ACK.payload.granted_capabilities: list_type" in told
+    assert where in told
     assert websocket.closed is not None and websocket.closed[0] == 4400
 
 

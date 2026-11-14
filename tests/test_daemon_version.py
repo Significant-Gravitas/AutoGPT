@@ -457,21 +457,33 @@ async def test_a_refused_frame_cannot_add_a_line_to_the_log(
     assert "forged" not in caplog.text
 
 
-async def test_a_malformed_hello_ack_is_reported_without_what_it_held(daemon: ShimDaemon) -> None:
+@pytest.mark.parametrize(
+    ("payload", "where"),
+    [
+        (
+            {"session_id": "test-session", "granted_capabilities": _TYPED},
+            "HELLO_ACK.payload.granted_capabilities: list_type",
+        ),
+        (
+            {"session_id": "test-session", "granted_capabilities": [], _TYPED: 1},
+            "HELLO_ACK.payload.*: extra_forbidden",
+        ),
+    ],
+    ids=["a-value", "a-field-name"],
+)
+async def test_a_malformed_hello_ack_is_reported_without_what_it_held(
+    daemon: ShimDaemon, payload: dict[str, Any], where: str
+) -> None:
     """A session's handshake passed pydantic's error on, and the reconnect
     loop logs it: the values of the HELLO_ACK, or of a frame sent in its
-    place, went into the log."""
-    ack = {
-        "type": "HELLO_ACK",
-        "id": "__HELLO_ID__",
-        "ts": now_ts(),
-        "payload": {"session_id": "test-session", "granted_capabilities": _TYPED},
-    }
+    place, went into the log, and then the name of a field it shouldn't
+    have, which its location holds."""
+    ack = {"type": "HELLO_ACK", "id": "__HELLO_ID__", "ts": now_ts(), "payload": payload}
     ws = _FakeWebSocket(inbound=[json.dumps(ack)])
 
     with pytest.raises(ValueError) as raised:
         await daemon._handshake(ws)
 
     told = "".join(traceback.format_exception(raised.value))
-    assert _TYPED not in told
-    assert "HELLO_ACK.payload.granted_capabilities: list_type" in told
+    assert _TYPED_END not in told
+    assert where in told
