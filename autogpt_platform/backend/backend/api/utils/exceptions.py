@@ -32,6 +32,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
+from backend.util.service import UnhealthyServiceError
 from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ def add_exception_handlers(
         GraphActivationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
+        UnhealthyServiceError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
         MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
         Exception: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
