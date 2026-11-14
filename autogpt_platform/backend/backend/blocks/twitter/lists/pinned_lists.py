@@ -225,44 +225,38 @@ class TwitterGetPinnedListsBlock(Block):
         user_fields: TweetUserFieldsFilter | None,
         list_fields: ListFieldsFilter | None,
     ):
-        try:
-            client = tweepy.Client(
-                bearer_token=credentials.access_token.get_secret_value()
-            )
+        client = tweepy.Client(bearer_token=credentials.access_token.get_secret_value())
 
-            params = {"user_auth": False}
+        params = {"user_auth": False}
 
-            params = (
-                ListExpansionsBuilder(params)
-                .add_expansions(expansions)
-                .add_user_fields(user_fields)
-                .add_list_fields(list_fields)
-                .build()
-            )
+        params = (
+            ListExpansionsBuilder(params)
+            .add_expansions(expansions)
+            .add_user_fields(user_fields)
+            .add_list_fields(list_fields)
+            .build()
+        )
 
-            response = cast(Response, client.get_pinned_lists(**params))
+        response = cast(Response, client.get_pinned_lists(**params))
 
-            meta = {}
-            included = {}
-            list_ids = []
-            list_names = []
+        meta = {}
+        included = {}
+        list_ids = []
+        list_names = []
 
-            if response.meta:
-                meta = response.meta
+        if response.meta:
+            meta = response.meta
 
-            if response.includes:
-                included = IncludesSerializer.serialize(response.includes)
+        if response.includes:
+            included = IncludesSerializer.serialize(response.includes)
 
-            if response.data:
-                data = ResponseDataSerializer.serialize_list(response.data)
-                list_ids = [str(item.id) for item in response.data]
-                list_names = [item.name for item in response.data]
-                return data, included, meta, list_ids, list_names
+        if response.data:
+            data = ResponseDataSerializer.serialize_list(response.data)
+            list_ids = [str(item.id) for item in response.data]
+            list_names = [item.name for item in response.data]
+            return data, included, meta, list_ids, list_names
 
-            raise Exception("Lists not found")
-
-        except tweepy.TweepyException:
-            raise
+        raise Exception("Lists not found")
 
     async def run(
         self,
