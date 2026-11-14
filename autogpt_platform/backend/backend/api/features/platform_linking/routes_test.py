@@ -1,12 +1,27 @@
 """Route tests: domain exceptions → HTTPException status codes."""
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fastapi
 import pytest
+from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from backend.api.features.platform_linking.registry import PlatformMeta
+from backend.api.features.platform_linking.routes import (
+    ConfirmLinkRequest,
+    confirm_link_token,
+    confirm_user_link_token,
+    delete_link,
+    delete_user_link_route,
+    get_link_token_info_route,
+    list_bot_platforms,
+    router,
+)
+from backend.copilot.bot.adapters.slack.pending import PendingSlackInstall
 from backend.platform_linking.models import (
     ConfirmLinkResponse,
     ConfirmUserLinkResponse,
@@ -21,69 +36,23 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-
-def _db_mock(**method_configs):
-    """Return a mock of the accessor's return value with the given AsyncMocks."""
-    db = MagicMock()
-    for name, mock in method_configs.items():
-        setattr(db, name, mock)
-    return db
-
-
-def _installs_mock(install):
-    """Mock of the bot-installs accessor, resolving to the given install."""
-    installs = MagicMock()
-    installs.get_bot_install = AsyncMock(return_value=install)
-    return installs
-
-
-def _discord_meta(
-    *, enabled: bool = True, add_bot_url: str | None = "https://invite"
-) -> PlatformMeta:
-    return PlatformMeta(
-        platform="DISCORD",
-        display_name="Discord",
-        icon="discord.png",
-        server_noun="server",
-        enabled=enabled,
-        add_bot_url=add_bot_url,
-    )
+_R = "backend.api.features.platform_linking.routes"
 
 
 class TestTokenInfoRouteTranslation:
     @pytest.mark.asyncio
-    async def test_not_found_maps_to_404(self):
-        from backend.api.features.platform_linking.routes import (
-            get_link_token_info_route,
-        )
-
-        db = _db_mock(
-            get_link_token_info=AsyncMock(side_effect=NotFoundError("missing"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
-            with pytest.raises(HTTPException) as exc:
+    @pytest.mark.parametrize(
+        "exc,expected_status",
+        [
+            (NotFoundError("missing"), 404),
+            (LinkTokenExpiredError("expired"), 410),
+        ],
+    )
+    async def test_translation(self, exc: Exception, expected_status: int):
+        with _patched_db(get_link_token_info=AsyncMock(side_effect=exc)):
+            with pytest.raises(HTTPException) as ctx:
                 await get_link_token_info_route(token="abc")
-        assert exc.value.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_expired_maps_to_410(self):
-        from backend.api.features.platform_linking.routes import (
-            get_link_token_info_route,
-        )
-
-        db = _db_mock(
-            get_link_token_info=AsyncMock(side_effect=LinkTokenExpiredError("expired"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
-            with pytest.raises(HTTPException) as exc:
-                await get_link_token_info_route(token="abc")
-        assert exc.value.status_code == 410
+        assert ctx.value.status_code == expected_status
 
 
 class TestConfirmLinkRouteTranslation:
@@ -98,13 +67,7 @@ class TestConfirmLinkRouteTranslation:
         ],
     )
     async def test_translation(self, exc: Exception, expected_status: int):
-        from backend.api.features.platform_linking.routes import confirm_link_token
-
-        db = _db_mock(confirm_server_link=AsyncMock(side_effect=exc))
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
+        with _patched_db(confirm_server_link=AsyncMock(side_effect=exc)):
             with pytest.raises(HTTPException) as ctx:
                 await confirm_link_token(token="abc", user_id="u1")
         assert ctx.value.status_code == expected_status
@@ -122,13 +85,7 @@ class TestConfirmUserLinkRouteTranslation:
         ],
     )
     async def test_translation(self, exc: Exception, expected_status: int):
-        from backend.api.features.platform_linking.routes import confirm_user_link_token
-
-        db = _db_mock(confirm_user_link=AsyncMock(side_effect=exc))
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
+        with _patched_db(confirm_user_link=AsyncMock(side_effect=exc)):
             with pytest.raises(HTTPException) as ctx:
                 await confirm_user_link_token(token="abc", user_id="u1")
         assert ctx.value.status_code == expected_status
@@ -136,64 +93,34 @@ class TestConfirmUserLinkRouteTranslation:
 
 class TestDeleteLinkRouteTranslation:
     @pytest.mark.asyncio
-    async def test_not_found_maps_to_404(self):
-        from backend.api.features.platform_linking.routes import delete_link
-
-        db = _db_mock(
-            delete_server_link=AsyncMock(side_effect=NotFoundError("missing"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
-            with pytest.raises(HTTPException) as exc:
+    @pytest.mark.parametrize(
+        "exc,expected_status",
+        [
+            (NotFoundError("missing"), 404),
+            (NotAuthorizedError("nope"), 403),
+        ],
+    )
+    async def test_translation(self, exc: Exception, expected_status: int):
+        with _patched_db(delete_server_link=AsyncMock(side_effect=exc)):
+            with pytest.raises(HTTPException) as ctx:
                 await delete_link(link_id="x", user_id="u1")
-        assert exc.value.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_not_owned_maps_to_403(self):
-        from backend.api.features.platform_linking.routes import delete_link
-
-        db = _db_mock(
-            delete_server_link=AsyncMock(side_effect=NotAuthorizedError("nope"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
-            with pytest.raises(HTTPException) as exc:
-                await delete_link(link_id="x", user_id="u1")
-        assert exc.value.status_code == 403
+        assert ctx.value.status_code == expected_status
 
 
 class TestDeleteUserLinkRouteTranslation:
     @pytest.mark.asyncio
-    async def test_not_found_maps_to_404(self):
-        from backend.api.features.platform_linking.routes import delete_user_link_route
-
-        db = _db_mock(delete_user_link=AsyncMock(side_effect=NotFoundError("missing")))
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
-            with pytest.raises(HTTPException) as exc:
+    @pytest.mark.parametrize(
+        "exc,expected_status",
+        [
+            (NotFoundError("missing"), 404),
+            (NotAuthorizedError("nope"), 403),
+        ],
+    )
+    async def test_translation(self, exc: Exception, expected_status: int):
+        with _patched_db(delete_user_link=AsyncMock(side_effect=exc)):
+            with pytest.raises(HTTPException) as ctx:
                 await delete_user_link_route(link_id="x", user_id="u1")
-        assert exc.value.status_code == 404
-
-    @pytest.mark.asyncio
-    async def test_not_owned_maps_to_403(self):
-        from backend.api.features.platform_linking.routes import delete_user_link_route
-
-        db = _db_mock(
-            delete_user_link=AsyncMock(side_effect=NotAuthorizedError("nope"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
-            with pytest.raises(HTTPException) as exc:
-                await delete_user_link_route(link_id="x", user_id="u1")
-        assert exc.value.status_code == 403
+        assert ctx.value.status_code == expected_status
 
 
 # ── Adversarial: malformed token path params ──────────────────────────
@@ -201,20 +128,6 @@ class TestDeleteUserLinkRouteTranslation:
 
 class TestAdversarialTokenPath:
     # TokenPath enforces `^[A-Za-z0-9_-]+$` + max_length=64.
-
-    @pytest.fixture
-    def client(self):
-        import fastapi
-        from autogpt_libs.auth import get_user_id, requires_user
-        from fastapi.testclient import TestClient
-
-        import backend.api.features.platform_linking.routes as routes_mod
-
-        app = fastapi.FastAPI()
-        app.dependency_overrides[requires_user] = lambda: None
-        app.dependency_overrides[get_user_id] = lambda: "caller-user"
-        app.include_router(routes_mod.router, prefix="/api/platform-linking")
-        return TestClient(app)
 
     def test_rejects_token_with_special_chars(self, client):
         response = client.get("/api/platform-linking/tokens/bad%24token/info")
@@ -235,23 +148,15 @@ class TestAdversarialTokenPath:
 
     def test_accepts_token_at_max_length(self, client):
         token = "a" * 64
-        db = _db_mock(
+        with _patched_db(
             get_link_token_info=AsyncMock(side_effect=NotFoundError("missing"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
         ):
             response = client.get(f"/api/platform-linking/tokens/{token}/info")
         assert response.status_code == 404
 
     def test_accepts_urlsafe_b64_token_shape(self, client):
-        db = _db_mock(
+        with _patched_db(
             get_link_token_info=AsyncMock(side_effect=NotFoundError("missing"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
         ):
             response = client.get("/api/platform-linking/tokens/abc-_XYZ123-_abc/info")
         assert response.status_code == 404
@@ -265,27 +170,9 @@ class TestAdversarialDeleteLinkId:
     """DELETE link_id has no regex — ensure weird values are handled via
     NotFoundError (no crash, no cross-user leak)."""
 
-    @pytest.fixture
-    def client(self):
-        import fastapi
-        from autogpt_libs.auth import get_user_id, requires_user
-        from fastapi.testclient import TestClient
-
-        import backend.api.features.platform_linking.routes as routes_mod
-
-        app = fastapi.FastAPI()
-        app.dependency_overrides[requires_user] = lambda: None
-        app.dependency_overrides[get_user_id] = lambda: "caller-user"
-        app.include_router(routes_mod.router, prefix="/api/platform-linking")
-        return TestClient(app)
-
     def test_weird_link_id_returns_404(self, client):
-        db = _db_mock(
+        with _patched_db(
             delete_server_link=AsyncMock(side_effect=NotFoundError("missing"))
-        )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
         ):
             for link_id in ("'; DROP TABLE links;--", "../../etc/passwd", ""):
                 response = client.delete(f"/api/platform-linking/links/{link_id}")
@@ -295,12 +182,6 @@ class TestAdversarialDeleteLinkId:
 class TestListBotPlatforms:
     @pytest.mark.asyncio
     async def test_passes_the_dm_url_through(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
         telegram = PlatformMeta(
             platform="TELEGRAM",
             display_name="Telegram",
@@ -310,16 +191,7 @@ class TestListBotPlatforms:
             add_bot_url="https://t.me/AutoGPTBot?startgroup=true",
             dm_url="https://t.me/AutoGPTBot?start=connect",
         )
-        with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
-                return_value=[telegram, _discord_meta()],
-            ),
-        ):
+        with _patched_listing([telegram, _discord_meta()]):
             result = await list_bot_platforms(user_id="u1")
 
         assert result[0].dm_url == "https://t.me/AutoGPTBot?start=connect"
@@ -328,22 +200,7 @@ class TestListBotPlatforms:
 
     @pytest.mark.asyncio
     async def test_returns_enabled_platforms_with_no_links(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
-        with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
-                return_value=[_discord_meta()],
-            ),
-        ):
+        with _patched_listing([_discord_meta()]):
             result = await list_bot_platforms(user_id="u1")
 
         assert len(result) == 1
@@ -354,8 +211,6 @@ class TestListBotPlatforms:
 
     @pytest.mark.asyncio
     async def test_attaches_callers_dm_and_server_links(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
         dm_link = PlatformUserLinkInfo(
             id="dm-1",
             platform="DISCORD",
@@ -379,19 +234,8 @@ class TestListBotPlatforms:
             server_name="Server B",
             linked_at=datetime(2026, 5, 2, tzinfo=timezone.utc),
         )
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[dm_link]),
-            list_server_links=AsyncMock(return_value=[server_a, server_b]),
-        )
-        with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
-                return_value=[_discord_meta()],
-            ),
+        with _patched_listing(
+            [_discord_meta()], user_links=[dm_link], server_links=[server_a, server_b]
         ):
             result = await list_bot_platforms(user_id="discord-user-1")
 
@@ -401,8 +245,6 @@ class TestListBotPlatforms:
 
     @pytest.mark.asyncio
     async def test_picks_newest_dm_link_when_multiple_for_same_platform(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
         newer = PlatformUserLinkInfo(
             id="dm-new",
             platform="DISCORD",
@@ -417,20 +259,7 @@ class TestListBotPlatforms:
             platform_username="older-handle",
             linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
         )
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[newer, older]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
-        with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
-                return_value=[_discord_meta()],
-            ),
-        ):
+        with _patched_listing([_discord_meta()], user_links=[newer, older]):
             result = await list_bot_platforms(user_id="u1")
 
         assert result[0].dm_link is not None
@@ -438,22 +267,7 @@ class TestListBotPlatforms:
 
     @pytest.mark.asyncio
     async def test_omits_platforms_whose_adapter_isnt_configured(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
-        with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.registry.enabled_platforms",
-                return_value=[],
-            ),
-        ):
+        with _patched_listing([]):
             result = await list_bot_platforms(user_id="u1")
 
         assert result == []
@@ -462,22 +276,10 @@ class TestListBotPlatforms:
 class TestTelegramLoginVerification:
     @pytest.mark.asyncio
     async def test_invalid_telegram_auth_is_403_before_any_db_call(self):
-        from backend.api.features.platform_linking.routes import (
-            ConfirmLinkRequest,
-            confirm_user_link_token,
-        )
-
         confirm = AsyncMock()
-        db = _db_mock(confirm_user_link=confirm)
         with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.verify_login",
-                return_value=None,
-            ),
+            _patched_db(confirm_user_link=confirm),
+            patch(f"{_R}.verify_login", return_value=None),
         ):
             with pytest.raises(HTTPException) as exc:
                 await confirm_user_link_token(
@@ -490,22 +292,10 @@ class TestTelegramLoginVerification:
 
     @pytest.mark.asyncio
     async def test_verified_identity_is_forwarded_to_confirm(self):
-        from backend.api.features.platform_linking.routes import (
-            ConfirmLinkRequest,
-            confirm_user_link_token,
-        )
-
         confirm = AsyncMock(return_value=MagicMock())
-        db = _db_mock(confirm_user_link=confirm)
         with (
-            patch(
-                "backend.api.features.platform_linking.routes.platform_linking_db",
-                return_value=db,
-            ),
-            patch(
-                "backend.api.features.platform_linking.routes.verify_login",
-                return_value="424242",
-            ),
+            _patched_db(confirm_user_link=confirm),
+            patch(f"{_R}.verify_login", return_value="424242"),
         ):
             await confirm_user_link_token(
                 "tok",
@@ -518,14 +308,8 @@ class TestTelegramLoginVerification:
 
     @pytest.mark.asyncio
     async def test_no_body_confirms_without_verification(self):
-        from backend.api.features.platform_linking.routes import confirm_user_link_token
-
         confirm = AsyncMock(return_value=MagicMock())
-        db = _db_mock(confirm_user_link=confirm)
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
+        with _patched_db(confirm_user_link=confirm):
             await confirm_user_link_token("tok", "user-1", body=None)
         confirm.assert_awaited_once_with(
             "tok", "user-1", verified_platform_user_id=None
@@ -533,48 +317,18 @@ class TestTelegramLoginVerification:
 
     @pytest.mark.asyncio
     async def test_identity_mismatch_from_db_maps_to_403(self):
-        from backend.api.features.platform_linking.routes import confirm_user_link_token
-
         confirm = AsyncMock(side_effect=NotAuthorizedError("different user"))
-        db = _db_mock(confirm_user_link=confirm)
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
-        ):
+        with _patched_db(confirm_user_link=confirm):
             with pytest.raises(HTTPException) as exc:
                 await confirm_user_link_token("tok", "user-1", body=None)
         assert exc.value.status_code == 403
 
 
-def _slack_meta() -> PlatformMeta:
-    return PlatformMeta(
-        platform="SLACK",
-        display_name="Slack",
-        icon="slack.png",
-        server_noun="workspace",
-        enabled=True,
-        add_bot_url="https://b.example/api/copilot-webhooks/slack/install",
-    )
-
-
-_R = "backend.api.features.platform_linking.routes"
-
-
 class TestClosedLoopSlackFlow:
     @pytest.mark.asyncio
     async def test_slack_install_url_is_user_bound(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
         with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
-            patch(
-                f"{_R}.registry.enabled_platforms",
-                return_value=[_slack_meta()],
-            ),
+            _patched_listing([_slack_meta()]),
             patch(
                 f"{_R}.slack_oauth.make_install_user_param",
                 return_value="u1.1.sig",
@@ -590,20 +344,9 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_pending_install_surfaces_until_dm_linked(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-        from backend.copilot.bot.adapters.slack.pending import PendingSlackInstall
-
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
         marker = PendingSlackInstall(team_id="T1", team_name="eek", app_id="A1")
         with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
-            patch(
-                f"{_R}.registry.enabled_platforms",
-                return_value=[_slack_meta()],
-            ),
+            _patched_listing([_slack_meta()]),
             patch(
                 f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=marker)
             ),
@@ -617,19 +360,9 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_user_confirm_returns_deep_link_and_clears_marker(self):
-        from backend.api.features.platform_linking.routes import confirm_user_link_token
-        from backend.copilot.bot.adapters.slack.pending import PendingSlackInstall
-
-        db = _db_mock(
-            confirm_user_link=AsyncMock(
-                return_value=ConfirmUserLinkResponse(
-                    success=True, platform="SLACK", platform_user_id="U1"
-                )
-            )
-        )
         marker = PendingSlackInstall(team_id="T1", team_name="eek", app_id="A1")
         with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
+            _patched_user_confirm(platform="SLACK", platform_user_id="U1"),
             patch(
                 f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=marker)
             ),
@@ -642,27 +375,9 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_server_confirm_returns_deep_link_from_install(self):
-        from backend.api.features.platform_linking.routes import confirm_link_token
-
-        db = _db_mock(
-            confirm_server_link=AsyncMock(
-                return_value=ConfirmLinkResponse(
-                    success=True,
-                    platform="SLACK",
-                    platform_server_id="T1",
-                    server_name="eek",
-                )
-            )
-        )
         install = MagicMock()
         install.app_id = "A1"
-        with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
-            patch(
-                f"{_R}.bot_installs_db",
-                return_value=_installs_mock(install),
-            ),
-        ):
+        with _patched_slack_server_confirm(install):
             response = await confirm_link_token("tok", "u1", body=None)
 
         assert response.return_url == "https://slack.com/app_redirect?app=A1&team=T1"
@@ -672,25 +387,10 @@ class TestClosedLoopSlackFlow:
     async def test_server_confirm_has_no_deep_link_without_a_usable_install(
         self, install
     ):
-        from backend.api.features.platform_linking.routes import confirm_link_token
-
-        db = _db_mock(
-            confirm_server_link=AsyncMock(
-                return_value=ConfirmLinkResponse(
-                    success=True,
-                    platform="SLACK",
-                    platform_server_id="T1",
-                    server_name="eek",
-                )
-            )
-        )
         if install == "no-app-id":
             install = MagicMock()
             install.app_id = None
-        with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
-            patch(f"{_R}.bot_installs_db", return_value=_installs_mock(install)),
-        ):
+        with _patched_slack_server_confirm(install):
             response = await confirm_link_token("tok", "u1", body=None)
 
         # No app id means no deep link we can build; the link itself still stands.
@@ -699,17 +399,8 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_user_confirm_without_a_marker_still_clears_and_returns_no_link(self):
-        from backend.api.features.platform_linking.routes import confirm_user_link_token
-
-        db = _db_mock(
-            confirm_user_link=AsyncMock(
-                return_value=ConfirmUserLinkResponse(
-                    success=True, platform="SLACK", platform_user_id="U1"
-                )
-            )
-        )
         with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
+            _patched_user_confirm(platform="SLACK", platform_user_id="U1"),
             patch(f"{_R}.slack_pending.get_pending", new=AsyncMock(return_value=None)),
             patch(f"{_R}.slack_pending.clear_pending", new=AsyncMock()) as cleared,
         ):
@@ -722,19 +413,7 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_non_slack_platforms_are_untouched(self):
-        from backend.api.features.platform_linking.routes import list_bot_platforms
-
-        db = _db_mock(
-            list_user_links=AsyncMock(return_value=[]),
-            list_server_links=AsyncMock(return_value=[]),
-        )
-        with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
-            patch(
-                f"{_R}.registry.enabled_platforms",
-                return_value=[_discord_meta()],
-            ),
-        ):
+        with _patched_listing([_discord_meta()]):
             result = await list_bot_platforms(user_id="u1")
 
         assert result[0].add_bot_url == "https://invite"
@@ -742,17 +421,8 @@ class TestClosedLoopSlackFlow:
 
     @pytest.mark.asyncio
     async def test_telegram_user_confirm_returns_tme_link(self):
-        from backend.api.features.platform_linking.routes import confirm_user_link_token
-
-        db = _db_mock(
-            confirm_user_link=AsyncMock(
-                return_value=ConfirmUserLinkResponse(
-                    success=True, platform="TELEGRAM", platform_user_id="tg-1"
-                )
-            )
-        )
         with (
-            patch(f"{_R}.platform_linking_db", return_value=db),
+            _patched_user_confirm(platform="TELEGRAM", platform_user_id="tg-1"),
             patch(
                 f"{_R}.telegram_config.get_bot_username",
                 return_value="AutoGPTBot",
@@ -761,3 +431,87 @@ class TestClosedLoopSlackFlow:
             response = await confirm_user_link_token("tok", "u1", body=None)
 
         assert response.return_url == "https://t.me/AutoGPTBot"
+
+
+@pytest.fixture
+def client():
+    app = fastapi.FastAPI()
+    app.dependency_overrides[requires_user] = lambda: None
+    app.dependency_overrides[get_user_id] = lambda: "caller-user"
+    app.include_router(router, prefix="/api/platform-linking")
+    return TestClient(app)
+
+
+def _patched_db(**methods):
+    """Patch the routes' database accessor to return a mock with these methods."""
+    db = MagicMock()
+    for name, method in methods.items():
+        setattr(db, name, method)
+    return patch(f"{_R}.platform_linking_db", return_value=db)
+
+
+@contextmanager
+def _patched_listing(platforms, *, user_links=None, server_links=None):
+    """Patch what ``list_bot_platforms`` reads: the enabled platforms and the
+    caller's DM and server links (none unless given)."""
+    with (
+        _patched_db(
+            list_user_links=AsyncMock(return_value=user_links or []),
+            list_server_links=AsyncMock(return_value=server_links or []),
+        ),
+        patch(f"{_R}.registry.enabled_platforms", return_value=platforms),
+    ):
+        yield
+
+
+def _patched_user_confirm(*, platform: str, platform_user_id: str):
+    return _patched_db(
+        confirm_user_link=AsyncMock(
+            return_value=ConfirmUserLinkResponse(
+                success=True, platform=platform, platform_user_id=platform_user_id
+            )
+        )
+    )
+
+
+@contextmanager
+def _patched_slack_server_confirm(install):
+    """Confirm a server link to Slack team T1, whose bot install is ``install``."""
+    installs = MagicMock()
+    installs.get_bot_install = AsyncMock(return_value=install)
+    with (
+        _patched_db(
+            confirm_server_link=AsyncMock(
+                return_value=ConfirmLinkResponse(
+                    success=True,
+                    platform="SLACK",
+                    platform_server_id="T1",
+                    server_name="eek",
+                )
+            )
+        ),
+        patch(f"{_R}.bot_installs_db", return_value=installs),
+    ):
+        yield
+
+
+def _discord_meta() -> PlatformMeta:
+    return PlatformMeta(
+        platform="DISCORD",
+        display_name="Discord",
+        icon="discord.png",
+        server_noun="server",
+        enabled=True,
+        add_bot_url="https://invite",
+    )
+
+
+def _slack_meta() -> PlatformMeta:
+    return PlatformMeta(
+        platform="SLACK",
+        display_name="Slack",
+        icon="slack.png",
+        server_noun="workspace",
+        enabled=True,
+        add_bot_url="https://b.example/api/copilot-webhooks/slack/install",
+    )
