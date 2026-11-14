@@ -27,7 +27,6 @@ from backend.blocks.mcp.block import MCPToolBlock
 from backend.copilot.rate_limit import platform_spend_refusal
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
-from backend.data.db_accessors import experts_db
 from backend.data.dynamic_fields import parse_execution_output, sanitize_pin_name
 from backend.data.execution import (
     ExecutionContext,
@@ -41,13 +40,7 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import Link, Node
-from backend.data.model import (
-    Credentials,
-    CredentialsMetaInput,
-    GraphExecutionStats,
-    NodeExecutionStats,
-    OAuth2Credentials,
-)
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.rabbitmq import (
     SyncRabbitMQ,
     declare_broadcast_queue,
@@ -57,12 +50,6 @@ from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
-)
-from backend.integrations.codex.access import enforce_codex_access
-from backend.integrations.credential_lease import CredentialLease
-from backend.integrations.credentials_store import (
-    is_system_credential,
-    provider_matches,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth.refresh_failure import CredentialsNeedReconnectError
@@ -105,8 +92,8 @@ from .activity_status_generator import (
     INSUFFICIENT_BALANCE_GUIDANCE,
     generate_activity_status_for_execution,
 )
-from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
+from .block_credentials import acquire_block_credentials
 from .cluster_lock import ClusterLock
 from .nesting import sub_workflow_depth
 from .node_tracing import (
@@ -541,7 +528,6 @@ async def execute_node(
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
     input_model = cast(type[BlockSchema], node_block.input_schema)
-    credential_fields_info = input_model.get_credentials_fields_info()
     _drop_unused_credentials(node, data.inputs)
 
     # Sanity check: validate the execution input. A value the node can't use
@@ -649,130 +635,16 @@ async def execute_node(
         yield "error", refusal
         return
 
-    # Last-minute fetch credentials. OAuth credentials come with a system-wide lease
-    # that stops them being refreshed or replaced during execution. ⚠️ This means
-    # an OAuth credential can only be used by one (running) block at a time;
-    # simultaneous execution of blocks using the same one is not supported.
-    creds_locks: list[AsyncRedisLock] = []
-    credential_leases: dict[str, CredentialLease] = {}
-    runtime_credential_leases: dict[str, CredentialLease] = {}
-    expert_allowed_credentials: set[str] | None = None
-    try:
-        # Handle regular credentials fields
-        for field_name, input_type in input_model.get_credentials_fields().items():
-            # Dry-run platform credentials bypass the credential store.
-            # Keep the existing credential metadata so _execute's input_schema(**...)
-            # doesn't fail on the required field.  If no metadata is present,
-            # synthesize a minimal placeholder from the platform credentials.
-            if _dry_run_creds is not None:
-                if input_data.get(field_name) is None:
-                    input_data[field_name] = {
-                        "id": _dry_run_creds.id,
-                        "provider": _dry_run_creds.provider,
-                        "type": _dry_run_creds.type,
-                        "title": _dry_run_creds.title,
-                    }
-                extra_exec_kwargs[field_name] = _dry_run_creds
-                continue
-
-            field_value = input_data.get(field_name)
-            if not field_value or (
-                isinstance(field_value, dict) and not field_value.get("id")
-            ):
-                # No credentials configured — nullify so JSON schema validation
-                # doesn't choke on the empty default `{}`.
-                input_data[field_name] = None
-                continue  # Block runs without credentials
-
-            credentials_meta = input_type(**field_value)
-            # An expert run uses only the credentials granted to it.
-            if execution_context.expert_id is not None and not is_system_credential(
-                credentials_meta.id
-            ):
-                if expert_allowed_credentials is None:
-                    expert_allowed_credentials = set(
-                        await experts_db().expert_allowed_credential_ids(
-                            user_id, execution_context.expert_id
-                        )
-                    )
-                if credentials_meta.id not in expert_allowed_credentials:
-                    raise ValueError(
-                        f"Credentials #{credentials_meta.id} in field "
-                        f"'{field_name}' have not been granted to this expert. "
-                        f"Grant them on the expert's Integrations page."
-                    )
-            # Write normalized values back so JSON schema validation also passes
-            # (model_validator may have fixed legacy formats like "ProviderName.MCP")
-            input_data[field_name] = credentials_meta.model_dump(mode="json")
-            field_info = credential_fields_info[field_name]
-            if field_info.credential_reference_only:
-                credentials = await creds_manager.get(
-                    user_id,
-                    credentials_meta.id,
-                )
-                if not (
-                    credentials is not None
-                    and provider_matches(
-                        credentials.provider,
-                        credentials_meta.provider,
-                    )
-                    and credentials.type == credentials_meta.type
-                ):
-                    raise ValueError(
-                        f"Credentials #{credentials_meta.id} for user #{user_id} not found"
-                    )
-                if provider_matches(credentials.provider, "codex"):
-                    await enforce_codex_access(user_id)
-                continue
-            try:
-                credentials, lease = await _get_node_credentials(
-                    creds_manager, user_id, credentials_meta
-                )
-            except ValueError:
-                # Credential was deleted or doesn't exist.
-                # If the field has a default, run without credentials.
-                if input_model.model_fields[field_name].default is not None:
-                    log_metadata.warning(
-                        f"Credentials #{credentials_meta.id} not found, "
-                        "running without (field has default)"
-                    )
-                    input_data[field_name] = None
-                    continue
-                raise
-            if lease is not None:
-                credential_leases[field_name] = lease
-            if not (
-                provider_matches(
-                    credentials.provider,
-                    credentials_meta.provider,
-                )
-                and credentials.type == credentials_meta.type
-            ):
-                raise ValueError(
-                    f"Credentials #{credentials_meta.id} for user #{user_id} not found"
-                )
-            if provider_matches(credentials.provider, "codex"):
-                await enforce_codex_access(user_id)
-            extra_exec_kwargs[field_name] = credentials
-            if lease is not None and _uses_provider_runtime(lease):
-                runtime_credential_leases[field_name] = lease
-
-        # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-        auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
-            input_model=input_model,
-            input_data=input_data,
-            creds_manager=creds_manager,
-            user_id=user_id,
-            expert_id=execution_context.expert_id,
-        )
-        extra_exec_kwargs.update(auto_extra_kwargs)
-        creds_locks.extend(auto_locks)
-    except BaseException:
-        await _release_credential_leases(list(credential_leases.values()), log_metadata)
-        raise
-
-    if runtime_credential_leases:
-        extra_exec_kwargs["credential_leases"] = runtime_credential_leases
+    block_credentials = await acquire_block_credentials(
+        input_model,
+        input_data,
+        creds_manager,
+        user_id,
+        expert_id=execution_context.expert_id,
+        dry_run_credentials=_dry_run_creds,
+        log=log_metadata,
+    )
+    extra_exec_kwargs.update(block_credentials.exec_kwargs)
 
     output_size = 0
 
@@ -827,17 +699,7 @@ async def execute_node(
         scope._tags = original_tags
 
         # Ensure all credentials are released even if execution fails
-        await _release_credential_leases(list(credential_leases.values()), log_metadata)
-        for creds_lock in creds_locks:
-            if (
-                creds_lock
-                and (await creds_lock.locked())
-                and (await creds_lock.owned())
-            ):
-                try:
-                    await creds_lock.release()
-                except Exception as e:
-                    log_metadata.error(f"Failed to release credentials lock: {e}")
+        await block_credentials.release(log_metadata)
 
         if _dry_run_creds is not None:
             await track_dry_run_block_cost(
@@ -845,50 +707,6 @@ async def execute_node(
                 user_id=user_id,
                 model=input_data.get("model"),
             )
-
-
-async def _get_node_credentials(
-    creds_manager: IntegrationCredentialsManager,
-    user_id: str,
-    credentials_meta: CredentialsMetaInput,
-) -> tuple[Credentials, CredentialLease | None]:
-    """Load a node's credentials, leased only if they can change mid-run.
-
-    Only OAuth credentials change under a running block: a refresh replaces the
-    tokens, and a provider runtime checkpoints rotated ones through the lease.
-    A lease on any other kind would protect nothing, and would make every other
-    node on the same credential wait for this one, up to the lock's 60 s TTL,
-    including the tools an Orchestrator runs on its own API key. The caller
-    checks that the stored type matches ``credentials_meta``, so an OAuth
-    credential never runs unleased.
-    """
-    if credentials_meta.type == "oauth2":
-        lease = await creds_manager.acquire_lease(user_id, credentials_meta.id)
-        return lease.credentials, lease
-    credentials = await creds_manager.get(user_id, credentials_meta.id)
-    if credentials is None:
-        raise ValueError(
-            f"Credentials #{credentials_meta.id} for user #{user_id} not found"
-        )
-    return credentials, None
-
-
-async def _release_credential_leases(
-    leases: list[CredentialLease], log_metadata: LogMetadata
-) -> None:
-    for lease in leases:
-        try:
-            await lease.release()
-        except Exception as error:
-            log_metadata.error(f"Failed to release credentials lease: {error}")
-
-
-def _uses_provider_runtime(lease: CredentialLease) -> bool:
-    credentials = lease.credentials
-    return (
-        isinstance(credentials, OAuth2Credentials)
-        and credentials.refresh_strategy == "provider_runtime"
-    )
 
 
 async def _enqueue_next_nodes(

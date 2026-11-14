@@ -16,6 +16,7 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.blocks.routes import router, upload_file
 from backend.api.rest_api import app as real_app
+from backend.blocks._base import BlockSchemaInput
 from backend.util.exceptions import InsufficientBalanceError
 
 
@@ -167,6 +168,7 @@ def test_execute_graph_block(
     # Mock block
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.input_schema = BlockSchemaInput
     mock_block.name = "TestBlock"
 
     async def mock_execute(*args, **kwargs):
@@ -235,6 +237,7 @@ def test_execute_graph_block_forwards_execution_context(
 
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.input_schema = BlockSchemaInput
     mock_block.name = "TestBlock"
 
     async def mock_execute(*args, **kwargs):
@@ -275,6 +278,7 @@ def test_execute_graph_block_charges_when_cost_positive(
     """Paid blocks must charge credits before executing."""
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.input_schema = BlockSchemaInput
     mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
 
@@ -327,6 +331,7 @@ def test_execute_graph_block_returns_402_on_insufficient_balance(
     """If spend_credits raises InsufficientBalanceError, endpoint returns 402."""
     mock_block = Mock()
     mock_block.disabled = False
+    mock_block.input_schema = BlockSchemaInput
     mock_block.id = "paid-block"
     mock_block.name = "PaidBlock"
     mock_block.execute = AsyncMock()

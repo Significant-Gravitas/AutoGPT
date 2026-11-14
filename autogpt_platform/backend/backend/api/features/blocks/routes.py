@@ -1,6 +1,6 @@
 import base64
 import time
-from typing import Annotated
+from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
@@ -30,6 +30,7 @@ from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import ExecutionContext
 from backend.data.user import get_user_by_id
 from backend.executor import utils as execution_utils
+from backend.executor.block_credentials import acquire_direct_block_credentials
 from backend.executor.direct_block_execution import (
     DirectBlockExecutionBusyError,
     DirectBlockExecutionLimitError,
@@ -143,19 +144,25 @@ async def execute_graph_block(
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
+    credentials = await acquire_direct_block_credentials(obj, data, user_id)
     try:
-        slot = claim_direct_block_execution_slot(user_id)
-    except DirectBlockExecutionBusyError as e:
-        raise HTTPException(
-            status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
-        ) from e
-    except DirectBlockExecutionLimitError as e:
-        raise HTTPException(
-            status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
-        ) from e
+        try:
+            slot = claim_direct_block_execution_slot(user_id)
+        except DirectBlockExecutionBusyError as e:
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+            ) from e
+        except DirectBlockExecutionLimitError as e:
+            raise HTTPException(
+                status_code=HTTP_429_TOO_MANY_REQUESTS, detail=str(e)
+            ) from e
 
-    with slot:
-        return await _run_direct_block(obj, data, user_id, user.timezone, slot)
+        with slot:
+            return await _run_direct_block(
+                obj, data, user_id, user.timezone, slot, credentials.exec_kwargs
+            )
+    finally:
+        await credentials.release()
 
 
 async def _run_direct_block(
@@ -164,6 +171,7 @@ async def _run_direct_block(
     user_id: str,
     user_timezone: str,
     slot: DirectBlockExecutionSlot,
+    credentials: dict[str, Any],
 ) -> CompletedBlockOutput:
     try:
         await execution_utils.charge_for_direct_block_execution(
@@ -183,7 +191,12 @@ async def _run_direct_block(
     start_time = time.time()
     try:
         output = await run_block_off_loop(
-            obj.execute(data, user_id=user_id, execution_context=execution_context),
+            obj.execute(
+                data,
+                user_id=user_id,
+                execution_context=execution_context,
+                **credentials,
+            ),
             slot,
         )
 
