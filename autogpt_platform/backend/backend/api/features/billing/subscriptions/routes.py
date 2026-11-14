@@ -24,7 +24,9 @@ from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
+from backend.api.features.chat.usage_reset import settle_card_reset
 from backend.copilot.rate_limit import get_tier_multipliers
+from backend.copilot.usage_mode import billing_clock_live
 from backend.data import checkout_audience
 from backend.data.credit import (
     BillingCycle,
@@ -158,6 +160,16 @@ class SubscriptionStatusResponse(BaseModel):
             "Unix timestamp of the active subscription's current_period_end. Used"
             " to show the date Stripe will issue the next invoice (with prorated"
             " upgrade charges, if any). None when no active sub."
+        ),
+    )
+    upgrade_resets_billing_date: bool = Field(
+        default=False,
+        description=(
+            "An upgrade made now starts a fresh billing month: the full new"
+            " price is charged, less a credit for the unused part of the"
+            " current plan, the plan renews a full period from today, and the"
+            " usage limits start over. False while an upgrade is still"
+            " prorated inside the current billing period."
         ),
     )
     paused_workflow_schedules: int = Field(
@@ -359,6 +371,7 @@ async def get_subscription_status(
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
+        upgrade_resets_billing_date=await billing_clock_live(),
         paused_workflow_schedules=paused_workflow_schedules,
     )
     if pending is not None:
@@ -841,6 +854,24 @@ def _stripe_event_dedup_key(event_id: str) -> str:
     return f"stripe_webhook_event:{event_id}"
 
 
+async def _recover_usage_reset(event_type: str, session: dict) -> None:
+    """A delivery that was claimed and then died before granting the reset it
+    paid for must still grant it on Stripe's retry. Granting is idempotent,
+    so an event that was fully processed changes nothing here."""
+    if not event_type.startswith("checkout.session."):
+        return
+    session_id = session.get("id")
+    if session_id and _is_usage_reset_checkout(session):
+        await settle_card_reset(session_id)
+
+
+def _is_usage_reset_checkout(session: dict) -> bool:
+    """Whether a completed Checkout session says it paid for a usage reset.
+    Subscription and top-up sessions never reach the reset's code."""
+    metadata = session.get("metadata") or {}
+    return session.get("mode") == "payment" and metadata.get("usage_reset") == "1"
+
+
 async def _claim_stripe_event(event_id: str) -> bool:
     """Mark a Stripe webhook event as claimed via Redis SETNX.
 
@@ -989,6 +1020,7 @@ async def stripe_webhook(request: Request):
     # not every downstream handler is independently idempotent.
     if not await _claim_stripe_event(event_id):
         await recover_claimed_billing_event(event_type, data_object)
+        await _recover_usage_reset(event_type, data_object)
         logger.info(
             "stripe_webhook: event %s (%s) already processed; skipping",
             event_id,
@@ -1012,6 +1044,20 @@ async def stripe_webhook(request: Request):
                 )
                 return Response(status_code=200)
             await UserCredit().fulfill_checkout(session_id=session_id)
+            if _is_usage_reset_checkout(data_object):
+                # Grants the reset this session paid for, once. The grant
+                # re-reads the session from Stripe: the event only routes.
+                granted = await settle_card_reset(session_id)
+                if granted is None and data_object.get("payment_status") == "paid":
+                    # Paid, yet no pending purchase has this session, or the
+                    # session isn't what the purchase asked for. Retrying
+                    # can't change that: it needs a person. ERROR reaches
+                    # Sentry; the payment is found in Stripe by this event.
+                    logger.error(
+                        "stripe_webhook: %s for a paid usage reset was not "
+                        "granted: no pending purchase matches its session",
+                        event_type,
+                    )
             await sync_tier_from_checkout_session(data_object)
             # Only `checkout.session.completed` drives the welcome email.
             # `customer.subscription.created` fires at signup too; listening to

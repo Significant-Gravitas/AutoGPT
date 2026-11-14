@@ -19,6 +19,16 @@ from backend.data.stripe_reconciliation import (
 )
 
 
+@pytest.fixture(autouse=True)
+def clock_copy(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The sweep also copies every live subscription's billing period for the
+    usage limits (tested in usage_clock_backfill_test.py); here it is a stub."""
+    return mocker.patch(
+        "backend.data.stripe_reconciliation.backfill_billing_clocks",
+        new_callable=AsyncMock,
+    )
+
+
 class _SubDict(dict):
     """A subscription mapping that also exposes ``.id`` as an attribute, mirroring
     Stripe's StripeObject (dict-like .get() AND attribute access on the id used
@@ -248,6 +258,33 @@ async def test_sweep_no_discrepancies_does_not_alert(
     assert summary.unchanged == 1
     assert summary.discrepancies == []
     mock_alert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, RuntimeError("stripe down")])
+async def test_sweep_copies_the_billing_clocks_and_survives_their_failure(
+    mocker: pytest_mock.MockFixture,
+    clock_copy: AsyncMock,
+    failure: Exception | None,
+) -> None:
+    """The copy is the safety net for a renewal whose webhook was missed. It
+    runs after the tiers are settled and never fails the tier sweep."""
+    clock_copy.side_effect = failure
+    mocker.patch(
+        "backend.data.stripe_reconciliation.build_price_to_tier_map",
+        new_callable=AsyncMock,
+        return_value={},
+    )
+    _patch_stripe_pages(mocker, {})
+    mocker.patch(
+        "backend.data.stripe_reconciliation.User.prisma",
+        return_value=MagicMock(find_many=AsyncMock(return_value=[])),
+    )
+
+    summary = await reconcile_all_stripe_tiers()
+
+    clock_copy.assert_awaited_once_with()
+    assert summary.errors == 0
 
 
 @pytest.mark.asyncio

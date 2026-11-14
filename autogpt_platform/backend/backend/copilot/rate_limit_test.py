@@ -35,10 +35,8 @@ from .rate_limit import (
     _maybe_reconcile_stripe_tier,
     _weekly_key,
     _weekly_reset_time,
-    acquire_reset_lock,
     build_budget_ctx,
     check_rate_limit,
-    get_daily_reset_count,
     get_global_rate_limits,
     get_remaining_usd_budget,
     get_tier_multipliers,
@@ -46,10 +44,7 @@ from .rate_limit import (
     get_user_tier,
     get_workspace_storage_limit_bytes,
     get_workspace_storage_limits_mb,
-    increment_daily_reset_count,
     record_cost_usage,
-    release_reset_lock,
-    reset_daily_usage,
     reset_user_usage,
     set_user_tier,
 )
@@ -2132,90 +2127,6 @@ class TestTierLimitsRespected:
 
 
 # ---------------------------------------------------------------------------
-# reset_daily_usage
-# ---------------------------------------------------------------------------
-
-
-class TestResetDailyUsage:
-    @pytest.mark.asyncio
-    async def test_deletes_daily_key(self):
-        mock_redis = AsyncMock()
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
-        ):
-            result = await reset_daily_usage(_USER, daily_cost_limit=10000)
-
-        assert result is True
-        mock_redis.delete.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_reduces_weekly_usage_via_eval(self):
-        """Weekly counter should be decremented via the atomic Lua script."""
-        mock_redis = AsyncMock()
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
-        ):
-            await reset_daily_usage(_USER, daily_cost_limit=10000)
-
-        # The Lua script handles both decrement and floor-to-zero in a single
-        # call — no separate SET is expected for the clamp branch any more.
-        # Pin the call shape so a regression that targets the wrong key or
-        # delta (e.g. the daily key, or a sign-flip) fails loudly.
-        mock_redis.eval.assert_called_once()
-        eval_args = mock_redis.eval.call_args.args
-        # eval(script, numkeys, KEYS[1], ARGV[1])
-        assert eval_args[1] == 1
-        assert eval_args[2] == _weekly_key(_USER)
-        assert int(eval_args[3]) == 10000
-        mock_redis.set.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_no_weekly_reduction_when_daily_limit_zero(self):
-        """When daily_cost_limit is 0, weekly counter should not be touched."""
-        mock_redis = AsyncMock()
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
-        ):
-            await reset_daily_usage(_USER, daily_cost_limit=0)
-
-        mock_redis.delete.assert_called_once()
-        mock_redis.eval.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_returns_false_when_redis_unavailable(self):
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=ConnectionError("Redis down"),
-        ):
-            result = await reset_daily_usage(_USER, daily_cost_limit=10000)
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_decr_counter_floor_zero_invokes_lua_script(self):
-        """The atomic DECRBY+floor helper routes through redis.eval with the
-        expected single-key, single-arg call shape."""
-        from backend.copilot.rate_limit import (
-            _DECR_FLOOR_ZERO_SCRIPT,
-            _decr_counter_floor_zero,
-        )
-
-        mock_redis = AsyncMock()
-
-        await _decr_counter_floor_zero(mock_redis, "weekly:user1", 42)
-
-        mock_redis.eval.assert_called_once_with(
-            _DECR_FLOOR_ZERO_SCRIPT, 1, "weekly:user1", 42
-        )
-
-
-# ---------------------------------------------------------------------------
 # Tier-limit enforcement (integration-style)
 # ---------------------------------------------------------------------------
 
@@ -2538,122 +2449,6 @@ class TestKeyHelpers:
     def test_weekly_reset_time_defaults_to_now(self):
         reset = _weekly_reset_time()
         assert reset.weekday() == 0  # Monday
-
-
-# ---------------------------------------------------------------------------
-# acquire_reset_lock / release_reset_lock
-# ---------------------------------------------------------------------------
-
-
-class TestResetLock:
-    @pytest.mark.asyncio
-    async def test_acquire_lock_success(self):
-        mock_redis = AsyncMock()
-        mock_redis.set = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
-        ):
-            result = await acquire_reset_lock("user-1")
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_acquire_lock_already_held(self):
-        mock_redis = AsyncMock()
-        mock_redis.set = AsyncMock(return_value=False)
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
-        ):
-            result = await acquire_reset_lock("user-1")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_acquire_lock_redis_unavailable(self):
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=RedisError("down"),
-        ):
-            result = await acquire_reset_lock("user-1")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_release_lock_success(self):
-        mock_redis = AsyncMock()
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
-        ):
-            await release_reset_lock("user-1")
-        mock_redis.delete.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_release_lock_redis_unavailable(self):
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=RedisError("down"),
-        ):
-            # Should not raise
-            await release_reset_lock("user-1")
-
-
-# ---------------------------------------------------------------------------
-# get_daily_reset_count / increment_daily_reset_count
-# ---------------------------------------------------------------------------
-
-
-class TestDailyResetCount:
-    @pytest.mark.asyncio
-    async def test_get_count_returns_value(self):
-        mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value="3")
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
-        ):
-            count = await get_daily_reset_count("user-1")
-        assert count == 3
-
-    @pytest.mark.asyncio
-    async def test_get_count_returns_zero_when_no_key(self):
-        mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value=None)
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
-        ):
-            count = await get_daily_reset_count("user-1")
-        assert count == 0
-
-    @pytest.mark.asyncio
-    async def test_get_count_returns_none_when_redis_unavailable(self):
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=RedisError("down"),
-        ):
-            count = await get_daily_reset_count("user-1")
-        assert count is None
-
-    @pytest.mark.asyncio
-    async def test_increment_count(self):
-        mock_pipe = MagicMock()
-        mock_pipe.incr = MagicMock()
-        mock_pipe.expire = MagicMock()
-        mock_pipe.execute = AsyncMock()
-
-        mock_redis = AsyncMock()
-        mock_redis.pipeline = MagicMock(return_value=mock_pipe)
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
-        ):
-            await increment_daily_reset_count("user-1")
-        mock_pipe.incr.assert_called_once()
-        mock_pipe.expire.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_increment_count_redis_unavailable(self):
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=RedisError("down"),
-        ):
-            # Should not raise
-            await increment_daily_reset_count("user-1")
 
 
 # ---------------------------------------------------------------------------

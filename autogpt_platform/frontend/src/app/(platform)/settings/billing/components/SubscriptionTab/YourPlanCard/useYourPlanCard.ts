@@ -32,6 +32,7 @@ import {
   getSubscriptionPlan,
   PLAN_LABEL,
 } from "@/services/billing/subscription-plan";
+import { tierUpgradeBody, yearlyRenewsLine } from "./upgradeCopy";
 
 import { formatCents, formatShortDate } from "../../../helpers";
 import { getCheckoutReturnURLs } from "../helpers";
@@ -164,6 +165,10 @@ export function useYourPlanCard() {
   // backend computes the same value (monthly_cost * remaining / total) and
   // exposes it on the status payload so we can show the actual charge today.
   const prorationCreditCents = subscription.data?.proration_credit_cents ?? 0;
+  // From the launch of the billing-clock limits an upgrade starts a fresh
+  // billing month; until then it is prorated inside the current period.
+  const resetsBillingDate =
+    subscription.data?.upgrade_resets_billing_date === true;
   const currentPeriodEndMs = subscription.data?.current_period_end
     ? subscription.data.current_period_end * 1000
     : null;
@@ -484,9 +489,11 @@ export function useYourPlanCard() {
               text: `${formatCents(netChargeCents)} (prorated from your monthly plan).`,
             }
           : { text: "You'll be charged the prorated difference today." };
-      const renews = periodEndLabel
-        ? { label: "Renews", text: `${yearly}/year on ${periodEndLabel}.` }
-        : { label: "Renews", text: `at ${yearly}/year after this period.` };
+      const renews = yearlyRenewsLine({
+        resetsBillingDate,
+        yearlyPrice: yearly,
+        periodEndLabel,
+      });
       return [
         savingsPercent > 0
           ? { text: `Save ${savingsPercent}% with yearly billing.` }
@@ -540,18 +547,11 @@ export function useYourPlanCard() {
         : tierCosts[pendingTierUpgrade];
     const newPrice =
       typeof targetCents === "number" ? formatCents(targetCents) : "";
-    const cycleNoun = serverCycle === "yearly" ? "yearly" : "monthly";
-    const cycleUnit = serverCycle === "yearly" ? "year" : "month";
-    const renewLine = newPrice
-      ? `After this period, your plan renews at ${newPrice} per ${cycleUnit}.`
-      : "";
-    return [
-      `You'll be charged the prorated difference immediately for the rest of your ${cycleNoun} period.`,
-      renewLine,
-      "Your current usage carries over into the higher allowance.",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    return tierUpgradeBody({
+      resetsBillingDate,
+      newPrice,
+      cycle: serverCycle === "yearly" ? "yearly" : "monthly",
+    });
   }
 
   async function confirmTierUpgrade() {

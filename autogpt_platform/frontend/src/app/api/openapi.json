@@ -6057,11 +6057,100 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/usage/paid-reset": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Buy Usage Reset",
+        "description": "Buy a usage reset: with credits when the balance covers it, otherwise\nby card through the checkout this returns.",
+        "operationId": "postV2BuyUsageReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UsageResetRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UsageResetResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "A reset can't be bought now (no limit is reached, the weekly reset is minutes away, the plan has none), or its price is no longer the one shown; nothing was charged"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Usage limits can't be read, or the card checkout can't be opened, right now; nothing was charged"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/usage/paid-reset/confirm": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Confirm Usage Reset",
+        "description": "Called when the customer returns from paying by card: grants the reset\nif Stripe says the payment went through and its webhook hasn't yet.",
+        "operationId": "postV2ConfirmUsageReset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageResetConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResetConfirmResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "Usage limits can't be read, or the card checkout can't be opened, right now; nothing was charged"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/usage/reset": {
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Reset Copilot Usage",
-        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily cost limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.",
+        "description": "Switched off: paying credits to reset the daily limit is gone.\n\nIt let an account buy past its plan's limits (SECRT-3441). The route\nstays so a client that still calls it gets the answer it always got with\nthe feature configured off, and nothing is charged or reset.",
         "operationId": "postV2ResetCopilotUsage",
         "responses": {
           "200": {
@@ -6074,20 +6163,12 @@
               }
             }
           },
-          "400": {
-            "description": "Bad Request (feature disabled or daily limit not reached)"
-          },
+          "400": { "description": "Bad Request (the reset is switched off)" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "402": { "description": "Payment Required (insufficient credits)" },
-          "429": {
-            "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
-          },
-          "503": {
-            "description": "Service Unavailable (Redis reset failed; credits refunded or support needed)"
           }
         },
+        "deprecated": true,
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
@@ -21528,6 +21609,59 @@
         "title": "BaseGraph",
         "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
+      "BillingClockUsage": {
+        "properties": {
+          "source": { "type": "string", "title": "Source" },
+          "daily_resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Daily Resets At"
+          },
+          "weekly_resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Weekly Resets At"
+          },
+          "weekly_limit_microdollars": {
+            "type": "integer",
+            "title": "Weekly Limit Microdollars"
+          },
+          "reserve_today_microdollars": {
+            "type": "integer",
+            "title": "Reserve Today Microdollars"
+          },
+          "reserve_used_microdollars": {
+            "type": "integer",
+            "title": "Reserve Used Microdollars"
+          },
+          "blocked_by": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocked By"
+          },
+          "reset_active": {
+            "type": "boolean",
+            "title": "Reset Active",
+            "default": false
+          },
+          "reset_purchases": {
+            "items": { "$ref": "#/components/schemas/ResetPurchase" },
+            "type": "array",
+            "title": "Reset Purchases",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "daily_resets_at",
+          "weekly_resets_at",
+          "weekly_limit_microdollars",
+          "reserve_today_microdollars",
+          "reserve_used_microdollars"
+        ],
+        "title": "BillingClockUsage",
+        "description": "What a user's limits look like on their billing clock (SECRT-3441)."
+      },
       "BlockCategoryResponse": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -23021,7 +23155,7 @@
               { "$ref": "#/components/schemas/UsageWindowPublic" },
               { "type": "null" }
             ],
-            "description": "Null when no daily cap is configured (unlimited)."
+            "description": "Null when there is no daily cap: none is configured (unlimited), or a paid reset has lifted it until the weekly reset."
           },
           "weekly": {
             "anyOf": [
@@ -23037,8 +23171,28 @@
           "reset_cost": {
             "type": "integer",
             "title": "Reset Cost",
-            "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+            "description": "Always 0: paying credits to reset the daily limit is switched off.",
             "default": 0
+          },
+          "reserve": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/UsageWindowPublic" },
+              { "type": "null" }
+            ],
+            "description": "Today's daily reserve: a small part of the weekly limit kept back each day, usable after the rest of the week is gone. Null when the plan has none."
+          },
+          "reset_active": {
+            "type": "boolean",
+            "title": "Reset Active",
+            "description": "A paid reset is in force: the weekly limit was started over and there is no daily limit until the weekly reset, whose time did not move.",
+            "default": false
+          },
+          "reset_offer": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/UsageResetOffer" },
+              { "type": "null" }
+            ],
+            "description": "Set when a limit is reached and the account can buy a paid reset now."
           },
           "state": {
             "type": "string",
@@ -34315,7 +34469,7 @@
           "usage"
         ],
         "title": "RateLimitResetResponse",
-        "description": "Response from resetting the daily rate limit."
+        "description": "Response from resetting the daily rate limit. Kept for the schema of\nthe switched-off endpoint; it is never returned."
       },
       "RatificationResult": {
         "properties": {
@@ -34741,6 +34895,59 @@
         "required": ["success", "message"],
         "title": "RequeueExecutionResponse",
         "description": "Response model for requeue execution operations"
+      },
+      "ResetPurchase": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "tier": { "type": "string", "title": "Tier" },
+          "price_credits": { "type": "integer", "title": "Price Credits" },
+          "paid_with": {
+            "type": "string",
+            "enum": ["credits", "card"],
+            "title": "Paid With"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "granted"],
+            "title": "Status"
+          },
+          "week_start": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Week Start"
+          },
+          "week_end": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Week End"
+          },
+          "sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Sequence"
+          },
+          "granted_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Granted At"
+          },
+          "checkout_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Checkout Session Id"
+          },
+          "payment_intent_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Payment Intent Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "tier",
+          "price_credits",
+          "paid_with",
+          "status"
+        ],
+        "title": "ResetPurchase",
+        "description": "One purchase of a usage reset. Times are Unix seconds."
       },
       "ResponseType": {
         "type": "string",
@@ -37486,6 +37693,12 @@
             "title": "Current Period End",
             "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
           },
+          "upgrade_resets_billing_date": {
+            "type": "boolean",
+            "title": "Upgrade Resets Billing Date",
+            "description": "An upgrade made now starts a fresh billing month: the full new price is charged, less a credit for the unused part of the current plan, the plan renews a full period from today, and the usage limits start over. False while an upgrade is still prorated inside the current billing period.",
+            "default": false
+          },
           "paused_workflow_schedules": {
             "type": "integer",
             "title": "Paused Workflow Schedules",
@@ -37634,6 +37847,11 @@
             "items": { "$ref": "#/components/schemas/UpgradeProrationLine" },
             "type": "array",
             "title": "Lines"
+          },
+          "resets_billing_date": {
+            "type": "boolean",
+            "title": "Resets Billing Date",
+            "default": false
           }
         },
         "type": "object",
@@ -40133,6 +40351,140 @@
         ],
         "title": "UploadPartResponse"
       },
+      "UsageResetConfirmRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_]+$",
+            "title": "Session Id",
+            "description": "The Stripe Checkout session the customer returned from."
+          }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "UsageResetConfirmRequest"
+      },
+      "UsageResetConfirmResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["granted", "pending"],
+            "title": "Status",
+            "description": "'pending': Stripe hasn't confirmed the payment (yet); nothing is reset."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At"
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CoPilotUsagePublic" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "UsageResetConfirmResponse"
+      },
+      "UsageResetOffer": {
+        "properties": {
+          "price_credits": {
+            "type": "integer",
+            "title": "Price Credits",
+            "description": "Its price in cents, which is also its price in credits."
+          },
+          "pay_with": {
+            "type": "string",
+            "enum": ["credits", "card"],
+            "title": "Pay With",
+            "description": "'credits' when the credit balance covers the whole price, which is then taken from it; otherwise 'card': the whole price is paid by card. Never part of each.",
+            "default": "card"
+          }
+        },
+        "type": "object",
+        "required": ["price_credits"],
+        "title": "UsageResetOffer",
+        "description": "A paid reset this account can buy now."
+      },
+      "UsageResetRequest": {
+        "properties": {
+          "purchase_key": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Purchase Key",
+            "description": "A key the client makes up for this purchase (a UUID). Sending it again returns the same purchase and charges nothing more."
+          },
+          "price_credits": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Price Credits",
+            "description": "The price the customer was shown and agreed to, from the usage read-out's reset_offer. Refused if it has changed."
+          },
+          "pay_with": {
+            "anyOf": [
+              { "type": "string", "enum": ["credits", "card"] },
+              { "type": "null" }
+            ],
+            "title": "Pay With",
+            "description": "How the customer was told it would be paid, from the same reset_offer. Credits are never taken from a customer who confirmed a card payment: that is refused, to be confirmed again."
+          }
+        },
+        "type": "object",
+        "required": ["purchase_key", "price_credits"],
+        "title": "UsageResetRequest"
+      },
+      "UsageResetResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["granted", "payment_required"],
+            "title": "Status",
+            "description": "'granted': the limits are reset. 'payment_required': nothing is reset yet; send the customer to checkout_url to pay by card."
+          },
+          "paid_with": {
+            "type": "string",
+            "enum": ["credits", "card"],
+            "title": "Paid With"
+          },
+          "credits_charged": {
+            "type": "integer",
+            "title": "Credits Charged",
+            "description": "Credits taken by this request; 0 for a card payment or when the key had already bought it.",
+            "default": 0
+          },
+          "checkout_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Checkout Url",
+            "description": "Where to pay by card, when payment is required."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At",
+            "description": "When a granted reset ends: the weekly reset, unchanged."
+          },
+          "usage": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CoPilotUsagePublic" },
+              { "type": "null" }
+            ],
+            "description": "Usage after a granted reset; null when it couldn't be read just now (the purchase still went through)."
+          }
+        },
+        "type": "object",
+        "required": ["status", "paid_with"],
+        "title": "UsageResetResponse"
+      },
       "UsageWindowPublic": {
         "properties": {
           "percent_used": {
@@ -40828,6 +41180,12 @@
             "type": "object",
             "title": "Tier Multipliers",
             "default": {}
+          },
+          "billing_clock": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BillingClockUsage" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",

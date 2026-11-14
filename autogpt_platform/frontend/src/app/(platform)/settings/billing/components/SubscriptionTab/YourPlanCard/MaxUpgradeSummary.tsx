@@ -42,7 +42,7 @@ export function MaxUpgradeSummary({ preview }: Props) {
           <SummaryRow
             key={index}
             label={
-              line.proration
+              line.proration || preview.resets_billing_date
                 ? line.amount < 0
                   ? "Unused Pro time"
                   : `Max, ${dateLabel(line.period_start)} to ${dateLabel(line.period_end)}`
@@ -74,6 +74,9 @@ export function MaxUpgradeSummary({ preview }: Props) {
         </div>
         <div className="pt-2">
           <Text variant="small-loose" tone="secondary">
+            {preview.resets_billing_date
+              ? "Your billing date moves to today and your usage limits start fresh. "
+              : ""}
             Next renewal: {dateLabel(preview.period_end)}. Max’s regular price
             is {amount(preview.recurring_amount)} {recurringTax} per {unit},
             before any applicable discounts or account credits.

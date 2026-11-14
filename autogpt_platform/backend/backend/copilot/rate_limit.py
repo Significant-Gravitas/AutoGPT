@@ -2,8 +2,20 @@
 
 Uses Redis fixed-window counters to track per-user USD spend (stored as
 microdollars, matching ``PlatformCostLog.cost_microdollars``) with
-configurable daily and weekly limits. Daily windows reset at midnight UTC;
-weekly windows reset at ISO week boundary (Monday 00:00 UTC).
+configurable daily and weekly limits.
+
+Two clocks, switched by ``usage_mode.billing_clock_live`` (SECRT-3441):
+
+* **The calendar** (until launch, and the fallback): daily windows reset at
+  midnight UTC, weekly windows at the ISO week boundary (Monday 00:00 UTC),
+  the same for everyone.
+* **The billing clock** (from the launch second): each customer's weekly
+  window is a quarter of their own billing month and their day restarts at
+  each weekly reset (``usage_clock``, ``usage_windows``), Pro and Max have
+  their own limits and a daily reserve (``usage_limits``), and a paid reset
+  starts the weekly window over with the daily limit lifted (``usage_live``). Each
+  function below branches where it reads or writes the counters; everything
+  around that (trials, the tier guard, the failure policy) is shared.
 
 Failure-mode policy:
 
@@ -17,9 +29,8 @@ Failure-mode policy:
   fail-open / best-effort semantics — losing a usage gauge or a single
   cost increment is preferable to 500-ing the request, and the
   authoritative cap is re-checked on the next turn.
-* Reset paths (:func:`reset_user_usage`, :func:`reset_daily_usage`,
-  :func:`acquire_reset_lock`) re-raise / return ``False`` so billed reset
-  operations cannot silently no-op.
+* The admin reset (:func:`reset_user_usage`) re-raises so it cannot silently
+  no-op.
 
 Storing microdollars rather than tokens means the counter already reflects
 real model pricing (including cache discounts and provider surcharges), so
@@ -80,6 +91,23 @@ from backend.copilot.usage_activation import (
     get_ready_usage_state,
     usage_keys,
 )
+from backend.copilot.usage_clock import (
+    clock_from_state,
+    recent_state,
+    remember_state,
+    resolve_clock,
+)
+from backend.copilot.usage_counters import clear_counters, reset_marked
+from backend.copilot.usage_limits import PlanLimits, plan_limits_for
+from backend.copilot.usage_live import (
+    BlockingWindow,
+    UsageSnapshot,
+    build_snapshot,
+    record_live,
+    resets_in_window,
+    take_snapshot,
+)
+from backend.copilot.usage_mode import billing_clock_live, now_seconds
 from backend.copilot.usage_state import (
     LimitWindow,
     UsageState,
@@ -88,6 +116,7 @@ from backend.copilot.usage_state import (
 )
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
+from backend.data.pro_activation import UsageActivationState
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
@@ -382,13 +411,21 @@ class UsageWindow(BaseModel):
     resets_at: datetime
 
 
+# A paid reset lasts until the weekly window's own reset. This close to it
+# there is too little time left to use one, and a card payment opened now
+# could still be paid after the window is gone (Stripe keeps a Checkout
+# session open for at least 30 minutes), so none is offered or sold.
+RESET_CUTOFF_SECONDS = 35 * 60
+
+ResetRefusal = Literal["not_limited", "resets_soon"]
+
+
 class CoPilotUsageStatus(BaseModel):
     """Current usage status for a user across all windows.
 
     Internal representation used by server-side code that needs to compare
-    usage against limits (e.g. the reset-credits endpoint).  The public API
-    returns ``CoPilotUsagePublic`` instead so that raw spend and limit
-    figures never leak to clients.
+    usage against limits.  The public API returns ``CoPilotUsagePublic``
+    instead so that raw spend and limit figures never leak to clients.
     """
 
     daily: UsageWindow
@@ -396,8 +433,28 @@ class CoPilotUsageStatus(BaseModel):
     tier: SubscriptionTier = DEFAULT_TIER
     reset_cost: int = Field(
         default=0,
-        description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+        description="Always 0: paying credits to reset the daily limit is switched off.",
     )
+    # The fields below are set only on the billing clock (SECRT-3441). There,
+    # ``weekly`` is the week's main pool: the weekly limit less its days'
+    # reserves, which ``reserve`` shows for today.
+    on_billing_clock: bool = False
+    reserve: UsageWindow | None = None
+    # A paid reset is in force: the weekly window was started over and has
+    # no daily limit until its own reset.
+    reset_active: bool = False
+    # What a paid reset costs this plan, in cents. 0: it can't buy one.
+    reset_price: int = 0
+    # Why the plan's reset can't be bought right now; None when it can.
+    reset_refusal: ResetRefusal | None = None
+    # How many paid resets the weekly window has had, and when it began
+    # (Unix seconds): what the next purchase is numbered and filed under.
+    reset_count: int = 0
+    week_start: int | None = None
+    # The limit that stops a turn starting now, as the gate decides it.
+    blocked_by: Literal["daily", "weekly"] | None = None
+    clock_source: str | None = None
+    weekly_limit: int | None = None
     # A lifetime trial already shows a spent allowance as a full weekly
     # window; a trial whose period caps are tighter than its allowance doesn't.
     trial_spent: bool = False
@@ -422,12 +479,27 @@ class UsageWindowPublic(BaseModel):
     resets_at: datetime
 
 
+class UsageResetOffer(BaseModel):
+    """A paid reset this account can buy now."""
+
+    price_credits: int = Field(
+        description="Its price in cents, which is also its price in credits."
+    )
+    pay_with: Literal["credits", "card"] = Field(
+        default="card",
+        description="'credits' when the credit balance covers the whole "
+        "price, which is then taken from it; otherwise 'card': the whole "
+        "price is paid by card. Never part of each.",
+    )
+
+
 class CoPilotUsagePublic(BaseModel):
     """Current usage status for a user — public (client-safe) shape."""
 
     daily: UsageWindowPublic | None = Field(
         default=None,
-        description="Null when no daily cap is configured (unlimited).",
+        description="Null when there is no daily cap: none is configured "
+        "(unlimited), or a paid reset has lifted it until the weekly reset.",
     )
     weekly: UsageWindowPublic | None = Field(
         default=None,
@@ -436,7 +508,24 @@ class CoPilotUsagePublic(BaseModel):
     tier: SubscriptionTier = DEFAULT_TIER
     reset_cost: int = Field(
         default=0,
-        description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+        description="Always 0: paying credits to reset the daily limit is switched off.",
+    )
+    reserve: UsageWindowPublic | None = Field(
+        default=None,
+        description="Today's daily reserve: a small part of the weekly limit "
+        "kept back each day, usable after the rest of the week is gone. Null "
+        "when the plan has none.",
+    )
+    reset_active: bool = Field(
+        default=False,
+        description="A paid reset is in force: the weekly limit was started "
+        "over and there is no daily limit until the weekly reset, whose time "
+        "did not move.",
+    )
+    reset_offer: UsageResetOffer | None = Field(
+        default=None,
+        description="Set when a limit is reached and the account can buy a "
+        "paid reset now.",
     )
     state: UsageState = Field(
         default="ok",
@@ -496,8 +585,8 @@ class CoPilotUsagePublic(BaseModel):
         readings = [
             reading
             for reading in (
-                _reading("daily", status.daily, daily),
-                _reading("weekly", status.weekly, weekly),
+                _reading("daily", status.daily, daily, status),
+                _reading("weekly", status.weekly, weekly, status),
             )
             if reading is not None
         ]
@@ -511,6 +600,13 @@ class CoPilotUsagePublic(BaseModel):
             weekly=weekly,
             tier=status.tier,
             reset_cost=status.reset_cost,
+            reserve=window(status.reserve) if status.reserve else None,
+            reset_active=status.reset_active,
+            reset_offer=(
+                UsageResetOffer(price_credits=status.reset_price)
+                if status.reset_price > 0 and status.reset_refusal is None
+                else None
+            ),
             state=verdict.state,
             limiting_window=verdict.limiting_window,
             resets_at=verdict.resets_at,
@@ -521,6 +617,7 @@ def _reading(
     name: Literal["daily", "weekly"],
     window: UsageWindow,
     public: UsageWindowPublic | None,
+    status: CoPilotUsageStatus,
 ) -> WindowReading | None:
     """A capped window as its meter shows it; None when it has no cap."""
     if public is None:
@@ -528,10 +625,27 @@ def _reading(
     return WindowReading(
         window=name,
         percent_used=public.percent_used,
-        exhausted=window.used >= window.limit,
+        exhausted=_stops_a_turn(name, window, status),
         resets_at=window.resets_at,
         refills=window.limit > 0,
     )
+
+
+def _stops_a_turn(
+    name: Literal["daily", "weekly"], window: UsageWindow, status: CoPilotUsageStatus
+) -> bool:
+    """Whether the window is why no turn can start now.
+
+    On the calendar a full window always is. On the billing clock the gate's
+    own verdict decides: a full week's pool still allows a turn on today's
+    reserve.
+    """
+    full = window.used >= window.limit
+    if not status.on_billing_clock or window.limit == 0:
+        return full
+    if status.blocked_by is None:
+        return False
+    return full if name == "daily" else status.blocked_by == "weekly"
 
 
 class RateLimitExceeded(Exception):
@@ -585,7 +699,8 @@ async def get_usage_status(
             allowed (over-cap immediately).
         weekly_cost_limit: Max microdollars of spend per week. 0 means no
             spend allowed (over-cap immediately).
-        rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
+        rate_limit_reset_cost: Ignored. Paying credits to reset the daily limit
+            is switched off, so the status always reports a reset cost of 0.
         tier: The user's rate-limit tier (included in the response).
         fail_closed: Raise ``RateLimitUnavailable`` when the counters can't be
             read, instead of reporting no usage. For callers that act on the
@@ -608,26 +723,43 @@ async def get_usage_status(
     d_key, w_key = usage_keys(user_id, state.generation, now)
     daily_used = 0
     weekly_used = 0
-    try:
-        redis = await get_redis_async()
-        daily_raw, weekly_raw = await asyncio.gather(
-            redis.get(d_key),
-            redis.get(w_key),
-        )
-        daily_used = int(daily_raw or 0)
-        weekly_used = int(weekly_raw or 0)
-    except (
-        RedisError,
-        RedisClusterException,
-        ConnectionError,
-        OSError,
-        ValueError,
-    ) as exc:
-        if state.generation is not None or fail_closed:
-            raise RateLimitUnavailable("Paid usage state is unavailable") from exc
-        logger.warning("Redis unavailable for usage status, returning zeros")
-
+    daily_reset = _daily_reset_time(now=now)
     weekly_reset = _weekly_reset_time(now=now)
+    weekly_window_limit = weekly_cost_limit
+    daily_window_limit = daily_cost_limit
+    snapshot = await _billing_clock_snapshot(
+        state,
+        daily_cost_limit,
+        weekly_cost_limit,
+        zeros_if_unreadable=state.generation is None and not fail_closed,
+    )
+    if snapshot is not None:
+        daily_used, weekly_used = snapshot.day_used, snapshot.week_used
+        daily_reset = _at(snapshot.windows.day_end)
+        weekly_reset = _at(snapshot.windows.week_end)
+        weekly_window_limit = snapshot.pool
+        # A paid reset lifts the daily limit until the weekly reset.
+        daily_window_limit = snapshot.daily_limit
+    else:
+        try:
+            redis = await get_redis_async()
+            daily_raw, weekly_raw = await asyncio.gather(
+                redis.get(d_key),
+                redis.get(w_key),
+            )
+            daily_used = int(daily_raw or 0)
+            weekly_used = int(weekly_raw or 0)
+        except (
+            RedisError,
+            RedisClusterException,
+            ConnectionError,
+            OSError,
+            ValueError,
+        ) as exc:
+            if state.generation is not None or fail_closed:
+                raise RateLimitUnavailable("Paid usage state is unavailable") from exc
+            logger.warning("Redis unavailable for usage status, returning zeros")
+
     trial_spent = False
     weekly_is_trial_allowance = False
     if tier == SubscriptionTier.TRIAL:
@@ -640,26 +772,135 @@ async def get_usage_status(
             # lifetime exhaustion after calendar resets and exclude beta spend.
             daily_used = min(daily_used, trial.cost_microdollars)
             weekly_used = trial.cost_microdollars
-            weekly_cost_limit = trial.offer.total_cost_limit
+            weekly_window_limit = trial.offer.total_cost_limit
             weekly_reset = trial.ends_at or now
             weekly_is_trial_allowance = True
+            # The lifetime allowance alone decides: no window stops a turn.
+            snapshot = None
 
-    return CoPilotUsageStatus(
+    status = CoPilotUsageStatus(
         daily=UsageWindow(
             used=daily_used,
-            limit=daily_cost_limit,
-            resets_at=_daily_reset_time(now=now),
+            limit=daily_window_limit,
+            resets_at=daily_reset,
         ),
         weekly=UsageWindow(
             used=weekly_used,
-            limit=weekly_cost_limit,
+            limit=weekly_window_limit,
             resets_at=weekly_reset,
         ),
         tier=tier,
-        reset_cost=0 if tier == SubscriptionTier.TRIAL else rate_limit_reset_cost,
+        # Paying credits to reset the daily limit is switched off (SECRT-3441).
+        reset_cost=0,
         trial_spent=trial_spent,
         weekly_is_trial_allowance=weekly_is_trial_allowance,
     )
+    if snapshot is None:
+        return status
+    return await _on_billing_clock(status, snapshot)
+
+
+async def _on_billing_clock(
+    status: CoPilotUsageStatus, snapshot: UsageSnapshot
+) -> CoPilotUsageStatus:
+    """Add what only the billing clock has: today's reserve, a paid reset in
+    force, the price of one and whether it can be bought now, and the gate's
+    own verdict on whether a turn can start."""
+    plan = await plan_limits_for(status.tier.value)
+    reserve = None
+    if snapshot.reserve > 0:
+        reserve = UsageWindow(
+            used=min(snapshot.day_used, snapshot.reserve),
+            limit=snapshot.reserve,
+            resets_at=status.daily.resets_at,
+        )
+    blocked = snapshot.blocked_by()
+    # A reset is a fresh weekly limit: a plan without one (or one switched
+    # off: a limit of 0) has nothing to reset.
+    sells = plan is not None and snapshot.weekly_limit > 0 and snapshot.daily_limit != 0
+    return status.model_copy(
+        update={
+            "on_billing_clock": True,
+            "reserve": reserve,
+            "reset_active": snapshot.reset_active,
+            "reset_count": snapshot.resets,
+            "week_start": snapshot.windows.week_start,
+            "reset_price": plan.reset_credits if plan and sells else 0,
+            "reset_refusal": _reset_refusal(snapshot, blocked, now_seconds()),
+            "blocked_by": blocked,
+            "clock_source": snapshot.source,
+            "weekly_limit": snapshot.weekly_limit,
+        }
+    )
+
+
+def _reset_refusal(
+    snapshot: UsageSnapshot, blocked: BlockingWindow | None, now: int
+) -> ResetRefusal | None:
+    """Why a paid reset can't be bought now, for a plan that sells one.
+
+    It is sold only while a limit stops the customer (it replaces what is
+    left of the week, so buying one earlier would throw allowance away), and
+    not when the weekly window is about to reset anyway or its reset time is
+    not known (the window is held until Stripe confirms the next period).
+    """
+    if blocked is None:
+        return "not_limited"
+    windows = snapshot.windows
+    if windows.held or windows.week_end - now < RESET_CUTOFF_SECONDS:
+        return "resets_soon"
+    return None
+
+
+async def _billing_clock_snapshot(
+    state: UsageActivationState,
+    daily_cost_limit: int,
+    weekly_cost_limit: int,
+    *,
+    zeros_if_unreadable: bool = False,
+) -> UsageSnapshot | None:
+    """Where the account stands on its billing clock, or None while limits
+    still run on the calendar (before launch, or when the state carries no
+    clock because the database manager is on the previous release).
+
+    Raises ``RateLimitUnavailable`` when the counters can't be read, unless
+    ``zeros_if_unreadable`` (a display that would rather show no usage).
+    """
+    now = now_seconds()
+    if not await billing_clock_live(now):
+        return None
+    state, clock = await resolve_clock(state, now)
+    if clock is None:
+        logger.warning(
+            f"No billing clock in the usage state of user {state.user_id[:8]}; "
+            "using the calendar windows"
+        )
+        return None
+    plan = await plan_limits_for(state.tier.value)
+    limits = {
+        "daily_limit": daily_cost_limit,
+        "weekly_limit": weekly_cost_limit,
+        "reserve": plan.reserve if plan else 0,
+    }
+    try:
+        return await take_snapshot(state, clock, **limits)
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        ValueError,
+    ) as exc:
+        # As on the calendar: a corrupt or unreachable counter can't prove the
+        # user is under their cap.
+        if not zeros_if_unreadable:
+            raise RateLimitUnavailable("Usage counters are unavailable") from exc
+        logger.warning("Redis unavailable for usage status, returning zeros")
+        return build_snapshot(state, clock, day_used=0, week_used=0, **limits)
+
+
+def _at(second: int) -> datetime:
+    return datetime.fromtimestamp(second, UTC)
 
 
 def _no_allowance_status(
@@ -744,6 +985,18 @@ async def get_remaining_usd_budget(
                 max(0, trial.offer.total_cost_limit - trial.cost_microdollars)
                 / 1_000_000
             )
+    try:
+        snapshot = await _billing_clock_snapshot(
+            state, daily_cost_limit, weekly_cost_limit
+        )
+    except RateLimitUnavailable:
+        logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
+        return floor_usd
+    if snapshot is not None:
+        left = snapshot.left()
+        return _remaining_usd(
+            float("inf") if left is None else left / 1_000_000.0, trial, floor_usd
+        )
     now = datetime.now(UTC)
     d_key, w_key = usage_keys(user_id, state.generation, now)
     try:
@@ -776,6 +1029,14 @@ async def get_remaining_usd_budget(
         if remaining_microdollars != float("inf")
         else float("inf")
     )
+    return _remaining_usd(remaining_usd, trial, floor_usd)
+
+
+def _remaining_usd(
+    remaining_usd: float, trial: "TrialState | None", floor_usd: float
+) -> float:
+    """A trial is also bound by what its lifetime allowance has left, with no
+    floor; any other plan never reports less than the floor."""
     if trial:
         return min(
             remaining_usd,
@@ -967,6 +1228,10 @@ async def check_rate_limit(
             return
     if (skip_daily or daily_cost_limit < 0) and weekly_cost_limit < 0:
         return
+    snapshot = await _billing_clock_snapshot(state, daily_cost_limit, weekly_cost_limit)
+    if snapshot is not None:
+        _refuse_if_blocked(snapshot, tier, skip_daily=skip_daily)
+        return
     try:
         redis = await get_redis_async()
         daily_raw, weekly_raw = await asyncio.gather(
@@ -1021,6 +1286,41 @@ async def check_rate_limit(
         )
 
 
+def _refuse_if_blocked(snapshot: UsageSnapshot, tier: str, *, skip_daily: bool) -> None:
+    """Raise ``RateLimitExceeded`` for the limit that stops a turn on the
+    billing clock, if one does.
+
+    A week that is used up reports the weekly reset, when the allowance
+    really comes back, though a small daily reserve arrives before then.
+    """
+    blocked = snapshot.blocked_by(skip_daily=skip_daily)
+    if blocked is None:
+        return
+    logger.info(
+        f"Usage limit reached ({blocked}, {snapshot.source} clock): day "
+        f"{snapshot.day_used}/{snapshot.daily_limit}, week "
+        f"{snapshot.week_used}/{snapshot.pool}, paid resets {snapshot.resets}"
+    )
+    if blocked == "weekly":
+        reserves = max(0, snapshot.weekly_limit - snapshot.pool)
+        raise RateLimitExceeded(
+            "weekly",
+            _at(snapshot.windows.week_end),
+            reading=LimitReading(
+                tier=tier,
+                used=usd(snapshot.week_used + reserves),
+                cap=usd(snapshot.weekly_limit),
+            ),
+        )
+    raise RateLimitExceeded(
+        "daily",
+        _at(snapshot.windows.day_end),
+        reading=LimitReading(
+            tier=tier, used=usd(snapshot.day_used), cap=usd(snapshot.daily_limit)
+        ),
+    )
+
+
 def _trial_uses_total_budget(
     trial: "TrialState", daily_cost_limit: int, weekly_cost_limit: int
 ) -> bool:
@@ -1029,110 +1329,6 @@ def _trial_uses_total_budget(
         daily_cost_limit >= trial.offer.total_cost_limit
         and weekly_cost_limit >= trial.offer.total_cost_limit
     )
-
-
-async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
-    """Reset a user's daily cost usage counter in Redis.
-
-    Called after a user pays credits to extend their daily limit.
-    Also reduces the weekly usage counter by ``daily_cost_limit`` microdollars
-    (clamped to 0) so the user effectively gets one extra day's worth of
-    weekly capacity.
-
-    Args:
-        user_id: The user's ID.
-        daily_cost_limit: The configured daily cost limit in microdollars.
-            When positive, the weekly counter is reduced by this amount.
-
-    Returns False if Redis is unavailable so the caller can handle
-    compensation (fail-closed for billed operations, unlike the read-only
-    rate-limit checks which fail-open).
-    """
-    now = datetime.now(UTC)
-    try:
-        redis = await get_redis_async()
-
-        state = await get_ready_usage_state(user_id)
-        d_key, w_key = usage_keys(user_id, state.generation, now)
-
-        # Daily and weekly keys hash to different cluster slots, so cross-key
-        # MULTI/EXEC is not available. Issue the writes sequentially — the
-        # failure mode (daily deleted, weekly not decremented) is a
-        # best-effort refund budget that the read path already tolerates.
-        await redis.delete(d_key)
-        if daily_cost_limit > 0:
-            await _decr_counter_floor_zero(redis, w_key, daily_cost_limit)
-
-        logger.info("Reset daily usage for user %s", user_id[:8])
-        return True
-    except (
-        RedisError,
-        RedisClusterException,
-        ConnectionError,
-        OSError,
-        UsageActivationUnavailable,
-    ):
-        logger.warning("Redis unavailable for resetting daily usage")
-        return False
-
-
-_RESET_LOCK_PREFIX = "copilot:reset_lock"
-_RESET_COUNT_PREFIX = "copilot:reset_count"
-
-
-async def acquire_reset_lock(user_id: str, ttl_seconds: int = 10) -> bool:
-    """Acquire a short-lived lock to serialize rate limit resets per user."""
-    try:
-        redis = await get_redis_async()
-        key = f"{_RESET_LOCK_PREFIX}:{user_id}"
-        return bool(await redis.set(key, "1", nx=True, ex=ttl_seconds))
-    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
-        logger.warning("Redis unavailable for reset lock, rejecting reset: %s", exc)
-        return False
-
-
-async def release_reset_lock(user_id: str) -> None:
-    """Release the per-user reset lock."""
-    try:
-        redis = await get_redis_async()
-        await redis.delete(f"{_RESET_LOCK_PREFIX}:{user_id}")
-    except (RedisError, RedisClusterException, ConnectionError, OSError):
-        pass  # Lock will expire via TTL
-
-
-async def get_daily_reset_count(user_id: str) -> int | None:
-    """Get how many times the user has reset today.
-
-    Returns None when Redis is unavailable so callers can fail-closed
-    for billed operations (as opposed to failing open for read-only
-    rate-limit checks).
-    """
-    now = datetime.now(UTC)
-    try:
-        redis = await get_redis_async()
-        key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
-        val = await redis.get(key)
-        return int(val or 0)
-    except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
-        # ValueError: corrupt non-numeric counter — fail-closed for billed
-        # resets (returning None makes the caller refuse the billed reset).
-        logger.warning("Redis unavailable for reading daily reset count")
-        return None
-
-
-async def increment_daily_reset_count(user_id: str) -> None:
-    """Increment and track how many resets this user has done today."""
-    now = datetime.now(UTC)
-    try:
-        redis = await get_redis_async()
-        key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
-        pipe = redis.pipeline(transaction=True)
-        pipe.incr(key)
-        seconds_until_reset = int((_daily_reset_time(now=now) - now).total_seconds())
-        pipe.expire(key, max(seconds_until_reset, 1))
-        await pipe.execute()
-    except (RedisError, RedisClusterException, ConnectionError, OSError):
-        logger.warning("Redis unavailable for tracking reset count")
 
 
 async def record_cost_usage(
@@ -1174,6 +1370,10 @@ async def record_cost_usage(
         skip_daily,
     )
 
+    if await _record_on_billing_clock(
+        user_id, context.generation, cost_microdollars, skip_daily
+    ):
+        return
     now = datetime.now(UTC)
     d_key, w_key = usage_keys(user_id, context.generation, now)
     daily_ttl = max(int((_daily_reset_time(now=now) - now).total_seconds()), 1)
@@ -1194,6 +1394,80 @@ async def record_cost_usage(
         )
 
 
+async def _record_on_billing_clock(
+    user_id: str, generation: str | None, cost_microdollars: int, skip_daily: bool
+) -> bool:
+    """Count the cost in the account's billing-clock windows as they are now,
+    so a turn that ran across a reset lands in the new window. False while
+    limits run on the calendar, which then counts it.
+
+    Best effort like the calendar path: a Redis failure loses the increment
+    rather than failing the turn. Stripe is never asked here; a period that
+    has ended is settled by the next pre-turn check.
+    """
+    now = now_seconds()
+    if not await billing_clock_live(now):
+        return False
+    try:
+        state = recent_state(user_id, now)
+        if state is not None and await reset_marked(user_id):
+            # A paid reset was just granted: the remembered state may predate
+            # it and would count this cost on the counters it replaced.
+            state = None
+        if state is None:
+            # Not a state another check in this block read earlier either: it
+            # could predate the reset just as the remembered one could.
+            forget_usage_state(user_id)
+            state = await get_ready_usage_state(user_id)
+            remember_state(state)
+        clock = clock_from_state(state, now)
+        if clock is None:
+            return False
+        daily, weekly, plan = await _limits_for_recording(state)
+        await record_live(
+            state,
+            generation,
+            clock.windows,
+            cost_microdollars,
+            daily_limit=daily,
+            weekly_limit=weekly,
+            reserve=plan.reserve if plan else 0,
+            skip_daily=skip_daily,
+            now=now,
+        )
+    except (
+        RedisError,
+        RedisClusterException,
+        ConnectionError,
+        OSError,
+        UsageActivationUnavailable,
+    ):
+        logger.warning(
+            "Could not record cost usage on the billing clock (microdollars=%d)",
+            cost_microdollars,
+            exc_info=True,
+        )
+    return True
+
+
+async def _limits_for_recording(
+    state: UsageActivationState,
+) -> tuple[int, int, PlanLimits | None]:
+    """The daily and weekly limits and the plan's own limits, for splitting a
+    recorded cost between the day's reserve and the week's pool. A trial has
+    no reserve, so its cost is only counted."""
+    tier = SubscriptionTier(state.tier.value)
+    if tier == SubscriptionTier.TRIAL:
+        return -1, -1, None
+    base_daily, base_weekly = await _base_limits(
+        _chat_config.daily_cost_limit_microdollars,
+        _chat_config.weekly_cost_limit_microdollars,
+    )
+    daily, weekly = await _tier_limits(tier, base_daily, base_weekly)
+    plan = await plan_limits_for(tier.value)
+    return daily, weekly, plan
+
+
 async def _incr_counter_atomic(
     redis: AsyncRedisClient, key: str, delta: int, ttl_seconds: int
 ) -> None:
@@ -1202,31 +1476,6 @@ async def _incr_counter_atomic(
     pipe.incrby(key, delta)
     pipe.expire(key, ttl_seconds)
     await pipe.execute()
-
-
-# Atomic DECRBY + floor-to-zero so a concurrent INCRBY from record_cost_usage
-# cannot be lost. DELETE on underflow also avoids leaving a zero-valued key
-# with no TTL, which the non-atomic set-with-keepttl variant could do.
-_DECR_FLOOR_ZERO_SCRIPT = """
-local value = redis.call("DECRBY", KEYS[1], ARGV[1])
-if value < 0 then
-    redis.call("DEL", KEYS[1])
-    return 0
-end
-return value
-"""
-
-
-async def _decr_counter_floor_zero(
-    redis: AsyncRedisClient, key: str, delta: int
-) -> None:
-    """Atomically DECRBY ``delta`` on ``key`` and DEL on underflow.
-
-    DEL on underflow avoids leaving a zero-valued key without a TTL, so the
-    next INCRBY in ``record_cost_usage`` re-seeds both the value and the
-    expiry in one shot.
-    """
-    await redis.eval(_DECR_FLOOR_ZERO_SCRIPT, 1, key, delta)
 
 
 class _UserNotFoundError(Exception):
@@ -1560,27 +1809,54 @@ async def get_global_rate_limits(
     Returns:
         (daily_cost_limit, weekly_cost_limit, tier) — limits in microdollars.
     """
-    try:
-        override = await _fetch_cost_limits_flag()
-    except Exception:
-        logger.warning("get_global_rate_limits: LD lookup failed", exc_info=True)
-        override = None
-    override = override or {}
-    daily = override.get("daily", config_daily)
-    weekly = override.get("weekly", config_weekly)
+    daily, weekly = await _base_limits(config_daily, config_weekly)
 
-    # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
-    # so multipliers can be tuned without a deploy. Falls back to the defaults
-    # when LD is unavailable. NO_TIER+paywall is gated upstream by
-    # ``enforce_payment_paywall`` (HTTP 402 before this is reached); the
-    # only NO_TIER path that gets here is a deployment with payment off, which
-    # falls back to BASIC limits.
     tier = await get_user_tier(user_id)
     if tier == SubscriptionTier.TRIAL:
         trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0, 0, SubscriptionTier.NO_TIER
         return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
+    daily, weekly = await _tier_limits(tier, daily, weekly)
+    return daily, weekly, tier
+
+
+async def _base_limits(config_daily: int, config_weekly: int) -> tuple[int, int]:
+    """The base daily and weekly limits: the flag's, else the config's."""
+    try:
+        override = await _fetch_cost_limits_flag()
+    except Exception:
+        logger.warning("get_global_rate_limits: LD lookup failed", exc_info=True)
+        override = None
+    override = override or {}
+    return override.get("daily", config_daily), override.get("weekly", config_weekly)
+
+
+async def _tier_limits(
+    tier: SubscriptionTier, daily: int, weekly: int
+) -> tuple[int, int]:
+    """A plan's daily and weekly limits from the base ones.
+
+    On the billing clock a plan with its own limits (Pro and Max, see
+    ``usage_limits``) takes those. A base limit that isn't positive keeps its
+    meaning for them too: negative is no cap, so a self-hosted install stays
+    uncapped, and 0 allows nothing, so setting the base limit to 0 still
+    stops all spend. Every other plan, and every plan on the calendar, is
+    the base limit times its multiplier.
+    """
+    if await billing_clock_live():
+        plan = await plan_limits_for(tier.value)
+        if plan is not None:
+            return (
+                plan.daily if daily > 0 else daily,
+                plan.weekly if weekly > 0 else weekly,
+            )
+    # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
+    # so multipliers can be tuned without a deploy. Falls back to the defaults
+    # when LD is unavailable. NO_TIER+paywall is gated upstream by
+    # ``enforce_payment_paywall`` (HTTP 402 before this is reached); the
+    # only NO_TIER path that gets here is a deployment with payment off, which
+    # falls back to BASIC limits.
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
     if tier == SubscriptionTier.NO_TIER and not is_platform_payment_enabled():
@@ -1592,7 +1868,7 @@ async def get_global_rate_limits(
         daily = int(daily * multiplier) if daily >= 0 else daily
         weekly = int(weekly * multiplier) if weekly >= 0 else weekly
 
-    return daily, weekly, tier
+    return daily, weekly
 
 
 async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
@@ -1610,6 +1886,17 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
     state = await get_ready_usage_state(user_id)
     d_key, w_key = usage_keys(user_id, state.generation, now)
     try:
+        now_s = now_seconds()
+        clock = clock_from_state(state, now_s)
+        if clock is not None and await billing_clock_live(now_s):
+            await clear_counters(
+                user_id,
+                state.generation,
+                clock.windows,
+                weekly=reset_weekly,
+                resets=resets_in_window(state, clock.windows),
+            )
+            return
         redis = await get_redis_async()
         # Daily and weekly keys hash to different cluster slots — multi-key
         # DELETE would raise CROSSSLOT, so issue separate calls.

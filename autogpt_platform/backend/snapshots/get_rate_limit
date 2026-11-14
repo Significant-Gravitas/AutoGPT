@@ -1,4 +1,5 @@
 {
+  "billing_clock": null,
   "daily_cost_limit_microdollars": 2500000,
   "daily_cost_used_microdollars": 500000,
   "tier": "BASIC",

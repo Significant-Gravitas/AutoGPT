@@ -440,32 +440,42 @@ class ChatConfig(BaseSettings):
     # Documented in docs/platform/rate-limits.md: update it with any change here.
     daily_cost_limit_microdollars: int = Field(
         default=2_500_000,
-        description="Max cost per day in microdollars, resets at midnight UTC. "
+        description="Base max cost per day in microdollars. The day resets at "
+        "midnight UTC until limits run on each customer's billing clock. "
         "0 means no spend allowed (will block); a negative value disables the "
         "daily cap (the self-hosted default).",
     )
     # Documented in docs/platform/rate-limits.md: update it with any change here.
     weekly_cost_limit_microdollars: int = Field(
         default=5_000_000,
-        description="Max cost per week in microdollars, resets Monday 00:00 UTC. "
+        description="Base max cost per week in microdollars. The week resets "
+        "Monday 00:00 UTC until limits run on each customer's billing clock. "
         "0 means no spend allowed (will block); a negative value disables the "
         "weekly cap (the self-hosted default).",
     )
 
-    # Cost (in credits / cents) to reset the daily rate limit using credits.
-    # When a user hits their daily limit, they can spend this amount to reset
-    # the daily counter and keep working.  Set to 0 to disable the feature.
+    # Paying credits to reset the daily limit is switched off (SECRT-3441): it
+    # let an account buy past its plan's limits. The two settings below are
+    # read by nothing; they stay so an env var that still sets them is harmless.
     # Documented in docs/platform/rate-limits.md: update it with any change here.
     rate_limit_reset_cost: int = Field(
-        default=500,
+        default=0,
         ge=0,
-        description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
+        description="Deprecated and ignored: paying credits to reset the daily "
+        "limit is switched off (SECRT-3441). Kept so a set env var is harmless.",
     )
     # Documented in docs/platform/rate-limits.md: update it with any change here.
     max_daily_resets: int = Field(
-        default=5,
+        default=0,
         ge=0,
-        description="Maximum number of credit-based rate limit resets per user per day. 0 = unlimited.",
+        description="Deprecated and ignored, like rate_limit_reset_cost.",
+    )
+    usage_billing_clock_live_from: int | None = Field(
+        default=None,
+        ge=0,
+        description="Unix second from which usage limits run on each customer's "
+        "billing clock, where PostHog (usage-billing-clock) has given no answer. "
+        "None keeps the Monday and midnight UTC windows.",
     )
 
     # Claude Agent SDK Configuration

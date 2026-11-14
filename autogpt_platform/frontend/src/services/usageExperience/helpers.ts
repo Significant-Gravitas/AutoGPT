@@ -1,3 +1,5 @@
+import { ceilToMinute } from "./resetTime";
+
 interface UsageWindow {
   percent_used: number;
   resets_at: string | Date;
@@ -181,13 +183,15 @@ export function formatTrialStartTitle(value: string | Date | null) {
 
 export function formatResumeTime(value: string | Date | null) {
   if (!value) return null;
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return null;
+  const exact = new Date(value);
+  if (!Number.isFinite(exact.getTime())) return null;
+  const date = ceilToMinute(exact);
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
+  // A weekday alone is only unambiguous under six days out.
   const nextWeek = new Date(today);
-  nextWeek.setDate(nextWeek.getDate() + 7);
+  nextWeek.setDate(nextWeek.getDate() + 6);
   const day =
     date.toDateString() === today.toDateString()
       ? "today"

@@ -207,6 +207,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
+from backend.data.usage_clock import refresh_billing_clock
 from backend.data.user import (
     claim_welcome_email,
     get_active_user_ids_in_timerange,
@@ -448,6 +449,7 @@ class DatabaseManager(AppService):
     list_trials_ending_unrenewed = _(list_trials_ending_unrenewed)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
+    refresh_billing_clock = _(refresh_billing_clock)
     # Exposed so Prisma-less workers (scheduler, copilot-executor) can build a
     # full flag context — see backend/util/feature_flag/__init__.py.
     get_auth_user_flag_fields = _(get_auth_user_flag_fields)
@@ -1052,6 +1054,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_trials_ending_unrenewed = d.list_trials_ending_unrenewed
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
+    refresh_billing_clock = d.refresh_billing_clock
     get_auth_user_flag_fields = d.get_auth_user_flag_fields
     is_auth_user_banned = d.is_auth_user_banned
     is_account_closed = d.is_account_closed

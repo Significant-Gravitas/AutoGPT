@@ -1,5 +1,7 @@
 import type { UIMessage } from "ai";
 
+import { ceilToMinute, needsDate } from "@/services/usageExperience/resetTime";
+
 import { TURN_PAUSED_PART_TYPE, type TurnPause } from "../../turnPause";
 
 /**
@@ -140,18 +142,20 @@ export function resumeLabel(resetsAt: string | null, now = new Date()) {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** "at 1:00 AM" within a day, "Monday at 1:00 AM" within a week. */
+/** "at 1:00 AM" within a day, "Monday at 1:00 AM" within six days, then the
+ *  date: a weekly window can be longer than a week of weekdays. The minute
+ *  is rounded up, so it never reads earlier than the reset. */
 export function resetAt(date: Date, now = new Date()): string {
-  const time = date.toLocaleTimeString(undefined, {
+  const shown = ceilToMinute(date);
+  const time = shown.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
   });
   const ms = date.getTime() - now.getTime();
   if (ms < DAY_MS) return `at ${time}`;
-  const day =
-    ms < 7 * DAY_MS
-      ? date.toLocaleDateString(undefined, { weekday: "long" })
-      : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const day = needsDate(date, now)
+    ? shown.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : shown.toLocaleDateString(undefined, { weekday: "long" });
   return `${day} at ${time}`;
 }
 

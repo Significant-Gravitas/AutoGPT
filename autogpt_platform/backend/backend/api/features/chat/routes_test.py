@@ -1849,7 +1849,6 @@ def test_usage_returns_daily_and_weekly(
         user_id=test_user_id,
         daily_cost_limit=10000,
         weekly_cost_limit=50000,
-        rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
         tier=SubscriptionTier.BASIC,
     )
 
@@ -1861,6 +1860,8 @@ def test_usage_uses_config_limits(
     """The endpoint forwards resolved limits from get_global_rate_limits to get_usage_status."""
     mock_get = _mock_usage(mocker, daily_limit=99999, weekly_limit=77777)
 
+    # A reset cost still set in the environment is ignored: paying to reset
+    # the daily limit is switched off, so no cost is offered.
     mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 500)
 
     response = client.get("/usage")
@@ -1870,7 +1871,6 @@ def test_usage_uses_config_limits(
         user_id=test_user_id,
         daily_cost_limit=99999,
         weekly_cost_limit=77777,
-        rate_limit_reset_cost=500,
         tier=SubscriptionTier.BASIC,
     )
 
@@ -1901,6 +1901,89 @@ def test_usage_state_is_ok_with_room_left(mocker: pytest_mock.MockerFixture) -> 
         None,
         None,
     )
+
+
+def _mock_reset_offer(mocker: pytest_mock.MockerFixture, balance: object) -> AsyncMock:
+    from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+
+    """A subscriber stopped by a limit whose plan sells a reset for $80."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(22_666_667, 68_000_000, SubscriptionTier.MAX),
+    )
+    resets_at = datetime.now(UTC) + timedelta(days=2)
+    window = UsageWindow(used=1, limit=1, resets_at=resets_at)
+    status = CoPilotUsageStatus(
+        daily=window,
+        weekly=window,
+        on_billing_clock=True,
+        blocked_by="weekly",
+        reset_price=8_000,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_usage_status",
+        new_callable=AsyncMock,
+        return_value=status,
+    )
+    credits = MagicMock()
+    credits.get_credits = AsyncMock(
+        side_effect=balance if isinstance(balance, Exception) else None,
+        return_value=balance,
+    )
+    return mocker.patch(
+        "backend.api.features.chat.routes.get_user_credit_model",
+        new_callable=AsyncMock,
+        return_value=credits,
+    )
+
+
+@pytest.mark.parametrize(
+    "balance,pay_with",
+    [
+        (8_000, "credits"),  # covers the whole price
+        (7_999, "card"),  # a credit short: the whole price by card
+        (0, "card"),
+        (RuntimeError("database down"), "card"),  # unknown balance: the card
+    ],
+)
+def test_usage_offers_a_reset_paid_by_credits_or_by_card_never_both(
+    mocker: pytest_mock.MockerFixture, balance: object, pay_with: str
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
+    _mock_reset_offer(mocker, balance)
+
+    data = client.get("/usage").json()
+
+    assert data["reset_offer"] == {"price_credits": 8_000, "pay_with": pay_with}
+    assert data["reset_active"] is False
+
+
+def test_usage_offers_no_reset_where_nothing_is_sold(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "enable_credit", False)
+    credits = _mock_reset_offer(mocker, 99_999)
+
+    data = client.get("/usage").json()
+
+    assert data["reset_offer"] is None
+    # The balance is only read for an offer.
+    credits.assert_not_awaited()
+
+
+def test_usage_reads_no_balance_without_an_offer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
+    _mock_usage(mocker, daily_used=500, weekly_used=2000)
+    credits = mocker.patch(
+        "backend.api.features.chat.routes.get_user_credit_model",
+        new_callable=AsyncMock,
+    )
+
+    assert client.get("/usage").json()["reset_offer"] is None
+    credits.assert_not_awaited()
 
 
 def test_usage_rejects_unauthenticated_request() -> None:
@@ -4605,293 +4688,31 @@ def test_get_ttl_config(mocker: pytest_mock.MockerFixture) -> None:
 # ─── reset_copilot_usage ──────────────────────────────────────────────
 
 
-def _mock_reset_internals(
-    mocker: pytest_mock.MockerFixture,
-    *,
-    cost: int = 100,
-    enable_credit: bool = True,
-    daily_limit: int = 10_000,
-    weekly_limit: int = 50_000,
-    tier: "SubscriptionTier" = SubscriptionTier.BASIC,
-    daily_used: int = 10_001,
-    weekly_used: int = 1_000,
-    reset_count: int | None = 0,
-    acquire_lock: bool = True,
-    reset_daily: bool = True,
-    remaining_balance: int = 9_000,
-):
-    """Set up all dependencies for reset_copilot_usage tests."""
-    from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
-
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", cost)
-    mocker.patch.object(chat_routes.config, "max_daily_resets", 3)
-    mocker.patch.object(chat_routes.settings.config, "enable_credit", enable_credit)
-
-    mocker.patch(
-        "backend.api.features.chat.routes.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(daily_limit, weekly_limit, tier),
-    )
-    resets_at = datetime.now(UTC) + timedelta(hours=1)
-    status = CoPilotUsageStatus(
-        daily=UsageWindow(used=daily_used, limit=daily_limit, resets_at=resets_at),
-        weekly=UsageWindow(used=weekly_used, limit=weekly_limit, resets_at=resets_at),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_usage_status",
-        new_callable=AsyncMock,
-        return_value=status,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_daily_reset_count",
-        new_callable=AsyncMock,
-        return_value=reset_count,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.acquire_reset_lock",
-        new_callable=AsyncMock,
-        return_value=acquire_lock,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.release_reset_lock",
-        new_callable=AsyncMock,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.reset_daily_usage",
-        new_callable=AsyncMock,
-        return_value=reset_daily,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.increment_daily_reset_count",
-        new_callable=AsyncMock,
-    )
-
-    mock_credit_model = MagicMock()
-    mock_credit_model.spend_credits = AsyncMock(return_value=remaining_balance)
-    mock_credit_model.top_up_credits = AsyncMock(return_value=None)
-    mock_credit_model.grant_credits = AsyncMock(return_value=remaining_balance)
-    mocker.patch(
-        "backend.api.features.chat.routes.get_user_credit_model",
-        new_callable=AsyncMock,
-        return_value=mock_credit_model,
-    )
-    return mock_credit_model
-
-
-def test_reset_usage_returns_400_when_cost_is_zero(
-    mocker: pytest_mock.MockerFixture,
+@pytest.mark.parametrize(
+    "tier",
+    [SubscriptionTier.PRO, SubscriptionTier.MAX, SubscriptionTier.TRIAL],
+)
+def test_reset_usage_is_switched_off_and_charges_nothing(
+    mocker: pytest_mock.MockerFixture, tier: "SubscriptionTier"
 ) -> None:
-    """POST /usage/reset returns 400 when rate_limit_reset_cost <= 0."""
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 0)
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 400
-    assert "not available" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_400_when_credits_disabled(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 400 when credit system is disabled."""
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 100)
-    mocker.patch.object(chat_routes.settings.config, "enable_credit", False)
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 400
-    assert "disabled" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_400_when_no_daily_limit(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 400 when daily_limit is 0."""
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 100)
+    """POST /usage/reset always answers 400 "not available", whatever the env
+    still sets and however far over its limit the account is: it let an
+    account buy past its plan's limits (SECRT-3441)."""
+    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 500)
+    mocker.patch.object(chat_routes.config, "max_daily_resets", 5)
     mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
-    mocker.patch(
+    limits = mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 50_000, SubscriptionTier.BASIC),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_daily_reset_count",
-        new_callable=AsyncMock,
-        return_value=0,
+        return_value=(10_000, 50_000, tier),
     )
 
     response = client.post("/usage/reset")
 
     assert response.status_code == 400
-    assert "nothing to reset" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_503_when_redis_unavailable(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 503 when Redis is unavailable for reset count."""
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 100)
-    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
-    mocker.patch(
-        "backend.api.features.chat.routes.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_daily_reset_count",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 503
-
-
-def test_reset_usage_returns_429_when_max_resets_reached(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 429 when max daily resets exceeded."""
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 100)
-    mocker.patch.object(chat_routes.config, "max_daily_resets", 2)
-    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
-    mocker.patch(
-        "backend.api.features.chat.routes.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_daily_reset_count",
-        new_callable=AsyncMock,
-        return_value=2,
-    )
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 429
-    assert "resets" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_429_when_lock_not_acquired(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 429 when a concurrent reset is in progress."""
-    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 100)
-    mocker.patch.object(chat_routes.config, "max_daily_resets", 3)
-    mocker.patch.object(chat_routes.settings.config, "enable_credit", True)
-    mocker.patch(
-        "backend.api.features.chat.routes.get_global_rate_limits",
-        new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.get_daily_reset_count",
-        new_callable=AsyncMock,
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.acquire_reset_lock",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 429
-    assert "in progress" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_400_when_limit_not_reached(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 400 when daily limit has not been reached."""
-    _mock_reset_internals(mocker, daily_used=500, daily_limit=10_000)
-    mocker.patch(
-        "backend.api.features.chat.routes.release_reset_lock",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 400
-    assert "not reached" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_400_when_weekly_also_exhausted(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 400 when weekly limit is also exhausted."""
-    _mock_reset_internals(
-        mocker,
-        daily_used=10_001,
-        daily_limit=10_000,
-        weekly_used=50_001,
-        weekly_limit=50_000,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.release_reset_lock",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 400
-    assert "weekly" in response.json()["detail"].lower()
-
-
-def test_reset_usage_returns_402_when_insufficient_credits(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 402 when credits are insufficient."""
-    from backend.util.exceptions import InsufficientBalanceError
-
-    mock_credit = _mock_reset_internals(mocker)
-    mock_credit.spend_credits = AsyncMock(
-        side_effect=InsufficientBalanceError(
-            message="Insufficient balance",
-            user_id=TEST_USER_ID,
-            balance=0.0,
-            amount=100.0,
-        )
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.release_reset_lock",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 402
-
-
-def test_reset_usage_success(mocker: pytest_mock.MockerFixture) -> None:
-    """POST /usage/reset returns 200 with updated usage on success."""
-    _mock_reset_internals(mocker, remaining_balance=8_900)
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["credits_charged"] == 100
-    assert data["remaining_balance"] == 8_900
-    assert "daily" in data["usage"]
-    assert "weekly" in data["usage"]
-
-
-def test_reset_usage_refunds_on_redis_failure(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """POST /usage/reset returns 503 and refunds credits when Redis reset fails."""
-    mock_credit = _mock_reset_internals(mocker, reset_daily=False)
-
-    response = client.post("/usage/reset")
-
-    assert response.status_code == 503
-    # Credits should be refunded via grant_credits (GRANT, not TOP_UP), and
-    # the Stripe-charging top_up_credits path must not be hit.
-    mock_credit.grant_credits.assert_called_once()
-    mock_credit.top_up_credits.assert_not_called()
+    assert response.json()["detail"] == "Rate limit reset is not available."
+    # Nothing is looked up, so nothing can be charged or reset.
+    limits.assert_not_called()
 
 
 # ─── resume_session_stream ───────────────────────────────────────────
