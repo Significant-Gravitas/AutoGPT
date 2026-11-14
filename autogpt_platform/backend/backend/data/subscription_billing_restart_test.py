@@ -619,6 +619,78 @@ async def test_a_failure_between_credit_and_reset_is_finished_by_the_retry(fake)
     assert fake.card_charges == [PRICE]
 
 
+def _upgraded(fake: FakeStripe) -> None:
+    fake.subscriptions[SUB]["latest_invoice"] = "in_upgrade"
+
+
+def _cancelled(fake: FakeStripe) -> None:
+    fake.subscriptions[SUB]["status"] = "canceled"
+
+
+def _replaced(fake: FakeStripe) -> None:
+    fake.subscriptions["sub_new"] = {
+        "id": "sub_new",
+        "customer": CUSTOMER,
+        "status": "active",
+        "created": fake.subscriptions[SUB]["created"] + DAY,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", [_upgraded, _cancelled, _replaced])
+async def test_a_credit_whose_record_rolled_back_is_taken_back_when_the_retry_exits(
+    fake, change
+):
+    """The credit was made, then a transient error rolled its record back.
+    The subscription changed before the retry, so there is nothing left to
+    restart; left on the balance, the credit would pay the next invoice."""
+    _fail_on_3rd_pay_on_9th(fake)
+    fake.fail_next_modify = 1
+    with pytest.raises(stripe.APIConnectionError):
+        await restart_period_after_late_payment("in_march")
+    row = fake.rows["in_march"]
+    row.paidAt = row.stripeCreditNoteId = None
+    assert fake.balance == -PRICE
+
+    change(fake)
+    fake.idempotent.clear()
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NEEDS_MANUAL_FIX
+    )
+    assert fake.balance == 0
+    assert [t["amount"] for t in fake.balance_transactions] == [PRICE]
+    (note,) = fake.credit_notes
+    assert note["metadata"][CREDIT_TAKEN_BACK_KEY] == "true"
+    assert fake.rows["in_march"].abandonedAt is not None
+    assert fake.subscriptions[SUB]["current_period_start"] == _ts(2026, 3, 3)
+
+    # Redeliveries find it taken back and leave it.
+    fake.idempotent.clear()
+    await restart_period_after_late_payment("in_march")
+    assert len(fake.balance_transactions) == 1
+    assert fake.balance == 0
+
+
+@pytest.mark.asyncio
+async def test_a_finished_restart_redelivered_after_an_upgrade_takes_nothing_back(
+    fake,
+):
+    """The credit paid the reset; a later upgrade made a newer invoice the
+    latest. A redelivery of the old payment must leave the credit alone."""
+    _fail_on_3rd_pay_on_9th(fake)
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.RESTARTED
+    )
+    _upgraded(fake)
+
+    fake.idempotent.clear()
+    assert await restart_period_after_late_payment("in_march") == (
+        RestartOutcome.NOT_APPLICABLE
+    )
+    assert fake.balance_transactions == []
+    assert CREDIT_TAKEN_BACK_KEY not in fake.credit_notes[0]["metadata"]
+
+
 @pytest.mark.asyncio
 async def test_a_reset_whose_record_was_rolled_back_is_recorded_by_the_retry(fake):
     """Stripe reset the period, then the transaction around it rolled back

@@ -165,12 +165,12 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
     invoice_id: str = invoice["id"]
     subscription = dict(await stripe_call(stripe.Subscription.retrieve_async, sub_id))
     if subscription.get("status") != "active":
-        return RestartOutcome.NOT_APPLICABLE
+        return await _not_applicable(invoice, subscription, tx)
     if stripe_id(subscription.get("latest_invoice")) != invoice_id:
         # Restarted already, or a newer invoice opened a later period: an old
         # payment never moves the renewal date of the period after it.
         await _record_finished_reset(invoice, subscription, tx)
-        return RestartOutcome.NOT_APPLICABLE
+        return await _not_applicable(invoice, subscription, tx)
     pause = await SubscriptionBillingRestart.prisma(tx).find_unique(
         where={"stripeInvoiceId": invoice_id}
     )
@@ -187,7 +187,7 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
         return RestartOutcome.NOT_APPLICABLE
     if await replaced_by_newer_plan(customer_id, subscription):
         # The revived old plan is being ended; nothing to restart.
-        return RestartOutcome.NOT_APPLICABLE
+        return await _not_applicable(invoice, subscription, tx)
     if not _restartable(subscription) or not bills_only_the_plan(invoice):
         logger.error(
             f"Subscription {sub_id} was paid late (invoice {invoice_id}) but has"
@@ -217,6 +217,33 @@ async def _restart_locked(invoice: dict, sub_id: str, tx: Prisma) -> RestartOutc
         f" payment of invoice {invoice_id}, paid {_iso(late.paid_at)}"
     )
     return RestartOutcome.RESTARTED
+
+
+async def _not_applicable(
+    invoice: dict, subscription: dict, tx: Prisma
+) -> RestartOutcome:
+    """Nothing to restart now, but an earlier attempt may have credited the
+    invoice before it failed, and its record of the credit rolled back with
+    it. Left on the balance, that credit pays the next invoice, so it is
+    taken back and the restart left for a person."""
+    invoice_id: str = invoice["id"]
+    metadata = subscription.get("metadata") or {}
+    if metadata.get(RESTARTED_FROM_INVOICE_KEY) == invoice_id:
+        return RestartOutcome.NOT_APPLICABLE
+    pause = await SubscriptionBillingRestart.prisma(tx).find_unique(
+        where={"stripeInvoiceId": invoice_id}
+    )
+    if pause is None or pause.restartedAt is not None or pause.abandonedAt:
+        return RestartOutcome.NOT_APPLICABLE
+    ours, _ = await _existing_credit_notes(invoice_id)
+    if ours is None:
+        return RestartOutcome.NOT_APPLICABLE
+    if (ours.get("metadata") or {}).get(CREDIT_TAKEN_BACK_KEY):
+        await _abandon(invoice_id, ours["id"], tx)
+    else:
+        customer_id = stripe_id(invoice.get("customer"))
+        await _take_back_credit(invoice, customer_id, ours["id"], tx)
+    return RestartOutcome.NEEDS_MANUAL_FIX
 
 
 async def _record_finished_reset(invoice: dict, subscription: dict, tx: Prisma) -> None:
