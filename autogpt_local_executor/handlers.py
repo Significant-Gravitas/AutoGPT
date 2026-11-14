@@ -263,6 +263,9 @@ def _jailed_link_target_mode(link: Path, allowed_root: str | os.PathLike[str]) -
 
 # How long a command's process group has to exit after SIGTERM before SIGKILL.
 _TERMINATE_GRACE_SECONDS = 2.0
+# How long a command's output is still read once it has exited: a child it
+# left running can hold its output pipes open.
+_OUTPUT_DRAIN_SECONDS = 2.0
 # The most entries one FILE_LIST returns, whatever max_entries asks for.
 MAX_FILE_LIST_ENTRIES = 10_000
 # The most directory entries one FILE_LIST looks at. A glob that matches
@@ -786,7 +789,7 @@ class CommandHandler:
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*drain_tasks, return_exceptions=True),
-                    timeout=2.0,
+                    timeout=_OUTPUT_DRAIN_SECONDS,
                 )
             except TimeoutError:
                 for task in drain_tasks:
@@ -851,11 +854,13 @@ class CommandHandler:
     @staticmethod
     async def _terminate_tree(proc: asyncio.subprocess.Process) -> None:
         """Graceful → forceful kill per CROSS_PLATFORM.md "Process control" row."""
-        if proc.returncode is not None:
-            return
         plat = platform_info.detect_platform()
         try:
             if plat == "windows":
+                # Reached through the command's own handle, so not once it
+                # has exited.
+                if proc.returncode is not None:
+                    return
                 # CTRL_BREAK to the process group, then TerminateProcess.
                 try:
                     proc.send_signal(getattr(__import__("signal"), "CTRL_BREAK_EVENT"))
@@ -873,7 +878,10 @@ class CommandHandler:
                     proc.kill()
             else:
                 # setsid at spawn made the command its group's leader, so the
-                # group's ID is the command's PID.
+                # group's ID is the command's PID. Signalled even once the
+                # command has exited: a child it started can live on in the
+                # group, holding the output pipes the shim reads, and the ID
+                # isn't given to another process while the group has members.
                 await _terminate_process_group(proc.pid)
         except Exception:  # pragma: no cover - best-effort
             logger.exception("Error terminating subprocess tree")

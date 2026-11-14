@@ -1546,6 +1546,95 @@ async def test_a_command_ignoring_sigterm_cancelled_twice_while_it_stops_is_kill
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
 @pytest.mark.asyncio
+async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A command's shell can exit while a child it started keeps the output
+    pipes open, which the shim reads until they close. A cancel landing then
+    skipped the group's stop, since the group's leader had exited, and the
+    child ran on after its session ended."""
+    import fcntl
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    monkeypatch.setattr(handlers_module, "_OUTPUT_DRAIN_SECONDS", 120.0)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    spawned: list[asyncio.subprocess.Process] = []
+    spawn = CommandHandler._spawn_argv
+
+    async def spawn_and_keep(argv, **kwargs):
+        proc = await spawn(argv, **kwargs)
+        spawned.append(proc)
+        return proc
+
+    monkeypatch.setattr(handler, "_spawn_argv", spawn_and_keep)
+    lock_path = tmp_path / "child.lock"
+    pid_path = tmp_path / "child.pid"
+    child = textwrap.dedent(
+        f"""
+        import fcntl, os, time
+        lock = open({str(lock_path)!r}, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open({str(pid_path)!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({str(pid_path)!r} + ".tmp", {str(pid_path)!r})
+        time.sleep(120)
+        """
+    )
+    # The shell: it starts the child, which inherits its stdout and stderr,
+    # and exits once the child holds its lock.
+    shell = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {child!r}])
+        while not os.path.exists({str(pid_path)!r}):
+            time.sleep(0.01)
+        """
+    )
+
+    def shell_exited() -> bool:
+        return bool(spawned) and spawned[0].returncode is not None
+
+    def child_released_its_lock() -> bool:
+        with open(lock_path, "w") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", shell], cwd=str(tmp_path)))
+    )
+    try:
+        assert await _wait_until(shell_exited, timeout=60)
+        # Past the wait for the shell's exit, into the wait for the pipes.
+        await asyncio.sleep(0.5)
+        assert not task.done()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert await _wait_until(child_released_its_lock, timeout=30)
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+        assert result["exit_code"] == 0
+    finally:
+        if not task.done():
+            task.cancel()
+        if pid_path.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
 async def test_a_group_stop_cut_short_in_its_grace_period_kills_the_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
