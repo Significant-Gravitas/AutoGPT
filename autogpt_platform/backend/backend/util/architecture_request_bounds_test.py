@@ -39,7 +39,6 @@ UNBOUNDED_REQUEST_MODELS = frozenset(
         "backend.api.features.admin.diagnostics_admin_routes.ScheduleCleanupRequest",
         "backend.api.features.admin.diagnostics_admin_routes.StopExecutionRequest",
         "backend.api.features.admin.diagnostics_admin_routes.StopExecutionsRequest",
-        "backend.api.features.admin.execution_analytics_routes.AccuracyTrendsRequest",
         "backend.api.features.admin.execution_analytics_routes.ExecutionAnalyticsRequest",
         "backend.api.features.admin.impersonation_admin_routes.ImpersonationNotifyRequest",
         "backend.api.features.admin.rate_limit_admin_routes.SetUserTierRequest",

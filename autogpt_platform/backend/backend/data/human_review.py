@@ -390,38 +390,6 @@ def _scope_columns(
     }
 
 
-async def get_pending_review_by_node_exec_id(
-    node_exec_id: str, user_id: str
-) -> Optional[PendingHumanReviewModel]:
-    """
-    Get a pending review by its node execution ID.
-
-    Args:
-        node_exec_id: The node execution ID to look up
-        user_id: User ID for authorization (only returns if review belongs to this user)
-
-    Returns:
-        The pending review if found and belongs to user, None otherwise
-    """
-    review = await PendingHumanReview.prisma().find_first(
-        where={
-            "nodeExecId": node_exec_id,
-            "userId": user_id,
-            "status": ReviewStatus.WAITING,
-        }
-    )
-
-    if not review:
-        return None
-
-    # Local import to avoid event loop conflicts in tests
-    from backend.data.execution import get_node_execution
-
-    node_exec = await get_node_execution(review.nodeExecId)
-    node_id = node_exec.node_id if node_exec else review.nodeExecId
-    return PendingHumanReviewModel.from_db(review, node_id=node_id)
-
-
 async def get_reviews_by_node_exec_ids(
     node_exec_ids: list[str], user_id: str
 ) -> dict[str, PendingHumanReviewModel]:

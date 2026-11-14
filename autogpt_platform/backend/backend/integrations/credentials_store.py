@@ -479,10 +479,6 @@ class IntegrationCredentialsStore:
         credentials = await self.get_all_creds(user_id)
         return [c for c in credentials if provider_matches(c.provider, provider)]
 
-    async def get_authorized_providers(self, user_id: str) -> list[str]:
-        credentials = await self.get_all_creds(user_id)
-        return list(set(c.provider for c in credentials))
-
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
         if is_system_credential(updated.id):
             raise ValueError(

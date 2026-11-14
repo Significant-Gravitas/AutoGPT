@@ -7,10 +7,7 @@ sees an overnight update at its next user turn without a new chat.
 
 from __future__ import annotations
 
-import hashlib
 import logging
-
-from pydantic import BaseModel, ConfigDict
 
 from backend.data.db_accessors import skill_use_db, skill_versions_db
 from backend.data.redis_client import get_redis_async
@@ -38,13 +35,6 @@ def origin_label(origin: str, *, viewer_is_actor: bool = False) -> str:
     if viewer_is_actor and origin in ("requested", "edited", "restored", "deleted"):
         return label.replace("by user", "by you").replace("by owner", "by you")
     return label
-
-
-class IndexEntry(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    version: str | None
 
 
 async def paused_skill_names(user_id: str, expert_id: str | None) -> set[str] | None:
@@ -107,13 +97,6 @@ async def record_skill_loaded(
         )
     except Exception:
         logger.debug("skill load event not recorded", exc_info=True)
-
-
-def index_revision(entries: list[IndexEntry]) -> str:
-    digest = hashlib.sha256()
-    for entry in sorted(entries, key=lambda e: e.name):
-        digest.update(f"{entry.name}@{entry.version or ''}\n".encode("utf-8"))
-    return digest.hexdigest()[:16]
 
 
 async def read_seen_index_revision(session_id: str) -> str | None:
