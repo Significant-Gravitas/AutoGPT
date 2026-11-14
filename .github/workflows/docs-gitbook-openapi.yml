@@ -82,7 +82,7 @@ jobs:
       - name: Export the v2 OpenAPI spec
         run: poetry run export-api-schema --api v2 --pretty --output "$RUNNER_TEMP/autogpt-api-v2.json"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
 
