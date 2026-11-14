@@ -809,10 +809,14 @@ async def _get_graph_impl(
                 LIMIT $limit
                 """,
                 g=group_id,
-                limit=node_limit,
+                # One extra row tells "exactly node_limit" from "more".
+                limit=node_limit + 1,
             )
             rows = result[0] if result else []
             for r in rows:
+                if len(nodes) >= node_limit:
+                    truncated = True
+                    break
                 # Custom entity types (Person, Organization, etc.) appear
                 # alongside the base "Entity" label. Pick the first
                 # non-base label as the "type".
@@ -832,9 +836,6 @@ async def _get_graph_impl(
                         hard_deleted_at=r.get("hard_deleted_at"),
                     )
                 )
-                if len(nodes) >= node_limit:
-                    truncated = True
-                    break
             if truncated:
                 break
 
@@ -867,7 +868,7 @@ async def _get_graph_impl(
             LIMIT $limit
             """,
             g=group_id,
-            limit=edge_limit,
+            limit=edge_limit + 1,
         )
         rows = result[0] if result else []
         for r in rows:
@@ -877,6 +878,9 @@ async def _get_graph_impl(
             # the rendered graph well-formed when truncation cuts in.
             if src not in node_uuids or tgt not in node_uuids:
                 continue
+            if len(edges) >= edge_limit:
+                truncated = True
+                break
             edges.append(
                 GraphEdge(
                     uuid=str(r.get("uuid", "")),
@@ -889,9 +893,6 @@ async def _get_graph_impl(
                     scope=r.get("scope"),
                 )
             )
-            if len(edges) >= edge_limit:
-                truncated = True
-                break
     except ResponseError as exc:
         # Missing graph (new user) — return an empty payload rather than
         # 500; the frontend renders the empty state. Any other FalkorDB
