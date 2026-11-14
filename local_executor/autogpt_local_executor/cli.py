@@ -501,6 +501,8 @@ def _service_global_args(args, environment: dict[str, object]) -> tuple[str, ...
     shell's environment. Without the platform URLs the service would talk to
     the default platform, with credentials scoped to another one, and fail
     at every start."""
+    from . import install as _install
+
     out: list[str] = []
     for flag, field in _SERVICE_OPTIONS:
         value = getattr(args, field)
@@ -512,7 +514,7 @@ def _service_global_args(args, environment: dict[str, object]) -> tuple[str, ...
             # The service runs in another working directory. A `~` the
             # shell left alone (quoted, after `=`, from the environment) is
             # the home directory, as the config reads it.
-            value = os.path.abspath(os.path.expanduser(str(value)))
+            value = _install._absolute_as_given(os.path.expanduser(str(value)))
         out += [flag, str(value)]
     return tuple(out)
 

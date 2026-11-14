@@ -77,5 +77,5 @@ def fake_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def records(log: Path, event: str | None = None) -> list[dict]:
     if not log.exists():
         return []
-    lines = [json.loads(line) for line in log.read_text().splitlines() if line]
+    lines = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line]
     return [r for r in lines if event is None or r.get("event") == event]

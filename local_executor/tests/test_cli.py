@@ -23,7 +23,7 @@ from autogpt_local_executor.daemon import ShimDaemon
 def _empty_config(tmp_path: Path) -> Path:
     """A config file with nothing in it, so the user's own stays out."""
     path = tmp_path / "config.toml"
-    path.write_text("")
+    path.write_text("", encoding="utf-8")
     return path
 
 
@@ -583,11 +583,11 @@ def test_audit_prune_keeps_a_file_whose_newest_record_has_no_timestamp(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     undated = tmp_path / "audit.log.20240101-000000"
-    undated.write_text('{"seq": 1, "op": "SHIM_START"}\n')
+    undated.write_text('{"seq": 1, "op": "SHIM_START"}\n', encoding="utf-8")
     old = tmp_path / "audit.log.20240102-000000"
-    old.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    old.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n', encoding="utf-8")
 
     assert cli._audit_prune(current, "1d") == 0
 
@@ -608,9 +608,9 @@ def test_audit_prune_keeps_a_file_with_a_timestamp_that_is_not_a_finite_number(
     older than any cutoff, so prune deleted the file. The writer only ever
     writes a finite number, and a file prune can't date is kept."""
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     rotated = tmp_path / "audit.log.20240101-000000"
-    rotated.write_text(f'{{"seq": 1, "op": "SHIM_START", "ts": {ts}}}\n')
+    rotated.write_text(f'{{"seq": 1, "op": "SHIM_START", "ts": {ts}}}\n', encoding="utf-8")
 
     assert cli._audit_prune(current, "1d") == 0
 
@@ -627,11 +627,11 @@ def test_audit_prune_prints_once_it_lets_go_of_the_writers_lock(
     import autogpt_local_executor.audit as audit_module
 
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     deleted = tmp_path / "audit.log.20240101-000000"
-    deleted.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    deleted.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n', encoding="utf-8")
     replaced = tmp_path / "audit.log.20240102-000000"
-    replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n')
+    replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 1}\n', encoding="utf-8")
     real_lock = audit_module.holding_log_lock
     held = False
 
@@ -640,7 +640,7 @@ def test_audit_prune_prints_once_it_lets_go_of_the_writers_lock(
         nonlocal held
         with real_lock(log):
             # A file changed since prune read it: it's kept.
-            replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 2.5}\n')
+            replaced.write_text('{"seq": 1, "op": "SHIM_START", "ts": 2.5}\n', encoding="utf-8")
             held = True
             try:
                 yield
@@ -953,6 +953,38 @@ def test_install_gives_the_service_a_home_relative_root_expanded(
     )
 
 
+def test_install_gives_the_service_the_root_a_path_through_a_link_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """abspath() drops `link/..` without looking at the disk, so where
+    `link` is a symlink, `--allowed-root link/../ws` gave the service
+    another folder than the one it names. The OS reads the path given:
+    POSIX follows `link` before `..`, and Windows drops `link\\..` itself."""
+    install_autostart = _capture_install(tmp_path, monkeypatch)
+    (tmp_path / "project" / "sub").mkdir(parents=True)
+    (tmp_path / "project" / "ws").mkdir()
+    work = tmp_path / "work"
+    (work / "ws").mkdir(parents=True)  # another folder by that name
+    try:
+        (work / "link").symlink_to(tmp_path / "project" / "sub", target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:  # Windows without the privilege
+        pytest.skip(f"symlinks can't be made here: {exc}")
+    monkeypatch.chdir(work)
+    given = str(Path("link") / ".." / "ws")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["autogpt-shim", "--config", str(_empty_config(tmp_path))]
+        + ["--allowed-root", given, "install"],
+    )
+
+    cli.main()
+
+    flag, root = install_autostart.call_args.kwargs["global_args"]
+    assert flag == "--allowed-root" and Path(root).is_absolute()
+    assert os.path.samefile(root, given)
+
+
 @pytest.mark.parametrize(("root", "refused"), [(".", True), ("files", True), ("~/ws", False)])
 def test_install_refuses_a_relative_root_from_the_config_file(
     tmp_path: Path,
@@ -1071,7 +1103,7 @@ def test_a_bad_config_stops_the_launchagent_instead_of_looping(
     import sys
 
     config = tmp_path / "config.toml"
-    config.write_text("allowed_root = [unclosed\n")
+    config.write_text("allowed_root = [unclosed\n", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["autogpt-shim", "--config", str(config), "start"])
     monkeypatch.setenv("AUTOGPT_SHIM_SUPERVISOR", "launchd")
 
@@ -1151,7 +1183,7 @@ def test_the_systemd_unit_restarts_a_temporary_failure() -> None:
     template = Path(cli.__file__).parent / "templates" / "systemd.service.template"
     [line] = [
         line
-        for line in template.read_text().splitlines()
+        for line in template.read_text(encoding="utf-8").splitlines()
         if line.startswith("RestartPreventExitStatus=")
     ]
     assert "75" not in line.split("=", 1)[1].split()

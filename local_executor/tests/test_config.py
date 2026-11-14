@@ -36,7 +36,8 @@ def test_load_config_with_toml_overrides(tmp_path: Path) -> None:
     toml_file.write_text(
         'platform_url = "http://localhost:8000"\n'
         "oauth_redirect_port = 42010\n"
-        f'allowed_root = "{tmp_path.as_posix()}/ws"\n'
+        f'allowed_root = "{tmp_path.as_posix()}/ws"\n',
+        encoding="utf-8",
     )
     cfg = load_config(config_path=toml_file)
     assert cfg.platform_url == "http://localhost:8000"
@@ -46,7 +47,7 @@ def test_load_config_with_toml_overrides(tmp_path: Path) -> None:
 
 def test_load_config_overrides_win(tmp_path: Path) -> None:
     toml_file = tmp_path / "config.toml"
-    toml_file.write_text("oauth_redirect_port = 42010\n")
+    toml_file.write_text("oauth_redirect_port = 42010\n", encoding="utf-8")
     cfg = load_config(
         config_path=toml_file,
         overrides={"oauth_redirect_port": 42050},
@@ -60,7 +61,9 @@ def test_the_environment_outranks_the_config_file(
     """Defaults, then the TOML file, then AUTOGPT_SHIM_* variables, then the
     caller's overrides: a variable set for one run must beat the file."""
     toml_file = tmp_path / "config.toml"
-    toml_file.write_text('platform_url = "http://localhost:8000"\noauth_redirect_port = 42010\n')
+    toml_file.write_text(
+        'platform_url = "http://localhost:8000"\noauth_redirect_port = 42010\n', encoding="utf-8"
+    )
     monkeypatch.setenv("AUTOGPT_SHIM_PLATFORM_URL", "http://localhost:9000")
     monkeypatch.setenv("AUTOGPT_SHIM_OAUTH_REDIRECT_PORT", "42020")
 
@@ -100,7 +103,9 @@ def test_only_prefixed_variables_set_the_config(
     shim's own."""
     monkeypatch.setattr(config_module, "EnvSettingsSource", source)
     toml_file = tmp_path / "config.toml"
-    toml_file.write_text(f'allowed_root = "{(tmp_path / "from-file").as_posix()}"\n')
+    toml_file.write_text(
+        f'allowed_root = "{(tmp_path / "from-file").as_posix()}"\n', encoding="utf-8"
+    )
     monkeypatch.setenv("AUTOGPT_SHIM_ALLOWED_ROOT", str(tmp_path / "from-env"))
     monkeypatch.setenv("PLATFORM_URL", "https://elsewhere.example")
     monkeypatch.setenv("ENABLE_SHELL", "true")
@@ -295,7 +300,7 @@ def test_a_boolean_variable_outranks_the_config_file(
     """Strings and integers were covered; a false from the environment must
     also beat a true in the file."""
     toml_file = tmp_path / "config.toml"
-    toml_file.write_text("enable_shell = true\n")
+    toml_file.write_text("enable_shell = true\n", encoding="utf-8")
     monkeypatch.setenv("AUTOGPT_SHIM_ENABLE_SHELL", "false")
 
     assert load_config(config_path=toml_file).enable_shell is False
@@ -341,7 +346,7 @@ def test_a_default_config_that_cannot_be_reached_is_an_error(tmp_path: Path, mon
 
     locked = tmp_path / "locked"
     locked.mkdir()
-    (locked / "config.toml").write_text("max_concurrent = 2\n")
+    (locked / "config.toml").write_text("max_concurrent = 2\n", encoding="utf-8")
     monkeypatch.setattr(config_module, "_default_config_path", lambda: locked / "config.toml")
     locked.chmod(0)
     try:
@@ -411,7 +416,9 @@ def test_a_file_where_the_default_configs_directory_belongs_is_an_error(
     import autogpt_local_executor.config as config_module
     from autogpt_local_executor.config import ConfigFileError
 
-    (tmp_path / "autogpt-local-executor").write_text('platform_url = "https://example.com"\n')
+    (tmp_path / "autogpt-local-executor").write_text(
+        'platform_url = "https://example.com"\n', encoding="utf-8"
+    )
     monkeypatch.setattr(
         config_module,
         "_default_config_path",
@@ -433,7 +440,9 @@ def test_a_file_in_the_default_configs_way_is_an_error_where_it_reads_as_missing
     import autogpt_local_executor.config as config_module
     from autogpt_local_executor.config import ConfigFileError
 
-    (tmp_path / "autogpt-local-executor").write_text('platform_url = "https://example.com"\n')
+    (tmp_path / "autogpt-local-executor").write_text(
+        'platform_url = "https://example.com"\n', encoding="utf-8"
+    )
     blocked = tmp_path / "autogpt-local-executor" / "config.toml"
     monkeypatch.setattr(config_module, "_default_config_path", lambda: blocked)
     real_stat = Path.stat
@@ -492,7 +501,9 @@ def test_a_home_relative_path_setting_is_expanded(
     }
     if source == "file":
         config_file = tmp_path / "config.toml"
-        config_file.write_text("".join(f'{key} = "{value}"\n' for key, value in settings.items()))
+        config_file.write_text(
+            "".join(f'{key} = "{value}"\n' for key, value in settings.items()), encoding="utf-8"
+        )
         config = load_config(config_path=config_file)
     else:
         monkeypatch.setattr(config_module, "_default_config_path", lambda: tmp_path / "absent")
@@ -521,7 +532,9 @@ def test_a_home_that_cant_be_found_is_a_configuration_error(
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     monkeypatch.setenv("USERNAME", "someone-else")
     config_file = tmp_path / "config.toml"
-    config_file.write_text('allowed_root = "~no-such-account-for-the-shim/workspace"\n')
+    config_file.write_text(
+        'allowed_root = "~no-such-account-for-the-shim/workspace"\n', encoding="utf-8"
+    )
 
     with pytest.raises(ValidationError, match="no home directory"):
         load_config(config_path=config_file)

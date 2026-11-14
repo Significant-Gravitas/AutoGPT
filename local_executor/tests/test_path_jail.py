@@ -38,14 +38,14 @@ def test_a_path_outside_the_root_leaves_no_trace_outside_it(tmp_path: Path) -> N
 
 def test_allows_file_inside_root(tmp_path: Path) -> None:
     file = tmp_path / "ok.txt"
-    file.write_text("hi")
+    file.write_text("hi", encoding="utf-8")
     assert is_inside_jail(file, tmp_path)
 
 
 def test_allows_nested_file_inside_root(tmp_path: Path) -> None:
     nested = tmp_path / "a" / "b" / "c.txt"
     nested.parent.mkdir(parents=True)
-    nested.write_text("hi")
+    nested.write_text("hi", encoding="utf-8")
     assert is_inside_jail(nested, tmp_path)
 
 
@@ -67,7 +67,7 @@ def test_blocks_symlink_escape(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside_dir"
     outside.mkdir(exist_ok=True)
     secret = outside / "secret.txt"
-    secret.write_text("nope")
+    secret.write_text("nope", encoding="utf-8")
     link = tmp_path / "link"
     try:
         os.symlink(secret, link)
@@ -90,7 +90,7 @@ def test_allows_uppercased_on_case_insensitive_fs(tmp_path: Path) -> None:
         pytest.skip("Only relevant on case-insensitive FS by default")
     # Use the parent's case-toggled spelling and a real subpath.
     nested = tmp_path / "x.txt"
-    nested.write_text("hi")
+    nested.write_text("hi", encoding="utf-8")
     upper_root = Path(str(tmp_path).upper())
     if not upper_root.exists() or not upper_root.samefile(tmp_path):
         # Case sensitivity is per volume (and per directory on NTFS), so the
@@ -115,7 +115,7 @@ def test_a_case_variant_sibling_of_a_read_only_root_is_refused(
         sibling.mkdir()
     except FileExistsError:
         pytest.skip("this filesystem ignores case, so WS and Ws are one directory")
-    (sibling / "secret.txt").write_text("not yours")
+    (sibling / "secret.txt").write_text("not yours", encoding="utf-8")
     # macOS and Windows are where a failed probe used to assume insensitivity.
     monkeypatch.setattr(sys, "platform", "darwin")
     root.chmod(0o555)
@@ -141,7 +141,7 @@ def test_blocks_prefix_lookalike_dir(tmp_path: Path) -> None:
     workspace2 = tmp_path / "workspace2"
     workspace2.mkdir()
     file_in_lookalike = workspace2 / "evil.txt"
-    file_in_lookalike.write_text("nope")
+    file_in_lookalike.write_text("nope", encoding="utf-8")
     with pytest.raises(PathJailError) as exc:
         assert_inside_jail(file_in_lookalike, workspace)
     assert exc.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"
@@ -176,7 +176,7 @@ def test_blocks_unc_long_path_escape(tmp_path: Path) -> None:
 
 def test_assert_returns_resolved_path(tmp_path: Path) -> None:
     file = tmp_path / "ok.txt"
-    file.write_text("hi")
+    file.write_text("hi", encoding="utf-8")
     resolved = assert_inside_jail(file, tmp_path)
     assert resolved.exists()
 
@@ -184,7 +184,7 @@ def test_assert_returns_resolved_path(tmp_path: Path) -> None:
 def test_missing_root_raises(tmp_path: Path) -> None:
     nonexistent = tmp_path / "does-not-exist"
     file = tmp_path / "x.txt"
-    file.write_text("hi")
+    file.write_text("hi", encoding="utf-8")
     with pytest.raises(PathJailError):
         assert_inside_jail(file, nonexistent)
 
@@ -224,7 +224,7 @@ def test_content_open_rejects_fifo_before_opening(tmp_path: Path, write: bool) -
 @pytest.mark.parametrize("write", [False, True])
 def test_content_open_conservatively_rejects_inside_hard_links(tmp_path: Path, write: bool) -> None:
     first = tmp_path / "first.txt"
-    first.write_text("original")
+    first.write_text("original", encoding="utf-8")
     second = tmp_path / "second.txt"
     os.link(first, second)
 
@@ -233,13 +233,13 @@ def test_content_open_conservatively_rejects_inside_hard_links(tmp_path: Path, w
             pytest.fail("Multi-linked file was opened for content access")
 
     assert error.value.code == "PATH_OUTSIDE_ALLOWED_ROOT"
-    assert first.read_text() == second.read_text() == "original"
+    assert first.read_text(encoding="utf-8") == second.read_text(encoding="utf-8") == "original"
 
 
 @pytest.mark.parametrize("write", [False, True])
 def test_content_descriptor_is_closed_after_rejection(tmp_path: Path, write: bool) -> None:
     target = tmp_path / "single.txt"
-    target.write_text("original")
+    target.write_text("original", encoding="utf-8")
     opened = []
     original_open = os.open
 
@@ -259,7 +259,7 @@ def test_content_descriptor_is_closed_after_rejection(tmp_path: Path, write: boo
     assert len(opened) == 1
     with pytest.raises(OSError):
         os.fstat(opened[0])
-    assert target.read_text() == "original"
+    assert target.read_text(encoding="utf-8") == "original"
 
 
 def test_a_relative_path_is_taken_from_the_root_not_the_working_directory(

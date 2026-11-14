@@ -64,7 +64,7 @@ async def test_a_write_cancelled_mid_flight_finishes_and_is_audited(
     response = await asyncio.wait_for(task, timeout=30)
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "written"
+    assert target.read_text(encoding="utf-8") == "written"
     assert [op for op, result in audit.ops if result["ok"]] == ["FILE_WRITE"]
 
 
@@ -163,7 +163,7 @@ async def test_a_cancel_during_the_audit_write_still_records_the_change(
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(task, timeout=30)
 
-    assert target.read_text() == "written"
+    assert target.read_text(encoding="utf-8") == "written"
     assert [op for op, result in audit.ops if result["ok"]] == ["FILE_WRITE"]
 
 
@@ -217,7 +217,7 @@ async def test_a_cancelled_read_keeps_its_task_until_its_thread_ends(
         FileReadPayload,
     )
 
-    (tmp_path / "notes.txt").write_text("hello")
+    (tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
     handler = FileHandler(
         ShimConfig(allowed_root=tmp_path, audit_log_path=tmp_path / "audit.log"),
         audit=_RecordingAudit(),  # type: ignore[arg-type]

@@ -127,6 +127,18 @@ _TEMPLATE_VALUES: dict[str, Callable[[AutostartContext], dict[str, str]]] = {
 # ── Path resolution ──────────────────────────────────────────────────────────
 
 
+def _absolute_as_given(path: str | os.PathLike[str]) -> str:
+    """`path` made absolute for a service that starts in another working
+    directory, with its links and `..`s left for the OS to follow. abspath()
+    drops `link/..` without looking at the disk, which on Linux and macOS
+    names another file where `link` is a symlink. Windows drops `link\\..`
+    itself, as abspath does, and abspath reads a drive-relative path
+    (`C:conf.toml`), which Path.absolute() gets wrong before Python 3.12."""
+    if sys.platform == "win32":
+        return os.path.abspath(path)
+    return str(Path(path).absolute())
+
+
 def resolve_shim_command() -> tuple[str, ...]:
     """The command that starts the shim, as separate arguments.
 
@@ -140,7 +152,7 @@ def resolve_shim_command() -> tuple[str, ...]:
     if found:
         # A relative PATH entry gives a relative path, which a service
         # started from another working directory couldn't run.
-        return (os.path.abspath(found),)
+        return (_absolute_as_given(found),)
     return (sys.executable, "-m", "autogpt_local_executor")
 
 
@@ -190,8 +202,8 @@ def build_context(
     return AutostartContext(
         shim_command=resolve_shim_command(),
         # The service manager starts the shim in its own working directory.
-        # abspath, not resolve(): a config that is a symlink stays one.
-        config_path=os.path.abspath(cfg.expanduser()) if named else None,
+        # Not resolve(): a config that is a symlink stays one.
+        config_path=_absolute_as_given(cfg.expanduser()) if named else None,
         stdout_log=str(default_stdout_log()),
         stderr_log=str(default_stderr_log()),
         global_args=global_args,

@@ -151,6 +151,11 @@ _CLOSE_CODE_LABELS: dict[int, str] = {
 
 # How long cua-driver gets to report its macOS permissions at startup.
 PERMISSION_CHECK_SECONDS = 30.0
+# How long the machine's start waits for the look for cua-driver before it
+# goes on to connect without the rest of the computer-use preflight
+# (_preflight_computer_use): a stalled mount on PATH or sys.path holds the
+# look as long as it stalls, and file and shell work wait for the connection.
+DRIVER_PREFLIGHT_SECONDS = 5.0
 
 
 class DaemonPreflightError(RuntimeError):
@@ -667,6 +672,7 @@ class ShimDaemon:
         finally:
             if self._control_mode:
                 await self._shutdown_children()
+            await self._command_handler.close()
             await self._computer_handler.close()
             if self._manage_audit_lifecycle:
                 await self._audit_shim_stop("graceful")
@@ -1235,6 +1241,15 @@ class ShimDaemon:
         driver_found = None
         if cfg.enable_computer_use:
             driver_found = await self._computer_handler.driver_found_for_hello()
+            # On macOS, not before a session's check of the grants computer
+            # use needs has passed: a start that went on while its look for
+            # the driver stalled checked none (_preflight_computer_use).
+            if (
+                driver_found
+                and platform_info.detect_platform() == "darwin"
+                and not self._computer_handler.driver.permissions_granted
+            ):
+                driver_found = False
         # Off the event loop, which carries every other session: the X
         # display probe behind both can take seconds.
         caps = await asyncio.to_thread(
@@ -2299,8 +2314,7 @@ class ShimDaemon:
                 machine_work_semaphore=self._machine_work_semaphore,
                 computer_use_lock=self._computer_use_lock,
             )
-            child._command_handler._command_rate = self._command_handler._command_rate
-            child._command_handler._concurrency = self._command_handler._concurrency
+            self._command_handler.share_with(child._command_handler)
             self._computer_handler.share_with(child._computer_handler)
             child._local_llm_handler._inflight_lock = self._local_llm_handler._inflight_lock
             task = asyncio.create_task(child.run(), name=f"local-executor-{binding.session_id}")
@@ -2482,9 +2496,32 @@ class ShimDaemon:
         """Computer use needs cua-driver, and on macOS its Accessibility and
         Screen Recording grants: without Screen Recording a capture shows
         only the wallpaper and menu bar."""
+        driver = self._computer_handler.driver
+        child = self._computer_handler.shares_a_driver
+        on_macos = platform_info.detect_platform() == "darwin"
         # Looked for off the event loop, which the machine's other sessions
-        # share, and once for all of them (CuaDriverBridge.find_binary).
-        if await self._computer_handler.driver.find_binary() is None:
+        # share, and once for all of them (CuaDriverBridge.find_binary). A
+        # stalled mount on PATH or sys.path holds the look as long as it
+        # stalls, and this comes before the session connects, its file and
+        # shell work with it: past the wait (a chat's, or the machine's start)
+        # the session goes on without the rest of this check. The look goes
+        # on, and HELLO, waiting for it within its own wait, offers computer
+        # use only once it finds the driver, and on macOS only once a
+        # session's check of the grants has passed (permissions_granted).
+        wait = handlers.CHILD_DRIVER_WAIT_SECONDS if child else DRIVER_PREFLIGHT_SECONDS
+        try:
+            async with asyncio.timeout(wait):
+                found = await driver.find_binary()
+        except TimeoutError:
+            logger.warning(
+                "Looking for cua-driver took longer than %g s: a folder on PATH, or one "
+                "Python imports from, may be on a mount that isn't answering. Going on "
+                "without computer use until the look finds the driver%s.",
+                wait,
+                " and a session's check of the macOS permissions passes" if on_macos else "",
+            )
+            return
+        if found is None:
             await self._fail_preflight(
                 "Computer use is enabled but cua-driver is not installed. Reinstall with "
                 f"`{COMPUTER_USE_INSTALL}`, then run `autogpt-shim doctor`.",
@@ -2492,10 +2529,8 @@ class ShimDaemon:
                 error_code=ErrorCode.DEPENDENCY_MISSING,
                 permanent=True,
             )
-        if platform_info.detect_platform() != "darwin":
+        if not on_macos:
             return
-        driver = self._computer_handler.driver
-        child = self._computer_handler.shares_a_driver
         try:
             if child:
                 # Another chat's call can hold the shared driver far longer
@@ -2557,6 +2592,7 @@ class ShimDaemon:
         }
         missing = [name for name, ok in granted.items() if not ok]
         if not missing:
+            driver.permissions_granted = True
             return
         labels = {"accessibility": "Accessibility", "screen_recording": "Screen Recording"}
         await self._fail_preflight(

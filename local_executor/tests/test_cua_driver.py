@@ -600,7 +600,7 @@ async def test_a_linux_driver_runs_in_an_empty_folder_of_its_own(
                 assert stat.S_IMODE(folder.stat().st_mode) == 0o500
                 if os.geteuid() != 0:
                     with pytest.raises(PermissionError):
-                        (folder / "notes.txt").write_text("x")
+                        (folder / "notes.txt").write_text("x", encoding="utf-8")
         else:
             assert os.path.samefile(folder, tmp_path)
     finally:
@@ -919,9 +919,9 @@ def test_the_wheels_binary_is_found_without_importing_the_package(
     not."""
     package = tmp_path / "cua_driver"
     (package / "bin").mkdir(parents=True)
-    (package / "__init__.py").write_text("raise RuntimeError('imported')\n")
+    (package / "__init__.py").write_text("raise RuntimeError('imported')\n", encoding="utf-8")
     name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
-    (package / "bin" / name).write_text("")
+    (package / "bin" / name).write_text("", encoding="utf-8")
     monkeypatch.syspath_prepend(str(tmp_path))
     monkeypatch.delitem(sys.modules, "cua_driver", raising=False)
 
@@ -936,7 +936,7 @@ def test_an_explicit_driver_in_the_current_folder_runs_from_there(
     a bare `cua-driver`, which the OS looks up on PATH: another install ran,
     or none did, in place of the file the shim had checked."""
     name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
-    (tmp_path / name).write_text("")
+    (tmp_path / name).write_text("", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     found = driver.find_driver_binary(f"./{name}")
@@ -1332,7 +1332,7 @@ def _call(tool: str, arguments: dict | None = None, **payload: Any) -> ComputerT
 def _audit(tmp_path: Path) -> list[dict]:
     return [
         json.loads(line)
-        for line in (tmp_path / "audit.log").read_text().splitlines()
+        for line in (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
         if '"COMPUTER_TOOL_CALL"' in line
     ]
 
@@ -1456,7 +1456,7 @@ async def test_a_call_is_relayed_with_this_sessions_label(make_handler, fake_log
     # What was typed stays out of the audit log.
     [record] = _audit(tmp_path)
     assert record["details"]["arguments"]["text"] == {"redacted_chars": 7}
-    assert "hunter2" not in (tmp_path / "audit.log").read_text()
+    assert "hunter2" not in (tmp_path / "audit.log").read_text(encoding="utf-8")
     assert record["result"]["ok"] is True
 
 
@@ -2809,7 +2809,7 @@ async def test_clipboard_reads_return_this_shims_recent_write(make_handler) -> N
 
 async def test_clipboard_reads_refuse_what_the_shim_did_not_write(make_handler, tmp_path) -> None:
     handler = make_handler(enable_clipboard=True)
-    (tmp_path / "clipboard.txt").write_text("the person's password")
+    (tmp_path / "clipboard.txt").write_text("the person's password", encoding="utf-8")
 
     response = await handler.handle(_call("clipboard_read"))
 
@@ -2822,7 +2822,7 @@ async def test_clipboard_reads_refuse_what_the_shim_did_not_write(make_handler, 
 async def test_clipboard_reads_refuse_a_write_since_overwritten(make_handler, tmp_path) -> None:
     handler = make_handler(enable_clipboard=True)
     await handler.handle(_call("clipboard_write", {"text": "from the agent"}))
-    (tmp_path / "clipboard.txt").write_text("copied by the person")
+    (tmp_path / "clipboard.txt").write_text("copied by the person", encoding="utf-8")
 
     response = await handler.handle(_call("clipboard_read"))
 
@@ -2873,7 +2873,7 @@ async def test_foreign_clipboard_reads_return_unmarked_text(
     make_handler, tmp_path, a_clean_clipboard
 ) -> None:
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
 
     response = await handler.handle(_call("clipboard_read"))
 
@@ -2886,7 +2886,7 @@ async def test_foreign_clipboard_reads_refuse_a_password_managers_copy(
     make_handler, tmp_path, a_clean_clipboard, when: str
 ) -> None:
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("s3cret")
+    (tmp_path / "clipboard.txt").write_text("s3cret", encoding="utf-8")
     marked = concealed.ClipboardState("org.nspasteboard.ConcealedType", 7)
     clean = concealed.ClipboardState(None, 7)
     a_clean_clipboard.extend([marked] if when == "before" else [clean, marked])
@@ -2904,7 +2904,7 @@ async def test_foreign_clipboard_reads_check_the_types_the_driver_read(
 ) -> None:
     monkeypatch.setenv("FAKE_CUA_CLIPBOARD_TYPES", "UTF8_STRING,x-kde-passwordManagerHint")
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("s3cret")
+    (tmp_path / "clipboard.txt").write_text("s3cret", encoding="utf-8")
 
     response = await handler.handle(_call("clipboard_read"))
 
@@ -2916,7 +2916,7 @@ async def test_foreign_clipboard_reads_refuse_a_copy_made_during_the_read(
     make_handler, tmp_path, a_clean_clipboard
 ) -> None:
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("whatever")
+    (tmp_path / "clipboard.txt").write_text("whatever", encoding="utf-8")
     a_clean_clipboard.extend([concealed.ClipboardState(None, 7), concealed.ClipboardState(None, 8)])
 
     response = await handler.handle(_call("clipboard_read"))
@@ -2933,7 +2933,7 @@ async def test_foreign_clipboard_reads_without_a_sequence_number_read_twice(
     replaced before the shim looked again, came back as clean text."""
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
     clipboard = tmp_path / "clipboard.txt"
-    clipboard.write_text("s3cret")  # read while its marker went unseen
+    clipboard.write_text("s3cret", encoding="utf-8")  # read while its marker went unseen
     a_clean_clipboard.extend([concealed.ClipboardState(None), concealed.ClipboardState(None)])
     driver = handler.driver
     real_call = driver.call_tool
@@ -2941,7 +2941,7 @@ async def test_foreign_clipboard_reads_without_a_sequence_number_read_twice(
     async def call_tool(name: str, arguments: dict, **kwargs: Any) -> dict:
         result = await real_call(name, arguments, **kwargs)
         if name == "clipboard_read":
-            clipboard.write_text("copied after it")  # the clipboard moves on
+            clipboard.write_text("copied after it", encoding="utf-8")  # the clipboard moves on
         return result
 
     driver.call_tool = call_tool  # type: ignore[method-assign]
@@ -2958,7 +2958,7 @@ async def test_a_second_read_that_finds_the_same_text_returns_it(
     make_handler, tmp_path, a_clean_clipboard
 ) -> None:
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
     a_clean_clipboard.extend([concealed.ClipboardState(None), concealed.ClipboardState(None)])
 
     response = await handler.handle(_call("clipboard_read"))
@@ -2983,7 +2983,7 @@ async def test_a_clipboard_read_whose_deadline_passes_in_the_marker_check_never_
 
     monkeypatch.setattr(handlers, "clipboard_state", slow_look)
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
 
     response = await handler.handle(_call("clipboard_read", timeout_seconds=1))
 
@@ -3019,7 +3019,7 @@ async def test_a_look_at_the_clipboard_not_back_by_the_deadline_ends_the_call(
 
     monkeypatch.setattr(handlers, "clipboard_state", look)
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
     await handler.driver.snapshot()  # started, so the call's second goes to the look
     try:
         response = await asyncio.wait_for(
@@ -3052,7 +3052,7 @@ async def test_each_look_at_a_foreign_clipboard_gets_only_the_time_left(
 
     monkeypatch.setattr(handlers, "clipboard_state", look)
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
 
     response = await handler.handle(_call("clipboard_read", timeout_seconds=2))
 
@@ -3073,7 +3073,7 @@ async def test_a_second_clipboard_read_never_starts_past_the_deadline(
         handlers, "clipboard_state", lambda _timeout=None: concealed.ClipboardState(None)
     )
     handler = make_handler(enable_clipboard=True, enable_clipboard_read_foreign=True)
-    (tmp_path / "clipboard.txt").write_text("a copied paragraph")
+    (tmp_path / "clipboard.txt").write_text("a copied paragraph", encoding="utf-8")
     loop = asyncio.get_running_loop()
     deadlines: list[float] = []
     real_deadline = handlers.ComputerUseHandler.call_deadline
@@ -3567,6 +3567,90 @@ async def test_hello_goes_out_without_computer_use_while_the_look_for_the_driver
         assert "computer_use" not in hello.payload.capabilities
         assert hello.payload.computer_use_driver is None
     assert "computer_use" in later.payload.capabilities
+
+
+def _stall_the_look(monkeypatch: pytest.MonkeyPatch, *, installed: bool = True):
+    """Make the look for the driver stall until the event returned is set,
+    then find it, or not; returns the event and the list of looks made."""
+    released = threading.Event()
+    looks: list[int] = []
+    find = driver.find_driver_binary
+
+    def stalled(explicit: Any = None) -> Any:
+        looks.append(threading.get_ident())
+        released.wait(timeout=60)
+        return find(explicit) if installed else None
+
+    monkeypatch.setattr(driver, "find_driver_binary", stalled)
+    return released, looks
+
+
+@pytest.mark.parametrize("installed", [True, False])
+async def test_a_start_whose_look_for_the_driver_stalls_goes_on_to_connect(
+    tmp_path, fake_log, linux_with_display, monkeypatch, installed: bool
+) -> None:
+    """A start waited for the look for the driver to the end before it
+    connected, so a stalled mount on PATH or sys.path kept the machine
+    offline, file and shell work too, and HELLO's own bounded wait never
+    came into it. The start waits DRIVER_PREFLIGHT_SECONDS for the look now
+    and goes on; another start waits for the same look rather than start
+    one more, and HELLO offers computer use once the look has found the
+    driver, and not if it found none."""
+    from autogpt_local_executor import daemon as daemon_module
+
+    released, looks = _stall_the_look(monkeypatch, installed=installed)
+    monkeypatch.setattr(daemon_module, "DRIVER_PREFLIGHT_SECONDS", 0.2, raising=False)
+    monkeypatch.setattr(handlers_module, "DRIVER_LOOKUP_SECONDS", 0.2, raising=False)
+    daemon = _daemon(tmp_path, session_id=None)
+    try:
+        await asyncio.wait_for(daemon._preflight_or_raise(), timeout=30)
+        await asyncio.wait_for(daemon._preflight_or_raise(), timeout=30)
+        assert len(looks) == 1
+        meanwhile = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+        released.set()
+        later = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+    finally:
+        released.set()
+        await daemon._computer_handler.close()
+
+    assert "files" in meanwhile.payload.capabilities
+    assert "computer_use" not in meanwhile.payload.capabilities
+    assert ("computer_use" in later.payload.capabilities) is installed
+
+
+async def test_a_mac_start_that_went_on_offers_no_computer_use_until_a_check_passes(
+    tmp_path, fake_log, monkeypatch
+) -> None:
+    """On macOS the start checks the Accessibility and Screen Recording
+    grants once it has the driver. One that went on while its look for the
+    driver stalled checked nothing, so HELLO leaves computer use out, even
+    once the look finds the driver, until a session's check has passed: a
+    chat's, here."""
+    from autogpt_local_executor import daemon as daemon_module
+    from autogpt_local_executor import platform_info
+
+    monkeypatch.setattr(platform_info, "detect_platform", lambda: "darwin")
+    released, _looks = _stall_the_look(monkeypatch)
+    monkeypatch.setattr(daemon_module, "DRIVER_PREFLIGHT_SECONDS", 0.2, raising=False)
+    # The chat's check starts the driver, which a slow machine may take a
+    # while to do: its check runs in full here.
+    monkeypatch.setattr(handlers_module, "CHILD_DRIVER_WAIT_SECONDS", 60.0, raising=False)
+    parent = _daemon(tmp_path, session_id=None)
+    child = _daemon(tmp_path, session_id="child-1")
+    parent._computer_handler.share_with(child._computer_handler)
+    try:
+        await asyncio.wait_for(parent._preflight_or_raise(), timeout=30)
+        released.set()
+        unchecked = await asyncio.wait_for(parent._build_hello(), timeout=30)
+        await asyncio.wait_for(child._preflight_or_raise(), timeout=30)
+        checked = await asyncio.wait_for(parent._build_hello(), timeout=30)
+    finally:
+        released.set()
+        await parent._computer_handler.close()
+
+    assert "files" in unchecked.payload.capabilities
+    assert "computer_use" not in unchecked.payload.capabilities
+    assert "computer_use" in checked.payload.capabilities
 
 
 async def test_computer_tool_calls_need_the_granted_capability(tmp_path, fake_log) -> None:

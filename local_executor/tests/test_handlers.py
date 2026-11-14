@@ -135,7 +135,7 @@ async def test_file_content_rejects_existing_hard_link(tmp_path: Path, operation
     root = tmp_path / "workspace"
     root.mkdir()
     outside = tmp_path / "outside.txt"
-    outside.write_text("outside secret")
+    outside.write_text("outside secret", encoding="utf-8")
     target = root / "linked.txt"
     os.link(outside, target)
     handler = FileHandler(make_config(root))
@@ -148,8 +148,8 @@ async def test_file_content_rejects_existing_hard_link(tmp_path: Path, operation
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
-    assert outside.read_text() == "outside secret"
-    assert target.read_text() == "outside secret"
+    assert outside.read_text(encoding="utf-8") == "outside secret"
+    assert target.read_text(encoding="utf-8") == "outside secret"
 
 
 @pytest.mark.asyncio
@@ -157,7 +157,7 @@ async def test_file_content_checks_opened_descriptor_before_access(tmp_path: Pat
     root = tmp_path / "workspace"
     root.mkdir()
     target = root / "single.txt"
-    target.write_text("must remain intact")
+    target.write_text("must remain intact", encoding="utf-8")
     outside = tmp_path / "outside.txt"
     original_open = os.open
 
@@ -172,8 +172,8 @@ async def test_file_content_checks_opened_descriptor_before_access(tmp_path: Pat
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
-    assert target.read_text() == "must remain intact"
-    assert outside.read_text() == "must remain intact"
+    assert target.read_text(encoding="utf-8") == "must remain intact"
+    assert outside.read_text(encoding="utf-8") == "must remain intact"
 
 
 @pytest.mark.asyncio
@@ -184,7 +184,7 @@ async def test_a_write_never_reaches_a_hard_link_made_after_the_check(tmp_path: 
     root = tmp_path / "workspace"
     root.mkdir()
     target = root / "single.txt"
-    target.write_text("must remain intact")
+    target.write_text("must remain intact", encoding="utf-8")
     outside = tmp_path / "outside.txt"
     original_replace = os.replace
 
@@ -198,8 +198,8 @@ async def test_a_write_never_reaches_a_hard_link_made_after_the_check(tmp_path: 
         response = await handler.handle_write(_write_msg(target, "overwrite"))
 
     assert isinstance(response, AckMessage)
-    assert outside.read_text() == "must remain intact"
-    assert target.read_text() == "overwrite"
+    assert outside.read_text(encoding="utf-8") == "must remain intact"
+    assert target.read_text(encoding="utf-8") == "overwrite"
 
 
 @pytest.mark.asyncio
@@ -213,7 +213,7 @@ async def test_an_in_place_write_checks_the_opened_descriptor_before_truncating(
     root = tmp_path / "workspace"
     root.mkdir()
     target = root / "single.txt"
-    target.write_text("must remain intact")
+    target.write_text("must remain intact", encoding="utf-8")
     outside = tmp_path / "outside.txt"
     original_open = os.open
 
@@ -234,19 +234,19 @@ async def test_an_in_place_write_checks_the_opened_descriptor_before_truncating(
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
-    assert target.read_text() == "must remain intact"
-    assert outside.read_text() == "must remain intact"
+    assert target.read_text(encoding="utf-8") == "must remain intact"
+    assert outside.read_text(encoding="utf-8") == "must remain intact"
 
 
 @pytest.mark.asyncio
 async def test_write_existing_single_link_truncates_after_validation(tmp_path: Path) -> None:
     target = tmp_path / "single.txt"
-    target.write_text("a long original value")
+    target.write_text("a long original value", encoding="utf-8")
 
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
 
 
 @pytest.mark.asyncio
@@ -255,7 +255,7 @@ async def test_file_content_allows_symlink_to_single_link_inside_root(
     tmp_path: Path, operation: str
 ) -> None:
     target = tmp_path / "single.txt"
-    target.write_text("original")
+    target.write_text("original", encoding="utf-8")
     link = tmp_path / "symlink.txt"
     try:
         link.symlink_to(target)
@@ -270,7 +270,7 @@ async def test_file_content_allows_symlink_to_single_link_inside_root(
     else:
         response = await handler.handle_write(_write_msg(link, "new"))
         assert isinstance(response, AckMessage)
-        assert target.read_text() == "new"
+        assert target.read_text(encoding="utf-8") == "new"
 
     assert link.is_symlink()
 
@@ -281,7 +281,7 @@ async def test_write_creates_parents(tmp_path: Path) -> None:
     target = tmp_path / "a" / "b" / "c.txt"
     resp = await h.handle_write(_write_msg(target, "hi", create_parents=True))
     assert isinstance(resp, AckMessage)
-    assert target.read_text() == "hi"
+    assert target.read_text(encoding="utf-8") == "hi"
 
 
 @pytest.mark.asyncio
@@ -361,7 +361,7 @@ async def test_read_crlf_preserved(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_read_offset_and_length(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
-    (tmp_path / "f.txt").write_text("abcdefghij")
+    (tmp_path / "f.txt").write_text("abcdefghij", encoding="utf-8")
     resp = await h.handle_read(_read_msg(tmp_path / "f.txt", offset=2, length=3))
     assert isinstance(resp, FileContentsMessage)
     assert resp.payload.content == "cde"
@@ -401,7 +401,7 @@ async def test_write_too_large(tmp_path: Path) -> None:
 async def test_stat_file(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     target = tmp_path / "x.txt"
-    target.write_text("hi")
+    target.write_text("hi", encoding="utf-8")
     msg = FileStatMessage(id=new_id(), ts=now_ts(), payload=FileStatPayload(path=str(target)))
     resp = await h.handle_stat(msg)
     assert isinstance(resp, FileStatResponseMessage)
@@ -439,7 +439,7 @@ def _stat_msg(path: Path, **kw) -> FileStatMessage:
 @pytest.mark.asyncio
 async def test_stat_without_following_describes_the_symlink_itself(tmp_path: Path) -> None:
     target = tmp_path / "data.csv"
-    target.write_text("a,b\n")
+    target.write_text("a,b\n", encoding="utf-8")
     link = tmp_path / "latest.csv"
     _symlink_or_skip(link, target)
     handler = FileHandler(make_config(tmp_path))
@@ -463,7 +463,7 @@ async def test_stat_of_a_relative_path_describes_the_roots_entry(
     """A relative path named a place in the shim's working directory, and a
     followed one was checked for a symlink there too, not in the root."""
     target = tmp_path / "data.csv"
-    target.write_text("a,b\n")
+    target.write_text("a,b\n", encoding="utf-8")
     _symlink_or_skip(tmp_path / "latest.csv", target)
     (tmp_path / "sub").mkdir()
     monkeypatch.chdir(tmp_path / "sub")
@@ -500,8 +500,8 @@ async def test_stat_without_following_still_describes_the_root(tmp_path: Path) -
 @pytest.mark.asyncio
 async def test_list_directory(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
-    (tmp_path / "a.txt").write_text("a")
-    (tmp_path / "b.csv").write_text("b")
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "b.csv").write_text("b", encoding="utf-8")
     (tmp_path / "sub").mkdir()
     msg = FileListMessage(id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(tmp_path)))
     resp = await h.handle_list(msg)
@@ -513,8 +513,8 @@ async def test_list_directory(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_list_glob_csv(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
-    (tmp_path / "a.txt").write_text("a")
-    (tmp_path / "b.csv").write_text("b")
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "b.csv").write_text("b", encoding="utf-8")
     msg = FileListMessage(
         id=new_id(),
         ts=now_ts(),
@@ -536,8 +536,8 @@ async def test_a_glob_matches_by_the_folders_case_rule_where_the_shim_cant_write
     the OS's default answered: on Linux `*.CSV` missed `data.csv` on a
     filesystem that folds case, and on macOS and Windows it matched
     `data.csv` on one that keeps case."""
-    (tmp_path / "data.csv").write_text("a")
-    (tmp_path / "notes.txt").write_text("b")
+    (tmp_path / "data.csv").write_text("a", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("b", encoding="utf-8")
     # As named and as resolved (macOS's /var is /private/var).
     folders = {os.path.normcase(str(tmp_path)), os.path.normcase(os.path.realpath(tmp_path))}
     real_stat = os.stat
@@ -579,7 +579,7 @@ async def test_a_listing_never_writes_to_the_folder_to_tell_its_case_rule(
     folder = tmp_path / "shared"
     folder.mkdir()
     for name in names:
-        (folder / name).write_text("x")
+        (folder / name).write_text("x", encoding="utf-8")
     # Whole seconds long past, which any filesystem's timestamps hold.
     long_ago = 1_000_000_000 * 1_000_000_000
     os.utime(folder, ns=(long_ago, long_ago))
@@ -627,7 +627,7 @@ async def test_a_folder_with_no_entry_to_look_up_is_looked_at_again_once_it_has_
         )
 
     empty = await handler.handle_list(listing("*.CSV"))
-    (folder / "data.csv").write_text("a")
+    (folder / "data.csv").write_text("a", encoding="utf-8")
     response = await handler.handle_list(listing("*.CSV"))
 
     assert isinstance(empty, FileListResponseMessage)
@@ -640,7 +640,7 @@ async def test_a_folder_with_no_entry_to_look_up_is_looked_at_again_once_it_has_
 async def test_list_max_entries_truncates(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     for i in range(5):
-        (tmp_path / f"f{i}").write_text("x")
+        (tmp_path / f"f{i}").write_text("x", encoding="utf-8")
     msg = FileListMessage(
         id=new_id(),
         ts=now_ts(),
@@ -655,8 +655,8 @@ async def test_list_max_entries_truncates(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_list_hidden_files_excluded_by_default(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
-    (tmp_path / ".hidden").write_text("x")
-    (tmp_path / "visible").write_text("x")
+    (tmp_path / ".hidden").write_text("x", encoding="utf-8")
+    (tmp_path / "visible").write_text("x", encoding="utf-8")
     msg = FileListMessage(id=new_id(), ts=now_ts(), payload=FileListPayload(path=str(tmp_path)))
     resp = await h.handle_list(msg)
     assert isinstance(resp, FileListResponseMessage)
@@ -672,7 +672,7 @@ async def test_list_hidden_files_excluded_by_default(tmp_path: Path) -> None:
 async def test_delete_file(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     target = tmp_path / "del.txt"
-    target.write_text("x")
+    target.write_text("x", encoding="utf-8")
     msg = FileDeleteMessage(id=new_id(), ts=now_ts(), payload=FileDeletePayload(path=str(target)))
     resp = await h.handle_delete(msg)
     assert isinstance(resp, AckMessage)
@@ -707,7 +707,7 @@ async def test_delete_nonempty_dir_without_recursive(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     d = tmp_path / "d"
     d.mkdir()
-    (d / "x").write_text("x")
+    (d / "x").write_text("x", encoding="utf-8")
     msg = FileDeleteMessage(id=new_id(), ts=now_ts(), payload=FileDeletePayload(path=str(d)))
     resp = await h.handle_delete(msg)
     assert isinstance(resp, ErrorMessage)
@@ -719,7 +719,7 @@ async def test_delete_recursive(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     d = tmp_path / "d"
     (d / "sub").mkdir(parents=True)
-    (d / "sub" / "x").write_text("x")
+    (d / "sub" / "x").write_text("x", encoding="utf-8")
     msg = FileDeleteMessage(
         id=new_id(),
         ts=now_ts(),
@@ -748,7 +748,7 @@ def _delete_msg(path: Path, **kw) -> FileDeleteMessage:
 async def test_delete_removes_a_symlink_not_its_target(tmp_path: Path, recursive: bool) -> None:
     documents = tmp_path / "documents"
     documents.mkdir()
-    (documents / "report.txt").write_text("keep")
+    (documents / "report.txt").write_text("keep", encoding="utf-8")
     shortcut = tmp_path / "shortcut"
     _symlink_or_skip(shortcut, documents)
 
@@ -758,7 +758,7 @@ async def test_delete_removes_a_symlink_not_its_target(tmp_path: Path, recursive
 
     assert isinstance(response, AckMessage)
     assert not os.path.lexists(shortcut)
-    assert (documents / "report.txt").read_text() == "keep"
+    assert (documents / "report.txt").read_text(encoding="utf-8") == "keep"
 
 
 @pytest.mark.asyncio
@@ -772,7 +772,7 @@ async def test_delete_refuses_a_symlink_pointing_outside_the_root_and_leaves_its
     root.mkdir()
     outside = tmp_path / "documents"
     outside.mkdir()
-    (outside / "report.txt").write_text("keep")
+    (outside / "report.txt").write_text("keep", encoding="utf-8")
     shortcut = root / "shortcut"
     _symlink_or_skip(shortcut, outside)
 
@@ -783,7 +783,7 @@ async def test_delete_refuses_a_symlink_pointing_outside_the_root_and_leaves_its
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
     assert shortcut.is_symlink()
-    assert (outside / "report.txt").read_text() == "keep"
+    assert (outside / "report.txt").read_text(encoding="utf-8") == "keep"
 
 
 @pytest.mark.asyncio
@@ -801,13 +801,13 @@ async def test_delete_removes_a_dangling_symlink(tmp_path: Path) -> None:
 async def test_delete_refuses_the_allowed_root_itself(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     root.mkdir()
-    (root / "notes.txt").write_text("keep")
+    (root / "notes.txt").write_text("keep", encoding="utf-8")
 
     response = await FileHandler(make_config(root)).handle_delete(_delete_msg(root, recursive=True))
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
-    assert (root / "notes.txt").read_text() == "keep"
+    assert (root / "notes.txt").read_text(encoding="utf-8") == "keep"
 
 
 # ── FILE_MOVE ────────────────────────────────────────────────────────────────
@@ -817,7 +817,7 @@ async def test_delete_refuses_the_allowed_root_itself(tmp_path: Path) -> None:
 async def test_move_rename(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     src = tmp_path / "a.txt"
-    src.write_text("x")
+    src.write_text("x", encoding="utf-8")
     dst = tmp_path / "b.txt"
     msg = FileMoveMessage(
         id=new_id(),
@@ -827,14 +827,14 @@ async def test_move_rename(tmp_path: Path) -> None:
     resp = await h.handle_move(msg)
     assert isinstance(resp, AckMessage)
     assert not src.exists()
-    assert dst.read_text() == "x"
+    assert dst.read_text(encoding="utf-8") == "x"
 
 
 @pytest.mark.asyncio
 async def test_move_blocks_dst_outside_jail(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     src = tmp_path / "a.txt"
-    src.write_text("x")
+    src.write_text("x", encoding="utf-8")
     msg = FileMoveMessage(
         id=new_id(),
         ts=now_ts(),
@@ -850,7 +850,7 @@ async def test_move_rejects_dangling_destination_outside_jail(tmp_path: Path) ->
     root = tmp_path / "workspace"
     root.mkdir()
     source = root / "source.txt"
-    source.write_text("original")
+    source.write_text("original", encoding="utf-8")
     outside = tmp_path / "outside.txt"
     target = root / "link.txt"
     try:
@@ -868,7 +868,7 @@ async def test_move_rejects_dangling_destination_outside_jail(tmp_path: Path) ->
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
-    assert source.read_text() == "original"
+    assert source.read_text(encoding="utf-8") == "original"
     assert not outside.exists()
     assert target.is_symlink()
 
@@ -877,9 +877,9 @@ async def test_move_rejects_dangling_destination_outside_jail(tmp_path: Path) ->
 async def test_move_exists_without_overwrite(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     src = tmp_path / "a.txt"
-    src.write_text("x")
+    src.write_text("x", encoding="utf-8")
     dst = tmp_path / "b.txt"
-    dst.write_text("y")
+    dst.write_text("y", encoding="utf-8")
     msg = FileMoveMessage(
         id=new_id(),
         ts=now_ts(),
@@ -894,9 +894,9 @@ async def test_move_exists_without_overwrite(tmp_path: Path) -> None:
 async def test_move_overwrite(tmp_path: Path) -> None:
     h = FileHandler(make_config(tmp_path))
     src = tmp_path / "a.txt"
-    src.write_text("new")
+    src.write_text("new", encoding="utf-8")
     dst = tmp_path / "b.txt"
-    dst.write_text("old")
+    dst.write_text("old", encoding="utf-8")
     msg = FileMoveMessage(
         id=new_id(),
         ts=now_ts(),
@@ -904,7 +904,7 @@ async def test_move_overwrite(tmp_path: Path) -> None:
     )
     resp = await h.handle_move(msg)
     assert isinstance(resp, AckMessage)
-    assert dst.read_text() == "new"
+    assert dst.read_text(encoding="utf-8") == "new"
 
 
 def _move_msg(src: Path, dst: Path, **kw) -> FileMoveMessage:
@@ -917,7 +917,7 @@ def _move_msg(src: Path, dst: Path, **kw) -> FileMoveMessage:
 async def test_move_renames_a_symlink_not_its_target(tmp_path: Path) -> None:
     documents = tmp_path / "documents"
     documents.mkdir()
-    (documents / "report.txt").write_text("keep")
+    (documents / "report.txt").write_text("keep", encoding="utf-8")
     shortcut = tmp_path / "shortcut"
     _symlink_or_skip(shortcut, documents)
     renamed = tmp_path / "renamed"
@@ -927,7 +927,7 @@ async def test_move_renames_a_symlink_not_its_target(tmp_path: Path) -> None:
     assert isinstance(response, AckMessage)
     assert renamed.is_symlink()
     assert not os.path.lexists(shortcut)
-    assert (documents / "report.txt").read_text() == "keep"
+    assert (documents / "report.txt").read_text(encoding="utf-8") == "keep"
 
 
 @pytest.mark.asyncio
@@ -935,11 +935,11 @@ async def test_move_overwrite_replaces_a_symlink_destination_not_its_target(
     tmp_path: Path,
 ) -> None:
     real = tmp_path / "real.txt"
-    real.write_text("keep")
+    real.write_text("keep", encoding="utf-8")
     link = tmp_path / "link.txt"
     _symlink_or_skip(link, real)
     source = tmp_path / "new.txt"
-    source.write_text("new")
+    source.write_text("new", encoding="utf-8")
 
     handler = FileHandler(make_config(tmp_path))
     refused = await handler.handle_move(_move_msg(source, link))
@@ -949,8 +949,8 @@ async def test_move_overwrite_replaces_a_symlink_destination_not_its_target(
     assert refused.payload.code == ErrorCode.PATH_EXISTS
     assert isinstance(replaced, AckMessage)
     assert not link.is_symlink()
-    assert link.read_text() == "new"
-    assert real.read_text() == "keep"
+    assert link.read_text(encoding="utf-8") == "new"
+    assert real.read_text(encoding="utf-8") == "keep"
 
 
 @pytest.mark.asyncio
@@ -963,11 +963,11 @@ async def test_move_cross_device_does_not_copy_or_remove_destination(
     if directory:
         source.mkdir()
         destination.mkdir()
-        (source / "source.txt").write_text("source")
-        (destination / "destination.txt").write_text("destination")
+        (source / "source.txt").write_text("source", encoding="utf-8")
+        (destination / "destination.txt").write_text("destination", encoding="utf-8")
     else:
-        source.write_text("source")
-        destination.write_text("destination")
+        source.write_text("source", encoding="utf-8")
+        destination.write_text("destination", encoding="utf-8")
     message = FileMoveMessage(
         id=new_id(),
         ts=now_ts(),
@@ -981,11 +981,11 @@ async def test_move_cross_device_does_not_copy_or_remove_destination(
 
     assert isinstance(response, ErrorMessage)
     if directory:
-        assert (source / "source.txt").read_text() == "source"
-        assert (destination / "destination.txt").read_text() == "destination"
+        assert (source / "source.txt").read_text(encoding="utf-8") == "source"
+        assert (destination / "destination.txt").read_text(encoding="utf-8") == "destination"
     else:
-        assert source.read_text() == "source"
-        assert destination.read_text() == "destination"
+        assert source.read_text(encoding="utf-8") == "source"
+        assert destination.read_text(encoding="utf-8") == "destination"
 
 
 @pytest.mark.asyncio
@@ -993,11 +993,11 @@ async def test_move_overwrite_hard_link_does_not_change_outside_content(tmp_path
     root = tmp_path / "workspace"
     root.mkdir()
     outside = tmp_path / "outside.txt"
-    outside.write_text("outside secret")
+    outside.write_text("outside secret", encoding="utf-8")
     destination = root / "linked.txt"
     os.link(outside, destination)
     source = root / "source.txt"
-    source.write_text("workspace content")
+    source.write_text("workspace content", encoding="utf-8")
 
     response = await FileHandler(make_config(root)).handle_move(
         FileMoveMessage(
@@ -1008,8 +1008,8 @@ async def test_move_overwrite_hard_link_does_not_change_outside_content(tmp_path
     )
 
     assert isinstance(response, AckMessage)
-    assert outside.read_text() == "outside secret"
-    assert destination.read_text() == "workspace content"
+    assert outside.read_text(encoding="utf-8") == "outside secret"
+    assert destination.read_text(encoding="utf-8") == "workspace content"
     assert not source.exists()
 
 
@@ -1018,7 +1018,7 @@ async def test_move_hard_link_does_not_grant_content_access(tmp_path: Path) -> N
     root = tmp_path / "workspace"
     root.mkdir()
     outside = tmp_path / "outside.txt"
-    outside.write_text("outside secret")
+    outside.write_text("outside secret", encoding="utf-8")
     source = root / "linked.txt"
     os.link(outside, source)
     destination = root / "moved.txt"
@@ -1036,7 +1036,7 @@ async def test_move_hard_link_does_not_grant_content_access(tmp_path: Path) -> N
     assert isinstance(response, AckMessage)
     assert isinstance(read_response, ErrorMessage)
     assert read_response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
-    assert outside.read_text() == "outside secret"
+    assert outside.read_text(encoding="utf-8") == "outside secret"
     assert not source.exists()
 
 
@@ -1046,8 +1046,8 @@ async def test_move_cannot_overwrite_nonempty_directory(tmp_path: Path) -> None:
     destination = tmp_path / "destination"
     source.mkdir()
     destination.mkdir()
-    (source / "source.txt").write_text("source")
-    (destination / "destination.txt").write_text("destination")
+    (source / "source.txt").write_text("source", encoding="utf-8")
+    (destination / "destination.txt").write_text("destination", encoding="utf-8")
 
     response = await FileHandler(make_config(tmp_path)).handle_move(
         FileMoveMessage(
@@ -1058,8 +1058,8 @@ async def test_move_cannot_overwrite_nonempty_directory(tmp_path: Path) -> None:
     )
 
     assert isinstance(response, ErrorMessage)
-    assert (source / "source.txt").read_text() == "source"
-    assert (destination / "destination.txt").read_text() == "destination"
+    assert (source / "source.txt").read_text(encoding="utf-8") == "source"
+    assert (destination / "destination.txt").read_text(encoding="utf-8") == "destination"
 
 
 # ── EXECUTE_COMMAND (mocked) ─────────────────────────────────────────────────
@@ -1556,7 +1556,7 @@ async def test_terminating_a_command_kills_descendants_that_ignore_sigterm(
     )
 
     def child_released_its_lock() -> bool:
-        with open(lock_path, "w") as probe:
+        with open(lock_path, "w", encoding="utf-8") as probe:
             try:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -1572,7 +1572,7 @@ async def test_terminating_a_command_kills_descendants_that_ignore_sigterm(
     finally:
         if pid_path.exists():
             with contextlib.suppress(ProcessLookupError):
-                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+                os.kill(int(pid_path.read_text(encoding="utf-8")), signal.SIGKILL)
         if proc.returncode is None:
             proc.kill()
             await proc.wait()
@@ -1713,7 +1713,7 @@ async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
         return bool(spawned) and spawned[0].returncode is not None
 
     def child_released_its_lock() -> bool:
-        with open(lock_path, "w") as probe:
+        with open(lock_path, "w", encoding="utf-8") as probe:
             try:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -1741,7 +1741,7 @@ async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
             task.cancel()
         if pid_path.exists():
             with contextlib.suppress(ProcessLookupError):
-                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+                os.kill(int(pid_path.read_text(encoding="utf-8")), signal.SIGKILL)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
@@ -1798,7 +1798,7 @@ async def test_a_cancel_landing_as_the_command_exits_still_stops_its_group(
     )
 
     def child_released_its_lock() -> bool:
-        with open(lock_path, "w") as probe:
+        with open(lock_path, "w", encoding="utf-8") as probe:
             try:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -1821,7 +1821,7 @@ async def test_a_cancel_landing_as_the_command_exits_still_stops_its_group(
             task.cancel()
         if pid_path.exists():
             with contextlib.suppress(ProcessLookupError):
-                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+                os.kill(int(pid_path.read_text(encoding="utf-8")), signal.SIGKILL)
 
 
 def _hold_pipe_connections(monkeypatch: pytest.MonkeyPatch) -> tuple[asyncio.Event, list[Any]]:
@@ -1886,7 +1886,7 @@ async def test_a_command_cancelled_as_it_starts_is_stopped_with_its_group(
     )
 
     def child_released_its_lock() -> bool:
-        with open(lock_path, "w") as probe:
+        with open(lock_path, "w", encoding="utf-8") as probe:
             try:
                 fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
@@ -1912,7 +1912,7 @@ async def test_a_command_cancelled_as_it_starts_is_stopped_with_its_group(
         may_connect.set()
         if pid_path.exists():
             with contextlib.suppress(ProcessLookupError):
-                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+                os.kill(int(pid_path.read_text(encoding="utf-8")), signal.SIGKILL)
         if not task.done():
             task.cancel()
 
@@ -2256,6 +2256,128 @@ async def test_a_command_that_exits_leaving_a_child_on_its_output_is_done_when_i
     assert await _wait_until(survived.exists, timeout=60)
 
 
+def _a_command_leaving_a_writer(folder: Path) -> list[str]:
+    """A command that exits once it has started a program holding its
+    stdout and stderr (a server started in the background, say). Once `go`
+    is made in `folder`, the program writes 4 MiB to each, far past any
+    pipe's buffer, then makes `wrote`; it exits once `stop` is made, or a
+    minute after its start. Its PID is in `pid`."""
+    pid, go, wrote, stop = (str(folder / name) for name in ("pid", "go", "wrote", "stop"))
+    program = textwrap.dedent(
+        f"""
+        import os, time
+        deadline = time.monotonic() + 60
+        def wait_for(path):
+            while not os.path.exists(path) and time.monotonic() < deadline:
+                time.sleep(0.01)
+        with open({pid!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({pid!r} + ".tmp", {pid!r})
+        wait_for({go!r})
+        chunk = memoryview(b"x" * 65536)
+        for _ in range(64):
+            for fd in (1, 2):
+                left = chunk
+                while left:
+                    left = left[os.write(fd, left):]
+        open({wrote!r} + ".tmp", "w").close()
+        os.replace({wrote!r} + ".tmp", {wrote!r})
+        wait_for({stop!r})
+        """
+    )
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {program!r}], stdout=1, stderr=2)
+        while not os.path.exists({pid!r}):
+            time.sleep(0.01)
+        print("started", flush=True)
+        """
+    )
+    return [sys.executable, "-c", command]
+
+
+def _let_the_writer_go(folder: Path) -> None:
+    """Have _a_command_leaving_a_writer's program exit, and end it if it is
+    still stuck writing."""
+    (folder / "stop").touch()
+    if not (folder / "wrote").exists():
+        with contextlib.suppress(OSError, ValueError):
+            os.kill(int((folder / "pid").read_text(encoding="utf-8")), signal.SIGTERM)
+
+
+@pytest.mark.asyncio
+async def test_a_program_left_on_a_commands_output_never_stops_on_a_full_pipe(
+    tmp_path: Path,
+) -> None:
+    """A command that had exited was done once its output was read for
+    _OUTPUT_DRAIN_SECONDS more, and nothing read its pipes after that,
+    though a program it left running (a server started in the background)
+    still held them. Once they filled, the program stopped on its next
+    write, for good, or ended on a broken pipe once they were collected.
+    What it writes after the result is read and dropped now, until it
+    closes them."""
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config)
+    try:
+        response = await handler.handle(
+            _cmd_msg(
+                argv=_a_command_leaving_a_writer(tmp_path), cwd=str(tmp_path), timeout_seconds=40
+            )
+        )
+
+        assert isinstance(response, CommandResultMessage)
+        assert response.payload.timed_out is False
+        assert response.payload.exit_code == 0
+        assert response.payload.stdout.strip() == "started"
+        (tmp_path / "go").touch()
+        assert await _wait_until((tmp_path / "wrote").exists, timeout=60)
+        (tmp_path / "stop").touch()
+        # Its pipes closed as it exited, and the handler let go of them.
+        assert await _wait_until(lambda: not handler._output_drains, timeout=60)
+    finally:
+        _let_the_writer_go(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_what_a_chats_command_left_running_is_read_until_the_machines_handler_closes(
+    tmp_path: Path,
+) -> None:
+    """A chat ends long before a server one of its commands started, so a
+    chat's handler leaves such a program's output to the machine's, whose
+    close, as the shim stops, ends the reads at once: the program may never
+    close its output."""
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    machine, chat = CommandHandler(config), CommandHandler(config)
+    machine.share_with(chat)
+    try:
+        response = await chat.handle(
+            _cmd_msg(
+                argv=_a_command_leaving_a_writer(tmp_path), cwd=str(tmp_path), timeout_seconds=40
+            )
+        )
+        assert isinstance(response, CommandResultMessage)
+        await chat.close()
+
+        (tmp_path / "go").touch()
+        assert await _wait_until((tmp_path / "wrote").exists, timeout=60)
+        [(reading, command)] = machine._output_drains.items()
+        await asyncio.wait_for(machine.close(), timeout=30)
+        assert reading.cancelled()
+        assert not machine._output_drains
+
+        # The program exits, and its pipes, read to their end, close before
+        # this test's event loop does.
+        (tmp_path / "stop").touch()
+        await asyncio.wait_for(
+            handlers_module._discard_until_closed((command.stdout, command.stderr)), timeout=60
+        )
+    finally:
+        _let_the_writer_go(tmp_path)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
 @pytest.mark.asyncio
 async def test_a_group_stop_cut_short_in_its_grace_period_kills_the_group(
@@ -2308,7 +2430,7 @@ async def test_command_audit_log_written(tmp_path: Path) -> None:
         await h.handle(msg)
 
     assert config.audit_log_path.exists()
-    lines = config.audit_log_path.read_text().splitlines()
+    lines = config.audit_log_path.read_text(encoding="utf-8").splitlines()
     rec = json.loads(lines[-1])
     assert rec["op"] == "EXECUTE_COMMAND"
     assert rec["details"]["argv"] == ["echo", "hi"]
@@ -2341,10 +2463,10 @@ async def test_recursive_list_without_hidden_skips_what_is_inside_hidden_dirs(
     tmp_path: Path,
 ) -> None:
     (tmp_path / ".git").mkdir()
-    (tmp_path / ".git" / "config").write_text("[remote]")
+    (tmp_path / ".git" / "config").write_text("[remote]", encoding="utf-8")
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "app.py").write_text("print()")
-    (tmp_path / "src" / ".env").write_text("TOKEN=x")
+    (tmp_path / "src" / "app.py").write_text("print()", encoding="utf-8")
+    (tmp_path / "src" / ".env").write_text("TOKEN=x", encoding="utf-8")
 
     response = await FileHandler(make_config(tmp_path)).handle_list(
         FileListMessage(
@@ -2390,7 +2512,7 @@ async def test_a_write_that_fails_part_way_leaves_the_old_contents(
 ) -> None:
     """Truncating first meant a full disk destroyed the file being rewritten."""
     target = tmp_path / "notes.txt"
-    target.write_text("the user's notes")
+    target.write_text("the user's notes", encoding="utf-8")
     real_fdopen = os.fdopen
     monkeypatch.setattr(os, "fdopen", lambda fd, *a, **k: _FullDisk(real_fdopen(fd, *a, **k)))
 
@@ -2398,7 +2520,7 @@ async def test_a_write_that_fails_part_way_leaves_the_old_contents(
     monkeypatch.undo()
 
     assert isinstance(response, ErrorMessage)
-    assert target.read_text() == "the user's notes"
+    assert target.read_text(encoding="utf-8") == "the user's notes"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
 
 
@@ -2520,7 +2642,7 @@ async def test_a_write_keeps_a_linux_files_own_acl(tmp_path: Path) -> None:
     group, and the other account lost its entry. Such a file is written in
     place now."""
     target = tmp_path / "shared.txt"
-    target.write_text("the person's notes")
+    target.write_text("the person's notes", encoding="utf-8")
     target.chmod(0o600)
     _set_linux_acl(target, _linux_acl(*_ANOTHER_ACCOUNT_ONLY))
     acl = _linux_acl_of(target)
@@ -2529,7 +2651,7 @@ async def test_a_write_keeps_a_linux_files_own_acl(tmp_path: Path) -> None:
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert _linux_acl_of(target) == acl
     assert target.stat().st_ino == inode
     assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
@@ -2545,14 +2667,14 @@ async def test_a_write_doesnt_give_a_linux_file_its_folders_default_acl(tmp_path
     folder = tmp_path / "shared"
     folder.mkdir()
     target = folder / "notes.txt"
-    target.write_text("the person's notes")
+    target.write_text("the person's notes", encoding="utf-8")
     target.chmod(0o660)
     _set_linux_acl(folder, _linux_acl(*_ANOTHER_ACCOUNT_ONLY), default=True)
 
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert _linux_acl_of(target) is None
     assert target.stat().st_mode & 0o777 == 0o660
     assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]
@@ -2572,7 +2694,7 @@ async def test_a_write_still_replaces_a_linux_file_with_its_folders_acl(
     folder.mkdir()
     _set_linux_acl(folder, _linux_acl(*_ANOTHER_ACCOUNT_ONLY), default=True)
     target = folder / "notes.txt"
-    target.write_text("old")
+    target.write_text("old", encoding="utf-8")
     acl = _linux_acl_of(target)
     assert acl is not None
     replaced: list[Path] = []
@@ -2587,7 +2709,7 @@ async def test_a_write_still_replaces_a_linux_file_with_its_folders_acl(
 
     assert isinstance(response, AckMessage)
     assert replaced == [target]
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert _linux_acl_of(target) == acl
 
 
@@ -2599,7 +2721,7 @@ async def test_a_write_goes_in_place_when_the_files_acl_cant_be_read(
     """An ACL the shim can't read may be one a replacement would drop, so the
     file is written in place."""
     target = tmp_path / "notes.txt"
-    target.write_text("old")
+    target.write_text("old", encoding="utf-8")
     inode = target.stat().st_ino
     real_getxattr = os.getxattr
 
@@ -2612,7 +2734,7 @@ async def test_a_write_goes_in_place_when_the_files_acl_cant_be_read(
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert target.stat().st_ino == inode
 
 
@@ -2640,7 +2762,7 @@ async def test_a_write_keeps_a_macos_files_own_acl(tmp_path: Path) -> None:
     came back readable to that account too. Such a file is written in
     place now."""
     target = tmp_path / "notes.txt"
-    target.write_text("the person's notes")
+    target.write_text("the person's notes", encoding="utf-8")
     target.chmod(0o644)
     _chmod_acl(target, "user:nobody deny read")
     acl = _macos_acl(target)
@@ -2650,7 +2772,7 @@ async def test_a_write_keeps_a_macos_files_own_acl(tmp_path: Path) -> None:
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert _macos_acl(target) == acl
     assert target.stat().st_ino == inode
     assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
@@ -2667,7 +2789,7 @@ async def test_a_write_doesnt_give_a_macos_file_its_folders_inherited_acl(
     folder = tmp_path / "shared"
     folder.mkdir()
     target = folder / "notes.txt"
-    target.write_text("the person's notes")
+    target.write_text("the person's notes", encoding="utf-8")
     target.chmod(0o600)
     _chmod_acl(folder, "user:nobody allow read,file_inherit")
     assert _macos_acl(target) == []
@@ -2675,7 +2797,7 @@ async def test_a_write_doesnt_give_a_macos_file_its_folders_inherited_acl(
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert _macos_acl(target) == []
     assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]
 
@@ -2693,7 +2815,7 @@ async def test_a_write_still_replaces_a_macos_file_with_its_folders_acl(
     folder.mkdir()
     _chmod_acl(folder, "user:nobody allow read,file_inherit")
     target = folder / "notes.txt"
-    target.write_text("old")
+    target.write_text("old", encoding="utf-8")
     acl = _macos_acl(target)
     assert acl
     replaced: list[Path] = []
@@ -2708,7 +2830,7 @@ async def test_a_write_still_replaces_a_macos_file_with_its_folders_acl(
 
     assert isinstance(response, AckMessage)
     assert replaced == [target]
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert _macos_acl(target) == acl
 
 
@@ -2719,13 +2841,13 @@ async def test_a_write_refuses_a_file_the_person_made_read_only(tmp_path: Path) 
     """A rename ignores the target's mode, so a read-only file was replaced
     whole, though writing it in place would have been refused."""
     target = tmp_path / "keep.txt"
-    target.write_text("the user's notes")
+    target.write_text("the user's notes", encoding="utf-8")
     target.chmod(0o444)
 
     response = await FileHandler(make_config(tmp_path)).handle_write(_write_msg(target, "new"))
 
     assert isinstance(response, ErrorMessage)
-    assert target.read_text() == "the user's notes"
+    assert target.read_text(encoding="utf-8") == "the user's notes"
     assert target.stat().st_mode & 0o777 == 0o444
     assert sorted(p.name for p in tmp_path.iterdir()) == ["keep.txt"]
 
@@ -2734,7 +2856,7 @@ async def test_a_write_refuses_a_file_the_person_made_read_only(tmp_path: Path) 
 @pytest.mark.asyncio
 async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path: Path) -> None:
     existing = tmp_path / "private.txt"
-    existing.write_text("old")
+    existing.write_text("old", encoding="utf-8")
     existing.chmod(0o640)
     created = tmp_path / "created.txt"
     umask = os.umask(0o022)
@@ -2745,7 +2867,7 @@ async def test_a_write_keeps_the_mode_and_a_new_file_follows_the_umask(tmp_path:
     finally:
         os.umask(umask)
 
-    assert existing.read_text() == "new"
+    assert existing.read_text(encoding="utf-8") == "new"
     assert existing.stat().st_mode & 0o777 == 0o640
     assert created.stat().st_mode & 0o777 == 0o644
 
@@ -2769,13 +2891,13 @@ async def test_a_write_keeps_the_files_group(tmp_path: Path) -> None:
     if group is None:
         pytest.skip("needs a supplementary group")
     shared = tmp_path / "shared.txt"
-    shared.write_text("old")
+    shared.write_text("old", encoding="utf-8")
     os.chown(shared, -1, group)
     shared.chmod(0o640)
 
     await FileHandler(make_config(tmp_path)).handle_write(_write_msg(shared, "new"))
 
-    assert shared.read_text() == "new"
+    assert shared.read_text(encoding="utf-8") == "new"
     assert shared.stat().st_gid == group
     assert shared.stat().st_uid == os.geteuid()
     assert shared.stat().st_mode & 0o777 == 0o640
@@ -2796,7 +2918,7 @@ async def test_a_write_the_shim_cant_give_the_owner_back_goes_in_place(
     if group is None:
         pytest.skip("needs a supplementary group")
     shared = tmp_path / "shared.txt"
-    shared.write_text("old")
+    shared.write_text("old", encoding="utf-8")
     os.chown(shared, -1, group)
     inode = shared.stat().st_ino
 
@@ -2807,7 +2929,7 @@ async def test_a_write_the_shim_cant_give_the_owner_back_goes_in_place(
 
     await FileHandler(make_config(tmp_path)).handle_write(_write_msg(shared, "new"))
 
-    assert shared.read_text() == "new"
+    assert shared.read_text(encoding="utf-8") == "new"
     assert shared.stat().st_ino == inode
     assert shared.stat().st_gid == group
     assert sorted(p.name for p in tmp_path.iterdir()) == ["shared.txt"]
@@ -2825,7 +2947,7 @@ async def test_a_replacement_is_owner_only_until_it_takes_the_old_mode(
     import autogpt_local_executor.path_jail as path_jail
 
     private = tmp_path / "private.txt"
-    private.write_text("old")
+    private.write_text("old", encoding="utf-8")
     private.chmod(0o600)
     before_mode: list[int] = []
     real_fchmod = os.fchmod
@@ -2843,7 +2965,7 @@ async def test_a_replacement_is_owner_only_until_it_takes_the_old_mode(
     finally:
         os.umask(previous)
 
-    assert private.read_text() == "new"
+    assert private.read_text(encoding="utf-8") == "new"
     assert before_mode and all(mode & 0o077 == 0 for mode in before_mode)
     assert stat.S_IMODE(private.stat().st_mode) == 0o600
     # A new file still gets 0o666 less the umask.
@@ -2864,7 +2986,7 @@ async def test_a_rewritten_file_never_keeps_set_id_bits(
     import autogpt_local_executor.path_jail as path_jail
 
     program = tmp_path / "tool"
-    program.write_text("old")
+    program.write_text("old", encoding="utf-8")
     program.chmod(0o755 | privilege)
     applied: list[int] = []
     real_fchmod = os.fchmod
@@ -2884,7 +3006,7 @@ async def test_a_rewritten_file_never_keeps_set_id_bits(
 
     await handler.handle_write(_write_msg(program, "new"))
 
-    assert program.read_text() == "new"
+    assert program.read_text(encoding="utf-8") == "new"
     assert all(mode & 0o6000 == 0 for mode in applied)
     assert program.stat().st_mode & 0o7777 == 0o755
 
@@ -2903,7 +3025,7 @@ def test_an_in_place_write_drops_set_id_bits_before_the_contents_change(
     import autogpt_local_executor.path_jail as path_jail
 
     program = tmp_path / "tool"
-    program.write_text("old")
+    program.write_text("old", encoding="utf-8")
     program.chmod(0o4755)
     assert program.stat().st_mode & 0o4000
     modes_at_truncate: list[int] = []
@@ -2959,7 +3081,7 @@ def test_an_in_place_write_that_cannot_drop_set_id_bits_is_refused(
     import autogpt_local_executor.path_jail as path_jail
 
     program = tmp_path / "tool"
-    program.write_text("old")
+    program.write_text("old", encoding="utf-8")
     program.chmod(0o755 | privilege)
 
     def no_new_entries(*_args, **_kwargs):
@@ -2975,7 +3097,7 @@ def test_an_in_place_write_that_cannot_drop_set_id_bits_is_refused(
         path_jail.write_jail_file(program, tmp_path, b"new")
     monkeypatch.undo()
 
-    assert program.read_text() == "old"
+    assert program.read_text(encoding="utf-8") == "old"
     assert program.stat().st_mode & 0o7777 == 0o755 | privilege
 
 
@@ -2986,7 +3108,7 @@ def test_an_in_place_write_goes_ahead_when_only_the_mode_cannot_be_kept(
     import autogpt_local_executor.path_jail as path_jail
 
     notes = tmp_path / "notes.txt"
-    notes.write_text("old")
+    notes.write_text("old", encoding="utf-8")
 
     def no_new_entries(*_args, **_kwargs):
         raise PermissionError("the directory takes no new entries")
@@ -3000,7 +3122,7 @@ def test_an_in_place_write_goes_ahead_when_only_the_mode_cannot_be_kept(
     path_jail.write_jail_file(notes, tmp_path, b"new")
     monkeypatch.undo()
 
-    assert notes.read_text() == "new"
+    assert notes.read_text(encoding="utf-8") == "new"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
@@ -3015,7 +3137,7 @@ def test_an_in_place_write_leaves_a_mode_with_no_set_id_bits_alone(
     import autogpt_local_executor.path_jail as path_jail
 
     notes = tmp_path / "notes.txt"
-    notes.write_text("old")
+    notes.write_text("old", encoding="utf-8")
     notes.chmod(0o640)
     applied: list[int] = []
     real_fchmod = os.fchmod
@@ -3033,7 +3155,7 @@ def test_an_in_place_write_leaves_a_mode_with_no_set_id_bits_alone(
     path_jail.write_jail_file(notes, tmp_path, b"new")
     monkeypatch.undo()
 
-    assert notes.read_text() == "new"
+    assert notes.read_text(encoding="utf-8") == "new"
     assert applied == []
     assert stat.S_IMODE(notes.stat().st_mode) == 0o640
 
@@ -3052,7 +3174,7 @@ async def test_a_file_whose_name_is_long_in_bytes_can_be_written(tmp_path: Path,
     response = await handler.handle_write(_write_msg(target, "new"))
 
     assert not isinstance(response, ErrorMessage), response
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
 
 
 def test_a_temporary_name_beside_a_file_stays_short_in_bytes() -> None:
@@ -3076,7 +3198,7 @@ async def test_a_write_overwrites_in_place_when_the_file_cannot_be_replaced(
     import autogpt_local_executor.path_jail as path_jail
 
     target = tmp_path / "open-elsewhere.txt"
-    target.write_text("old")
+    target.write_text("old", encoding="utf-8")
 
     def refuse(*_args) -> None:
         raise PermissionError(errno.EACCES, "The process cannot access the file")
@@ -3086,7 +3208,7 @@ async def test_a_write_overwrites_in_place_when_the_file_cannot_be_replaced(
     monkeypatch.undo()
 
     assert isinstance(response, AckMessage)
-    assert target.read_text() == "new"
+    assert target.read_text(encoding="utf-8") == "new"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["open-elsewhere.txt"]
 
 
@@ -3102,9 +3224,9 @@ async def test_a_move_refuses_a_destination_that_appears_after_the_check_where_t
     if sys.platform != "win32" and not _the_os_refuses_a_replacing_rename(tmp_path):
         pytest.skip("this OS or filesystem can't refuse in the rename itself")
     src = tmp_path / "draft.txt"
-    src.write_text("draft")
+    src.write_text("draft", encoding="utf-8")
     dst = tmp_path / "final.txt"
-    dst.write_text("someone else's file")
+    dst.write_text("someone else's file", encoding="utf-8")
     real_lexists = os.path.lexists
     monkeypatch.setattr(
         handlers_module.os.path,
@@ -3117,8 +3239,8 @@ async def test_a_move_refuses_a_destination_that_appears_after_the_check_where_t
 
     assert isinstance(response, ErrorMessage)
     assert response.payload.code == ErrorCode.PATH_EXISTS
-    assert dst.read_text() == "someone else's file"
-    assert src.read_text() == "draft"
+    assert dst.read_text(encoding="utf-8") == "someone else's file"
+    assert src.read_text(encoding="utf-8") == "draft"
 
 
 def _the_os_refuses_a_replacing_rename(folder: Path) -> bool:
@@ -3130,8 +3252,8 @@ def _the_os_refuses_a_replacing_rename(folder: Path) -> bool:
     import ctypes.util
 
     src, dst = folder / ".probe-src", folder / ".probe-dst"
-    src.write_text("")
-    dst.write_text("")
+    src.write_text("", encoding="utf-8")
+    dst.write_text("", encoding="utf-8")
     try:
         libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
         if sys.platform == "linux" and hasattr(libc, "renameat2"):
@@ -3167,7 +3289,7 @@ def test_the_c_library_is_looked_up_once(tmp_path: Path, monkeypatch: pytest.Mon
     fsops._libc.cache_clear()
     try:
         for name in ("a", "b", "c"):
-            (tmp_path / name).write_text(name)
+            (tmp_path / name).write_text(name, encoding="utf-8")
             fsops.rename_no_replace(tmp_path / name, tmp_path / f"{name}-moved")
     finally:
         fsops._libc.cache_clear()
@@ -3182,9 +3304,9 @@ def test_rename_no_replace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nati
     if not native:
         monkeypatch.setattr(fsops, "_native_no_replace_rename", lambda _src, _dst: False)
     src = tmp_path / "a"
-    src.write_text("a")
+    src.write_text("a", encoding="utf-8")
     taken = tmp_path / "b"
-    taken.write_text("b")
+    taken.write_text("b", encoding="utf-8")
 
     with pytest.raises(FileExistsError):
         fsops.rename_no_replace(src, taken)
@@ -3196,8 +3318,8 @@ def test_rename_no_replace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nati
     else:
         fsops.rename_no_replace(src, tmp_path / "c")
 
-    assert taken.read_text() == "b"
-    assert (tmp_path / "c").read_text() == "a"
+    assert taken.read_text(encoding="utf-8") == "b"
+    assert (tmp_path / "c").read_text(encoding="utf-8") == "a"
     assert not src.exists()
 
 
@@ -3207,7 +3329,7 @@ async def test_a_listing_is_capped_whatever_max_entries_asks_for(
 ) -> None:
     """max_entries had no bound, so a huge value walked the whole tree first."""
     for index in range(30):
-        (tmp_path / f"f{index:02d}").write_text("")
+        (tmp_path / f"f{index:02d}").write_text("", encoding="utf-8")
     monkeypatch.setattr(handlers_module, "MAX_FILE_LIST_ENTRIES", 10)
     msg = FileListMessage(
         id=new_id(),
@@ -3289,7 +3411,7 @@ async def test_a_request_checks_its_paths_off_the_event_loop(
     root = tmp_path / "root"
     (root / "dir").mkdir(parents=True)
     a = root / "dir" / "a.txt"
-    a.write_text("a")
+    a.write_text("a", encoding="utf-8")
     config = ShimConfig(
         allowed_root=root,
         audit_log_path=tmp_path / "_audit.log",

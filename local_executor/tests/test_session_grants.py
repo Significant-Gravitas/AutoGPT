@@ -161,7 +161,8 @@ def _mounts(monkeypatch: pytest.MonkeyPatch, table: Path, root: Path, source: st
             f"98 22 {os.major(number)}:{os.minor(number)} /export {point} rw,relatime "
             f"shared:60 - nfs4 {source} rw,vers=4.2"
         )
-    table.write_text("\n".join(lines) + "\n")
+    # The kernel's table holds a path's bytes, as os.fsencode gives them.
+    table.write_bytes(os.fsencode("\n".join(lines) + "\n"))
     monkeypatch.setattr(session_grants, "_MOUNTINFO", str(table), raising=False)
 
 

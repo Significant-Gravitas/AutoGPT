@@ -275,6 +275,9 @@ class CuaDriverBridge:
         self._display: tuple[str | None, ...] | None = None
         # The look for the driver's binary under way, or the last (find_binary).
         self._looking: asyncio.Future[Path | None] | None = None
+        # Whether a session's preflight has found the macOS grants computer
+        # use needs: HELLO offers computer use on macOS only once one has.
+        self.permissions_granted = False
 
     @property
     def platform(self) -> str:

@@ -257,7 +257,7 @@ def test_doctor_runs_a_driver_installed_without_its_execute_bit(tmp_path) -> Non
     sets it before starting the driver; doctor ran the binary first and
     reported Permission denied."""
     binary = tmp_path / "cua-driver"
-    binary.write_text(f"#!/bin/sh\necho '{_driver_report(probes=[])}'\n")
+    binary.write_text(f"#!/bin/sh\necho '{_driver_report(probes=[])}'\n", encoding="utf-8")
     binary.chmod(0o644)
 
     [check] = doctor._driver_doctor(binary)
@@ -567,7 +567,7 @@ async def test_daemon_preflight_stops_for_good_without_cua_driver(tmp_path, monk
         await _daemon(config)._preflight_or_raise()
 
     assert raised.value.permanent is True
-    assert "cua_driver" in (tmp_path / "_audit.log").read_text()
+    assert "cua_driver" in (tmp_path / "_audit.log").read_text(encoding="utf-8")
 
 
 async def test_daemon_preflight_needs_no_grants_off_macos(tmp_path, monkeypatch, fake_log) -> None:
@@ -628,7 +628,7 @@ async def test_daemon_preflight_on_macos_needs_both_grants(
     assert raised.value.permanent is False
     record = next(
         json.loads(line)
-        for line in (tmp_path / "_audit.log").read_text().splitlines()
+        for line in (tmp_path / "_audit.log").read_text(encoding="utf-8").splitlines()
         if "DAEMON_PREFLIGHT_FAILED" in line
     )
     assert record["details"]["missing_permissions"] == missing
@@ -691,7 +691,7 @@ async def test_daemon_preflight_on_macos_fails_cleanly_on_a_driver_error(
     assert raised.value.permanent is False
     record = next(
         json.loads(line)
-        for line in (tmp_path / "_audit.log").read_text().splitlines()
+        for line in (tmp_path / "_audit.log").read_text(encoding="utf-8").splitlines()
         if "DAEMON_PREFLIGHT_FAILED" in line
     )
     assert record["result"]["error_code"] == ErrorCode.INTERNAL_ERROR.value

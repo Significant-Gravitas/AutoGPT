@@ -85,7 +85,7 @@ async def test_round_trip_100_records_verifies_clean(tmp_path: Path) -> None:
     violations = AuditWriter.verify(w.path, KEY)
     assert violations == []
     # Last record has seq=100.
-    lines = w.path.read_text().splitlines()
+    lines = w.path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 100
     assert json.loads(lines[-1])["seq"] == 100
 
@@ -140,11 +140,11 @@ async def test_sequence_gap_detected_when_record_deleted(tmp_path: Path) -> None
     w = _writer(tmp_path)
     for i in range(5):
         await w.write("EXECUTE_COMMAND", request_id=str(i), details={"i": i}, result={})
-    lines = w.path.read_text().splitlines(keepends=True)
+    lines = w.path.read_text(encoding="utf-8").splitlines(keepends=True)
     # Delete the third line — verifier should report a sequence gap on the
     # fourth line (which now sits where seq=3 should be).
     del lines[2]
-    w.path.write_text("".join(lines))
+    w.path.write_text("".join(lines), encoding="utf-8")
     violations = AuditWriter.verify(w.path, KEY)
     kinds = {v.kind for v in violations}
     assert "sequence_gap" in kinds
@@ -173,8 +173,8 @@ async def test_rotation_when_size_threshold_exceeded(tmp_path: Path, monkeypatch
         violations = AuditWriter.verify(path, KEY)
         assert violations == [], f"{path.name} should verify"
     # New file starts at seq=1.
-    if w.path.read_text().strip():
-        first_line = w.path.read_text().splitlines()[0]
+    if w.path.read_text(encoding="utf-8").strip():
+        first_line = w.path.read_text(encoding="utf-8").splitlines()[0]
         assert json.loads(first_line)["seq"] == 1
 
 
@@ -186,7 +186,7 @@ async def test_force_rotate_returns_path_and_resets_seq(tmp_path: Path) -> None:
     assert rotated is not None and rotated.exists()
     # Next write goes to a fresh file at seq=1.
     await w.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
-    rec = json.loads(w.path.read_text().splitlines()[-1])
+    rec = json.loads(w.path.read_text(encoding="utf-8").splitlines()[-1])
     assert rec["seq"] == 1
     assert rec["prev_hmac"] is None
 
@@ -207,7 +207,7 @@ async def test_cli_rotation_while_the_daemon_runs_keeps_both_chains_valid(
     [rotated] = list_rotated_files(daemon.path)
     assert AuditWriter.verify(rotated, KEY) == []
     assert AuditWriter.verify(daemon.path, KEY) == []
-    first = json.loads(daemon.path.read_text().splitlines()[0])
+    first = json.loads(daemon.path.read_text(encoding="utf-8").splitlines()[0])
     assert (first["request_id"], first["seq"], first["prev_hmac"]) == ("c", 1, None)
     AuditWriter(path=daemon.path, audit_key=KEY)  # a restarted daemon accepts the log
 
@@ -257,7 +257,9 @@ async def test_a_rotation_waits_for_an_append_in_progress(tmp_path: Path, monkey
 
     assert not rotated_during_the_append
     assert rotated is not None
-    assert [json.loads(line)["request_id"] for line in rotated.read_text().splitlines()] == [
+    assert [
+        json.loads(line)["request_id"] for line in rotated.read_text(encoding="utf-8").splitlines()
+    ] == [
         "a",
         "b",
     ]
@@ -422,7 +424,7 @@ async def test_env_values_never_leak_into_audit_log(tmp_path: Path) -> None:
     with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
         await h.handle(msg)
 
-    contents = config.audit_log_path.read_text()
+    contents = config.audit_log_path.read_text(encoding="utf-8")
     assert "shouldnotappear" not in contents
     # But the env key is logged.
     assert "SECRET" in contents
@@ -600,10 +602,10 @@ async def test_verify_all_reports_only_tampered_file(tmp_path: Path) -> None:
     tampered_rotated = w.force_rotate()
     assert tampered_rotated is not None
     # Tamper: flip a byte in the rotated file.
-    raw = tampered_rotated.read_text()
+    raw = tampered_rotated.read_text(encoding="utf-8")
     rec = json.loads(raw.strip().splitlines()[0])
     rec["details"]["i"] = 999
-    tampered_rotated.write_text(json.dumps(rec) + "\n")
+    tampered_rotated.write_text(json.dumps(rec) + "\n", encoding="utf-8")
 
     # Verify each file individually — only the tampered one should report.
     assert AuditWriter.verify(clean_rotated, KEY) == []
@@ -670,12 +672,12 @@ def test_corrupt_fallback_key_is_preserved(
     monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
     monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "test-only-passphrase")
     path = tmp_path / "audit-key.enc"
-    path.write_text(blob)
+    path.write_text(blob, encoding="utf-8")
 
     with pytest.raises(RuntimeError, match="audit key"):
         _fallback_audit_key()
 
-    assert path.read_text() == blob
+    assert path.read_text(encoding="utf-8") == blob
 
 
 @pytest.mark.asyncio
@@ -711,7 +713,7 @@ async def test_seq_continues_across_writer_restart(tmp_path: Path) -> None:
     # New writer instance over the same file (simulates daemon restart).
     w2 = AuditWriter(path=tmp_path / "audit.log", audit_key=KEY)
     await w2.write("EXECUTE_COMMAND", request_id="post", details={"i": 99}, result={})
-    lines = (tmp_path / "audit.log").read_text().splitlines()
+    lines = (tmp_path / "audit.log").read_text(encoding="utf-8").splitlines()
     last = json.loads(lines[-1])
     assert last["seq"] == 4
     # Chain still verifies clean across the restart boundary.
@@ -727,7 +729,7 @@ async def test_hmac_matches_canonical_bytes(tmp_path: Path) -> None:
     catch any drift between canonicalization and what the verifier uses."""
     w = _writer(tmp_path)
     await w.write("EXECUTE_COMMAND", request_id="x", details={"command": "ls"}, result={})
-    rec = json.loads((tmp_path / "audit.log").read_text().strip())
+    rec = json.loads((tmp_path / "audit.log").read_text(encoding="utf-8").strip())
     shadow = {k: v for k, v in rec.items() if k != "hmac"}
     expected = hmac.new(KEY, canonical_bytes(shadow), hashlib.sha256).hexdigest()
     assert expected == rec["hmac"]
@@ -760,7 +762,7 @@ async def test_concurrent_writes_serialize_via_internal_lock(tmp_path: Path) -> 
         ]
     )
     assert AuditWriter.verify(w.path, KEY) == []
-    lines = w.path.read_text().splitlines()
+    lines = w.path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 20
 
 
@@ -880,7 +882,7 @@ async def test_a_rotation_whose_new_log_cannot_be_created_starts_a_fresh_chain(
     monkeypatch.setattr(audit_module, "_create_owner_only", create)
     await writer.write("EXECUTE_COMMAND", request_id="b", details={}, result={})
 
-    first = json.loads(writer.path.read_text().splitlines()[0])
+    first = json.loads(writer.path.read_text(encoding="utf-8").splitlines()[0])
     assert (first["request_id"], first["seq"], first["prev_hmac"]) == ("b", 1, None)
     assert AuditWriter.verify(writer.path, KEY) == []
 
@@ -963,9 +965,9 @@ def test_audit_reads_report_a_lock_they_cannot_take(tmp_path: Path, monkeypatch,
     monkeypatch.setattr(audit_module, "holding_log_lock", refuse)
     monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
-    log.write_text("")
+    log.write_text("", encoding="utf-8")
     # An expired rotated log, so prune has something to delete under the lock.
-    (tmp_path / "audit.log.20200101-000000").write_text('{"seq": 1, "ts": 1.0}\n')
+    (tmp_path / "audit.log.20200101-000000").write_text('{"seq": 1, "ts": 1.0}\n', encoding="utf-8")
     config = types.SimpleNamespace(audit_log_path=log)
 
     for command in ("verify", "verify-all", "export", "prune", "show"):
@@ -1089,7 +1091,7 @@ async def test_prune_deletes_under_the_lock(tmp_path: Path, monkeypatch) -> None
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
     [rotated] = list_rotated_files(writer.path)
-    old = json.loads(rotated.read_text().splitlines()[-1])
+    old = json.loads(rotated.read_text(encoding="utf-8").splitlines()[-1])
     os.utime(rotated, (1, 1))
     held: list[bool] = []
     real_unlink = Path.unlink
@@ -1343,10 +1345,10 @@ def test_prune_judges_a_file_by_a_last_record_longer_than_8_kib(tmp_path: Path) 
     """The tail window was 8 KiB, so a longer final record (a long command)
     failed to parse and the file was kept without a word."""
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     rotated = tmp_path / "audit.log.20200101-000000"
     record = {"seq": 1, "ts": 1.0, "details": {"command": "x" * 20_000}}
-    rotated.write_text(json.dumps(record) + "\n")
+    rotated.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     assert cli._audit_prune(current, "1d") == 0
     assert not rotated.exists()
@@ -1395,7 +1397,7 @@ def test_a_record_with_a_non_finite_number_is_a_parse_error(tmp_path: Path, numb
     """json.loads takes NaN and Infinity, but canonicalizing them raised, so
     verify ended in a traceback instead of a violation."""
     path = tmp_path / "audit.log"
-    path.write_text(f'{{"seq": 1, "ts": {number}, "hmac": "00"}}\n')
+    path.write_text(f'{{"seq": 1, "ts": {number}, "hmac": "00"}}\n', encoding="utf-8")
 
     [violation] = AuditWriter.verify(path, KEY)
 
@@ -1414,7 +1416,7 @@ def test_a_record_that_parses_but_cannot_be_canonicalized_is_a_violation(
     record = f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}'
     json.loads(record)  # this one parses
     path = tmp_path / "audit.log"
-    path.write_text(record + "\n")
+    path.write_text(record + "\n", encoding="utf-8")
 
     [violation] = AuditWriter.verify(path, KEY)
 
@@ -1429,7 +1431,9 @@ def test_a_record_nested_too_deeply_to_check_is_a_parse_error(tmp_path: Path) ->
     depth = 2000
     nested = '{"a":' * depth + "1" + "}" * depth
     path = tmp_path / "audit.log"
-    path.write_text(f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}\n')
+    path.write_text(
+        f'{{"seq": 1, "ts": 1.0, "details": {nested}, "hmac": "00"}}\n', encoding="utf-8"
+    )
 
     [violation] = AuditWriter.verify(path, KEY)
 
@@ -1614,7 +1618,7 @@ def test_no_usable_keychain_still_falls_back_to_the_file_key(
     monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
     with patch.object(keyring, "get_password", side_effect=getattr(keyring.errors, error)("none")):
         first = get_or_create_audit_key(tmp_path / "audit.log")
-        (tmp_path / "audit.log").write_text("")
+        (tmp_path / "audit.log").write_text("", encoding="utf-8")
         again = get_or_create_audit_key(tmp_path / "audit.log")
 
     assert len(first) == 32
@@ -1699,7 +1703,7 @@ def test_a_keychain_missing_at_start_is_not_replaced_by_a_new_file_key(
     monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
     monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
     log = tmp_path / "audit.log"
-    log.write_text('{"seq": 1}\n')
+    log.write_text('{"seq": 1}\n', encoding="utf-8")
     with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
         with pytest.raises(AuditKeyUnavailableError, match="move it aside"):
             get_or_create_audit_key(log)
@@ -1733,11 +1737,14 @@ async def test_an_audit_command_never_makes_a_file_key_for_a_log(
 
 
 @pytest.mark.asyncio
-async def test_an_audit_command_never_stores_a_keychain_key(tmp_path: Path) -> None:
+async def test_an_audit_command_never_stores_a_keychain_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """With the keychain up and holding no key, `audit verify` stored a new
     one, which no existing log was signed with."""
     import keyring
 
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))  # no file key either
     writer = _writer(tmp_path)
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     stored: list[str] = []
@@ -1762,7 +1769,7 @@ def test_an_empty_keychain_gets_no_new_key_for_a_signed_log(
 
     monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))  # the key's lock
     log = tmp_path / "audit.log"
-    log.write_text('{"seq": 1}\n')
+    log.write_text('{"seq": 1}\n', encoding="utf-8")
     stored: list[str] = []
     with (
         patch.object(keyring, "get_password", return_value=None),
@@ -1788,7 +1795,7 @@ def test_no_keyring_package_gets_no_new_file_key_for_a_signed_log(
     monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
     monkeypatch.setitem(sys.modules, "keyring", None)
     log = tmp_path / "audit.log"
-    log.write_text('{"seq": 1}\n')
+    log.write_text('{"seq": 1}\n', encoding="utf-8")
 
     with pytest.raises(AuditKeyError, match="move the log aside"):
         get_or_create_audit_key(log)
@@ -1810,7 +1817,7 @@ def test_a_keychain_that_turns_up_later_keeps_the_file_key_that_signed_the_log(
     log = tmp_path / "audit.log"
     with patch.object(keyring, "get_password", side_effect=keyring.errors.NoKeyringError("none")):
         signing_key = get_or_create_audit_key(log)
-    log.write_text('{"seq": 1}\n')
+    log.write_text('{"seq": 1}\n', encoding="utf-8")
     stored: list[str] = []
     with (
         patch.object(keyring, "get_password", return_value=None),
@@ -1904,7 +1911,9 @@ def test_a_file_key_is_made_and_read_under_the_same_lock(
             start.join(timeout=1)
             assert start.is_alive(), f"made a file key while another start made one: {outcome}"
             ciphertext = audit_module._xor_encrypt("passphrase", salt, the_other_starts)
-            (tmp_path / "audit-key.enc").write_text(f"{salt.hex()}:{ciphertext.hex()}")
+            (tmp_path / "audit-key.enc").write_text(
+                f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8"
+            )
         start.join(timeout=30)
 
     assert outcome == [the_other_starts]
@@ -1936,7 +1945,7 @@ def test_a_start_looks_for_the_key_again_before_it_refuses_for_the_log(
         if reads == 1:
             # The other start stores its key and makes its log just after.
             keychain[(service, user)] = other_key.hex()
-            log.write_text("")
+            log.write_text("", encoding="utf-8")
         return found
 
     stored: list[str] = []
@@ -1977,7 +1986,7 @@ def test_without_the_keyring_package_a_start_looks_for_the_file_key_again_before
             salt = secrets.token_bytes(16)
             ciphertext = audit_module._xor_encrypt("passphrase", salt, other_key)
             fallback.write_text(f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8")
-            log.write_text("")
+            log.write_text("", encoding="utf-8")
         return found
 
     monkeypatch.setattr(Path, "exists", exists)
@@ -2016,7 +2025,7 @@ def test_without_a_keychain_a_start_looks_for_the_file_key_again_before_it_refus
             salt = secrets.token_bytes(16)
             ciphertext = audit_module._xor_encrypt("passphrase", salt, other_key)
             fallback.write_text(f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8")
-            log.write_text("")
+            log.write_text("", encoding="utf-8")
         return found
 
     monkeypatch.setattr(Path, "exists", exists)
@@ -2154,7 +2163,7 @@ async def test_prune_reads_the_rotated_logs_without_holding_off_writers(
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
     [rotated] = list_rotated_files(writer.path)
-    old = json.loads(rotated.read_text().splitlines()[-1])
+    old = json.loads(rotated.read_text(encoding="utf-8").splitlines()[-1])
     monkeypatch.setattr("time.time", lambda: old["ts"] + 10 * 86400)
     held_while_reading: list[bool] = []
     real_open = builtins.open
@@ -2181,15 +2190,15 @@ async def test_prune_keeps_a_rotated_log_replaced_after_it_was_read(
     await writer.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
     writer.force_rotate()
     [rotated] = list_rotated_files(writer.path)
-    old = json.loads(rotated.read_text().splitlines()[-1])
+    old = json.loads(rotated.read_text(encoding="utf-8").splitlines()[-1])
     monkeypatch.setattr("time.time", lambda: old["ts"] + 10 * 86400)
     real_lock = audit_module.holding_log_lock
-    newer = rotated.read_text().replace(str(old["ts"]), str(old["ts"] + 10 * 86400))
+    newer = rotated.read_text(encoding="utf-8").replace(str(old["ts"]), str(old["ts"] + 10 * 86400))
 
     @contextlib.contextmanager
     def replace_then_lock(path):
         rotated.unlink()
-        rotated.write_text(newer + "\n")
+        rotated.write_text(newer + "\n", encoding="utf-8")
         with real_lock(path):
             yield
 
@@ -2206,7 +2215,7 @@ def test_a_record_with_an_integer_past_pythons_limit_is_a_parse_error(
     JSONDecodeError, so verify, show and tail ended in a traceback."""
     path = tmp_path / "audit.log"
     huge = '{"seq": ' + "9" * 5000 + ', "ts": 1.0}'
-    path.write_text(huge + "\n")
+    path.write_text(huge + "\n", encoding="utf-8")
 
     [violation] = AuditWriter.verify(path, KEY)
     assert violation.kind == "parse_error"
@@ -2302,7 +2311,7 @@ def test_rotate_reports_a_log_it_cannot_open_instead_of_crashing(
     fails verification, or one it can't open, ended in a traceback."""
     monkeypatch.setattr("autogpt_local_executor.audit.load_audit_key", lambda: KEY)
     log = tmp_path / "audit.log"
-    log.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
+    log.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n', encoding="utf-8")
     if failure == "unreadable":
 
         def refuse(**_kwargs) -> None:
@@ -2385,9 +2394,9 @@ async def test_a_non_ascii_hmac_is_a_mismatch_not_a_crash(tmp_path: Path) -> Non
     damaged record stopped verify and verify-all with a traceback."""
     w = _writer(tmp_path)
     await w.write("EXECUTE_COMMAND", request_id="a", details={}, result={})
-    record = json.loads(w.path.read_text())
+    record = json.loads(w.path.read_text(encoding="utf-8"))
     record["hmac"] = "\u00e9" * 64
-    w.path.write_text(json.dumps(record) + "\n")
+    w.path.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
     violations = AuditWriter.verify(w.path, KEY)
 
@@ -2399,7 +2408,7 @@ def test_only_files_named_like_rotated_logs_are_rotated_logs(tmp_path: Path) -> 
     audit.log.private-notes into the archive, and prune could delete it.
     Collision suffixes also sorted as text, putting -10 before -2."""
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     names = [
         "audit.log.private-notes",
         "audit.log.bak",
@@ -2410,7 +2419,7 @@ def test_only_files_named_like_rotated_logs_are_rotated_logs(tmp_path: Path) -> 
         "audit.log.20261103-235959",
     ]
     for name in names:
-        (tmp_path / name).write_text("")
+        (tmp_path / name).write_text("", encoding="utf-8")
 
     assert [p.name for p in list_rotated_files(current)] == [
         "audit.log.20261103-235959",
@@ -2427,12 +2436,12 @@ def test_a_link_or_folder_named_like_a_rotated_log_is_not_one(tmp_path: Path) ->
     logs = tmp_path / "logs"
     logs.mkdir()
     current = logs / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     elsewhere = tmp_path / "private.txt"
-    elsewhere.write_text("not an audit log")
+    elsewhere.write_text("not an audit log", encoding="utf-8")
     (logs / "audit.log.20261104-060000").symlink_to(elsewhere)
     (logs / "audit.log.20261104-060001").mkdir()
-    (logs / "audit.log.20261104-060002").write_text("")
+    (logs / "audit.log.20261104-060002").write_text("", encoding="utf-8")
 
     assert [p.name for p in list_rotated_files(current)] == ["audit.log.20261104-060002"]
 
@@ -2444,10 +2453,10 @@ def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path)
     import time
 
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     rotated = tmp_path / "audit.log.20200101-000000"
     records = [{"seq": 1, "ts": time.time()}, {"seq": 2, "ts": 1.0}]
-    rotated.write_text("".join(json.dumps(record) + "\n" for record in records))
+    rotated.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
 
     assert cli._audit_prune(current, "1d") == 0
 
@@ -2465,9 +2474,9 @@ def test_prune_keeps_a_file_holding_a_record_newer_than_its_last(tmp_path: Path)
 )
 def test_prune_keeps_a_log_it_cannot_judge_without_a_traceback(tmp_path: Path, line: str) -> None:
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
     rotated = tmp_path / "audit.log.20200101-000000"
-    rotated.write_text(line + "\n")
+    rotated.write_text(line + "\n", encoding="utf-8")
 
     assert cli._audit_prune(current, "1d") == 0
 
@@ -2517,7 +2526,7 @@ def test_prune_refuses_a_duration_too_long_to_convert(tmp_path: Path, capsys) ->
     """int() refuses a string of more than 4300 digits, and the ValueError
     ended `audit prune` with a traceback instead of the duration message."""
     current = tmp_path / "audit.log"
-    current.write_text("")
+    current.write_text("", encoding="utf-8")
 
     assert cli._audit_prune(current, "9" * 5000 + "d") == 2
     assert "Could not parse duration" in capsys.readouterr().out
@@ -2764,7 +2773,7 @@ def test_a_home_with_no_keychain_for_a_new_process_either_gets_the_file_key(
     log = tmp_path / "audit.log"
 
     key = get_or_create_audit_key(log)
-    log.write_text("")
+    log.write_text("", encoding="utf-8")
 
     assert (fallback_dir / "audit-key.enc").is_file()
     assert get_or_create_audit_key(log) == key

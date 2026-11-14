@@ -264,8 +264,9 @@ def _jailed_link_target_mode(link: Path, allowed_root: str | os.PathLike[str]) -
 
 # How long a command's process group has to exit after SIGTERM before SIGKILL.
 _TERMINATE_GRACE_SECONDS = 2.0
-# How long a command's output is still read once it has exited: a child it
-# left running can hold its output pipes open.
+# How long a command's output is still read for its result once it has
+# exited: a child it left running can hold its output pipes open, and what it
+# writes after that is read and dropped (CommandHandler._keep_draining).
 _OUTPUT_DRAIN_SECONDS = 2.0
 # How long a Windows command has to exit after CTRL_BREAK_EVENT before its
 # job, every process it started, is ended.
@@ -324,6 +325,16 @@ async def _exited(proc: asyncio.subprocess.Process) -> None:
     finally:
         if not waiting.done():
             waiting.cancel()
+
+
+async def _discard_until_closed(streams: tuple[asyncio.StreamReader, ...]) -> None:
+    """Read what `streams` carry and drop it, until each one closes."""
+
+    async def discard(stream: asyncio.StreamReader) -> None:
+        while await stream.read(64 * 1024):
+            pass
+
+    await asyncio.gather(*(discard(stream) for stream in streams), return_exceptions=True)
 
 
 def _end_windows_command(
@@ -631,6 +642,43 @@ class CommandHandler:
         self.audit = audit
         self._command_rate = _SlidingWindowRateLimiter(config.max_commands_per_minute)
         self._concurrency = _CommandConcurrency(config.max_concurrent_commands)
+        # The reads of what commands left running write (_keep_draining),
+        # each held with its command's process until its pipes close.
+        self._output_drains: dict[asyncio.Task[None], asyncio.subprocess.Process] = {}
+        self._owns_output_drains = True
+
+    def share_with(self, other: CommandHandler) -> None:
+        """Make `other`, a child session's handler, use this one's command
+        limits, and leave the reads of what its commands left running to
+        this one: a server a chat's command started outlives the chat."""
+        other._command_rate = self._command_rate
+        other._concurrency = self._concurrency
+        other._output_drains = self._output_drains
+        other._owns_output_drains = False
+
+    async def close(self) -> None:
+        """End the reads of what commands left running, if this handler holds
+        them: the shim is stopping, and a program that never closes its
+        output (a server) would keep them going until the event loop ends."""
+        if not self._owns_output_drains:
+            return
+        reads = tuple(self._output_drains)
+        for read in reads:
+            read.cancel()
+        await asyncio.gather(*reads, return_exceptions=True)
+
+    def _keep_draining(self, proc: asyncio.subprocess.Process) -> None:
+        """Go on reading a command's stdout and stderr once its result is
+        made, dropping what they carry, until they close: a program it left
+        running (a server started in the background) still holds them.
+        Unread, they would fill, and the program would stop on its next
+        write, or end on a broken pipe once they were collected. The read is
+        held with `proc`, which holds the pipes, until it ends."""
+        streams = tuple(stream for stream in (proc.stdout, proc.stderr) if stream is not None)
+        reads = self._output_drains
+        read = asyncio.create_task(_discard_until_closed(streams))
+        reads[read] = proc
+        read.add_done_callback(lambda done: reads.pop(done, None))
 
     async def handle(self, msg: ExecuteCommandMessage) -> CommandResultMessage | ErrorMessage:
         if not self.config.enable_shell:
@@ -896,6 +944,10 @@ class CommandHandler:
                 for task in drain_tasks:
                     task.cancel()
                 await asyncio.gather(*drain_tasks, return_exceptions=True)
+                # A program the command left running holds the pipes: the
+                # result has what came by now, and what comes later is read
+                # and dropped, never kept.
+                self._keep_draining(proc)
         except asyncio.CancelledError:
             for task in drain_tasks:
                 task.cancel()

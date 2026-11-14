@@ -996,7 +996,9 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
         monkeypatch.setattr(keyring, "get_password", missing)
         if failure == "no-keychain-yet-signed-log":
             monkeypatch.setenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", "passphrase")
-            config.audit_log_path.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
+            config.audit_log_path.write_text(
+                '{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n', encoding="utf-8"
+            )
     elif failure == "keyring-backend-missing":
         import keyring.core
 
@@ -1006,7 +1008,9 @@ def test_an_audit_failure_at_start_says_whether_a_restart_can_fix_it(
     else:
         monkeypatch.setattr(daemon_module, "get_or_create_audit_key", lambda _log=None: b"k" * 32)
     if failure == "corrupt":
-        config.audit_log_path.write_text('{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n')
+        config.audit_log_path.write_text(
+            '{"seq": 1, "ts": 1.0, "op": "X", "hmac": "00"}\n', encoding="utf-8"
+        )
     elif failure in ("disk-full", "read-only"):
         code = errno.ENOSPC if failure == "disk-full" else errno.EROFS
 

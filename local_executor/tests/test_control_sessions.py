@@ -115,7 +115,9 @@ async def test_control_attach_uses_host_ref_and_does_not_mutate_global_root(tmp_
         assert daemon._directory_browser is not None
         daemon._directory_browser.resolve(browse_id, directory_ref)
 
-    records = [json.loads(line) for line in daemon.audit.path.read_text().splitlines()]
+    records = [
+        json.loads(line) for line in daemon.audit.path.read_text(encoding="utf-8").splitlines()
+    ]
     list_records = [record for record in records if record["op"] == "DIRECTORY_LIST"]
     assert list_records
     assert all("entries" not in record["details"] for record in list_records)
@@ -324,7 +326,7 @@ async def test_session_bound_audits_share_chain_without_context_leak(tmp_path: P
         second.write("TEST", request_id="two", details={}),
     )
 
-    records = [json.loads(line) for line in writer.path.read_text().splitlines()]
+    records = [json.loads(line) for line in writer.path.read_text(encoding="utf-8").splitlines()]
     assert {record["session_id"] for record in records} == {"session-1", "session-2"}
     assert AuditWriter.verify(writer.path, b"a" * 32) == []
 
@@ -1259,7 +1261,10 @@ def _hold_the_audit_writer(daemon: ShimDaemon, monkeypatch: pytest.MonkeyPatch) 
 
 
 def _revocations(daemon: ShimDaemon) -> list[dict[str, Any]]:
-    records = (json.loads(line) for line in daemon.config.audit_log_path.read_text().splitlines())
+    records = (
+        json.loads(line)
+        for line in daemon.config.audit_log_path.read_text(encoding="utf-8").splitlines()
+    )
     return [record["details"] for record in records if record["op"] == "SESSION_REVOKED"]
 
 
@@ -1406,3 +1411,73 @@ async def test_every_chat_stops_before_one_held_up_stopping_is_waited_for(
 
     assert all(chat.done() for chat, _stopped in chats)
     assert daemon._child_sessions == {}
+
+
+# ── What commands leave running ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_chat_leaves_what_its_commands_left_running_to_the_machine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chat ends long before a server one of its commands started, so the
+    reads that keep such a program's output from filling are the machine's
+    command handler's, which a chat's shares, as it shares the command
+    limits: the chat's close leaves them, and the machine's ends them."""
+    from autogpt_local_executor.session_grants import RootBinding
+
+    daemon = _control_daemon(tmp_path)
+
+    async def parked_run(child: ShimDaemon) -> None:
+        await asyncio.Future()
+
+    monkeypatch.setattr(ShimDaemon, "run", parked_run)
+    binding = RootBinding(
+        session_id="session-1",
+        allowed_root=tmp_path,
+        fingerprint="0" * 64,
+        revision=1,
+        root_grant="grant",
+    )
+    try:
+        await daemon._start_child_session(binding)
+        chat = daemon._child_sessions["session-1"].daemon._command_handler
+        assert chat._command_rate is daemon._command_handler._command_rate
+        assert chat._concurrency is daemon._command_handler._concurrency
+        # A command whose stdout a program it left running still holds.
+        chat._keep_draining(SimpleNamespace(stdout=asyncio.StreamReader(), stderr=None))
+        await chat.close()
+        [reading] = daemon._command_handler._output_drains
+        assert not reading.done()
+    finally:
+        await daemon._shutdown_children()
+        await daemon._command_handler.close()
+
+    assert reading.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_the_shim_stops_reading_what_commands_left_running_as_it_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What a command left running is read until that program closes its
+    output, which a server never does, so the shim's stop ends the reads."""
+    daemon = _control_daemon(tmp_path)
+    # A command whose stdout a program it left running still holds.
+    daemon._command_handler._keep_draining(
+        SimpleNamespace(stdout=asyncio.StreamReader(), stderr=None)
+    )
+    [reading] = daemon._command_handler._output_drains
+
+    async def one_session() -> None:
+        daemon._running = False
+
+    monkeypatch.setattr(daemon, "_preflight_or_raise", AsyncMock())
+    monkeypatch.setattr(daemon, "_audit_shim_start", AsyncMock())
+    monkeypatch.setattr(daemon, "_audit_shim_stop", AsyncMock())
+    monkeypatch.setattr(daemon, "_session", one_session)
+
+    await asyncio.wait_for(daemon.run(), timeout=30)
+
+    assert reading.cancelled()
+    assert not daemon._command_handler._output_drains
