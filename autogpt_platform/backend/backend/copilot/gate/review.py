@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 # At least the largest call the supervisor judges whole (25,650 bytes beside a
 # short request, classifier._fit), so a card it opens shows the call entire.
 _MAX_ARG_CHARS = 26_000
+CARD_ARGUMENT_CHARS = _MAX_ARG_CHARS
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
 
@@ -400,6 +401,14 @@ def _humanize(key: str) -> str:
     words = words.replace("agent", "workflow").replace("graph", "workflow")
     words += "s" if plural else ""
     return words[:1].upper() + words[1:]
+
+
+def card_shows_whole(args: dict[str, Any]) -> bool:
+    """Whether a card would show every one of these arguments without
+    cutting it short, as ``_payload`` builds it."""
+    redacted = _redact_secret_keys(args)
+    shown = _clip_all(redacted, _MAX_ARG_CHARS)
+    return all(shown[key] is redacted[key] for key in shown)
 
 
 def _clip_all(values: dict[str, Any], budget: int) -> dict[str, Any]:

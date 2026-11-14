@@ -18,10 +18,19 @@ import binascii
 import io
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, Optional
-from urllib.parse import unquote, unquote_plus, urlencode, urlparse
+from typing import Annotated, Literal, Optional
+from urllib.parse import (
+    parse_qsl,
+    unquote,
+    unquote_plus,
+    urlencode,
+    urlparse,
+    urlsplit,
+    urlunsplit,
+)
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -41,15 +50,19 @@ from PIL import Image
 from prisma.enums import APIKeyPermission
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from backend.api.features.local_executor.gating import is_local_executor_enabled
 from backend.api.features.oauth_registration import router as registration_router
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.copilot.tools.local_pc_shim import get_shim_manager
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.auth.oauth import (
     InvalidClientError,
     InvalidGrantError,
     OAuthAccessToken,
     OAuthApplicationInfo,
     OAuthRefreshToken,
+    RefreshTokenFamilyRevokedError,
     TokenIntrospectionResult,
     consume_authorization_code,
     create_access_token,
@@ -68,6 +81,7 @@ from backend.data.auth.oauth import (
     validate_scopes,
 )
 from backend.util.settings import Settings
+from backend.util.text_limits import MAX_ID_LENGTH, MAX_URL_LENGTH
 from backend.util.virus_scanner import scan_content_safe
 
 settings = Settings()
@@ -75,6 +89,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 router.include_router(registration_router)
+
+# The consent page sends the client's state to Approve and Deny alike, so
+# both take the same bound, far above any state a client sends.
+MAX_STATE_LENGTH = 16_384
+
+
+async def _push_shim_revocation(user_id: str, client_id: str) -> None:
+    """Have this user's Local PC connections for the app recheck their tokens.
+
+    Each computer signs in on its own, so only the connections whose own token
+    was revoked close; the user's other computers stay connected."""
+    try:
+        notified = await get_shim_manager().push_token_revocation(user_id, client_id)
+    except Exception:
+        logger.exception(
+            "Failed to push Local PC token revocation for user #%s app %s; "
+            "the durable OAuth revocation remains effective",
+            user_id,
+            client_id,
+        )
+        return
+    if notified:
+        logger.info(
+            "Asked %d Local PC connection(s) for user #%s app %s to recheck "
+            "their tokens",
+            notified,
+            user_id,
+            client_id,
+        )
 
 
 # ============================================================================
@@ -183,11 +226,18 @@ class AuthorizeRequest(BaseModel):
     client_id: str = Field(description="Client identifier")
     redirect_uri: str = Field(description="Redirect URI")
     scopes: list[str] = Field(description="List of scopes")
-    state: str = Field(description="Anti-CSRF token from client")
+    state: str = Field(
+        description="Anti-CSRF token from client", max_length=MAX_STATE_LENGTH
+    )
     response_type: str = Field(
         default="code", description="Must be 'code' for authorization code flow"
     )
-    code_challenge: str = Field(description="PKCE code challenge (required)")
+    # Its format is checked in the handler, once the client and redirect
+    # URI check out, so a bad challenge goes back to the client as
+    # invalid_request rather than a 422 the client never sees.
+    code_challenge: str = Field(
+        description="RFC 7636 PKCE code challenge (required)",
+    )
     code_challenge_method: Literal["S256", "plain"] = Field(
         default="S256", description="PKCE code challenge method (S256 recommended)"
     )
@@ -197,6 +247,35 @@ class AuthorizeResponse(BaseModel):
     """OAuth 2.0 authorization response with redirect URL"""
 
     redirect_url: str = Field(description="URL to redirect the user to")
+
+
+class DenyAuthorizeRequest(BaseModel):
+    """OAuth 2.0 authorization denial request."""
+
+    client_id: str = Field(description="Client identifier", max_length=MAX_ID_LENGTH)
+    redirect_uri: str = Field(description="Redirect URI", max_length=MAX_URL_LENGTH)
+    # It goes back to the client on the redirect URL. Approve's bound: the
+    # consent page sends Deny the same state.
+    state: str = Field(
+        description="Anti-CSRF token from client", max_length=MAX_STATE_LENGTH
+    )
+
+
+async def _get_valid_authorization_app(
+    client_id: str, redirect_uri: str
+) -> OAuthApplicationInfo:
+    app = await get_oauth_application(client_id)
+    if not app or not app.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or inactive OAuth client",
+        )
+    if not validate_redirect_uri(app, redirect_uri):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid redirect_uri",
+        )
+    return app
 
 
 @router.post("/authorize")
@@ -232,25 +311,22 @@ async def authorize(
     unregistered redirect_uri) they raise HTTPException, so the platform never
     redirects to a URI no registered client vouches for (RFC 6749 4.1.2.1).
     """
-    redirect_uri_verified = False
+    # Raises before any redirect is built, so nothing below can send the user to
+    # a URI no registered, active client vouches for.
     try:
-        app = await get_oauth_application(request.client_id)
-        if not app or not app.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unknown or inactive client_id",
-            )
+        app = await _get_valid_authorization_app(
+            request.client_id, request.redirect_uri
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in authorization endpoint: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        ) from e
 
-        if not validate_redirect_uri(app, request.redirect_uri):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Invalid redirect_uri. "
-                    f"Must be one of: {', '.join(app.redirect_uris)}"
-                ),
-            )
-        redirect_uri_verified = True
-
+    try:
         if request.response_type != "code":
             return _error_redirect_url(
                 request.redirect_uri,
@@ -259,13 +335,33 @@ async def authorize(
                 "Only 'code' response type is supported",
             )
 
-        # A public client's code is bound to it by PKCE alone.
         if app.is_public and request.code_challenge_method != "S256":
             return _error_redirect_url(
                 request.redirect_uri,
                 request.state,
                 "invalid_request",
-                "A public client must use code_challenge_method S256",
+                "Public clients must use the S256 PKCE challenge method",
+            )
+        if (
+            request.code_challenge_method == "S256"
+            and re.fullmatch(r"[A-Za-z0-9_-]{43}", request.code_challenge) is None
+        ):
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "invalid_request",
+                "S256 code_challenge must be a 43-character base64url value",
+            )
+        if (
+            request.code_challenge_method == "plain"
+            and re.fullmatch(r"[A-Za-z0-9\-._~]{43,128}", request.code_challenge)
+            is None
+        ):
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "invalid_request",
+                "plain code_challenge must be 43 to 128 unreserved characters",
             )
 
         # Parse and validate scopes
@@ -296,6 +392,22 @@ async def authorize(
                 f"Allowed: {', '.join(s.value for s in app.scopes)}",
             )
 
+        # Linking a computer belongs to the Local PC rollout, like every Local
+        # PC route and connection. Checked at sign-in too, so a user outside
+        # it gets no token at all rather than one every connection refuses.
+        if (
+            APIKeyPermission.CONNECT_LOCAL_EXECUTOR in requested_scopes
+            and not await is_local_executor_enabled(user_id)
+        ):
+            return _error_redirect_url(
+                request.redirect_uri,
+                request.state,
+                "access_denied",
+                "Local PC isn't available for this account yet.",
+            )
+
+        # Auth's closed-account cache can lag the close by a few seconds.
+        await refuse_closed_account(user_id)
         # Create authorization code
         auth_code = await create_authorization_code(
             application_id=app.id,
@@ -311,7 +423,7 @@ async def authorize(
             "code": auth_code.code,
             "state": request.state,
         }
-        redirect_url = f"{request.redirect_uri}?{urlencode(params)}"
+        redirect_url = _redirect_url_with_params(request.redirect_uri, params)
 
         logger.info(
             f"Authorization code issued for user #{user_id} "
@@ -324,17 +436,33 @@ async def authorize(
         raise
     except Exception as e:
         logger.error(f"Error in authorization endpoint: {e}", exc_info=True)
-        if not redirect_uri_verified:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An unexpected error occurred",
-            )
         return _error_redirect_url(
             request.redirect_uri,
             request.state,
             "server_error",
             "An unexpected error occurred",
         )
+
+
+@router.post(
+    "/authorize/deny",
+    responses={
+        400: {
+            "description": "Unknown or inactive client, or an unregistered redirect_uri"
+        }
+    },
+)
+async def deny_authorization(
+    request: DenyAuthorizeRequest = Body(),
+    _user_id: str = Security(get_user_id),
+) -> AuthorizeResponse:
+    await _get_valid_authorization_app(request.client_id, request.redirect_uri)
+    return _error_redirect_url(
+        request.redirect_uri,
+        request.state,
+        "access_denied",
+        "User denied access",
+    )
 
 
 def _error_redirect_url(
@@ -351,8 +479,17 @@ def _error_redirect_url(
     if error_description:
         params["error_description"] = error_description
 
-    redirect_url = f"{redirect_uri}?{urlencode(params)}"
+    redirect_url = _redirect_url_with_params(redirect_uri, params)
     return AuthorizeResponse(redirect_url=redirect_url)
+
+
+def _redirect_url_with_params(redirect_uri: str, params: dict[str, str]) -> str:
+    parts = urlsplit(redirect_uri)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    query.extend(params.items())
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
 
 
 # ============================================================================
@@ -367,66 +504,247 @@ class TokenRequestByCode(BaseModel):
         description="Redirect URI (must match authorization request)"
     )
     client_id: str
-    client_secret: Optional[str] = Field(
-        default=None, description="Omitted by a public client"
-    )
-    code_verifier: str = Field(description="PKCE code verifier")
+    client_secret: str = ""
+    code_verifier: str = Field(max_length=128, description="PKCE code verifier")
 
 
 class TokenRequestByRefreshToken(BaseModel):
     grant_type: Literal["refresh_token"]
     refresh_token: str
     client_id: str
-    client_secret: Optional[str] = Field(
-        default=None, description="Omitted by a public client"
-    )
+    client_secret: str = ""
 
 
-TokenRequest = Annotated[
-    TokenRequestByCode | TokenRequestByRefreshToken, Field(discriminator="grant_type")
+OAuthTokenRequest = Annotated[
+    TokenRequestByCode | TokenRequestByRefreshToken,
+    Field(discriminator="grant_type"),
 ]
-_TOKEN_REQUEST = TypeAdapter(TokenRequest)
-_TOKEN_REQUEST_SCHEMA = {
-    "oneOf": [
-        TokenRequestByCode.model_json_schema(),
-        TokenRequestByRefreshToken.model_json_schema(),
-    ]
+_TOKEN_REQUEST_ADAPTER = TypeAdapter(OAuthTokenRequest)
+_TOKEN_REQUEST_BODY_SCHEMA = {
+    "content": {
+        content_type: {
+            "schema": {
+                "oneOf": [
+                    TokenRequestByCode.model_json_schema(),
+                    TokenRequestByRefreshToken.model_json_schema(),
+                ],
+                "discriminator": {"propertyName": "grant_type"},
+            }
+        }
+        for content_type in (
+            "application/json",
+            "application/x-www-form-urlencoded",
+        )
+    },
+    "required": True,
 }
 
 
-async def read_token_request(request: Request) -> TokenRequest:
-    """The token request, as a form (RFC 6749 §4.1.3) or a JSON object.
+@router.post(
+    "/token",
+    openapi_extra={"requestBody": _TOKEN_REQUEST_BODY_SCHEMA},
+    responses={422: {"description": "The token request is malformed"}},
+)
+async def token(
+    http_request: Request,
+) -> TokenResponse:
+    """
+    OAuth 2.0 Token Endpoint
+
+    Exchanges authorization code or refresh token for access token.
+
+    Takes a form-encoded body, as RFC 6749 specifies, or a JSON body. The client
+    authenticates with `client_id` and `client_secret` in the body, or with HTTP
+    Basic.
+
+    Grant Types:
+    1. authorization_code: Exchange authorization code for tokens
+       - Required: grant_type, code, redirect_uri, client_id, code_verifier
+       - client_secret is required only for confidential clients
+
+    2. refresh_token: Exchange refresh token for new access token
+       - Required: grant_type, refresh_token, client_id
+       - client_secret is required only for confidential clients
+
+    Returns:
+    - access_token: Bearer token for API access (1 hour TTL)
+    - token_type: "Bearer"
+    - expires_in: Seconds until access token expires
+    - refresh_token: Token for refreshing access (30 days TTL)
+    - scope: The granted scopes, space-separated
+    - scopes: The same scopes, as a list
+    """
+    request = await _parse_token_request(http_request)
+
+    # Validate client credentials. Public authorization-code clients prove
+    # possession with PKCE. Public refresh clients authenticate with the
+    # refresh token itself; refresh_tokens binds it to this application before
+    # issuing anything. Confidential clients always require their secret.
+    try:
+        if request.grant_type == "authorization_code":
+            app = await validate_client_credentials(
+                request.client_id,
+                request.client_secret,
+                code_verifier=request.code_verifier,
+            )
+        else:
+            app = await validate_client_credentials(
+                request.client_id,
+                request.client_secret,
+                allow_public_without_secret=True,
+            )
+    except InvalidClientError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        )
+    # RFC 6749 §5.2: a client uses only the grants it was registered for. A
+    # public client refreshes with the refresh token alone, so this is the
+    # only check between it and a grant its registration leaves out.
+    if request.grant_type not in app.grant_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "unauthorized_client: this application is not registered for the "
+                f"{request.grant_type} grant"
+            ),
+        )
+
+    # Handle authorization_code grant
+    if request.grant_type == "authorization_code":
+        # Consume authorization code
+        try:
+            user_id, scopes = await consume_authorization_code(
+                code=request.code,
+                application_id=app.id,
+                redirect_uri=request.redirect_uri,
+                code_verifier=request.code_verifier,
+            )
+        except InvalidGrantError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+
+        # Create access and refresh tokens
+        refresh_family_id = str(uuid.uuid4())
+        refresh_token = await create_refresh_token(
+            app.id,
+            user_id,
+            scopes,
+            family_id=refresh_family_id,
+        )
+        access_token = await create_access_token(
+            app.id,
+            user_id,
+            scopes,
+            refresh_family_id=refresh_family_id,
+        )
+
+        logger.info(
+            f"Access token issued for user #{user_id} and app {app.name} (#{app.id})"
+            "via authorization code"
+        )
+
+        if not access_token.token or not refresh_token.token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate tokens",
+            )
+
+        return _token_response(access_token, refresh_token)
+
+    # Handle refresh_token grant
+    else:
+        # Refresh access token
+        try:
+            new_access_token, new_refresh_token = await refresh_tokens(
+                request.refresh_token, app.id
+            )
+        except RefreshTokenFamilyRevokedError as e:
+            await _push_shim_revocation(e.user_id, app.client_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+        except InvalidGrantError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+
+        logger.info(
+            f"Tokens refreshed for user #{new_access_token.user_id} "
+            f"by app {app.name} (#{app.id})"
+        )
+
+        if not new_access_token.token or not new_refresh_token.token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate tokens",
+            )
+
+        return _token_response(new_access_token, new_refresh_token)
+
+
+async def _parse_token_request(http_request: Request) -> OAuthTokenRequest:
+    """Parse the OAuth token request from JSON or standard form encoding.
 
     The client authenticates in the body or with HTTP Basic (RFC 6749 §2.3.1),
     which standard OAuth clients use by default.
     """
-    try:
-        return _TOKEN_REQUEST.validate_python(await _token_request_fields(request))
-    except ValidationError as e:
-        # Without the input, which holds the client secret: the handler logs it.
-        raise RequestValidationError(bounded_validation_errors(e)) from None
-
-
-async def _token_request_fields(request: Request) -> dict[str, Any]:
-    if _is_form(request):
-        fields: dict[str, Any] = dict(await request.form())
+    content_type = (
+        http_request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    )
+    if content_type == "application/x-www-form-urlencoded":
+        payload = dict(await http_request.form())
+    elif content_type == "application/json" or content_type.endswith("+json"):
+        try:
+            payload = await http_request.json()
+        except ValueError as exc:
+            # JSONDecodeError and UnicodeDecodeError are both ValueErrors: a
+            # body that isn't JSON, or isn't UTF-8, is the client's error.
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "json_invalid",
+                        "loc": ["body"],
+                        "msg": "Invalid OAuth token request",
+                    }
+                ]
+            ) from exc
     else:
-        fields = TypeAdapter(dict[str, Any]).validate_json(await request.body())
-    if credentials := _basic_credentials(request.headers.get("authorization")):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Token requests must use JSON or application/x-www-form-urlencoded",
+        )
+
+    credentials = _basic_credentials(http_request.headers.get("authorization"))
+    if credentials and isinstance(payload, dict):
         client_id, client_secret = credentials
-        if "client_secret" in fields or fields.get("client_id", client_id) != client_id:
+        if (
+            "client_secret" in payload
+            or payload.get("client_id", client_id) != client_id
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Authenticate the client with HTTP Basic or in the body, "
                 "not both",
             )
-        fields |= {"client_id": client_id, "client_secret": client_secret}
-    return fields
+        payload |= {"client_id": client_id, "client_secret": client_secret}
 
-
-def _is_form(request: Request) -> bool:
-    content_type = request.headers.get("content-type", "")
-    return content_type.split(";")[0].strip() == "application/x-www-form-urlencoded"
+    try:
+        return _TOKEN_REQUEST_ADAPTER.validate_python(payload)
+    except ValidationError as exc:
+        safe_errors = [
+            {
+                "type": error["type"],
+                "loc": ["body", *error["loc"]],
+                "msg": "Invalid OAuth token request",
+            }
+            for error in bounded_validation_errors(exc)
+        ]
+    raise RequestValidationError(safe_errors)
 
 
 def _basic_credentials(authorization: Optional[str]) -> Optional[tuple[str, str]]:
@@ -448,125 +766,6 @@ def _basic_credentials(authorization: Optional[str]) -> Optional[tuple[str, str]
             detail="Malformed HTTP Basic client credentials",
         )
     return unquote_plus(client_id), unquote_plus(client_secret)
-
-
-@router.post(
-    "/token",
-    openapi_extra={
-        "requestBody": {
-            "required": True,
-            "content": {
-                "application/x-www-form-urlencoded": {"schema": _TOKEN_REQUEST_SCHEMA},
-                "application/json": {"schema": _TOKEN_REQUEST_SCHEMA},
-            },
-        }
-    },
-)
-async def token(
-    request: TokenRequest = Depends(read_token_request),
-) -> TokenResponse:
-    """
-    OAuth 2.0 Token Endpoint
-
-    Exchanges authorization code or refresh token for access token.
-
-    Takes a form-encoded body, as RFC 6749 specifies, or a JSON body. The client
-    authenticates with `client_id` and `client_secret` in the body, or with HTTP
-    Basic.
-
-    Grant Types:
-    1. authorization_code: Exchange authorization code for tokens
-       - Required: grant_type, code, redirect_uri, client_id, client_secret
-         (a public client sends no client_secret)
-       - Optional: code_verifier (required if PKCE was used)
-
-    2. refresh_token: Exchange refresh token for new access token
-       - Required: grant_type, refresh_token, client_id, client_secret
-
-    Returns:
-    - access_token: Bearer token for API access (1 hour TTL)
-    - token_type: "Bearer"
-    - expires_in: Seconds until access token expires
-    - refresh_token: Token for refreshing access (30 days TTL)
-    - scope: The granted scopes, space-separated
-    - scopes: The same scopes, as a list
-    """
-    # Validate client credentials
-    try:
-        app = await validate_client_credentials(
-            request.client_id, request.client_secret
-        )
-    except InvalidClientError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        )
-
-    # Handle authorization_code grant
-    if request.grant_type == "authorization_code":
-        # Consume authorization code
-        try:
-            user_id, scopes = await consume_authorization_code(
-                code=request.code,
-                application_id=app.id,
-                redirect_uri=request.redirect_uri,
-                code_verifier=request.code_verifier,
-            )
-        except InvalidGrantError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            )
-
-        # Create access and refresh tokens
-        access_token = await create_access_token(app.id, user_id, scopes)
-        refresh_token = await create_refresh_token(app.id, user_id, scopes)
-
-        logger.info(
-            f"Access token issued for user #{user_id} and app {app.name} (#{app.id})"
-            "via authorization code"
-        )
-
-        if not access_token.token or not refresh_token.token:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to generate tokens",
-            )
-
-        return _token_response(access_token, refresh_token)
-
-    # Handle refresh_token grant
-    elif request.grant_type == "refresh_token":
-        # Refresh access token
-        try:
-            new_access_token, new_refresh_token = await refresh_tokens(
-                request.refresh_token, app.id
-            )
-        except InvalidGrantError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            )
-
-        logger.info(
-            f"Tokens refreshed for user #{new_access_token.user_id} "
-            f"by app {app.name} (#{app.id})"
-        )
-
-        if not new_access_token.token or not new_refresh_token.token:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to generate tokens",
-            )
-
-        return _token_response(new_access_token, new_refresh_token)
-
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported grant_type: {request.grant_type}. "
-            "Must be 'authorization_code' or 'refresh_token'",
-        )
 
 
 def _token_response(
@@ -612,7 +811,11 @@ async def introspect(
     - exp: Expiration timestamp (if active)
     - token_type: "access_token" or "refresh_token" (if active)
     """
-    # Validate client credentials
+    # Validate client credentials.
+    # Introspect is a resource-server endpoint per RFC 7662 — public clients
+    # don't typically call it. Confidential auth required; public clients
+    # without a secret hit the standard "Public client requires PKCE
+    # code_verifier" error from validate_client_credentials.
     try:
         await validate_client_credentials(client_id, client_secret)
     except InvalidClientError as e:
@@ -637,19 +840,23 @@ async def revoke(
         None, description="Hint about token type ('access_token' or 'refresh_token')"
     ),
     client_id: str = Body(description="Client identifier"),
-    client_secret: str = Body(description="Client secret"),
-):
+    client_secret: str | None = Body(None, description="Client secret"),
+) -> dict[str, str]:
     """
     OAuth 2.0 Token Revocation Endpoint (RFC 7009)
 
     Allows clients to revoke an access or refresh token.
 
-    Note: Revoking a refresh token does NOT revoke associated access tokens.
-    Revoking an access token does NOT revoke the associated refresh token.
+    Revoking a refresh token revokes its rotation family and associated access
+    tokens. Revoking an access token does not revoke its refresh-token family.
     """
     # Validate client credentials
     try:
-        app = await validate_client_credentials(client_id, client_secret)
+        app = await validate_client_credentials(
+            client_id,
+            client_secret or "",
+            allow_public_without_secret=True,
+        )
     except InvalidClientError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -665,6 +872,7 @@ async def revoke(
                 f"Access token revoked for app {app.name} (#{app.id}); "
                 f"user #{revoked.user_id}"
             )
+            await _push_shim_revocation(revoked.user_id, app.client_id)
             return {"status": "ok"}
 
     # Try to revoke as refresh token
@@ -674,6 +882,7 @@ async def revoke(
             f"Refresh token revoked for app {app.name} (#{app.id}); "
             f"user #{revoked.user_id}"
         )
+        await _push_shim_revocation(revoked.user_id, app.client_id)
         return {"status": "ok"}
 
     # Per RFC 7009, revocation endpoint returns 200 even if token not found

@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import uuid
@@ -9,6 +10,7 @@ import prisma.models
 import pytest
 import pytest_mock
 from autogpt_libs.auth import get_optional_user_id
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pydantic import BaseModel
 from pytest_snapshot.plugin import Snapshot
 
@@ -16,6 +18,7 @@ from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.graph import GraphModelWithoutNodes
 
+from . import cache as store_cache
 from . import model as store_model
 from . import routes as store_routes
 
@@ -1110,3 +1113,51 @@ def test_post_review_accepts_in_range_score(mocker: pytest_mock.MockFixture) -> 
     assert response.json()["score"] == 5
     mock_create.assert_called_once()
     assert mock_create.call_args.kwargs["score"] == 5
+
+
+@pytest.mark.parametrize("caller, status", [("anonymous", 401), ("user", 403)])
+def test_cache_metrics_are_for_admins_only(
+    caller: str, status: int, mocker: pytest_mock.MockFixture
+) -> None:
+    if caller == "anonymous":
+        app.dependency_overrides.pop(get_jwt_payload)
+    scans = _record_cache_info_calls(mocker)
+
+    response = client.get("/metrics/cache")
+
+    assert response.status_code == status
+    assert scans == []
+
+
+def test_cache_metrics_scan_redis_off_the_event_loop(
+    mock_jwt_admin, mocker: pytest_mock.MockFixture
+) -> None:
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    scans = _record_cache_info_calls(mocker)
+
+    response = client.get("/metrics/cache")
+
+    assert response.status_code == 200
+    assert 'store_cache_entries{cache="store_agents"} 3' in response.text
+    assert scans == ["off the event loop"] * 4
+
+
+def _record_cache_info_calls(mocker: pytest_mock.MockFixture) -> list[str]:
+    scans: list[str] = []
+
+    def cache_info() -> dict[str, int | None]:
+        try:
+            asyncio.get_running_loop()
+            scans.append("on the event loop")
+        except RuntimeError:
+            scans.append("off the event loop")
+        return {"size": 3, "maxsize": None, "ttl_seconds": 300}
+
+    for cached_function in (
+        store_cache.get_cached_store_agents,
+        store_cache.get_cached_agent_details,
+        store_cache.get_cached_store_creators,
+        store_cache.get_cached_creator_details,
+    ):
+        mocker.patch.object(cached_function, "cache_info", cache_info)
+    return scans

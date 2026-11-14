@@ -13,6 +13,11 @@ import { http, HttpResponse } from "msw";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentChats } from "../RecentChats";
+import {
+  type SidebarChat,
+  type SidebarRequest,
+  sidebarBackend,
+} from "./sidebarBackend";
 
 const itemRenders = vi.fn();
 
@@ -43,35 +48,18 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-interface SessionSeed {
-  id: string;
-  title: string;
-  is_pinned?: boolean;
+let listed: SidebarChat[] = [];
+let requests: SidebarRequest[] = [];
+
+function groupedReads() {
+  return requests.filter((request) => request.path === "session-groups").length;
 }
 
-let listed: SessionSeed[] = [];
-let listRequests = 0;
-
-function toSummary(seed: SessionSeed) {
-  return {
-    id: seed.id,
-    title: seed.title,
-    is_processing: false,
-    is_pinned: seed.is_pinned ?? false,
-    // `Z`-suffixed, so the API client turns them into `Date`s as in the app.
-    created_at: "2026-06-30T10:00:00Z",
-    updated_at: "2026-06-30T10:00:00Z",
-  };
-}
-
-async function renderRecentChats() {
+function renderRecentChats() {
   render(
     <SidebarProvider>
       <RecentChats />
     </SidebarProvider>,
-  );
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Load all Otto chats" }),
   );
 }
 
@@ -90,24 +78,16 @@ beforeEach(() => {
     { id: "s2", title: "Second chat" },
     { id: "s3", title: "Third chat" },
   ];
-  listRequests = 0;
+  requests = [];
   itemRenders.mockClear();
   server.use(
-    http.get("*/api/chat/sessions", () => {
-      listRequests += 1;
-      return HttpResponse.json({
-        sessions: listed.map(toSummary),
-        total: listed.length,
-      });
-    }),
+    ...sidebarBackend(() => listed, requests),
+    // Pinning leaves a chat's place in time alone: the grouped read orders by
+    // activity, and pinned chats leave their group for the Pinned section.
     http.patch("*/api/chat/sessions/:id/pinned", ({ params }) => {
-      const pinned = listed.find((s) => s.id === params.id);
-      if (pinned) {
-        listed = [
-          { ...pinned, is_pinned: true },
-          ...listed.filter((s) => s.id !== params.id),
-        ];
-      }
+      listed = listed.map((s) =>
+        s.id === params.id ? { ...s, is_pinned: true } : s,
+      );
       return HttpResponse.json({ status: "ok" });
     }),
   );
@@ -120,23 +100,23 @@ afterEach(() => {
 
 describe("RecentChats — chat rows", () => {
   it("re-renders no row when a refetch returns the same sessions", async () => {
-    await renderRecentChats();
+    renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
-    const requestsBefore = listRequests;
+    const readsBefore = groupedReads();
 
     await act(async () => {
       vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
     });
-    await waitFor(() => expect(listRequests).toBeGreaterThan(requestsBefore));
+    await waitFor(() => expect(groupedReads()).toBeGreaterThan(readsBefore));
     await settle();
 
     expect(itemRenders).not.toHaveBeenCalled();
   });
 
   it("re-renders only the pinned row when one chat is pinned", async () => {
-    await renderRecentChats();
+    renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
@@ -151,7 +131,7 @@ describe("RecentChats — chat rows", () => {
   });
 
   it("re-renders only the edited row while typing a rename", async () => {
-    await renderRecentChats();
+    renderRecentChats();
     await screen.findByText("Third chat");
     await settle();
 

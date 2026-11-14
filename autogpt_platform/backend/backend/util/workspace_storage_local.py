@@ -1,5 +1,6 @@
 import logging
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Optional
 
@@ -7,7 +8,10 @@ import aiofiles
 
 from backend.util.data import get_data_path
 from backend.util.filename import sanitize_filename
-from backend.util.workspace_storage_base import WorkspaceStorageBackend
+from backend.util.workspace_storage_base import (
+    STREAM_CHUNK_BYTES,
+    WorkspaceStorageBackend,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +110,19 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
 
         async with aiofiles.open(file_path, "rb") as f:
             return await f.read()
+
+    async def retrieve_stream(self, storage_path: str) -> AsyncIterator[bytes]:
+        """Yield a local file's content chunk by chunk."""
+        file_path = self._parse_storage_path(storage_path)
+        try:
+            file = await aiofiles.open(file_path, "rb")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"File not found: {storage_path}") from e
+        try:
+            while chunk := await file.read(STREAM_CHUNK_BYTES):
+                yield chunk
+        finally:
+            await file.close()
 
     async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
         """Retrieve the first ``max_bytes`` of a local file."""

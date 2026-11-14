@@ -22,6 +22,7 @@ longer evaluate these keys, and their former `FORCE_FLAG_*` /
 - `graphiti-communities-enabled`
 - `expert-spend-approval`
 - `ai-agent-execution-summary`
+- `self-serve-account-deletion`
 
 The sidebar and search flags, `autogpt-new-layout` and `chat-search`, were
 retired separately. Authentication, ownership, user preferences, billing

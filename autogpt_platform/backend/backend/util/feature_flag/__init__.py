@@ -74,10 +74,40 @@ class Flag(str, Enum):
     COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     CARD_REQUIRED_TRIAL_OFFER = "card-required-trial-offer"
+    # Local PC Executor — route copilot execution to a user's local machine
+    # via the autogpt-local-executor shim, and let them link one. EXPERIMENTAL;
+    # the flag alone decides who gets it (per-user beta, then staged rollout).
+    # Default off. See `api/features/local_executor/gating.py`.
+    LOCAL_PC_EXECUTOR = "local-pc-executor"
+    # Computer use on a Local PC — Otto drives the user's apps through the
+    # shim's cua-driver tools. Needs LOCAL_PC_EXECUTOR too, the shim offering
+    # computer use, and the user's consent for the machine. Default off.
+    LOCAL_PC_COMPUTER_USE = "local-pc-computer-use"
+    # Workflow recording — record a task the user performs on their machine
+    # and generalize it into a reusable skill (UI-owned recording/review plus
+    # list/generate/dry-run MCP tools). Gated as `flag(LOCAL_PC_EXECUTOR) AND
+    # shim advertises recording AND flag(WORKFLOW_RECORDING, user)`; replaying
+    # a recorded skill drives the computer, so it needs LOCAL_PC_COMPUTER_USE.
+    # See `copilot/tools/recording_skill.py`. Default off; per-user rollout.
+    WORKFLOW_RECORDING = "workflow-recording"
+    # Local LLM routing — when on AND the user's shim advertises `local_llm`
+    # plus a non-empty `local_llm_models`, copilot turns that match the
+    # (mode, tier) policy are routed through the shim's LOCAL_LLM_COMPLETION
+    # wire op. See `copilot/tools/local_llm_router.py`. Default off.
+    LOCAL_LLM_ROUTING = "local-llm-routing"
+    # Per-tier preferred local-model lists used by LocalLLMRouter. JSON
+    # value, shape:
+    #   {"fast": ["llama3.2:3b", "llama3.2:1b"], "default": [...], "thinking": []}
+    # Missing tier → empty list → never route that tier locally.
+    LOCAL_LLM_TIER_PREFERENCES = "local-llm-tier-preferences"
 
     # Gates Otto voice mode end-to-end. The speech endpoint 404s when
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
+
+    # Offers Otto the render_ui tool. The chat draws stored cards either way,
+    # so turning this off never breaks an old conversation.
+    COPILOT_VISUAL_ANSWERS = "copilot-visual-answers"
 
     # --- Dream-system gates (P0) ---
     #
@@ -159,13 +189,6 @@ class Flag(str, Enum):
     # locked offer is never routable.  Off by default so the upsell reaches
     # a cohort before it reaches everyone.
     CHAT_CONNECTION_UPSELL = "chat-connection-upsell"
-
-    # Mirror of the frontend `self-serve-account-deletion` flag. Gates
-    # deleting an account from Settings > Account and the paywall: the
-    # deletion and feedback routes 404 when off. Stays off until the data
-    # erasure routine (SECRT-2854) runs in production, since a closed
-    # account is only erased by it. Fail-closed (default False).
-    SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion"
 
 
 def initialize_feature_flags() -> None:
@@ -466,6 +489,7 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
         Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value,
         Flag.COPILOT_TIER_STRIPE_PRICES.value,
         Flag.CARD_REQUIRED_TRIAL_OFFER.value,
+        Flag.LOCAL_LLM_TIER_PREFERENCES.value,
     }
 )
 

@@ -135,6 +135,17 @@ async def stream_chat_completion_microsoft_365(
         )
     if session.metadata.llm_auth_provider != "microsoft_365_copilot":
         raise RuntimeError("microsoft_365_copilot_session_route_mismatch")
+    # Only the SDK engine is bound to the user's machine; answering a Local PC
+    # chat here would ignore the folder it is bound to.
+    if session.metadata.execution_target.kind == "local":
+        yield StreamError(
+            errorText=(
+                "Microsoft 365 Copilot can't work in a folder on your Local PC. "
+                "Start a Cloud chat to use it."
+            ),
+            code="local_pc_requires_sdk_engine",
+        )
+        return
     if file_ids:
         yield StreamError(
             errorText=(

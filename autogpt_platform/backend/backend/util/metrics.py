@@ -421,7 +421,10 @@ def sentry_init():
         # (backend.util.service); outbound calls to third parties, such as a
         # block's request to a user-supplied URL, carry no Sentry headers.
         trace_propagation_targets=[],
-        profiles_sample_rate=1.0,
+        # Continuous profiling: one sample buffer per process, however many
+        # transactions are in flight, profiling while any traced one runs.
+        profile_session_sample_rate=1.0,
+        profile_lifecycle="trace",
         release=settings.config.sentry_release.strip() or None,
         environment=_sentry_environment(),
         # The SDK default, pinned: no IP address, request headers with
