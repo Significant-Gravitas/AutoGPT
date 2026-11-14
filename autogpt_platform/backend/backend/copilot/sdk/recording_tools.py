@@ -1,0 +1,750 @@
+"""MCP tools that expose the LocalPC shim's workflow-recording surface.
+
+Registered alongside the file/exec/computer-use MCP tools when (a) the
+active executor is a :class:`LocalPCShim` and (b) the shim's HELLO
+advertised the ``recording`` capability — same gating pattern as the
+``local_pc_*`` computer-use tools.
+
+Tools:
+  * ``list_recordings`` — recordings the user started and reviewed in the UI.
+  * ``generate_skill_from_recording`` — fetch + generalize into a skill
+    (returns ``needs_confirmation`` per §8 when params aren't confirmed).
+  * ``dry_run_skill`` — drive replay over multiple rows (§8/§9).
+
+Each handler is thin over ``recording_skill`` / the shim's ``_RecordingProxy``;
+structured errors go through the existing :mod:`local_pc_errors` translator
+via :class:`ShimRecordingError`. See
+``autogpt-local-executor/docs/WORKFLOW_RECORDING.md``.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import logging
+import time
+from collections import OrderedDict
+from typing import Any, Callable
+
+from pydantic import BaseModel, Field
+
+from backend.api.features.local_executor.consent import is_computer_use_approved
+from backend.api.features.local_executor.gating import is_computer_use_enabled
+from backend.api.features.local_executor.state import (
+    get_recording_state,
+    list_recording_states,
+    mark_recording_started,
+    mark_recording_stopped,
+)
+from backend.copilot.context import (
+    get_current_sandbox,
+    get_execution_context,
+    is_local_pc_executor,
+)
+from backend.copilot.sdk.computer_use_policy import guard_scope
+from backend.copilot.tools.local_pc_shim import (
+    LocalPCShim,
+    ShimConnectionGuard,
+    ShimRecordingError,
+)
+from backend.copilot.tools.recording_models import (
+    RecordingReviewApplied,
+    RecordingSummary,
+)
+from backend.copilot.tools.recording_skill import (
+    GeneratedSkill,
+    dry_run,
+    generate_skill_from_recording,
+    propose_clarifications,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# The cua-driver tools a dry run replays through. It calls the shim
+# directly, so the shim must offer them and the session must have approved
+# computer use, as Otto's own computer-use calls require.
+_REPLAY_TOOLS = frozenset({"type_text", "click"})
+
+
+# ---------------------------------------------------------------------------
+# Per-session state — keyed by shim.sandbox_id so it survives shim
+# reconnects (the LocalPCShim object is recreated on reconnect, but the
+# session id is stable). Holds (a) the recordings the agent started and
+# (b) the most recent generated skill per recording so dry_run_skill can
+# reference it without re-generating.
+# ---------------------------------------------------------------------------
+
+
+class _SessionRecordingState(BaseModel):
+    recordings: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    skills: dict[str, GeneratedSkill] = Field(default_factory=dict)
+
+
+_MAX_SESSION_STATES = 256
+_MAX_RECORDINGS_PER_SESSION = 100
+_SESSION_STATE: OrderedDict[str, _SessionRecordingState] = OrderedDict()
+
+
+def _state_for(shim: LocalPCShim) -> _SessionRecordingState:
+    sid = shim.sandbox_id
+    state = _SESSION_STATE.get(sid)
+    if state is None:
+        state = _SessionRecordingState()
+        _SESSION_STATE[sid] = state
+        while len(_SESSION_STATE) > _MAX_SESSION_STATES:
+            _SESSION_STATE.popitem(last=False)
+    else:
+        _SESSION_STATE.move_to_end(sid)
+    return state
+
+
+def _remember_recording(
+    state: _SessionRecordingState,
+    recording_id: str,
+    metadata: dict[str, Any],
+) -> None:
+    if recording_id not in state.recordings:
+        while len(state.recordings) >= _MAX_RECORDINGS_PER_SESSION:
+            oldest = next(iter(state.recordings))
+            state.recordings.pop(oldest, None)
+            state.skills.pop(oldest, None)
+    state.recordings[recording_id] = metadata
+
+
+def register_recording_started(
+    shim: LocalPCShim,
+    recording_id: str,
+    *,
+    mode: str,
+    interpretation_route: str,
+    channels: list[str],
+) -> None:
+    """Register a recording started through either HTTP or an MCP tool."""
+    _remember_recording(
+        _state_for(shim),
+        recording_id,
+        {
+            "recording_id": recording_id,
+            "mode": mode,
+            "interpretation_route": interpretation_route,
+            "channels": list(channels),
+            "status": "recording",
+            "started_at": time.time(),
+        },
+    )
+
+
+def register_recording_stopped(
+    shim: LocalPCShim,
+    recording_id: str,
+    summary: RecordingSummary,
+) -> None:
+    """Update shared bounded state after an HTTP or MCP stop operation."""
+    state = _state_for(shim)
+    metadata = state.recordings.get(recording_id, {"recording_id": recording_id})
+    metadata["status"] = "stopped"
+    metadata["stopped_at"] = time.time()
+    metadata["summary"] = summary.to_dict()
+    _remember_recording(state, recording_id, metadata)
+
+
+def register_recording_reviewed(
+    shim: LocalPCShim,
+    recording_id: str,
+    applied: RecordingReviewApplied,
+) -> None:
+    """Mark a shim-authoritative reviewed recording eligible for generation."""
+    state = _state_for(shim)
+    metadata = state.recordings.get(recording_id, {"recording_id": recording_id})
+    metadata["status"] = "reviewed"
+    metadata["reviewed_at"] = time.time()
+    metadata["step_count"] = applied.step_count
+    _remember_recording(state, recording_id, metadata)
+
+
+# ---------------------------------------------------------------------------
+# Starting and stopping, for the HTTP routes and the MCP tool alike
+# ---------------------------------------------------------------------------
+
+# Strong references, so a rollback stop outliving its request isn't collected.
+ROLLBACK_TASKS: set[asyncio.Task[bool]] = set()
+
+
+class RecordingStateUnavailable(Exception):
+    """A recording started, but its state couldn't be saved where every
+    worker reads it, so it was stopped, or the stop couldn't be confirmed."""
+
+    def __init__(self, recording_id: str, *, stopped: bool) -> None:
+        self.recording_id = recording_id
+        self.stopped = stopped
+        if stopped:
+            self.code = "RECORDING_STATE_UNAVAILABLE"
+            self.message = (
+                "Recording state could not be saved, so the recording was stopped."
+            )
+        else:
+            self.code = "RECORDING_STOP_UNCONFIRMED"
+            self.message = (
+                "Recording state could not be saved, and stopping the recording "
+                "could not be confirmed."
+            )
+        super().__init__(self.message)
+
+
+class RecordingSummaryUnavailable(Exception):
+    """A saved stop is missing the summary a retry recovers from."""
+
+
+async def start_recording(
+    shim: LocalPCShim,
+    session_id: str,
+    *,
+    mode: str,
+    interpretation_route: str,
+    channels: list[str],
+) -> str:
+    """Start a recording with the person's consent on the machine, then save
+    it to the shared state every worker reads, then to this worker's own.
+    One whose state can't be saved is stopped: no worker could list or stop
+    it. Raises ShimRecordingError, or RecordingStateUnavailable."""
+    recording_id = await shim.recording.start_with_consent(
+        mode=mode, interpretation_route=interpretation_route, channels=channels
+    )
+    if not recording_id:
+        raise ShimRecordingError(
+            "RECORDING_START_FAILED",
+            "The Local PC executor did not return a recording ID",
+        )
+    route = shim.recording.effective_route_for(recording_id, interpretation_route)
+    try:
+        await mark_recording_started(
+            session_id,
+            recording_id,
+            mode=mode,
+            interpretation_route=route,
+            channels=channels,
+        )
+    except asyncio.CancelledError:
+        # The caller never learns the id, so the recording is stopped first.
+        await stop_after_cancellation(shim, recording_id)
+        raise
+    except Exception as exc:
+        stopped = await stop_orphaned_recording(shim, recording_id)
+        raise RecordingStateUnavailable(recording_id, stopped=stopped) from exc
+    register_recording_started(
+        shim, recording_id, mode=mode, interpretation_route=route, channels=channels
+    )
+    return recording_id
+
+
+async def stop_recording(
+    shim: LocalPCShim, session_id: str, recording_id: str
+) -> RecordingSummary:
+    """Stop a recording once. A stop any worker saved returns its summary
+    without a second STOP, which the machine can't repeat; a new stop is
+    saved before anything else, so a retry can recover from it. Raises
+    ShimRecordingError, or RecordingSummaryUnavailable."""
+    summary = await _saved_stop_summary(session_id, recording_id)
+    if summary is not None:
+        return summary
+    try:
+        summary = await shim.recording.stop(recording_id)
+    except ShimRecordingError as exc:
+        # Another stop got there first: its STOP went through and it saved
+        # the summary, so the machine no longer knows the recording.
+        saved = (
+            await _saved_stop_summary(session_id, recording_id)
+            if exc.code == "RECORDING_NOT_FOUND"
+            else None
+        )
+        if saved is None:
+            raise
+        return saved
+    await mark_recording_stopped(session_id, recording_id, summary=summary.to_dict())
+    register_recording_stopped(shim, recording_id, summary)
+    return summary
+
+
+async def _saved_stop_summary(
+    session_id: str, recording_id: str
+) -> RecordingSummary | None:
+    state = await get_recording_state(session_id, recording_id)
+    if state is None or state.status not in {"stopped", "reviewed"}:
+        return None
+    if state.summary is None:
+        raise RecordingSummaryUnavailable(
+            "Stopped recording state is missing its recovery summary"
+        )
+    summary = RecordingSummary.from_payload(state.summary)
+    if summary.recording_id != recording_id:
+        raise RecordingSummaryUnavailable(
+            "Stopped recording state has an invalid recovery summary"
+        )
+    return summary
+
+
+async def stop_orphaned_recording(shim: LocalPCShim, recording_id: str) -> bool:
+    """Stop a recording whose state was never saved; True if it stopped."""
+    try:
+        await shim.recording.stop(recording_id)
+        return True
+    except Exception:
+        logger.exception(
+            "Failed to stop recording %s after state persistence failed",
+            recording_id,
+        )
+        return False
+    finally:
+        shim.close_recording(recording_id)
+
+
+async def stop_after_cancellation(shim: LocalPCShim, recording_id: str) -> None:
+    """Run the stop as its own task. A cancelled scope can cancel every await
+    that follows, and the stop must finish anyway."""
+    stop = asyncio.create_task(stop_orphaned_recording(shim, recording_id))
+    ROLLBACK_TASKS.add(stop)
+    stop.add_done_callback(ROLLBACK_TASKS.discard)
+    with contextlib.suppress(asyncio.CancelledError):
+        await asyncio.shield(stop)
+
+
+# ---------------------------------------------------------------------------
+# MCP result helpers (mirror computer_use_tools._ok / _err)
+# ---------------------------------------------------------------------------
+
+
+def _ok(payload: dict | list | str | int | None) -> dict[str, Any]:
+    text = payload if isinstance(payload, str) else json.dumps(payload, default=str)
+    return {"content": [{"type": "text", "text": text}], "isError": False}
+
+
+def _err(code: str, message: str, details: dict | None = None) -> dict[str, Any]:
+    body: dict[str, Any] = {"code": code, "error": message}
+    if details:
+        body["details"] = details
+    return {
+        "content": [{"type": "text", "text": json.dumps(body, default=str)}],
+        "isError": True,
+    }
+
+
+def _get_local_pc_shim() -> LocalPCShim | None:
+    sb = get_current_sandbox()
+    return sb if is_local_pc_executor(sb) else None
+
+
+def _require_recording() -> tuple[LocalPCShim | None, dict[str, Any] | None]:
+    """Resolve the active LocalPCShim, refusing if the capability isn't granted."""
+    shim = _get_local_pc_shim()
+    if shim is None:
+        return None, _err(
+            "NO_LOCAL_PC_EXECUTOR",
+            "No LocalPC shim is connected for this session. Workflow "
+            "recording requires the autogpt-local-executor daemon to be "
+            "running on the user's machine.",
+        )
+    if "recording" not in (shim.capabilities or []):
+        return None, _err(
+            "CAPABILITY_NOT_GRANTED",
+            "The connected shim did not advertise the `recording` "
+            "capability. On a supported macOS host, restart the shim with "
+            "`--enable-recording` to enable workflow recording.",
+            details={"capabilities": list(shim.capabilities or [])},
+        )
+    return shim, None
+
+
+async def _require_computer_use_consent(
+    shim: LocalPCShim,
+) -> tuple[ShimConnectionGuard | None, dict[str, Any] | None]:
+    """Revalidate revocable consent before replay drives local input."""
+    user_id, session = get_execution_context()
+    guard = shim.capture_connection_guard()
+    scope = guard_scope(guard, shim.capability_set)
+    if (
+        not user_id
+        or session is None
+        or scope is None
+        or not await is_computer_use_approved(
+            session.session_id,
+            user_id,
+            machine_id=scope.machine_id,
+            driver=scope.driver,
+            tools=scope.tools,
+        )
+    ):
+        return None, _err(
+            "COMPUTER_USE_CONSENT_REQUIRED",
+            "Computer control is not approved for this chat session. Stop and "
+            "ask the user to approve Local PC computer use in the AutoGPT UI.",
+        )
+    if not shim.connection_guard_matches(guard):
+        return None, _err(
+            "COMPUTER_USE_CONNECTION_CHANGED",
+            "The Local PC executor reconnected while computer access was being "
+            "checked. Retry after the current machine and capabilities are reviewed.",
+        )
+    return guard, None
+
+
+async def _require_replay_input(
+    shim: LocalPCShim,
+) -> tuple[ShimConnectionGuard | None, dict[str, Any] | None]:
+    """What computer use needs before replay drives the mouse and keyboard:
+    the computer-use flag, the `computer_use` capability, the replayed tools
+    among those the shim offers, and the session's consent."""
+    flag_user, _ = get_execution_context()
+    if not flag_user or not await is_computer_use_enabled(flag_user):
+        return None, _err(
+            "COMPUTER_USE_DISABLED",
+            "Computer control isn't turned on for this account, so a recorded "
+            "skill can't be replayed.",
+        )
+    if "computer_use" not in shim.capability_set:
+        return None, _err(
+            "CAPABILITY_NOT_GRANTED",
+            "The connected shim did not advertise the `computer_use` capability, "
+            "which replaying a skill needs.",
+            details={"capabilities": list(shim.capabilities or [])},
+        )
+    guard, consent_error = await _require_computer_use_consent(shim)
+    if consent_error:
+        return None, consent_error
+    assert guard is not None
+    missing = sorted(_REPLAY_TOOLS - set(guard.computer_use_tools))
+    if missing:
+        return None, _err(
+            "CAPABILITY_NOT_GRANTED",
+            "The connected Local PC executor did not grant the input a replay needs.",
+            details={"missing": missing},
+        )
+    return guard, None
+
+
+def _handle_shim_error(exc: ShimRecordingError) -> dict[str, Any]:
+    return _err(exc.code, str(exc), exc.details)
+
+
+# ---------------------------------------------------------------------------
+# Handlers
+# ---------------------------------------------------------------------------
+
+
+async def _h_record_workflow(args: dict[str, Any]) -> dict[str, Any]:
+    shim, gate = _require_recording()
+    if shim is None:
+        assert gate is not None
+        return gate
+    action = str(args.get("action", "")).lower()
+    if action == "start":
+        mode = str(args.get("mode", "copilot"))
+        route = str(args.get("interpretation_route", "extract_then_cloud"))
+        channels = args.get("channels") or ["floor"]
+        if not isinstance(channels, list):
+            return _err("INVALID_ARGUMENT", "channels must be a list of strings")
+        try:
+            recording_id = await start_recording(
+                shim,
+                shim.sandbox_id,
+                mode=mode,
+                interpretation_route=route,
+                channels=[str(c) for c in channels],
+            )
+        except ShimRecordingError as exc:
+            return _handle_shim_error(exc)
+        except RecordingStateUnavailable as exc:
+            return _err(exc.code, exc.message, {"recording_id": exc.recording_id})
+        return _ok({"recording_id": recording_id, "status": "recording", "mode": mode})
+
+    if action == "stop":
+        recording_id = args.get("recording_id")
+        if not isinstance(recording_id, str) or not recording_id:
+            return _err("INVALID_ARGUMENT", "recording_id is required to stop")
+        try:
+            summary = await stop_recording(shim, shim.sandbox_id, recording_id)
+        except ShimRecordingError as exc:
+            return _handle_shim_error(exc)
+        except RecordingSummaryUnavailable as exc:
+            return _err(
+                "RECORDING_STATE_UNAVAILABLE", str(exc), {"recording_id": recording_id}
+            )
+        finally:
+            # Close the live step stream if one was open (co-pilot mode).
+            shim.close_recording(recording_id)
+        return _ok({"recording_id": recording_id, "summary": summary.to_dict()})
+
+    return _err(
+        "INVALID_ARGUMENT",
+        "action must be 'start' or 'stop'",
+        details={"action": action},
+    )
+
+
+async def _h_list_recordings(args: dict[str, Any]) -> dict[str, Any]:
+    shim, gate = _require_recording()
+    if shim is None:
+        assert gate is not None
+        return gate
+    local_state = _state_for(shim)
+    recordings_by_id = {
+        recording_id: dict(metadata)
+        for recording_id, metadata in local_state.recordings.items()
+    }
+    try:
+        shared_states = await list_recording_states(shim.sandbox_id)
+    except Exception:
+        logger.exception(
+            "[Recording] Shared recording state unavailable for %s",
+            shim.sandbox_id[:12],
+        )
+        shared_states = []
+    recordings_by_id.update(
+        {state.recording_id: state.model_dump() for state in shared_states}
+    )
+    recordings = sorted(
+        recordings_by_id.values(),
+        key=lambda recording: recording.get("started_at") or 0,
+    )
+    return _ok({"recordings": recordings})
+
+
+async def _h_generate_skill(args: dict[str, Any]) -> dict[str, Any]:
+    shim, gate = _require_recording()
+    if shim is None:
+        assert gate is not None
+        return gate
+    recording_id = args.get("recording_id")
+    if not isinstance(recording_id, str) or not recording_id:
+        return _err("INVALID_ARGUMENT", "recording_id is required")
+    state = _state_for(shim)
+    try:
+        shared_state = await get_recording_state(shim.sandbox_id, recording_id)
+    except Exception:
+        logger.exception(
+            "[Recording] Shared state lookup failed for %s",
+            recording_id,
+        )
+        shared_state = None
+    metadata = (
+        shared_state.model_dump()
+        if shared_state is not None
+        else state.recordings.get(recording_id)
+    )
+    if metadata is None or metadata.get("status") != "reviewed":
+        return _err(
+            "RECORDING_REVIEW_REQUIRED",
+            "Review and approve the stopped recording before generating a skill.",
+            details={"recording_id": recording_id},
+        )
+    try:
+        recording = await shim.recording.fetch(recording_id)
+    except ShimRecordingError as exc:
+        return _handle_shim_error(exc)
+
+    clarifications = args.get("clarifications")
+    if clarifications is not None and not isinstance(clarifications, dict):
+        return _err("INVALID_ARGUMENT", "clarifications must be an object")
+    if mistyped := _mistyped_clarification(clarifications or {}):
+        return _err("INVALID_ARGUMENT", mistyped)
+    data_source_hint = args.get("data_source_hint")
+    if data_source_hint is not None and not isinstance(data_source_hint, str):
+        return _err("INVALID_ARGUMENT", "data_source_hint must be a string")
+
+    skill = generate_skill_from_recording(
+        recording,
+        data_source_hint=data_source_hint,
+        clarifications=clarifications,
+    )
+    state.skills[recording_id] = skill
+
+    result = skill.to_dict()
+    # When confirmation is still needed, also surface the §3.3 proposed
+    # clarifications so the co-pilot can drive the trust loop in one step.
+    if skill.needs_confirmation:
+        result["proposed_clarifications"] = [
+            q.to_dict() for q in propose_clarifications(recording, clarifications)
+        ]
+    return _ok(result)
+
+
+def _mistyped_clarification(clarifications: dict[str, Any]) -> str | None:
+    """Why a clarification can't be read, so the model can fix it rather
+    than have its answers ignored; None when every one reads (or is absent)."""
+    for name in ("name", "description", "trigger", "success_criterion"):
+        value = clarifications.get(name)
+        if value is not None and not isinstance(value, str):
+            return f"clarifications.{name} must be text"
+    for name, kind, answer in (
+        ("confirmed_parameters", bool, "true or false"),
+        ("data_source_columns", str, "a column name"),
+    ):
+        value = clarifications.get(name)
+        if value is None:
+            continue
+        if not isinstance(value, dict) or not all(
+            isinstance(field, str) and type(given) is kind
+            for field, given in value.items()
+        ):
+            return f"clarifications.{name} must map each field label to {answer}"
+    return None
+
+
+async def _h_dry_run_skill(args: dict[str, Any]) -> dict[str, Any]:
+    shim, gate = _require_recording()
+    if shim is None:
+        assert gate is not None
+        return gate
+    connection_guard, refusal = await _require_replay_input(shim)
+    if refusal:
+        return refusal
+    assert connection_guard is not None
+    recording_id = args.get("recording_id")
+    if not isinstance(recording_id, str) or not recording_id:
+        return _err("INVALID_ARGUMENT", "recording_id is required")
+    state = _state_for(shim)
+    skill = state.skills.get(recording_id)
+    if skill is None:
+        return _err(
+            "SKILL_NOT_GENERATED",
+            "No generated skill for this recording yet. Call "
+            "`generate_skill_from_recording` first.",
+            details={"recording_id": recording_id},
+        )
+    if skill.needs_confirmation:
+        # §8 — don't dry-run an unconfirmed skill; the parameter set isn't
+        # settled, so the run would be meaningless.
+        return _err(
+            "SKILL_NEEDS_CONFIRMATION",
+            "This skill still has unconfirmed parameters — confirm them "
+            "(answer the clarifying questions or record a second row) "
+            "before a dry run.",
+            details={
+                "recording_id": recording_id,
+                "questions": [q.to_dict() for q in skill.questions],
+            },
+        )
+
+    data_rows = args.get("data_rows")
+    if not isinstance(data_rows, list) or not data_rows:
+        return _err(
+            "INVALID_ARGUMENT",
+            "data_rows must be a non-empty list of row objects. A multi-row "
+            "dry-run is required — a single row can't catch a "
+            "parameter-as-constant mistake (§8).",
+        )
+    rows: list[dict[str, Any]] = [r for r in data_rows if isinstance(r, dict)]
+    if not rows:
+        return _err("INVALID_ARGUMENT", "data_rows must contain row objects")
+    if len(rows) < 2:
+        logger.info(
+            "[Recording] dry_run_skill called with a single row for %s — "
+            "multi-row recommended to catch parameter-as-constant",
+            recording_id,
+        )
+
+    allow_destructive = bool(args.get("allow_destructive", False))
+    try:
+        result = await dry_run(
+            skill,
+            rows,
+            shim=shim,
+            allow_destructive=allow_destructive,
+            connection_guard=connection_guard,
+        )
+    except Exception as exc:  # defensive — replay drives the live machine
+        logger.exception("[Recording] dry_run_skill failed for %s", recording_id)
+        return _err("DRY_RUN_FAILED", f"Dry run failed: {exc}")
+    return _ok(result.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# Tool descriptors
+# ---------------------------------------------------------------------------
+
+
+RECORDING_TOOLS: list[
+    tuple[str, str, dict[str, Any], Callable[[dict[str, Any]], Any]]
+] = [
+    (
+        "list_recordings",
+        "List workflow recordings from the Local PC review flow, including "
+        "their recording/review status, interpretation route, and summary.",
+        {"type": "object", "properties": {}},
+        _h_list_recordings,
+    ),
+    (
+        "generate_skill_from_recording",
+        "Fetch a stopped recording and generalize it into a reusable, "
+        "parameterized skill (a SKILL.md plus a replay manifest). "
+        "IMPORTANT: parameter inference is confirmed, not guessed — if the "
+        "recording is a single row with unconfirmed parameters, this "
+        "returns `needs_confirmation: true` with the questions to ask the "
+        "user (or `needs_second_row: true` for demonstration mode). Pass "
+        "`clarifications` to confirm: "
+        "`{confirmed_parameters: {<field label>: true|false}}` from a "
+        "co-pilot answer, or `{data_source_columns: {<field label>: "
+        "<column name>}}` from a data-source join. The skill only becomes "
+        "final when every parameter is confirmed.",
+        {
+            "type": "object",
+            "properties": {
+                "recording_id": {
+                    "type": "string",
+                    "description": "The stopped recording to generalize.",
+                },
+                "data_source_hint": {
+                    "type": "string",
+                    "description": "Where run data comes from, e.g. "
+                    "'customers.csv'. Seeds the data-source contract.",
+                },
+                "clarifications": {
+                    "type": "object",
+                    "description": "Confirmation evidence: "
+                    "confirmed_parameters / data_source_columns / name / "
+                    "description / trigger / success_criterion.",
+                },
+            },
+            "required": ["recording_id"],
+        },
+        _h_generate_skill,
+    ),
+    (
+        "dry_run_skill",
+        "Dry-run a generated skill over MULTIPLE data rows via the LocalPC "
+        "shim, with per-step read-back asserts, before any unattended run. "
+        "Multiple rows are required — a single-row dry-run can't catch a "
+        "parameter that was mistakenly treated as a constant. Destructive "
+        "steps (submit / upload / run / file ops) are skipped by default; "
+        "pass `allow_destructive: true` only when the user explicitly wants "
+        "the dry-run to actually perform them. Returns per-row outcomes the "
+        "user can watch before trusting the skill.",
+        {
+            "type": "object",
+            "properties": {
+                "recording_id": {
+                    "type": "string",
+                    "description": "The recording whose generated skill to "
+                    "dry-run (must be generated + confirmed first).",
+                },
+                "data_rows": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Rows of {parameter: value}. Use >= 2 rows "
+                    "with different values to catch parameter-as-constant.",
+                },
+                "allow_destructive": {
+                    "type": "boolean",
+                    "description": "Actually perform submit/irreversible "
+                    "steps during the dry-run. Default: false (skipped).",
+                },
+            },
+            "required": ["recording_id", "data_rows"],
+        },
+        _h_dry_run_skill,
+    ),
+]
+
+
+RECORDING_TOOL_NAMES: list[str] = [name for name, *_ in RECORDING_TOOLS]

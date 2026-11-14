@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
+from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import PendingHumanReview, User
 
 from backend.copilot import stream_registry
@@ -203,6 +204,29 @@ async def test_a_failed_wake_is_not_repeated_for_the_same_cards(
     wakes = [m for m in reloaded.messages if m.content == held.WAKE_MESSAGE]
     assert len(wakes) == 1
     assert dispatch.await_count == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_in_a_chat_a_reset_removed_starts_nothing(
+    setup_test_user, test_user_id, gate_on
+):
+    """Resetting the expert archives its chats; an answer that still reaches
+    one must not run its call there."""
+    session = await _new_session(test_user_id)
+    review_id = await _hold(session, test_user_id, "after the reset")
+    await _answer(review_id, ReviewStatus.APPROVED)
+    await PrismaChatSession.prisma().update(
+        where={"id": session.session_id}, data={"archivedAt": datetime.now(UTC)}
+    )
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        assert await held.wake(test_user_id, session.session_id) is True
+
+    dispatch.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert all(m.content != held.WAKE_MESSAGE for m in reloaded.messages)
 
 
 @pytest.mark.asyncio(loop_scope="session")

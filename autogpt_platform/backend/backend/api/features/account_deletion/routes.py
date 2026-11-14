@@ -1,23 +1,25 @@
 """Self-serve account deletion (SECRT-2877).
 
-Deleting and the exit feedback 404 while the self-serve-account-deletion flag
-is off for the caller. Reading the deletion status and keeping the account do
-not: someone who closed their account while the flag was on must still be
-able to keep it. Deleting, the feedback and keeping the account answer 403 to
-an admin acting as another user: each is its owner's own act.
+Every signed-in user can delete their account. Deleting, the feedback and
+keeping the account answer 403 to an admin acting as another user: each is
+its owner's own act. Reading the deletion status does not.
 
 The deletion, status and keep routes authenticate with
 ``get_user_id_allowing_closed``: they answer a closed account (a repeat call,
 the screen shown at sign-in during the 14 days) and a banned one (deleting
-the account is its owner's right whatever the ban). Every other route rejects
-both. None of them sits behind the payment paywall: an account without a plan
+the account is its owner's right whatever the ban; keeping it is not, so the
+keep refuses a banned account as every other route does). Every other route
+rejects both. None of them sits behind the payment paywall: an account without a plan
 must be able to delete itself.
 """
 
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, get_user_id_allowing_closed
-from autogpt_libs.auth.dependencies import IMPERSONATION_HEADER_NAME
+from autogpt_libs.auth.dependencies import (
+    ACCOUNT_BANNED_DETAIL,
+    IMPERSONATION_HEADER_NAME,
+)
 from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from prisma.enums import AccountDeletionSource
 
@@ -28,6 +30,7 @@ from backend.api.features.account_deletion.models import (
     DeletionFeedbackRequest,
 )
 from backend.api.features.account_deletion.restore import (
+    BannedAccountError,
     TooLateToRestoreError,
     get_deletion_status,
     restore_account,
@@ -37,7 +40,6 @@ from backend.api.features.account_deletion.service import (
     PlanCancellationError,
     delete_account,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 
 EMAIL_MISMATCH_DETAIL = "That email doesn't match your account."
 PLAN_CANCELLATION_DETAIL = (
@@ -50,19 +52,9 @@ TOO_LATE_DETAIL = (
 )
 
 
-async def require_account_deletion_flag(
-    user_id: Annotated[str, Security(get_user_id_allowing_closed)],
-) -> None:
-    """Fail-closed gate, read through ``is_feature_enabled`` so the
-    ``FORCE_FLAG_*`` override works locally (see onboarding_dump's gate)."""
-    if not await is_feature_enabled(Flag.SELF_SERVE_ACCOUNT_DELETION, user_id):
-        raise HTTPException(status_code=404, detail="Feature not available")
-
-
 async def reject_impersonation(request: Request) -> None:
     """An admin acting as a user can neither close their account nor answer
-    the exit question for them. After the flag gate, so a flag that is off
-    still hides both routes from everyone."""
+    the exit question for them."""
     if request.headers.get(IMPERSONATION_HEADER_NAME, "").strip():
         raise HTTPException(status.HTTP_403_FORBIDDEN, IMPERSONATION_DETAIL)
 
@@ -70,10 +62,7 @@ async def reject_impersonation(request: Request) -> None:
 router = APIRouter(
     prefix="/account/deletion",
     tags=["account"],
-    dependencies=[
-        Depends(require_account_deletion_flag),
-        Depends(reject_impersonation),
-    ],
+    dependencies=[Depends(reject_impersonation)],
 )
 
 
@@ -83,7 +72,6 @@ router = APIRouter(
     responses={
         400: {"description": EMAIL_MISMATCH_DETAIL},
         403: {"description": IMPERSONATION_DETAIL},
-        404: {"description": "The self-serve-account-deletion flag is off"},
         502: {"description": PLAN_CANCELLATION_DETAIL},
     },
 )
@@ -110,7 +98,6 @@ async def request_account_deletion(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         403: {"description": IMPERSONATION_DETAIL},
-        404: {"description": "The self-serve-account-deletion flag is off"},
         429: {"description": "Too many answers from this account"},
     },
 )
@@ -121,7 +108,8 @@ async def send_account_deletion_feedback(
     await record_feedback(user_id=user_id, body=body)
 
 
-# Not behind the flag: see the module docstring.
+# Reading the status is open to an admin acting as the user; keeping the
+# account refuses them on its own route.
 status_router = APIRouter(prefix="/account/deletion", tags=["account"])
 
 
@@ -137,7 +125,10 @@ async def get_account_deletion_status(
     summary="Keep my account",
     dependencies=[Depends(reject_impersonation)],
     responses={
-        403: {"description": IMPERSONATION_DETAIL},
+        403: {
+            "description": f"{IMPERSONATION_DETAIL} Or the account is banned "
+            "(`account_banned`)."
+        },
         409: {"description": TOO_LATE_DETAIL},
     },
 )
@@ -146,6 +137,8 @@ async def keep_account(
 ) -> AccountDeletionResponse:
     try:
         await restore_account(user_id)
+    except BannedAccountError:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, ACCOUNT_BANNED_DETAIL)
     except TooLateToRestoreError:
         raise HTTPException(status.HTTP_409_CONFLICT, TOO_LATE_DETAIL)
     return AccountDeletionResponse(status="open")

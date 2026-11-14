@@ -18,6 +18,8 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.CHAT_MODE_OPTION]: false,
+  [Flag.LOCAL_PC_EXECUTOR]: false,
+  [Flag.WORKFLOW_RECORDING]: false,
   [Flag.GENERIC_TRIGGER_AGENTS]: false,
   [Flag.CHAT_WORKSPACE_FILES]: false,
   [Flag.CHAT_PINNING]: false,
@@ -37,7 +39,6 @@ const defaultFlags = {
   [Flag.ONBOARDING_INTERVIEW_VOICE]: false,
   // Empty keeps the default onboarding order (`resolveStepOrder`).
   [Flag.ONBOARDING_STEP_ORDER]: [] as string[],
-  [Flag.SELF_SERVE_ACCOUNT_DELETION]: false,
 } satisfies Record<Flag, unknown>;
 
 type FlagValues = typeof defaultFlags;
@@ -65,6 +66,10 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_MARKETPLACE_SEARCH_TERMS;
     case Flag.CHAT_MODE_OPTION:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION;
+    case Flag.LOCAL_PC_EXECUTOR:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR;
+    case Flag.WORKFLOW_RECORDING:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING;
     case Flag.GENERIC_TRIGGER_AGENTS:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GENERIC_TRIGGER_AGENTS;
     case Flag.CHAT_WORKSPACE_FILES:
@@ -91,8 +96,6 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW;
     case Flag.ONBOARDING_INTERVIEW_VOICE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW_VOICE;
-    case Flag.SELF_SERVE_ACCOUNT_DELETION:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
     case Flag.ONBOARDING_STEP_ORDER:

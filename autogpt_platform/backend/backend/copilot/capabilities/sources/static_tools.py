@@ -32,6 +32,8 @@ EAGER_CORE: frozenset[str] = frozenset(
         "run_agent",
         "find_library_agent",
         "ask_question",
+        # A presentation tool: Otto would never go searching for one.
+        "render_ui",
         "web_search",
         "web_fetch",
         # The three go together: read and write take a file id or path that

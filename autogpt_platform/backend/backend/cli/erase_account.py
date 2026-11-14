@@ -1,8 +1,11 @@
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import click
+
+from backend.util.logging import configure_logging
 
 if TYPE_CHECKING:
     from backend.data.account_erasure.models import ErasureReport
@@ -28,10 +31,22 @@ if TYPE_CHECKING:
     "days to keep it. Closes the account if it is open, then erases it in the "
     "same run.",
 )
+@click.option(
+    "--no-email",
+    is_flag=True,
+    help="With --close --now: send the owner no account-closed email, now or "
+    "from the erasure.",
+)
 @click.option("--apply", is_flag=True, help="Make the change. Without it, dry run.")
 @click.option("--yes", is_flag=True, help="With --apply, skip the confirmation.")
 def erase_account_command(
-    account: str | None, pending: bool, close: bool, now: bool, apply: bool, yes: bool
+    account: str | None,
+    pending: bool,
+    close: bool,
+    now: bool,
+    no_email: bool,
+    apply: bool,
+    yes: bool,
 ):
     """Erase a closed account and everything it holds (SECRT-2854).
 
@@ -44,19 +59,22 @@ def erase_account_command(
     account, exactly as the Settings button does (Stripe plan cancelled, apps
     disconnected, work and email stopped, the confirmation email sent). The
     owner then has 14 days to sign in and keep it, as from Settings.
+    --close --now --no-email closes and erases it without the confirmation
+    email; the request records that, so the erasure sends none either.
 
     The erasure first claims the request, so the owner can no longer keep the
     account. It then stops the account's work again and removes its memory
     crons, sends the confirmation if it has not gone out, cancels the
     subscriptions of the orgs that go with the account, hands the agents
     other accounts use to a "deleted user" account, deletes the rest of its
-    marketplace presence, its files in every bucket, its AutoPilot memory,
-    its PostHog person and MailerLite subscriber, keeps a ban record if the
-    account is banned, deletes its rows and auth identity last, and marks the
-    request done. The credit ledger and Stripe's billing records stay.
+    marketplace presence, its files in every bucket, its AutoPilot memory and
+    its MailerLite subscriber, keeps a ban record if the account is banned,
+    deletes its rows and auth identity, then its PostHog person, and marks
+    the request done. The credit ledger and Stripe's billing records stay.
 
     Dry run by default, with counts only. Idempotent: a failed --apply stops
-    with the account in place, and running it again resumes. The runbook is
+    and running it again resumes. On an account erased already, --apply
+    repeats only the PostHog delete. The runbook is
     docs/engineering/account-deletion.md.
     """
     if pending == bool(account):
@@ -65,16 +83,35 @@ def erase_account_command(
         raise click.UsageError("--close applies to one account.")
     if now and not close:
         raise click.UsageError("--now goes with --close.")
-    # Keep Prisma and client chatter out of the report.
-    logging.disable(logging.INFO)
+    if no_email and not (close and now):
+        raise click.UsageError(_NO_EMAIL_ONLY_WITH)
+    _log_the_erasure_only()
     if pending:
         asyncio.run(_with_db(_run_pending(apply=apply, yes=yes)))
     elif close and now:
-        asyncio.run(_with_db(_run_close_now(account or "", apply=apply, yes=yes)))
+        asyncio.run(
+            _with_db(
+                _run_close_now(
+                    account or "", apply=apply, yes=yes, send_email=not no_email
+                )
+            )
+        )
     elif close:
         asyncio.run(_with_db(_run_close(account or "", apply=apply, yes=yes)))
     else:
         asyncio.run(_with_db(_run_one(account or "", apply=apply, yes=yes)))
+
+
+def _log_the_erasure_only() -> None:
+    """The backend's logging, so each run leaves the erasure's own lines
+    ("Account erasure of <user ID>: ...", IDs only) in the log, and only
+    warnings from everything else, which keeps Prisma and client chatter out
+    of the report."""
+    # The handlers take LOG_LEVEL; above INFO they would drop those lines.
+    os.environ["LOG_LEVEL"] = "INFO"
+    configure_logging()
+    logging.getLogger().setLevel(logging.WARNING)
+    logging.getLogger("backend.data.account_erasure").setLevel(logging.INFO)
 
 
 async def _with_db(work):
@@ -150,7 +187,14 @@ async def _run_close(account: str, *, apply: bool, yes: bool):
     )
 
 
-async def _run_close_now(account: str, *, apply: bool, yes: bool):
+# Where --no-email is allowed: only for an owner erased at once, whose account
+# is gone before an email could be any use to them.
+_NO_EMAIL_ONLY_WITH = "--no-email goes with --close --now."
+
+
+async def _run_close_now(
+    account: str, *, apply: bool, yes: bool, send_email: bool = True
+):
     """For an owner who asked to be erased at once: close the account if it
     is open, with no 14 days to keep it, then erase it in the same run. The
     dry run is checked before anything is closed, for blockers and for a step
@@ -162,6 +206,7 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
     from backend.data.account_erasure.request import (
         close_for_email_request,
         end_grace_now,
+        skip_confirmation,
     )
     from backend.data.account_erasure.routine import erase_account, stops_an_apply
 
@@ -181,6 +226,8 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
             "ends them now and erases it."
         )
     plan = await erase_account(user_id, dry_run=True, email=email)
+    if not send_email:
+        plan = _without_the_email(plan)
     _report(plan)
     if any(b.name not in _CLOSE_NOW_CLEARS for b in plan.blockers):
         raise click.ClickException(
@@ -199,15 +246,46 @@ async def _run_close_now(account: str, *, apply: bool, yes: bool):
         click.confirm(f"\nClose and erase account {user_id} now, for good?", abort=True)
     if request is None:
         try:
-            await close_for_email_request(user_id, erase_now=True)
+            await close_for_email_request(
+                user_id, erase_now=True, send_email=send_email
+            )
         except PlanCancellationError:
             raise click.ClickException(
                 "Stripe refused or timed out on the plan cancel, so the account "
                 "is still open. Run it again."
             )
         click.echo("\nClosed the account, with no 14 days to keep it.")
+    if not send_email:
+        # Also after a close of ours: one that lost a race to another close
+        # (Settings, say) wrote no mark.
+        if await skip_confirmation(user_id):
+            # Not "no email at all": a close by the owner a moment earlier
+            # may still be sending its own confirmation.
+            click.echo("The erasure sends the owner no email.")
+        else:
+            click.echo("The confirmation went out when the account was closed.")
     await end_grace_now(user_id)
     await _run_one(account, apply=True, yes=True)
+
+
+def _without_the_email(plan: "ErasureReport") -> "ErasureReport":
+    """The dry run reads the request before --no-email marks it: show the
+    confirmation step as the apply will run it, unless the email went out
+    already."""
+    steps = [
+        (
+            step.model_copy(
+                update={
+                    "counts": {"emails": 0},
+                    "note": "--no-email: none sent, now or from the erasure",
+                }
+            )
+            if step.name == "confirmation" and step.counts.get("emails")
+            else step
+        )
+        for step in plan.steps
+    ]
+    return plan.model_copy(update={"steps": steps})
 
 
 # What --close --now itself clears: it closes the account and ends its 14 days.
@@ -291,7 +369,9 @@ def _report(report: "ErasureReport") -> None:
     click.echo(f"{mode} for account {report.user_id}")
     if not report.account_found:
         click.echo("  no platform account or auth identity (already erased?)")
-    if report.not_claimed:
+    if report.not_claimed and report.steps:
+        click.echo(f"  {report.not_claimed}: repeats only the PostHog delete")
+    elif report.not_claimed:
         click.echo(f"  nothing ran: {report.not_claimed}")
     for blocker in report.blockers:
         click.echo(f"BLOCKED {blocker.name}: {blocker.count}")
@@ -313,10 +393,12 @@ def _finish(reports: list["ErasureReport"]) -> None:
             "At least one account was not erased: its owner kept it, or another "
             "run is erasing it (see above)."
         )
+    # A finished erasure still fails the command when its repeated PostHog
+    # delete failed.
     unfinished = [
         report.user_id
         for report in reports
-        if not report.complete and report not in finished
+        if report.failed or (not report.complete and report not in finished)
     ]
     if unfinished:
         raise click.ClickException(

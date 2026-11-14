@@ -322,19 +322,26 @@ from ._test_data import make_session
 # dev a8af1a85568 plus the interview:
 #     merged tree                                 78,393 (90 tools)
 #     + headroom                      +300        78,693
+# render_ui's block schema adds its whole size. Only sessions with
+# copilot-visual-answers on declare it:
+#     dev + render_ui                 +4,402      82,606
 # Raised for request_work_check and flag_mistake, the two tools this PR adds:
 # both open a chat card, so they must be eager. Measured on this branch,
 # 2285c61736 plus this PR (91 tools):
 #     merged tree                                 78,567
 #     + headroom                       +300       78,867
 #     + flag_mistake's reason argument +150       79,017
-# Re-measured on the onboarding interview merged with dev b16d667ded, which
-# carries both of the lines above: end_interview beside dev's two chat-card
-# tools (92 tools).
-#     merged tree                                 79,500
-#     + headroom                       +300       79,800
+# Raised again after merging with dev ac4e888 (2026-11-11): other PRs
+# merged to dev added tool schema content, pushing the total higher.
+# Measured on PR #16677 merged with latest dev:
+#     merged tree                                 83,410
+#     + headroom                       +300       83,710
+# Re-measured on the onboarding interview merged with dev 93d5ab1abb, which
+# carries every line above: end_interview beside render_ui.
+#     merged tree                                 83,904
+#     + headroom                       +300       84,204
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 79_800
+_CHAR_BUDGET = 84_204
 
 
 @pytest.fixture(scope="module")
@@ -553,6 +560,8 @@ def test_total_schema_char_budget() -> None:
 #     dev 7ca3671f6a                              70,062
 #     + #11220's two arguments        +164        70,226
 #     + headroom                      +300        70,526
+# render_ui, in compact separators:
+#     dev + render_ui                 +4,028      74,554
 #
 # Raised for raise_expert's `handoff_title` and `handoff_task` (SECRT-3401),
 # the same two fields hire_expert carries, so a new expert created for a task
@@ -574,8 +583,13 @@ def test_total_schema_char_budget() -> None:
 # where raise_expert's two fields no longer fit under the line above:
 #     merged tree                                 71,391
 #     + headroom                       +300       71,691
+# Raised again after merging with dev ac4e888 (2026-11-11): other PRs
+# merged to dev added tool schema content, pushing the largest session higher.
+# Measured on PR #16677 merged with latest dev:
+#     merged tree                                 75,382
+#     + headroom                       +300       75,682
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 71_691
+_SESSION_WIRE_BUDGET = 75_682
 
 
 def test_largest_declared_session_wire_budget() -> None:

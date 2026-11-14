@@ -25,7 +25,7 @@ from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import ChatSessionCreateInput
 
 from backend.copilot.db import (
-    _PENDING_QUESTION_SESSION_COLUMNS,
+    _SESSION_INFO_COLUMNS,
     clear_session_pending_question,
     create_chat_session,
     get_chat_session_metadata,
@@ -483,7 +483,7 @@ async def test_the_pending_question_query_leaves_out_the_onboarding_interview():
 def test_pending_question_projection_columns_exist_in_schema():
     """Guard the hand-maintained projection in the Home pending-question query.
 
-    ``_PENDING_QUESTION_SESSION_COLUMNS`` mirrors the ChatSession schema by
+    ``_SESSION_INFO_COLUMNS`` mirrors the ChatSession schema by
     hand, so a ``schema.prisma`` rename — or a new column with no default on
     the generated ``PrismaChatSession`` model, which the raw query hydrates —
     would otherwise only surface as a runtime query error on Home.
@@ -493,7 +493,7 @@ def test_pending_question_projection_columns_exist_in_schema():
     assert model is not None, "ChatSession model not found in schema.prisma"
     fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
 
-    projected = set(re.findall(r'"(\w+)"', _PENDING_QUESTION_SESSION_COLUMNS))
+    projected = set(re.findall(r'"(\w+)"', _SESSION_INFO_COLUMNS))
     assert projected <= fields
 
     required = {

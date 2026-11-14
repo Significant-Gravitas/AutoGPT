@@ -977,6 +977,7 @@ class ChatSessionHandler(ContentHandler):
             + " AND "
             + exclude_onboarding_interview_sql("cs.metadata")
             + """
+              AND cs."archivedAt" IS NULL
               AND uce."contentId" IS NULL
             LIMIT $1
             """,
@@ -1005,6 +1006,7 @@ class ChatSessionHandler(ContentHandler):
             SELECT COUNT(*) as count
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
+              AND "archivedAt" IS NULL
               AND """
             + exclude_dream_sessions_sql()
             + " AND "
@@ -1021,6 +1023,7 @@ class ChatSessionHandler(ContentHandler):
               AND uce."contentType" = 'CHAT_SESSION'::{schema_prefix}"ContentType"
               AND uce."userId" = cs."userId"
             WHERE cs.title IS NOT NULL AND btrim(cs.title) <> ''
+              AND cs."archivedAt" IS NULL
               AND """
             + exclude_dream_sessions_sql("cs.metadata")
             + " AND "
@@ -1040,12 +1043,14 @@ class ChatSessionHandler(ContentHandler):
         # title cleared should have its embedding cleaned up. Excluding
         # dream sessions and the onboarding interview here also makes the
         # cleanup sweep delete any of their embeddings created before the
-        # filter.
+        # filter, and excluding archived ones takes a reset expert's chats
+        # out of search.
         rows = await query_raw_with_schema(
             """
             SELECT id
             FROM {schema_prefix}"ChatSession"
             WHERE title IS NOT NULL AND btrim(title) <> ''
+              AND "archivedAt" IS NULL
               AND """
             + exclude_dream_sessions_sql()
             + " AND "
