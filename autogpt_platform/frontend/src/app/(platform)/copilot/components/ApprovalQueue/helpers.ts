@@ -61,8 +61,10 @@ export interface ApprovalItem {
   reason: string;
   reasonKind: ReasonKind;
   mode: string | null;
-  // A held read's flagged passage, which the card quotes.
+  // What a held read's card quotes: the flagged passage, or else what was flagged.
   passage: string | null;
+  // False when the check flagged the read but could not point to a passage.
+  quoted: boolean;
   // Over the task's spend ceiling: what this step costs and what approving adds.
   spend: ApprovalSpend | null;
   // A held read the check could not assess, so it names no passage.
@@ -111,7 +113,8 @@ export function toApprovalItem(review: PendingHumanReviewModel): ApprovalItem {
     reason: str(payload, "reason") ?? "",
     reasonKind: (str(payload, "reason_kind") as ReasonKind | null) ?? "mode",
     mode: str(payload, "mode"),
-    passage: str(payload, "passage"),
+    passage: str(payload, "passage", "excerpt"),
+    quoted: !!str(payload, "passage"),
     spend: toSpend(payload.spend),
     unjudged: payload.judged === false,
     reader: str(payload, "reader") ?? AUTOPILOT_NAME,
@@ -196,6 +199,8 @@ export function isHeldRead(item: ApprovalItem) {
 export function reasonLine(item: ApprovalItem): string | null {
   if (isHeldRead(item) && item.unjudged)
     return `${AUTOPILOT_NAME} could not check this, so he asks. ${item.reader} hasn't seen it.`;
+  if (isHeldRead(item) && !item.quoted)
+    return `A check flagged this, but couldn't point to an instruction in it. ${item.reader} hasn't seen it.`;
   if (isHeldRead(item))
     return `It contains instructions aimed at ${item.reader}, so it was held back. ${item.reader} hasn't seen it.`;
   if (!item.reason) return null;
@@ -204,6 +209,31 @@ export function reasonLine(item: ApprovalItem): string | null {
   if (item.reasonKind === "subject" || item.reasonKind === "rule")
     return item.reason;
   return null;
+}
+
+// A held read is untrusted, so its markdown is reduced to plain lines and never
+// rendered: a link in it cannot be followed, an image cannot fetch.
+export function passageLines(passage: string) {
+  return passage.split("\n").flatMap((raw) => {
+    const heading = HEADING.test(raw);
+    const text = raw
+      .replace(HEADING, "")
+      .replace(IMAGE, (_, alt: string) => wordsOf(alt))
+      .replace(LINK, (_, label: string) => wordsOf(label))
+      .replace(BULLET, "$1• ")
+      .trimEnd();
+    return WORD.test(text) ? [{ text, heading }] : [];
+  });
+}
+
+const HEADING = /^\s{0,3}#{1,6}(?:\s+|$)/;
+const IMAGE = /!\[([^\]]*)\]\([^)]*\)/g;
+const LINK = /\[([^\]]*)\]\([^)]*\)/g;
+const BULLET = /^(\s*)[*+-]\s+/;
+const WORD = /[\p{L}\p{N}]/u;
+
+function wordsOf(label: string) {
+  return WORD.test(label) ? label.trim() : "";
 }
 
 // Home and an expert's page say a held call's reason in its card's words.
