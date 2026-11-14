@@ -2,7 +2,6 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import {
   APIError,
   createAuthMiddleware,
-  getAuthoritativeSessionFromCtx,
   getIP,
   isAPIError,
 } from "better-auth/api";
@@ -555,14 +554,17 @@ function assertSignUpPolicy(email: string, ctx: { path?: string } | null) {
   }
 }
 
-// Only an unverified account's change is written on the spot; a verified one's
-// waits for the link mailed to the new address.
 async function assertEmailChangePolicy(
-  ctx: Parameters<typeof getAuthoritativeSessionFromCtx>[0],
+  ctx: { path?: string; headers?: Headers },
   newEmail: string,
 ) {
   if (!isTeamEmail(newEmail)) return;
-  const session = await getAuthoritativeSessionFromCtx(ctx);
+  // Read as the endpoint will, a bearer token included: this hook runs before
+  // the bearer plugin's.
+  const session = await auth.api.getSession({
+    headers: ctx.headers ?? new Headers(),
+    query: { disableCookieCache: true, disableRefresh: true },
+  });
   if (!session || session.user.emailVerified === true) return;
   assertTeamEmailUsesGoogle(newEmail, ctx);
 }
