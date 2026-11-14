@@ -24,6 +24,10 @@ JSON object per line, to FAKE_CUA_LOG:
   FAKE_CUA_SCREEN_ERROR  get_screen_size answers with this error
   FAKE_CUA_SCREEN_SLOW_SECONDS  how long get_screen_size takes to answer (default at once)
   FAKE_CUA_SCREEN_EXIT   exit instead of answering get_screen_size
+  FAKE_CUA_STALL_AT_INITIALIZE  (Linux) before answering initialize, fill the shim's pipe to
+                         the fake and then its write buffer with answers to pings, then
+                         answer, ping once more, and read no more: the shim's next write
+                         waits in drain() for good
   FAKE_CUA_IGNORE_TERM   ignore SIGTERM (POSIX), so only a kill stops the fake
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
   FAKE_CUA_APPS          JSON list of the installed apps list_apps returns: names, or
@@ -304,6 +308,9 @@ def handle(message: dict) -> None:
             "instructions": "Fake cua-driver guidance.",
         }
         initialized.update(json.loads(os.environ.get("FAKE_CUA_INITIALIZE") or "{}"))
+        if os.environ.get("FAKE_CUA_STALL_AT_INITIALIZE"):
+            stall_at_initialize({"jsonrpc": "2.0", "id": request_id, "result": initialized})
+            return
         send({"jsonrpc": "2.0", "id": request_id, "result": initialized})
     elif method == "tools/list":
         result: dict = {"tools": tool_list()}
@@ -350,6 +357,46 @@ def handle(message: dict) -> None:
                 "error": {"code": -32601, "message": f"{method} not found"},
             }
         )
+
+
+# asyncio pauses a pipe's writer once more than this is waiting to be
+# written (its default write high-water mark), and its drain() then waits.
+_WRITE_HIGH_WATER = 64 * 1024
+_PAGE = 4096
+
+
+def stall_at_initialize(answer: dict) -> None:
+    """Make the shim's next write after initialize wait for good: fill the
+    pipe the shim writes to, then its write buffer up to the high-water mark,
+    with its answers to pings of one page each; then answer initialize and
+    ping once more, and never read again. Linux only: the pipe's size and
+    fill come from fcntl and FIONREAD."""
+    import fcntl
+    import struct
+    import termios
+
+    framing = json.dumps({"jsonrpc": "2.0", "id": "", "result": {}}, separators=(",", ":"))
+    padding = _PAGE - len(framing) - 1
+
+    def ping(number: int) -> None:
+        send({"jsonrpc": "2.0", "id": str(number).rjust(padding, "0"), "method": "ping"})
+
+    def waiting_in_pipe() -> int:
+        return struct.unpack("i", fcntl.ioctl(sys.stdin.fileno(), termios.FIONREAD, b"\0" * 4))[0]
+
+    capacity = fcntl.fcntl(sys.stdin.fileno(), fcntl.F_GETPIPE_SZ)
+    for number in range(capacity // _PAGE):
+        ping(number)
+    deadline = time.monotonic() + 60
+    while waiting_in_pipe() < capacity and time.monotonic() < deadline:
+        time.sleep(0.01)
+    log(event="pipe_full", waiting=waiting_in_pipe(), capacity=capacity)
+    for number in range(_WRITE_HIGH_WATER // _PAGE):
+        ping(capacity // _PAGE + number)
+    send(answer)
+    ping(-1)
+    log(event="stalled")
+    time.sleep(600)
 
 
 def main() -> None:
