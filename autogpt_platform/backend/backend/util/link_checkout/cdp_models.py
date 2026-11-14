@@ -15,6 +15,8 @@ class Target(BaseModel):
 class Frame(BaseModel):
     id: str
     url: str
+    # DevTools keeps a frame's #fragment out of ``url`` and reports it here.
+    urlFragment: str = ""
     loaderId: str = ""
     parentId: str = ""
 

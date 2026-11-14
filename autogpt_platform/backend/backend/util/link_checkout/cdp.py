@@ -28,6 +28,9 @@ _logger.addHandler(logging.NullHandler())
 _logger.propagate = False
 _logger.disabled = True
 
+# Preparing takes a few DevTools calls of milliseconds each.
+PREPARE_TIMEOUT_SECONDS = 30
+
 
 # The autofill field names (the last token of ``autocomplete``) each card role
 # must declare. Payment processors' card frames and merchants' own card forms
@@ -176,11 +179,8 @@ class CDP:
         for role, target in plan.payment_fields().items():
             if target is None:
                 continue
-            matches = [
-                f
-                for f in frames
-                if f.frame.url == (target.frame_url or plan.checkout_url)
-            ]
+            wanted = target.frame_url or plan.checkout_url
+            matches = [f for f in frames if wanted in addresses(f.frame)]
             if not matches and target.frame_url:
                 raise CheckoutRefused(FRAME_NOT_FOUND)
             if len(matches) != 1 or not matches[0].frame.loaderId:
@@ -274,6 +274,12 @@ def flatten_frames(tree: FrameTree) -> list[Frame]:
     ]
 
 
+def addresses(frame: Frame) -> tuple[str, str]:
+    """The frame's document address, and the address a tab shows for it,
+    #fragment included."""
+    return frame.url, frame.url + frame.urlFragment
+
+
 def connection(endpoint: str):
     parsed = urlsplit(endpoint)
     if (
@@ -287,6 +293,16 @@ def connection(endpoint: str):
 
 
 async def prepare_browser(endpoint: str, plan: CheckoutPlan) -> BrowserBinding:
+    """Pin the plan's payment fields to the tab's DOM nodes. It runs under the
+    chat's browser lock, so a page that stops answering ends it."""
+    try:
+        async with asyncio.timeout(PREPARE_TIMEOUT_SECONDS):
+            return await _pin_fields(endpoint, plan)
+    except TimeoutError:
+        raise RuntimeError("The checkout page stopped answering") from None
+
+
+async def _pin_fields(endpoint: str, plan: CheckoutPlan) -> BrowserBinding:
     async with connection(endpoint) as socket:
         cdp = CDP(socket)
         binding = await cdp.bind(plan.checkout_url)
