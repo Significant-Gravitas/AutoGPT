@@ -394,6 +394,38 @@ describe("team email sign-up", () => {
       createUser({ email: "new@example.com" }, { path: "/sign-up/email" }),
     ).resolves.toBeUndefined();
   });
+
+  it("refuses an @agpt.co address written on /change-email, not from the confirmation link", async () => {
+    const options = (await loadAuthOptions()) as unknown as {
+      databaseHooks: {
+        user: {
+          update: {
+            before: (
+              user: { email?: string; name?: string },
+              ctx: { path?: string } | null,
+            ) => Promise<void>;
+          };
+        };
+      };
+    };
+    const updateUser = options.databaseHooks.user.update.before;
+
+    await expect(
+      updateUser({ email: "made-up@agpt.co" }, { path: "/change-email" }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      body: { code: "TEAM_EMAIL_REQUIRES_GOOGLE" },
+    });
+    await expect(
+      updateUser({ email: "someone@agpt.co" }, { path: "/verify-email" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      updateUser({ email: "new@example.com" }, { path: "/change-email" }),
+    ).resolves.toBeUndefined();
+    await expect(
+      updateUser({ name: "Someone" }, { path: "/update-user" }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("change email", () => {

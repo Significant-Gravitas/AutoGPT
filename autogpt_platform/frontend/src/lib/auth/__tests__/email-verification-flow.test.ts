@@ -1043,6 +1043,76 @@ describe("team addresses", () => {
       expect(db.UserAuthIdentity).toEqual([]);
     },
   );
+
+  it("refuses an unverified account's change of address to @agpt.co", async () => {
+    const { api, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(api, "someone@example.com");
+
+    await expect(
+      api.changeEmail({
+        body: { newEmail: "Made-Up@AGPT.co" },
+        headers: session,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      body: { code: "TEAM_EMAIL_REQUIRES_GOOGLE" },
+    });
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({ email: "someone@example.com" }),
+    ]);
+  });
+
+  it("answers an unverified change to @agpt.co alike with or without an account", async () => {
+    const { api, db } = await createAuthHandler(false);
+    await signUpSignedIn(api, "taken@example.com");
+    db.UserAuthIdentity[0].email = "taken@agpt.co";
+    const session = await signUpSignedIn(api, "someone@example.com");
+
+    const answers = [];
+    for (const newEmail of ["taken@agpt.co", "free@agpt.co"]) {
+      answers.push(
+        await api.changeEmail({ body: { newEmail }, headers: session }).then(
+          () => "changed",
+          (error: { statusCode: number; body: object }) => ({
+            status: error.statusCode,
+            body: error.body,
+          }),
+        ),
+      );
+    }
+    const [existing, fresh] = answers;
+
+    expect(existing).toEqual(fresh);
+    expect(fresh).toMatchObject({ status: 403 });
+  });
+
+  it("lets a verified account move to @agpt.co from the link mailed there", async () => {
+    const { api: signUpAPI, db } = await createAuthHandler(false);
+    const session = await signUpSignedIn(signUpAPI, "old@example.com");
+    db.UserAuthIdentity[0].emailVerified = true;
+    const { handler, api } = await createAuthHandler(false, db);
+
+    await api.changeEmail({
+      body: { newEmail: "someone@agpt.co", callbackURL: "/" },
+      headers: session,
+    });
+    await emailsSent();
+    const confirm = sentEmails.find((sent) => sent.type === "change_email");
+    await handler(new Request(confirm?.url ?? "", { headers: session }));
+    await emailsSent();
+    await handler(
+      new Request(lastNewAddressLink("someone@agpt.co") ?? "", {
+        headers: session,
+      }),
+    );
+
+    expect(db.UserAuthIdentity).toEqual([
+      expect.objectContaining({
+        email: "someone@agpt.co",
+        emailVerified: true,
+      }),
+    ]);
+  });
 });
 
 describe("the sign-up allowlist", () => {
