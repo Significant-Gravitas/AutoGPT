@@ -113,7 +113,11 @@ class TestOff:
         cls = _sdk(box)
         with _configured(None):
             await create_sandbox(cls, _OWNER, template="t", allow_internet_access=False)
-        cls.create.assert_awaited_once_with(template="t", allow_internet_access=False)
+        cls.create.assert_awaited_once_with(
+            template="t",
+            allow_internet_access=False,
+            metadata=tagged(None, _OWNER.user_id),
+        )
 
     async def test_create_and_connect_are_passed_through_untouched(self):
         box, cls, redis = _box(), None, _redis()
