@@ -18,7 +18,7 @@ AutoGPT runs a [Model Context Protocol](https://modelcontextprotocol.io) server 
 It is `$AUTOGPT_API_URL/mcp/`. Keep the trailing slash: without it the server redirects, and some clients don't follow redirects.
 
 * **Transport:** Streamable HTTP. Tool calls don't depend on each other: you pass the IDs from one result into the next call.
-* **Authentication:** an [API key](authentication.md#create-an-api-key) sent as `Authorization: Bearer agpt_...`. OAuth access tokens work too.
+* **Authentication:** an [API key](authentication.md#create-an-api-key) sent as `Authorization: Bearer agpt_...`. OAuth access tokens work too, and a client can [sign in with OAuth](#sign-in-with-oauth) itself.
 * **Tools:** the server only lists the tools the key's permissions allow. Give the key exactly the powers you want the assistant to have.
 
 {% hint style="info" %}
@@ -181,6 +181,24 @@ On version 1 of the SDK, import `httpx` instead of `httpx2`. [Call the tools fro
 
 Any other client that supports Streamable HTTP works the same way: point it at the URL and send the `Authorization` header.
 
+## Sign in with OAuth
+
+A client that supports MCP's OAuth sign-in can connect without an API key, given the client ID and secret of a [registered OAuth application](oauth-guide.md#prerequisites). The client finds AutoGPT's consent page and token endpoint from the server itself, opens the consent page in your browser, and keeps the tokens it gets.
+
+Register the application with:
+
+* the redirect URI the client listens on. Claude Code uses `http://localhost:<port>/callback`, with the port you give it as `--callback-port`.
+* every permission the server's tools need: Read Credits, Read Files, Read Library, Read Run, Read Schedule, Run Agent, Use Tools, Write Files, Write Graph, Write Library and Write Schedule. A client asks for all of them, and the consent page refuses an application that isn't allowed one.
+
+With Claude Code:
+
+```bash
+claude mcp add --transport http --scope user autogpt "$AUTOGPT_API_URL/mcp/" \
+  --client-id "$AUTOGPT_CLIENT_ID" --client-secret --callback-port 8765
+```
+
+It asks for the client secret. Then run `/mcp` in Claude Code and pick the server to sign in.
+
 ## Tools
 
 | Tool | What it does | Permissions it needs |
@@ -310,4 +328,4 @@ It prints `COMPLETED {'greeting': ['Hello, Ada!']}`. Change the name and inputs 
 * A tool's result is at most 100,000 characters. A longer one is cut in the middle, and `… (omitted N chars)…` marks the cut. `read_workspace_file` with `offset` or `length` returns at most 60,000 bytes of text a call, and its `message` says which characters it read, so continue from the last one.
 * Runs started over MCP are ordinary runs: they show up in the app and in `GET /runs`, and they cost the same.
 * On a self-hosted instance, `search_docs` returns results only after the instance has indexed its documentation, and `web_search` needs OpenRouter credentials configured on the instance.
-* The server doesn't support dynamic client registration, so a client's "sign in" or "authenticate" option won't work with it. Configure the API key header instead.
+* The server doesn't support dynamic client registration, so a client can only [sign in with OAuth](#sign-in-with-oauth) when you give it a registered application's client ID. Otherwise, configure the API key header.
