@@ -4,6 +4,9 @@ import re
 import shutil
 import tempfile
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urlparse
@@ -65,17 +68,22 @@ MediaReturnFormat = Literal[
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
+# The subfolder of the execution's folder that holds the files of the run in
+# progress; empty outside separate_exec_files.
+_run_folder: ContextVar[str] = ContextVar("exec_file_run_folder", default="")
+
 
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     """
-    Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
+    Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder,
+    or in the run's own subfolder of it inside ``separate_exec_files``.
 
     *path* is interpreted relative to that folder, and the result has to stay
     inside it: an absolute path, a ``..`` segment or a symlink inside the folder
     that points out of it is rejected rather than silently escaping.
     """
     exec_file_root = (TEMP_DIR / "exec_file").resolve()
-    base = exec_file_root / graph_exec_id
+    base = exec_file_root / graph_exec_id / _run_folder.get()
     try:
         # Resolve before comparing so symlinked components are followed first.
         resolved_base = base.resolve()
@@ -104,6 +112,29 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
     exec_path = Path(get_exec_file_path(graph_exec_id, file))
     if exec_path.exists() and exec_path.is_dir():
         shutil.rmtree(exec_path)
+
+
+@contextmanager
+def separate_exec_files(graph_exec_id: str) -> Iterator[None]:
+    """Keep the files a run stores under *graph_exec_id* in a subfolder of
+    their own, and remove it when the run ends, however it ends.
+
+    AutoPilot runs every block call of a chat under the chat's execution id,
+    and calls from one message run at the same time, so a call can only clean
+    up after itself if its files are kept apart from its siblings'.
+    """
+    token = _run_folder.set(uuid.uuid4().hex)
+    run_dir: Path | None = None
+    try:
+        run_dir = Path(get_exec_file_path(graph_exec_id, ""))
+        yield
+    finally:
+        _run_folder.reset(token)
+        if run_dir is not None:
+            shutil.rmtree(run_dir, ignore_errors=True)
+            # The execution's folder as well, once no other run is using it.
+            with suppress(OSError):
+                run_dir.parent.rmdir()
 
 
 async def _expert_workspace_scope(

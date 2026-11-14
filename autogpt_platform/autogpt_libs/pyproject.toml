@@ -35,6 +35,7 @@ build-backend = "poetry.core.masonry.api"
 line-length = 88
 
 [tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 extend-select = ["I"]  # sort dependencies
 
 [tool.pytest.ini_options]

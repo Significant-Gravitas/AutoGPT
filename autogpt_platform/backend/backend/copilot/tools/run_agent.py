@@ -52,6 +52,7 @@ from backend.util.exceptions import (
     InvalidInputError,
     MissingConfigError,
     NotFoundError,
+    UserPaywalledError,
 )
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -1123,6 +1124,13 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
                 inputs=inputs,
             )
+        except UserPaywalledError as e:
+            logger.info(f"run_agent refused for user {user_id}: no subscription")
+            return ErrorResponse(
+                message=str(e),
+                error="subscription_required",
+                session_id=session_id,
+            ).from_outside()
 
         library_agent_link = f"/library/agents/{library_agent.id}"
         if execution.status == ExecutionStatus.REVIEW:

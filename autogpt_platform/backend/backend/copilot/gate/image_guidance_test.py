@@ -34,7 +34,7 @@ async def test_binary_guidance_is_trusted_and_never_echoes_the_path(
         "user-1", ChatSession.new("user-1", dry_run=False)
     )
     monkeypatch.setattr(
-        tool_adapter, "gate_non_registry_tool", AsyncMock(return_value=None)
+        tool_adapter, "gate_non_registry_tool", AsyncMock(return_value=(None, None))
     )
     monkeypatch.setattr(
         tool_adapter, "release_non_registry_read", AsyncMock(return_value=None)

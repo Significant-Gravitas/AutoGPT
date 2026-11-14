@@ -2,9 +2,6 @@
 
 from typing import Literal
 
-from moviepy import concatenate_videoclips
-from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
-
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -13,14 +10,8 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.video._utils import (
-    VideoMediaStorage,
-    check_video_frame_size,
-    extract_source_name,
-    get_video_codecs,
-    open_video_clip,
-    strip_chapters_inplace,
-)
+from backend.blocks.video._render import concat_videos
+from backend.blocks.video._utils import VideoMediaStorage, extract_source_name, run_edit
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
@@ -78,7 +69,7 @@ class VideoConcatBlock(VideoMediaStorage, Block):
             effect=BlockEffect.WORKSPACE,
         )
 
-    def _concat_videos(
+    async def _concat_videos(
         self,
         video_abspaths: list[str],
         output_abspath: str,
@@ -90,72 +81,14 @@ class VideoConcatBlock(VideoMediaStorage, Block):
         Returns:
             Total duration of the concatenated video.
         """
-        clips = []
-        faded_clips = []
-        final = None
-        try:
-            # Check every input before opening any of them
-            for v in video_abspaths:
-                strip_chapters_inplace(v)
-                check_video_frame_size(v, block_name=self.name, block_id=str(self.id))
-
-            # Load clips
-            for v in video_abspaths:
-                clips.append(
-                    open_video_clip(v, block_name=self.name, block_id=str(self.id))
-                )
-
-            # Validate transition_duration against shortest clip
-            if transition in {"crossfade", "fade_black"} and transition_duration > 0:
-                min_duration = min(c.duration for c in clips)
-                if transition_duration >= min_duration:
-                    raise BlockExecutionError(
-                        message=(
-                            f"transition_duration ({transition_duration}s) must be "
-                            f"shorter than the shortest clip ({min_duration:.2f}s)"
-                        ),
-                        block_name=self.name,
-                        block_id=str(self.id),
-                    )
-
-            if transition == "crossfade":
-                for i, clip in enumerate(clips):
-                    effects = []
-                    if i > 0:
-                        effects.append(CrossFadeIn(transition_duration))
-                    if i < len(clips) - 1:
-                        effects.append(CrossFadeOut(transition_duration))
-                    if effects:
-                        clip = clip.with_effects(effects)
-                    faded_clips.append(clip)
-                final = concatenate_videoclips(
-                    faded_clips,
-                    method="compose",
-                    padding=-transition_duration,
-                )
-            elif transition == "fade_black":
-                for clip in clips:
-                    faded = clip.with_effects(
-                        [FadeIn(transition_duration), FadeOut(transition_duration)]
-                    )
-                    faded_clips.append(faded)
-                final = concatenate_videoclips(faded_clips)
-            else:
-                final = concatenate_videoclips(clips)
-
-            video_codec, audio_codec = get_video_codecs(output_abspath)
-            final.write_videofile(
-                output_abspath, codec=video_codec, audio_codec=audio_codec
-            )
-
-            return final.duration
-        finally:
-            if final:
-                final.close()
-            for clip in faded_clips:
-                clip.close()
-            for clip in clips:
-                clip.close()
+        return await run_edit(
+            self,
+            concat_videos,
+            video_abspaths,
+            output_abspath,
+            transition,
+            transition_duration,
+        )
 
     async def run(
         self,
@@ -204,7 +137,7 @@ class VideoConcatBlock(VideoMediaStorage, Block):
                 execution_context.graph_exec_id, output_filename
             )
 
-            total_duration = self._concat_videos(
+            total_duration = await self._concat_videos(
                 video_abspaths,
                 output_abspath,
                 input_data.transition,

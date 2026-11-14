@@ -259,7 +259,7 @@ async def get_profile(
             detail="Profile not found",
         )
 
-    creator = await store_cache.get_cached_creator_details(username=profile.username)
+    creator = await store_db.get_store_creator(profile.username, include_unlisted=True)
     return MarketplaceCreatorDetails.from_internal(creator)
 
 
