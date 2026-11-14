@@ -12,6 +12,12 @@ SHARDS = {
     "util-executor": ["backend/util", "backend/executor"],
 }
 
+# The docker-backed e2e tests a shard turns on; elsewhere they skip unless asked.
+SHARD_E2E_FLAGS = {
+    "data": "E2E_REDIS_CLUSTER_RESTART",
+    "util-executor": "E2E_CLAMD_CONTAINER",
+}
+
 
 def shard_args(shard: str) -> list[str]:
     if shard in SHARDS:
@@ -35,8 +41,8 @@ def main() -> int:
     pytest_args = args.pytest_args
     if pytest_args[:1] == ["--"]:
         pytest_args = pytest_args[1:]
-    if args.shard == "data":
-        os.environ["E2E_REDIS_CLUSTER_RESTART"] = "1"
+    if flag := SHARD_E2E_FLAGS.get(args.shard):
+        os.environ[flag] = "1"
     return subprocess.run(
         ["poetry", "run", "pytest", *shard_args(args.shard), *pytest_args],
         check=False,

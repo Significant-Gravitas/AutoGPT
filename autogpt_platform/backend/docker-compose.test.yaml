@@ -101,9 +101,13 @@ services:
       - clamav-data:/var/lib/clamav
     environment:
       - CLAMAV_NO_FRESHCLAMD=false
-      - CLAMD_CONF_StreamMaxLength=50M
-      - CLAMD_CONF_MaxFileSize=100M
-      - CLAMD_CONF_MaxScanSize=100M
+      # Must cover the largest upload, as in ../docker-compose.yml.
+      - CLAMD_CONF_StreamMaxLength=256M
+      - CLAMD_CONF_MaxFileSize=256M
+      - CLAMD_CONF_MaxScanSize=1024M
+      - CLAMD_CONF_PCREMaxFileSize=256M
+      - CLAMD_CONF_AlertExceedsMax=yes
+      - CLAMD_CONF_MaxScanTime=300000
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
     healthcheck:
