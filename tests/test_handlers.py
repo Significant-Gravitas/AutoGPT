@@ -202,6 +202,42 @@ async def test_a_write_never_reaches_a_hard_link_made_after_the_check(tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_an_in_place_write_checks_the_opened_descriptor_before_truncating(
+    tmp_path: Path,
+) -> None:
+    """Where a new file can't take the old one's place (a folder that takes
+    no new entries, say), a write overwrites the old file in place, opened
+    without truncating: a hard link made from outside between the check and
+    the open is refused on the opened descriptor, before a byte changes."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    target = root / "single.txt"
+    target.write_text("must remain intact")
+    outside = tmp_path / "outside.txt"
+    original_open = os.open
+
+    def link_before_open(*args, **kwargs):
+        if Path(args[0]) == target:
+            os.link(target, outside)
+        return original_open(*args, **kwargs)
+
+    handler = FileHandler(make_config(root))
+    with (
+        patch(
+            "autogpt_local_executor.path_jail._replace_with",
+            side_effect=PermissionError(errno.EACCES, "no new entries here"),
+        ),
+        patch("autogpt_local_executor.path_jail.os.open", side_effect=link_before_open),
+    ):
+        response = await handler.handle_write(_write_msg(target, "overwrite"))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.PATH_OUTSIDE_ALLOWED_ROOT
+    assert target.read_text() == "must remain intact"
+    assert outside.read_text() == "must remain intact"
+
+
+@pytest.mark.asyncio
 async def test_write_existing_single_link_truncates_after_validation(tmp_path: Path) -> None:
     target = tmp_path / "single.txt"
     target.write_text("a long original value")
