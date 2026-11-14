@@ -1,6 +1,8 @@
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 
-export type ScopeAPIVersion = "v2" | "both" | "v1";
+// "oauth" scopes are granted only through OAuth: no API route checks them, and
+// the API key form leaves them out (SCOPE_GROUPS has no group for them).
+export type ScopeAPIVersion = "v2" | "both" | "v1" | "oauth";
 
 export const SCOPE_DESCRIPTIONS: Record<APIKeyPermission, string> = {
   IDENTITY: "View your user ID, e-mail, and timezone",
@@ -31,6 +33,8 @@ export const SCOPE_DESCRIPTIONS: Record<APIKeyPermission, string> = {
   MANAGE_INTEGRATIONS: "Set up new integrations",
   READ_INTEGRATIONS: "View your connected integrations",
   DELETE_INTEGRATIONS: "Remove connected integrations",
+  CONNECT_LOCAL_EXECUTOR:
+    "Connect a computer as your Local PC, so Otto can work in the folders you choose there",
 };
 
 // Which version of the public API checks each scope, read from its routes.
@@ -60,6 +64,7 @@ export const SCOPE_API_VERSION: Record<APIKeyPermission, ScopeAPIVersion> = {
   READ_CREDITS: "v2",
   READ_FILES: "v2",
   WRITE_FILES: "v2",
+  CONNECT_LOCAL_EXECUTOR: "oauth",
 };
 
 export const SCOPE_GROUPS: { version: ScopeAPIVersion; label: string }[] = [

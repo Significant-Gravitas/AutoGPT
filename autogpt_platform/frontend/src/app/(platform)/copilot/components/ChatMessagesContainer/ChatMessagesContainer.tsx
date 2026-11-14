@@ -24,12 +24,9 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  answeredLabel,
-  countHeldCalls,
-  getHeldCallRowKind,
-} from "./heldCallRows";
+import { answeredLabel, getHeldCallRowKind } from "./heldCallRows";
 import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
+import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
@@ -57,6 +54,7 @@ import {
   PendingUploadMessage,
 } from "./components/PendingUploadMessage";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { getThinkerHex } from "./thinkerColor";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
@@ -446,6 +444,7 @@ export function ChatMessagesContainer({
     <ThinkingIndicator
       active={showThinking}
       startedAtMs={streamClock.startedAtMs}
+      color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
     />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
@@ -631,8 +630,8 @@ export function ChatMessagesContainer({
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTargets.chat}
-              refetchKey={countHeldCalls(messages)}
+              pollWhileEmpty={reviewTargets.chat || isTurnBusy}
+              refetchKey={reviewRefetchKey(messages)}
               expertName={expertIdentity?.name ?? null}
               expert={expertIdentity ?? null}
             />
