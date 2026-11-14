@@ -47,7 +47,7 @@ async def test_get_execution_diagnostics_full():
             "backend.data.diagnostics.query_raw_with_schema",
             new_callable=AsyncMock,
             return_value=[mock_row],
-        ),
+        ) as mock_query,
         patch(
             "backend.data.diagnostics.get_rabbitmq_queue_depth",
             return_value=7,
@@ -63,6 +63,10 @@ async def test_get_execution_diagnostics_full():
         ),
     ):
         result = await get_execution_diagnostics()
+
+    sql = mock_query.await_args.args[0]
+    assert sql.count('AND "endedAt" >=') == 4
+    assert 'AND "updatedAt" >=' not in sql
 
     assert result.running_count == 10
     assert result.queued_db_count == 5
