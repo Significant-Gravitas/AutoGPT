@@ -15,6 +15,10 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 from .base import APIAuthorizationInfo
 
+# Granted only through OAuth, to one client: an API key carrying one could not
+# use it, and listing it on a key would suggest it could.
+OAUTH_ONLY_PERMISSIONS = frozenset({APIKeyPermission.CONNECT_LOCAL_EXECUTOR})
+
 logger = logging.getLogger(__name__)
 keysmith = APIKeySmith()
 

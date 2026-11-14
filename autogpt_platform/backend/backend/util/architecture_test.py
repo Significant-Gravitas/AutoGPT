@@ -239,7 +239,6 @@ _GLOBAL_CLOCK_PATCH_OFFENDERS = {
     "integrations/oauth/todoist_test.py time.time": 1,
     "monitoring/auth_identity_monitor_test.py time.monotonic": 1,
     "notifications/checkout_backfill_test.py asyncio.sleep": 6,
-    "notifications/consumer_test.py asyncio.sleep": 5,
     "notifications/mailerlite_backfill_test.py asyncio.sleep": 1,
     "notifications/mailerlite_field_backfill_test.py asyncio.sleep": 1,
     "notifications/role_backfill_test.py asyncio.sleep": 1,
@@ -1106,9 +1105,17 @@ def test_only_cli_io_writes_to_the_cli_stdin():
 # `commands.run` goes through `run_sandbox_command`, or, like bash_exec,
 # follows a background handle with callbacks that stop at a limit; a code
 # interpreter sandbox is created or connected as `OutputLimitedCodeSandbox`.
+# A Local PC's files are read with `files.read_capped`, which asks its
+# companion for no more than the limit. Its commands run in one request whose
+# reply the companion cuts to a bounded prefix and the relay refuses past its
+# envelope limit; local_pc_file_tools.py holds only such commands.
 
 _SANDBOX_COMMAND_RUNNERS = frozenset(
-    {"util/sandbox_output.py", "copilot/tools/bash_exec.py"}
+    {
+        "util/sandbox_output.py",
+        "copilot/tools/bash_exec.py",
+        "copilot/sdk/local_pc_file_tools.py",
+    }
 )
 
 
