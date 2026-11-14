@@ -542,5 +542,33 @@
     "external": [
       "execute"
     ]
+  },
+  "mcp_aimlapi": {
+    "source": "https://docs.aimlapi.com/quickstart/mcp",
+    "read": [
+      "account_balance",
+      "account_usage",
+      "job_result",
+      "job_status",
+      "model_get",
+      "models_compare",
+      "models_find_best",
+      "models_list",
+      "models_search",
+      "ping",
+      "tools_inspect",
+      "tools_run_status",
+      "tools_search"
+    ],
+    "external": [
+      "audio_generate",
+      "embeddings_create",
+      "image_generate",
+      "jev_model_search",
+      "jev_tool_search",
+      "llm_chat",
+      "tools_run",
+      "video_generate"
+    ]
   }
 }
