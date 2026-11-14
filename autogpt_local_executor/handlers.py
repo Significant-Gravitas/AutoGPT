@@ -2593,7 +2593,11 @@ class OllamaBackend:
                         raise OllamaBackendError(
                             ErrorCode.LOCAL_LLM_FAILED, f"HTTP {r.status_code}"
                         )
-                    async for chunk in read_json_lines(r.aiter_bytes(chunk_size=8192)):
+                    # What has arrived, as it arrives: with a chunk_size, httpx
+                    # holds bytes back until it has that many, and a model
+                    # sending short lines slowly looked idle (bounded_chunks).
+                    # read_json_lines bounds the lines.
+                    async for chunk in read_json_lines(r.aiter_bytes()):
                         yield chunk
         except httpx.RequestError as exc:
             raise OllamaBackendError(ErrorCode.LOCAL_LLM_FAILED, str(exc)) from exc

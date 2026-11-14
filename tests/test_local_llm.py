@@ -168,6 +168,50 @@ async def test_chat_stream_waits_for_the_first_token_as_long_as_a_request_may_ta
     assert timeout.connect == backend.timeout_seconds
 
 
+@pytest.mark.asyncio
+async def test_chat_stream_hands_on_each_line_as_it_arrives() -> None:
+    """httpx's aiter_bytes(chunk_size=8192) holds what arrives until it has
+    8192 bytes or the response ends, so a model sending short lines slowly
+    went quiet for longer than IDLE_TIMEOUT_SECONDS while it still wrote."""
+    lines = [
+        json.dumps({"message": {"content": "a"}}),
+        json.dumps({"message": {"content": "b"}, "done": True}),
+    ]
+    read = asyncio.Event()
+
+    class OneLineAtATime(httpx.AsyncByteStream):
+        """The model's lines, each sent once the one before has been read."""
+
+        async def __aiter__(self):
+            for line in lines:
+                yield (line + "\n").encode()
+                await read.wait()
+                read.clear()
+
+    real_client = httpx.AsyncClient
+
+    def client(*args: Any, **kw: Any) -> httpx.AsyncClient:
+        transport = httpx.MockTransport(
+            lambda _request: httpx.Response(200, stream=OneLineAtATime())
+        )
+        return real_client(*args, transport=transport, **kw)
+
+    backend = OllamaBackend("http://localhost:11434")
+    with patch("httpx.AsyncClient", client):
+        stream = backend.chat_stream(
+            model="m", messages=[], max_tokens=1, temperature=0.0, top_p=1.0
+        )
+        try:
+            first = await asyncio.wait_for(anext(stream), timeout=10)
+            assert first["message"]["content"] == "a"
+            read.set()
+            last = await asyncio.wait_for(anext(stream), timeout=10)
+            assert last["done"] is True
+            read.set()
+        finally:
+            await stream.aclose()
+
+
 # ── OllamaBackend.list_models ────────────────────────────────────────────────
 
 
