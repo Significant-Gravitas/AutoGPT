@@ -23,6 +23,12 @@ export const DeploySkewEvent = {
   CHUNK_RELOAD_TRIGGERED: "chunk_reload_triggered",
 } as const;
 
+// Ops signal, not a user action: React's DOM call on text a page translator
+// had replaced was skipped rather than crash the page. Once per page load.
+export const PageTranslatorEvent = {
+  DOM_CALL_SKIPPED: "dom_call_skipped",
+} as const;
+
 // Marketing email refusals made in the app. `surface` says where; the
 // refusal itself is stored on the user (`marketingOptOutAt`).
 export const MarketingConsentEvent = {
@@ -226,6 +232,7 @@ export const VisualAnswerEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...DeploySkewEvent,
+  ...PageTranslatorEvent,
   ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
