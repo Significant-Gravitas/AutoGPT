@@ -1,7 +1,12 @@
 "use client";
 
 import { useStableCallback } from "@/hooks/useStableCallback";
-import { ArrowDown01Icon, SentIcon } from "@hugeicons/core-free-icons";
+import {
+  Alert02Icon,
+  ArrowDown01Icon,
+  SentIcon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 import { domAnimation, LazyMotion, m, useReducedMotion } from "framer-motion";
 import {
   useCallback,
@@ -31,6 +36,10 @@ import {
 import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRows } from "./ChainRows";
+import {
+  formatToolDuration,
+  totalToolDuration,
+} from "../../helpers/toolDurations";
 import { useNoteRunningSteps } from "./StepClock";
 import { applyHeldOutcome } from "./heldRow";
 import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
@@ -270,6 +279,8 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   const expanded = manualExpanded === true;
   const heading = getChainHeading(rows, isStreaming && !expanded);
+  // How long the chain's steps took together, once it has stopped.
+  const chainTime = totalToolDuration(rows.map((row) => row.key));
   const hasError = rows.some((row) => row.state === "error");
   const hasRequiredAction = shownRows.some((row) => row.requiresAction);
   // Auto-open only while streaming; once the chain finishes (or on reload)
@@ -328,6 +339,9 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
               aria-controls={panelId}
               className="group/chain -mx-2 flex w-fit max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors duration-100 hover:bg-surface-hover"
             >
+              <ChainGlyph
+                state={isStreaming ? "running" : hasError ? "failed" : "done"}
+              />
               <SwapText
                 text={heading}
                 shimmer={isStreaming && !expanded}
@@ -339,6 +353,11 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                     : "text-foreground-body")
                 }
               />
+              {chainTime !== null && !isStreaming ? (
+                <span className="shrink-0 text-body-sm text-foreground-faint tabular-nums">
+                  · {formatToolDuration(chainTime)}
+                </span>
+              ) : null}
               <Icon
                 icon={ArrowDown01Icon}
                 size={12}
@@ -449,5 +468,31 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         )}
       </div>
     </LazyMotion>
+  );
+}
+
+interface ChainGlyphProps {
+  state: "running" | "done" | "failed";
+}
+
+// The small mark before the chain's line: turning while its steps run, a
+// green tick once they are done, red when one failed.
+function ChainGlyph({ state }: ChainGlyphProps) {
+  if (state === "running") {
+    return (
+      <span
+        aria-hidden
+        className="size-3 shrink-0 animate-spin rounded-full border-2 border-foreground-faint border-t-transparent motion-reduce:animate-none"
+      />
+    );
+  }
+  return (
+    <Icon
+      icon={state === "failed" ? Alert02Icon : Tick02Icon}
+      size={13}
+      tone={state === "failed" ? "error" : "ok"}
+      className="shrink-0"
+      aria-hidden
+    />
   );
 }

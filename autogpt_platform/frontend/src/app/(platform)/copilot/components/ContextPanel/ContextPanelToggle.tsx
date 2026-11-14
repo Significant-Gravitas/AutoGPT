@@ -1,155 +1,86 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
 import { Button } from "@/components/atoms/Button/Button";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
   TooltipPortal,
+  TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { cn } from "@/lib/utils";
+import { SidebarRightIcon } from "@hugeicons/core-free-icons";
+import type { UIMessage } from "ai";
+import { useEffect } from "react";
 import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
-import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
-import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
-import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
+import { useWorkAreaStore } from "../../workArea";
 
 interface Props {
+  /** The chat's messages, which the side panel's "This chat" tab reads. */
+  messages?: UIMessage[];
   sessionId?: string | null;
-  /** The chat's live expert, whose integrations lead the controls. */
+  /** The chat's live expert, whose integrations the side panel can open. */
   expert?: ContextPanelExpert | null;
-  /** The composer's tab shows the integrations on mobile instead (new
-   *  layout, see ComposerPanelTab). */
+  /** Kept for the callers: the composer's tab shows the integrations on
+   *  mobile (new layout, see ComposerPanelTab). */
   hideIntegrationsOnMobile?: boolean;
 }
 
-// Sized and stroked like the sidebar's nav icons so the chat's top-right
-// controls read as the same family.
-const toggleClass =
-  "shrink-0 rounded-full transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none";
-
-/** The chat's top-right controls: the expert's integrations, the files
- *  toggle and the Computer toggle, each opening its face of the side panel. The
- *  Computer toggle is always there for a chat with a session: the panel's
- *  own "Turn on screen" button lives on that face, so it must be reachable
- *  before any desktop exists. */
+/** The chat's one top-right control: it opens the side panel, or folds it
+ *  away. With nothing open the panel comes back on a new tab, which lists
+ *  the files, the computer and the expert's integrations. */
 export function ContextPanelToggle({
+  messages,
   sessionId = null,
   expert = null,
-  hideIntegrationsOnMobile = false,
 }: Props) {
-  const { deliverables, documentCount: liveDocumentCount } =
-    useSessionFiles(sessionId);
-  const documentCount = Math.max(deliverables.length, liveDocumentCount);
-  const isFilesOpen = useCopilotUIStore(
-    (s) =>
-      s.artifactPanel.isOpen &&
-      s.artifactPanel.activeTab === "files" &&
-      s.artifactPanel.activeArtifact == null &&
-      !s.artifactPanel.isComputerOpen,
-  );
-  const toggleContextPanelTab = useCopilotUIStore(
-    (s) => s.toggleContextPanelTab,
-  );
-  const isComputerOpen = useCopilotUIStore(
-    (s) => s.artifactPanel.isComputerOpen,
-  );
-  const openComputer = useCopilotUIStore((s) => s.openComputer);
-  const closeComputer = useCopilotUIStore((s) => s.closeComputer);
   const isMobile = useIsMobile();
-  // The mobile sheet has no computer face to open, and mobile already floats
-  // a files button over the chat's top-left corner.
-  const showComputerToggle = !!sessionId && !isMobile;
-  const showFilesToggle = !isMobile;
-  const showIntegrations = !!expert && !(isMobile && hideIntegrationsOnMobile);
+  const toggle = useWorkAreaStore((s) => s.toggle);
+  const isOpen = useWorkAreaStore((s) => s.tabCount > 0 && !s.isFolded);
+  const setContextPanelExpert = useCopilotUIStore(
+    (s) => s.setContextPanelExpert,
+  );
 
-  function handleComputerToggle() {
-    // Back to whatever the computer was covering: the preview, the tab, or
-    // nothing at all.
-    if (isComputerOpen) closeComputer();
-    else openComputer();
-  }
+  // The side panel shows what this chat did, read from the same messages the
+  // chat renders, whichever engine streams them.
+  const publishChat = useWorkAreaStore((s) => s.publishChat);
+  useEffect(() => {
+    if (sessionId && messages) publishChat(sessionId, messages);
+  }, [sessionId, messages, publishChat]);
 
-  if (!showIntegrations && !showComputerToggle && !showFilesToggle) return null;
+  // The new tab offers this chat's expert's integrations.
+  useEffect(() => {
+    setContextPanelExpert(expert);
+  }, [expert, setContextPanelExpert]);
+
+  if (!sessionId || isMobile) return null;
 
   return (
-    // The same translucent pill as the thread chip on the left (ThreadHeader),
-    // level with it and as tall, so the two corners read as one header.
-    <div className="mt-3 mr-4 flex shrink-0 items-center gap-1 rounded-full border border-border-base/70 bg-surface/75 p-1.5 shadow-sm backdrop-blur-md max-lg:shadow-md">
-      {showIntegrations && expert && (
-        <IntegrationsToggle expert={expert} className={toggleClass} />
-      )}
-      {showFilesToggle && (
-        <Tooltip inheritDelay>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="compact-ghost"
-              size="compact-icon"
-              onClick={() => toggleContextPanelTab("files")}
-              aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
-                documentCount > 0
-                  ? ` (${documentCount} ${documentCount === 1 ? "document" : "documents"})`
-                  : ""
-              }`}
-              aria-pressed={isFilesOpen}
-              className={cn(
-                toggleClass,
-                "h-8",
-                documentCount > 0 ? "w-auto gap-1 px-2 tabular-nums" : "w-8",
-              )}
-            >
-              <Icon
-                icon={LicenseDraftIcon}
-                tone="emphasis-soft"
-                className="!size-4"
-              />
-              {documentCount > 0 && (
-                <Text
-                  variant="small-medium-tight"
-                  as="span"
-                  tone="emphasis-soft"
-                >
-                  {documentCount}
-                </Text>
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipPortal>
-            <TooltipContent side="bottom">
-              {isFilesOpen ? "Hide files" : "Files"}
-            </TooltipContent>
-          </TooltipPortal>
-        </Tooltip>
-      )}
-      {showComputerToggle && (
-        <Tooltip inheritDelay>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="compact-ghost"
-              size="compact-icon"
-              onClick={handleComputerToggle}
-              aria-label={isComputerOpen ? "Hide computer" : "Open computer"}
-              aria-pressed={isComputerOpen}
-              className={cn(toggleClass, "size-8")}
-            >
-              <Icon
-                icon={ComputerIcon}
-                tone="emphasis-soft"
-                className="!size-4"
-              />
-            </Button>
-          </TooltipTrigger>
-          <TooltipPortal>
-            <TooltipContent side="bottom">
-              {isComputerOpen ? "Hide computer" : "Computer"}
-            </TooltipContent>
-          </TooltipPortal>
-        </Tooltip>
-      )}
+    <div className="mt-3 mr-4 flex shrink-0 items-center">
+      <Tooltip inheritDelay>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="compact-ghost"
+            size="compact-icon"
+            onClick={toggle}
+            aria-label={isOpen ? "Hide the side panel" : "Open the side panel"}
+            aria-pressed={isOpen}
+            className="size-8 shrink-0 rounded-lg transition-[background-color,transform] duration-150 ease-out hover:bg-surface-hover active:scale-[0.97] motion-reduce:transition-none"
+          >
+            <Icon
+              icon={SidebarRightIcon}
+              tone="emphasis-soft"
+              className="!size-4"
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipPortal>
+          <TooltipContent side="bottom">
+            {isOpen ? "Hide the side panel" : "Side panel"}
+          </TooltipContent>
+        </TooltipPortal>
+      </Tooltip>
     </div>
   );
 }

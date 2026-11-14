@@ -24,7 +24,13 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, Field, PrivateAttr
 
-from backend.data.db_accessors import chat_db, experts_db, library_db, task_db
+from backend.data.db_accessors import (
+    chat_db,
+    experts_db,
+    library_db,
+    task_db,
+    task_record_db,
+)
 from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
@@ -352,7 +358,9 @@ def is_message_duplicate(
     return False
 
 
-async def clear_pending_question(session: "ChatSession") -> None:
+async def clear_pending_question(
+    session: "ChatSession", answer: str | None = None
+) -> None:
     """Resolve the session's Home "Needs You" question — the user replied.
 
     Answering in chat is the only resolution path, so this runs on every
@@ -389,6 +397,13 @@ async def clear_pending_question(session: "ChatSession") -> None:
         )
     except Exception as e:
         logger.warning(f"Could not resume tasks for {session.session_id}: {e}")
+    if answer and answer.strip():
+        try:
+            await task_record_db().answer_session_asks(
+                session.session_id, session.user_id, answer
+            )
+        except Exception as e:
+            logger.warning(f"Could not record the answer for {session.session_id}: {e}")
 
 
 def maybe_append_user_message(

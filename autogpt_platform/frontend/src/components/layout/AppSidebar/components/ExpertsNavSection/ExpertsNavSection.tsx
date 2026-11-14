@@ -1,5 +1,6 @@
 "use client";
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
@@ -9,10 +10,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/molecules/Sidebar/Sidebar";
+import { useReducedMotion } from "framer-motion";
+import { Eclipse } from "loading-dev";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { CollapsibleNavGroup } from "../CollapsibleNavGroup/CollapsibleNavGroup";
 import { getNewChatHref } from "../RecentChats/helpers";
+import { useWorkingExperts } from "./useWorkingExperts";
 
 interface RowProps {
   href: string;
@@ -21,9 +25,12 @@ interface RowProps {
   avatarUrl: string | null;
   isOtto?: boolean;
   isActive?: boolean;
+  /** How many tasks they are working on right now. */
+  workingCount: number;
 }
 
 const AVATAR_SIZE = 28;
+const WORKING_SIZE = 14;
 
 function ExpertRow({
   href,
@@ -32,7 +39,12 @@ function ExpertRow({
   avatarUrl,
   isOtto,
   isActive,
+  workingCount,
 }: RowProps) {
+  const prefersReducedMotion = useReducedMotion();
+  const working =
+    workingCount > 1 ? `Working on ${workingCount} tasks` : "Working on a task";
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -66,6 +78,25 @@ function ExpertRow({
             size="compact"
             areaTone="secondary-soft"
           />
+          {workingCount > 0 ? (
+            // The same turning mark a working task has in the chat.
+            <span
+              role="img"
+              aria-label={working}
+              title={working}
+              className="ml-auto flex shrink-0 items-center gap-1 text-foreground-text group-data-[collapsible=icon]:hidden"
+            >
+              {workingCount > 1 ? (
+                <span className="text-caption text-foreground-quiet tabular-nums">
+                  {workingCount}
+                </span>
+              ) : null}
+              <Eclipse
+                size={WORKING_SIZE}
+                playState={prefersReducedMotion ? "paused" : "running"}
+              />
+            </span>
+          ) : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -74,10 +105,19 @@ function ExpertRow({
 
 export function ExpertsNavSection() {
   const { activeExperts, activeExpertIds } = useExpertMap();
+  const { workingCount } = useWorkingExperts();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const currentExpertId =
-    pathname === "/home" ? searchParams.get("expertId") : null;
+  const chatExpert = useCopilotUIStore((s) => s.contextPanelExpert);
+  // Whose chat is on screen, so their row is highlighted like a hovered one:
+  // an open chat's own expert, or the one a new chat is addressed to. Null is
+  // Otto; undefined is any page that is not a chat, where no row is lit.
+  const isChatPage = pathname === "/home" || pathname === "/copilot";
+  const currentExpertId = !isChatPage
+    ? undefined
+    : searchParams.get("sessionId")
+      ? (chatExpert?.id ?? null)
+      : searchParams.get("expertId");
 
   return (
     <CollapsibleNavGroup label="Experts">
@@ -88,6 +128,8 @@ export function ExpertsNavSection() {
           role="Head of AI"
           avatarUrl={null}
           isOtto
+          isActive={currentExpertId === null}
+          workingCount={workingCount(null)}
         />
         {activeExperts.map((expert) => (
           <ExpertRow
@@ -97,6 +139,7 @@ export function ExpertsNavSection() {
             role={expert.jobTitle || expert.role}
             avatarUrl={expert.avatarUrl}
             isActive={currentExpertId === expert.id}
+            workingCount={workingCount(expert.id)}
           />
         ))}
       </SidebarMenu>

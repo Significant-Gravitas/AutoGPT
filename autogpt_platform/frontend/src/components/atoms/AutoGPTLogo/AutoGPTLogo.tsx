@@ -1,13 +1,17 @@
+import { cn } from "@/lib/utils";
 import { useId } from "react";
 
 interface Props extends React.SVGProps<SVGSVGElement> {
   hideText?: boolean;
   wordmarkColor?: string;
+  /** The whole logo in one flat black, in place of its gradients. */
+  isMono?: boolean;
 }
 
 export function AutoGPTLogo({
   hideText = false,
   wordmarkColor = "#000030",
+  isMono = false,
   className,
   ...props
 }: Props) {
@@ -25,7 +29,11 @@ export function AutoGPTLogo({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-label="AutoGPT Logo"
-      className={className ?? "h-10 w-[5.5rem]"}
+      className={cn(
+        className ?? "h-10 w-[5.5rem]",
+        // A fill set in CSS wins over each path's gradient attribute.
+        isMono && "text-foreground-black [&_path]:fill-current",
+      )}
       {...props}
     >
       <g>

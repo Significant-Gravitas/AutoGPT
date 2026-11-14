@@ -14,8 +14,3 @@ export function createdTaskOf(output: unknown): CreatedTask | null {
   if (!task || !id) return null;
   return { id, title: str(task, "title")?.trim() || "Untitled task" };
 }
-
-/** Where a task opens: its sheet on the tasks page. */
-export function taskHref(taskID: string) {
-  return `/tasks?task=${encodeURIComponent(taskID)}`;
-}

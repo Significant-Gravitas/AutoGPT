@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Awaitable
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import TypeGuard, cast
 
 from prisma.enums import TaskStatus
 
@@ -14,8 +14,14 @@ from backend.copilot.executor.utils import enqueue_cancel_task, get_session_lock
 from backend.copilot.model import _get_session_lock, invalidate_session_cache
 from backend.copilot.tree import TurnEnvelope, keep_tree_alive
 from backend.copilot.turn_queue import cancel_queued_turn, dispatch_next_for_user
-from backend.data.db_accessors import background_task_db, chat_db, task_db
+from backend.data.db_accessors import (
+    background_task_db,
+    chat_db,
+    task_record_db,
+    task_result_db,
+)
 from backend.data.redis_client import get_redis_async
+from backend.data.task_result import TaskOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +156,13 @@ _TASK_STATUS_BY_OUTCOME: dict[str, TaskStatus] = {
 }
 
 
+# Why a task failed, in words for the user.
+_FAILURE_REASON_BY_OUTCOME: dict[str, str] = {
+    "failed": "The work stopped before it finished.",
+    "timed_out": "The work ran out of time.",
+}
+
+
 async def settle_worker_tasks(task: BackgroundTask) -> None:
     """Close the tasks a finished worker was running (``start_task``).
 
@@ -161,18 +174,37 @@ async def settle_worker_tasks(task: BackgroundTask) -> None:
     if status is None:
         return
     try:
-        await task_db().move_session_tasks(
+        result = None
+        if status == TaskStatus.DONE:
+            child = await background_task_db().background_child_result(
+                task.child_session_id, task.user_id
+            )
+            result = child.response_text if child else None
+        await task_record_db().settle_work_tasks(
             task.child_session_id,
             task.user_id,
-            [TaskStatus.TODO, TaskStatus.IN_PROGRESS],
             status,
+            result,
+            _FAILURE_REASON_BY_OUTCOME.get(task.outcome or ""),
         )
     except Exception:
         logger.warning(f"Could not settle tasks for background task {task.id}")
 
 
+async def worker_task_outcome(task: BackgroundTask) -> TaskOutcome | None:
+    """What the worker's task came to, so the chat that started it can be
+    told in the wake itself. Best-effort: without it the chat reads the
+    worker's own reply."""
+    try:
+        return await task_result_db().task_outcome(task.child_session_id, task.user_id)
+    except Exception:
+        logger.warning(f"Could not read the task of background task {task.id}")
+        return None
+
+
 async def _deliver(task: BackgroundTask) -> None:
     await settle_worker_tasks(task)
+    outcome = await worker_task_outcome(task)
     async with _get_session_lock(task.parent_session_id) as locked:
         if not locked:
             return
@@ -184,8 +216,11 @@ async def _deliver(task: BackgroundTask) -> None:
         metadata["display_content"] = (
             f"Background subtask {outcome_label(task)}. Otto is following up."
         )
+        if _is_handed_over(outcome):
+            # The chat shows this task's result itself, from its record.
+            metadata["task_handoff"] = outcome.task_id
         queued = await background_task_db().enqueue_background_followup(
-            task.id, task.user_id, continuation_message(task), metadata
+            task.id, task.user_id, continuation_message(task, outcome), metadata
         )
     if queued in ("queued", "delivered"):
         await invalidate_session_cache(task.parent_session_id)
@@ -203,15 +238,65 @@ def continuation_envelope(task: BackgroundTask) -> TurnEnvelope:
     return task.context.envelope
 
 
-def continuation_message(task: BackgroundTask) -> str:
-    """What wakes the chat. The subtask's output stays in its own chat and
-    reaches the model as a tool result, as a foreground subtask's does."""
+# The user skims: the chat that started the work answers in a few lines and
+# points at the task for the rest.
+_SHORT_ANSWER = (
+    "Tell the user now in at most 3 short lines: what was done, the one "
+    "thing they should know, and the link to the full result when there is "
+    "one. Do not paste or retell the document and do not list steps; the "
+    "task holds the detail."
+)
+
+
+# A finished task's result and document are shown in the chat as they are, so
+# the chat that started the work adds only what they do not already say.
+_HANDED_OVER = (
+    "The user already sees this result, and its document when it has one, in "
+    "the chat, handed over by whoever did the work. Do not repeat or retell "
+    "any of it, names and numbers included, and do not link it. Reply in at "
+    "most 2 short sentences: the one thing they should know or decide next, "
+    "or what you do now."
+)
+
+
+def _is_handed_over(outcome: TaskOutcome | None) -> TypeGuard[TaskOutcome]:
+    """A task that finished with a result is shown to the user as it is."""
+    return bool(outcome and outcome.status == TaskStatus.DONE and outcome.result)
+
+
+def continuation_message(
+    task: BackgroundTask, outcome: TaskOutcome | None = None
+) -> str:
+    """What wakes the chat that started the work."""
+    return continuation_text(task.child_session_id, outcome_label(task), outcome)
+
+
+def continuation_text(
+    child_session_id: str, label: str, outcome: TaskOutcome | None = None
+) -> str:
+    """A task that left a result is told here, with its document, so the chat
+    can answer at once; otherwise the subtask's output stays in its own chat
+    and reaches the model as a tool result, as a foreground subtask's does."""
+    read_more = f'get_sub_session_result(sub_session_id="{child_session_id}")'
+    if _is_handed_over(outcome):
+        document = (
+            f" Full result: [{outcome.document_title}]"
+            f"(workspace://{outcome.document_file_id})."
+            if outcome.document_title and outcome.document_file_id
+            else ""
+        )
+        return (
+            f"The task '{outcome.title}' is done (task id {outcome.task_id}). "
+            f"Result: {outcome.result}{document}\n\n{_HANDED_OVER} If the "
+            "user's request has more steps, carry on with them; read the "
+            f"worker's chat with {read_more} only if you need more than this."
+        )
     return (
-        f"Background subtask {outcome_label(task)}: "
-        f"/copilot?sessionId={task.child_session_id}. Read what it produced with "
-        f'get_sub_session_result(sub_session_id="{task.child_session_id}") and '
+        f"Background subtask {label}: "
+        f"/copilot?sessionId={child_session_id}. Read what it produced with "
+        f"{read_more} and "
         "carry on with the user's request from where you left off. If it did "
-        "not complete, say so rather than claiming a result."
+        f"not complete, say so rather than claiming a result. {_SHORT_ANSWER}"
     )
 
 

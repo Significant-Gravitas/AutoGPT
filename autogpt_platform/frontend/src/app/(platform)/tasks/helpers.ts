@@ -7,18 +7,11 @@ import {
   AUTOPILOT_NAME,
 } from "@/components/molecules/AutopilotAvatar/helpers";
 
-export const TASK_VIEWS = ["list", "board"] as const;
-export type TasksView = (typeof TASK_VIEWS)[number];
-
-/** The lanes every surface sorts a task into: tabs, board columns, pills. */
+/** The lanes every surface sorts a task into: board columns and pills. */
 export const LANES = ["needs_you", "working", "done", "cancelled"] as const;
 export type Lane = (typeof LANES)[number];
 
-export const TASK_TABS = ["all", ...LANES] as const;
-export type TaskTab = (typeof TASK_TABS)[number];
-
-export const TAB_LABELS: Record<TaskTab, string> = {
-  all: "All",
+const LANE_LABELS: Record<Lane, string> = {
   needs_you: "Needs you",
   working: "Working",
   done: "Done",
@@ -76,29 +69,6 @@ export function pollInterval(tasks: Task[] | undefined) {
   return tasks.some((t) => !isSettled(t.status)) ? POLL_MS : false;
 }
 
-export function tabCount(tasks: Task[], tab: TaskTab) {
-  if (tab === "all") return tasks.length;
-  return tasks.filter((t) => laneOf(t) === tab).length;
-}
-
-const LANE_RANK: Record<Lane, number> = {
-  needs_you: 0,
-  working: 1,
-  done: 2,
-  cancelled: 3,
-};
-
-function byLaneThenRecent(a: Task, b: Task) {
-  const lane = LANE_RANK[laneOf(a)] - LANE_RANK[laneOf(b)];
-  if (lane) return lane;
-  return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-}
-
-export function filterTasks(tasks: Task[], tab: TaskTab) {
-  const shown = tab === "all" ? tasks : tasks.filter((t) => laneOf(t) === tab);
-  return shown.toSorted(byLaneThenRecent);
-}
-
 export interface BoardColumn {
   id: Lane;
   label: string;
@@ -108,7 +78,7 @@ export interface BoardColumn {
 export function buildBoardColumns(tasks: Task[]): BoardColumn[] {
   return LANES.map((id) => ({
     id,
-    label: TAB_LABELS[id],
+    label: LANE_LABELS[id],
     tasks: tasks.filter((t) => laneOf(t) === id),
   }));
 }
@@ -168,12 +138,28 @@ export function statusAge(task: Task, now: number) {
   }
 }
 
-export const TASKS_HEADING_ID = "tasks-heading";
-
 export function taskRowID(taskID: string) {
   return `task-row-${taskID}`;
 }
 
 export function chatHref(sessionID: string) {
   return `/copilot?sessionId=${encodeURIComponent(sessionID)}`;
+}
+
+/** The chat's query key for the task its sidebar opens on arrival. */
+export const TASK_PARAM = "task";
+
+/** Home, on its Tasks tab: the board of every task. */
+export const BOARD_HREF = "/home?show=tasks";
+
+type Placed = Pick<Task, "id" | "session_ids" | "work_session_id">;
+
+/** Where a task opens: the chat it was asked for in, with the task open in
+ *  that chat's sidebar. The chat doing the work stands in when it is the
+ *  only one; a task no chat holds has nowhere to open. */
+export function taskHref(task: Placed) {
+  const asked = task.session_ids?.find((id) => id !== task.work_session_id);
+  const chat = asked ?? task.work_session_id ?? null;
+  if (!chat) return null;
+  return `${chatHref(chat)}&${TASK_PARAM}=${encodeURIComponent(task.id)}`;
 }

@@ -28,7 +28,12 @@ import { SetupTriggerTool } from "../../../tools/SetupTrigger/SetupTrigger";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
 import { CompactionCard } from "../../CompactionCard/CompactionCard";
 import { ExpertOnboardingCard } from "../../ExpertOnboardingCard/ExpertOnboardingCard";
+import { TaskHandoff } from "../../TaskHandoff/TaskHandoff";
 import { TurnPausedCard } from "../../TurnPausedCard/TurnPausedCard";
+import {
+  handoffTaskID,
+  TASK_HANDOFF_PART_TYPE,
+} from "../../../helpers/backgroundSubtasks";
 import { TURN_PAUSED_PART_TYPE } from "../../../turnPause";
 import {
   parseCompactionOutput,
@@ -265,6 +270,10 @@ export function MessagePartRenderer({
           isStoredRow={Boolean(rowKey)}
         />
       );
+    }
+    case TASK_HANDOFF_PART_TYPE: {
+      const taskID = handoffTaskID("data" in part ? part.data : undefined);
+      return taskID ? <TaskHandoff key={key} taskID={taskID} /> : null;
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;

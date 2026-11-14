@@ -143,7 +143,6 @@ describe("Home — recent chats", () => {
     renderHome();
 
     await screen.findByPlaceholderText(/What's your role/);
-    await screen.findByRole("heading", { name: "Your recap" });
     expect(screen.queryByRole("region", { name: "Recent chats" })).toBeNull();
   });
 });

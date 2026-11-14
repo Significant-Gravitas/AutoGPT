@@ -21,6 +21,8 @@ import {
 import { SidebarMenu } from "@/components/molecules/Sidebar/Sidebar";
 import { cn } from "@/lib/utils";
 import { ArrowDown01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { useReducedMotion } from "framer-motion";
+import { Eclipse } from "loading-dev";
 import Link, { useLinkStatus } from "next/link";
 import { ReactNode, useState } from "react";
 import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";
@@ -45,6 +47,8 @@ interface Props {
   newChatHref: string | null;
   color?: string | null;
   isAutopilot?: boolean;
+  /** How many tasks they are working on right now. */
+  workingCount?: number;
   sessions: SessionSummaryResponse[];
   renderItem: (session: SessionSummaryResponse) => ReactNode;
 }
@@ -56,6 +60,7 @@ export function ExpertChatGroup({
   newChatHref,
   color,
   isAutopilot,
+  workingCount = 0,
   sessions,
   renderItem,
 }: Props) {
@@ -105,7 +110,12 @@ export function ExpertChatGroup({
             role={role}
             size="compact"
             areaClassName="opacity-70"
-            nameAccessory={<SessionCount count={sessions.length} />}
+            nameAccessory={
+              <>
+                <SessionCount count={sessions.length} />
+                <Working count={workingCount} />
+              </>
+            }
           />
           {newChatHref && (
             <span
@@ -166,6 +176,26 @@ export function ExpertChatGroup({
   );
 }
 
+/** The same turning mark a working task has in the chat. */
+function Working({ count }: { count: number }) {
+  const prefersReducedMotion = useReducedMotion();
+  if (count === 0) return null;
+  const label = count > 1 ? `Working on ${count} tasks` : "Working on a task";
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="flex shrink-0 items-center text-foreground-text"
+    >
+      <Eclipse
+        size={14}
+        playState={prefersReducedMotion ? "paused" : "running"}
+      />
+    </span>
+  );
+}
+
 function SessionCount({ count }: { count: number }) {
   return (
     <span
@@ -217,10 +247,9 @@ function NewChatIcon() {
   return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;
 }
 
+/** The group's chats, hanging off its avatar as curved branches. The trunk
+ *  starts under the avatar's centre: the header's 8px padding plus half the
+ *  32px avatar. */
 function GroupBody({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative ml-[24px] pl-1.5 before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-gradient-to-b before:from-surface-active/70 before:to-transparent">
-      {children}
-    </div>
-  );
+  return <div className="branch-list ml-6">{children}</div>;
 }

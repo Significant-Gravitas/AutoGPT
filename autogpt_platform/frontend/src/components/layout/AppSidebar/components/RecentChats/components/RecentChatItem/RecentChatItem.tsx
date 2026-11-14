@@ -155,7 +155,11 @@ export const RecentChatItem = memo(function RecentChatItem({
           ) : hasPlatformLogo ? (
             <ChatOriginIcon sourcePlatform={session.source_platform} />
           ) : null}
-          <span className="truncate">{title}</span>
+          {/* On desktop the title runs on under the action, into the padding
+              the row holds for it, and fades out there. */}
+          <span className="label-fade min-w-0 flex-1 !text-clip md:-mr-7">
+            <span className="label-marquee">{title}</span>
+          </span>
           <ChatLinkLoader />
         </Link>
       </SidebarMenuButton>

@@ -121,3 +121,36 @@ export function getAnsweredQuestions(messages: Message[]): AnsweredQuestions {
   }
   return answered;
 }
+
+const ANSWERS_HEADER = "**Here are my answers:**\n\n";
+const ANSWERS_FOOTER = "\n\nPlease proceed";
+
+export interface AnswerLine {
+  question: string;
+  answer: string;
+}
+
+/** The questions and answers of a message the question card sent, or null
+ *  for any other message. The frame stays in the stored text (the backend
+ *  reads it); the thread shows it as "Answered: ..." over the answer. */
+export function parseAnswersFrame(text: string): AnswerLine[] | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(ANSWERS_HEADER.trim())) return null;
+  const footer = trimmed.lastIndexOf(ANSWERS_FOOTER);
+  if (footer < 0) return null;
+  const body = trimmed.slice(ANSWERS_HEADER.trim().length, footer).trim();
+  const lines = body
+    .split(/(?:^|\n\n)> /)
+    .filter((block) => block.trim())
+    .flatMap((block) => {
+      const split = block.indexOf("\n\n");
+      if (split < 0) return [];
+      return [
+        {
+          question: block.slice(0, split).trim(),
+          answer: block.slice(split + 2).trim(),
+        },
+      ];
+    });
+  return lines.length > 0 ? lines : null;
+}

@@ -15,7 +15,8 @@ from typing import Any
 
 from backend.copilot.autopilot_mode import AutopilotMode
 
-from .models import ToolCall, World, WorldTask
+from .models import TaskResult, ToolCall, World, WorldTask
+from .record_sim import RecordSim
 
 PROVIDER_ALIASES: dict[str, tuple[str, ...]] = {
     "gmail": ("gmail", "email", "inbox", "mail"),
@@ -38,6 +39,10 @@ PLATFORM_TOOL_WORDS: dict[str, tuple[str, ...]] = {
     "get_task": ("task", "tasks"),
     "update_task": ("task", "tasks"),
     "create_task": ("task", "tasks", "todo"),
+    "report_progress": ("progress", "status", "task", "report"),
+    "add_evidence": ("evidence", "proof", "task", "verify"),
+    "finish_task": ("finish", "result", "task", "done", "summary"),
+    "write_workspace_file": ("file", "save", "write", "document", "workspace"),
     "list_team": ("team", "expert", "experts", "teammate"),
     "memory_store": ("memory", "remember"),
 }
@@ -56,13 +61,51 @@ class Simulator:
         self.world, self.mode = world, mode
         self.tasks: list[WorldTask] = list(world.tasks)
         self.writes: list[dict[str, Any]] = []
+        self.record = RecordSim()
+        self.worker_reply = ""
 
     def call(self, name: str, args: dict[str, Any]) -> tuple[ToolCall, str]:
         """Run one tool call; returns how it is recorded and what Otto reads."""
         if name == "run_capability":
-            return self._capability(str(args.get("id", "")), args.get("input") or {})
-        result = self._platform_tool(name, args)
-        return ToolCall(name=name, arguments=args), result
+            call, result = self._capability(
+                str(args.get("id", "")), args.get("input") or {}
+            )
+        else:
+            call, result = ToolCall(name=name, arguments=args), ""
+            result = self._platform_tool(name, args)
+        call.failed = _failed(result)
+        if not call.failed and not call.held:
+            # What ran is what proof can later point at, as production records.
+            ran = call.arguments.get("id") if call.service else call.name
+            self.record.note_call(str(ran or call.name), _inner(call))
+        return call, result
+
+    def work_on(self, task_id: str, title: str) -> None:
+        """This chat is a task's worker: its notes land on that task."""
+        if not any(task.id == task_id for task in self.tasks):
+            self.tasks.append(WorldTask(id=task_id, title=title))
+        self.record.working = True
+
+    def settle(self, result: TaskResult) -> tuple[WorldTask | None, str | None]:
+        """A task's worker ended: the newest open task takes the outcome.
+        Returns it with the id of its document, if it left one."""
+        task = next(
+            (
+                t
+                for t in reversed(self.tasks)
+                if (not result.title or t.title == result.title)
+                and t.status == "IN_PROGRESS"
+            ),
+            None,
+        )
+        if task is not None:
+            task.status = "DONE" if result.outcome == "completed" else "FAILED"
+        self.worker_reply = result.worker_reply
+        file_id = None
+        if result.document:
+            self.record.write_file({"filename": result.document})
+            file_id = f"file_{len(self.record.files)}"
+        return task, file_id
 
     # -- capabilities ---------------------------------------------------------
 
@@ -134,6 +177,17 @@ class Simulator:
             "list_tasks": lambda: self._list_tasks(args),
             "get_task": lambda: self._get_task(str(args.get("task_id", ""))),
             "update_task": lambda: self._update_task(args),
+            "report_progress": lambda: self.record.report_progress(args),
+            "add_evidence": lambda: self.record.add_evidence(args),
+            "finish_task": lambda: self.record.finish_task(args),
+            "write_workspace_file": lambda: self.record.write_file(args),
+            "get_sub_session_result": lambda: _dump(
+                {
+                    "status": "completed" if self.worker_reply else "failed",
+                    "response": self.worker_reply
+                    or "The work stopped before it finished.",
+                }
+            ),
             "list_team": lambda: _dump({"experts": self.world.experts}),
             "list_workspace_files": lambda: _dump(
                 {"files": [f.get("name") for f in self._items("drive")]}
@@ -149,9 +203,41 @@ class Simulator:
         return _dump({"status": "ok"})
 
     def _start_task(self, args: dict[str, Any]) -> str:
-        task = self._add_task(
-            str(args.get("title", "")), "IN_PROGRESS", args.get("expert_id")
+        existing = next((t for t in self.tasks if t.id == args.get("task_id")), None)
+        if existing is not None:
+            # Running an existing task again opens no new one.
+            existing.status = "IN_PROGRESS"
+            return _dump(
+                {
+                    "type": "task_started",
+                    "task": existing.model_dump(),
+                    "in_background": True,
+                    "message": f"Started '{existing.title}' again in the background.",
+                }
+            )
+        title = " ".join(str(args.get("title", "")).split())
+        duplicate = next(
+            (
+                t
+                for t in self.tasks
+                if t.title.casefold() == title.casefold()
+                and t.status in ("TODO", "IN_PROGRESS", "NEEDS_INPUT")
+            ),
+            None,
         )
+        if duplicate is not None:
+            return _dump(
+                {
+                    "message": "That work is already running as a task, so no "
+                    "second one was started. Tell the user it is under way.",
+                    "type": "task_started",
+                    "task": duplicate.model_dump(),
+                    "in_background": True,
+                }
+            )
+        task = self._add_task(title, "IN_PROGRESS", args.get("expert_id"))
+        task.goal = str(args.get("goal") or "") or None
+        task.done_when = str(args.get("done_when") or "") or None
         return _dump(
             {
                 "type": "task_started",
@@ -159,7 +245,9 @@ class Simulator:
                 "in_background": True,
                 "message": f"Started '{task.title}' in the background; the result "
                 "comes back to this chat. If you have not told the user yet, tell "
-                "them in one short line; if you have, write nothing more.",
+                "them in one short line for everything you started (what, and "
+                "when it comes back; no findings and nothing from the brief); if "
+                "you have, write nothing more. Do none of the task here.",
             }
         )
 
@@ -189,6 +277,8 @@ class Simulator:
             return _dump({"error": f"Task {args.get('task_id')} not found"})
         task.status = str(args.get("status") or task.status)
         task.title = str(args.get("title") or task.title)
+        task.goal = str(args.get("goal") or "") or task.goal
+        task.done_when = str(args.get("done_when") or "") or task.done_when
         if args.get("assign_to_otto"):
             task.owner = None
         elif args.get("expert_id"):
@@ -259,6 +349,23 @@ class Simulator:
 # Production's gate holds a send, post or change for the user's approval in
 # these modes (``copilot/gate``); the simulator holds every service write.
 _GATED_MODES: frozenset[str] = frozenset({"auto", "ask_first"})
+
+
+def _failed(result: str) -> bool:
+    """The platform answered with an error response."""
+    try:
+        parsed = json.loads(result)
+    except ValueError:
+        return False
+    return isinstance(parsed, dict) and (
+        parsed.get("type") == "error" or "error" in parsed
+    )
+
+
+def _inner(call: ToolCall) -> dict[str, Any]:
+    """The arguments of the tool that ran, behind ``run_capability`` or not."""
+    inner = call.arguments.get("input") if call.service else call.arguments
+    return inner if isinstance(inner, dict) else {}
 
 
 def _approval_required(cap_id: str) -> str:

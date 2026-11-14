@@ -18797,6 +18797,18 @@
               "default": 0,
               "title": "Offset"
             }
+          },
+          {
+            "name": "include_subtasks",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also list subtasks as rows of their own",
+              "default": false,
+              "title": "Include Subtasks"
+            },
+            "description": "Also list subtasks as rows of their own"
           }
         ],
         "responses": {
@@ -18969,6 +18981,51 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/Task" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks/{task_id}/record": {
+      "get": {
+        "tags": ["v2", "tasks", "tasks"],
+        "summary": "Get My Task Record",
+        "description": "The task with its subtasks, activity, asks, artifacts and evidence.",
+        "operationId": "get_task_record",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "A task the caller owns",
+              "title": "Task Id"
+            },
+            "description": "A task the caller owns"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TaskRecord" }
               }
             }
           },
@@ -22601,7 +22658,8 @@
                   "user_only_fact",
                   "irreversible_choice",
                   "conflict",
-                  "preference"
+                  "preference",
+                  "user_requested"
                 ]
               },
               { "type": "null" }
@@ -22613,6 +22671,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Default Guess",
             "description": "What the assistant does if the user says to use its best guess."
+          },
+          "recommended": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Recommended",
+            "description": "The option the default guess picks, shown as Recommended."
           }
         },
         "type": "object",
@@ -34112,6 +34175,10 @@
           "task_details",
           "task_updated",
           "task_archived",
+          "task_started",
+          "task_progress",
+          "task_evidence_added",
+          "task_finished",
           "browser_navigate",
           "browser_act",
           "browser_screenshot",
@@ -37160,6 +37227,63 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "parent_task_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Parent Task Id",
+            "description": "Set on a subtask; one level only."
+          },
+          "work_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Work Session Id",
+            "description": "The chat doing the work right now."
+          },
+          "goal": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Goal"
+          },
+          "done_when": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Done When"
+          },
+          "status_text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Status Text",
+            "description": "Where the task is, in words."
+          },
+          "next_step": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Step"
+          },
+          "result": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Result"
+          },
+          "failure_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Failure Reason"
+          },
+          "attempt": { "type": "integer", "title": "Attempt", "default": 1 },
+          "open_ask_count": {
+            "type": "integer",
+            "title": "Open Ask Count",
+            "description": "Open asks on the task and its subtasks.",
+            "default": 0
+          },
+          "subtask_count": {
+            "type": "integer",
+            "title": "Subtask Count",
+            "default": 0
+          },
+          "subtasks_done": {
+            "type": "integer",
+            "title": "Subtasks Done",
+            "default": 0
+          },
+          "artifact_count": {
+            "type": "integer",
+            "title": "Artifact Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -37174,6 +37298,176 @@
         ],
         "title": "Task",
         "description": "A task as callers see it, with the chats it was worked on in."
+      },
+      "TaskActivity": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "actor_type": { "$ref": "#/components/schemas/TaskActor" },
+          "actor_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Actor Expert Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "kind": { "$ref": "#/components/schemas/TaskActivityKind" },
+          "text": { "type": "string", "title": "Text" },
+          "is_milestone": {
+            "type": "boolean",
+            "title": "Is Milestone",
+            "default": false
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "created_at",
+          "actor_type",
+          "kind",
+          "text"
+        ],
+        "title": "TaskActivity"
+      },
+      "TaskActivityKind": {
+        "type": "string",
+        "enum": [
+          "CREATED",
+          "STARTED",
+          "PROGRESS",
+          "TOOL",
+          "DELEGATED",
+          "ASKED",
+          "ANSWERED",
+          "ARTIFACT",
+          "EVIDENCE",
+          "STATUS",
+          "RETRIED",
+          "FAILED",
+          "DONE"
+        ],
+        "title": "TaskActivityKind"
+      },
+      "TaskActor": {
+        "type": "string",
+        "enum": ["OTTO", "EXPERT", "USER", "SYSTEM"],
+        "title": "TaskActor"
+      },
+      "TaskArtifact": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "kind": { "$ref": "#/components/schemas/TaskArtifactKind" },
+          "title": { "type": "string", "title": "Title" },
+          "workspace_file_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Workspace File Id"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "created_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Created By Expert Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "is_missing": {
+            "type": "boolean",
+            "title": "Is Missing",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["id", "task_id", "created_at", "kind", "title"],
+        "title": "TaskArtifact"
+      },
+      "TaskArtifactKind": {
+        "type": "string",
+        "enum": ["FILE", "DOCUMENT", "LINK", "WORKFLOW", "MESSAGE"],
+        "title": "TaskArtifactKind"
+      },
+      "TaskAsk": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "asked_by_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Asked By Expert Id"
+          },
+          "kind": { "$ref": "#/components/schemas/TaskAskKind" },
+          "question": { "type": "string", "title": "Question" },
+          "options": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Options"
+          },
+          "default_guess": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Guess"
+          },
+          "status": { "$ref": "#/components/schemas/TaskAskStatus" },
+          "answer": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Answer"
+          },
+          "answered_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Answered At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "created_at",
+          "kind",
+          "question",
+          "status"
+        ],
+        "title": "TaskAsk"
+      },
+      "TaskAskKind": {
+        "type": "string",
+        "enum": ["QUESTION", "DECISION", "PICK", "APPROVAL", "SETUP"],
+        "title": "TaskAskKind"
+      },
+      "TaskAskStatus": {
+        "type": "string",
+        "enum": ["OPEN", "ANSWERED", "EXPIRED", "WITHDRAWN"],
+        "title": "TaskAskStatus"
       },
       "TaskCreateRequest": {
         "properties": {
@@ -37191,14 +37485,34 @@
             "title": "Description"
           },
           "owner_expert_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
             "title": "Owner Expert Id",
             "description": "The expert who does the work; omit for Otto."
           },
           "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
             "title": "Session Id",
             "description": "A chat of the caller's to attach the task to."
+          },
+          "goal": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Goal"
+          },
+          "done_when": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Done When"
           }
         },
         "type": "object",
@@ -37243,6 +37557,56 @@
         "title": "TaskDecompositionResponse",
         "description": "Response for decompose_goal tool — shows the plan to the user."
       },
+      "TaskEvidence": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "task_id": { "type": "string", "title": "Task Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "claim": { "type": "string", "title": "Claim" },
+          "kind": { "$ref": "#/components/schemas/TaskEvidenceKind" },
+          "tool_call_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tool Call Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
+          },
+          "artifact_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Artifact Id"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "excerpt": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Excerpt"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "default": false
+          },
+          "added_by": {
+            "$ref": "#/components/schemas/TaskActor",
+            "default": "SYSTEM"
+          }
+        },
+        "type": "object",
+        "required": ["id", "task_id", "created_at", "claim", "kind"],
+        "title": "TaskEvidence"
+      },
+      "TaskEvidenceKind": {
+        "type": "string",
+        "enum": ["TOOL_RESULT", "FILE", "LINK", "QUOTE", "CHECK"],
+        "title": "TaskEvidenceKind"
+      },
       "TaskListResponse": {
         "properties": {
           "tasks": {
@@ -37254,6 +37618,53 @@
         "type": "object",
         "required": ["tasks"],
         "title": "TaskListResponse"
+      },
+      "TaskRecord": {
+        "properties": {
+          "task": { "$ref": "#/components/schemas/Task" },
+          "subtasks": {
+            "items": { "$ref": "#/components/schemas/Task" },
+            "type": "array",
+            "title": "Subtasks"
+          },
+          "activity": {
+            "items": { "$ref": "#/components/schemas/TaskActivity" },
+            "type": "array",
+            "title": "Activity",
+            "description": "The task's and its subtasks', newest first."
+          },
+          "so_far": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "So Far",
+            "description": "The last few milestones, newest first."
+          },
+          "asks": {
+            "items": { "$ref": "#/components/schemas/TaskAsk" },
+            "type": "array",
+            "title": "Asks"
+          },
+          "artifacts": {
+            "items": { "$ref": "#/components/schemas/TaskArtifact" },
+            "type": "array",
+            "title": "Artifacts"
+          },
+          "evidence": {
+            "items": { "$ref": "#/components/schemas/TaskEvidence" },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "is_unverified": {
+            "type": "boolean",
+            "title": "Is Unverified",
+            "description": "Done with a stated done-when but no verified evidence.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["task"],
+        "title": "TaskRecord",
+        "description": "Everything the task page shows for one task."
       },
       "TaskStatus": {
         "type": "string",
@@ -37291,7 +37702,10 @@
             ]
           },
           "owner_expert_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
             "title": "Owner Expert Id"
           },
           "assign_to_otto": {
@@ -37299,6 +37713,20 @@
             "title": "Assign To Otto",
             "description": "Clear the owner expert so Otto owns the task.",
             "default": false
+          },
+          "goal": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Goal"
+          },
+          "done_when": {
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ],
+            "title": "Done When"
           }
         },
         "type": "object",

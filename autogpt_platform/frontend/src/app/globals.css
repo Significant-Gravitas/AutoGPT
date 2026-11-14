@@ -245,6 +245,15 @@
   --animate-inbox-empty: inbox-enter 420ms cubic-bezier(0.22, 1, 0.36, 1) 300ms
     both;
   --animate-number-in: number-in 450ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-trail-pop: trail-pop 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-trail-draw: trail-draw 360ms cubic-bezier(0.22, 1, 0.36, 1) 120ms
+    both;
+  --animate-trail-arc: trail-arc 900ms linear infinite;
+  --animate-trail-light: trail-light 2400ms linear infinite;
+  --animate-trail-ring: trail-ring 2400ms ease-out infinite;
+  --animate-reader-in: reader-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-handoff-dot: handoff-dot 1100ms cubic-bezier(0.22, 1, 0.36, 1)
+    var(--handoff-delay, 0ms) both;
 }
 
 /* Base styles of the utilities below. */
@@ -279,6 +288,24 @@
 /* Lays a fractal-noise grain over an element's own background. It sets no
    `position`, so it never fights the positioning classes on the element:
    position it yourself. `#` and `%` stay percent-encoded in the data URI. */
+/* The step being worked on: a light passes over its text. */
+@utility text-trail-shine {
+  background: linear-gradient(
+      90deg,
+      rgb(var(--color-foreground-ink) / var(--alpha-foreground-ink)) 0 40%,
+      rgb(var(--color-foreground-faint) / var(--alpha-foreground-faint)) 50%,
+      rgb(var(--color-foreground-ink) / var(--alpha-foreground-ink)) 60% 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: trail-shine 1400ms linear infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
 @utility grain-overlay {
   &::after {
     content: "";
@@ -309,16 +336,116 @@
     0 0 18px rgb(var(--color-info) / 0.55);
 }
 
-/* The right edge of a row that scrolls sideways: what is past it blurs out
-   into the page, so it reads as "more this way". */
+/* The edges of a row that scrolls sideways: what is past them blurs out, so
+   it reads as "more this way". Only a blur, with no colour laid over it. */
 @utility edge-blur-right {
-  backdrop-filter: blur(6px);
-  background: linear-gradient(
-    to right,
-    rgb(var(--color-page) / 0),
-    rgb(var(--color-page) / 0.85)
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(to right, transparent, black 75%);
+}
+/* The bottom of a page that scrolls on: a blur with a faint shade under it. */
+@utility edge-blur-bottom {
+  backdrop-filter: blur(10px);
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0), rgb(0 0 0 / 0.05));
+  mask-image: linear-gradient(to bottom, transparent, black 75%);
+}
+/* Text or a strip that runs on past its box fades out at the right edge
+   instead of being cut. */
+/* A list hanging off the mark above it as branches: a trunk runs down from
+   the mark and bends into each row, ending at the last one. The trunk sits
+   at the element's left edge; the rows start a branch's width in. */
+@utility branch-list {
+  --branch-width: 0.875rem;
+  --branch-bend: 0.5rem;
+  --branch-gap: 0.25rem;
+  --branch-line: rgb(var(--color-foreground-ink) / 0.14);
+  padding-left: var(--branch-width);
+
+  & > ul > li {
+    position: relative;
+  }
+  & > ul > li::before {
+    content: "";
+    position: absolute;
+    top: calc(var(--branch-gap) * -1);
+    left: calc(var(--branch-width) * -1);
+    width: calc(var(--branch-width) - 0.125rem);
+    height: calc(50% + var(--branch-gap));
+    border-bottom: 1px solid var(--branch-line);
+    border-left: 1px solid var(--branch-line);
+    border-bottom-left-radius: var(--branch-bend);
+    pointer-events: none;
+  }
+  & > ul > li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: calc(50% - var(--branch-bend));
+    bottom: 0;
+    left: calc(var(--branch-width) * -1);
+    width: 1px;
+    background: var(--branch-line);
+    pointer-events: none;
+  }
+}
+
+/* A one-line label that runs to its row's edge and fades out there, rather
+   than stopping short with an ellipsis. While its sidebar row is hovered,
+   focused or has its menu open, the fade ends early, so the row's action
+   sits on clear ground on top of it. Phones keep the action beside the
+   label, so nothing is cleared there. */
+@utility label-fade {
+  --label-fade: 2rem;
+  --label-clear: 0rem;
+  /* The marquee inside measures its travel against this box. */
+  container-type: inline-size;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(
+    90deg,
+    black calc(100% - var(--label-fade) - var(--label-clear)),
+    transparent calc(100% - var(--label-clear))
   );
-  mask-image: linear-gradient(to right, transparent, black 60%);
+
+  @media (min-width: 768px) {
+    [data-sidebar="menu-item"]:is(
+        :hover,
+        :focus-within,
+        :has([data-state="open"])
+      )
+      & {
+      --label-clear: 1.75rem;
+    }
+  }
+}
+
+/* The text inside a label-fade. While its sidebar row is hovered, a title
+   too long for the row slides left until its end is in the clear, rests,
+   and slides back, so all of it can be read. One that fits stays put. */
+@utility label-marquee {
+  display: inline-block;
+
+  @media (min-width: 768px) and (prefers-reduced-motion: no-preference) {
+    [data-sidebar="menu-item"]:hover & {
+      animation: label-marquee 6s ease-in-out 500ms infinite alternate;
+    }
+  }
+}
+@keyframes label-marquee {
+  0%,
+  12% {
+    transform: translateX(0);
+  }
+  88%,
+  100% {
+    transform: translateX(min(0px, calc(100cqw - 100% - 2.5rem)));
+  }
+}
+
+@utility mask-fade-right {
+  mask-image: linear-gradient(90deg, black calc(100% - 14px), transparent);
+}
+@utility edge-blur-left {
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(to left, transparent, black 75%);
 }
 
 /* The scrollbar utilities of tailwind-scrollbar 3.1.0 (MIT License,
@@ -743,6 +870,97 @@ body[data-google-picker-open="true"] [data-slot="dialog-popup"] {
   .animate-inbox-enter,
   .animate-inbox-empty,
   .animate-number-in {
+    animation: none;
+  }
+}
+
+/* Task activity trail: a finished step's mark pops and its check draws
+   itself, a working step's ring turns, and a short light runs down the
+   branch into the line being worked on, where the dot rings as it lands. */
+@keyframes trail-pop {
+  from {
+    transform: scale(0.5);
+  }
+}
+@keyframes trail-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes trail-arc {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes trail-light {
+  0% {
+    stroke-dashoffset: calc(var(--trail-k) * 1px);
+    animation-timing-function: cubic-bezier(0.45, 0, 0.3, 1);
+  }
+  65%,
+  100% {
+    stroke-dashoffset: calc((var(--trail-k) - var(--trail-len)) * 1px);
+  }
+}
+@keyframes trail-ring {
+  0%,
+  54% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    opacity: 0.6;
+  }
+  88%,
+  100% {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+/* A document lifted over the chat to be read. */
+@keyframes reader-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-reader-in,
+  .animate-handoff-dot {
+    animation: none;
+  }
+}
+/* A handed-over result: small dots drift up from the portrait and fade. */
+@keyframes handoff-dot {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--handoff-x, 0px), -34px) scale(1);
+  }
+}
+@keyframes trail-shine {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-trail-pop,
+  .animate-trail-draw,
+  .animate-trail-arc,
+  .animate-trail-light,
+  .animate-trail-ring {
     animation: none;
   }
 }

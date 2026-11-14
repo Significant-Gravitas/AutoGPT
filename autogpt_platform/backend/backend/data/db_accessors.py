@@ -491,3 +491,29 @@ def task_db():
         task_db = get_database_manager_async_client()
 
     return task_db
+
+
+def task_result_db():
+    if db.is_connected():
+        from backend.data import task_result as _task_result_db
+
+        task_result_db = _task_result_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_result_db = get_database_manager_async_client()
+
+    return task_result_db
+
+
+def task_record_db():
+    if db.is_connected():
+        from backend.data import task_record as _task_record_db
+
+        task_record_db = _task_record_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        task_record_db = get_database_manager_async_client()
+
+    return task_record_db

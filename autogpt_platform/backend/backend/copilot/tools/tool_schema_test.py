@@ -334,7 +334,19 @@ from ._test_data import make_session
 #     reason / default_guess tree                 80,813 (94 tools)
 #     + start_task                    +734        81,547 (95 tools)
 #     + headroom                      +300        81,847
-_CHAR_BUDGET = 81_847
+# Raised for the task record: start_task's goal, done_when and task_id, and
+# the two things a task's worker says about its own work:
+#     start_task tree                             81,547 (95 tools)
+#     + goal / done_when / task_id    +778        82,325
+#     + report_progress, add_evidence +1,150      83,475 (97 tools)
+#     + headroom                      +300        83,775
+# Raised for short task results: finish_task (a worker's summary and the file
+# holding the full result), and the length caps the three worker tools and
+# start_task now state:
+#     task record tree                            83,475 (97 tools)
+#     + finish_task, stated caps      +566        84,041 (98 tools)
+#     + headroom                      +300        84,341
+_CHAR_BUDGET = 84_341
 
 
 @pytest.fixture(scope="module")
@@ -566,7 +578,16 @@ def test_total_schema_char_budget() -> None:
 #     reason / default_guess tree                 72,795
 #     + start_task                    +658        73,453
 #     + headroom                      +300        73,753
-_SESSION_WIRE_BUDGET = 73_753
+# And for the task record, as above: start_task's goal, done_when and
+# task_id, plus report_progress and add_evidence:
+#     start_task tree                             73,453
+#     + task record                   +1,767      75,220
+#     + headroom                      +300        75,520
+# And for short task results, as above (finish_task and the stated caps):
+#     task record tree                            75,220
+#     + finish_task, stated caps      +508        75,728
+#     + headroom                      +300        76,028
+_SESSION_WIRE_BUDGET = 76_028
 
 
 def test_largest_declared_session_wire_budget() -> None:

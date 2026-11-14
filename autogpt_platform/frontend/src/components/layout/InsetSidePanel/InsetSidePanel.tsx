@@ -26,12 +26,17 @@ function subscribe() {
   return () => {};
 }
 
-export function InsetSidePortal({ children }: PortalProps) {
-  const slot = useSyncExternalStore(
+/** The page's side slot, or null on a page whose frame has none. */
+export function useInsetSideSlot() {
+  return useSyncExternalStore(
     subscribe,
     () => document.getElementById(SLOT_ID),
     () => null,
   );
+}
+
+export function InsetSidePortal({ children }: PortalProps) {
+  const slot = useInsetSideSlot();
 
   return slot ? createPortal(children, slot) : null;
 }

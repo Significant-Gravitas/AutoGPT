@@ -7,6 +7,7 @@ import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoin
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
 import { completeStreamingInput } from "./components/ToolChain/partialInput";
 import { parseSpecialMarkers } from "./helpers/messageMarkers";
+import { TASK_HANDOFF_PART_TYPE } from "./helpers/backgroundSubtasks";
 import { WORKSPACE_FOLDER_PART_TYPE } from "./helpers/workspaceAttachments";
 import { TURN_PAUSED_PART_TYPE } from "./turnPause";
 
@@ -148,6 +149,7 @@ export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
     if (part.type === "reasoning" && part.text.trim().length > 0) return true;
     if (part.type.startsWith(TOOL_PART_PREFIX)) return true;
     if (part.type === TURN_PAUSED_PART_TYPE) return true;
+    if (part.type === TASK_HANDOFF_PART_TYPE) return true;
     return false;
   });
 }

@@ -206,6 +206,19 @@ from backend.data.task import (
     move_session_tasks,
     update_task,
 )
+from backend.data.task_record import (
+    add_activity,
+    add_evidence,
+    answer_session_asks,
+    find_open_task_by_title,
+    get_task_record,
+    open_asks,
+    record_tool_call,
+    set_progress,
+    settle_work_tasks,
+    work_tasks,
+)
+from backend.data.task_result import finish_task, is_worker_chat, task_outcome
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -608,6 +621,20 @@ class DatabaseManager(AppService):
     move_session_tasks = _(move_session_tasks)
     attach_task_session = _(attach_task_session)
     detach_task_session = _(detach_task_session)
+    # The task record: activity, asks, artifacts and evidence.
+    work_tasks = _(work_tasks)
+    find_open_task_by_title = _(find_open_task_by_title)
+    add_activity = _(add_activity)
+    set_progress = _(set_progress)
+    record_tool_call = _(record_tool_call)
+    add_evidence = _(add_evidence)
+    open_asks = _(open_asks)
+    answer_session_asks = _(answer_session_asks)
+    settle_work_tasks = _(settle_work_tasks)
+    get_task_record = _(get_task_record)
+    finish_task = _(finish_task)
+    task_outcome = _(task_outcome)
+    is_worker_chat = _(is_worker_chat)
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
@@ -1225,6 +1252,19 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     move_session_tasks = d.move_session_tasks
     attach_task_session = d.attach_task_session
     detach_task_session = d.detach_task_session
+    work_tasks = d.work_tasks
+    find_open_task_by_title = d.find_open_task_by_title
+    add_activity = d.add_activity
+    set_progress = d.set_progress
+    record_tool_call = d.record_tool_call
+    add_evidence = d.add_evidence
+    open_asks = d.open_asks
+    answer_session_asks = d.answer_session_asks
+    settle_work_tasks = d.settle_work_tasks
+    get_task_record = d.get_task_record
+    finish_task = d.finish_task
+    task_outcome = d.task_outcome
+    is_worker_chat = d.is_worker_chat
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions

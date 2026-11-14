@@ -2,13 +2,19 @@
 
 Every question names why the work cannot go on without it. A preference
 (tone, format, naming) is asked only in Ask First; in Auto and Unsupervised
-Otto picks its default and notes it. "Should I go ahead?" questions are
+Otto picks its default and notes it, unless the user told it to ask them
+(``user_requested``), which is asked in every mode. "Should I go ahead?" questions are
 refused unless the choice cannot be undone, since the gate's approval cards
 ask for permission where the mode wants it. A chat may only ask so many
 times in a row before Otto has to decide on its own. And a question that is
 the first thing in its turn is sent back once: looking first (email, files,
 tasks, memory) often settles it, or lets it name the real options and the
 deadline; asked again, it goes through.
+
+A task's background worker asks less still: the user is not looking at its
+chat, and a question parks the whole task. With a workable default it goes
+on with the default and says so in its summary, unless acting on the guess
+could not be undone.
 """
 
 import re
@@ -45,16 +51,34 @@ LOOK_FIRST = (
 )
 
 
+# Reasons a background worker may still ask with a default in hand.
+_ASKED_IN_BACKGROUND = frozenset({"irreversible_choice", "user_requested"})
+
+
 def refusal(
     questions: Sequence[ClarifyingQuestion],
     mode: AutopilotMode,
     asked_in_a_row: int,
     looked: bool = True,
+    background: bool = False,
 ) -> str | None:
-    """Why these questions may not be asked, or None when they may."""
+    """Why these questions may not be asked, or None when they may.
+    ``background`` is a task's worker chat, which the user is not watching."""
     problems = [p for q in questions if (p := _problem(q, mode))]
     if problems:
         return "Not asked. " + " ".join(problems)
+    if background:
+        decidable = [q for q in questions if _has_workable_default(q)]
+        if decidable:
+            return (
+                "Not asked: this task runs in the background and you have a "
+                "workable default for "
+                + "; ".join(f"'{q.question}'" for q in decidable)
+                + ". Go on with your default_guess and say the assumption in "
+                "your summary. Only if acting on the guess could not be undone "
+                "(money, sending, deleting), ask again with reason "
+                "irreversible_choice."
+            )
     budget = QUESTION_BUDGET[mode]
     if asked_in_a_row >= budget:
         return (
@@ -67,6 +91,13 @@ def refusal(
     return None
 
 
+def _has_workable_default(question: ClarifyingQuestion) -> bool:
+    return (
+        bool((question.default_guess or "").strip())
+        and question.reason not in _ASKED_IN_BACKGROUND
+    )
+
+
 def _problem(question: ClarifyingQuestion, mode: AutopilotMode) -> str | None:
     label = f"'{question.question}':"
     if question.reason is None:
@@ -74,7 +105,9 @@ def _problem(question: ClarifyingQuestion, mode: AutopilotMode) -> str | None:
     if question.reason == "preference" and mode != "ask_first":
         return (
             f"{label} a preference is not asked in {mode} mode: decide it with "
-            "your default and note it as an assumption."
+            "your default and note it as an assumption. If the user told you "
+            "in this chat to ask them this, ask again with reason "
+            "user_requested."
         )
     if (
         _PERMISSION_CHATTER.search(question.question)

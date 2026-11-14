@@ -1,7 +1,7 @@
 "use client";
 
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
 import { tourTarget } from "@/lib/tour-targets";
 import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTour/useFirstRunTourAutoStart";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
@@ -13,17 +13,19 @@ import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/Conne
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { OnboardingIntroCard } from "../OnboardingIntroCard/OnboardingIntroCard";
 import { useOnboardingIntroCard } from "../OnboardingIntroCard/useOnboardingIntroCard";
+import { ScaleLoader } from "../ScaleLoader/ScaleLoader";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
-import { SuggestedTasksBlock } from "../SuggestedTasks/SuggestedTasksBlock";
 import { useCollapsedSuggestions } from "../SuggestedTasks/useCollapsedSuggestions";
 import { useSuggestedTasks } from "../SuggestedTasks/useSuggestedTasks";
 import { ComposerTray } from "./components/ComposerTray/ComposerTray";
+import { DitherTrail } from "./components/DitherTrail/DitherTrail";
 import { EmptyHero } from "./components/EmptyHero";
 import { ExpertInfoPanel } from "./components/ExpertInfoPanel/ExpertInfoPanel";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { HomeBoard } from "./components/HomeBoard/HomeBoard";
-import { HomeRecentChats } from "./components/HomeRecentChats/HomeRecentChats";
+import { HomeRecentRow } from "./components/HomeRecentChats/HomeRecentRow";
+import { HomeScroller } from "./components/HomeScroller";
 import { HomeViewTabs } from "./components/HomeViewTabs/HomeViewTabs";
 import { useHomeView } from "./components/HomeViewTabs/useHomeView";
 import { InfoToggle } from "./components/InfoToggle";
@@ -120,6 +122,7 @@ export function EmptySession({
   });
   const collapse = useCollapsedSuggestions();
   const introLine = isLoadingRecipient ? null : getIntroLine(selectedExpert);
+
   const recipientPicker = (
     <RecipientChip
       recipient={recipient}
@@ -135,24 +138,22 @@ export function EmptySession({
     greetingPath: intro.isVisible ? intro.path : null,
   });
 
-  const [homeView, setHomeView] = useHomeView();
   const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const showTabs = !intro.isVisible;
   // The regular hero: its composer sits in the tray, which names the
   // recipient and the connection, and the expert's profile opens beside it.
   const isRegularHero = !intro.isVisible && !intro.isAwaitingGreeting;
+  // Home's two tabs, held back with the hero so a load shows one loader.
+  const [homeView, setHomeView] = useHomeView();
 
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
   }
 
-  if (showTabs && homeView === "board") {
+  if (isRegularHero && homeView === "tasks") {
     return (
-      <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 md:px-6">
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 px-4 pb-4 md:px-6">
         <HomeViewTabs value={homeView} onChange={setHomeView} />
-        <div className="mx-auto w-full max-w-6xl">
-          <HomeBoard />
-        </div>
+        <HomeBoard />
       </div>
     );
   }
@@ -191,6 +192,8 @@ export function EmptySession({
   return (
     <div className="flex h-full min-w-0 flex-1">
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
+        {/* Behind everything on the Chat tab; the content sits above it. */}
+        {isRegularHero && <DitherTrail />}
         {isRegularHero ? (
           <InfoToggle
             isPanelOpen={isInfoOpen}
@@ -203,13 +206,12 @@ export function EmptySession({
             <ConnectionPicker className="ml-0" />
           </div>
         )}
-        {showTabs && <HomeViewTabs value={homeView} onChange={setHomeView} />}
-        <div className="relative flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-0 py-5 md:px-6 md:py-10">
+        {isRegularHero && (
+          <HomeViewTabs value={homeView} onChange={setHomeView} />
+        )}
+        <HomeScroller>
           <motion.div
-            className={cn(
-              "relative z-10 my-auto w-full text-center",
-              "max-w-[1120px]",
-            )}
+            className="relative z-10 my-auto w-full max-w-[1120px] text-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3 }}
@@ -229,14 +231,38 @@ export function EmptySession({
                 // behind the first-run walkthrough. The orb it renders is the
                 // same element the card above puts in its heading, so the
                 // swap moves it there rather than replacing it.
-                <GreetingLoader />
+                intro.isFirstRunPending ? (
+                  <GreetingLoader />
+                ) : (
+                  // An ordinary load: the page's own loader, in the same
+                  // spot, so the two read as one.
+                  <div
+                    role="status"
+                    className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center"
+                  >
+                    <span className="sr-only">Loading</span>
+                    <ScaleLoader className="text-foreground-subtle" />
+                  </div>
+                )
               ) : (
-                <EmptyHero
-                  intro={introLine}
-                  recipient={recipient}
-                  isExpert={Boolean(selectedExpert)}
-                  expertRole={selectedExpert?.role}
-                />
+                // The mark, then the line that names who to tell.
+                <>
+                  <div className="mb-6 flex justify-center">
+                    <AutoGPTLogo
+                      hideText
+                      viewBox="47 -1 42 42"
+                      aria-label="AutoGPT"
+                      isMono
+                      className="size-12"
+                    />
+                  </div>
+                  <EmptyHero
+                    intro={introLine}
+                    recipient={recipient}
+                    isExpert={Boolean(selectedExpert)}
+                    expertRole={selectedExpert?.role}
+                  />
+                </>
               )}
 
               {/* Held back while the greeting is on its way — it enters with
@@ -275,24 +301,10 @@ export function EmptySession({
                   </div>
                 </div>
               )}
-
-              {/* The greeting's list once the greeting has retired. Each task
-                  goes to its own owner, whoever the composer is addressed to. */}
-              {isRegularHero && suggestions.isStored && (
-                <SuggestedTasksBlock
-                  suggestions={suggestions}
-                  collapse={collapse}
-                  disabled={isComposerDisabled || !!atReset}
-                  className="mx-auto mb-6 max-w-[42rem]"
-                />
-              )}
-
-              {isRegularHero && <HomeRecentChats expertId={recipient.id} />}
             </div>
-
-            {isRegularHero && <HomeRecap />}
+            {isRegularHero && <HomeRecentRow expertId={recipient.id} />}
           </motion.div>
-        </div>
+        </HomeScroller>
       </div>
       {isRegularHero && (
         <ExpertInfoPanel

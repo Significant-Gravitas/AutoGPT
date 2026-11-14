@@ -109,6 +109,9 @@ class ResponseType(str, Enum):
     TASK_UPDATED = "task_updated"
     TASK_ARCHIVED = "task_archived"
     TASK_STARTED = "task_started"
+    TASK_PROGRESS = "task_progress"
+    TASK_EVIDENCE_ADDED = "task_evidence_added"
+    TASK_FINISHED = "task_finished"
 
     # Browser automation
     BROWSER_NAVIGATE = "browser_navigate"
@@ -888,6 +891,8 @@ QuestionReason = Literal[
     "irreversible_choice",
     "conflict",
     "preference",
+    # The user told Otto, in this chat, to ask them this.
+    "user_requested",
 ]
 QUESTION_REASONS: tuple[QuestionReason, ...] = get_args(QuestionReason)
 
@@ -909,6 +914,10 @@ class ClarifyingQuestion(BaseModel):
     default_guess: str | None = Field(
         default=None,
         description="What the assistant does if the user says to use its best guess.",
+    )
+    recommended: str | None = Field(
+        default=None,
+        description="The option the default guess picks, shown as Recommended.",
     )
 
 

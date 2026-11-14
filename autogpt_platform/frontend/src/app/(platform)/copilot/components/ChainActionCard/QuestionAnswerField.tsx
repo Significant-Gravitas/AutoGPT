@@ -1,7 +1,6 @@
 "use client";
 
-import { Icon } from "@/components/atoms/Icon/Icon";
-import { PencilEdit02Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
 import { useRef, useState } from "react";
 import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 import { QuestionOptionList } from "./QuestionOptionList";
@@ -13,43 +12,57 @@ interface Props {
   labelId: string;
   autoFocus: boolean;
   onChange: (value: string) => void;
+  /** An option was chosen as the answer, to go on with at once. */
+  onPick: (value: string) => void;
   onSubmit: () => void;
 }
 
-/** The answer input for one question: options render as tappable rows with a
- *  trailing "Type something…" escape hatch into free text; questions without
- *  options go straight to the textarea. The options stay on screen while the
- *  user types, and each one can be copied into the textarea to reword it or
- *  merge it with others.
+const FIELD =
+  "w-full resize-none rounded-lg bg-surface-wash px-2.5 py-2 text-body-sm leading-relaxed text-foreground-ink ring-1 ring-border-hairline transition-shadow duration-150 ease-out ring-inset placeholder:text-foreground-quiet focus:ring-2 focus:ring-focus-inbox focus:outline-none";
+
+/** The answer input for one question: its options as numbered rows, then a
+ *  last row that takes the user's own words; a question without options is
+ *  that row alone. An option can be copied into the row to reword it or to
+ *  build one answer out of several.
  *  Mounted per-question — the parent keys this component on the question's
- *  pager id, so the typing toggle resets between questions instead of leaking
- *  across them. */
+ *  pager id, so nothing typed leaks from one question to the next. */
 export function QuestionAnswerField({
   question,
   value,
   labelId,
   autoFocus,
   onChange,
+  onPick,
   onSubmit,
 }: Props) {
   const options = question.options ?? [];
   const isCustom = value.trim().length > 0 && !options.includes(value.trim());
-  const [typing, setTyping] = useState(() => options.length > 0 && isCustom);
-  // Focus follows an explicit toggle. A pre-filled custom answer opens the
-  // textarea too, but must not steal focus when the card first renders —
-  // that is what the pager's autoFocus is for.
-  const [toggled, setToggled] = useState(false);
+  // The row shows only the user's own words, never an option echoed back.
+  const [draftFocus, setDraftFocus] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const textarea = (
+  // A second edit adds to the draft rather than replacing it, so the user
+  // can build one answer out of several options.
+  function handleOptionEdit(option: string) {
+    onChange(isCustom ? `${value.trimEnd()}\n${option}` : option);
+    setDraftFocus(true);
+    textareaRef.current?.focus();
+  }
+
+  const ownWords = (
     <textarea
       ref={textareaRef}
       required
-      rows={options.length > 0 ? 2 : 3}
+      rows={options.length > 0 ? 1 : 3}
       aria-labelledby={labelId}
-      autoFocus={autoFocus || toggled}
-      value={value}
+      autoFocus={options.length === 0 ? autoFocus : draftFocus}
+      value={options.length > 0 && !isCustom && !draftFocus ? "" : value}
       onChange={(e) => onChange(e.target.value)}
+      onFocus={() => {
+        // Starting to type drops a picked option: the row is now the answer.
+        if (options.includes(value.trim())) onChange("");
+        setDraftFocus(true);
+      }}
       // Enter advances the pager; Shift+Enter is the newline.
       onKeyDown={(e) => {
         if (!isKey(e, "Enter") || e.shiftKey) return;
@@ -59,61 +72,38 @@ export function QuestionAnswerField({
       // The example is the options joined, so replaying it right under
       // those same options would only be noise.
       placeholder={
-        options.length === 0 && question.example
-          ? `e.g. ${question.example}`
-          : "Type your answer"
+        options.length > 0
+          ? "Something else…"
+          : question.example
+            ? `e.g. ${question.example}`
+            : "Type your answer"
       }
-      className="resize-none rounded-2xl bg-surface-muted px-4 py-3 text-body-lg leading-relaxed text-foreground-emphasis ring-1 ring-separator transition-shadow placeholder:text-foreground-subtle focus:ring-border-strong focus:outline-none"
+      className={cn(FIELD, options.length > 0 && "min-h-9")}
     />
   );
 
-  if (options.length === 0) return textarea;
-
-  // Choosing an option replaces whatever was typed, so the textarea closes
-  // rather than echoing the option's text back as if the user had written it.
-  function handleOptionChange(option: string) {
-    setTyping(false);
-    onChange(option);
-  }
-
-  // A second edit adds to the draft rather than replacing it, so the user
-  // can build one answer out of several options.
-  function handleOptionEdit(option: string) {
-    const draft =
-      typing && value.trim() ? `${value.trimEnd()}\n${option}` : option;
-    onChange(draft);
-    setToggled(true);
-    setTyping(true);
-    textareaRef.current?.focus();
-  }
+  if (options.length === 0) return <div className="px-1 pb-1">{ownWords}</div>;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col">
       <QuestionOptionList
         options={options}
         value={value}
         labelId={labelId}
-        focusActiveOption={!typing && (autoFocus || toggled)}
-        onChange={handleOptionChange}
+        focusActiveOption={!draftFocus && autoFocus}
+        recommended={question.recommended}
+        onChange={(option) => {
+          setDraftFocus(false);
+          onChange(option);
+        }}
         onEdit={handleOptionEdit}
+        onPick={(option) => {
+          setDraftFocus(false);
+          onPick(option);
+        }}
         onSubmit={onSubmit}
       />
-      {typing ? (
-        textarea
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            if (options.includes(value.trim())) onChange("");
-            setToggled(true);
-            setTyping(true);
-          }}
-          className="flex items-center gap-2.5 rounded-2xl border border-dashed border-border-base px-4 py-3 text-left text-body-lg text-foreground-tertiary transition-colors hover:border-border-strong hover:text-foreground-body"
-        >
-          <Icon icon={PencilEdit02Icon} size={16} className="shrink-0" />
-          Type something…
-        </button>
-      )}
+      <div className="px-1 pt-1">{ownWords}</div>
     </div>
   );
 }

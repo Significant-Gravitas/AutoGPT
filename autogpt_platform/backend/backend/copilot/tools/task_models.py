@@ -25,6 +25,17 @@ class TaskInfo(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     updated_at: datetime
+    parent_task_id: str | None = None
+    goal: str | None = None
+    done_when: str | None = None
+    status_text: str | None = None
+    next_step: str | None = None
+    result: str | None = None
+    failure_reason: str | None = None
+    attempt: int = 1
+    open_ask_count: int = 0
+    subtask_count: int = 0
+    subtasks_done: int = 0
 
     @classmethod
     def from_task(cls, task: Task) -> "TaskInfo":
@@ -39,6 +50,17 @@ class TaskInfo(BaseModel):
             started_at=task.started_at,
             completed_at=task.completed_at,
             updated_at=task.updated_at,
+            parent_task_id=task.parent_task_id,
+            goal=task.goal,
+            done_when=task.done_when,
+            status_text=task.status_text,
+            next_step=task.next_step,
+            result=task.result,
+            failure_reason=task.failure_reason,
+            attempt=task.attempt,
+            open_ask_count=task.open_ask_count,
+            subtask_count=task.subtask_count,
+            subtasks_done=task.subtasks_done,
         )
 
 
@@ -80,3 +102,24 @@ class TaskStartedResponse(ToolResponseBase):
     worker_session_id: str | None = None
     worker_session_link: str | None = None
     background_task_id: str | None = None
+
+
+class TaskProgressResponse(ToolResponseBase):
+    """The worker's progress line was noted on its task."""
+
+    type: ResponseType = ResponseType.TASK_PROGRESS
+
+
+class TaskFinishedResponse(ToolResponseBase):
+    """The task's result was saved: its summary, and its document if any."""
+
+    type: ResponseType = ResponseType.TASK_FINISHED
+    document: str | None = None
+
+
+class TaskEvidenceAddedResponse(ToolResponseBase):
+    """Proof attached to the task, and whether the harness could verify it."""
+
+    type: ResponseType = ResponseType.TASK_EVIDENCE_ADDED
+    evidence_id: str
+    verified: bool

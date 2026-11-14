@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 
+from backend.copilot import tool_timing
 from backend.copilot.model import ChatMessage
 from backend.util.tool_call_loop import ToolCallResult
 
@@ -39,7 +40,12 @@ class BaselineToolPersistence(BaseModel):
         if self.pending_message is None:
             return
         messages.extend(
-            ChatMessage(role="tool", content=result.content, tool_call_id=call["id"])
+            ChatMessage(
+                role="tool",
+                content=result.content,
+                tool_call_id=call["id"],
+                duration_ms=tool_timing.take(call["id"]),
+            )
             for call in self.pending_message.tool_calls or []
             if (result := self.results.get(call["id"])) is not None
         )

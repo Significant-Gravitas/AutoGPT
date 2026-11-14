@@ -1,6 +1,5 @@
 import type { Task } from "@/app/api/__generated__/models/task";
-import { taskHref } from "@/app/(platform)/copilot/tools/CreateTask/helpers";
-import { statusOf } from "@/app/(platform)/tasks/helpers";
+import { BOARD_HREF, statusOf, taskHref } from "@/app/(platform)/tasks/helpers";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -32,7 +31,10 @@ export function TasksGroup({ tasks, isLoading, ownerName }: Props) {
       label={isTeam ? "Recent tasks" : "Tasks"}
       count={isTeam ? undefined : tasks.length}
       action={
-        <Link href="/tasks" className={cn("rounded-md hover:underline", FOCUS)}>
+        <Link
+          href={BOARD_HREF}
+          className={cn("rounded-md hover:underline", FOCUS)}
+        >
           <Text variant="small" as="span" tone="quiet">
             View all
           </Text>
@@ -52,7 +54,7 @@ export function TasksGroup({ tasks, isLoading, ownerName }: Props) {
             return (
               <InfoRow
                 key={task.id}
-                href={taskHref(task.id)}
+                href={taskHref(task) ?? undefined}
                 tile={<Icon icon={CheckListIcon} size={14} />}
                 title={task.title}
                 subtitle={[

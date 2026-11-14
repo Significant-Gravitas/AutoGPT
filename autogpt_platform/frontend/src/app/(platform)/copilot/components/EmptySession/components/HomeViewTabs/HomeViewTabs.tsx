@@ -5,7 +5,7 @@ import type { HomeView } from "./useHomeView";
 
 const OPTIONS = [
   { value: "chat" as const, label: "Chat" },
-  { value: "board" as const, label: "Board" },
+  { value: "tasks" as const, label: "Tasks" },
 ];
 
 interface Props {

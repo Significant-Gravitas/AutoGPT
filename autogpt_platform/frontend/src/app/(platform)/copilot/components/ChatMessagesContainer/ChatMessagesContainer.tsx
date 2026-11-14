@@ -496,7 +496,7 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
+            "mx-auto flex min-h-full w-full max-w-[42.5rem] flex-1 flex-col gap-6 px-4 pt-14 pb-4 md:px-6",
             isCompact && "gap-4 px-4 pt-4",
             showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
@@ -549,7 +549,7 @@ export function ChatMessagesContainer({
           />
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
-              <MessageContent className="text-body-lg leading-relaxed text-foreground-strong">
+              <MessageContent className="text-body leading-relaxed text-foreground-strong">
                 {showRestoreFallback ? (
                   <div className="flex flex-col gap-1 text-body text-foreground-tertiary">
                     <ThinkingIndicator
@@ -590,7 +590,7 @@ export function ChatMessagesContainer({
                     "flex flex-col gap-1 border border-dashed border-border-strong bg-surface-hover px-4 py-2.5 text-foreground-strong opacity-60",
                     isCompact
                       ? "rounded-xl text-body leading-6"
-                      : "rounded-3xl text-body-lg leading-relaxed",
+                      : "rounded-2xl text-body leading-relaxed",
                   )}
                 >
                   <span>

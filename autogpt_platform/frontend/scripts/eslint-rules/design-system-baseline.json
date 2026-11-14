@@ -246,7 +246,7 @@
     "no-restyle": 4
   },
   "src/app/(platform)/copilot/components/ContextPanel/ContextPanelToggle.tsx": {
-    "no-restyle": 15
+    "no-restyle": 6
   },
   "src/app/(platform)/copilot/components/DrawnLineLoader/DrawnLineLoader.tsx": {
     "no-inline-styles": 2

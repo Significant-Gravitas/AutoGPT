@@ -22,6 +22,10 @@ const ArtifactPanel = dynamic(
   { ssr: false },
 );
 
+const WorkArea = dynamic(
+  () => import("./components/WorkArea/WorkArea").then((m) => m.WorkArea),
+  { ssr: false },
+);
 const ContextPanel = dynamic(
   () =>
     import("./components/ContextPanel/ContextPanel").then(
@@ -119,8 +123,7 @@ function MainArea({
           />
         </FileDropZone>
       </div>
-      {!isMobile && sessionId && <ContextPanel sessionId={sessionId} />}
-      {!isMobile && sessionId && <ArtifactPanel sessionId={sessionId} />}
+      {!isMobile && <WorkArea sessionId={sessionId} />}
     </div>
   );
 }

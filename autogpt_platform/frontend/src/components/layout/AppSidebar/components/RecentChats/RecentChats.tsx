@@ -12,6 +12,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { PinIcon } from "@hugeicons/core-free-icons";
 import { ExpertChatGroup } from "./components/ExpertChatGroup/ExpertChatGroup";
 import { RecentChatItem } from "./components/RecentChatItem/RecentChatItem";
+import { useWorkingExperts } from "../ExpertsNavSection/useWorkingExperts";
 import { getNewChatHref } from "./helpers";
 import { useRecentChats } from "./useRecentChats";
 
@@ -20,6 +21,7 @@ export function RecentChats() {
 
   const isLearningEnabled = useGetFlag(Flag.DREAM_SKILL_LEARNING_ENABLED);
   const { expertsById, activeExpertIds } = useExpertMap();
+  const { workingCount } = useWorkingExperts();
   const {
     sessions,
     isLoading,
@@ -134,6 +136,7 @@ export function RecentChats() {
               color={expert?.color ?? null}
               newChatHref={getNewChatHref(group.expertId, activeExpertIds)}
               isAutopilot={!group.expertId}
+              workingCount={workingCount(group.expertId)}
               sessions={group.sessions}
               renderItem={renderItem}
             />

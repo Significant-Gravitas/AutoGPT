@@ -135,6 +135,22 @@ async def test_update_builds_the_patch_from_the_call(db):
     )
 
 
+async def test_update_can_give_a_task_its_goal_and_done_when_cut_to_a_line(db):
+    db.update_task = AsyncMock(return_value=_task())
+
+    await UpdateTaskTool()._execute(
+        _USER,
+        make_session(_USER),
+        task_id="task-1",
+        goal="Know the evidence set is complete",
+        done_when="check " * 80,
+    )
+
+    patch = db.update_task.await_args.args[2]
+    assert patch.goal == "Know the evidence set is complete"
+    assert patch.done_when is not None and len(patch.done_when) <= 160
+
+
 async def test_update_passes_not_found_through_as_an_error(db):
     db.update_task = AsyncMock(side_effect=NotFoundError("Task task-9 not found"))
 

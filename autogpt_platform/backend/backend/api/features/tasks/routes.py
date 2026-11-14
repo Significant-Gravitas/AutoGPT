@@ -9,7 +9,7 @@ from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, Path, Query, Security
-from prisma.enums import TaskCreator, TaskStatus
+from prisma.enums import TaskActivityKind, TaskActor, TaskCreator, TaskStatus
 from starlette.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
 from backend.data.task import (
@@ -23,6 +23,12 @@ from backend.data.task import (
     get_task,
     list_tasks,
     update_task,
+)
+from backend.data.task_record import (
+    ActivityInput,
+    TaskRecord,
+    add_activity,
+    get_task_record,
 )
 from backend.util.exceptions import NotFoundError
 
@@ -48,6 +54,8 @@ async def create_my_task(user_id: UserId, body: TaskCreateRequest) -> Task:
         owner_expert_id=body.owner_expert_id,
         session_id=body.session_id,
         created_by=TaskCreator.USER,
+        goal=body.goal,
+        done_when=body.done_when,
     )
 
 
@@ -61,6 +69,9 @@ async def list_my_tasks(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=LIST_LIMIT_MAX)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    include_subtasks: Annotated[
+        bool, Query(description="Also list subtasks as rows of their own")
+    ] = False,
 ) -> TaskListResponse:
     tasks = await list_tasks(
         user_id=user_id,
@@ -69,6 +80,7 @@ async def list_my_tasks(
         session_id=session_id,
         limit=limit,
         offset=offset,
+        include_subtasks=include_subtasks,
     )
     return TaskListResponse(tasks=tasks)
 
@@ -81,11 +93,52 @@ async def get_my_task(user_id: UserId, task_id: Annotated[str, _TASK_ID]) -> Tas
     return task
 
 
+@router.get("/{task_id}/record", operation_id="get_task_record")
+async def get_my_task_record(
+    user_id: UserId, task_id: Annotated[str, _TASK_ID]
+) -> TaskRecord:
+    """The task with its subtasks, activity, asks, artifacts and evidence."""
+    record = await get_task_record(task_id, user_id)
+    if record is None:
+        raise NotFoundError(f"Task {task_id} not found")
+    return record
+
+
 @router.patch("/{task_id}", operation_id="update_task")
 async def update_my_task(
     user_id: UserId, task_id: Annotated[str, _TASK_ID], body: TaskUpdateRequest
 ) -> Task:
-    return await update_task(task_id, user_id, TaskPatch(**body.model_dump()))
+    before = await get_task(task_id, user_id)
+    task = await update_task(task_id, user_id, TaskPatch(**body.model_dump()))
+    line = _user_change(before, task)
+    if line:
+        await add_activity(
+            task_id,
+            user_id,
+            ActivityInput(
+                kind=TaskActivityKind.STATUS,
+                text=line,
+                actor_type=TaskActor.USER,
+                is_milestone=True,
+            ),
+        )
+    return task
+
+
+def _user_change(before: Task | None, after: Task) -> str | None:
+    """What the user just changed, as one activity line."""
+    if before is None:
+        return None
+    if before.status != after.status:
+        words = after.status.value.replace("_", " ").lower()
+        return f"You marked it {words}"
+    if before.goal != after.goal or before.done_when != after.done_when:
+        return "You changed the goal"
+    if before.title != after.title:
+        return f"You renamed it to {after.title}"
+    if before.owner_expert_id != after.owner_expert_id:
+        return "You changed who owns it"
+    return None
 
 
 @router.delete(

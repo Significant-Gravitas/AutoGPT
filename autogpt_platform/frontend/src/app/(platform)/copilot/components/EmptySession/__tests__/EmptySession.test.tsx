@@ -135,53 +135,11 @@ beforeEach(() => {
   );
 });
 
-it("shows the task prompt above the home recap", async () => {
+it("shows the task prompt with no home recap under it", async () => {
   renderEmptySession("");
-  const prompt = await screen.findByPlaceholderText(/What's your role/);
-  const recap = await screen.findByRole("heading", { name: "Your recap" });
-  expect(
-    prompt.compareDocumentPosition(recap) & Node.DOCUMENT_POSITION_FOLLOWING,
-  ).toBeTruthy();
-  expect(screen.getByRole("heading", { name: "Recent work" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Your team" })).toBeDefined();
-  expect(screen.getByRole("heading", { name: "Now & next" })).toBeDefined();
-});
-
-it("keeps the prompt usable when the recap fails to load", async () => {
-  server.use(
-    http.get(/\/api\/proxy\/api\/home(?:\?.*)?$/, () =>
-      HttpResponse.json({ detail: "failed" }, { status: 500 }),
-    ),
-  );
-  const onSend = vi.fn();
-  const user = userEvent.setup();
-  renderEmptySession("", onSend);
-  await screen.findByText("Your Home briefing could not be loaded");
-  await user.type(
-    screen.getByPlaceholderText(/What's your role/),
-    "Plan my day{Enter}",
-  );
-  await waitFor(() => expect(onSend).toHaveBeenCalled());
-  expect(onSend.mock.calls[0][0]).toBe("Plan my day");
-});
-
-it("keeps new tasks and the recap available without a rollout flag", async () => {
-  const requestedPaths: string[] = [];
-  function record({ request }: { request: Request }) {
-    requestedPaths.push(new URL(request.url).pathname);
-  }
-  server.events.on("request:start", record);
-  try {
-    renderEmptySession("");
-    expect(
-      await screen.findByPlaceholderText(/What's your role/),
-    ).toBeDefined();
-    await waitFor(() =>
-      expect(requestedPaths).toContain("/api/proxy/api/home"),
-    );
-  } finally {
-    server.events.removeListener("request:start", record);
-  }
+  await screen.findByPlaceholderText(/What's your role/);
+  expect(screen.queryByRole("heading", { name: "Your recap" })).toBeNull();
+  expect(screen.queryByLabelText("Loading Home…")).toBeNull();
 });
 
 it("shows a named kickoff status and withholds the empty composer", () => {
@@ -242,8 +200,7 @@ it("keeps the discovery prompt without starter pills or suggestion requests for 
   const fetchSuggestions = vi.fn(() => HttpResponse.json({ themes: [] }));
   server.use(http.get("*/api/chat/suggested-prompts", fetchSuggestions));
   renderEmptySession("");
-  await screen.findByRole("heading", { name: "Your recap" });
-  expect(screen.getByPlaceholderText(/What's your role/)).toBeDefined();
+  expect(await screen.findByPlaceholderText(/What's your role/)).toBeDefined();
   for (const name of ["Learn", "Create", "Automate", "Organize"]) {
     expect(screen.queryByRole("button", { name })).toBeNull();
   }
@@ -343,7 +300,6 @@ it("keeps the chosen expert's prompt for an existing account", async () => {
     team: { total: 1, ready: 1, working: 0, needs_attention: 0 },
   });
   renderEmptySession("?expertId=expert-maria");
-  await screen.findByRole("heading", { name: "Your recap" });
   expect(
     await screen.findByPlaceholderText("What should Maria work on?"),
   ).toBeDefined();

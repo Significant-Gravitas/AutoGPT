@@ -16,7 +16,6 @@ import {
 import { isEditableElement } from "@/lib/platform";
 import {
   AddTeamIcon,
-  CheckListIcon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
@@ -59,12 +58,6 @@ const WORKSPACE_LINKS: NavLink[] = [
     tourTarget: "files",
   },
 ];
-
-const TASKS_LINK: NavLink = {
-  name: "Tasks",
-  href: "/tasks",
-  icon: CheckListIcon,
-};
 
 function isLinkActive(pathname: string | null, href: string) {
   if (!pathname) return false;
@@ -184,7 +177,6 @@ export function AppSidebar(props: Props) {
       icon: AddTeamIcon,
       tourTarget: "team" as const,
     },
-    ...(isLoggedIn ? [TASKS_LINK] : []),
     ...WORKSPACE_LINKS,
   ];
 

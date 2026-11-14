@@ -10,7 +10,7 @@ const meta: Meta<typeof OverflowText> = {
     docs: {
       description: {
         component:
-          "Text component that automatically truncates overflowing content with ellipsis and shows a tooltip on hover when truncated. Supports both string and ReactNode values.",
+          'Text component that automatically truncates overflowing content with ellipsis and shows a tooltip on hover when truncated. Supports both string and ReactNode values. With `overflow="fade"` the text fades out at the right edge instead of ending in an ellipsis.',
       },
     },
   },
@@ -157,6 +157,21 @@ export const URLExample: Story = {
     return (
       <div className="w-64">
         <OverflowText {...args} className="text-info-foreground" />
+      </div>
+    );
+  },
+};
+
+export const Fade: Story = {
+  render: function FadeOverflowText(args) {
+    return (
+      <div className="flex w-64 flex-col gap-3">
+        <OverflowText
+          {...args}
+          overflow="fade"
+          value="Research the three best CRMs for a ten-person agency"
+        />
+        <OverflowText {...args} overflow="fade" value="Short and whole" />
       </div>
     );
   },

@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
+import {
+  getToolDuration,
+  noteToolDuration,
+} from "../../helpers/toolDurations";
 import type { ChainRow } from "./helpers";
 
 const MAX_REMEMBERED_STEPS = 200;
@@ -35,8 +39,17 @@ function stepStartedAt(stepKey: string) {
 export function useNoteRunningSteps(rows: readonly ChainRow[]) {
   useEffect(() => {
     for (const row of rows) {
-      if (row.state === "running") stepStartedAt(row.key);
-      else stepStarts.delete(row.key);
+      if (row.state === "running") {
+        stepStartedAt(row.key);
+        continue;
+      }
+      // A step this tab watched finish: keep how long it ran, unless the
+      // saved chat already brought the time the backend measured.
+      const startedAt = stepStarts.get(row.key);
+      if (startedAt && getToolDuration(row.key) === null) {
+        noteToolDuration(row.key, Date.now() - Date.parse(startedAt));
+      }
+      stepStarts.delete(row.key);
     }
   }, [rows]);
 }

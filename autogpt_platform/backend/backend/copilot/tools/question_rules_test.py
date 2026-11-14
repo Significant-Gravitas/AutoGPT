@@ -3,6 +3,7 @@
 import pytest
 
 from backend.copilot.model import ChatMessage
+from backend.copilot.tools.ask_question import recommended_option
 from backend.copilot.tools.models import ClarifyingQuestion
 from backend.copilot.tools.question_rules import (
     LOOK_FIRST,
@@ -102,3 +103,58 @@ def test_a_question_before_any_look_is_sent_back_once():
     question = _q("Which bill?")
     assert refusal([question], "auto", 0, looked=False) == LOOK_FIRST
     assert refusal([question], "auto", 0, looked=True) is None
+
+
+@pytest.mark.parametrize(
+    "options, guess, expected",
+    [
+        (["Customers", "Everyone"], "customers", "Customers"),
+        (["Customers", "Everyone"], "Send it to everyone on the list", "Everyone"),
+        (["Customers", "Everyone"], "customers and everyone", None),
+        (["Customers", "Everyone"], "the board", None),
+        ([], "customers", None),
+        (["Customers"], None, None),
+    ],
+)
+def test_the_recommended_option_is_the_one_the_default_guess_names(
+    options, guess, expected
+):
+    assert recommended_option(options, guess) == expected
+
+
+@pytest.mark.parametrize("mode", ["unsupervised", "auto", "ask_first"])
+def test_a_question_the_user_asked_for_is_asked_in_every_mode(mode):
+    question = _q("Which tone should the note have?", "user_requested")
+    assert refusal([question], mode, 0) is None
+
+
+def test_a_refused_preference_says_how_to_ask_when_the_user_wanted_it():
+    result = refusal([_q("Formal or casual?", "preference")], "auto", 0) or ""
+    assert "user_requested" in result
+
+
+@pytest.mark.parametrize("reason", ["goal_ambiguous", "user_only_fact", "conflict"])
+def test_a_background_worker_with_a_workable_default_goes_on_with_it(reason):
+    question = _q("Which three rivals should I cover?", reason)
+    refused = refusal([question], "auto", 0, background=True) or ""
+
+    assert "runs in the background" in refused and "default_guess" in refused
+    assert "Which three rivals should I cover?" in refused
+    # The same question in a chat the user is in may be asked.
+    assert refusal([question], "auto", 0) is None
+
+
+@pytest.mark.parametrize("reason", ["irreversible_choice", "user_requested"])
+def test_a_background_worker_still_asks_before_what_cannot_be_undone(reason):
+    question = _q("Refund all 14 orders or only the late one?", reason)
+    assert refusal([question], "auto", 0, background=True) is None
+
+
+def test_a_background_worker_with_no_default_at_all_may_ask():
+    question = ClarifyingQuestion(
+        question="Which bank account pays this?",
+        keyword="k",
+        reason="user_only_fact",
+        default_guess="",
+    )
+    assert refusal([question], "auto", 0, background=True) is None

@@ -44,7 +44,7 @@ from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot import turn_end
+from backend.copilot import tool_timing, turn_end
 from backend.copilot.graphiti import context_refresh
 from backend.copilot.model_router import (
     ResolvedModel,
@@ -4110,6 +4110,7 @@ def _dispatch_response(
                 name=_resolve_tool_result_name(
                     ctx.session, response.toolCallId, response.toolName
                 ),
+                duration_ms=tool_timing.take(response.toolCallId),
             )
         )
         if not entries_replaced:
@@ -5088,7 +5089,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # Unconditional on the append result: the HTTP path pre-saves the user
     # message, so the append is a no-op dedup there.
     if is_user_message and message and message.strip():
-        await clear_pending_question(session)
+        await clear_pending_question(session, message)
 
     persisted_invocation = (
         get_persisted_skill_invocation(message, session.messages)

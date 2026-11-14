@@ -1945,7 +1945,7 @@ async def stream_chat_completion_baseline(
     # Unconditional on the append result: the HTTP path pre-saves the user
     # message, so the append is a no-op dedup there.
     if is_user_message and message and message.strip():
-        await clear_pending_question(session)
+        await clear_pending_question(session, message)
 
     persisted_invocation = (
         get_persisted_skill_invocation(message, session.messages)

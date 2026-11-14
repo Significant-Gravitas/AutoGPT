@@ -26,6 +26,9 @@ class WorldTask(_Open):
     title: str
     status: str = "IN_PROGRESS"
     owner: str | None = None
+    goal: str | None = None
+    done_when: str | None = None
+    parent: str | None = None
 
 
 class World(_Open):
@@ -50,8 +53,35 @@ class World(_Open):
         return {a.provider.lower() for a in self.connected_accounts}
 
 
+class WorkerBrief(_Open):
+    """A turn in a task's worker chat: the brief, wrapped in production's
+    worker instructions (``start_task.worker_prompt_text``)."""
+
+    title: str
+    brief: str
+    task_id: str = "task_new_1"
+    done_when: str | None = None
+
+
+class TaskResult(_Open):
+    """A turn that wakes Otto when a task's worker ends, in production's own
+    words (``background_delivery.continuation_text``). With a ``summary`` the
+    task finished and left it; without one Otto reads ``worker_reply``."""
+
+    title: str = ""
+    outcome: str = "completed"
+    summary: str | None = None
+    document: str | None = None
+    worker_reply: str = ""
+
+
 class Turn(_Open):
-    user: str
+    """What starts a turn: the user's message, a worker's brief, or a task's
+    result coming back."""
+
+    user: str = ""
+    worker: WorkerBrief | None = None
+    task_result: TaskResult | None = None
 
 
 class Answer(_Open):
@@ -90,6 +120,76 @@ class Checks(_Open):
         default=None,
         description="Hands the work to a hired expert: delegate_to_expert, or "
         "start_task / create_task with their expert_id.",
+    )
+    task_has_goal: bool | None = Field(
+        default=None,
+        description="True: every task started says what it is for (goal) and "
+        "what done looks like (done_when).",
+    )
+    max_started_tasks: int | None = Field(
+        default=None,
+        description="At most this many new tasks are opened; asking for work "
+        "already running, or retrying a task, opens none.",
+    )
+    retries_task: bool | None = Field(
+        default=None,
+        description="True: an existing task is run again (start_task with its "
+        "task_id) rather than a new one opened.",
+    )
+    reports_progress: bool | None = Field(
+        default=None,
+        description="True: the worker says where the task is (report_progress).",
+    )
+    adds_evidence: bool | None = Field(
+        default=None,
+        description="True: proof is attached naming the tool run or file "
+        "written; False: no proof is attached at all.",
+    )
+    tools_called_any: list[str] = Field(
+        default_factory=list, description="At least one of these tools is called."
+    )
+    max_reply_chars: int | None = Field(
+        default=None,
+        description="Everything Otto says in a turn fits in this many "
+        "characters, for every turn: the user skims.",
+    )
+    max_reply_lines: int | None = Field(
+        default=None, description="The last turn's reply has at most this many lines."
+    )
+    max_final_reply_chars: int | None = Field(
+        default=None,
+        description="A worker's closing message fits in this many characters: "
+        "the result is on the task, not in the reply.",
+    )
+    finishes_task: bool | None = Field(
+        default=None,
+        description="True: the worker leaves its result with finish_task, "
+        "and the platform accepts it.",
+    )
+    saves_document: bool | None = Field(
+        default=None,
+        description="True: the full result is saved as a file and named as "
+        "finish_task's file.",
+    )
+    evidence_verified: bool | None = Field(
+        default=None,
+        description="True: proof is attached and every piece is verified "
+        "against what the worker really did.",
+    )
+    worker_lines_fit: bool | None = Field(
+        default=None,
+        description="True: no progress line, claim or summary is refused for "
+        "its length or its argument names; each lands first time.",
+    )
+    task_lines_fit: bool | None = Field(
+        default=None,
+        description="True: every started task's goal and done-when fit their "
+        "caps as written, with nothing cut.",
+    )
+    links_document: bool | None = Field(
+        default=None,
+        description="True: the last reply links the task's document "
+        "(workspace://); False: it links none.",
     )
 
 
@@ -135,6 +235,11 @@ class ToolCall(BaseModel):
     wrote: bool = Field(
         default=False, description="A send, post or change that ran in a service."
     )
+    failed: bool = Field(
+        default=False,
+        description="The platform answered with an error: a line over its "
+        "cap, a file that was never saved, a missing argument.",
+    )
     result_preview: str = ""
 
 
@@ -147,11 +252,14 @@ class Question(BaseModel):
 class TurnRecord(BaseModel):
     user: str
     reply: str = ""
+    final_reply: str = Field(
+        default="", description="The turn's closing message, after its last call."
+    )
     tool_calls: list[ToolCall] = Field(default_factory=list)
     questions: list[Question] = Field(default_factory=list)
-    ended_by: Literal["reply", "question", "task_started", "round_cap", "error"] = (
-        "reply"
-    )
+    ended_by: Literal[
+        "reply", "question", "task_started", "finished", "round_cap", "error"
+    ] = "reply"
     rounds: int = 0
     seconds: float = 0.0
 

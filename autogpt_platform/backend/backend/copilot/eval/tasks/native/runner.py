@@ -32,11 +32,13 @@ from ..runner import (
     context_prefix,
     execute_call,
     simulated_answer,
+    turn_text,
 )
 from ..simulator import Simulator
 
 HERE = Path(__file__).parent
-MAX_MODEL_TURNS = 12
+# A worker's turn reads, writes a file, reports progress and finishes.
+MAX_MODEL_TURNS = 20
 TURN_TIMEOUT = 900
 
 
@@ -72,7 +74,7 @@ class _Session:
             return {"result": result}
         # post_tool: as production's hook (sdk/security_hooks.py): stop after a
         # question, and warn about planted instructions in the last result.
-        if record.ended_by == "question":
+        if record.ended_by in ("question", "finished"):
             return {"output": {"continue": False}}
         if contains_instructions(self.last_result):
             return {
@@ -97,9 +99,8 @@ async def run_case_native(
     try:
         for index, scripted in enumerate(case.turns):
             prefix = context_prefix(world, session.mode) if index == 0 else ""
-            record = await _turn(
-                session, args, workdir, prefix + scripted.user, scripted.user
-            )
+            said = turn_text(scripted, session.sim)
+            record = await _turn(session, args, workdir, prefix + said, said)
             answers = 0
             while record.ended_by == "question" and answers < MAX_ANSWERS_PER_TURN:
                 answers += 1
@@ -191,6 +192,9 @@ async def _turn(
     )
     session.run.completion_tokens += int(usage.get("output_tokens") or 0)
     record.reply = "\n\n".join(t for t in texts if t.strip())
+    # The CLI's result is the text that closed the turn.
+    closing = result.get("result")
+    record.final_reply = closing.strip() if isinstance(closing, str) else ""
     record.rounds = int(result.get("num_turns") or 1)
     if record.ended_by == "reply" and result.get("subtype") == "error_max_turns":
         record.ended_by = "round_cap"

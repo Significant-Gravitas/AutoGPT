@@ -11,6 +11,7 @@ from prisma.enums import TaskCreator, TaskStatus
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import task_db
 from backend.data.task import TaskPatch
+from backend.data.task_text import DONE_WHEN_MAX_CHARS, GOAL_MAX_CHARS, clip
 
 from .base import BaseTool
 from .external_scope import error_detail
@@ -248,6 +249,11 @@ class UpdateTaskTool(BaseTool):
                     "type": "boolean",
                     "description": "Take the task back from its expert.",
                 },
+                "goal": {"type": "string", "description": "What it is for."},
+                "done_when": {
+                    "type": "string",
+                    "description": "What done looks like, so it can be checked.",
+                },
             },
             "required": ["task_id"],
         }
@@ -262,6 +268,8 @@ class UpdateTaskTool(BaseTool):
         status: str | None = None,
         expert_id: str | None = None,
         assign_to_otto: bool = False,
+        goal: str | None = None,
+        done_when: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         assert user_id is not None  # guaranteed by requires_auth
@@ -272,6 +280,8 @@ class UpdateTaskTool(BaseTool):
                 status=TaskStatus(status) if status else None,
                 owner_expert_id=expert_id or None,
                 assign_to_otto=assign_to_otto,
+                goal=clip(goal, GOAL_MAX_CHARS),
+                done_when=clip(done_when, DONE_WHEN_MAX_CHARS),
             )
             task = await task_db().update_task(task_id, user_id, patch)
         except ValueError as e:  # includes NotFoundError

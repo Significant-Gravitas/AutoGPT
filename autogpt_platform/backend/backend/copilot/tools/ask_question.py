@@ -4,12 +4,13 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from prisma.enums import TaskStatus
+from prisma.enums import TaskAskKind, TaskStatus
 
 from backend.copilot import turn_end
 from backend.copilot.gate import resolve_mode
 from backend.copilot.model import ChatSession, PendingQuestion
-from backend.data.db_accessors import chat_db, task_db
+from backend.data.db_accessors import chat_db, task_db, task_record_db, task_result_db
+from backend.data.task_record import AskInput
 
 from . import question_rules
 from .base import BaseTool
@@ -141,6 +142,7 @@ class AskQuestionTool(BaseTool):
                 resolve_mode(session),
                 question_rules.questions_in_a_row(session.messages),
                 looked=turn_end.calls_started(session.session_id) > 1,
+                background=await _is_worker_chat(session),
             )
         ):
             raise ValueError(refused)
@@ -150,11 +152,28 @@ class AskQuestionTool(BaseTool):
             await _mark_pending(session, text)
             turn_end.request_end(session.session_id)
             await _mark_tasks_waiting(session)
+            await _park_asks_on_task(session, questions)
         return ClarificationNeededResponse(
             message=text,
             session_id=session.session_id if session else None,
             questions=questions,
         )
+
+
+async def _is_worker_chat(session: ChatSession) -> bool:
+    """A task's background worker, which decides more and asks less.
+    Best-effort: unknown counts as a chat the user is in."""
+    if not session.user_id:
+        return False
+    try:
+        return await task_result_db().is_worker_chat(
+            session.session_id, session.user_id
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not tell whether %s is a worker chat: %s", session.session_id, e
+        )
+        return False
 
 
 async def _mark_tasks_waiting(session: ChatSession) -> None:
@@ -174,6 +193,43 @@ async def _mark_tasks_waiting(session: ChatSession) -> None:
         logger.warning(
             "Could not mark tasks waiting for session %s: %s", session.session_id, e
         )
+
+
+async def _park_asks_on_task(
+    session: ChatSession, questions: list[ClarifyingQuestion]
+) -> None:
+    """Put the questions on the task this chat is working on, so the task
+    shows what it waits on and, later, what was decided. Best-effort."""
+    if not session.user_id:
+        return
+    try:
+        await task_record_db().open_asks(
+            session.session_id,
+            session.user_id,
+            [ask_input(question) for question in questions],
+            session.expert_id,
+        )
+    except Exception as e:
+        logger.warning(
+            "Could not park asks on the task of %s: %s", session.session_id, e
+        )
+
+
+def ask_input(question: ClarifyingQuestion) -> AskInput:
+    """The task-record shape of a question: a choice between options is a
+    pick, one that cannot be undone is a decision."""
+    if question.reason == "irreversible_choice":
+        kind = TaskAskKind.DECISION
+    elif question.options:
+        kind = TaskAskKind.PICK
+    else:
+        kind = TaskAskKind.QUESTION
+    return AskInput(
+        question=question.question,
+        kind=kind,
+        options=question.options,
+        default_guess=question.default_guess,
+    )
 
 
 async def _mark_pending(session: ChatSession, text: str) -> None:
@@ -227,6 +283,7 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
     )
 
     options = _parse_options(item.get("options"))
+    default_guess = _parse_default_guess(item.get("default_guess"))
 
     return ClarifyingQuestion(
         question=text.strip(),
@@ -237,8 +294,22 @@ def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
         # dropped rather than sent on for the card to render a lone checkbox.
         allow_multiple=bool(options) and parse_allow_multiple(item),
         reason=_parse_reason(item.get("reason")),
-        default_guess=_parse_default_guess(item.get("default_guess")),
+        default_guess=default_guess,
+        recommended=recommended_option(options, default_guess),
     )
+
+
+def recommended_option(options: list[str], default_guess: str | None) -> str | None:
+    """The option the default guess points at: the one it names outright, or
+    the only one its words contain. None when it names none or several."""
+    guess = " ".join((default_guess or "").split()).casefold()
+    if not guess or not options:
+        return None
+    for option in options:
+        if option.casefold() == guess:
+            return option
+    named = [option for option in options if option.casefold() in guess]
+    return named[0] if len(named) == 1 else None
 
 
 def _parse_reason(raw: Any) -> QuestionReason | None:

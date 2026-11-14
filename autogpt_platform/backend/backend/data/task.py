@@ -9,7 +9,7 @@ a task, expert or chat another user owns reads as not found.
 from datetime import UTC, datetime
 
 import prisma.models
-from prisma.enums import TaskCreator, TaskStatus
+from prisma.enums import TaskAskStatus, TaskCreator, TaskStatus
 from prisma.errors import UniqueViolationError
 from prisma.types import (
     TaskCreateInput,
@@ -21,13 +21,26 @@ from prisma.types import (
 from pydantic import BaseModel, Field
 
 from backend.data.db import transaction
+from backend.data.task_text import SUMMARY_MAX_CHARS
 from backend.util.exceptions import NotFoundError
 
 TITLE_MAX_CHARS = 200
 DESCRIPTION_MAX_CHARS = 10_000
+LINE_MAX_CHARS = 300
+RESULT_MAX_CHARS = SUMMARY_MAX_CHARS
 LIST_LIMIT_MAX = 100
+# A task is split one level deep, into at most this many subtasks.
+MAX_SUBTASKS = 5
+OPEN_STATUSES = [TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.NEEDS_INPUT]
+SETTLED_STATUSES = [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]
 
-_WITH_SESSIONS: TaskInclude = {"Sessions": True}
+_OPEN_ASKS = {"where": {"status": TaskAskStatus.OPEN}}
+_WITH_SESSIONS: TaskInclude = {
+    "Sessions": True,
+    "Asks": _OPEN_ASKS,
+    "Artifacts": True,
+    "Subtasks": {"where": {"isArchived": False}, "include": {"Asks": _OPEN_ASKS}},
+}
 
 
 class Task(BaseModel):
@@ -51,10 +64,48 @@ class Task(BaseModel):
     session_ids: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+    parent_task_id: str | None = Field(
+        default=None, description="Set on a subtask; one level only."
+    )
+    work_session_id: str | None = Field(
+        default=None, description="The chat doing the work right now."
+    )
+    goal: str | None = None
+    done_when: str | None = None
+    status_text: str | None = Field(
+        default=None, description="Where the task is, in words."
+    )
+    next_step: str | None = None
+    result: str | None = None
+    failure_reason: str | None = None
+    attempt: int = 1
+    open_ask_count: int = Field(
+        default=0, description="Open asks on the task and its subtasks."
+    )
+    subtask_count: int = 0
+    subtasks_done: int = 0
+    artifact_count: int = 0
 
     @classmethod
     def from_db(cls, row: prisma.models.Task) -> "Task":
+        subtasks = row.Subtasks or []
         return cls(
+            parent_task_id=row.parentTaskId,
+            work_session_id=row.workSessionId,
+            goal=row.goal,
+            done_when=row.doneWhen,
+            status_text=row.statusText,
+            next_step=row.nextStep,
+            result=row.result,
+            failure_reason=row.failureReason,
+            attempt=row.attempt,
+            open_ask_count=len(row.Asks or [])
+            + sum(len(child.Asks or []) for child in subtasks),
+            subtask_count=len(subtasks),
+            subtasks_done=sum(
+                1 for child in subtasks if child.status == TaskStatus.DONE
+            ),
+            artifact_count=len(row.Artifacts or []),
             id=row.id,
             user_id=row.userId,
             title=row.title,
@@ -87,6 +138,16 @@ class TaskPatch(BaseModel):
     assign_to_otto: bool = Field(
         default=False, description="Clear the owner expert so Otto owns the task."
     )
+    goal: str | None = None
+    done_when: str | None = None
+    status_text: str | None = None
+    next_step: str | None = None
+    result: str | None = None
+    failure_reason: str | None = None
+    work_session_id: str | None = None
+    retry: bool = Field(
+        default=False, description="Count one more attempt and clear the outcome."
+    )
 
 
 async def create_task(
@@ -99,14 +160,20 @@ async def create_task(
     session_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
+    goal: str | None = None,
+    done_when: str | None = None,
+    parent_task_id: str | None = None,
 ) -> Task:
-    """Create a task, attached to ``session_id`` when one is given."""
+    """Create a task, attached to ``session_id`` when one is given. With
+    ``parent_task_id`` it is a subtask of that task."""
     title = _clean_title(title)
     description = _clean_description(description)
     if owner_expert_id:
         await _require_expert(owner_expert_id, user_id)
     if session_id:
         await _require_session(session_id, user_id)
+    if parent_task_id:
+        await _require_room_for_subtask(parent_task_id, user_id)
 
     data: TaskCreateInput = {
         "userId": user_id,
@@ -117,6 +184,9 @@ async def create_task(
         "createdByExpertId": created_by_expert_id,
         "organizationId": organization_id,
         "teamId": team_id,
+        "goal": _line(goal),
+        "doneWhen": _line(done_when),
+        "parentTaskId": parent_task_id,
     }
     async with transaction() as tx:
         row = await prisma.models.Task.prisma(tx).create(data=data)
@@ -143,9 +213,16 @@ async def list_tasks(
     session_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_subtasks: bool = True,
+    parent_task_id: str | None = None,
 ) -> list[Task]:
-    """The user's live tasks, most recently updated first."""
+    """The user's live tasks, most recently updated first. Subtasks are left
+    out with ``include_subtasks=False``; ``parent_task_id`` lists one task's."""
     where: TaskWhereInput = {"userId": user_id, "isArchived": False}
+    if parent_task_id:
+        where["parentTaskId"] = parent_task_id
+    elif not include_subtasks:
+        where["parentTaskId"] = None
     if status:
         where["status"] = status
     if owner_expert_id:
@@ -175,6 +252,24 @@ async def update_task(task_id: str, user_id: str, patch: TaskPatch) -> Task:
     elif patch.owner_expert_id:
         await _require_expert(patch.owner_expert_id, user_id)
         data["OwnerExpert"] = {"connect": {"id": patch.owner_expert_id}}
+    if patch.goal is not None:
+        data["goal"] = _line(patch.goal)
+    if patch.done_when is not None:
+        data["doneWhen"] = _line(patch.done_when)
+    if patch.status_text is not None:
+        data["statusText"] = _line(patch.status_text)
+    if patch.next_step is not None:
+        data["nextStep"] = _line(patch.next_step)
+    if patch.result is not None:
+        data["result"] = patch.result.strip()[:RESULT_MAX_CHARS] or None
+    if patch.failure_reason is not None:
+        data["failureReason"] = _line(patch.failure_reason)
+    if patch.work_session_id is not None:
+        data["workSessionId"] = patch.work_session_id or None
+    if patch.retry:
+        data["attempt"] = current.attempt + 1
+        data["result"] = None
+        data["failureReason"] = None
     if patch.status is not None and patch.status != current.status:
         data["status"] = patch.status
         data.update(_status_times(current, patch.status, datetime.now(UTC)))
@@ -182,7 +277,33 @@ async def update_task(task_id: str, user_id: str, patch: TaskPatch) -> Task:
         return current
 
     await prisma.models.Task.prisma().update(where={"id": task_id}, data=data)
+    if (
+        patch.status is not None
+        and patch.status in SETTLED_STATUSES
+        and patch.status != current.status
+    ):
+        await _close_asks_and_subtasks(task_id, patch.status)
     return await _get_or_raise(task_id, user_id)
+
+
+async def _close_asks_and_subtasks(task_id: str, status: TaskStatus) -> None:
+    """A settled task asks nothing more, and cancelling it cancels the
+    subtasks still open under it."""
+    cancelled: list[str] = []
+    if status == TaskStatus.CANCELLED:
+        open_children = await prisma.models.Task.prisma().find_many(
+            where={"parentTaskId": task_id, "status": {"in": OPEN_STATUSES}}
+        )
+        cancelled = [child.id for child in open_children]
+        if cancelled:
+            await prisma.models.Task.prisma().update_many(
+                where={"id": {"in": cancelled}},
+                data={"status": TaskStatus.CANCELLED, "completedAt": datetime.now(UTC)},
+            )
+    await prisma.models.TaskAsk.prisma().update_many(
+        where={"taskId": {"in": [task_id, *cancelled]}, "status": TaskAskStatus.OPEN},
+        data={"status": TaskAskStatus.WITHDRAWN},
+    )
 
 
 async def archive_task(task_id: str, user_id: str) -> bool:
@@ -261,6 +382,22 @@ def _clean_description(description: str | None) -> str | None:
             f"A task description is at most {DESCRIPTION_MAX_CHARS} characters."
         )
     return description or None
+
+
+def _line(text: str | None) -> str | None:
+    """One plain line: whitespace folded, capped."""
+    text = " ".join((text or "").split())
+    return text[:LINE_MAX_CHARS] or None
+
+
+async def _require_room_for_subtask(parent_task_id: str, user_id: str) -> None:
+    parent = await _get_or_raise(parent_task_id, user_id)
+    if parent.parent_task_id:
+        raise ValueError("A subtask cannot have subtasks: do this part yourself.")
+    if parent.subtask_count >= MAX_SUBTASKS:
+        raise ValueError(
+            f"A task has at most {MAX_SUBTASKS} subtasks: do the rest yourself."
+        )
 
 
 async def _get_or_raise(task_id: str, user_id: str) -> Task:

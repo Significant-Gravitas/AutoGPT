@@ -14,18 +14,23 @@ import json
 import time
 from typing import Any
 
+from prisma.enums import TaskStatus
+
 from backend.copilot.autopilot_mode import AutopilotMode
+from backend.copilot.background_delivery import continuation_text
 from backend.copilot.eval.style.assembly import chat_system_prompt
 from backend.copilot.eval.style.generation import expert_tools
 from backend.copilot.prompting import approval_mode_supplement
 from backend.copilot.service import format_user_context_prefix
 from backend.copilot.tools import question_rules
 from backend.copilot.tools.ask_question import parse_questions
-from backend.copilot.turn_end import ENDED_REFUSAL, WRAP_UP_REFUSAL
+from backend.copilot.tools.start_task import worker_prompt_text
+from backend.copilot.turn_end import ENDED_REFUSAL, FINISHED_REFUSAL, WRAP_UP_REFUSAL
 from backend.copilot.untrusted_text import flag_instructions
+from backend.data.task_result import TaskOutcome
 
 from .llm import Backend, Call, Reply
-from .models import Case, Question, Run, ToolCall, TurnRecord, World
+from .models import Case, Question, Run, ToolCall, Turn, TurnRecord, World
 from .simulator import Simulator
 
 MAX_ROUNDS = 10
@@ -49,10 +54,9 @@ async def run_case(case: Case, world: World, models: Models) -> Run:
     run = Run(case_id=case.id)
     try:
         for index, scripted in enumerate(case.turns):
-            text = (context_prefix(world, mode) if index == 0 else "") + scripted.user
-            record = await _turn(
-                text, scripted.user, messages, tools, sim, mode, run, models
-            )
+            said = turn_text(scripted, sim)
+            text = (context_prefix(world, mode) if index == 0 else "") + said
+            record = await _turn(text, said, messages, tools, sim, mode, run, models)
             answers = 0
             while record.ended_by == "question" and answers < MAX_ANSWERS_PER_TURN:
                 answers += 1
@@ -64,6 +68,34 @@ async def run_case(case: Case, world: World, models: Models) -> Run:
         run.error = f"{type(e).__name__}: {e}"[:500]
     run.writes = sim.writes
     return run
+
+
+def turn_text(turn: Turn, sim: Simulator) -> str:
+    """What starts the turn, in production's own words: the user's message,
+    the worker's instructions around a brief, or the wake a finished task
+    sends to the chat that started it."""
+    if turn.worker is not None:
+        brief = turn.worker
+        sim.work_on(brief.task_id, brief.title)
+        return worker_prompt_text(
+            brief.title, brief.task_id, brief.brief, brief.done_when
+        )
+    if turn.task_result is None:
+        return turn.user
+    result = turn.task_result
+    task, file_id = sim.settle(result)
+    outcome = None
+    if task is not None and result.summary:
+        outcome = TaskOutcome(
+            task_id=task.id,
+            title=task.title,
+            status=TaskStatus.DONE,
+            result=result.summary,
+            document_title=result.document,
+            document_file_id=file_id,
+        )
+    label = "completed" if result.outcome == "completed" else result.outcome
+    return continuation_text("worker_chat_1", label, outcome)
 
 
 async def _turn(
@@ -87,6 +119,8 @@ async def _turn(
         if message.content:
             replies.append(message.content)
         calls = message.tool_calls
+        # What closes the turn: the text after the last call, if any.
+        record.final_reply = "" if calls else message.content
         messages.append(_assistant(message.content, calls))
         if not calls:
             break
@@ -95,7 +129,7 @@ async def _turn(
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": result}
             )
-        if record.ended_by == "question":
+        if record.ended_by in ("question", "finished"):
             break
     else:
         record.ended_by = "round_cap"
@@ -121,24 +155,36 @@ def execute_call(
             ToolCall(name=name, arguments=args, refused=ENDED_REFUSAL)
         )
         return ENDED_REFUSAL
+    if record.ended_by == "finished":
+        record.tool_calls.append(
+            ToolCall(name=name, arguments=args, refused=FINISHED_REFUSAL)
+        )
+        return FINISHED_REFUSAL
     if record.ended_by == "task_started" and name != "start_task":
         record.tool_calls.append(
             ToolCall(name=name, arguments=args, refused=WRAP_UP_REFUSAL)
         )
         return WRAP_UP_REFUSAL
     if name == "ask_question":
-        return _ask(args, mode, run, record)
+        return _ask(args, mode, run, record, background=sim.record.working)
     call, result = sim.call(name, args)
     result = flag_instructions(result)  # as BaseTool.execute does in production
     call.result_preview = result[:300]
     record.tool_calls.append(call)
     if call.name == "start_task":
         record.ended_by = "task_started"
+    elif call.name == "finish_task" and not call.failed and sim.record.working:
+        # As production: a worker that leaves its result ends its turn.
+        record.ended_by = "finished"
     return result
 
 
 def _ask(
-    args: dict[str, Any], mode: AutopilotMode, run: Run, record: TurnRecord
+    args: dict[str, Any],
+    mode: AutopilotMode,
+    run: Run,
+    record: TurnRecord,
+    background: bool = False,
 ) -> str:
     call = ToolCall(name="ask_question", arguments=args)
     record.tool_calls.append(call)
@@ -148,7 +194,7 @@ def _ask(
         return call.refused
     in_a_row = _questions_in_a_row(run.turns[:-1])
     looked = len(record.tool_calls) > 1  # as turn_end counts in production
-    if refused := question_rules.refusal(questions, mode, in_a_row, looked):
+    if refused := question_rules.refusal(questions, mode, in_a_row, looked, background):
         call.refused = refused
         return refused
     record.questions = [
@@ -198,7 +244,10 @@ def context_prefix(world: World, mode: AutopilotMode) -> str:
     """What production prepends to the first message: the user's business,
     what Otto remembers, the team and the accounts, in a ``<user_context>``."""
     lines = [
-        f"Today: {TODAY}. Approval mode: {mode}.",
+        # The model's own runtime also states a date (the real one); the
+        # world is frozen on this one.
+        f"Today: {TODAY}. This is the date to use: any other current date "
+        f"you are shown is wrong. Approval mode: {mode}.",
         f"User: {json.dumps(world.user)}",
         f"Company: {json.dumps(world.company)}",
         f"Business: {world.business_understanding}",

@@ -5,11 +5,25 @@ from typing import Any
 
 import pytest
 
+from backend.copilot.turn_end import FINISHED_REFUSAL
+
+from .__main__ import DATA, load_cases
 from .judge import run_checks, score_case
 from .llm import Call, Reply, cli_result, parse_reply, render_chat_prompt
-from .models import Case, Question, Review, Run, ToolCall, TurnRecord, World
+from .models import (
+    Case,
+    Question,
+    Review,
+    Run,
+    TaskResult,
+    ToolCall,
+    Turn,
+    TurnRecord,
+    WorkerBrief,
+    World,
+)
 from .native.runner import read_stream
-from .runner import Models, run_case
+from .runner import Models, execute_call, run_case, turn_text
 from .simulator import Simulator
 
 WORLD = World.model_validate(
@@ -486,3 +500,265 @@ def test_a_mail_search_reads_operators_and_lists_newest_first():
         {"id": "service:gmail/search", "input": {"query": "from:gareth"}},
     )
     assert [item["body"] for item in json.loads(result)["items"]] == ["new", "old"]
+
+
+def _passes(checks: dict, *calls: ToolCall) -> bool:
+    case = _case(expected={"checks": checks})
+    run = Run(case_id="c1", turns=[TurnRecord(user="hi", tool_calls=list(calls))])
+    return all(c.passed for c in run_checks(case, run))
+
+
+def test_a_started_task_must_say_its_goal_and_what_done_looks_like():
+    described = ToolCall(
+        name="start_task", arguments={"title": "T", "goal": "g", "done_when": "d"}
+    )
+    bare = ToolCall(name="start_task", arguments={"title": "T"})
+    retry = ToolCall(name="start_task", arguments={"task_id": "task_1"})
+
+    assert _passes({"task_has_goal": True}, described)
+    assert not _passes({"task_has_goal": True}, described, bare)
+    assert not _passes({"task_has_goal": True}, ToolCall(name="web_search"))
+    # A retry opens nothing, so it has nothing to describe.
+    assert _passes({"task_has_goal": True}, described, retry)
+
+
+def test_work_already_running_and_retries_open_no_new_task():
+    sim = Simulator(WORLD)
+    _, first = sim.call("start_task", {"title": "Goa offsite", "brief": "b"})
+    _, again = sim.call("start_task", {"title": "  goa   OFFSITE ", "brief": "b"})
+    task_id = json.loads(first)["task"]["id"]
+    sim.call("update_task", {"task_id": task_id, "status": "FAILED"})
+    _, retried = sim.call("start_task", {"task_id": task_id, "brief": "b"})
+
+    assert json.loads(again)["task"]["id"] == task_id
+    assert "already running" in again[:300]
+    assert json.loads(retried)["task"]["status"] == "IN_PROGRESS"
+    assert len([t for t in sim.tasks if t.title == "Goa offsite"]) == 1
+
+    opened = ToolCall(name="start_task", arguments={"title": "a"}, result_preview=first)
+    duplicate = ToolCall(
+        name="start_task", arguments={"title": "a"}, result_preview=again[:300]
+    )
+    retry = ToolCall(name="start_task", arguments={"task_id": task_id})
+    assert _passes({"max_started_tasks": 1}, opened, duplicate, retry)
+    assert not _passes({"max_started_tasks": 0}, opened)
+    assert _passes({"retries_task": True}, retry)
+    assert not _passes({"retries_task": True}, opened)
+
+
+def test_progress_and_proof_are_checked_from_the_calls():
+    progress = ToolCall(name="report_progress", arguments={"status_text": "x"})
+    sourced = ToolCall(name="add_evidence", arguments={"claim": "c", "tool": "send"})
+    bare = ToolCall(name="add_evidence", arguments={"claim": "c"})
+
+    assert _passes({"reports_progress": True}, progress)
+    assert not _passes({"reports_progress": True}, ToolCall(name="web_search"))
+    assert _passes({"adds_evidence": True}, sourced)
+    assert not _passes({"adds_evidence": True}, bare)
+    # False means no proof is attached at all, sourced or not.
+    assert _passes({"adds_evidence": False}, progress)
+    assert not _passes({"adds_evidence": False}, sourced)
+
+
+def _worker_sim() -> Simulator:
+    sim = Simulator(WORLD)
+    sim.work_on("task_new_1", "Send the reminders")
+    return sim
+
+
+def test_the_simulated_proof_is_verified_only_against_what_the_worker_did():
+    sim = _worker_sim()
+    sim.world.web["pages"] = {"https://delhi.example/guide": "A guide to Delhi."}
+    sim.call("run_capability", {"id": "service:gmail/search", "input": {}})
+    sim.call("web_fetch", {"url": "https://delhi.example/guide"})
+    # A page that was not there was not read.
+    sim.call("web_fetch", {"url": "https://delhi.example/missing"})
+    sim.call("write_workspace_file", {"filename": "reminders.md", "content": "x"})
+
+    def verified(**source: str) -> bool:
+        _, result = sim.call("add_evidence", {"claim": "Sent"} | source)
+        return json.loads(result)["verified"]
+
+    assert verified(tool="mcp__copilot__run_capability")
+    assert verified(tool="gmail")
+    assert verified(file="/home/user/reminders.md")
+    assert verified(url="http://www.delhi.example/guide/")
+    assert not verified(tool="stripe_refund")
+    assert not verified(file="ghost.md")
+    assert not verified(url="https://delhi.example/missing")
+    assert not verified()
+
+
+def test_the_simulated_record_refuses_what_production_refuses():
+    sim = _worker_sim()
+
+    def answer(tool: str, **args: str) -> dict:
+        call, result = sim.call(tool, args)
+        return json.loads(result) | {"failed": call.failed}
+
+    assert answer("report_progress", status_text="Reading")["type"] == "task_progress"
+    # Reached under another argument name, as workers do.
+    assert not answer("report_progress", message="Reading the pages")["failed"]
+    assert answer("report_progress", status_text="x" * 200)["failed"]
+    assert answer("add_evidence", claim="y" * 200)["failed"]
+    assert answer("finish_task", summary="z" * 500)["failed"]
+    assert (
+        "ghost.md" in answer("finish_task", summary="Done.", file="ghost.md")["message"]
+    )
+    sim.call("write_workspace_file", {"filename": "brief.md"})
+    done = answer("finish_task", summary="Brief ready.", file="brief.md")
+    assert (done["type"], done["document"], done["failed"]) == (
+        "task_finished",
+        "brief.md",
+        False,
+    )
+    # A chat that is no task's worker has nothing to report on.
+    assert Simulator(WORLD).call("report_progress", {"status_text": "x"})[0].failed
+
+
+def _run(*turns: TurnRecord, checks: dict) -> bool:
+    case = _case(expected={"checks": checks})
+    return all(c.passed for c in run_checks(case, Run(case_id="c1", turns=list(turns))))
+
+
+def test_short_replies_are_checked_per_turn_and_at_the_close():
+    short = TurnRecord(user="hi", reply="On it.", final_reply="On it.")
+    long = TurnRecord(user="x", reply="word " * 200, final_reply="Done.")
+
+    assert _run(short, checks={"max_reply_chars": 100, "max_reply_lines": 3})
+    # Every turn counts for what the user reads; a worker only for its close.
+    assert not _run(short, long, checks={"max_reply_chars": 100})
+    assert _run(long, checks={"max_final_reply_chars": 100})
+    assert not _run(
+        TurnRecord(user="x", reply="a\nb\nc\nd"), checks={"max_reply_lines": 3}
+    )
+    linked = TurnRecord(user="x", reply="Done: [brief.md](workspace://file_1)")
+    assert _run(linked, checks={"links_document": True})
+    assert not _run(short, checks={"links_document": True})
+    assert _run(short, checks={"links_document": False})
+
+
+def test_a_result_left_on_the_task_is_checked_from_the_calls():
+    finish = ToolCall(name="finish_task", arguments={"summary": "s", "file": "a.md"})
+    bare = ToolCall(name="finish_task", arguments={"summary": "s"})
+    refused = ToolCall(name="finish_task", arguments={"summary": "s"}, failed=True)
+    proof = ToolCall(
+        name="add_evidence",
+        arguments={"claim": "c"},
+        result_preview='{"verified": true}',
+    )
+    loose = ToolCall(
+        name="add_evidence",
+        arguments={"claim": "c"},
+        result_preview='{"verified": false}',
+    )
+
+    assert _passes({"finishes_task": True, "saves_document": True}, finish)
+    assert not _passes({"saves_document": True}, bare)
+    assert not _passes({"finishes_task": True}, refused)
+    assert _passes({"worker_lines_fit": True}, finish, proof)
+    assert not _passes({"worker_lines_fit": True}, refused, finish)
+    assert _passes({"evidence_verified": True}, proof)
+    assert not _passes({"evidence_verified": True}, proof, loose)
+    assert not _passes({"evidence_verified": True}, finish)
+    assert _passes(
+        {"tools_called_any": ["list_tasks", "get_task"]}, ToolCall(name="get_task")
+    )
+    assert not _passes({"tools_called_any": ["list_tasks", "get_task"]}, finish)
+
+
+def test_a_tasks_goal_and_done_when_must_fit_as_written():
+    fits = ToolCall(
+        name="start_task", arguments={"title": "T", "goal": "g" * 120, "done_when": "d"}
+    )
+    long = ToolCall(
+        name="start_task", arguments={"title": "T", "goal": "g" * 121, "done_when": "d"}
+    )
+    assert _passes({"task_lines_fit": True}, fits)
+    assert not _passes({"task_lines_fit": True}, fits, long)
+
+
+def test_a_worker_turn_and_a_task_result_turn_use_productions_words():
+    sim = Simulator(WORLD)
+    worker = turn_text(
+        Turn(
+            worker=WorkerBrief(title="Brief", brief="Research it.", done_when="Saved")
+        ),
+        sim,
+    )
+    assert worker.startswith("You are working on the task 'Brief' (task id task_new_1)")
+    assert "tool:finish_task" in worker and "Done when: Saved" in worker
+    assert sim.record.working
+
+    sim.call("start_task", {"title": "Teardown", "brief": "b"})
+    done = turn_text(
+        Turn(task_result=TaskResult(summary="Three rivals covered.", document="t.md")),
+        sim,
+    )
+    assert "The task 'Teardown' is done" in done and "Three rivals covered." in done
+    assert "[t.md](workspace://file_1)" in done and "at most 2 short sentences" in done
+    assert sim.tasks[-1].status == "DONE"
+
+    sim.call("start_task", {"title": "Postmortem", "brief": "b"})
+    failed = turn_text(Turn(task_result=TaskResult(outcome="failed")), sim)
+    assert (
+        failed.startswith("Background subtask failed")
+        and sim.tasks[-1].status == "FAILED"
+    )
+    assert (
+        "stopped before it finished"
+        in sim.call("get_sub_session_result", {"sub_session_id": "worker_chat_1"})[1]
+    )
+
+
+def test_a_worker_that_finishes_ends_its_turn_and_a_chat_does_not():
+    sim, run = _worker_sim(), Run(case_id="c1")
+    record = TurnRecord(user="brief")
+    execute_call("finish_task", '{"summary": "x" * 9}', sim, "auto", run, record)
+    assert record.ended_by == "reply"  # a call that is not valid JSON ends nothing
+    execute_call("finish_task", '{"summary": "Done."}', sim, "auto", run, record)
+    assert record.ended_by == "finished"
+    later = execute_call("web_search", '{"query": "x"}', sim, "auto", run, record)
+    assert later == FINISHED_REFUSAL and record.tool_calls[-1].refused
+
+    chat = TurnRecord(user="hi")
+    execute_call(
+        "finish_task", '{"summary": "Done."}', Simulator(WORLD), "auto", run, chat
+    )
+    assert chat.ended_by == "reply" and chat.tool_calls[-1].failed
+
+
+def test_a_worker_with_a_workable_default_is_not_allowed_to_ask():
+    question = {
+        "questions": [
+            {
+                "question": "Which three rivals should I cover?",
+                "keyword": "rivals",
+                "reason": "user_only_fact",
+                "default_guess": "The three named in the pitch notes",
+            }
+        ]
+    }
+    sim, run = _worker_sim(), Run(case_id="c1")
+    record = TurnRecord(user="brief", tool_calls=[ToolCall(name="web_search")])
+    run.turns.append(record)
+    refused = execute_call(
+        "ask_question", json.dumps(question), sim, "auto", run, record
+    )
+    assert "runs in the background" in refused and record.ended_by == "reply"
+
+    # The same question from a chat the user is in is asked.
+    chat = TurnRecord(user="hi", tool_calls=[ToolCall(name="web_search")])
+    execute_call(
+        "ask_question", json.dumps(question), Simulator(WORLD), "auto", run, chat
+    )
+    assert chat.ended_by == "question"
+
+
+def test_every_task_record_case_loads_and_names_a_real_world():
+    cases = [c for c in load_cases(["task_record"], None) if c.id]
+    worlds = {p.stem for p in (DATA / "worlds").glob("*.json")}
+
+    assert len(cases) == 19
+    assert {c.world for c in cases} <= worlds
+    assert len({c.id for c in cases}) == len(cases)

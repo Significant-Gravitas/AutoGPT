@@ -41,7 +41,9 @@ interface Props {
   floatingControls?: FloatingControls;
 }
 
-/** Floats as a translucent chip pinned to the pane's top-left gutter — the
+/** Phones only: on desktop the sidebar's Experts list highlights whose chat
+ *  this is (ExpertsNavSection), so the chat itself carries no label.
+ *  Floats as a translucent chip pinned to the pane's top-left gutter — the
  *  zero-height wrapper keeps it out of the flex flow so messages scroll
  *  underneath. An expert session wears the expert's identity and every other
  *  session is Otto's, so the thread is never anonymous. The identity is a
@@ -63,7 +65,10 @@ export function ThreadHeader({
   const hasSidebarButton = floatingControls === "newLayout" && hasSidebar;
 
   return (
-    <div data-testid="expert-thread-header" className="relative z-20 h-0">
+    <div
+      data-testid="expert-thread-header"
+      className="relative z-20 h-0 md:hidden"
+    >
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-3 flex justify-start px-4",

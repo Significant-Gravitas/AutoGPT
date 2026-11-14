@@ -50,6 +50,13 @@ export function useTaskStatusLine(started: StartedTask) {
     state,
     seconds,
     title: task?.title ?? started.title,
+    // Where it is in the worker's own words, once it has said so.
+    statusText: task?.status_text ?? null,
+    subtasks:
+      task && (task.subtask_count ?? 0) > 0
+        ? { done: task.subtasks_done ?? 0, total: task.subtask_count ?? 0 }
+        : null,
+    openAsks: task?.open_ask_count ?? 0,
     owner: {
       name: expert?.name ?? (ownerExpertID ? "An expert" : AUTOPILOT_NAME),
       avatarUrl: ownerExpertID

@@ -15,19 +15,24 @@ interface Props {
 }
 
 /** The tasks board: four lanes side by side that scroll sideways, with
- *  cards that glide to their new lane when their status changes. */
+ *  cards that glide to their new lane when their status changes. It fills
+ *  the height it is given, and every lane is that tall. */
 export function TaskBoard({ tasks, experts, selectedID, onOpen }: Props) {
-  const { ref: scrollerRef, hiddenRight } = useOverflowRight<HTMLDivElement>();
+  const {
+    ref: scrollerRef,
+    hiddenRight,
+    hiddenLeft,
+  } = useOverflowRight<HTMLDivElement>();
   const columns = buildBoardColumns(tasks);
 
   return (
-    <div className="relative palette-classic">
+    <div className="relative flex min-h-0 flex-1 flex-col palette-classic">
       <div
         ref={scrollerRef}
-        className="scrollbar-none overflow-x-auto overscroll-x-contain pb-1"
+        className="scrollbar-none min-h-0 flex-1 overflow-x-auto overscroll-x-contain pb-1"
       >
         <LayoutGroup id="task-board">
-          <div className="flex w-max min-w-full animate-inbox-enter items-start gap-2">
+          <div className="flex h-full w-max min-w-full animate-inbox-enter items-stretch gap-2">
             {columns.map((column) => (
               <BoardLane
                 key={column.id}
@@ -40,6 +45,12 @@ export function TaskBoard({ tasks, experts, selectedID, onOpen }: Props) {
           </div>
         </LayoutGroup>
       </div>
+      {hiddenLeft ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 w-16 edge-blur-left"
+        />
+      ) : null}
       {hiddenRight ? (
         <div
           aria-hidden

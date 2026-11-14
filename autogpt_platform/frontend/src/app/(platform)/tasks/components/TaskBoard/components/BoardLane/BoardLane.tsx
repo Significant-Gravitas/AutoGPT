@@ -12,6 +12,9 @@ interface Props {
   onOpen: (id: string) => void;
 }
 
+/** One lane of the board, as tall as the board itself; its cards scroll
+ *  inside it. It is never shorter than a few cards, so a short screen
+ *  still shows a lane. */
 export function BoardLane({ column, experts, selectedID, onOpen }: Props) {
   const headingID = `task-lane-${column.id}`;
 
@@ -19,9 +22,9 @@ export function BoardLane({ column, experts, selectedID, onOpen }: Props) {
     <section
       aria-labelledby={headingID}
       data-testid="board-lane"
-      className="w-80 flex-none rounded-tray bg-surface-tray p-1.5"
+      className="flex min-h-56 min-w-64 flex-1 basis-0 flex-col rounded-tray bg-surface-tray p-1.5"
     >
-      <header className="flex h-9 items-center gap-2 px-2.5">
+      <header className="flex h-9 shrink-0 items-center gap-2 px-2.5">
         <Text as="h2" id={headingID} variant="inbox-medium" tone="ink">
           {column.label}
         </Text>
@@ -29,7 +32,10 @@ export function BoardLane({ column, experts, selectedID, onOpen }: Props) {
           <NumberTicker value={column.tasks.length} />
         </Text>
       </header>
-      <motion.ul layoutScroll className="grid gap-1.5">
+      <motion.ul
+        layoutScroll
+        className="-m-0.5 scrollbar-none grid min-h-0 flex-1 content-start gap-1.5 overflow-y-auto overscroll-y-contain p-0.5"
+      >
         <AnimatePresence initial={false}>
           {column.tasks.map((task) => (
             <BoardCard

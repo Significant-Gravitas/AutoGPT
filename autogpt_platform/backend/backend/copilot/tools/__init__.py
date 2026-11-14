@@ -90,6 +90,7 @@ from .setup_agent_webhook_trigger import SetupAgentWebhookTriggerTool
 from .skills import DeleteSkillTool, ListSkillsTool, ReadSkillTool, StoreSkillTool
 from .start_desktop import StartDesktopTool
 from .start_task import StartTaskTool
+from .task_progress import AddEvidenceTool, FinishTaskTool, ReportProgressTool
 from .tasks import (
     ArchiveTaskTool,
     CreateTaskTool,
@@ -150,6 +151,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "update_task": UpdateTaskTool(),
     "archive_task": ArchiveTaskTool(),
     "start_task": StartTaskTool(),
+    # What a task's worker says about its own work; the rest is recorded.
+    "report_progress": ReportProgressTool(),
+    "add_evidence": AddEvidenceTool(),
+    "finish_task": FinishTaskTool(),
     "run_agent": RunAgentTool(),
     # Schedule management
     "list_schedules": ListSchedulesTool(),

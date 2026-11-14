@@ -2,13 +2,14 @@
 
 import json
 import logging
+import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
 
-from backend.copilot import turn_end
+from backend.copilot import task_recorder, tool_timing, turn_end
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
 from backend.copilot.google_data_redaction import (
@@ -570,9 +571,12 @@ class BaseTool:
             ) as outcome,
         ):
             turn_end.note_call(session.session_id)
+            started = time.monotonic()
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
             )
+            tool_timing.note(tool_call_id, (time.monotonic() - started) * 1000)
+            await task_recorder.record(session, self.name, tool_call_id, kwargs, output)
             span.set_tag("copilot.tool.success", "true" if output.success else "false")
             if not output.success and not _awaits_the_user(output):
                 outcome.is_error = True

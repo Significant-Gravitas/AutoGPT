@@ -7,6 +7,8 @@ export interface ClarifyingQuestion {
   allow_multiple?: boolean;
   /** Otto's best guess, which the answer field starts with. */
   default_guess?: string;
+  /** The option that guess picks, marked Recommended. */
+  recommended?: string | null;
 }
 
 /** A multi-select answer: the ticked options, and any typed text kept in its

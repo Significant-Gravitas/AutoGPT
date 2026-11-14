@@ -7,11 +7,12 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
-from prisma.enums import TaskCreator, TaskStatus
+from prisma.enums import TaskActor, TaskCreator, TaskStatus
 from pytest_mock import MockerFixture
 
 from backend.api.utils.exceptions import add_exception_handlers
 from backend.data.task import Task, TaskPatch
+from backend.data.task_record import TaskRecord
 from backend.util.exceptions import NotFoundError
 
 from .routes import router
@@ -68,6 +69,8 @@ def test_create_records_the_caller_as_creator(mocker: MockerFixture, test_user_i
         owner_expert_id=None,
         session_id="chat-1",
         created_by=TaskCreator.USER,
+        goal=None,
+        done_when=None,
     )
 
 
@@ -96,6 +99,7 @@ def test_list_passes_filters_for_the_caller(mocker: MockerFixture, test_user_id)
         session_id="chat-1",
         limit=10,
         offset=0,
+        include_subtasks=False,
     )
 
 
@@ -115,7 +119,9 @@ def test_get_returns_404_for_a_task_the_caller_cannot_see(
 
 
 def test_update_sends_only_what_the_body_sets(mocker: MockerFixture, test_user_id):
+    _mock(mocker, "get_task", _task())
     update = _mock(mocker, "update_task", _task(status=TaskStatus.DONE))
+    noted = _mock(mocker, "add_activity", None)
 
     response = client.patch("/tasks/task-1", json={"status": "DONE"})
 
@@ -124,12 +130,67 @@ def test_update_sends_only_what_the_body_sets(mocker: MockerFixture, test_user_i
     update.assert_awaited_once_with(
         "task-1", test_user_id, TaskPatch(status=TaskStatus.DONE)
     )
+    # What the user changed lands on the task's activity, as theirs.
+    entry = noted.await_args.args[2]
+    assert (entry.text, entry.actor_type) == ("You marked it done", TaskActor.USER)
+
+
+@pytest.mark.parametrize(
+    "body, after, line",
+    [
+        (
+            {"goal": "Ship by Friday"},
+            {"goal": "Ship by Friday"},
+            "You changed the goal",
+        ),
+        ({"title": "New name"}, {"title": "New name"}, "You renamed it to New name"),
+        ({"description": "same task"}, {}, None),
+    ],
+)
+def test_an_edit_is_noted_only_when_it_changes_something_the_user_sees(
+    mocker: MockerFixture, body, after, line
+):
+    _mock(mocker, "get_task", _task())
+    _mock(mocker, "update_task", _task(**after))
+    noted = _mock(mocker, "add_activity", None)
+
+    assert client.patch("/tasks/task-1", json=body).status_code == 200
+    if line is None:
+        noted.assert_not_awaited()
+    else:
+        assert noted.await_args.args[2].text == line
+
+
+def test_the_record_is_returned_whole_and_404s_for_a_stranger(
+    mocker: MockerFixture, test_user_id
+):
+    record = TaskRecord(task=_task(), so_far=["Task started"], is_unverified=False)
+    get = _mock(mocker, "get_task_record", record)
+
+    response = client.get("/tasks/task-1/record")
+
+    assert response.status_code == 200
+    assert response.json()["task"]["id"] == "task-1"
+    assert response.json()["so_far"] == ["Task started"]
+    get.assert_awaited_once_with("task-1", test_user_id)
+
+    _mock(mocker, "get_task_record", None)
+    assert client.get("/tasks/task-9/record").status_code == 404
+
+
+def test_subtasks_are_listed_only_when_asked_for(mocker: MockerFixture):
+    list_tasks = _mock(mocker, "list_tasks", [])
+
+    client.get("/tasks", params={"include_subtasks": "true"})
+
+    assert list_tasks.await_args.kwargs["include_subtasks"] is True
 
 
 @pytest.mark.parametrize(
     "error, status", [(NotFoundError("gone"), 404), (ValueError("bad"), 400)]
 )
 def test_update_maps_data_layer_errors(mocker: MockerFixture, error, status):
+    _mock(mocker, "get_task", _task())
     mocker.patch(f"{_ROUTES}.update_task", new_callable=AsyncMock, side_effect=error)
 
     assert client.patch("/tasks/task-1", json={"title": "x"}).status_code == status

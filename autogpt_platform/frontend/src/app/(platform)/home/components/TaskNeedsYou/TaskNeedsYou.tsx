@@ -3,8 +3,11 @@
 import { Task01Icon } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
 import type { Task } from "@/app/api/__generated__/models/task";
-import { taskHref } from "@/app/(platform)/copilot/tools/CreateTask/helpers";
-import type { TaskOwner } from "@/app/(platform)/tasks/helpers";
+import {
+  BOARD_HREF,
+  taskHref,
+  type TaskOwner,
+} from "@/app/(platform)/tasks/helpers";
 import { Text } from "@/components/atoms/Text/Text";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { formatTimeAgo } from "@/lib/utils/time";
@@ -57,7 +60,7 @@ interface RowProps {
 function TaskRow({ task, owner }: RowProps) {
   return (
     <NextLink
-      href={taskHref(task.id)}
+      href={taskHref(task) ?? BOARD_HREF}
       className="flex items-start gap-3 px-4 py-3 transition-[background-color] duration-150 ease-out-expo hover:bg-surface-wash focus-visible:ring-2 focus-visible:ring-focus-inbox focus-visible:outline-none focus-visible:ring-inset"
     >
       <span className="mt-0.5 shrink-0">

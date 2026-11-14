@@ -64,6 +64,11 @@
   --inbox-shadow-pill:
     0 0 0 0.5px rgb(0 0 0 / 0.06), 0 1px 1px -1px rgb(0 0 0 / 0.1),
     0 1px 2px 0 rgb(0 0 0 / 0.05);
+  /* The one lit, coloured button: a highlight on its top edge, a darker rim. */
+  --inbox-shadow-lit:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 0 0 1px rgb(var(--color-info-foreground)),
+    0 1px 2px rgb(var(--color-info-foreground) / 0.35);
   --color-overlay: 120 113 108; /* stone-500 #78716C, used at /20 */
   --color-scrim: 20 20 20; /* black #141414, dialog backdrops and shadows */
   /* App shell (AffectUI site shell, affectui.com assets/index-*.css :root):

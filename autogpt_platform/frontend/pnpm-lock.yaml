@@ -207,6 +207,9 @@ importers:
       kysely:
         specifier: 0.28.17
         version: 0.28.17
+      loading-dev:
+        specifier: 0.3.6
+        version: 0.3.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       lodash:
         specifier: 4.18.1
         version: 4.18.1
@@ -397,6 +400,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: 4.1.11
         version: 4.1.11(vitest@4.1.11)
+      agentation:
+        specifier: 3.1.2
+        version: 3.1.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       babel-plugin-react-compiler:
         specifier: 1.0.0
         version: 1.0.0
@@ -4928,6 +4934,17 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
+  agentation@3.1.2:
+    resolution: {integrity: sha512-ZZr6PRgX3ussGbvC9NVh5vFfKKFkQyHL6KuxOfBAAM/mJS3bM2XyhZ7wLPakDwU3pqkzq7u6vEfLikFsCOu5+Q==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
   ai@7.0.143:
     resolution: {integrity: sha512-y9QNgCK9QRHRCcHEUNoU2vemJ+q2zFX5M9T7xHCMZutfcWCqZPckkAfDbp+KHwqZDiJs5AqoKazj64cb20m5PA==}
     engines: {node: '>=22'}
@@ -7289,6 +7306,12 @@ packages:
   loader-utils@3.3.1:
     resolution: {integrity: sha512-FMJTLMXfCLMLfJxcX9PFqX5qD88Z5MRGaZCVzfuqeZSPsyiBzs+pahDQjbIWz2QIzPZz0NX9Zy4FX3lmK6YHIg==}
     engines: {node: '>= 12.13.0'}
+
+  loading-dev@0.3.6:
+    resolution: {integrity: sha512-htn86CAKi28d4vCBFMImogiCzs8AxDi18J19FAAI7iJXibPwNvFuoGnomuSPkrDD+ft7X+8yK0BYPwsu1EKY9Q==}
+    peerDependencies:
+      react: '>=19.0.0'
+      react-dom: '>=19.0.0'
 
   locate-path@5.0.0:
     resolution: {integrity: sha512-t7hw9pI+WvuwNJXwk5zVHpyhIqzg2qTlklJOf0mVxGSbe3Fp2VieZcduNYjaLDoy6p9uGpQEGWG87WpMKlNq8g==}
@@ -14095,6 +14118,11 @@ snapshots:
   agent-base@7.1.4:
     optional: true
 
+  agentation@3.1.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    optionalDependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
   ai@7.0.143(zod@3.25.76):
     dependencies:
       '@ai-sdk/gateway': 4.0.116(zod@3.25.76)
@@ -16848,6 +16876,11 @@ snapshots:
       json5: 2.2.3
 
   loader-utils@3.3.1: {}
+
+  loading-dev@0.3.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   locate-path@5.0.0:
     dependencies:

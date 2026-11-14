@@ -1,28 +1,23 @@
 "use client";
 
-import { useSessionList } from "@/app/(platform)/copilot/useSessionList";
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { formatTimeAgo } from "@/lib/utils/time";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { chatStatus, recentChatsFor } from "./helpers";
+import { chatStatus } from "./helpers";
 
 interface Props {
-  /** Null is Otto. */
-  expertId: string | null;
+  /** The recipient's latest chats, from `recentChatsFor`. */
+  recent: SessionSummaryResponse[];
 }
 
-export function HomeRecentChats({ expertId }: Props) {
-  const { sessions } = useSessionList();
-  const recent = recentChatsFor(sessions, expertId);
-
-  if (recent.length === 0) return null;
-
+export function HomeRecentChats({ recent }: Props) {
   return (
     <section
       aria-labelledby="home-recent-chats"
-      className="mx-auto mt-10 mb-6 w-full max-w-[42rem] rounded-composer-tray bg-surface-tray p-1 text-left"
+      className="flex w-full flex-col rounded-composer-tray bg-surface-tray p-1 text-left"
     >
       <div className="flex h-9 items-center gap-1.5 pl-2.5 text-foreground-quiet">
         <Icon icon={Clock01Icon} size={14} tone="inherit" />
@@ -31,7 +26,7 @@ export function HomeRecentChats({ expertId }: Props) {
         </Text>
       </div>
 
-      <ul className="flex flex-col rounded-panel bg-surface p-1 shadow-(--inbox-shadow-card)">
+      <ul className="flex flex-1 flex-col rounded-panel bg-surface p-1 shadow-(--inbox-shadow-card)">
         {recent.map((session) => {
           const status = chatStatus(session);
           return (

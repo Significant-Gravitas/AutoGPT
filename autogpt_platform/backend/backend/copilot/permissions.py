@@ -98,6 +98,7 @@ if TYPE_CHECKING:
 # This is the SINGLE SOURCE OF TRUTH.  All other name sets are derived from it.
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
+    "add_evidence",
     "add_understanding",
     "archive_task",
     "ask_question",
@@ -128,6 +129,7 @@ ToolName = Literal[
     "expert_onboarding",
     "find_agent",
     "find_capability",
+    "finish_task",
     "find_library_agent",
     "find_session",
     "fix_agent_graph",
@@ -167,6 +169,7 @@ ToolName = Literal[
     "read_skill",
     "read_workspace_file",
     "remove_expert_workflow",
+    "report_progress",
     "request_credential_grant",
     "resume_capability",
     "resume_schedule",

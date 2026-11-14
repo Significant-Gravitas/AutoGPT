@@ -60,41 +60,36 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-separator bg-surface p-1.5">
+      <div className="flex items-center gap-2.5 px-3 py-2">
+        <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-tray p-1">
           <ProviderAvatar id={iconId} name={request.service} />
         </span>
 
         <div className="flex min-w-0 flex-1 flex-col">
           <Text
-            variant="body-medium-tight"
+            variant="inbox-medium"
             as="span"
-            tone="primary"
+            tone="ink"
             className="truncate"
           >
             {request.service}
           </Text>
           {host && (
-            <Text
-              variant="body-tight"
-              as="span"
-              tone="muted"
-              className="truncate"
-            >
+            <Text variant="small" as="span" tone="quiet" className="truncate">
               {host}
             </Text>
           )}
         </div>
 
         {request.connected ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-body font-medium text-foreground-tertiary">
-            <Icon icon={CheckmarkCircle02Icon} size={16} />
+          <span className="flex shrink-0 items-center gap-1 text-body-sm font-medium text-foreground-quiet">
+            <Icon icon={CheckmarkCircle02Icon} size={14} tone="ok" />
             Connected
           </span>
         ) : request.grantable ? (
           <Button
             variant="primary"
-            size="small"
+            size="xs"
             className="shrink-0"
             disabled={request.granting || request.loading}
             onClick={request.onGrant}
@@ -104,7 +99,7 @@ export function McpConnectorRow({ request }: { request: McpConnectorRequest }) {
         ) : (
           <Button
             variant="primary"
-            size="small"
+            size="xs"
             className="shrink-0"
             disabled={request.loading}
             onClick={request.onConnect}

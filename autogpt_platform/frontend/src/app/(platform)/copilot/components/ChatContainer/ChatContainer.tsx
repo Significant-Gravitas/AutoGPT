@@ -1,4 +1,5 @@
 "use client";
+import { QUESTION_DOCK_SLOT_ID } from "../ChainActionCard/QuestionDockSlot";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { ChatComposerFrame } from "./components/ChatComposerFrame";
 import {
@@ -512,6 +513,7 @@ export const ChatContainer = ({
             <div className="relative flex h-full min-h-0 w-full flex-col bg-surface">
               <div className="absolute top-0 right-0 z-30">
                 <ContextPanelToggle
+                  messages={messages}
                   sessionId={sessionId}
                   expert={chatExpert}
                   hideIntegrationsOnMobile={floatingControls === "newLayout"}
@@ -544,7 +546,7 @@ export const ChatContainer = ({
               {archivedExpertIdentity ? (
                 <>
                   {hasComposerTab && (
-                    <div className="mx-auto w-full max-w-3xl px-3">
+                    <div className="mx-auto w-full max-w-[42.5rem] px-3">
                       <ComposerPanelTab expert={null} />
                     </div>
                   )}
@@ -570,6 +572,9 @@ export const ChatContainer = ({
                   }
                 >
                   <SharedChatNotice sessionId={sessionId} />
+                  {/* The open question docks here, just above the composer;
+                      the card that asks it portals in (see QuestionDockSlot). */}
+                  <div id={QUESTION_DOCK_SLOT_ID} className="empty:hidden" />
                   {hasComposerTab && <ComposerPanelTab expert={chatExpert} />}
                   {isTaskBarEnabled && (
                     <div className="relative z-10">

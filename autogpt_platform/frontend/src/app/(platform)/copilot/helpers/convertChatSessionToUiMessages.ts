@@ -1,3 +1,4 @@
+import { noteToolDuration } from "./toolDurations";
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 import type { LogRow, OverlayPart, TurnLog } from "../stream/turnLog";
@@ -8,7 +9,11 @@ import {
 } from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
 import { pendingToolPart, pendingTools } from "./pendingToolParts";
-import { backgroundNotice } from "./backgroundSubtasks";
+import {
+  backgroundNotice,
+  TASK_HANDOFF_PART_TYPE,
+  taskHandoffOf,
+} from "./backgroundSubtasks";
 import { getStandaloneBubbleMetadata } from "./standaloneMessages";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
@@ -376,6 +381,7 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.role !== "tool") continue;
     const toolCallId = msg.tool_call_id?.trim();
     if (!toolCallId) continue;
+    if (msg.duration_ms != null) noteToolDuration(toolCallId, msg.duration_ms);
     if (msg.content == null) continue;
     toolOutputsByCallId.set(toolCallId, msg.content);
   }
@@ -443,11 +449,16 @@ export function convertChatSessionMessagesToUiMessages(
     const uiRole: "user" | "assistant" =
       msg.role === "reasoning" || notice ? "assistant" : msg.role;
 
-    const parts = buildRowParts(notice ? { ...msg, content: notice } : msg, {
-      toolOutputsByCallId,
-      fileUrlBuilder,
-      unanswered: options?.isComplete ? "completed" : "input-available",
-    });
+    // A follow-up that hands over a finished task draws that task's result
+    // in place of the plain "following up" line.
+    const handoff = notice ? taskHandoffOf(msg.metadata) : null;
+    const parts = handoff
+      ? [handoffPart(msg, handoff)]
+      : buildRowParts(notice ? { ...msg, content: notice } : msg, {
+          toolOutputsByCallId,
+          fileUrlBuilder,
+          unanswered: options?.isComplete ? "completed" : "input-available",
+        });
     if (parts.length === 0) return;
 
     // Merge consecutive assistant messages (including reasoning rows) into a
@@ -613,6 +624,15 @@ function pausePart(msg: SessionChatMessage, pause: TurnPause): UiPart {
     type: TURN_PAUSED_PART_TYPE,
     ...(id ? { id } : {}),
     data: pause,
+  } as UiPart;
+}
+
+function handoffPart(msg: SessionChatMessage, taskID: string): UiPart {
+  const id = msg.sequence != null ? `seq-${msg.sequence}` : msg.id;
+  return {
+    type: TASK_HANDOFF_PART_TYPE,
+    ...(id ? { id } : {}),
+    data: { taskID },
   } as UiPart;
 }
 

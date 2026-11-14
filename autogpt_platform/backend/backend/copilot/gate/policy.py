@@ -108,6 +108,10 @@ _WORKSPACE = frozenset(
         # Starts the user's own work; the worker's calls are gated themselves.
         "start_task",
         "update_task",
+        # A worker's notes on its own task.
+        "report_progress",
+        "add_evidence",
+        "finish_task",
         "memory_store",
         "start_desktop",
         "store_skill",

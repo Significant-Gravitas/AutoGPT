@@ -7,6 +7,8 @@ import {
 import type { TurnStats } from "../../../../helpers/convertChatSessionToUiMessages";
 import type { SentFrom } from "../../../../sentFrom";
 import { TurnStatsBar } from "../../../JobStatsBar/TurnStatsBar";
+import { AnswerBubbles } from "../../../AnsweredQuestions/AnsweredQuestions";
+import { parseAnswersFrame } from "../../../QuestionDock/answeredQuestions";
 import { ScheduledChatNoticeCard } from "../../../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
 import { WorkCard } from "../../../WorkCard/WorkCard";
 import { ChainMessageParts } from "../ChainMessageParts";
@@ -143,6 +145,26 @@ export const MessageRow = memo(function MessageRow({
         <MessageContent className="group-[.is-assistant]:bg-transparent">
           <ScheduledChatNoticeCard notice={notice} sessionID={sessionID} />
         </MessageContent>
+      </Message>
+    );
+  }
+
+  // Answers sent from the question card read as "Answered: ..." over the
+  // answer, instead of the frame the stored message carries.
+  const answers = message.role === "user" ? parseAnswersFrame(copyText) : null;
+  if (answers) {
+    return (
+      <Message from={message.role} data-message-id={message.id}>
+        <AnswerBubbles answers={answers} />
+        <UserRowActions
+          showQueueBadge={
+            !readOnly && isSessionQueued && !!turnStat?.isLatestUserMessage
+          }
+          showCopy
+          createdAt={turnStat?.createdAt}
+          copyText={answers.map((line) => line.answer).join("\n")}
+          sessionID={sessionID}
+        />
       </Message>
     );
   }
