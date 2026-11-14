@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from threading import get_ident
 
 import pytest
+from fastapi import HTTPException
 from prisma.enums import APIKeyPermission
 
 from backend.api.external import middleware
@@ -161,3 +162,28 @@ async def test_a_request_verifies_its_credential_once(
     key_lookup, token_lookup = v1_auth_storage
     assert key_lookup.await_count + token_lookup.await_count == 1
     assert verify.call_count == (0 if credential == "token" else 1)
+
+
+@pytest.mark.parametrize("throttled", [True, False])
+@pytest.mark.parametrize("path", ["/me", "/blocks"])
+@pytest.mark.parametrize("bearer", [False, True], ids=["api-key", "bearer-key"])
+async def test_a_request_reserves_once_and_a_throttled_key_is_never_verified(
+    mocker, v1_client, v1_auth_storage, v1_generated_keys, path, bearer, throttled
+):
+    mocker.patch("backend.blocks.get_blocks", return_value={})
+    reserve = mocker.patch.object(
+        middleware,
+        "enforce_api_key_validate_rate_limit",
+        side_effect=HTTPException(status_code=429) if throttled else None,
+        return_value=None,
+    )
+    verify = mocker.spy(api_key.keysmith, "verify_key")
+    key = v1_generated_keys[0].key
+    headers = {"Authorization": f"Bearer {key}"} if bearer else {"X-API-Key": key}
+
+    response = await v1_client.get(f"/v1{path}", headers=headers)
+
+    assert response.status_code == (429 if throttled else 200)
+    reserve.assert_awaited_once()
+    assert v1_auth_storage[0].await_count == 1
+    assert verify.call_count == (0 if throttled else 1)
