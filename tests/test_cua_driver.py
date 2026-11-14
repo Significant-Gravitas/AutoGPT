@@ -3460,6 +3460,45 @@ async def test_hello_without_computer_use_starts_no_driver(
     assert _records(fake_log, "initialize") == []
 
 
+async def test_hello_goes_out_without_computer_use_while_the_look_for_the_driver_stalls(
+    tmp_path, fake_log, linux_with_display, monkeypatch
+) -> None:
+    """HELLO looked for the driver in a worker thread of its own each time
+    and waited for it to the end, so a stalled mount on sys.path or PATH
+    kept HELLO from going out: the machine couldn't connect, even for file
+    work. The look is the bridge's, one at a time, within HELLO's wait now:
+    past it HELLO goes out without computer use, a later HELLO waits for the
+    same look rather than start another, and once the look has ended HELLO
+    offers computer use again."""
+    released = threading.Event()
+    looks: list[str] = []
+    find = driver.find_driver_binary
+
+    def stalled(explicit: Any = None) -> Any:
+        looks.append(str(explicit))
+        released.wait(timeout=60)
+        return find(explicit)
+
+    monkeypatch.setattr(driver, "find_driver_binary", stalled)
+    monkeypatch.setattr(handlers_module, "DRIVER_LOOKUP_SECONDS", 0.5, raising=False)
+    daemon = _daemon(tmp_path)
+    try:
+        first = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+        again = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+        assert len(looks) == 1
+        released.set()
+        later = await asyncio.wait_for(daemon._build_hello(), timeout=30)
+    finally:
+        released.set()
+        await daemon._computer_handler.close()
+
+    for hello in (first, again):
+        assert "files" in hello.payload.capabilities
+        assert "computer_use" not in hello.payload.capabilities
+        assert hello.payload.computer_use_driver is None
+    assert "computer_use" in later.payload.capabilities
+
+
 async def test_computer_tool_calls_need_the_granted_capability(tmp_path, fake_log) -> None:
     daemon = _daemon(tmp_path)
     daemon._granted_capabilities = frozenset({"files"})

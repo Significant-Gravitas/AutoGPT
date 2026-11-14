@@ -1793,6 +1793,29 @@ class ComputerUseHandler:
                 raise DriverUnavailable("cua-driver is still starting") from None
             return last
 
+    async def driver_found_for_hello(self) -> bool:
+        """Whether the driver is installed, for HELLO, from the bridge's
+        look (CuaDriverBridge.find_binary, one look at a time), within
+        HELLO's wait and DRIVER_LOOKUP_SECONDS at most.
+
+        A stalled mount on sys.path or PATH holds the look for as long as it
+        stalls, and HELLO, which looked in a worker thread of its own and
+        waited for it to the end, never went out: the machine couldn't
+        connect, even for file work. Past the wait HELLO goes without
+        computer use, as when the driver isn't installed, and the look goes
+        on: the next HELLO waits for that same look."""
+        wait = self._hello_wait
+        timeout = DRIVER_LOOKUP_SECONDS if wait is None else min(DRIVER_LOOKUP_SECONDS, wait)
+        try:
+            async with asyncio.timeout(timeout):
+                return await self.driver.find_binary() is not None
+        except TimeoutError:
+            logger.warning(
+                "Not advertising computer_use: looking for cua-driver took longer than %g s",
+                timeout,
+            )
+            return False
+
     @property
     def _hello_wait(self) -> float | None:
         """How long HELLO waits for the driver: CHILD_DRIVER_WAIT_SECONDS for
@@ -2531,6 +2554,9 @@ class ComputerUseHandler:
 
 # How long HELLO waits for the driver's screen size.
 SCREEN_SIZE_SECONDS = 10.0
+# How long HELLO waits for the look for the driver (CuaDriverBridge.find_binary)
+# at most: well within the ten seconds the platform waits for HELLO.
+DRIVER_LOOKUP_SECONDS = 5.0
 # How long a chat's session, starting, waits for the driver another chat's
 # call may hold (its permission check, HELLO's screen size) before going on
 # without it: the platform gives a new chat's session a few seconds (eight)
