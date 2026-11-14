@@ -265,7 +265,7 @@ jobs:
           --health-retries 5
           --health-start-period 10s
       clamav:
-        image: clamav/clamav-debian:latest
+        image: clamav/clamav-debian:1.5.4
         ports:
           - 3310:3310
         env:

@@ -1,0 +1,43 @@
+name: Repo - Workflow Lint
+
+# Runs zizmor, a static analyser for GitHub Actions, over our workflows,
+# composite actions and Dependabot config. Only findings zizmor rates both
+# high severity and high confidence fail the check: its default level reports
+# dozens of low-value findings on this repo, and a noisy check gets ignored.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/dependabot.yml"
+  push:
+    branches: [master, dev]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/dependabot.yml"
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      # Findings show as annotations on the PR's changed lines and fail the
+      # job. Code scanning upload stays off: it needs a write token, which
+      # pull requests from forks don't get.
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          version: 1.32.0
+          min-severity: high
+          min-confidence: high
+          advanced-security: false
+          annotations: true
