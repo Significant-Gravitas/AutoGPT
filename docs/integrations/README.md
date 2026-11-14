@@ -372,6 +372,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Hacker News Get Stories](block-integrations/hacker_news/stories.md#hacker-news-get-stories) | Get the top (front page), new, best, Ask HN, Show HN or job stories from Hacker News, in the order Hacker News ranks them |
 | [Hacker News Get User](block-integrations/hacker_news/users.md#hacker-news-get-user) | Get a Hacker News user's profile by username: karma, when the account was created, the about text and how many items they have posted |
 | [Hacker News Search](block-integrations/hacker_news/search.md#hacker-news-search) | Search Hacker News stories and comments by keyword, author, date, points or linked domain, sorted by relevance or newest first |
+| [Keenable Fetch](block-integrations/keenable/fetch.md#keenable-fetch) | Fetches a web page as clean markdown using Keenable |
+| [Keenable Search](block-integrations/keenable/search.md#keenable-search) | Searches the web using Keenable; each result carries a long excerpt of the page |
 | [Parallel Ask Many Decisions](block-integrations/parallel/ask_many.md#parallel-ask-many-decisions) | Ask several yes/no, choice and score questions about one subject in a single Parallel request, answered from shared current web evidence |
 | [Parallel Score Decision](block-integrations/parallel/score.md#parallel-score-decision) | Rate something on an ordered scale you define, using current web evidence from Parallel |
 | [Search Filter Typeahead](block-integrations/dataforb2b/typeahead.md#search-filter-typeahead) | Resolve the exact filter value (company, industry, job title, skill, school, investor, location, category) for people and company searches with DataForB2B |
