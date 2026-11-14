@@ -126,6 +126,7 @@ NO_MATCH_OUTPUTS = [
 async def test_extract_text_information_uses_timeout_for_every_pattern(mocker):
     block = ExtractTextInformationBlock()
     compile_pattern = mocker.patch("backend.blocks.text.compile_user_regex")
+    compile_pattern.return_value.groups = 0
     compile_pattern.return_value.finditer.return_value = iter([])
     input_data = block.Input(text="order 42", pattern=r"\d\d")
 
@@ -143,6 +144,7 @@ async def test_extract_text_information_returns_no_matches_when_the_regex_times_
 ):
     block = ExtractTextInformationBlock()
     compile_pattern = mocker.patch("backend.blocks.text.compile_user_regex")
+    compile_pattern.return_value.groups = 0
     compile_pattern.return_value.finditer.side_effect = TimeoutError
     input_data = block.Input(text="order 42", pattern=r"\d\d")
 
@@ -165,6 +167,7 @@ async def test_extract_text_information_stops_at_the_first_match_unless_find_all
             yield match
 
     compile_pattern = mocker.patch("backend.blocks.text.compile_user_regex")
+    compile_pattern.return_value.groups = 0
     compile_pattern.return_value.finditer.return_value = matches()
     input_data = block.Input(text="12 34", pattern=r"\d\d", find_all=False)
 
@@ -189,6 +192,7 @@ async def test_extract_text_information_stops_searching_at_the_match_cap(mocker)
             yield match
 
     compile_pattern = mocker.patch("backend.blocks.text.compile_user_regex")
+    compile_pattern.return_value.groups = 0
     compile_pattern.return_value.finditer.return_value = matches()
     input_data = block.Input(text="numbers", pattern=r"\d+", find_all=True)
 
