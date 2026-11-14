@@ -2021,7 +2021,16 @@ class ComputerUseHandler:
                 details={"tool": tool},
             )
         try:
-            check_arguments(tool, arguments, approved)
+            # In a worker thread: on Linux a launch's name is looked up on
+            # PATH (shutil.which), which stats a file in each of its folders,
+            # and a stalled mount (NFS, FUSE) holds a stat for as long as it
+            # stalls. On the event loop it held every session's work and
+            # keepalive. As with a file request's path checks, the call keeps
+            # its slot, and the computer's turn, until the thread ends: one
+            # let go at its deadline would leave the lookup holding a worker
+            # thread, and each later launch another. A check that ends past
+            # the deadline never reaches the driver (CallNotStarted, below).
+            await _read_in_a_thread(check_arguments, tool, arguments, approved)
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,

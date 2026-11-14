@@ -168,6 +168,14 @@ def ensure_executable(path: Path) -> None:
             path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _runnable_driver(explicit: str | os.PathLike[str] | None) -> Path | None:
+    """find_driver_binary's driver, made executable (ensure_executable)."""
+    binary = find_driver_binary(explicit)
+    if binary is not None:
+        ensure_executable(binary)
+    return binary
+
+
 def driver_runtime(platform: str | None = None) -> Runtime:
     """Always `direct`: the driver process the shim starts owns the runtime.
 
@@ -265,6 +273,8 @@ class CuaDriverBridge:
         self._closed = False
         # The display variables the running driver started with.
         self._display: tuple[str | None, ...] | None = None
+        # The look for the driver's binary under way, or the last (find_binary).
+        self._looking: asyncio.Future[Path | None] | None = None
 
     @property
     def platform(self) -> str:
@@ -285,6 +295,27 @@ class CuaDriverBridge:
         """What the driver offered when it last started, if it has: kept
         while it restarts, since a start lists the same tools."""
         return self._snapshot
+
+    async def find_binary(self) -> Path | None:
+        """The driver this bridge runs, made executable, or None when it
+        isn't installed: find_driver_binary and ensure_executable, in a
+        worker thread. They stat files in the folders on sys.path, for the
+        wheel's driver, and on PATH, and a stalled mount (NFS, FUSE) holds a
+        stat for as long as it stalls; on the event loop that held every
+        session's work and keepalive.
+
+        One look at a time: a caller that gives up on a stalled look (a
+        HELLO whose connection closed, a chat's start undone) leaves it to
+        finish, and the next one waits for that look rather than start
+        another, which would stall too, until the threads every session's
+        file work shares were all held."""
+        looking = self._looking
+        if looking is None or looking.done():
+            looking = self._looking = asyncio.ensure_future(
+                asyncio.to_thread(_runnable_driver, self._explicit_binary)
+            )
+            looking.add_done_callback(_retrieved)
+        return await asyncio.shield(looking)
 
     async def snapshot(self, *, deadline: float | None = None) -> DriverSnapshot:
         """What the driver offers, starting it if need be. With `deadline`
@@ -445,7 +476,7 @@ class CuaDriverBridge:
                 self._last_failure = self._client.stderr_tail(5) or self._last_failure
                 await self._stop_client()
             self._check_restart_budget()
-            binary = find_driver_binary(self._explicit_binary)
+            binary = await self.find_binary()
             if binary is None:
                 raise DriverUnavailable(
                     "cua-driver is not installed. Reinstall the local executor with its "
@@ -453,7 +484,6 @@ class CuaDriverBridge:
                     code=ErrorCode.DEPENDENCY_MISSING,
                     details={"dependency": DRIVER_NAME},
                 )
-            ensure_executable(binary)
             runtime = driver_runtime(self._platform)
             try:
                 policy = self._write_policy()
@@ -629,9 +659,9 @@ class CuaDriverBridge:
             await client.close(now=True)
 
 
-def _retrieved(task: asyncio.Task[StdioMcpClient]) -> None:
-    """Mark a start's failure seen: the callers that waited for it may all
-    have given up, and the next call starts the driver again."""
+def _retrieved(task: asyncio.Future[Any]) -> None:
+    """Mark a start's failure seen, or a look's (find_binary): the callers
+    that waited for it may all have given up, and the next starts again."""
     if not task.cancelled():
         task.exception()
 

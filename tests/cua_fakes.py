@@ -46,11 +46,15 @@ def fake_client(argv: list[str], **kwargs: Any) -> StdioMcpClient:
 
 
 def fake_bridge(
-    *, clipboard: bool = False, platform: str = "linux", **kwargs: Any
+    *,
+    clipboard: bool = False,
+    platform: str = "linux",
+    binary: str | Path = FAKE,
+    **kwargs: Any,
 ) -> CuaDriverBridge:
     return CuaDriverBridge(
         tools=catalog.offered_tools(enable_clipboard=clipboard),
-        binary=FAKE,
+        binary=binary,
         platform=platform,
         client_factory=fake_client,
         **kwargs,

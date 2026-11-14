@@ -10,11 +10,13 @@ import json
 import os
 import shutil
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import autogpt_local_executor.handlers as handlers_module
 from autogpt_local_executor.audit import AuditWriter
 from autogpt_local_executor.computer_use import catalog, concealed, driver, mcp_client
 from autogpt_local_executor.computer_use.driver import CuaDriverBridge, DriverUnavailable
@@ -896,6 +898,69 @@ def test_an_explicit_driver_path_that_cannot_be_expanded_is_not_found(monkeypatc
     assert driver.find_driver_binary("~nobody-here/cua-driver") is None
 
 
+async def test_a_driver_is_looked_for_off_the_event_loop(fake_log: Path, monkeypatch) -> None:
+    """A start looked for the driver on the event loop: the wheel's on
+    sys.path, else one on PATH, then its execute bit, statting files in each
+    folder on the way. A stalled mount there (NFS, FUSE) holds a stat for as
+    long as it stalls, and held every session's work and keepalive with it."""
+    loop_thread = threading.get_ident()
+    seen: dict[str, list[int]] = {"find_driver_binary": [], "ensure_executable": []}
+    for name in seen:
+        real = getattr(driver, name)
+
+        def watched(*args: Any, _real: Any = real, _name: str = name) -> Any:
+            seen[_name].append(threading.get_ident())
+            return _real(*args)
+
+        monkeypatch.setattr(driver, name, watched)
+    bridge = fake_bridge()
+
+    try:
+        snapshot = await bridge.snapshot()
+    finally:
+        await bridge.close()
+
+    assert snapshot.tools
+    for name, threads in seen.items():
+        assert threads and loop_thread not in threads, name
+
+
+async def test_a_look_for_the_driver_its_caller_gave_up_on_is_the_next_callers(
+    fake_log: Path, monkeypatch
+) -> None:
+    """A look a stalled mount holds goes on in its thread once its caller
+    gives up (a HELLO whose connection closed, a chat's start undone). One
+    made again for each caller would stall too, until every worker thread
+    the sessions' file work shares was held: the next caller waits for it."""
+    started, released = threading.Event(), threading.Event()
+    looks: list[int] = []
+    find = driver.find_driver_binary
+
+    def stalled(explicit: Any = None) -> Path | None:
+        looks.append(threading.get_ident())
+        started.set()
+        released.wait(60)
+        return find(explicit)
+
+    monkeypatch.setattr(driver, "find_driver_binary", stalled)
+    bridge = fake_bridge()
+    first = asyncio.ensure_future(bridge.find_binary())
+    try:
+        assert await asyncio.to_thread(started.wait, 60)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        second = asyncio.ensure_future(bridge.find_binary())
+        await asyncio.sleep(0)  # as far as its wait for a look
+        released.set()
+
+        assert await asyncio.wait_for(second, 60) == FAKE.absolute()
+        assert len(looks) == 1
+    finally:
+        released.set()
+        await bridge.close()
+
+
 # ── Catalog ──────────────────────────────────────────────────────────────
 
 
@@ -1750,6 +1815,39 @@ async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
         "list_apps",
         "launch_app",
     ]
+
+
+async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """On Linux a launch's name is looked up on PATH (shutil.which), which
+    stats a file in each of its folders. A stalled mount there (NFS, FUSE)
+    holds a stat for as long as it stalls, and on the event loop it held
+    every session's work and keepalive with it."""
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    loop_thread = threading.get_ident()
+    looked_up_from: list[int] = []
+    check = handlers_module.check_arguments
+
+    def on_path(word: str) -> str | None:
+        looked_up_from.append(threading.get_ident())
+        return None
+
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = ()) -> None:
+        # Linux's check on every OS, with a PATH where no program has the name.
+        check(tool, arguments, approved, platform="linux", on_path=on_path)
+
+    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is False
+    assert looked_up_from and loop_thread not in looked_up_from
 
 
 @pytest.mark.parametrize(
