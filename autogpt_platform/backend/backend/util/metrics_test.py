@@ -10,20 +10,28 @@ rather than a Sentry alert flood.
 from __future__ import annotations
 
 import json
+import smtplib
 import sys
 import time
 
 import pytest
 import sentry_sdk
+from pydantic import SecretStr
 from sentry_sdk.consts import DEFAULT_OPTIONS
+from sentry_sdk.envelope import Envelope
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.profiler.transaction_profiler import has_profiling_enabled
 from sentry_sdk.serializer import serialize
+from sentry_sdk.transport import Transport
 from sentry_sdk.utils import event_from_exception, json_dumps
 
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
 from backend.api.utils.client_ip import CLIENT_IP_TOKEN_HEADER
+from backend.blocks import email_block
+from backend.blocks.email_block import SendEmailBlock, SMTPConfig
+from backend.data.model import UserPasswordCredentials
 from backend.util import metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
@@ -554,7 +562,9 @@ def test_sentry_init_cuts_long_values_before_they_are_scrubbed(monkeypatch) -> N
 
 def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
     """A failed virus scan's traceback holds the upload in several frames, and the
-    SDK's full repr of each took seconds and a gigabyte for a 90 MB file."""
+    SDK's full repr of each took seconds and a gigabyte for a 90 MB file.
+
+    sentry_init() sends no frame variables; the bound holds if they come back."""
     calls = _spy_on_sentry_init(monkeypatch)
     monkeypatch.delitem(sys.modules, "pytest")
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
@@ -567,7 +577,12 @@ def test_a_large_frame_local_reaches_the_event_truncated(monkeypatch) -> None:
         write_file(b"x" * 5_000_000)
     except RuntimeError:
         event, _ = event_from_exception(
-            sys.exc_info(), client_options={**DEFAULT_OPTIONS, **calls[0]}
+            sys.exc_info(),
+            client_options={
+                **DEFAULT_OPTIONS,
+                **calls[0],
+                "include_local_variables": True,
+            },
         )
 
     raising_frame = event["exception"]["values"][0]["stacktrace"]["frames"][-1]
@@ -581,7 +596,7 @@ def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> 
     monkeypatch.delitem(sys.modules, "pytest")
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     metrics.sentry_init()
-    options = {**DEFAULT_OPTIONS, **calls[0]}
+    options = {**DEFAULT_OPTIONS, **calls[0], "include_local_variables": True}
 
     def write_file(content: bytes) -> None:
         raise RuntimeError("Virus scanning failed")
@@ -616,6 +631,70 @@ def test_both_event_bounds_hold_through_one_trip_to_before_send(monkeypatch) -> 
     assert len(scrubbed["extra"]["transcript"]) <= metrics._SENTRY_MAX_VALUE_LENGTH
     # And the budget the two bounds left over still caught the secret.
     assert scrubbed["logentry"]["formatted"] == "[Filtered]"
+
+
+def test_a_failed_email_send_reaches_sentry_without_the_smtp_login(
+    monkeypatch,
+) -> None:
+    username, password = "smtp-user-SECRET-1", "smtp-pass-SECRET-2"
+    monkeypatch.setattr(email_block, "_BoundedSMTP", _MailServerRefusingHello)
+    options = _sentry_init_options(monkeypatch)
+    # The asyncio integration patches the session's shared event loop.
+    options["integrations"] = [
+        integration
+        for integration in options["integrations"]
+        if not isinstance(integration, AsyncioIntegration)
+    ]
+    transport = _CapturingTransport()
+    client = sentry_sdk.Client(**options, transport=transport)
+    monkeypatch.setattr(sentry_sdk.get_global_scope(), "client", client)
+
+    with pytest.raises(smtplib.SMTPHeloError) as raised:
+        SendEmailBlock.send_email(
+            SMTPConfig(smtp_server="smtp.example.com", smtp_port=587),
+            "recipient@example.com",
+            "Subject",
+            "Body",
+            UserPasswordCredentials(
+                provider="smtp",
+                username=SecretStr(username),
+                password=SecretStr(password),
+                title="SMTP login",
+            ),
+        )
+    metrics.sentry_capture_error(raised.value)
+    client.close()
+
+    [event] = transport.events
+    frames = event["exception"]["values"][0]["stacktrace"]["frames"]
+    assert "send_email" in [frame["function"] for frame in frames]
+    assert username not in transport.payload
+    assert password not in transport.payload
+
+
+class _MailServerRefusingHello:
+    def __init__(self, host: str, port: int, timeout: float) -> None:
+        pass
+
+    def __enter__(self) -> "_MailServerRefusingHello":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        pass
+
+    def starttls(self) -> None:
+        raise smtplib.SMTPHeloError(451, b"4.3.0 Temporary local problem")
+
+
+class _CapturingTransport(Transport):
+    def __init__(self) -> None:
+        super().__init__()
+        self.events: list[dict] = []
+        self.payload = ""
+
+    def capture_envelope(self, envelope: Envelope) -> None:
+        self.payload += envelope.serialize().decode()
+        self.events += [item.payload.json or {} for item in envelope.items]
 
 
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:

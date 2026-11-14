@@ -430,6 +430,8 @@ def sentry_init():
         # The SDK default, pinned: no IP address, request headers with
         # personal data or cookies.
         send_default_pii=False,
+        # Frames carry no variables: a local can hold a credential under any name.
+        include_local_variables=False,
         max_value_length=_SENTRY_MAX_VALUE_LENGTH,
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,

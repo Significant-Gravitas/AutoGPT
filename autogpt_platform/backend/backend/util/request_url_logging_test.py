@@ -234,6 +234,38 @@ async def test_sentry_gets_no_credentials_from_request_urls(
     }
 
 
+async def test_sentry_gets_no_credentials_from_a_request_that_fails(
+    sentry: "_CapturingTransport", monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        integrations_router,
+        "get_webhook",
+        AsyncMock(side_effect=RuntimeError("database unavailable")),
+    )
+    async with (
+        _serve(rest_api.AgentServer(), monkeypatch) as host,
+        httpx.AsyncClient(base_url=f"http://{host}") as client,
+    ):
+        ingress = await client.post(
+            f"/api/integrations/github/webhooks/{WEBHOOK_ID}/ingress",
+            params={"token": SESSION_TOKEN},
+            json={},
+        )
+
+    assert ingress.status_code == 500
+    raised = [
+        value
+        for event in sentry.events
+        for value in (event.get("exception") or {}).get("values", [])
+    ]
+    assert any(
+        value["value"] == "database unavailable" and value["stacktrace"]["frames"]
+        for value in raised
+    )
+    for credential in CREDENTIALS:
+        assert credential not in sentry.payload
+
+
 @asynccontextmanager
 async def _serve(
     process: AppProcess, monkeypatch: pytest.MonkeyPatch
