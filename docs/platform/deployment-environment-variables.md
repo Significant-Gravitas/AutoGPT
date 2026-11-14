@@ -47,14 +47,14 @@ This generates `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`,
 `BETTER_AUTH_SECRET`, the Web Push key pair (`VAPID_PRIVATE_KEY` and
 `VAPID_PUBLIC_KEY`), and the passwords of the database, RabbitMQ, Redis and
 FalkorDB, for your install only. There is nothing to generate by hand. Most of
-them are required: without `ENCRYPTION_KEY` the backend refuses to start,
-without `POSTGRES_PASSWORD` Docker Compose refuses to start, without the
-FalkorDB password its container exits, without the RabbitMQ password the
-backend cannot log in to it, and without `BETTER_AUTH_SECRET` sign-in fails.
+them are required: without `ENCRYPTION_KEY` or `UNSUBSCRIBE_SECRET_KEY` the
+backend refuses to start, without `POSTGRES_PASSWORD` Docker Compose refuses
+to start, without the FalkorDB password its container exits, without the
+RabbitMQ password the backend cannot log in to it, and without
+`BETTER_AUTH_SECRET` sign-in fails.
 The rest can be empty: `INTERNAL_API_KEY` is then derived from
-`ENCRYPTION_KEY`, and without `REDIS_PASSWORD` or `UNSUBSCRIBE_SECRET_KEY` the
-backend logs a warning and runs with Redis open to the other containers and
-email unsubscribe links unsigned.
+`ENCRYPTION_KEY`, and without `REDIS_PASSWORD` the backend logs a warning and
+runs with Redis open to the other containers.
 
 The database password is in three places: `POSTGRES_PASSWORD` in
 `autogpt_platform/.env`, which Docker uses for the database and for every

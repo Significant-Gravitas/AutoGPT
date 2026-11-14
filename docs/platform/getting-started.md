@@ -185,9 +185,9 @@ To run the platform, follow these steps:
   instead: there this command replaces the passwords this repository used to
   publish, and the restart after it empties RabbitMQ's queues.
 
-  The backend **refuses to start** while `ENCRYPTION_KEY` is empty, and Docker
-  Compose refuses to start without the database password, so run this before
-  bringing the stack up.
+  The backend **refuses to start** while `ENCRYPTION_KEY` or
+  `UNSUBSCRIBE_SECRET_KEY` is empty, and Docker Compose refuses to start
+  without the database password, so run this before bringing the stack up.
 
 - Run the platform services:
   ```
@@ -259,10 +259,10 @@ By default the application for different services run on the following ports:
 `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY` and `BETTER_AUTH_SECRET` used to
 come with a value in `.env.default`, so every install that did not set its own
 ran on the same three values. They are now blank there and generated for each
-install, and the backend **does not start** without an `ENCRYPTION_KEY` or
-with the one `.env.default` used to contain. This applies to Docker Compose
-installs; the Docker Hub image generates its own secrets on first boot and
-keeps them in its data volume.
+install, and the backend **does not start** without an `ENCRYPTION_KEY` or an
+`UNSUBSCRIBE_SECRET_KEY`, or with a value `.env.default` used to contain for
+either. This applies to Docker Compose installs; the Docker Hub image
+generates its own secrets on first boot and keeps them in its data volume.
 
 The Web Push signing pair, `VAPID_PRIVATE_KEY` and `VAPID_PUBLIC_KEY`, shipped
 with a value from April to October 2026 and is now blank and generated the same
@@ -285,6 +285,13 @@ below if you are upgrading an install that
   line — it was running on the value from `.env.default`; or
 - stops on startup with `ENCRYPTION_KEY is set to a value that was published…`
   or `ENCRYPTION_KEY is not set`.
+
+An install that stops only with `UNSUBSCRIBE_SECRET_KEY is not set` or
+`UNSUBSCRIBE_SECRET_KEY is set to a value that was published…` needs none of
+these steps, since nothing stored depends on that key. Make sure
+`backend/.env` has the line `UNSUBSCRIBE_SECRET_KEY=` with nothing after the
+`=`, run `make init-env`, then `docker compose up -d`. Unsubscribe links in
+emails sent before then stop working.
 
 Your connected integrations are encrypted with `ENCRYPTION_KEY`, so the steps
 move them to the new key instead of losing them. Run everything from
