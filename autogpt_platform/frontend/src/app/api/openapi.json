@@ -4779,7 +4779,7 @@
       "delete": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Delete Session",
-        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages, stopping its\nrunning or queued task first, as ``POST /sessions/{id}/cancel`` does.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.\n    HTTPException: 409 if the session's task could not be stopped.",
         "operationId": "deleteV2DeleteSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4796,6 +4796,7 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Session not found or access denied" },
+          "409": { "description": "The session's task could not be stopped" },
           "422": {
             "description": "Validation Error",
             "content": {

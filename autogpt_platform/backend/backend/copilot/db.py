@@ -29,6 +29,7 @@ from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .duplicate_message_id import is_duplicate_chat_message_id_error
 from .model import (
+    CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
     ChatMessage,
     ChatSessionGroup,
@@ -1230,7 +1231,10 @@ async def delete_chat_session(
     user_id: str | None = None,
     organization_id: str | None = None,
 ) -> bool:
-    """Delete a chat session and all its messages.
+    """Delete a chat session and all its messages, if no turn holds its slot.
+
+    A running or queued session is left in place: its ``chatStatus`` is the
+    user's turn slot, so callers stop the turn first.
 
     Args:
         session_id: The session ID to delete.
@@ -1254,7 +1258,11 @@ async def delete_chat_session(
         # copilot import cycle.
         if user_id is not None:
             existing = await PrismaChatSession.prisma().find_first(
-                where={"id": session_id, "userId": user_id}
+                where={
+                    "id": session_id,
+                    "userId": user_id,
+                    "chatStatus": CHAT_STATUS_IDLE,
+                }
             )
             if existing and existing.isShared:
                 from backend.copilot.sharing.db import disable_chat_session_share
@@ -1277,8 +1285,12 @@ async def delete_chat_session(
                     )
                     sentry_sdk.capture_exception(cascade_exc)
 
-        # Build typed where clause with optional user_id validation
-        where_clause: ChatSessionWhereInput = {"id": session_id}
+        # In the statement itself, so a turn admitted since the caller looked
+        # keeps its row.
+        where_clause: ChatSessionWhereInput = {
+            "id": session_id,
+            "chatStatus": CHAT_STATUS_IDLE,
+        }
         if user_id is not None:
             where_clause["userId"] = user_id
         if org_scope := _own_org_scope(organization_id):

@@ -1604,7 +1604,10 @@ async def start_session_desktop(
     "/sessions/{session_id}",
     dependencies=[Security(auth.requires_user)],
     status_code=204,
-    responses={404: {"description": "Session not found or access denied"}},
+    responses={
+        404: {"description": "Session not found or access denied"},
+        409: {"description": "The session's task could not be stopped"},
+    },
 )
 async def delete_session(
     session_id: str,
@@ -1614,7 +1617,8 @@ async def delete_session(
     """
     Delete a chat session.
 
-    Permanently removes a chat session and all its messages.
+    Permanently removes a chat session and all its messages, stopping its
+    running or queued task first, as ``POST /sessions/{id}/cancel`` does.
     Only the owner can delete their sessions.
 
     Args:
@@ -1626,6 +1630,7 @@ async def delete_session(
 
     Raises:
         HTTPException: 404 if session not found or not owned by user.
+        HTTPException: 409 if the session's task could not be stopped.
     """
     session_metadata = await get_chat_session_metadata(session_id, user_id)
     if session_metadata is None:
@@ -1633,10 +1638,18 @@ async def delete_session(
             status_code=404,
             detail=f"Session {session_id} not found or access denied",
         )
+    if session_metadata.chat_status != CHAT_STATUS_IDLE:
+        await cancel_session_task(session_id, user_id)
 
     deleted = await delete_chat_session(session_id, user_id, organization_id=ctx.org_id)
 
     if not deleted:
+        current = await get_chat_session_metadata(session_id, user_id)
+        if current is not None and current.chat_status != CHAT_STATUS_IDLE:
+            raise HTTPException(
+                status_code=409,
+                detail="This chat's task could not be stopped. Try again.",
+            )
         raise HTTPException(
             status_code=404,
             detail=f"Session {session_id} not found or access denied",
