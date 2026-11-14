@@ -486,6 +486,42 @@ async def _finish_then_cancel(work: Awaitable[_T]) -> _T:
     return result
 
 
+class _CancelledOnceStarted(asyncio.CancelledError):
+    """A request cancelled while its command started, once the command was
+    running (POSIX): the request stops it and records it, as one cancelled
+    later is."""
+
+    def __init__(self, proc: asyncio.subprocess.Process) -> None:
+        super().__init__()
+        self.proc = proc
+
+
+async def _started_through_cancel(
+    starting: Awaitable[asyncio.subprocess.Process],
+) -> asyncio.subprocess.Process:
+    """The process `starting` creates, though the task waiting for it is
+    cancelled meanwhile: it then raises _CancelledOnceStarted, holding it.
+
+    A POSIX command runs from the moment it is created, and asyncio connects
+    its output pipes after that. Cancelled there, asyncio kills the command
+    alone, so what it had started in its process group ran on, with no
+    record, and the request never had the process to stop. A start that
+    fails started nothing to stop, and the cancel goes on."""
+    task = asyncio.ensure_future(starting)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        if task.cancelled():
+            raise
+        while not task.done():
+            # Cancelled again: the start still has a process to hand over.
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.wait({task})
+        if task.cancelled() or task.exception() is not None:
+            raise
+        raise _CancelledOnceStarted(task.result()) from None
+
+
 async def _audit_jail_violation(
     audit: AuditWriter | None,
     op: str,
@@ -698,6 +734,15 @@ class CommandHandler:
                     creation_flags=creation_flags,
                     new_session=new_session,
                 )
+        except _CancelledOnceStarted as cancelled:
+            # Cancelled as its command started: stopped and recorded as one
+            # cancelled while it runs is (below).
+            await _finish_then_cancel(
+                self._stop_cancelled(
+                    cancelled.proc, msg.id, payload, cwd=str(cwd), env=env, start=start
+                )
+            )
+            raise
         except FileNotFoundError as exc:
             await self._audit(
                 msg.id,
@@ -875,7 +920,7 @@ class CommandHandler:
         # On Windows the command starts suspended, and runs once it is in a
         # job of its own, which a stop ends whole (windows_jobs).
         in_job = sys.platform == "win32"
-        proc = await asyncio.create_subprocess_exec(
+        starting = asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
             env=env,
@@ -884,6 +929,12 @@ class CommandHandler:
             creationflags=creation_flags | (windows_jobs.CREATE_SUSPENDED if in_job else 0),
             start_new_session=new_session,
         )
+        if in_job:
+            # Cancelled while it starts, asyncio ends the command while it is
+            # still suspended: nothing of it ran.
+            proc = await starting
+        else:
+            proc = await _started_through_cancel(starting)
         if in_job and isinstance(proc, asyncio.subprocess.Process):
             try:
                 job = windows_jobs.run_in_job(proc.pid)

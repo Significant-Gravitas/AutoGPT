@@ -1674,6 +1674,144 @@ async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
                 os.kill(int(pid_path.read_text()), signal.SIGKILL)
 
 
+def _hold_pipe_connections(monkeypatch: pytest.MonkeyPatch) -> tuple[asyncio.Event, list[Any]]:
+    """Have asyncio wait to connect a new command's pipes until the event
+    returned is set, as a busy event loop might: its command was created
+    before then. The list gets each command's Popen as its wait begins."""
+    from asyncio import base_subprocess
+
+    may_connect = asyncio.Event()
+    created: list[Any] = []
+    connect = base_subprocess.BaseSubprocessTransport._connect_pipes
+
+    async def connect_when_allowed(self, waiter):
+        created.append(self._proc)
+        await may_connect.wait()
+        await connect(self, waiter)
+
+    monkeypatch.setattr(
+        base_subprocess.BaseSubprocessTransport, "_connect_pipes", connect_when_allowed
+    )
+    return may_connect, created
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.asyncio
+async def test_a_command_cancelled_as_it_starts_is_stopped_with_its_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A POSIX command runs from the moment it is created, and asyncio
+    connects its output pipes after that. A cancel landing in between went
+    to asyncio's own cleanup, which kills the command alone, so a child it
+    had started ran on after its session ended, with no CANCELLED record:
+    the request never had the process to stop."""
+    import fcntl
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    may_connect, _created = _hold_pipe_connections(monkeypatch)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    lock_path = tmp_path / "child.lock"
+    pid_path = tmp_path / "child.pid"
+    child = textwrap.dedent(
+        f"""
+        import fcntl, os, time
+        lock = open({str(lock_path)!r}, "w")
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open({str(pid_path)!r} + ".tmp", "w") as f:
+            f.write(str(os.getpid()))
+        os.replace({str(pid_path)!r} + ".tmp", {str(pid_path)!r})
+        time.sleep(120)
+        """
+    )
+    command = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(120)"
+    )
+
+    def child_released_its_lock() -> bool:
+        with open(lock_path, "w") as probe:
+            try:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path)))
+    )
+    try:
+        # The child runs while the command's start still waits for its pipes.
+        assert await _wait_until(pid_path.exists, timeout=60)
+        assert not task.done()
+        task.cancel()
+        may_connect.set()
+
+        assert await _wait_until(child_released_its_lock, timeout=30)
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+    finally:
+        may_connect.set()
+        if pid_path.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_path.read_text()), signal.SIGKILL)
+        if not task.done():
+            task.cancel()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows starts a command suspended")
+@pytest.mark.asyncio
+async def test_a_windows_command_cancelled_as_it_starts_never_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a command is created suspended and runs only once it is in
+    its job, after asyncio has connected its pipes. A cancel landing before
+    then reaches asyncio's own cleanup, which ends the command while it is
+    still suspended: nothing of it ran, so there is nothing to stop or
+    record (on POSIX there is: the test above)."""
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    may_connect, created = _hold_pipe_connections(monkeypatch)
+    handler = CommandHandler(make_config(tmp_path), Audit())
+    ran = tmp_path / "ran"
+    task = asyncio.create_task(
+        handler.handle(
+            _cmd_msg(
+                argv=[sys.executable, "-c", f"open({str(ran)!r}, 'w').close()"],
+                cwd=str(tmp_path),
+            )
+        )
+    )
+    try:
+        assert await _wait_until(lambda: bool(created), timeout=60)
+        task.cancel()
+        may_connect.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        [popen] = created
+        assert popen.poll() is not None
+        assert not ran.exists()
+        assert not handlers_module._command_jobs
+        assert [record for record in records if record[0] == "EXECUTE_COMMAND"] == []
+    finally:
+        may_connect.set()
+        if not task.done():
+            task.cancel()
+
+
 def _released(held: Path) -> bool:
     """Whether no process holds `held` open any more. Windows refuses to
     delete a file another process has open without sharing deletion, which
