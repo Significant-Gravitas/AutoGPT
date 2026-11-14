@@ -206,7 +206,9 @@ def test_events_from_unfetched_runs_stay_apart() -> None:
 
 
 def test_thread_work_without_an_expert_is_autopilots() -> None:
-    work = _compose(events=[_event(event_id="e1", session_id="s2")])
+    work = _compose(
+        events=[_event(event_id="e1", session_id="s2")], session_titles={"s2": None}
+    )
 
     group = work.groups[0]
     assert group.actor.kind == "autopilot"

@@ -283,33 +283,35 @@ async def _get_work_events(
         )
         return []
     try:
-        return await _without_working_files(user_id, events)
+        return await _without_hidden_files(user_id, events)
     except Exception:
         logger.warning(
             "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
         )
-        # An unchecked file row may be one of Otto's own; the rest still show.
+        # An unchecked file row may be deleted or Otto's own; the rest still show.
         return [event for event in events if event.category != "FILE"]
 
 
-async def _without_working_files(
+async def _without_hidden_files(
     user_id: str, events: list[activity_db.ActivityEvent]
 ) -> list[activity_db.ActivityEvent]:
-    """Drop the FILE rows logged for Otto's own working files before writes
-    stopped logging them. The migration marks the files (``isInternal``), not
-    these log rows, so the mark is read through each row's file id."""
+    """Drop the FILE rows whose file is deleted or is one of Otto's working
+    files. The mark is on the file, not on these append-only log rows, so it is
+    read through each row's file id."""
     file_ids = [e.object_id for e in events if e.category == "FILE" and e.object_id]
-    internal = await workspace_db.list_internal_file_ids(user_id, file_ids)
+    hidden = await workspace_db.list_hidden_file_ids(user_id, file_ids)
     return [
         event
         for event in events
-        if not (event.category == "FILE" and event.object_id in internal)
+        if not (event.category == "FILE" and event.object_id in hidden)
     ]
 
 
 async def _get_session_titles(
     *, user_id: str, session_ids: list[str]
 ) -> dict[str, str | None]:
+    # Recent work links only the chats named here, so a failed read costs the
+    # links, never the page.
     try:
         return await chat_db.get_session_titles(user_id, session_ids)
     except Exception:
