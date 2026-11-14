@@ -51,6 +51,23 @@ def test_catalog_entry_with_a_block_provider_uses_that_provider():
     assert identity.icon == entry.mcp_server.icon_id
 
 
+def test_parallel_mcp_credential_and_block_provider_share_service():
+    # Parallel Search is an MCP server for the same provider as Parallel Decisions.
+    entry = _entry("mcp_parallel")
+    assert entry.mcp_server.provider == "parallel"
+    assert (
+        service_for_catalog_entry(entry).service
+        == service_for_provider("parallel").service
+    )
+
+    url = entry.mcp_server.server_url
+    assert url == "https://search.parallel.ai/mcp"
+    identity = service_for_credential(_mcp_credential(url))
+    assert identity.service == "parallel"
+    assert identity.name == "Parallel Search"
+    assert identity.icon == "parallel"
+
+
 def test_catalog_entry_without_a_block_provider_uses_its_slug():
     identity = service_for_catalog_entry(_entry("mcp_sentry"))
     assert identity.service == "sentry"
