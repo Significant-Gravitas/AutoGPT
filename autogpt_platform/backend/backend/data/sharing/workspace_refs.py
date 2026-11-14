@@ -22,6 +22,7 @@ All three forms are handled by a single recursive walker.
 """
 
 import re
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel
@@ -73,29 +74,43 @@ class WorkspaceArtifactLink(BaseModel):
 def extract_artifact_links(text: str) -> tuple[str, list[WorkspaceArtifactLink]]:
     """Pull ``[name](workspace://id#mime)`` markdown links out of *text*.
 
-    Returns the text with those links removed (surrounding whitespace tidied)
-    plus the parsed artifacts in document order. Raw ``workspace://`` URIs are
-    useless to a chat-platform user, so callers strip them here and deliver the
-    referenced file (or a link to it) separately.
+    Returns the text with each link replaced by its name in backticks
+    (surrounding whitespace tidied) plus the parsed artifacts in document order.
+    Raw ``workspace://`` URIs are useless to a chat-platform user, so callers
+    strip them here and deliver the referenced file (or a link to it)
+    separately. The name stays so a sentence like "I saved [a](…) · [b](…)"
+    still says what was saved. Text that is nothing but links, whitespace and
+    punctuation comes back empty: the delivered files are the whole message.
+    An emoji or other symbol beside a link is content and is kept.
     """
     artifacts: list[WorkspaceArtifactLink] = []
 
     def _capture(match: re.Match[str]) -> str:
+        display_name = match.group(1).strip()
         artifacts.append(
             WorkspaceArtifactLink(
-                display_name=match.group(1).strip(),
+                display_name=display_name,
                 file_id=match.group(2),
                 mime_hint=match.group(3) or None,
             )
         )
-        return ""
+        return f"`{display_name.replace('`', '')}`"
 
     stripped = _WORKSPACE_ARTIFACT_LINK_RE.sub(_capture, text)
+    if artifacts and all(
+        _is_link_separator(ch) for ch in _WORKSPACE_ARTIFACT_LINK_RE.sub("", text)
+    ):
+        return "", artifacts
     # Clean up the gaps the removed links leave behind so surrounding prose
     # still reads naturally.
     stripped = re.sub(r"[ \t]+\n", "\n", stripped)
     stripped = re.sub(r"\n{3,}", "\n\n", stripped)
     return stripped.strip(), artifacts
+
+
+def _is_link_separator(ch: str) -> bool:
+    """Whitespace or punctuation, like the "·" or "," between links."""
+    return ch.isspace() or unicodedata.category(ch).startswith("P")
 
 
 def cut_lands_inside_artifact_link(text: str, cut: int) -> int:

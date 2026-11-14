@@ -1264,6 +1264,26 @@ class TestDeliverArtifact:
         adapter.send_link.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_posted_text_still_names_the_saved_files(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        handler._api.fetch_workspace_artifact = AsyncMock(return_value=None)
+        text = (
+            "I saved the evidence and raw dates: "
+            "[evidence.md](workspace://a) · [raw-dates.csv](workspace://b)."
+        )
+
+        await handler._streamer._send_text_and_artifacts(
+            adapter, "target-1", text, _ctx(), None
+        )
+
+        posted = [call.args[1] for call in adapter.send_message.await_args_list]
+        assert posted[0] == (
+            "I saved the evidence and raw dates: `evidence.md` · `raw-dates.csv`."
+        )
+        assert len(posted) == 3
+
+    @pytest.mark.asyncio
     async def test_too_large_falls_back_to_link_button(self):
         handler = MessageHandler(_api())
         adapter = _adapter()
