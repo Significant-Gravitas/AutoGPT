@@ -205,6 +205,7 @@ from backend.data.subscription_trial import (
 )
 from backend.data.understanding import (
     get_business_understanding,
+    get_stored_user_name,
     upsert_business_understanding,
 )
 from backend.data.user import (
@@ -587,6 +588,7 @@ class DatabaseManager(AppService):
 
     # ============ Understanding ============ #
     get_business_understanding = _(get_business_understanding)
+    get_stored_user_name = _(get_stored_user_name)
     upsert_business_understanding = _(upsert_business_understanding)
 
     # ============ Block Descriptions ============ #
@@ -1209,6 +1211,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
+    get_stored_user_name = d.get_stored_user_name
     upsert_business_understanding = d.upsert_business_understanding
 
     # ============ Block Descriptions ============ #

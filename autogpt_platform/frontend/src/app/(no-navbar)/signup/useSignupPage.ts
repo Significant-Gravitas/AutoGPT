@@ -82,6 +82,7 @@ export function useSignupPage() {
   >({
     resolver: zodResolver(signupFormSchema),
     defaultValues: {
+      name: "",
       email: "",
       password: "",
       confirmPassword: "",
@@ -167,6 +168,7 @@ export function useSignupPage() {
         data.confirmPassword,
         data.marketingOptOut,
         safeNext,
+        data.name,
       );
 
       if (!result.success) {

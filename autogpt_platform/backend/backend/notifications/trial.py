@@ -411,9 +411,7 @@ async def _publish_notice(
 ) -> None:
     """Queue the notice and its trial-group change. Raises when either
     cannot be queued, so the caller gives the claim back."""
-    data = trial_notice_data(
-        trial, kind, first_name(user.name, user.email) or "there", current
-    )
+    data = trial_notice_data(trial, kind, first_name(user.name) or "there", current)
     data.notice_key = claim
     await queue_trial_audience_change(kind, user)
     result = await queue_notification_async(

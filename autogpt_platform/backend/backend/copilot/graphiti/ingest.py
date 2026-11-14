@@ -923,13 +923,14 @@ def _register_dream_schedules(state: _LoopIngestState, scope: MemoryScope) -> No
 
 
 async def resolve_user_name(user_id: str) -> str:
-    """Get the user's display name from BusinessUnderstanding, or fall back to 'User'."""
+    """The name the user's understanding stored, or 'User'. Not `User.name`: a new
+    label starts a new user entity in memory, splitting what it knows."""
     try:
         from backend.data.db_accessors import understanding_db
 
-        understanding = await understanding_db().get_business_understanding(user_id)
-        if understanding and understanding.user_name:
-            return understanding.user_name
+        name = await understanding_db().get_stored_user_name(user_id)
+        if name:
+            return name
     except Exception:
         logger.debug("Could not resolve user name for %s", user_id[:12])
     return "User"

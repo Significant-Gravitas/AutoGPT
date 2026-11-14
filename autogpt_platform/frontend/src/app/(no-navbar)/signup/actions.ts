@@ -23,9 +23,11 @@ export async function signup(
   confirmPassword: string,
   marketingOptOut: boolean,
   next?: string | null,
+  name?: string,
 ) {
   try {
     const parsed = signupFormSchema.safeParse({
+      name,
       email,
       password,
       confirmPassword,
@@ -46,7 +48,8 @@ export async function signup(
         body: {
           email: parsed.data.email,
           password: parsed.data.password,
-          name: parsed.data.email.split("@")[0],
+          // Empty when not given: a stored name is always one the user chose.
+          name: parsed.data.name ?? "",
           callbackURL: getEmailVerificationCallbackURL({
             next,
             marketingOptOut: parsed.data.marketingOptOut,

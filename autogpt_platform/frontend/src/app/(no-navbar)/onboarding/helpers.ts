@@ -19,14 +19,12 @@ interface NormalizedProfile {
   painPoints: string[];
 }
 
-// The wizard no longer asks for a name; the profile carries whatever the
-// account already knows — the same precedence the copilot greeting uses.
+// The profile's name: preferred_name, else the first word of the account's
+// name, else none.
 export function accountDisplayName(user: User | null | undefined): string {
   const preferred = user?.user_metadata.preferred_name?.trim();
   if (preferred) return preferred;
-  const name = user?.user_metadata.name?.trim();
-  if (name) return name.split(" ")[0];
-  return user?.email.split("@")[0] ?? "";
+  return user?.user_metadata.name?.trim().split(" ")[0] ?? "";
 }
 
 export function normalizeOnboardingProfile(

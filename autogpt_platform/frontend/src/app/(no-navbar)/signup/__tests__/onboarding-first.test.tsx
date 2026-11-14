@@ -105,6 +105,7 @@ describe("SignupPage sends a new account to onboarding first", () => {
         PASSWORD,
         false,
         safeNext,
+        "",
       );
     },
   );
@@ -152,6 +153,7 @@ describe("SignupPage sends a new account to onboarding first", () => {
       PASSWORD,
       false,
       next,
+      "",
     );
   });
 

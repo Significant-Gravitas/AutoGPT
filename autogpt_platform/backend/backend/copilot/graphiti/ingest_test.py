@@ -560,46 +560,25 @@ class TestResolveUserName:
     @pytest.mark.asyncio
     async def test_fallback_when_db_raises(self) -> None:
         mock_db = MagicMock()
-        mock_db.return_value.get_business_understanding = AsyncMock(
+        mock_db.return_value.get_stored_user_name = AsyncMock(
             side_effect=RuntimeError("DB not available")
         )
 
-        with patch(
-            "backend.data.db_accessors.understanding_db",
-            mock_db,
-        ):
+        with patch("backend.data.db_accessors.understanding_db", mock_db):
             name = await ingest.resolve_user_name("some-user-id")
 
         assert name == "User"
 
     @pytest.mark.asyncio
-    async def test_returns_user_name_when_available(self) -> None:
-        mock_understanding = SimpleNamespace(user_name="Alice")
+    @pytest.mark.parametrize("stored, expected", [("Alice", "Alice"), (None, "User")])
+    async def test_reads_the_understandings_stored_name(self, stored, expected) -> None:
         mock_db = MagicMock()
-        mock_db.return_value.get_business_understanding = AsyncMock(
-            return_value=mock_understanding
-        )
+        mock_db.return_value.get_stored_user_name = AsyncMock(return_value=stored)
 
-        with patch(
-            "backend.data.db_accessors.understanding_db",
-            mock_db,
-        ):
+        with patch("backend.data.db_accessors.understanding_db", mock_db):
             name = await ingest.resolve_user_name("some-user-id")
 
-        assert name == "Alice"
-
-    @pytest.mark.asyncio
-    async def test_returns_user_when_understanding_is_none(self) -> None:
-        mock_db = MagicMock()
-        mock_db.return_value.get_business_understanding = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.data.db_accessors.understanding_db",
-            mock_db,
-        ):
-            name = await ingest.resolve_user_name("some-user-id")
-
-        assert name == "User"
+        assert name == expected
 
 
 class TestEnqueueEpisode:
