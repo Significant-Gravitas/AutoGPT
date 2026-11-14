@@ -227,7 +227,16 @@ Known gaps:
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, so the shim refuses a `name` whose first
   word is a program, a program's own name included (`reboot` would run it;
-  an app goes by the name `list_apps` shows, such as `Firefox`). On Windows
+  an app goes by the name `list_apps` shows, such as `Firefox`). A `name`
+  no installed app matches it then hands to `xdg-open` if a file or folder
+  of that name is in its working folder, the person's home under systemd
+  (`.bash_history` would open in an editor, for a screenshot to read, past
+  the path jail and the approval `urls` needs), so where the driver acts on
+  the `name` (no `urls`, no `launch_path`) the shim lets it through only
+  when it is an installed app's name or desktop-file id, as `list_apps`
+  lists them, ignoring ASCII case as the driver does. The driver's looser
+  matches, part of a name or a launcher's program, don't count: another
+  app installed meanwhile can leave them matching nothing. On Windows
   the driver hands a `name` that matches no installed app, and a
   `bundle_id` that isn't an AUMID (`Package!App`), to ShellExecuteEx, which
   runs a program of that name from PATH (`logoff` would sign the person

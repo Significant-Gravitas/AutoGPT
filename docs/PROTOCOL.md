@@ -939,8 +939,10 @@ accepts: `check_permissions` with `prompt: true`; any approval argument
 inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
 `bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
 a leading `-`, a control character, on Linux a name whose first word is
-a program, a program's own name included, and on Windows a `bundle_id` that
-isn't an AUMID or a `name` no installed app in `list_apps` would match).
+a program, a program's own name included, or, unless `urls` or `launch_path`
+is given, one that isn't an installed app's name or desktop-file id in
+`list_apps`, and on Windows a `bundle_id` that isn't an AUMID or a `name` no
+installed app in `list_apps` would match).
 
 #### `COMPUTER_TOOL_RESULT` (shim → platform)
 ```json

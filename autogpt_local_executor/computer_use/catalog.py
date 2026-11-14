@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import string
 import sys
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping
@@ -328,12 +329,14 @@ def _check_app_identity(
     # has its first word. A program's own name ("reboot") would run it, in
     # the background. An app's display name, as list_apps gives it ("Google
     # Chrome", "Firefox"), starts with no program's name (PATH lookups are
-    # case-sensitive) and so reaches the match.
+    # case-sensitive) and so reaches the match. (A name that matches no app
+    # either is checked against the installed apps, which takes the driver:
+    # ComputerUseHandler._check_launch_name.)
     # On Windows the driver launches a bundle_id that is an AUMID as a
     # packaged app and hands any other to ShellExecuteEx as a program name,
     # without looking for an installed app first: `logoff` signs the person
     # out. (A launch by `name` is checked against the installed apps, which
-    # takes the driver: ComputerUseHandler._check_windows_launch_name.)
+    # takes the driver: ComputerUseHandler._check_launch_name.)
     bundle_id = arguments.get("bundle_id")
     if platform == "win32" and isinstance(bundle_id, str) and not is_aumid(bundle_id):
         raise ArgumentRefused(
@@ -372,6 +375,34 @@ def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:
     if not query:
         return False
     return any(app.strip().lower().startswith(query) for app in app_names)
+
+
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def linux_app_name_matches(name: str, apps: Iterable[tuple[str, str | None]]) -> bool:
+    """Whether cua-driver 0.38 on Linux surely launches an installed app for
+    a launch_app `name` that no program has: one that is an app's display
+    name or desktop-file id (`apps` holds each app's pair), ignoring ASCII
+    case, as the driver compares them. Its other matches (a launcher's
+    program, part of a display name no other app has) don't count: the
+    apps listed a moment ago may not be the ones the driver reads, and a
+    name it matches to none it hands to xdg-open whenever a file or folder
+    of that name is in its working folder."""
+    query = name.translate(_ASCII_LOWER)
+    return bool(query) and any(
+        query == identity.translate(_ASCII_LOWER) for app in apps for identity in app if identity
+    )
+
+
+def linux_launch_uses_name(arguments: Mapping[str, Any]) -> bool:
+    """Whether cua-driver 0.38 on Linux acts on a launch_app's `name`: it
+    opens `urls` instead when any of them is a string, and runs a
+    `launch_path` that is a string before a name."""
+    urls = arguments.get("urls")
+    if isinstance(urls, list) and any(isinstance(url, str) for url in urls):
+        return False
+    return not isinstance(arguments.get("launch_path"), str)
 
 
 def takes_session(schema: Mapping[str, Any]) -> bool:

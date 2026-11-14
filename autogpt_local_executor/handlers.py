@@ -53,6 +53,8 @@ from .computer_use import (
 )
 from .computer_use.catalog import (
     is_aumid,
+    linux_app_name_matches,
+    linux_launch_uses_name,
     takes_session,
     windows_app_name_matches,
     without_session,
@@ -1505,7 +1507,8 @@ def _session_ended(raw: dict[str, Any]) -> bool:
     )
 
 
-# How long the installed apps' names are kept for checking Windows launches.
+# How long the installed apps are kept for checking launches by name
+# (Windows, Linux).
 INSTALLED_APPS_SECONDS = 60.0
 # How many chats' driver label renewals a machine keeps (session_label): a
 # chat renewed less recently than that many others starts from its first.
@@ -1543,8 +1546,9 @@ class ComputerUseHandler:
         # driver (share_with): a chat's later sessions use the same driver,
         # which refuses the labels it ended until it restarts.
         self._label_renewals: dict[str, int] = {}
-        # Windows: the installed apps' names, and when they were listed.
-        self._installed_apps: tuple[list[str], float] | None = None
+        # Windows and Linux: each installed app's name and bundle_id, and when
+        # they were listed.
+        self._installed_apps: tuple[list[tuple[str, str | None]], float] | None = None
 
     @property
     def shares_a_driver(self) -> bool:
@@ -1908,7 +1912,7 @@ class ComputerUseHandler:
                 details={"tool": tool, "argument": exc.argument},
             ) from exc
         if tool == "launch_app":
-            await self._check_windows_launch_name(arguments, deadline)
+            await self._check_launch_name(arguments, deadline)
         if takes_session(spec.get("inputSchema") or {}):
             arguments["session"] = self.session_label
         timeout = deadline - asyncio.get_running_loop().time()
@@ -1927,41 +1931,67 @@ class ComputerUseHandler:
                     self.clipboard_writeback.clear()
         return self._result_payload(tool, raw)
 
-    async def _check_windows_launch_name(self, arguments: dict[str, Any], deadline: float) -> None:
-        """On Windows cua-driver looks a launch_app `name` up among the
-        installed apps and, when none matches, hands it to ShellExecuteEx,
-        which runs a program of that name from PATH, out of sight: `logoff`
-        signs the person out. A launch by name goes ahead only when an
-        installed app, as list_apps lists it, would match. A launch_path,
-        path or AUMID takes precedence over the name in the driver's routing,
-        so those calls aren't checked here."""
-        name = arguments.get("name")
-        if self.driver.platform != "win32" or not isinstance(name, str):
-            return
-        if any(arguments.get(key) for key in ("launch_path", "path", "aumid")):
-            return
-        bundle_id = arguments.get("bundle_id")
-        if isinstance(bundle_id, str) and is_aumid(bundle_id):
-            return
-        if not windows_app_name_matches(name, await self._installed_app_names(deadline)):
-            raise ComputerUseError(
-                ErrorCode.FEATURE_NOT_SUPPORTED,
-                f"No installed app here is called {name!r}, so cua-driver would run a "
-                "program of that name from PATH, out of sight. Name the app as list_apps "
-                "shows it, pass its AUMID as aumid, or pass the program as launch_path, "
-                "which the person approves.",
-                details={"tool": "launch_app", "argument": "name"},
-            )
+    async def _check_launch_name(self, arguments: dict[str, Any], deadline: float) -> None:
+        """A launch_app `name` goes ahead only when an installed app, as
+        list_apps lists it, would match it, on the systems where cua-driver
+        acts on a name nothing matches.
 
-    async def _installed_app_names(self, deadline: float) -> list[str]:
-        """The installed apps' names from list_apps, kept for a minute. A
-        running process no installed app matched has no launch_path, and
-        the driver's name lookup doesn't find it either."""
+        On Windows the driver looks the name up among the installed apps
+        and, when none matches, hands it to ShellExecuteEx, which runs a
+        program of that name from PATH, out of sight: `logoff` signs the
+        person out. A launch_path, path or AUMID takes precedence over the
+        name in the driver's routing, so those calls aren't checked.
+
+        On Linux, once no program has the name's first word
+        (check_arguments), the driver looks for an installed app and, when
+        none matches, hands the name to xdg-open if a file or folder of that
+        name is in its working folder, the person's home under systemd:
+        `.bash_history` opens in an editor, for a screenshot to read, past
+        the path jail and the approval `urls` needs. Links to open, and then
+        a launch_path, take precedence over the name, so those calls aren't
+        checked."""
+        name = arguments.get("name")
+        platform = self.driver.platform
+        if not isinstance(name, str):
+            return
+        if platform == "win32":
+            if any(arguments.get(key) for key in ("launch_path", "path", "aumid")):
+                return
+            bundle_id = arguments.get("bundle_id")
+            if isinstance(bundle_id, str) and is_aumid(bundle_id):
+                return
+            apps = await self._installed_apps_listed(deadline)
+            if not windows_app_name_matches(name, [app_name for app_name, _ in apps]):
+                raise ComputerUseError(
+                    ErrorCode.FEATURE_NOT_SUPPORTED,
+                    f"No installed app here is called {name!r}, so cua-driver would run a "
+                    "program of that name from PATH, out of sight. Name the app as list_apps "
+                    "shows it, pass its AUMID as aumid, or pass the program as launch_path, "
+                    "which the person approves.",
+                    details={"tool": "launch_app", "argument": "name"},
+                )
+        elif platform.startswith("linux") and linux_launch_uses_name(arguments):
+            if not linux_app_name_matches(name, await self._installed_apps_listed(deadline)):
+                raise ComputerUseError(
+                    ErrorCode.FEATURE_NOT_SUPPORTED,
+                    f"No installed app here has the name or bundle_id {name!r}, so "
+                    "cua-driver would open a file or folder of that name, if there is one, "
+                    "without the person's approval. Name the app exactly as list_apps shows "
+                    "it, or pass the program as launch_path or the file as urls, which the "
+                    "person approves.",
+                    details={"tool": "launch_app", "argument": "name"},
+                )
+
+    async def _installed_apps_listed(self, deadline: float) -> list[tuple[str, str | None]]:
+        """Each installed app's name and bundle_id (on Linux its desktop-file
+        id) from list_apps, kept for a minute. A running process no installed
+        app matched has no launch_path, and the driver's name lookup doesn't
+        find it either."""
         loop = asyncio.get_running_loop()
         if self._installed_apps is not None:
-            names, listed_at = self._installed_apps
+            listed, listed_at = self._installed_apps
             if loop.time() - listed_at < INSTALLED_APPS_SECONDS:
-                return names
+                return listed
         timeout = deadline - loop.time()
         if timeout <= 0:
             raise CallNotStarted(
@@ -1971,19 +2001,20 @@ class ComputerUseHandler:
         structured = raw.get("structuredContent")
         apps = structured.get("apps") if isinstance(structured, dict) else None
         if raw.get("isError") or not isinstance(apps, list):
+            aumid = "the app's AUMID as aumid, or " if self.driver.platform == "win32" else ""
             raise ComputerUseError(
                 ErrorCode.FEATURE_NOT_SUPPORTED,
-                "The installed apps couldn't be listed to check this launch's name. Pass the "
-                "app's AUMID as aumid, or the program as launch_path, which the person approves.",
+                "The installed apps couldn't be listed to check this launch's name. Pass "
+                f"{aumid}the program as launch_path, which the person approves.",
                 details={"tool": "launch_app", "argument": "name"},
             )
-        names = [
-            app["name"]
+        listed = [
+            (app["name"], app["bundle_id"] if isinstance(app.get("bundle_id"), str) else None)
             for app in apps
             if isinstance(app, dict) and isinstance(app.get("name"), str) and app.get("launch_path")
         ]
-        self._installed_apps = (names, loop.time())
-        return names
+        self._installed_apps = (listed, loop.time())
+        return listed
 
     async def _clipboard_read(self, arguments: dict[str, Any], timeout: float) -> dict[str, Any]:
         """Relay a clipboard read under the shim's rules: by default only
@@ -2380,7 +2411,8 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "call without asking. Use one only when the task needs that file. A `run_script` "
         "script needs approval too, since its calls can save a screenshot to a file: use "
         "`run_steps` or single calls unless the flow needs a script's logic.",
-        "- Open an app with `launch_app` by its `name` (or `bundle_id`) alone. A command "
+        "- Open an app with `launch_app` by its `name` as `list_apps` shows it (or its "
+        "`bundle_id`) alone. A command "
         "line, a path, links or files to open, extra arguments or an inspector port need "
         "the same approval, since the program they start runs out of sight.",
         f"- {clipboard}",

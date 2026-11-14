@@ -1420,11 +1420,12 @@ async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
     ]
 
 
-async def test_a_windows_launch_name_is_refused_when_the_apps_cannot_be_listed(
-    make_handler, fake_log, monkeypatch
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+async def test_a_launch_name_is_refused_when_the_apps_cannot_be_listed(
+    make_handler, fake_log, monkeypatch, platform: str
 ) -> None:
-    monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the Windows shell did not answer")
-    handler = make_handler(platform="win32")
+    monkeypatch.setenv("FAKE_CUA_LIST_APPS_ERROR", "the shell did not answer")
+    handler = make_handler(platform=platform)
 
     response = await handler.handle(_call("launch_app", {"name": "Notepad"}))
 
@@ -1434,27 +1435,117 @@ async def test_a_windows_launch_name_is_refused_when_the_apps_cannot_be_listed(
 
 
 @pytest.mark.parametrize(
-    ("platform", "arguments"),
+    ("platform", "arguments", "approved"),
     [
-        ("win32", {"name": "logoff", "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
-        ("win32", {"name": "logoff", "bundle_id": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}),
-        ("linux", {"name": "Calculator"}),
-        ("darwin", {"name": "Calculator"}),
+        ("win32", {"name": "logoff", "aumid": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"}, []),
+        (
+            "win32",
+            {"name": "logoff", "bundle_id": "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App"},
+            [],
+        ),
+        ("linux", {"name": "invoice.pdf", "launch_path": "zebra-notes"}, ["launch_path"]),
+        ("linux", {"name": "invoice.pdf", "urls": ["https://example.com"]}, ["urls"]),
+        ("darwin", {"name": "Calculator"}, []),
     ],
-    ids=["windows-aumid", "windows-aumid-bundle-id", "linux", "macos"],
+    ids=["windows-aumid", "windows-aumid-bundle-id", "linux-launch-path", "linux-urls", "macos"],
 )
 async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
-    make_handler, fake_log, monkeypatch, platform: str, arguments: dict
+    make_handler, fake_log, monkeypatch, platform: str, arguments: dict, approved: list
 ) -> None:
-    """An AUMID wins over the name in cua-driver's routing, and elsewhere
-    than Windows the name never reaches ShellExecuteEx."""
+    """An AUMID wins over the name in cua-driver's routing on Windows, and
+    on Linux links to open and then a launch_path do; macOS looks a name up
+    among its apps and goes no further."""
     monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(["Notepad"]))
     handler = make_handler(platform=platform)
 
-    response = await handler.handle(_call("launch_app", arguments))
+    response = await handler.handle(_call("launch_app", arguments, approved_arguments=approved))
 
     assert isinstance(response, ComputerToolResultMessage)
     assert [call["tool"] for call in _records(fake_log, "call")] == ["launch_app"]
+
+
+_LINUX_APPS = [
+    ("Zebra Notes", "org.example.ZebraNotes"),
+    ("Éditeur", "org.example.Editeur"),
+    ("Mousepad", None),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "matches"),
+    [
+        ("Zebra Notes", True),
+        ("zebra notes", True),
+        ("ZEBRA NOTES", True),
+        ("org.example.ZebraNotes", True),
+        ("ORG.EXAMPLE.ZEBRANOTES", True),
+        ("ÉDITEUR", True),
+        ("Mousepad", True),
+        # The driver folds ASCII letters only.
+        ("éditeur", False),
+        # Its other matches can change before it looks (part of a name
+        # another app installed meanwhile also has), so they don't count,
+        # and it keeps the spaces.
+        ("Zebra", False),
+        (" Zebra Notes", False),
+        ("invoice.pdf", False),
+        ("..", False),
+        ("", False),
+    ],
+)
+def test_a_linux_launch_name_matches_an_app_as_the_driver_always_does(
+    name: str, matches: bool
+) -> None:
+    """cua-driver 0.38 on Linux, once no program has the name's first word:
+    an installed app's display name or desktop-file id, ignoring ASCII case."""
+    assert catalog.linux_app_name_matches(name, _LINUX_APPS) is matches
+
+
+@pytest.mark.parametrize("name", ["invoice.pdf", ".bash_history", "..", "Zebra", "logoff"])
+async def test_a_linux_launch_by_a_name_no_app_has_never_reaches_the_driver(
+    make_handler, fake_log, monkeypatch, name: str
+) -> None:
+    """On Linux cua-driver hands a name that no program has and no installed
+    app matches to xdg-open when a file or folder of that name is in its
+    working folder, the person's home under systemd: `.bash_history` opened
+    in an editor, for a screenshot to read, past the path jail and the
+    approval `urls` needs. A running process of that name, which no
+    installed app matched, doesn't count."""
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": name}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    monkeypatch.setenv(
+        "FAKE_CUA_APPS",
+        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
+    )
+    handler = make_handler(platform="linux")
+
+    first = await handler.handle(_call("launch_app", {"name": "zebra notes"}))
+    second = await handler.handle(_call("launch_app", {"name": "org.example.ZebraNotes"}))
+
+    for response in (first, second):
+        assert isinstance(response, ComputerToolResultMessage)
+        assert response.payload.is_error is False
+    # The installed apps are listed once and kept for a while.
+    assert [call["tool"] for call in _records(fake_log, "call")] == [
+        "list_apps",
+        "launch_app",
+        "launch_app",
+    ]
 
 
 @pytest.mark.parametrize(
