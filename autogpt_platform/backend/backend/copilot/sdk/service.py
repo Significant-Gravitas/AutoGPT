@@ -343,6 +343,8 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = HUNG_TOOL_CAP_SECONDS
+# How long a stopped turn's CLI gets to answer the interrupt before its close.
+_CLI_INTERRUPT_SECONDS = 2.0
 
 
 @dataclass
@@ -4513,6 +4515,13 @@ async def _run_stream_attempt(
                 client, ctx, state, acc, loop_state
             ):
                 yield ev
+    except (asyncio.CancelledError, GeneratorExit):
+        # The CLI replies on through a closed stdin, so the close would wait out
+        # its grace and then SIGTERM it; interrupted, it drops the reply at once.
+        with contextlib.suppress(Exception):
+            async with asyncio.timeout(_CLI_INTERRUPT_SECONDS):
+                await client.interrupt()
+        raise
     finally:
         await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
 
