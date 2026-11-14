@@ -43,8 +43,9 @@ def test_old_user_schedules_run_late_while_memory_crons_and_pauses_keep_theirs(
     monkeypatch.setattr(
         "backend.executor.scheduler.run_async", lambda coro, *_, **__: coro.close()
     )
+    store = ResilientSQLAlchemyJobStore(url=database_url)
     restarted = BackgroundScheduler(
-        jobstores={_EXECUTION: ResilientSQLAlchemyJobStore(url=database_url)},
+        jobstores={_EXECUTION: store},
         job_defaults={
             "coalesce": True,
             "max_instances": 1000,
@@ -65,6 +66,7 @@ def test_old_user_schedules_run_late_while_memory_crons_and_pauses_keep_theirs(
     restarted.start(paused=True)
     service = Scheduler(register_system_tasks=False)
     service.scheduler = restarted
+    service._execution_jobstore = store
     try:
         service._drop_stored_misfire_graces()
         restarted.resume()
@@ -120,6 +122,8 @@ def test_the_scheduler_drops_stored_graces_once_it_has_started(tmp_path, monkeyp
                 thread.join(10)
     finally:
         service.cleanup()
+        if scheduler_module._event_loop is not None:
+            scheduler_module._event_loop.close()
 
     assert _stored(database_url)["graph"].misfire_grace_time is None
 
@@ -129,8 +133,15 @@ def _job(job_id, func, *, next_run_time, misfire_grace_time, kwargs=None) -> dic
         "id": job_id,
         "func": func,
         "kwargs": kwargs or {},
-        # Yearly, so no regular run falls inside the test.
-        "trigger": CronTrigger(month=1, day=1, hour=0, minute=0, timezone=timezone.utc),
+        # Next regular run two years out, so none falls inside the test.
+        "trigger": CronTrigger(
+            year=datetime.now(timezone.utc).year + 2,
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            timezone=timezone.utc,
+        ),
         "next_run_time": next_run_time,
         "misfire_grace_time": misfire_grace_time,
     }

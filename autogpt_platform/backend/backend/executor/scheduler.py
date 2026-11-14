@@ -3538,7 +3538,10 @@ class Scheduler(AppService):
         dropped = 0
         token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
         try:
-            for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
+            # The store's own bounded read, so the scan holds no APScheduler lock.
+            for job in self._execution_jobstore._get_jobs(
+                statement_timeout=MEMORY_CRON_LISTING_TIMEOUT_SECONDS
+            ):
                 if (
                     job.func_ref not in _USER_SCHEDULE_FUNC_REFS
                     or job.misfire_grace_time is None
