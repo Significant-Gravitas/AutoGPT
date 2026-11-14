@@ -40,6 +40,9 @@ import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
+import { useChatDraftAccess } from "./components/ChatInput/useChatDraft";
+import { restoreFailedDraft } from "./components/ChatInput/useChatInput";
+import { sessionDraftKey } from "./components/SendAtReset/helpers";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
@@ -428,7 +431,7 @@ function useCopilotPageChat(
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
-  const { queuedMessages, queueMessage } = useCopilotPendingChips({
+  const { queuedMessages, queueMessage, dropQueued } = useCopilotPendingChips({
     sessionId,
     status,
     messages,
@@ -439,6 +442,31 @@ function useCopilotPageChat(
           drainedCount: stream.drainedCount,
         }),
   });
+
+  // Every follow-up queued before a Stop was either read by the stopped turn
+  // or discarded. The discarded ones go to this chat's own draft, which is
+  // still right if the user switched chats while the cancel ran. When the
+  // server can't tell which it discarded, the chips stay as they are.
+  const stoppedChatDraft = useChatDraftAccess(
+    sessionId ? sessionDraftKey(sessionId) : undefined,
+  );
+  async function stopAndGiveBackQueued() {
+    const queued = queuedMessages;
+    const discarded = await stop();
+    if (discarded === null) return;
+    dropQueued(queued);
+    if (discarded.length === 0) return;
+    const text = discarded.join("\n\n");
+    stoppedChatDraft.write((current) => restoreFailedDraft(current, text));
+    toast({
+      title:
+        discarded.length === 1
+          ? "Queued message not sent"
+          : "Queued messages not sent",
+      description:
+        "Stop cancels what Otto hadn't read yet. It's back in the composer of the chat you stopped.",
+    });
+  }
 
   useCopilotNotifications(sessionId);
 
@@ -598,7 +626,7 @@ function useCopilotPageChat(
     messages: displayMessages,
     status,
     error,
-    stop,
+    stop: stopAndGiveBackQueued,
     isReconnecting,
     isFinishProbing,
     isRestoringActiveSession,
