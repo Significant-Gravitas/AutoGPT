@@ -103,6 +103,8 @@ class FakeWorker:
         self.amounts: list[int] = []
         # Link answers a create with a request for another amount.
         self.mismatched_create = False
+        # The next cancel fails, so Link never confirms it.
+        self.cancel_fails = False
         # Each create gets its own request; a canceled one stays canceled.
         self.created = 0
         self.canceled: set[str] = set()
@@ -121,6 +123,9 @@ class FakeWorker:
             return WorkerResult(error=self.delegated_error)
         if job.action == "create" and self.create_error:
             return WorkerResult(error=self.create_error)
+        if job.action == "cancel" and self.cancel_fails:
+            self.cancel_fails = False
+            return WorkerResult(error="private_checkout_failed")
         if job.action == "raise" and self.raise_error:
             return WorkerResult(error=self.raise_error)
         spend = await synthetic_spend(job)

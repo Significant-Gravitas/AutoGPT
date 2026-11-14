@@ -263,6 +263,31 @@ async def test_a_raise_whose_new_request_failed_is_finished_by_a_retry(tools, pl
 
 
 @pytest.mark.asyncio
+async def test_a_raise_whose_cancel_link_did_not_confirm_keeps_the_request(tools, plan):
+    """Link holds the earlier request until it confirms the cancel, so the
+    raise stops there and the checkout keeps tracking it; the retry cancels it
+    again before asking for the new total."""
+    created = await request(plan)
+    tools.status = "pending_approval"
+    tools.cancel_fails = True
+
+    failed = await raise_to(created.checkout_id, 250)
+
+    assert "call this with the same new total" in failed.output
+    assert tools.calls == ["create", "status", "cancel"]
+    unchanged = parsed(
+        await run("browser_link_payment_status", checkout_id=created.checkout_id)
+    )
+    assert (unchanged.amount, unchanged.revision) == (100, 0)
+    assert unchanged.spend_request_id == created.spend_request_id
+
+    raised = parsed(await raise_to(created.checkout_id, 250))
+
+    assert (raised.amount, raised.revision) == (250, 1)
+    assert tools.calls[3:] == ["status", "status", "cancel", "create"]
+
+
+@pytest.mark.asyncio
 async def test_a_raise_moved_to_link_whose_request_failed_is_finished_by_a_retry(
     tools, plan, monkeypatch
 ):

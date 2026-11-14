@@ -74,8 +74,8 @@ async def _raise_in_link(
 ) -> CheckoutView:
     """Link's guide: only an approved request is raised (incremental
     authorization). One still waiting for approval, or one Link won't raise,
-    is canceled and asked for again at the new total; one that is over can't
-    change."""
+    is canceled and, once Link confirms that, asked for again at the new
+    total; one that is over can't change."""
     token = request.access_token
     current = await broker_link.status(intent, token)
     if current.status in TERMINAL_STATUSES:
@@ -86,7 +86,11 @@ async def _raise_in_link(
         else None
     )
     if spend is None:
-        await broker_link.cancel(intent, token)
+        canceled = await broker_link.cancel(intent, token)
+        if canceled is None or canceled.status not in TERMINAL_STATUSES:
+            # Link keeps the earlier request until it confirms the cancel, so
+            # the checkout keeps tracking it and the retry cancels it again.
+            raise RuntimeError("Link did not confirm canceling the request")
         raised.spend_request_id = None
         raised.approval_url = ""
         # Saved before the new request: if creating it fails, the retry at
