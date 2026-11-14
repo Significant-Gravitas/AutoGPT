@@ -39,14 +39,17 @@ def test_limits_and_oom_score_are_set_without_a_shell():
     assert command[:bwrap] == ["choom", "-n", "1000", "--"]
     assert flags.index("--remount-ro") > flags.index("--proc")
     assert flags[flags.index("--remount-ro") + 1] == "/proc"
-    assert sandboxed[0] == "prlimit"
-    assert sandboxed[-3:] == ["--", "echo", "hi"]
-    assert {arg.split("=")[0] for arg in sandboxed[1:-3]} == {
-        "--nproc",
-        "--data",
-        "--fsize",
-        "--nofile",
-    }
+    # No memory cap: the OOM order bounds memory, and a fixed cap breaks
+    # encoders whose use grows with the host's cores.
+    assert sandboxed == [
+        "prlimit",
+        "--nproc=256",
+        "--fsize=4294967296",
+        "--nofile=1024",
+        "--",
+        "echo",
+        "hi",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -95,7 +98,6 @@ async def test_the_command_runs_under_its_limits_and_cannot_lower_its_oom_score(
     assert exit_code == 0, stderr
     names = {
         "--nproc": "Max processes",
-        "--data": "Max data size",
         "--fsize": "Max file size",
         "--nofile": "Max open files",
     }

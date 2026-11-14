@@ -5,7 +5,8 @@ Provides filesystem + network isolated command execution using **bubblewrap**
 writable workspace only, clean environment, network blocked.
 
 Tools that call :func:`run_sandboxed` must first check :func:`has_full_sandbox`
-and refuse to run if bubblewrap is not available.
+and refuse to run if bubblewrap or util-linux's ``choom`` and ``prlimit`` are
+not available.
 """
 
 import asyncio
@@ -16,8 +17,6 @@ import platform
 import shutil
 import signal
 from typing import BinaryIO
-
-from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -117,15 +116,13 @@ _COMPAT_PATHS = [
 ]
 
 # Per-process limits; prlimit exits without running the command when one
-# cannot be set.
+# cannot be set. Memory is left to the OOM order below: what a process needs
+# grows with the host's core count (x264 threads), so no fixed cap fits.
 _RESOURCE_LIMITS = [
     "prlimit",
     "--nproc=256",  # tasks per sandbox, threads included
-    # Writable memory, not address space: node and WebAssembly reserve gigabytes.
-    f"--data={1024 * 1024 * 1024}",
-    # The largest file the workspace stores.
-    f"--fsize={Config().max_file_size_mb * 1024 * 1024}",
-    "--nofile=256",
+    f"--fsize={4 * 1024**3}",  # per file; a decompressed upload can pass 1 GB
+    "--nofile=1024",
     "--",
 ]
 
@@ -154,9 +151,8 @@ def _build_bwrap_command(
       attach to their shared memory, semaphores and message queues.  The PID
       namespace requires a host that lets the sandbox mount its own ``/proc``;
       where it does not, every command fails with :data:`_PROC_MOUNT_HELP`.
-    - **Resource limits**: ``prlimit`` caps tasks (256), data memory
-      (1 GiB), file size (the workspace's limit) and open FDs (256); the
-      command does not run if a limit cannot be set.
+    - **Resource limits**: ``prlimit`` caps tasks (256), file size (4 GiB)
+      and open FDs (1024).
     - **Killed first on OOM**: ``choom`` gives the sandbox the highest
       ``oom_score_adj``, and ``/proc`` is read-only inside it.
     - **New session**: prevents terminal control escape.
@@ -248,7 +244,8 @@ async def run_sandboxed(
     """
     if not has_full_sandbox():
         raise RuntimeError(
-            "run_sandboxed() requires bubblewrap but bwrap is not available. "
+            "run_sandboxed() requires bubblewrap and util-linux's choom and "
+            "prlimit, and one of them is not available. "
             "Callers must check has_full_sandbox() before calling this function."
         )
 
