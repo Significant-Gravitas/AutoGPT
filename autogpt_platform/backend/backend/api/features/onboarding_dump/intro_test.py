@@ -8,8 +8,11 @@ built without the registry offers integrations we do not have.
 import json
 import re
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
+import openai
 import pytest
 from pytest_mock import MockerFixture
 
@@ -125,13 +128,20 @@ async def test_an_over_long_greeting_keeps_most_of_itself(
 
 
 @pytest.mark.asyncio
-async def test_the_greeting_is_written_without_thinking_first(client: MagicMock):
-    """The plan step waits on this call, so the model answers straight away
-    rather than thinking before its first token."""
-    await intro.generate_intro(TRANSCRIPT)
+async def test_sonnet_writes_the_greeting_through_openrouter_s_reasoning_rule(
+    client: MagicMock, mocker: MockerFixture
+):
+    """OpenRouter refuses Sonnet 5.5 a request with reasoning off, which handed
+    every greeting to the backup from v0.11.2 on."""
+    mocker.patch.object(intro, "_MODEL", "anthropic/claude-sonnet-5.5")
+    client.chat.completions.create.side_effect = _openrouter
 
-    kwargs = client.chat.completions.create.await_args.kwargs
-    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == "Written by anthropic/claude-sonnet-5.5."
+    assert len(prompts) == 5
+    models = [c.kwargs["model"] for c in client.chat.completions.create.await_args_list]
+    assert models == ["anthropic/claude-sonnet-5.5"]
 
 
 def test_both_copies_of_the_instructions_ask_for_the_same_length():
@@ -190,6 +200,23 @@ def _sent(client: MagicMock, role: str) -> str:
     return next(m["content"] for m in messages if m["role"] == role)
 
 
+async def _openrouter(**kwargs: Any) -> SimpleNamespace:
+    """A completion the way OpenRouter answers it: Sonnet 5.5's endpoint
+    refuses reasoning off, and every greeting names the model that wrote it."""
+    reasoning = (kwargs.get("extra_body") or {}).get("reasoning") or {}
+    if "claude-sonnet-5" in kwargs["model"] and reasoning.get("enabled") is False:
+        request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+        raise openai.BadRequestError(
+            "Reasoning is mandatory for this endpoint and cannot be disabled.",
+            response=httpx.Response(400, request=request),
+            body=None,
+        )
+    data = {**GENERATION, "greeting": f"Written by {kwargs['model']}."}
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(data)))]
+    )
+
+
 def test_the_local_prompt_offers_an_optional_why_per_prompt():
     assert '"why" (optional)' in intro._LOCAL_PROMPT
     assert f"at most {intro.MAX_WHY_CHARS} characters" in intro._LOCAL_PROMPT
@@ -237,8 +264,10 @@ async def test_a_failed_sonnet_call_gets_the_greeting_from_the_backup(
 
     assert greeting == GENERATION["greeting"]
     assert [p.title for p in prompts] == [p["title"] for p in GENERATION["prompts"]]
-    models = [c.kwargs["model"] for c in client.chat.completions.create.await_args_list]
-    assert models == [intro._MODEL, intro._BACKUP_MODEL]
+    calls = client.chat.completions.create.await_args_list
+    assert [c.kwargs["model"] for c in calls] == [intro._MODEL, intro._BACKUP_MODEL]
+    # The backup is the fast answer inside the plan step's wait: no thinking first.
+    assert calls[1].kwargs["extra_body"] == {"reasoning": {"enabled": False}}
 
 
 @pytest.mark.asyncio

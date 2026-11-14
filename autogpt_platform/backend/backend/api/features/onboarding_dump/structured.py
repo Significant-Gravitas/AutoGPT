@@ -9,7 +9,7 @@ from backend.api.features.onboarding_dump.parsing import parse_response_json
 
 # Claude 5 models think adaptively, and the thinking counts against max_tokens:
 # on a real brain dump Haiku spent the whole cap and the JSON came back cut off.
-# The greeting sends it too (``intro``): the plan step waits on that call.
+# The greeting's Haiku backup sends it too (``intro``); Sonnet 5.5 refuses it.
 NO_REASONING = {"reasoning": {"enabled": False}}
 
 

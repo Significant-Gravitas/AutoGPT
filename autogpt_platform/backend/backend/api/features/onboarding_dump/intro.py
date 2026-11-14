@@ -43,10 +43,9 @@ _BACKUP_MODEL = os.environ.get(
 )
 _BACKUP_TIMEOUT_SECONDS = 25
 _HEDGE_SECONDS = 12
-# Reasoning is off (``structured.NO_REASONING``): the plan step waits on this
-# call, and adaptive thinking came before every token of the answer. The
-# answer alone, a greeting and six prompts at their longest, fits in this.
-_MAX_TOKENS = 4_000
+# Sonnet 5.5 refuses reasoning off, so it thinks first and the thinking counts
+# against this: at 3,000 one call in five came back cut off mid-JSON.
+_MAX_TOKENS = 6_000
 
 # The Langfuse copy of these instructions wins whenever it is reachable,
 # so it must be versioned in lockstep with ``_LOCAL_PROMPT`` — a voice
@@ -229,7 +228,8 @@ async def _generate(
                 ],
                 temperature=0.6,
                 max_tokens=_MAX_TOKENS,
-                extra_body=NO_REASONING,
+                # Sonnet 5.5 refuses reasoning off; only the backup skips it.
+                extra_body=None if model == _MODEL else NO_REASONING,
             ),
             timeout=timeout,
         )
