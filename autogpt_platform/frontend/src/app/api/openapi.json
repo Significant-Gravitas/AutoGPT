@@ -13671,6 +13671,58 @@
         }
       }
     },
+    "/api/oauth/register": {
+      "post": {
+        "tags": ["oauth"],
+        "summary": "Register Client",
+        "description": "Register a public OAuth client (RFC 7591), as MCP clients do to sign in.",
+        "operationId": "postOauthRegisterClient",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientRegistrationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientRegistrationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Dynamic client registration is not enabled"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many registrations" }
+        }
+      }
+    },
     "/api/oauth/revoke": {
       "post": {
         "tags": ["oauth"],
@@ -23437,6 +23489,116 @@
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
       },
+      "ClientRegistrationError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": ["invalid_redirect_uri", "invalid_client_metadata"],
+            "title": "Error"
+          },
+          "error_description": {
+            "type": "string",
+            "title": "Error Description"
+          }
+        },
+        "type": "object",
+        "required": ["error", "error_description"],
+        "title": "ClientRegistrationError",
+        "description": "RFC 7591 §3.2.2."
+      },
+      "ClientRegistrationRequest": {
+        "properties": {
+          "redirect_uris": {
+            "items": { "type": "string", "maxLength": 2048 },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Redirect Uris"
+          },
+          "token_endpoint_auth_method": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Token Endpoint Auth Method",
+            "default": "none"
+          },
+          "grant_types": {
+            "items": { "type": "string", "maxLength": 100 },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Grant Types",
+            "default": ["authorization_code", "refresh_token"]
+          },
+          "response_types": {
+            "items": { "type": "string", "maxLength": 100 },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Response Types",
+            "default": ["code"]
+          },
+          "client_name": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Client Name"
+          },
+          "scope": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Scope",
+            "description": "Space-separated; every permission if omitted"
+          }
+        },
+        "type": "object",
+        "required": ["redirect_uris"],
+        "title": "ClientRegistrationRequest",
+        "description": "The client metadata a client registers with (RFC 7591 §2).\n\nMembers this server doesn't use, such as `logo_uri`, are ignored."
+      },
+      "ClientRegistrationResponse": {
+        "properties": {
+          "client_id": { "type": "string", "title": "Client Id" },
+          "client_id_issued_at": {
+            "type": "integer",
+            "title": "Client Id Issued At"
+          },
+          "client_name": { "type": "string", "title": "Client Name" },
+          "redirect_uris": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Redirect Uris"
+          },
+          "grant_types": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Grant Types"
+          },
+          "response_types": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Response Types",
+            "default": ["code"]
+          },
+          "token_endpoint_auth_method": {
+            "type": "string",
+            "const": "none",
+            "title": "Token Endpoint Auth Method",
+            "default": "none"
+          },
+          "scope": { "type": "string", "title": "Scope" }
+        },
+        "type": "object",
+        "required": [
+          "client_id",
+          "client_id_issued_at",
+          "client_name",
+          "redirect_uris",
+          "grant_types",
+          "scope"
+        ],
+        "title": "ClientRegistrationResponse",
+        "description": "The client as registered (RFC 7591 §3.2.1). It has no secret."
+      },
       "CloudExecutionTargetRequest": {
         "properties": {
           "kind": {
@@ -32904,7 +33066,11 @@
             "type": "array",
             "title": "Scopes"
           },
-          "owner_id": { "type": "string", "title": "Owner Id" },
+          "owner_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Owner Id",
+            "description": "None for a client that registered itself"
+          },
           "is_active": { "type": "boolean", "title": "Is Active" },
           "is_public": {
             "type": "boolean",
@@ -32953,10 +33119,15 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
+          },
+          "self_registered": {
+            "type": "boolean",
+            "title": "Self Registered",
+            "description": "The application registered itself; nobody has reviewed it"
           }
         },
         "type": "object",
-        "required": ["name", "scopes"],
+        "required": ["name", "scopes", "self_registered"],
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },

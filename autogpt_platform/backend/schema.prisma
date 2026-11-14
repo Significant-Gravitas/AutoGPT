@@ -3368,28 +3368,29 @@ model OAuthApplication {
   description      String?
   logoUrl          String? // URL to app logo stored in GCS
   clientId         String  @unique
-  clientSecret     String // Hashed with Scrypt (same as API keys)
-  clientSecretSalt String // Salt for Scrypt hashing
+  // Hashed with Scrypt (same as API keys); null for a client that registered
+  // itself, which is public
+  clientSecret     String?
+  clientSecretSalt String? // Salt for Scrypt hashing
 
   // OAuth configuration
   redirectUris String[] // Allowed callback URLs
   grantTypes   String[]           @default(["authorization_code", "refresh_token"])
   scopes       APIKeyPermission[] // Which permissions the app can request
 
-  // Application management
-  ownerId  String
-  Owner    User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Application management; no owner for a client that registered itself
+  ownerId  String?
+  Owner    User?   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   isActive Boolean @default(true)
 
   // Public clients (e.g. native desktop apps, mobile apps, SPAs) cannot
   // safely keep a `clientSecret`. For these, PKCE (RFC 7636) is the only
   // credential — the secret check in `validate_client_credentials` is
-  // skipped when `isPublic && grant uses PKCE`. `clientSecret` /
-  // `clientSecretSalt` are still required at the column level (they hold
-  // a random placeholder for public clients); the auth path simply
-  // never compares them. autogpt-local-executor (the desktop shim
-  // that drives the platform from a user's machine) is the first
-  // first-party public client.
+  // skipped when `isPublic && grant uses PKCE`. A first-party public client
+  // holds a random placeholder `clientSecret`, and a client that registered
+  // itself holds none; the auth path never compares either.
+  // autogpt-local-executor (the desktop shim that drives the platform from a
+  // user's machine) is the first first-party public client.
   isPublic Boolean @default(false)
 
   // Relations

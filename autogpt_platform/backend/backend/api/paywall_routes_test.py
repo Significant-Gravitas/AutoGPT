@@ -342,6 +342,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/integrations/{provider}/webhooks/{webhook_id}/ingress",
     "POST /api/oauth/introspect",
     "POST /api/oauth/revoke",
+    "POST /api/oauth/register",
     "POST /api/oauth/token",
     "GET /api/platform-config",
     "GET /api/public/shared/chats/{share_token}",
