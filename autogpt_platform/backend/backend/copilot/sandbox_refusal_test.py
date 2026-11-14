@@ -57,7 +57,7 @@ async def test_the_sdk_engine_ends_a_turn_whose_sandbox_cannot_start(
             patch(f"{svc}.get_or_create_sandbox", AsyncMock(side_effect=raised))
         )
         stack.enter_context(patch(f"{svc}.workspace_volume_mounts", MagicMock()))
-        stack.enter_context(patch(f"{svc}.forget_turn_ceiling", AsyncMock()))
+        forgot = stack.enter_context(patch(f"{svc}.forget_turn_ceiling", AsyncMock()))
         stack.enter_context(
             patch(f"{svc}.approval_mode_supplement", MagicMock(side_effect=_WENT_ON))
         )
@@ -74,6 +74,7 @@ async def test_the_sdk_engine_ends_a_turn_whose_sandbox_cannot_start(
     assert not [e for e in events if isinstance(e, StreamStart)]
     assert launches == []
     assert session.messages[-1].content == _marker(shown)
+    forgot.assert_awaited_once_with("test-session-id", session.expert_id)
 
 
 @_CASES
@@ -107,7 +108,7 @@ async def test_the_baseline_engine_ends_a_turn_whose_sandbox_cannot_start(
         ),
         patch(f"{svc}.get_or_create_sandbox", AsyncMock(side_effect=raised)),
         patch(f"{svc}.workspace_volume_mounts", MagicMock()),
-        patch(f"{svc}.forget_turn_ceiling", AsyncMock()),
+        patch(f"{svc}.forget_turn_ceiling", AsyncMock()) as forgot,
         patch(f"{svc}.restore_pending_messages", AsyncMock()) as requeue,
         patch(f"{svc}.upsert_chat_session", AsyncMock()) as saved,
         patch(f"{svc}._build_system_prompt", MagicMock(side_effect=_WENT_ON)),
@@ -127,6 +128,7 @@ async def test_the_baseline_engine_ends_a_turn_whose_sandbox_cannot_start(
     requeue.assert_awaited_once_with(session.session_id, [queued])
     saved.assert_awaited_once_with(session)
     assert session.messages[-1].content == _marker(shown)
+    forgot.assert_awaited_once_with(session.session_id, session.expert_id)
 
 
 def _error(shown: SandboxLimitError | SandboxUnavailableError) -> StreamError:

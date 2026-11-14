@@ -2066,7 +2066,7 @@ async def stream_chat_completion_baseline(
             except SandboxLimitError as limit:
                 refusal = limit
             except Exception:
-                logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+                logger.exception("[Baseline] E2B sandbox setup failed")
                 refusal = SandboxUnavailableError()
             if refusal is not None:
                 # E2B is configured but the box did not start: the turn ends
