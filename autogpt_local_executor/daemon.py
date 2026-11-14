@@ -273,6 +273,16 @@ def _retrieve_outcome(task: asyncio.Future[Any]) -> None:
         task.exception()
 
 
+async def _close_quietly(connection: Any) -> None:
+    """Close a stopped chat's connection, if it had one; a failure is logged."""
+    if connection is None:
+        return
+    try:
+        await connection.close()
+    except Exception:
+        logger.debug("Closing a stopped chat's connection failed", exc_info=True)
+
+
 # RFC 6455 §5.5: a control frame carries at most 125 bytes, two of them the
 # close code. A longer reason fails to send, and the close code with it.
 MAX_CLOSE_REASON_BYTES = 123
@@ -1451,12 +1461,13 @@ class ShimDaemon:
         await self._drain_dispatch_tasks(cancelled)
 
     def _stop_chats_at_once(self) -> asyncio.Future[None]:
-        """Begin stopping the machine's chats (none for a chat's own session)
-        when its session is revoked. run() stops them only after the
-        revocation's audit record, which a held-up audit writer (its lock
-        taken by `audit verify` on a large log, say) can keep from being
-        written, and they ran their commands meanwhile."""
-        stopping = asyncio.ensure_future(self._shutdown_children())
+        """Stop the machine's chats (none for a chat's own session) when its
+        session is revoked: cancel them now, and close and wait for them in a
+        task. run() stops them only after the revocation's audit record,
+        which a held-up audit writer (its lock taken by `audit verify` on a
+        large log, say) can keep from being written, and they ran their
+        commands meanwhile."""
+        stopping = asyncio.ensure_future(self._close_and_drain_children(self._cancel_children()))
         stopping.add_done_callback(_retrieve_outcome)
         return stopping
 
@@ -2305,14 +2316,54 @@ class ShimDaemon:
             active = self._child_sessions.pop(session_id, None)
             if active is None:
                 return
-            await active.daemon.stop()
-            if not active.task.done():
-                active.task.cancel()
+            # Cancelled before anything here waits, as _shutdown_children does
+            # every chat: a stop cut short (a detach under way when the
+            # machine's session is revoked) let go of a chat still running.
+            connection = self._cancel_child(active)
+            await _close_quietly(connection)
             await asyncio.gather(active.task, return_exceptions=True)
 
     async def _shutdown_children(self) -> None:
-        for session_id in tuple(self._child_sessions):
-            await self._stop_child_session(session_id)
+        await self._close_and_drain_children(self._cancel_children())
+
+    def _cancel_children(self) -> tuple[tuple[str, _ActiveChild, Any], ...]:
+        """Cancel every chat, with nothing awaited, for
+        _close_and_drain_children to finish. Stopped one after another, each
+        waited for in full, a chat held up stopping (its WS_DISCONNECTED
+        record waiting on an audit writer that `audit verify` holds, say) left
+        the chats after it running their commands, after the machine's
+        session was revoked too."""
+        return tuple(
+            (session_id, active, self._cancel_child(active))
+            for session_id, active in self._child_sessions.items()
+        )
+
+    @staticmethod
+    def _cancel_child(active: _ActiveChild) -> Any:
+        """The part of a chat's stop that waits for nothing: it takes no more
+        work, and its requests and its session are cancelled. Returns its
+        connection, to be closed: the session lets go of it before its
+        WS_DISCONNECTED record, and closes it only once that is written."""
+        child = active.daemon
+        connection = child._ws
+        child._running = False
+        child._cancel_dispatch_requests()
+        active.task.cancel()
+        return connection
+
+    async def _close_and_drain_children(
+        self, cancelled: tuple[tuple[str, _ActiveChild, Any], ...]
+    ) -> None:
+        """Close the cancelled chats' connections, all at once and whatever
+        holds the children's lock, then wait for their sessions to end."""
+        await asyncio.gather(*(_close_quietly(connection) for _, _, connection in cancelled))
+        async with self._children_lock:
+            for session_id, active, _ in cancelled:
+                if self._child_sessions.get(session_id) is active:
+                    del self._child_sessions[session_id]
+            await asyncio.gather(
+                *(active.task for _, active, _ in cancelled), return_exceptions=True
+            )
 
     @staticmethod
     def _directory_listing_payload(listing: DirectoryListing) -> DirectoryListResponsePayload:
