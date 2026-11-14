@@ -1,11 +1,13 @@
 import threading
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from backend.executor import scheduler as scheduler_module
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.scheduler import (
     _MEMORY_CRON_MISFIRE_GRACE,
@@ -82,12 +84,53 @@ def test_old_user_schedules_run_late_while_memory_crons_and_pauses_keep_theirs(
     assert stored["paused"].next_run_time is None
 
 
+def test_the_scheduler_drops_stored_graces_once_it_has_started(tmp_path, monkeypatch):
+    database_url = f"sqlite:///{(tmp_path / 'jobs.sqlite').as_posix()}"
+    _seed(
+        database_url,
+        _job(
+            "graph",
+            execute_graph,
+            next_run_time=datetime.now(timezone.utc) + timedelta(days=1),
+            misfire_grace_time=1,
+        ),
+    )
+    for name in ("_event_loop", "_event_loop_thread", "_scheduler_instance"):
+        monkeypatch.setattr(scheduler_module, name, getattr(scheduler_module, name))
+    real_start = BackgroundScheduler.start
+    service = Scheduler(register_system_tasks=True)
+    with (
+        patch.object(
+            Scheduler, "_jobstore_database", return_value=(None, database_url)
+        ),
+        patch.object(Scheduler, "_start_schedule_index_backfill"),
+        patch.object(
+            BackgroundScheduler,
+            "start",
+            lambda self, *_, **__: real_start(self, paused=True),
+        ),
+        patch.object(scheduler_module, "load_dotenv"),
+        # Blocks forever serving RPC; the start-up work before it is under test.
+        patch("backend.util.service.AppService.run_service"),
+    ):
+        service.run_service()
+    try:
+        for thread in threading.enumerate():
+            if thread.name == "DropStoredMisfireGraces":
+                thread.join(10)
+    finally:
+        service.cleanup()
+
+    assert _stored(database_url)["graph"].misfire_grace_time is None
+
+
 def _job(job_id, func, *, next_run_time, misfire_grace_time, kwargs=None) -> dict:
     return {
         "id": job_id,
         "func": func,
         "kwargs": kwargs or {},
-        "trigger": CronTrigger(minute=0, timezone=timezone.utc),
+        # Yearly, so no regular run falls inside the test.
+        "trigger": CronTrigger(month=1, day=1, hour=0, minute=0, timezone=timezone.utc),
         "next_run_time": next_run_time,
         "misfire_grace_time": misfire_grace_time,
     }

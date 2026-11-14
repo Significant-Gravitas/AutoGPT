@@ -3532,13 +3532,11 @@ class Scheduler(AppService):
                 )
 
     def _drop_stored_misfire_graces(self) -> None:
-        """Put user schedules stored with a misfire grace on the job defaults.
-
-        Rows saved before those defaults keep APScheduler's own one-second
-        grace, so a run that fires over a second late is skipped. Selected by
-        function, because the memory crons' grace is deliberate.
-        """
+        """Put user schedules saved before the job defaults on them: their stored
+        one-second grace skips any run that fires over a second late. Selected
+        by function, because the memory crons' grace is deliberate."""
         dropped = 0
+        token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
         try:
             for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
                 if (
@@ -3551,16 +3549,24 @@ class Scheduler(AppService):
                         job.id,
                         jobstore=Jobstores.EXECUTION.value,
                         misfire_grace_time=None,
-                        coalesce=True,
                     )
                 except JobLookupError:
                     continue  # Deleted since the scan.
+                except Exception:
+                    logger.warning(
+                        f"Could not drop the misfire grace of schedule {job.id}; "
+                        "the next start retries it",
+                        exc_info=True,
+                    )
+                    continue
                 dropped += 1
         except Exception:
             logger.exception(
                 f"Dropping stored misfire graces stopped after {dropped} schedule(s)"
             )
             return
+        finally:
+            WRITE_TIMEOUT.reset(token)
         logger.info(f"Dropped the misfire grace of {dropped} stored user schedule(s)")
 
     def cleanup(self):
