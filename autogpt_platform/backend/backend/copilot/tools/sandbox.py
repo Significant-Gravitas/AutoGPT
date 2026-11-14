@@ -17,6 +17,8 @@ import shutil
 import signal
 from typing import BinaryIO
 
+from backend.util.settings import Config
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 30
@@ -37,14 +39,15 @@ _BWRAP_AVAILABLE: bool | None = None
 
 
 def has_full_sandbox() -> bool:
-    """Return True if bubblewrap is available (filesystem + network isolation).
+    """Return True if bubblewrap and the util-linux tools that limit it are
+    available (filesystem + network isolation, resource limits).
 
     On non-Linux platforms (macOS), always returns False.
     """
     global _BWRAP_AVAILABLE
     if _BWRAP_AVAILABLE is None:
-        _BWRAP_AVAILABLE = (
-            platform.system() == "Linux" and shutil.which("bwrap") is not None
+        _BWRAP_AVAILABLE = platform.system() == "Linux" and all(
+            shutil.which(tool) for tool in ("bwrap", "choom", "prlimit")
         )
     return _BWRAP_AVAILABLE
 
@@ -113,15 +116,22 @@ _COMPAT_PATHS = [
     ("/lib64", "usr/lib64"),  # 64-bit libraries / ELF interpreter
 ]
 
-# Resource limits to prevent fork bombs, memory exhaustion, and disk abuse.
-# Applied via ulimit inside the sandbox before exec'ing the user command.
-_RESOURCE_LIMITS = (
-    "ulimit -u 64"  # max 64 processes  (prevents fork bombs)
-    " -v 524288"  # 512 MB virtual memory
-    " -f 51200"  # 50 MB max file size  (1024-byte blocks)
-    " -n 256"  # 256 open file descriptors
-    " 2>/dev/null"
-)
+# Per-process limits; prlimit exits without running the command when one
+# cannot be set.
+_RESOURCE_LIMITS = [
+    "prlimit",
+    "--nproc=256",  # tasks per sandbox, threads included
+    # Writable memory, not address space: node and WebAssembly reserve gigabytes.
+    f"--data={1024 * 1024 * 1024}",
+    # The largest file the workspace stores.
+    f"--fsize={Config().max_file_size_mb * 1024 * 1024}",
+    "--nofile=256",
+    "--",
+]
+
+# The OOM killer takes the sandbox and everything it starts before the
+# executor; a read-only /proc keeps the sandbox from lowering its score.
+_OOM_KILL_FIRST = ["choom", "-n", "1000", "--"]
 
 
 def _build_bwrap_command(
@@ -144,12 +154,16 @@ def _build_bwrap_command(
       attach to their shared memory, semaphores and message queues.  The PID
       namespace requires a host that lets the sandbox mount its own ``/proc``;
       where it does not, every command fails with :data:`_PROC_MOUNT_HELP`.
-    - **Resource limits**: ulimit caps on processes (64), memory (512MB),
-      file size (50MB), and open FDs (256) to prevent fork bombs and abuse.
+    - **Resource limits**: ``prlimit`` caps tasks (256), data memory
+      (1 GiB), file size (the workspace's limit) and open FDs (256); the
+      command does not run if a limit cannot be set.
+    - **Killed first on OOM**: ``choom`` gives the sandbox the highest
+      ``oom_score_adj``, and ``/proc`` is read-only inside it.
     - **New session**: prevents terminal control escape.
     - **Die with parent**: prevents orphaned sandbox processes.
     """
     cmd = [
+        *_OOM_KILL_FIRST,
         "bwrap",
         # Create a new user namespace so bwrap can set up sandboxing
         # inside unprivileged Docker containers (no CAP_SYS_ADMIN needed).
@@ -174,17 +188,9 @@ def _build_bwrap_command(
         elif os.path.exists(path):
             cmd.extend(["--ro-bind", path, path])
 
-    # Wrap the user command with resource limits:
-    #   sh -c 'ulimit ...; exec "$@"' -- <original command>
-    # `exec "$@"` replaces the shell so there's no extra process overhead,
-    # and properly handles arguments with spaces.
-    limited_command = [
-        "sh",
-        "-c",
-        f'{_RESOURCE_LIMITS}; exec "$@"',
-        "--",
-        *command,
-    ]
+    # Inside bwrap's user namespace, so the task limit counts this sandbox's
+    # tasks rather than every task of the executor's user.
+    limited_command = [*_RESOURCE_LIMITS, *command]
 
     cmd.extend(
         [
@@ -192,6 +198,8 @@ def _build_bwrap_command(
             "--dev",
             "/dev",
             "--proc",
+            "/proc",
+            "--remount-ro",
             "/proc",
             "--tmpfs",
             "/tmp",

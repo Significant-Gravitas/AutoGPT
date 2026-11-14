@@ -1,11 +1,14 @@
-"""Each bash_exec sandbox keeps its own processes and IPC objects."""
+"""Each bash_exec sandbox keeps its own processes and IPC objects, and runs
+under its resource limits."""
 
 import asyncio
+import re
 from pathlib import Path
 
 import pytest
 
 from backend.copilot.tools.sandbox import (
+    _RESOURCE_LIMITS,
     _build_bwrap_command,
     explain_proc_mount_failure,
     has_full_sandbox,
@@ -19,11 +22,31 @@ _NAMESPACE_REFUSED = "No permissions to create a new namespace"
 def test_bwrap_gives_each_sandbox_its_own_processes_and_ipc():
     command = _build_bwrap_command(["true"], "/tmp/copilot-test", {"PATH": "/bin"})
 
-    flags = command[: command.index("--")]
+    bwrap = command.index("bwrap")
+    flags = command[bwrap : command.index("--", bwrap)]
 
     assert "--unshare-pid" in flags
     assert "--unshare-ipc" in flags
     assert "--unshare-net" in flags
+
+
+def test_limits_and_oom_score_are_set_without_a_shell():
+    command = _build_bwrap_command(["echo", "hi"], "/tmp/copilot-test", {})
+
+    bwrap = command.index("bwrap")
+    flags = command[bwrap : command.index("--", bwrap)]
+    sandboxed = command[command.index("--", bwrap) + 1 :]
+    assert command[:bwrap] == ["choom", "-n", "1000", "--"]
+    assert flags.index("--remount-ro") > flags.index("--proc")
+    assert flags[flags.index("--remount-ro") + 1] == "/proc"
+    assert sandboxed[0] == "prlimit"
+    assert sandboxed[-3:] == ["--", "echo", "hi"]
+    assert {arg.split("=")[0] for arg in sandboxed[1:-3]} == {
+        "--nproc",
+        "--data",
+        "--fsize",
+        "--nofile",
+    }
 
 
 @pytest.mark.parametrize(
@@ -48,8 +71,44 @@ def test_a_commands_own_stderr_is_left_alone():
     )
 
 
-# The test below runs two real sandboxes, and skips only where bubblewrap
-# cannot create namespaces at all.
+# The tests below run real sandboxes, and skip only where bubblewrap cannot
+# create namespaces at all.
+
+
+@pytest.mark.asyncio
+async def test_the_command_runs_under_its_limits_and_cannot_lower_its_oom_score(
+    tmp_path,
+):
+    if not await _sandbox_runs_here(str(tmp_path)):
+        pytest.skip("bubblewrap cannot create namespaces on this host")
+
+    stdout, stderr, exit_code, _ = await run_sandboxed(
+        [
+            "sh",
+            "-c",
+            "cat /proc/self/limits; echo 999 > /proc/self/oom_score_adj;"
+            " cat /proc/self/oom_score_adj",
+        ],
+        str(tmp_path),
+    )
+
+    assert exit_code == 0, stderr
+    names = {
+        "--nproc": "Max processes",
+        "--data": "Max data size",
+        "--fsize": "Max file size",
+        "--nofile": "Max open files",
+    }
+    expected = {
+        names[flag]: (value, value)
+        for flag, value in (arg.split("=") for arg in _RESOURCE_LIMITS if "=" in arg)
+    }
+    in_force = {
+        match[1]: (match[2], match[3])
+        for match in re.finditer(r"^(Max [a-z ]+?)\s{2,}(\S+)\s+(\S+)", stdout, re.M)
+    }
+    assert {name: in_force.get(name) for name in expected} == expected
+    assert stdout.splitlines()[-1] == "1000"
 
 
 @pytest.mark.asyncio
