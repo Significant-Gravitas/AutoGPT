@@ -164,7 +164,7 @@ sixteen tools; all of them are in the catalog, which
   `files` on `browser_set_input_files` (hands files to a page), and
   `script` on `run_script`, so every script: its calls run inside the
   driver, where the shim can't check them, and one can save a screenshot to
-  a file. So do `launch_app`'s `launch_path`, `path`,
+  a file or start any program. So do `launch_app`'s `launch_path`, `path`,
   `additional_arguments`, `urls` and `webkit_inspector_port`, which start a
   program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
@@ -178,7 +178,9 @@ sixteen tools; all of them are in the catalog, which
   `run_steps` step may not use one at all, whatever tool it names (the
   driver runs a `press` with a target, and a `triple_click`, as a click),
   and neither may the `observe` that ends a batch, which the driver runs as
-  a `get_window_state` call.
+  a `get_window_state` call. Nor may a step be a `launch_app`, whose name
+  the shim checks against the installed apps only when it's called on its
+  own; cua-driver 0.38 batches no launch anyway.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
   raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,
@@ -224,13 +226,16 @@ arguments (see Enforcement). They are not a sandbox around the GUI.
 Known gaps:
 
 - A `run_script` script can pass `screenshot_out_file` to
-  `get_window_state` inside the driver, writing a PNG where the script says.
+  `get_window_state` inside the driver, writing a PNG where the script says
+  (on macOS `click`'s `debug_image_out` too), and can call `launch_app`,
+  which starts any program, unchecked.
   cua-driver 0.38's policy can allow a tool but can't forbid one of its
   arguments, and the shim can't see into scripts, so every script needs
   approval instead: a card that shows it, unless the chat runs Unsupervised
   or a standing rule set on an earlier `run_script` card approves later
   scripts, whatever they hold, unasked. A policy rule that forbids an
-  argument belongs upstream; with one, scripts could run unasked safely.
+  argument belongs upstream; with one that kept scripts from those
+  arguments and from `launch_app`, scripts could run unasked safely.
 - `launch_app` can start any program with any arguments: `launch_path` (on
   Linux the `Exec=` line of a `.desktop` file, run split at spaces), a
   Windows `path`, and `additional_arguments`, where a Chromium flag such as
@@ -376,7 +381,8 @@ prompt for the shim's app (the driver leaves prompting to its host).
    `out` word) that isn't an approval argument.
 3. Check the new release's script and batch allowlists, its policy format,
    and its permission modes. If its policy can forbid an argument, forbid
-   `screenshot_out_file` inside scripts and drop `run_script` from
+   `screenshot_out_file` and `debug_image_out` inside scripts, and, once
+   scripts can't reach `launch_app` either, drop `run_script` from
    `APPROVAL_ARGUMENTS`.
 4. Run `tests/test_cua_driver_contract.py` on macOS, Windows and Linux; CI
    does.

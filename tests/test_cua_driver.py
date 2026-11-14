@@ -936,6 +936,12 @@ def test_arguments_that_reach_the_disk_wait_for_approval(
             [],
             "steps[0].debug_image_out",
         ),
+        # A launch's name is checked against the installed apps only when
+        # launch_app is called on its own.
+        ("run_steps", {"steps": [{"tool": "launch_app", "args": {"name": "logoff"}}]}, [],
+         "steps[0]"),
+        ("run_steps", {"steps": [{"launch_app": {"name": "Calculator"}}]}, [], "steps[0]"),
+        ("run_steps", {"steps": [{"tool": "Launch_App", "args": {}}]}, [], "steps[0]"),
         # The driver runs `observe` as get_window_state, which writes the
         # screenshot to the file it names.
         (
@@ -1505,6 +1511,42 @@ async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
         "list_apps",
         "launch_app",
     ]
+
+
+@pytest.mark.parametrize(
+    ("platform", "name"),
+    [
+        ("win32", "logoff"),
+        ("win32", "Notepad"),
+        ("linux", ".bash_history"),
+        ("linux", "Zebra Notes"),
+    ],
+)
+async def test_a_launch_in_a_batch_never_reaches_the_driver(
+    make_handler, fake_log, monkeypatch, platform: str, name: str
+) -> None:
+    """A launch by name goes ahead only once an installed app has the name,
+    which was checked only for a launch_app called on its own: a run_steps
+    step that launched went to the driver unchecked, and only the driver's
+    own list of what a batch may run, which has no launch_app, kept the name
+    from ShellExecuteEx (`logoff`) or xdg-open. The step is refused now,
+    whatever it names, before the driver hears of it."""
+    apps: list = (
+        ["Notepad"]
+        if platform == "win32"
+        else [{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]
+    )
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(apps))
+    handler = make_handler(platform=platform)
+    click = {"tool": "click", "args": {"pid": 1, "x": 1, "y": 1}}
+
+    for step in ({"tool": "launch_app", "args": {"name": name}}, {"launch_app": {"name": name}}):
+        response = await handler.handle(_call("run_steps", {"steps": [click, step]}))
+
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+        assert response.payload.details == {"tool": "run_steps", "argument": "steps[1]"}
+    assert _records(fake_log, "call") == []
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])

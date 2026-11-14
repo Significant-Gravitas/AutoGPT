@@ -38,8 +38,9 @@ OBSERVE_TOOLS = frozenset(
     }
 )
 
-# Acting on apps and windows. `run_steps` and `run_script` batch these; the
-# driver lets them call only a fixed subset of input and observation tools.
+# Acting on apps and windows. `run_steps` and `run_script` call some of
+# these inside the driver, which lets them reach only a fixed subset of
+# input and observation tools: a batch can't launch an app, a script can.
 ACT_TOOLS = frozenset(
     {
         "bring_to_front",
@@ -154,11 +155,13 @@ APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
         "image_path": "puts this image file on the clipboard",
     },
     "browser_set_input_files": {"files": "hands these files to the page, which can upload them"},
-    # A script's calls run inside the driver, where the shim can't check them,
-    # and one can pass `screenshot_out_file` to get_window_state: cua-driver
-    # 0.38's policy can allow a tool but can't forbid one of its arguments.
+    # A script's calls run inside the driver, where the shim can't check them:
+    # one can pass `screenshot_out_file` to get_window_state, or start any
+    # program with launch_app. cua-driver 0.38's policy can allow a tool but
+    # can't forbid one of its arguments.
     "run_script": {
-        "script": "runs this script, which drives apps and can save a screenshot to any file"
+        "script": "runs this script, which drives apps, can start any program and can "
+        "save a screenshot to any file"
     },
     # Each runs whatever it names, out of sight: the driver starts programs
     # in the background with no window of their own, and opens links and
@@ -271,6 +274,18 @@ def check_arguments(
                         f"steps[{index}].{used[0]}",
                         "a step can't touch the disk; call the tool on its own so the "
                         "person can approve it",
+                    )
+                # A launch's name is checked against the installed apps
+                # (ComputerUseHandler._check_launch_name) only when
+                # launch_app is called on its own. cua-driver 0.38 batches
+                # no launch either; this doesn't rely on it. In any case, as
+                # the driver reads some step names (`triple_click`).
+                if step_tool.lower() == "launch_app":
+                    raise ArgumentRefused(
+                        tool,
+                        f"steps[{index}]",
+                        "a launch can't be a step; call launch_app on its own, where its "
+                        "name is checked against the installed apps",
                     )
                 try:
                     check_arguments(step_tool, step_args)
