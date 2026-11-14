@@ -905,7 +905,8 @@
       "oauth_scopes": [
         "key:read"
       ],
-      "icon_id": "parallel"
+      "icon_id": "parallel",
+      "provider": "parallel"
     }
   },
   {
