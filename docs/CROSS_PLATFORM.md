@@ -175,8 +175,8 @@ not mounted yet, or a keychain still locked when the audit key is read.
 So does no keychain at all when the audit key or the sign-in is read, as
 with a Secret Service the desktop session starts after the systemd unit:
 the shim can't run without one, so it waits for it. The audit-key file fallback stands
-in only once its key exists, or, with `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE`
-set, while there is no audit log yet that the keychain's key signed and a
+in only with `AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE` set: once its key exists,
+or while there is no audit log yet that the keychain's key signed and a
 new process, which picks keyring's backend afresh, finds no keychain
 either. If that process finds one, the start exits 75 like the rest.
 An audit log that fails verification can't clear that way, so under

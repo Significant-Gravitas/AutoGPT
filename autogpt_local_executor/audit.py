@@ -643,7 +643,8 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
     AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE; OAuth tokens have no file fallback.
     With no keychain, the fallback's key is used once it exists, and so it
     is when a keychain that turns up later holds none: that key signed the
-    log; without the passphrase to read it, none is made in its place. A
+    log; without the passphrase to read it, none is made in its place, and
+    a start with no keychain up yet waits for one, which may hold the key. A
     new one is made only while `audit_log` (the log the key is for)
     doesn't exist yet, since a log another key signed would never verify
     with it. With `create` false no key is made at all (load_audit_key).
@@ -704,6 +705,18 @@ def get_or_create_audit_key(audit_log: Path | None = None, *, create: bool = Tru
     except (keyring.errors.NoKeyringError, keyring.errors.InitError) as exc:
         if not _fallback_path().exists():
             _no_keychain_yet(exc, audit_log, create=create)
+        elif not os.environ.get("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE"):
+            # Waited for, as a keychain missing at start is (_no_keychain_yet):
+            # it may hold the key the log was signed with, as the file key is
+            # every deployment's. One that comes up holding none stops the
+            # start for good, under the lock above.
+            raise AuditKeyUnavailableError(
+                f"No OS keychain is available ({type(exc).__name__}), and the file "
+                f"fallback's audit key at {_fallback_path()} can't be read without "
+                "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE, which is not set. A keychain that starts "
+                "later is picked up on the next try; otherwise set the passphrase to read "
+                "the file key"
+            ) from exc
         logger.warning("No usable keychain for the audit key (%s); using the file fallback.", exc)
         return _fallback_audit_key(keyring)
     except Exception as exc:

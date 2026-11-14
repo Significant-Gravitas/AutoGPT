@@ -1619,6 +1619,49 @@ def test_a_keychain_missing_at_start_is_waited_for_without_the_file_fallback(
             get_or_create_audit_key(tmp_path / "audit.log")
 
 
+@pytest.mark.parametrize("error", ["NoKeyringError", "InitError"])
+def test_a_file_key_without_its_passphrase_waits_for_the_keychain(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: str
+) -> None:
+    """With no keychain up yet and a file key that can't be read without the
+    passphrase, the audit key failed with a plain RuntimeError, which the
+    daemon took for a failure no restart fixes: the service stayed stopped,
+    though the keychain may hold the key its log was signed with (the file
+    key is every deployment's, and may be another's). The start waits for
+    the keychain, as it does without a file key, and says what to set."""
+    import secrets
+
+    import keyring
+    import keyring.errors
+
+    from autogpt_local_executor.config import ShimConfig
+    from autogpt_local_executor.daemon import DaemonPreflightError, ShimDaemon
+
+    monkeypatch.setenv("AUTOGPT_SHIM_FALLBACK_DIR", str(tmp_path))
+    monkeypatch.delenv("AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE", raising=False)
+    fallback = tmp_path / "audit-key.enc"
+    salt = secrets.token_bytes(16)
+    ciphertext = audit_module._xor_encrypt("another deployment's", salt, secrets.token_bytes(32))
+    fallback.write_text(f"{salt.hex()}:{ciphertext.hex()}", encoding="utf-8")
+    file_key = fallback.read_bytes()
+    log = tmp_path / "audit.log"
+    config = ShimConfig(session_id="session-1", allowed_root=tmp_path, audit_log_path=log)
+
+    not_up = getattr(keyring.errors, error)("not up yet")
+    with patch.object(keyring, "get_password", side_effect=not_up):
+        with pytest.raises(DaemonPreflightError) as raised:
+            ShimDaemon._build_audit_writer(config)
+
+    assert raised.value.transient is True
+    assert "AUTOGPT_SHIM_KEYCHAIN_PASSPHRASE" in str(raised.value)
+    assert str(fallback) in str(raised.value)
+    assert fallback.read_bytes() == file_key
+    # The next start, with the keychain up, finds the key there.
+    signing_key = secrets.token_bytes(32)
+    with patch.object(keyring, "get_password", return_value=signing_key.hex()):
+        assert get_or_create_audit_key(log) == signing_key
+
+
 def test_a_keychain_missing_at_start_is_not_replaced_by_a_new_file_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
