@@ -1939,6 +1939,80 @@ async def test_a_windows_command_cancelled_after_it_exited_takes_its_child_with_
             task.cancel()
 
 
+def test_a_command_whose_job_cannot_be_made_is_never_resumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A command whose job couldn't be made was resumed anyway, and its stop
+    could then end it alone: what it started ran on after a timeout or a
+    revoked session. It now stays suspended, for its request to refuse."""
+    from autogpt_local_executor import windows_jobs
+
+    resumed: list[int] = []
+
+    def no_job(_kernel32: object, _pid: int) -> windows_jobs.CommandJob:
+        raise OSError(errno.EACCES, "jobs are restricted here")
+
+    monkeypatch.setattr(windows_jobs, "_kernel32", lambda: object())
+    monkeypatch.setattr(windows_jobs, "_job_holding", no_job)
+    monkeypatch.setattr(windows_jobs, "_resume", lambda _kernel32, pid: resumed.append(pid))
+
+    with pytest.raises(OSError, match="not run"):
+        windows_jobs.run_in_job(4321)
+
+    assert resumed == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows job objects")
+@pytest.mark.asyncio
+async def test_a_windows_command_that_cannot_get_a_job_is_refused_before_it_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When its job couldn't be made, a command ran without one, and a stop
+    ended it alone. It is refused now, while still suspended, so nothing of
+    it runs, and the refusal is recorded."""
+    from autogpt_local_executor import windows_jobs
+
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    def no_job(_kernel32: object, _pid: int) -> windows_jobs.CommandJob:
+        raise OSError(errno.EACCES, "jobs are restricted here")
+
+    monkeypatch.setattr(windows_jobs, "_job_holding", no_job)
+    created: list[asyncio.subprocess.Process] = []
+    create = asyncio.create_subprocess_exec
+
+    async def create_and_keep(*args, **kwargs):
+        proc = await create(*args, **kwargs)
+        created.append(proc)
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create_and_keep)
+    handler = CommandHandler(make_config(tmp_path), Audit())
+    ran = tmp_path / "ran"
+
+    response = await handler.handle(
+        _cmd_msg(
+            argv=[sys.executable, "-c", f"open({str(ran)!r}, 'w').close()"],
+            cwd=str(tmp_path),
+        )
+    )
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.INTERNAL_ERROR
+    assert "job" in response.payload.message
+    [proc] = created
+    await asyncio.wait_for(proc.wait(), timeout=30)
+    # Ended while it was still suspended, so it can't run now.
+    assert not ran.exists()
+    assert not handlers_module._command_jobs
+    [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+    assert result["error_code"] == "INTERNAL_ERROR"
+
+
 @pytest.mark.asyncio
 async def test_a_program_a_finished_command_started_in_the_background_keeps_running(
     tmp_path: Path,

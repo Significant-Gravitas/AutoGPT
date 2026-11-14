@@ -6,7 +6,10 @@ outlived a command's CTRL_BREAK_EVENT ran on after the command was stopped.
 A job holds the command and its descendants, those whose parent has exited
 too, and TerminateJobObject ends them all. The command is created suspended
 and runs only once it is in its job, so nothing it starts can get out by
-starting first.
+starting first. One that can't be put in a job (Windows out of resources,
+or an unusual restriction on the job the shim itself runs in) isn't run:
+its stop could end it alone, and what it started would run on after a
+timeout or a revoked session.
 
 The job doesn't set JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. With it, closing the
 job when a command is done would also end what the command started to
@@ -19,11 +22,8 @@ may leave its process group.
 from __future__ import annotations
 
 import ctypes
-import logging
 import sys
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 # The CreateProcess flag that leaves a new process's first thread waiting to
 # be resumed (ResumeThread). subprocess doesn't name it.
@@ -191,29 +191,26 @@ class CommandJob:
             _kernel32().CloseHandle(handle)
 
 
-def run_in_job(pid: int) -> CommandJob | None:
+def run_in_job(pid: int) -> CommandJob:
     """Put process `pid`, created suspended (CREATE_SUSPENDED), in a job of
-    its own, then let it run. None, with the process running, if the job
-    couldn't be made. Raises OSError if the process couldn't be resumed: it
-    is then still suspended, and the job, if one was made, is ended."""
+    its own, then let it run. Raises OSError if the job couldn't be made or
+    the process couldn't be resumed: the process is then still suspended,
+    and a job made for it is ended."""
     kernel32 = _kernel32()
-    job: CommandJob | None = None
     try:
         job = _job_holding(kernel32, pid)
     except OSError as exc:
-        logger.warning(
-            "The command could not be put in a job of its own (%s): a stop ends it alone, "
-            "without the processes it started",
-            exc,
-        )
+        raise OSError(
+            f"the command was not run: it could not be put in a job of its own, "
+            f"which a stop needs to end what it starts ({exc})"
+        ) from exc
     try:
         _resume(kernel32, pid)
     except OSError:
-        if job is not None:
-            try:
-                job.terminate()
-            finally:
-                job.close()
+        try:
+            job.terminate()
+        finally:
+            job.close()
         raise
     return job
 

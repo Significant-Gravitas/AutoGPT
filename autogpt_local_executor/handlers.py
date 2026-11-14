@@ -314,7 +314,8 @@ def _end_windows_command(
     proc: asyncio.subprocess.Process, job: windows_jobs.CommandJob | None
 ) -> None:
     """End a Windows command and every process it started (its job), or the
-    command alone where it has no job: TerminateProcess ends one process."""
+    command alone where the job can't be ended: TerminateProcess ends one
+    process. Every command that runs has a job (_spawn_argv)."""
     if job is not None:
         try:
             job.terminate()
@@ -939,12 +940,16 @@ class CommandHandler:
             try:
                 job = windows_jobs.run_in_job(proc.pid)
             except OSError:
-                # Still suspended: it never ran.
+                # Still suspended: it never ran. Ended, and waited for,
+                # before the request is refused: without a job its stop could
+                # end it alone, and what it started would run on.
                 with contextlib.suppress(OSError):
                     proc.kill()
+                with contextlib.suppress(TimeoutError):
+                    async with asyncio.timeout(2.0):
+                        await proc.wait()
                 raise
-            if job is not None:
-                _command_jobs[proc] = job
+            _command_jobs[proc] = job
         return proc
 
     @staticmethod
