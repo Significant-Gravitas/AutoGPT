@@ -29,6 +29,7 @@ from autogpt_local_executor.protocol import (
     ComputerToolCallMessage,
     ComputerToolCallPayload,
     ComputerToolResultMessage,
+    ComputerToolResultPayload,
     ComputerToolsRequestMessage,
     ComputerToolsResponseMessage,
     ErrorCode,
@@ -2260,6 +2261,37 @@ async def test_a_cut_down_result_fits_the_negotiated_limit_as_json(make_handler)
     assert sum(len(json.dumps(text, ensure_ascii=False).encode()) for text in texts) <= 1000
     assert any("cut down" in text for text in texts)
     assert texts[0] and set(texts[0]) == {"\x00"}
+
+
+@pytest.mark.parametrize("budget", [32, 120, 170, 200, 1000])
+async def test_a_cut_down_result_fits_its_budget_as_sent(make_handler, budget: int) -> None:
+    """The budget was held against the blocks' text alone, not the payload's
+    fields or each block's wrapper, and the note added once the text was
+    cut wasn't counted either: with max_file_size_bytes 32, a long text
+    became an empty block and a note that alone took 196 bytes on the wire.
+    Where not even the note fits, the smallest result the protocol allows
+    goes, with no content."""
+    handler = make_handler()
+    handler.config.max_file_size_bytes = budget
+    text = "z" * 5000
+
+    payload, _summary = handler._result_payload(
+        "get_window_state",
+        {"content": [{"type": "text", "text": text}], "structuredContent": {"elements": []}},
+    )
+
+    def sent(result: ComputerToolResultPayload) -> int:
+        return len(result.model_dump_json().encode("utf-8"))
+
+    note = ComputerTextContent(text=handlers_module._CUT_DOWN_NOTE)
+    if sent(ComputerToolResultPayload(tool="get_window_state", content=[note])) > budget:
+        assert payload == ComputerToolResultPayload(tool="get_window_state")
+    else:
+        assert sent(payload) <= budget
+        *texts, last = payload.content
+        assert last == note
+        assert all(isinstance(b, ComputerTextContent) and text.startswith(b.text) for b in texts)
+        assert payload.structured_content is None
 
 
 async def test_a_call_cancelled_again_while_its_driver_stops_keeps_the_turn(

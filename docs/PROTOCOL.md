@@ -1029,6 +1029,11 @@ note. Images are base64 as the driver produced them, at most
 or when the result would exceed `HELLO_ACK.max_file_size_bytes` or the
 WebSocket limit, images are left out and a text block says why. `structured_content` is the driver's
 `structuredContent`, dropped only when the result can't otherwise fit.
+The limit holds for the whole `payload` as it is sent, its notes
+included: what is left of the first text block is cut to fit beside a
+note that says so, and a limit too small for even that note gets the
+smallest result there is, `tool` and `is_error` with an empty `content`
+and `structured_content: null`.
 
 `clipboard_read` returns text under the shim's rules: by default only text
 this shim wrote in the last 30 seconds (else `CLIPBOARD_CONCEALED` with
