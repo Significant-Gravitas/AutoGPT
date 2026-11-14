@@ -413,9 +413,13 @@ def environment_variable(field: str) -> str:
 
 def environment_settings() -> dict[str, Any]:
     """The settings the AUTOGPT_SHIM_* variables give, by field, read the way
-    pydantic-settings reads them."""
+    pydantic-settings reads them.
+
+    The prefix is passed in: pydantic-settings 2.0.0 doesn't take it from
+    the model, and read each field's bare name (PLATFORM_URL, ENABLE_SHELL),
+    which then outranked the config file."""
     try:
-        return EnvSettingsSource(ShimConfig)()
+        return EnvSettingsSource(ShimConfig, env_prefix=ShimConfig.model_config["env_prefix"])()
     except ValueError as exc:
         # pydantic-settings' SettingsError. A list setting takes JSON, so
         # AUTOGPT_SHIM_RECORDING_CHANNELS=floor can't be read. It isn't a
