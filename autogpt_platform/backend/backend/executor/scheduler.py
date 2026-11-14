@@ -102,7 +102,11 @@ from backend.copilot.model import (
     get_chat_session_metadata,
 )
 from backend.copilot.optimize_blocks import optimize_block_descriptions
-from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
+from backend.copilot.permissions import (
+    ALL_TOOL_NAMES,
+    CopilotPermissions,
+    routine_disabled_tools,
+)
 from backend.copilot.scheduled_chats.notices import (
     SkippedRun,
     post_notice,
@@ -533,6 +537,26 @@ def _routine_turn_permissions(routine: ExpertRoutine | None) -> CopilotPermissio
     return CopilotPermissions(tools=sorted(routine_disabled_tools(granted=granted)))
 
 
+def _scheduled_turn_permissions(
+    args: "CopilotTurnJobArgs", routine: ExpertRoutine | None
+) -> CopilotPermissions | None:
+    """The filter a fire runs under: the scheduling turn's, kept with the job,
+    and a routine's own on top of it."""
+    if args.routine_id is None:
+        return args.permissions
+    own = _routine_turn_permissions(routine)
+    if args.permissions is None:
+        return own
+    allowed = args.permissions.effective_allowed_tools(ALL_TOOL_NAMES)
+    # Both as one deny-list: an allow-list left empty would read as no filter.
+    return args.permissions.model_copy(
+        update={
+            "tools": sorted((ALL_TOOL_NAMES - allowed) | set(own.tools)),
+            "tools_exclude": True,
+        }
+    )
+
+
 async def _execute_copilot_turn(**kwargs):
     expert_scope_was_persisted = "expert_id" in kwargs
     args = CopilotTurnJobArgs(**kwargs)
@@ -726,11 +750,7 @@ async def _execute_copilot_turn(**kwargs):
             # user also drives themselves, and muting the conversation would
             # take capabilities away from the person sitting in it. What is
             # unattended is this turn.
-            permissions=(
-                _routine_turn_permissions(routine)
-                if args.routine_id is not None
-                else None
-            ),
+            permissions=_scheduled_turn_permissions(args, routine),
             # Nobody watches a scheduled turn, so the executor alerts when it
             # fails after this dispatch succeeded (SECRT-2799).
             scheduled=ScheduledTurnOrigin(
@@ -1113,6 +1133,8 @@ async def _reschedule_one_shot(
             # And the accounts it was set up to run on, or the retry would
             # take the first saved one instead.
             credential_pins=args.credential_pins,
+            # And the filter the scheduling turn ran under.
+            permissions=args.permissions,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1427,6 +1449,7 @@ async def _put_back_at_reset_turn(
             purpose=args.purpose,
             schedule_id=args.schedule_id,
             created_at=args.created_at,
+            permissions=args.permissions,
         )
     except Exception:
         logger.warning(
@@ -2765,6 +2788,9 @@ class CopilotTurnJobArgs(BaseModel):
     # When the job was first set, kept when it is put back for a retry; a
     # resume stands down if the user carried the chat on after it.
     created_at: datetime | None = None
+    # The filter of the turn that set the job, which every fire runs under.
+    # None when it had none, and on rows persisted before this field.
+    permissions: CopilotPermissions | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -3773,6 +3799,7 @@ class Scheduler(AppService):
         schedule_id: str | None = None,
         created_at: datetime | None = None,
         replaces_schedule_ids: list[str] | None = None,
+        permissions: CopilotPermissions | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -3794,6 +3821,9 @@ class Scheduler(AppService):
 
         *replaces_schedule_ids* names jobs this one takes the place of, so a
         routine given a new cadence is not refused for its own current jobs.
+
+        *permissions* is the filter of the turn making the schedule; every
+        fire runs under it.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -3835,6 +3865,7 @@ class Scheduler(AppService):
             routine_schedule_id=routine_schedule_id,
             purpose=purpose,
             created_at=created_at or datetime.now(timezone.utc),
+            permissions=permissions,
         )
         if purpose != "followup":
             default_name = AT_RESET_JOB_NAMES[purpose]

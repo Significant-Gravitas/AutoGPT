@@ -23971,6 +23971,46 @@
         "required": ["turn_id"],
         "title": "ContinueSessionResponse"
       },
+      "CopilotPermissions": {
+        "properties": {
+          "tools": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Tools",
+            "default": []
+          },
+          "tools_exclude": {
+            "type": "boolean",
+            "title": "Tools Exclude",
+            "default": true
+          },
+          "blocks": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Blocks",
+            "default": []
+          },
+          "blocks_exclude": {
+            "type": "boolean",
+            "title": "Blocks Exclude",
+            "default": true
+          },
+          "providers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Providers",
+            "default": []
+          },
+          "providers_exclude": {
+            "type": "boolean",
+            "title": "Providers Exclude",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "CopilotPermissions",
+        "description": "Capability filter for a single copilot execution.\n\nAttributes:\n    tools: Tool names to filter (short names, e.g. ``run_capability``).\n    tools_exclude: When True (default) ``tools`` is a blacklist;\n        when False it is a whitelist.  Ignored when *tools* is empty.\n    blocks: Block identifiers (name, full UUID, or 8-char partial UUID).\n    blocks_exclude: Same semantics as *tools_exclude* but for blocks.\n    providers: Provider slugs (``github``) whose connected accounts the\n        run's sandbox may use.\n    providers_exclude: Same semantics as *tools_exclude* but for\n        providers."
+      },
       "CopilotSkillDetail": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -24148,6 +24188,12 @@
               { "type": "null" }
             ],
             "title": "Created At"
+          },
+          "permissions": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/CopilotPermissions" },
+              { "type": "null" }
+            ]
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },

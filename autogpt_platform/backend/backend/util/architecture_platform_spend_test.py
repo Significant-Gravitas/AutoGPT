@@ -45,11 +45,7 @@ _PLATFORM_KEY_MODEL_CALLS = {
     "util/clients.py _get_local_openai_client": "the client factory itself",
 }
 
-_RAW_TURN_PUBLISHES = {
-    "blocks/autopilot.py _enqueue_for_recovery": (
-        "re-publishes a turn whose slot was taken when it was first dispatched"
-    ),
-}
+_RAW_TURN_PUBLISHES: dict[str, str] = {}
 
 _CHAT_CONFIG_KEY = re.compile(r"(?:_chat_config|chat_config|chat_cfg)\.api_key")
 

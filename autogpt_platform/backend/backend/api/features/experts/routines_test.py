@@ -14,7 +14,10 @@ import pytest
 from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.features.experts.models import MAX_ROUTINE_CRONS
-from backend.api.features.experts.routine_jobs import spread_cron
+from backend.api.features.experts.routine_jobs import (
+    create_routine_schedules,
+    spread_cron,
+)
 from backend.api.features.experts.routines import (
     UNREADABLE_PIN,
     _credential_pins,
@@ -26,9 +29,11 @@ from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
     ROUTINE_SELF_ESCALATION_TOOLS,
+    CopilotPermissions,
     routine_disabled_tools,
 )
 from backend.copilot.tools import TOOL_REGISTRY
+from backend.executor.scheduler import CopilotTurnJobInfo
 
 # Every routine the roster ships, as (expert, key). A routine fires unattended
 # once its owner switches it on, and what it says is written by whoever wrote
@@ -423,6 +428,52 @@ async def test_enable_routine_names_the_jobs_its_new_times_replace():
 
 
 _ROUTINES = "backend.api.features.experts.routines"
+
+
+_LIMITS = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+_OWN = CopilotPermissions(tools=["bash_exec"])
+
+
+@pytest.mark.parametrize(
+    "passed, expected",
+    [(None, _LIMITS), (_OWN, _OWN)],
+    ids=["new-cadence", "new-filter"],
+)
+async def test_new_times_for_a_routine_keep_the_filter_its_jobs_ran_under(
+    passed, expected
+):
+    """A new cadence replaces the jobs, and the filter they were set under goes
+    with them unless the turn making the change has its own."""
+    old = CopilotTurnJobInfo(
+        user_id="user-1",
+        message="Check in",
+        routine_id="routine-1",
+        permissions=_LIMITS,
+        id="old-1",
+        name="Pulse",
+        next_run_time="",
+    )
+    scheduler = MagicMock()
+    scheduler.get_execution_schedules = AsyncMock(return_value=[old])
+    scheduler.add_copilot_turn_schedule = AsyncMock(return_value=MagicMock(id="new-1"))
+    with patch(
+        "backend.api.features.experts.routine_jobs.get_scheduler_client",
+        return_value=scheduler,
+    ):
+        await create_routine_schedules(
+            user_id="user-1",
+            expert_id=None,
+            row=_row(),
+            prompt="Check in",
+            crons=["0 9 * * 1"],
+            run_at=None,
+            session_id=None,
+            user_timezone="UTC",
+            replaces=["old-1"],
+            permissions=passed,
+        )
+    stored = scheduler.add_copilot_turn_schedule.await_args.kwargs["permissions"]
+    assert stored == expected
 
 
 class _StopAfterScheduling(Exception):

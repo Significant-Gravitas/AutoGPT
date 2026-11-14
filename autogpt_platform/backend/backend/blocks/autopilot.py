@@ -21,6 +21,8 @@ from backend.blocks._base import (
 )
 from backend.copilot.active_turns import (
     MAX_TURN_LIFETIME_SECONDS,
+    ConcurrentTurnLimitError,
+    SessionNotIdle,
     running_turn_limit_message,
 )
 from backend.copilot.constants import (
@@ -95,6 +97,11 @@ class AutoPilotOutOfBudgetError(BlockExecutionError):
             block_name="AutoPilotBlock",
             block_id=AUTOPILOT_BLOCK_ID,
         )
+
+
+class AutoPilotTurnRefusedError(RuntimeError):
+    """The platform declined to start the block's turn. Nothing ran, so it
+    skips the recovery re-run."""
 
 
 class ToolCallEntry(TypedDict):
@@ -508,7 +515,7 @@ class AutoPilotBlock(Block):
                 # cap rejected before ``create_session`` ran. Surface a
                 # message that points at the actionable cause rather
                 # than the empty transcript.
-                raise RuntimeError(running_turn_limit_message())
+                raise AutoPilotTurnRefusedError(running_turn_limit_message())
             if outcome == "failed":
                 raise RuntimeError(
                     "AutoPilot turn failed — see the session's transcript"
@@ -526,7 +533,9 @@ class AutoPilotBlock(Block):
                 # Terminal, like the branches above: nothing ran, so the
                 # SessionResult carries only the refusal and its empty
                 # response_text would otherwise render as a successful turn.
-                raise RuntimeError(result.refusal or "AutoPilot turn was refused")
+                raise AutoPilotTurnRefusedError(
+                    result.refusal or "AutoPilot turn was refused"
+                )
 
             # Build a lightweight conversation summary from the aggregated data.
             # When ``result.queued`` is True the prompt rode on an already-
@@ -737,7 +746,11 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
-        except (SubAgentRecursionError, AutoPilotOutOfBudgetError) as exc:
+        except (
+            SubAgentRecursionError,
+            AutoPilotOutOfBudgetError,
+            AutoPilotTurnRefusedError,
+        ) as exc:
             # Deliberate block — re-enqueueing would immediately hit the limit
             # again, so skip recovery and just surface the error.
             yield "session_id", sid
@@ -760,6 +773,7 @@ class AutoPilotBlock(Block):
                     execution_context.user_id,
                     effective_prompt,
                     input_data.dry_run or execution_context.dry_run,
+                    permissions=_with_inherited_permissions(permissions),
                 )
             except asyncio.CancelledError:
                 # Task cancelled during recovery — still yield the error
@@ -919,26 +933,25 @@ def _merge_inherited_permissions(
     permission leakage between sequential independent executions in the same
     asyncio task.
     """
-    parent = _inherited_permissions.get()
-
-    if permissions is None and parent is None:
+    merged = _with_inherited_permissions(permissions)
+    if merged is None:
         return None, None
-
-    all_tools = all_known_tool_names()
-
-    if permissions is None:
-        permissions = CopilotPermissions()  # allow-all; will be narrowed by parent
-
-    merged = (
-        permissions.merged_with_parent(parent, all_tools)
-        if parent is not None
-        else permissions
-    )
-
     # Store merged permissions as the new inherited ceiling for nested calls.
     # Return the token so the caller can restore the previous value in finally.
     token = _inherited_permissions.set(merged)
     return merged, token
+
+
+def _with_inherited_permissions(
+    permissions: "CopilotPermissions | None",
+) -> "CopilotPermissions | None":
+    """*permissions* narrowed by any parent AutoPilotBlock's ceiling."""
+    parent = _inherited_permissions.get()
+    if parent is None:
+        return permissions
+    # allow-all; narrowed by the parent
+    own = permissions or CopilotPermissions()
+    return own.merged_with_parent(parent, all_known_tool_names())
 
 
 # ---------------------------------------------------------------------------
@@ -951,14 +964,20 @@ async def _enqueue_for_recovery(
     user_id: str,
     message: str,
     dry_run: bool,
+    *,
+    permissions: "CopilotPermissions | None",
 ) -> None:
-    """Re-enqueue an orphaned sub-agent session so a fresh executor picks it up.
+    """Re-run an orphaned sub-agent session so a fresh executor picks it up.
 
     When ``execute_copilot`` raises an unexpected exception the sub-agent
     session is left with ``last_role=user`` and no active consumer — identical
-    to the state that caused Toran's reports of silent sub-agents.  Publishing
-    the original prompt back to the copilot queue lets the executor service
-    resume the session without manual intervention.
+    to the state that caused Toran's reports of silent sub-agents.  Sending
+    the original prompt again lets the executor service resume the session
+    without manual intervention.
+
+    It starts through ``schedule_turn`` like any other turn, under the block's
+    *permissions*, so the turn cap and the block's tool filter hold for it; a
+    re-run that is declined there is dropped.
 
     Skipped for dry-run sessions (no real consumers listen to the queue for
     simulated sessions).  Any failure to publish is logged and swallowed so
@@ -968,10 +987,11 @@ async def _enqueue_for_recovery(
         return
     try:
         from backend.copilot.executor.utils import (  # avoid circular import
-            enqueue_copilot_turn,
+            schedule_turn,
         )
         from backend.copilot.model import get_chat_session
-        from backend.copilot.tree import root_envelope
+        from backend.copilot.tools.render_ui import without_render_ui
+        from backend.copilot.tree import TreeRefusal
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
@@ -981,29 +1001,32 @@ async def _enqueue_for_recovery(
             )
             return
 
-        recovery_turn_id = str(uuid.uuid4())
-        await asyncio.wait_for(
-            enqueue_copilot_turn(
-                session_id=session_id,
-                user_id=user_id,
-                message=message,
-                turn_id=recovery_turn_id,
-                llm_auth_provider=session.metadata.llm_auth_provider,
-                llm_credential_id=session.metadata.llm_credential_id,
-                # The orphaned turn's envelope died with its worker and is not
-                # recoverable, so this re-dispatch roots a fresh tree — which
-                # is what an AutoPilotBlock turn already gets, the graph
-                # executor being a separate process.
-                # TODO(#14244-f5): revisit together with run_agent's tree reset.
-                envelope=root_envelope(recovery_turn_id, session_id=session_id),
-                # Still the block's turn: it may run on credits as the first did,
-                # paid from the same tenancy.
-                tool_name=_AUTOPILOT_TOOL_NAME,
-                organization_id=session.organization_id,
-                team_id=session.team_id,
-            ),
-            timeout=10,
-        )
+        try:
+            await asyncio.wait_for(
+                schedule_turn(
+                    session_id=session_id,
+                    user_id=user_id,
+                    turn_id=str(uuid.uuid4()),
+                    message=message,
+                    tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
+                    # Still the block's turn: it may run on credits as the first
+                    # did, paid from the same tenancy.
+                    tool_name=_AUTOPILOT_TOOL_NAME,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
+                    llm_auth_provider=session.metadata.llm_auth_provider,
+                    llm_credential_id=session.metadata.llm_credential_id,
+                    # The same filter ``execute_copilot`` gave the first run.
+                    permissions=without_render_ui(permissions),
+                ),
+                timeout=10,
+            )
+        except (ConcurrentTurnLimitError, SessionNotIdle, TreeRefusal) as declined:
+            logger.warning(
+                f"AutoPilot session {session_id[:12]}: recovery not started "
+                f"({type(declined).__name__})"
+            )
+            return
         logger.info("AutoPilot session %s enqueued for recovery", session_id[:12])
     except Exception:
         logger.warning(

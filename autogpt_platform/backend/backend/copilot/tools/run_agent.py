@@ -61,6 +61,7 @@ from backend.util.timezone_utils import (
 )
 
 from .base import GATE_APPROVED, GATE_DECIDED, BaseTool, parameters_without
+from .capability_gates import gate_denied, gate_denied_error
 from .execution_utils import (
     NodeFailureSummary,
     build_run_health_warning,
@@ -415,6 +416,11 @@ class RunAgentTool(BaseTool):
 
         # Determine if this is a schedule request
         is_schedule = bool(params.schedule_name or params.cron)
+
+        # A schedule is standing work whichever tool makes it, so this mode
+        # answers to the same permission as ``schedule_followup``.
+        if is_schedule and gate_denied("schedule_followup"):
+            return gate_denied_error(f"{self.name} with a schedule", session_id)
 
         # Session-level dry-run blocks scheduling — schedules create real
         # side effects that cannot be simulated.

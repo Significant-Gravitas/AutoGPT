@@ -9,6 +9,7 @@ from backend.api.features.experts.routines import (
     RoutineUnansweredAsksError,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.routines import (
     ListRoutinesTool,
@@ -106,6 +107,21 @@ async def test_switching_one_on_passes_the_owners_answers_through(experts):
     assert kwargs["prompt"] == "Read the support queue."
     assert kwargs["crons"] == ["0 10 * * 1-5"]
     assert kwargs["grants_credentials"] is True
+
+
+async def test_switching_one_on_keeps_this_turns_filter_for_its_runs(experts):
+    limits = CopilotPermissions(
+        tools=["web_fetch", "schedule_routine"], tools_exclude=False
+    )
+    with patch(f"{_PATH}.get_current_permissions", return_value=limits):
+        await ScheduleRoutineTool()._execute(
+            "user-1",
+            _session("expert-a"),
+            routine_id="routine-1",
+            enabled=True,
+            prompt="Read the support queue.",
+        )
+    assert experts.enable_routine.await_args.kwargs["permissions"] == limits
 
 
 async def test_an_omitted_grant_leaves_the_routine_where_it_was(experts):

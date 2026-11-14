@@ -124,9 +124,14 @@ async def test_an_hourly_routine_runs_daily_from_now_on(
         row = await ExpertRoutine.prisma().find_unique(where={"id": routine.id})
         assert row is not None
         assert row.crons == ["17 9 * * *"] and row.scheduleIds == ["job-new"]
-        # The new job is armed before the old one goes.
+        # The old job's filter is read, then the new job is armed before the
+        # old one goes.
         calls = [name for name, _, _ in scheduler.mock_calls]
-        assert calls == ["add_copilot_turn_schedule", "delete_schedule"]
+        assert calls == [
+            "get_execution_schedules",
+            "add_copilot_turn_schedule",
+            "delete_schedule",
+        ]
         scheduler.delete_schedule.assert_awaited_once_with("job-old", user_id=user_id)
     finally:
         await _cleanup(user_id)

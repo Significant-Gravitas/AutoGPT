@@ -34,6 +34,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from backend.copilot.context import get_current_permissions
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
@@ -290,6 +291,8 @@ class ScheduleFollowupTool(BaseTool):
                 team_id=session.team_id if session else None,
                 expert_id=session.expert_id if session else None,
                 credential_pins=pins,
+                # Every fire runs under this turn's filter: it wrote the message.
+                permissions=get_current_permissions(),
             )
         except ValueError as e:
             return ErrorResponse(

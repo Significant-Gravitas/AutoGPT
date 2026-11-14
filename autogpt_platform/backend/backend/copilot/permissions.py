@@ -271,7 +271,8 @@ UNGRANTED_ROUTINE_DENIED_TOOLS: frozenset[str] = frozenset(
 # access to the account forever: a routine that can write a routine can grant
 # itself the credentials its own prompt was denied, and the owner sees a
 # schedule they never agreed to.  Standing work is created where somebody is
-# present to refuse it.
+# present to refuse it. ``run_agent`` with a cron answers to
+# ``schedule_followup`` (``RunAgentTool._execute``), so its immediate runs stay.
 ROUTINE_SELF_ESCALATION_TOOLS: frozenset[str] = frozenset(
     {
         "schedule_routine",

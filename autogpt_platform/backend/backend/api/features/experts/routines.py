@@ -45,6 +45,7 @@ from backend.api.features.experts.routine_jobs import (
     spread_cron,
 )
 from backend.copilot.credential_selection import CredentialPin, CredentialPins
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
@@ -184,6 +185,7 @@ async def enable_routine(
     pinned_session_id: str | None = None,
     grants_credentials: bool | None = None,
     credential_pins: CredentialPins | None = None,
+    permissions: CopilotPermissions | None = None,
 ) -> ExpertRoutine:
     """Switch a routine on, resolving the proposal into what actually runs.
 
@@ -196,6 +198,9 @@ async def enable_routine(
     mode still read THREAD while its id pointed at a real chat fired correctly
     by luck and described itself wrongly everywhere else — in the tool's
     confirmation, in the context block, and in any UI reading the row.
+
+    *permissions* is the filter of the turn switching it on, which every fire
+    runs under; without one, jobs it replaces pass theirs on.
 
     Creates one scheduler job per cron, or exactly one for a ``run_at``. A
     partial failure leaves nothing behind: a routine that fires at 08:30 but
@@ -286,6 +291,7 @@ async def enable_routine(
         session_id=pinned,
         user_timezone=user_timezone,
         replaces=list(row.scheduleIds),
+        permissions=permissions,
     )
     now = datetime.now(timezone.utc)
     data: prisma.types.ExpertRoutineUpdateInput = {
