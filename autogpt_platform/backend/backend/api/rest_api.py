@@ -336,7 +336,9 @@ sort_openapi(app)
 instrument_fastapi(app, service_name="rest-api", expose_endpoint=False)
 
 
-add_exception_handlers(app)
+add_exception_handlers(
+    app, server_error_detail=False, expose_missing_config_detail=True
+)
 
 app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"

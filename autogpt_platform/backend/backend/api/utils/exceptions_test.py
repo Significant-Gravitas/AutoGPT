@@ -5,6 +5,7 @@ import fastapi.testclient
 import pytest
 
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.util.exceptions import MissingConfigError
 
 
 def _client(*, server_error_detail: bool) -> fastapi.testclient.TestClient:
@@ -38,3 +39,33 @@ def test_a_client_error_still_says_what_was_wrong() -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"] == "limit must be positive"
+
+
+def test_missing_config_stays_redacted_unless_rest_opts_in() -> None:
+    app = fastapi.FastAPI()
+
+    @app.get("/cfg")
+    async def cfg() -> None:
+        raise MissingConfigError("AYRSHARE_API_KEY is not configured")
+
+    add_exception_handlers(app, server_error_detail=False)
+    hidden = fastapi.testclient.TestClient(app, raise_server_exceptions=False).get(
+        "/cfg"
+    )
+    assert hidden.status_code == 503
+    assert hidden.json()["detail"] == "Internal server error"
+
+    rest = fastapi.FastAPI()
+
+    @rest.get("/cfg")
+    async def rest_cfg() -> None:
+        raise MissingConfigError("AYRSHARE_API_KEY is not configured")
+
+    add_exception_handlers(
+        rest, server_error_detail=False, expose_missing_config_detail=True
+    )
+    shown = fastapi.testclient.TestClient(rest, raise_server_exceptions=False).get(
+        "/cfg"
+    )
+    assert shown.status_code == 503
+    assert shown.json()["detail"] == "AYRSHARE_API_KEY is not configured"
