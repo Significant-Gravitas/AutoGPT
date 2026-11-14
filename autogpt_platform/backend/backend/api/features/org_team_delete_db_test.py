@@ -57,6 +57,11 @@ async def test_a_deleted_private_teams_agents_and_runs_stay_with_their_authors(
     assert await _sees(author, org.id, graph.id, run.id) == (True, True)
     # Shared through membership only, which the delete ends.
     assert await _sees(teammate, org.id, graph.id, run.id) == (False, False)
+    # A membership written while the delete ran (a racing join) grants nothing.
+    await prisma.models.TeamMember.prisma().create(
+        data={"teamId": team.id, "userId": teammate, "status": "ACTIVE"}
+    )
+    assert await _sees(teammate, org.id, graph.id, run.id) == (False, False)
     with pytest.raises(NotFoundError):
         await team_db.get_team(team.id, expected_org_id=org.id)
     # The name is free for a new team.

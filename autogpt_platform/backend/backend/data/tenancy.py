@@ -28,7 +28,7 @@ async def get_user_team_ids(user_id: str, organization_id: str) -> list[str]:
         where={
             "userId": user_id,
             "status": "ACTIVE",
-            "Team": {"is": {"orgId": organization_id}},
+            "Team": {"is": {"orgId": organization_id, "archivedAt": None}},
         }
     )
     return [m.teamId for m in memberships]
