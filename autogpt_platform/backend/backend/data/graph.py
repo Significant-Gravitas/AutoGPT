@@ -82,6 +82,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+SUB_WORKFLOW_RUNS_ITSELF = (
+    "A workflow can't run itself as a sub-workflow, directly or through other "
+    "workflows"
+)
+
 
 class GraphSettings(BaseModel):
     # Use Annotated with BeforeValidator to coerce None to default values.
@@ -436,15 +441,14 @@ class BaseGraph(GraphBaseMeta):
                             if k not in ["description", "default", "secret"]
                         },
                         "secret": False,
-                        # Default value has to be set for advanced fields.
-                        "advanced": p.advanced and p.value is not None,
+                        "advanced": p.advanced and p.is_optional(),
                         "title": p.title or p.name,
                         **({"description": p.description} if p.description else {}),
                         **({"default": p.value} if p.value is not None else {}),
                     }
                     for p in schema_fields
                 },
-                "required": [p.name for p in schema_fields if p.value is None],
+                "required": [p.name for p in schema_fields if not p.is_optional()],
             }
         except AttributeError as e:
             raise ValueError(str(e)) from e
@@ -971,6 +975,10 @@ class GraphModel(Graph, GraphMeta):
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
             self._validate_graph(sub_graph, for_run, nodes_input_masks)
+        if cycle_errors := self._sub_workflow_cycle_errors():
+            raise GraphValidationError(
+                SUB_WORKFLOW_RUNS_ITSELF, node_errors=cycle_errors
+            )
 
     @staticmethod
     def _validate_graph(
@@ -996,7 +1004,7 @@ class GraphModel(Graph, GraphMeta):
 
         Returns: dict[node_id, dict[field_name, error_message]]
         """
-        return {
+        errors = {
             **self._validate_graph_get_errors(self, for_run, nodes_input_masks),
             **{
                 node_id: error
@@ -1005,6 +1013,36 @@ class GraphModel(Graph, GraphMeta):
                     sub_graph, for_run, nodes_input_masks
                 ).items()
             },
+        }
+        for node_id, cycle_error in self._sub_workflow_cycle_errors().items():
+            errors[node_id] = {**errors.get(node_id, {}), **cycle_error}
+        return errors
+
+    def _sub_workflow_cycle_errors(self) -> dict[str, dict[str, str]]:
+        """Sub-workflow nodes that would start a workflow already running in
+        their chain, so that it starts itself again without end.
+
+        Chains follow the version each node names, through this graph and the
+        sub-graphs it was saved or loaded with. A version not among them is
+        checked when its run starts (see `backend.executor.nesting`).
+        """
+        agent_block_id = AgentExecutorBlock().id
+        calls: dict[tuple[str, int], list[tuple[str, str, Any]]] = {
+            (graph.id, graph.version): [
+                (node.id, target, node.input_default.get("graph_version"))
+                for node in graph.nodes
+                if node.block_id == agent_block_id
+                and isinstance(target := node.input_default.get("graph_id"), str)
+                and target
+            ]
+            for graph in (*self.sub_graphs, self)
+        }
+        above = _workflows_above(calls, (self.id, self.version))
+        return {
+            node_id: {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
+            for graph_key, node_calls in calls.items()
+            for node_id, target, _ in node_calls
+            if target in above.get(graph_key, set())
         }
 
     @staticmethod
@@ -1439,6 +1477,48 @@ def _describe_node_errors(
     return problems[0]
 
 
+def _workflows_above(
+    calls: Mapping[tuple[str, int], Sequence[tuple[str, str, Any]]],
+    top: tuple[str, int],
+) -> dict[tuple[str, int], set[str]]:
+    """For each (graph id, version) a run of `top` reaches, the ids of the
+    graphs some chain from `top` runs on the way to it, its own included.
+    `calls` holds each graph's (node id, graph id, version) sub-workflow
+    calls; a call to a version not in it, or to a version that is not a
+    number, reaches nothing further."""
+    callees = {
+        caller: {
+            (graph_id, version)
+            for _, graph_id, version in node_calls
+            if isinstance(version, int) and (graph_id, version) in calls
+        }
+        for caller, node_calls in calls.items()
+    }
+    reached = _reachable(callees, top)
+    callers: dict[tuple[str, int], set[tuple[str, int]]] = defaultdict(set)
+    for caller in reached:
+        for callee in callees[caller]:
+            callers[callee].add(caller)
+    return {
+        graph: {graph_id for graph_id, _ in _reachable(callers, graph)}
+        for graph in reached
+    }
+
+
+def _reachable(
+    edges: Mapping[tuple[str, int], Collection[tuple[str, int]]],
+    start: tuple[str, int],
+) -> set[tuple[str, int]]:
+    seen = {start}
+    pending = [start]
+    while pending:
+        for follower in edges.get(pending.pop(), ()):
+            if follower not in seen:
+                seen.add(follower)
+                pending.append(follower)
+    return seen
+
+
 def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
     """An input or output named "" has no name, and the graph's interface needs
     one; one wired in from a link still counts."""
@@ -1605,6 +1685,17 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
         version=graph.version,
         is_active=graph.isActive,
     )
+
+
+async def get_copied_graph_ids(graph_ids: list[str]) -> list[str]:
+    """The ids in ``graph_ids`` with any version copied from another graph."""
+    # A version saved in the builder drops ``forkedFromId``, so the latest
+    # version alone can't tell a copy from an original.
+    copies = await AgentGraph.prisma().find_many(
+        where={"id": {"in": graph_ids}, "forkedFromId": {"not": None}},
+        distinct=["id"],
+    )
+    return [copy.id for copy in copies]
 
 
 async def get_graph(
@@ -2434,9 +2525,7 @@ async def fork_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    # Set forked from ID and version as itself as it's about ot be copied
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     graph.name = fork_name(graph.name)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -2478,8 +2567,7 @@ async def copy_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     # Preserve the original graph name (no "Copy of" prefix)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
@@ -2496,6 +2584,13 @@ async def copy_graph(
         )
 
     return graph
+
+
+def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:
+    """Make each graph about to be copied the source its copy records."""
+    for graph in graphs:
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
 
 
 async def __create_graph(
@@ -2789,3 +2884,21 @@ class _UnknownBlockBase(Block):
     async def run(self, input_data, **kwargs):
         """Always yield an error for missing blocks."""
         yield "error", f"Block {self.id} no longer exists"
+
+
+_HAND_OVER_GRAPHS = """
+    UPDATE {schema_prefix}"AgentGraph" SET "userId" = $1
+     WHERE "userId" = $2 AND "id" = ANY($3::text[])
+"""
+
+
+async def hand_over_graphs(
+    graph_ids: list[str], *, from_user_id: str, to_user_id: str, tx: Prisma
+) -> int:
+    """Give every version of these graphs to another account, in the caller's
+    transaction. Only rows `from_user_id` still owns move. Account erasure
+    hands the agents other accounts use to the "deleted user" placeholder
+    with this (`account_erasure/shared_agents.py`)."""
+    return await execute_raw_with_schema(
+        _HAND_OVER_GRAPHS, to_user_id, from_user_id, graph_ids, client=tx
+    )

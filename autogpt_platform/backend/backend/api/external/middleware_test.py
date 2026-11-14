@@ -5,8 +5,14 @@ An API key is matched on its head and then hashed with Scrypt; an OAuth access
 token is looked up by its digest. A bearer in the token format must never be
 tried as a key: one old key headed like a token would otherwise make every
 forged token cost a hash, ahead of every rate limit.
+
+A closed account's key or token is refused with a 401: deletion revokes every
+key and grant, but one minted while the account was closing, or by an admin
+acting as the user afterwards, would otherwise keep working until the
+account's data is erased.
 """
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -14,6 +20,7 @@ import fastapi
 import pytest
 import pytest_mock
 from autogpt_libs.api_key.keysmith import APIKeySmith
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
@@ -32,12 +39,7 @@ from backend.data.auth.oauth import (
 
 _NOW = datetime.now(UTC)
 
-
-@pytest.mark.parametrize(
-    "state, status",
-    [("banned", 403), ("until_tomorrow", 403), ("lapsed", 200), ("unbanned", 200)],
-)
-@pytest.mark.parametrize(
+EVERY_CREDENTIAL = pytest.mark.parametrize(
     "headers",
     [
         {"X-API-Key": "key"},
@@ -47,6 +49,13 @@ _NOW = datetime.now(UTC)
     ],
     ids=["api-key", "api-key-as-bearer", "access-token"],
 )
+
+
+@pytest.mark.parametrize(
+    "state, status",
+    [("banned", 403), ("until_tomorrow", 403), ("lapsed", 200), ("unbanned", 200)],
+)
+@EVERY_CREDENTIAL
 def test_a_credential_answers_by_its_owners_ban_state(
     mocker, auth_row, state, status, headers
 ):
@@ -63,6 +72,30 @@ def test_a_credential_answers_by_its_owners_ban_state(
         assert response.json()["detail"]["code"] == "account_banned"
     else:
         assert response.json() == {"user_id": user_id}
+
+
+@pytest.fixture
+def closed_owner(auth_row) -> Iterator[str]:
+    """Closing an account bans its sign-in too; the closed answer wins."""
+    user_id = auth_row("banned")
+    remember_account_closed(user_id)
+    yield user_id
+    forget_account_state(user_id)
+
+
+@EVERY_CREDENTIAL
+def test_a_closed_accounts_credential_is_refused_as_closed(
+    mocker, closed_owner, headers
+):
+    mocker.patch.object(middleware, "validate_api_key", return_value=_key(closed_owner))
+    mocker.patch.object(
+        middleware, "validate_access_token", return_value=(_token(closed_owner), None)
+    )
+
+    response = _client().get("/auth", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
 
 
 def _bearer(token: str) -> HTTPAuthorizationCredentials:

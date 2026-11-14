@@ -55,6 +55,7 @@ def v1_tokens(v1_key_rows):
         scopes=list(APIKeyPermission),
         ownerId=v1_key_rows[0].user_id,
         isActive=True,
+        isPublic=False,
         createdAt=now,
         updatedAt=now,
     )

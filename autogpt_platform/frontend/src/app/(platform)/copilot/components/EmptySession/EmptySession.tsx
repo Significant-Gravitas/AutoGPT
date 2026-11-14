@@ -7,7 +7,14 @@ import { useFirstRunTourAutoStart } from "@/app/(platform)/components/FirstRunTo
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import { useState, type ComponentProps, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useCopilotUIStore } from "../../store";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
@@ -21,6 +28,7 @@ import { ComposerTray } from "./components/ComposerTray/ComposerTray";
 import { DitherTrail } from "./components/DitherTrail/DitherTrail";
 import { EmptyHero } from "./components/EmptyHero";
 import { ExpertInfoPanel } from "./components/ExpertInfoPanel/ExpertInfoPanel";
+import { ExecutionTargetPicker } from "./components/ExecutionTargetPicker/ExecutionTargetPicker";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { HomeBoard } from "./components/HomeBoard/HomeBoard";
@@ -87,6 +95,13 @@ export function EmptySession({
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
+  const resetNewChatExecutionTarget = useCopilotUIStore(
+    (state) => state.resetNewChatExecutionTarget,
+  );
+  const newChatExecutionTarget = useCopilotUIStore(
+    (state) => state.newChatExecutionTarget,
+  );
   const intro = useOnboardingIntroCard();
   useFirstRunTourAutoStart({
     isPending: intro.isFirstRunPending,
@@ -144,6 +159,10 @@ export function EmptySession({
   const isRegularHero = !intro.isVisible && !intro.isAwaitingGreeting;
   // Home's two tabs, held back with the hero so a load shows one loader.
   const [homeView, setHomeView] = useHomeView();
+
+  useEffect(() => {
+    resetNewChatExecutionTarget();
+  }, [resetNewChatExecutionTarget]);
 
   if (isKickoffStarting) {
     return <ExpertKickoffLoader expertName={expertName} />;
@@ -269,6 +288,10 @@ export function EmptySession({
                   the greeting page instead of sitting under a bare hero. */}
               {!intro.isAwaitingGreeting && (
                 <div className={cn("mb-6", intro.isVisible && "max-w-[48rem]")}>
+                  {isLocalPCEnabled ||
+                  newChatExecutionTarget.kind === "local" ? (
+                    <ExecutionTargetPicker />
+                  ) : null}
                   <div
                     {...tourTarget("composer")}
                     className={cn(

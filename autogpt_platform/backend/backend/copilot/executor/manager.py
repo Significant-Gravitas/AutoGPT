@@ -15,7 +15,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
-from prometheus_client import Counter, Gauge, start_http_server
+from prometheus_client import Gauge, start_http_server
 from pydantic import BaseModel, ValidationError
 
 import backend.data.llm_registry

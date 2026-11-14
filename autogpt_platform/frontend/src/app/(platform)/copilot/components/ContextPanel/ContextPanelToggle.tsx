@@ -24,6 +24,9 @@ interface Props {
   /** Kept for the callers: the composer's tab shows the integrations on
    *  mobile (new layout, see ComposerPanelTab). */
   hideIntegrationsOnMobile?: boolean;
+  /** A Local PC chat runs on the user's own computer and has no cloud
+   *  computer to show. */
+  hideComputer?: boolean;
 }
 
 /** The chat's one top-right control: it opens the side panel, or folds it

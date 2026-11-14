@@ -23,12 +23,9 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  answeredLabel,
-  countHeldCalls,
-  getHeldCallRowKind,
-} from "./heldCallRows";
+import { answeredLabel, getHeldCallRowKind } from "./heldCallRows";
 import { extractReviewTargets, getLatestCompactionPhase } from "./helpers";
+import { reviewRefetchKey } from "./reviewRefetchKey";
 import {
   buildMessageIndexById,
   isMidTurnSegmentRow,
@@ -53,6 +50,7 @@ import {
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 import { ThinkingSlot } from "./components/ThinkingSlot/ThinkingSlot";
 import { getTurnActivity } from "./thinkingActivity";
+import { getThinkerHex } from "./thinkerColor";
 import { isSessionOpeningMessage, type SentFrom } from "../../sentFrom";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
@@ -465,6 +463,7 @@ export function ChatMessagesContainer({
         filePattern={filePattern}
         fileUrlBuilder={fileUrlBuilder}
         onRetry={isLastAssistant ? onRetry : undefined}
+        expert={isLastAssistant ? expertIdentity : undefined}
       />
     );
   }
@@ -546,6 +545,7 @@ export function ChatMessagesContainer({
             startedAtMs={streamClock.startedAtMs}
             attached={lastMessage?.role === "assistant"}
             compact={isCompact}
+            color={getThinkerHex({ expertIdentity, isResolvingExpertIdentity })}
           />
           {!readOnly && isRestoringActiveSession && (
             <Message from="assistant">
@@ -576,8 +576,8 @@ export function ChatMessagesContainer({
           {!readOnly && sessionID && (
             <CopilotPendingReviews
               chatSessionId={sessionID}
-              pollWhileEmpty={reviewTargets.chat}
-              refetchKey={countHeldCalls(messages)}
+              pollWhileEmpty={reviewTargets.chat || isTurnBusy}
+              refetchKey={reviewRefetchKey(messages)}
               expertName={expertIdentity?.name ?? null}
               expert={expertIdentity ?? null}
             />

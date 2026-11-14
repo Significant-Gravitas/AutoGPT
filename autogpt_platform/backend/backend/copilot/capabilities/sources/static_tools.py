@@ -32,6 +32,8 @@ EAGER_CORE: frozenset[str] = frozenset(
         "run_agent",
         "find_library_agent",
         "ask_question",
+        # A presentation tool: Otto would never go searching for one.
+        "render_ui",
         "web_search",
         "web_fetch",
         # The three go together: read and write take a file id or path that
@@ -66,6 +68,10 @@ EAGER_CORE: frozenset[str] = frozenset(
         # Multi-step work runs as a background task: the prompt routes every
         # request bigger than a quick answer here by name, every turn.
         "start_task",
+        # Both open a chat card, and a deferred tool renders as a generic
+        # tool row instead of its card.
+        "request_work_check",
+        "flag_mistake",
     }
 )
 

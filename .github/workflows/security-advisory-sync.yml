@@ -93,7 +93,7 @@ jobs:
           permission-contents: write # push the credits branch
           permission-pull-requests: write # open or update the credits PR
       - name: Update the public credits PR
-        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ steps.app-token.outputs.token }}
           path: content

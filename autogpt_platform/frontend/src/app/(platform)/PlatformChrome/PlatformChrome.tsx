@@ -21,6 +21,7 @@ import { ContextualTips } from "../components/ContextualTips/ContextualTips";
 import { FirstRunTour } from "../components/FirstRunTour/FirstRunTour";
 import { useFirstRunTourStore } from "../components/FirstRunTour/store";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
+import { NpsPrompt } from "../components/NpsPrompt/NpsPrompt";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
@@ -35,7 +36,21 @@ interface Props {
   persistedSidebarOpen?: boolean;
 }
 
+// The provider and the NPS card sit above the shell's branches: moving between
+// them (into settings, say) remounts everything below, and an NPS card that
+// goes away can't come back, because its one showing is already used.
 export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
+  return (
+    <TopUpPromptProvider>
+      <PlatformShell persistedSidebarOpen={persistedSidebarOpen}>
+        {children}
+      </PlatformShell>
+      <NpsPrompt />
+    </TopUpPromptProvider>
+  );
+}
+
+function PlatformShell({ children, persistedSidebarOpen }: Props) {
   const {
     showAppSidebar,
     showChangelog,
@@ -51,11 +66,7 @@ export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
     (state) => state.source !== null,
   );
 
-  const content = (
-    <TopUpPromptProvider>
-      <PaywallGate>{children}</PaywallGate>
-    </TopUpPromptProvider>
-  );
+  const content = <PaywallGate>{children}</PaywallGate>;
 
   // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {

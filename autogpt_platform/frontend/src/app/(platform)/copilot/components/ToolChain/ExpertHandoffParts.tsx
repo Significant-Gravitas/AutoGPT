@@ -6,9 +6,15 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { cn } from "@/lib/utils";
-import type { HandoffTask } from "./expertHandoff";
+import {
+  type HandoffTask,
+  NEW_EXPERT_COPY,
+  type NewExpertKind,
+} from "./expertHandoff";
 
 interface ProposalProps {
+  /** A hire off the roster or a new expert: the card says hire or create. */
+  kind: NewExpertKind;
   name: string;
   role: string | null;
   avatarUrl: string | null;
@@ -29,11 +35,12 @@ interface ProposalProps {
   stepKey: string;
 }
 
-/** A hire proposed for a task the user already described, asked as one
- *  yes/no question: Hire and start, or Not now. The brief and the expert's
- *  charter stay behind one disclosure: the user wrote the task a moment ago
- *  and only needs who, what and the choice to answer. */
+/** A hire or new expert proposed for a task the user already described,
+ *  asked as one yes/no question: Hire (or Create) and start, or Not now. The
+ *  brief and the expert's charter stay behind one disclosure: the user wrote
+ *  the task a moment ago and only needs who, what and the choice to answer. */
 export function HandoffProposal({
+  kind,
   name,
   role,
   avatarUrl,
@@ -45,6 +52,7 @@ export function HandoffProposal({
   stepClassName,
   stepKey,
 }: ProposalProps) {
+  const copy = NEW_EXPERT_COPY[kind];
   return (
     <div className="flex gap-3 p-4">
       <ExpertAvatar
@@ -57,7 +65,7 @@ export function HandoffProposal({
       <div className="min-w-0 flex-1">
         <div key={stepKey} className={stepClassName}>
           <p className="text-body leading-snug font-medium [overflow-wrap:anywhere] text-foreground-emphasis">
-            Hire {name} to take on {task.title}?
+            {copy.Verb} {name} to take on {task.title}?
           </p>
           <p className="mt-0.5 text-body [overflow-wrap:anywhere] text-foreground-tertiary">
             {role
@@ -73,7 +81,7 @@ export function HandoffProposal({
               disabled={actions.disabled}
               onClick={actions.onStart}
             >
-              Hire and start
+              {copy.Verb} and start
             </Button>
             <Button
               variant="ghost"

@@ -29,7 +29,7 @@ To run the AutoGPT Platform, follow these steps:
    make init-env
    ```
 
-   This command copies each `.env.default` file to `.env` (in `autogpt_platform`, `backend` and `frontend`) where no `.env` exists yet, and generates the secrets and passwords those files leave blank: `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BETTER_AUTH_SECRET` and the passwords of the database, RabbitMQ, Redis and FalkorDB. The backend refuses to start without `ENCRYPTION_KEY`. It never overwrites an existing file or a value you set. You can then modify the `.env` files to add your own environment variables.
+   This command copies each `.env.default` file to `.env` (in `autogpt_platform`, `backend` and `frontend`) where no `.env` exists yet, and generates the secrets and passwords those files leave blank: `ENCRYPTION_KEY`, `UNSUBSCRIBE_SECRET_KEY`, `INTERNAL_API_KEY`, `BAN_RECORD_HASH_KEY`, `BETTER_AUTH_SECRET` and the passwords of the database, RabbitMQ, Redis and FalkorDB. The backend refuses to start without `ENCRYPTION_KEY`. It never overwrites an existing file or a value you set. You can then modify the `.env` files to add your own environment variables.
 
    Without `make`, run `installer/setup-autogpt.sh` (Linux/macOS) or `installer\setup-autogpt.bat` (Windows) instead. They do the same and then start the services.
 

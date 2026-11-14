@@ -109,8 +109,8 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 vi.mock("../../ChatMinimap/ChatMinimap", () => ({
   ChatMinimap: () => null,
 }));
-vi.mock("../../DrawnLineLoader/DrawnLineLoader", () => ({
-  DrawnLineLoader: () => null,
+vi.mock("../../StoneStackLoader/StoneStackLoader", () => ({
+  StoneStackLoader: () => null,
 }));
 
 class MockIntersectionObserver {

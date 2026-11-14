@@ -9,7 +9,9 @@ import {
 } from "../../../../helpers/workspaceAttachments";
 import { isBookkeepingPart } from "../../../../messageParts";
 import type { SentFrom } from "../../../../sentFrom";
+import type { FeedbackCardTarget } from "../../../../tools/FeedbackPrompts/helpers";
 import {
+  getRatedMessageId,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
@@ -85,6 +87,32 @@ export function deriveLiveCompaction(
     // exist once it closes).
     liveCompactionStats: getLatestCompactionStats(parts),
   };
+}
+
+interface FeedbackCardArgs {
+  isLastAssistant: boolean;
+  isCurrentlyStreaming: boolean;
+  readOnly: boolean;
+  sessionID?: string | null;
+  message: ChatMessage;
+  savedMessageId?: string | null;
+}
+
+// A card shows under the last reply once its turn has finished, for the
+// chat's owner, and only once that reply has a saved id to rate.
+export function getFeedbackCardTarget({
+  isLastAssistant,
+  isCurrentlyStreaming,
+  readOnly,
+  sessionID,
+  message,
+  savedMessageId,
+}: FeedbackCardArgs): FeedbackCardTarget | null {
+  if (!isLastAssistant || isCurrentlyStreaming || readOnly || !sessionID) {
+    return null;
+  }
+  const messageID = getRatedMessageId(message, savedMessageId);
+  return messageID ? { sessionID, messageID } : null;
 }
 
 export function getMessageContentClassName(compact: boolean): string {

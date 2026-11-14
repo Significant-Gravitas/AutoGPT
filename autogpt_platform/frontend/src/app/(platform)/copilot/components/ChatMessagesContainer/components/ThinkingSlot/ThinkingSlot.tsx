@@ -23,6 +23,8 @@ interface Props {
    *  that reply rather than a bubble of its own. */
   attached: boolean;
   compact: boolean;
+  /** The thinking expert's colour, when the chat has one. */
+  color?: string | null;
 }
 
 /** The one place the thinking indicator renders for a live turn. It sits
@@ -35,6 +37,7 @@ export function ThinkingSlot({
   startedAtMs,
   attached,
   compact,
+  color,
 }: Props) {
   const reducedMotion = useReducedMotion();
   const wanted = useWantsThinking(activity, enabled && !handedOff);
@@ -52,7 +55,7 @@ export function ThinkingSlot({
       <Message from="assistant">
         <MessageContent>
           <div className="duration-200 ease-out animate-in fade-in slide-in-from-bottom-1 motion-reduce:animate-none">
-            <ThinkingIndicator active startedAtMs={startedAtMs} />
+            <ThinkingIndicator active startedAtMs={startedAtMs} color={color} />
           </div>
         </MessageContent>
       </Message>

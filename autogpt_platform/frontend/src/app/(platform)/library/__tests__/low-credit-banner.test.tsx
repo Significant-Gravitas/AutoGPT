@@ -18,7 +18,11 @@ import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPrompt
 import LibraryPage from "../page";
 
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
-  useAuth: () => ({ isUserLoading: false, isLoggedIn: true }),
+  useAuth: () => ({
+    user: { id: "user-a" },
+    isUserLoading: false,
+    isLoggedIn: true,
+  }),
 }));
 
 // Billing must be on for the provider to derive `isOutOfCredits`; keep the real

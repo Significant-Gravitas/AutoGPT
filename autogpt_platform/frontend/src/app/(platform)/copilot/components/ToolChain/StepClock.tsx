@@ -4,10 +4,7 @@ import { useEffect, useState } from "react";
 import { SHOW_TIME_AFTER_SECONDS } from "../JobStatsBar/constants";
 import { formatElapsed } from "../JobStatsBar/formatElapsed";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
-import {
-  getToolDuration,
-  noteToolDuration,
-} from "../../helpers/toolDurations";
+import { getToolDuration, noteToolDuration } from "../../helpers/toolDurations";
 import type { ChainRow } from "./helpers";
 
 const MAX_REMEMBERED_STEPS = 200;
