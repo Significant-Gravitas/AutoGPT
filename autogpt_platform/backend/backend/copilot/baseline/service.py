@@ -1896,6 +1896,18 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    # Only the SDK engine is bound to the user's machine; running a Local PC
+    # chat here would put its tools in a cloud sandbox.
+    if session.metadata.execution_target.kind == "local":
+        yield StreamError(
+            errorText=(
+                "This chat runs on your Local PC, which this deployment's "
+                "chat engine cannot reach. Start a Cloud chat instead."
+            ),
+            code="local_pc_requires_sdk_engine",
+        )
+        return
+
     expert_session_suffix = await build_expert_identity_suffix(
         session.user_id,
         session.expert_id,

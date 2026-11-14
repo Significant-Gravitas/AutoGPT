@@ -17,7 +17,8 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     ExpertSessionUnavailableError,
 )
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, LocalExecutionTargetMetadata
+from backend.copilot.prompting import get_local_pc_sdk_supplement
 from backend.copilot.sdk.env import DISABLE_SLASH_COMMANDS_FLAG
 
 from .service import (
@@ -93,6 +94,7 @@ class TestApplyBuildingModeRestart:
         oversight_supplement: str = "",
         team_building_supplement: str = "",
         role_charter: str = "",
+        local_pc: bool = False,
         auto_mode_supplement: str = "",
         use_e2b: bool = False,
         expert_id: str | None = None,
@@ -108,6 +110,14 @@ class TestApplyBuildingModeRestart:
             new=mocker.AsyncMock(return_value=suffix),
         )
         session = _session(requested=True, guide_loaded=False)
+        if local_pc:
+            session.metadata.execution_target = LocalExecutionTargetMetadata(
+                machine_id="machine-1",
+                directory_ref="directory-1",
+                allowed_root="/workspace",
+                root_fingerprint="a" * 64,
+                root_grant="grant-1",
+            )
         session.expert_id = expert_id
         state = self._state(
             prior_emitted=prior_emitted, thinking_reprompted=thinking_reprompted
@@ -179,6 +189,35 @@ class TestApplyBuildingModeRestart:
         prompt = state.options.system_prompt
         text = prompt if isinstance(prompt, str) else prompt["append"]
         assert marker in text
+
+    @pytest.mark.asyncio
+    async def test_local_pc_instructions_survive_the_restart(self, mocker):
+        _, state, _, _ = await self._run(mocker, local_pc=True)
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert get_local_pc_sdk_supplement() in text
+        assert "<building_guide>GUIDE</building_guide>" in text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("local_pc", [False, True])
+    async def test_the_executor_notes_and_the_charter_assemble_together(
+        self, mocker, local_pc
+    ):
+        """The executor's notes carry the ceiling note, so the assembly must not
+        add it a second time, and a Local PC turn keeps the charter."""
+        _, state, _, _ = await self._run(
+            mocker,
+            local_pc=local_pc,
+            provider_supplement="<ceiling>NOTE</ceiling>",
+            role_charter="<charter>SEAT</charter>",
+        )
+
+        prompt = state.options.system_prompt
+        text = prompt if isinstance(prompt, str) else prompt["append"]
+        assert text.count("<ceiling>NOTE</ceiling>") == (0 if local_pc else 1)
+        assert text.count("<charter>SEAT</charter>") == 1
+        assert (get_local_pc_sdk_supplement() in text) is local_pc
 
     @pytest.mark.asyncio
     async def test_auto_mode_supplement_survives_the_restart(self, mocker):
