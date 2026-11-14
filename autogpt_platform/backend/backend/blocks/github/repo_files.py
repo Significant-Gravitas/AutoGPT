@@ -35,9 +35,9 @@ class GithubReadFileBlock(Block):
             placeholder="path/to/file",
         )
         branch: str = SchemaField(
-            description="Branch to read from",
+            description="Branch to read from; leave empty for the repository default branch",
             placeholder="branch_name",
-            default="main",
+            default="",
         )
 
     class Output(BlockSchemaOutput):
@@ -78,10 +78,9 @@ class GithubReadFileBlock(Block):
         credentials: GithubCredentials, repo_url: str, file_path: str, branch: str
     ) -> tuple[str, int]:
         api = get_api(credentials)
-        content_url = (
-            repo_url
-            + f"/contents/{quote(file_path, safe='')}?ref={quote(branch, safe='')}"
-        )
+        content_url = repo_url + f"/contents/{quote(file_path, safe='')}"
+        if branch.strip():
+            content_url += f"?ref={quote(branch, safe='')}"
         response = await api.get(content_url)
         data = response.json()
 
@@ -129,9 +128,9 @@ class GithubReadFolderBlock(Block):
             placeholder="path/to/folder",
         )
         branch: str = SchemaField(
-            description="Branch name to read from (defaults to main)",
+            description="Branch to read from; leave empty for the repository default branch",
             placeholder="branch_name",
-            default="main",
+            default="",
         )
 
     class Output(BlockSchemaOutput):
@@ -195,10 +194,9 @@ class GithubReadFolderBlock(Block):
         credentials: GithubCredentials, repo_url: str, folder_path: str, branch: str
     ) -> tuple[list[Output.FileEntry], list[Output.DirEntry]]:
         api = get_api(credentials)
-        contents_url = (
-            repo_url
-            + f"/contents/{quote(folder_path, safe='/')}?ref={quote(branch, safe='')}"
-        )
+        contents_url = repo_url + f"/contents/{quote(folder_path, safe='/')}"
+        if branch.strip():
+            contents_url += f"?ref={quote(branch, safe='')}"
         response = await api.get(contents_url)
         data = response.json()
 
