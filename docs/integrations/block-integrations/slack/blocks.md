@@ -1,6 +1,6 @@
 # Slack Blocks
 <!-- MANUAL: file_description -->
-Blocks for sending messages to Slack channels, direct messages, and threads using a Slack Bot Token.
+Blocks for sending messages to Slack channels, direct messages, and threads using a Slack Bot Token or a Slack OAuth connection.
 <!-- END MANUAL -->
 
 ## Send Slack Message
@@ -10,7 +10,9 @@ Send a text message to any Slack channel, DM, or thread. Required bot token scop
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-Calls the Slack `chat.postMessage` API with your bot token. The token must have the `chat:write` scope. Optionally uses `chat:write.customize` to set a custom username or icon emoji. Returns the message timestamp (`ts`), which can be passed back as `thread_ts` to reply in the same thread.
+Calls the Slack `chat.postMessage` API using either a manually pasted Bot Token or a Slack OAuth connection — both resolve to a bot token with the `chat:write` scope. Optionally uses `chat:write.customize` to set a custom username or icon emoji. Returns the message timestamp (`ts`), which can be passed back as `thread_ts` to reply in the same thread.
+
+The OAuth connection walks you through Slack's "Add to Slack" install flow instead of requiring you to copy a token from Slack's app dashboard by hand. It requests the `chat:write`, `chat:write.public`, and `chat:write.customize` bot scopes.
 
 If the Slack API returns a non-`ok` response (e.g. `invalid_auth`, `channel_not_found`, `not_in_channel`, or missing scopes), the block raises a user-facing error with the Slack error code so you can diagnose and fix the issue. Network failures and unexpected exceptions are also surfaced as errors through the block's `error` output.
 <!-- END MANUAL -->
