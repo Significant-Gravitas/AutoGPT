@@ -1633,6 +1633,174 @@ async def test_a_command_cancelled_after_its_shell_exited_has_its_group_stopped(
                 os.kill(int(pid_path.read_text()), signal.SIGKILL)
 
 
+def _released(held: Path) -> bool:
+    """Whether no process holds `held` open any more. Windows refuses to
+    delete a file another process has open without sharing deletion, which
+    Python's open() doesn't share."""
+    try:
+        held.unlink()
+    except FileNotFoundError:
+        return True
+    except PermissionError:
+        return False
+    return True
+
+
+def _holding_child(held: Path, ready: Path) -> str:
+    """A child command that ignores CTRL_BREAK_EVENT, holds `held` open, and
+    makes `ready` once it does."""
+    return textwrap.dedent(
+        f"""
+        import os, signal, time
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
+        held = open({str(held)!r}, "w")
+        open({str(ready)!r} + ".tmp", "w").close()
+        os.replace({str(ready)!r} + ".tmp", {str(ready)!r})
+        time.sleep(120)
+        """
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows job objects")
+@pytest.mark.asyncio
+async def test_a_stopped_windows_command_takes_the_processes_it_started_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On Windows a command's stop sent CTRL_BREAK_EVENT, then
+    TerminateProcess, which ends the command alone: a child it started that
+    outlived the break ran on after its session ended. The command runs in a
+    job of its own now, and the stop ends the job."""
+    monkeypatch.setattr(handlers_module, "_WINDOWS_BREAK_GRACE_SECONDS", 0.5)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config)
+    held, ready = tmp_path / "held", tmp_path / "ready"
+    command = (
+        "import signal, subprocess, sys, time; "
+        "signal.signal(signal.SIGBREAK, signal.SIG_IGN); "
+        f"subprocess.Popen([sys.executable, '-c', {_holding_child(held, ready)!r}]); "
+        "time.sleep(120)"
+    )
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path)))
+    )
+    try:
+        assert await _wait_until(ready.exists, timeout=60)
+        assert not _released(held)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert await _wait_until(lambda: _released(held), timeout=30)
+    finally:
+        if not task.done():
+            task.cancel()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows job objects")
+@pytest.mark.asyncio
+async def test_a_windows_command_cancelled_after_it_exited_takes_its_child_with_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A command can exit while a child it started holds the output pipes
+    the shim reads. On Windows its stop then did nothing, since the
+    command's own handle can't reach a child, and the child ran on."""
+    records: list[tuple[str, dict]] = []
+
+    class Audit:
+        async def write(self, op, *, request_id=None, details, result=None):
+            records.append((op, result))
+
+    monkeypatch.setattr(handlers_module, "_OUTPUT_DRAIN_SECONDS", 120.0)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config, Audit())
+    spawned: list[asyncio.subprocess.Process] = []
+    spawn = CommandHandler._spawn_argv
+
+    async def spawn_and_keep(argv, **kwargs):
+        proc = await spawn(argv, **kwargs)
+        spawned.append(proc)
+        return proc
+
+    monkeypatch.setattr(handler, "_spawn_argv", spawn_and_keep)
+    held, ready = tmp_path / "held", tmp_path / "ready"
+    # The command hands the child its stdout and stderr, and exits once the
+    # child holds its file.
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen(
+            [sys.executable, "-c", {_holding_child(held, ready)!r}], stdout=1, stderr=2
+        )
+        while not os.path.exists({str(ready)!r}):
+            time.sleep(0.01)
+        """
+    )
+    task = asyncio.create_task(
+        handler.handle(_cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path)))
+    )
+    try:
+        assert await _wait_until(
+            lambda: bool(spawned) and spawned[0].returncode is not None, timeout=60
+        )
+        assert not task.done()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert await _wait_until(lambda: _released(held), timeout=30)
+        [(op, result)] = [record for record in records if record[0] == "EXECUTE_COMMAND"]
+        assert result["error_code"] == "CANCELLED"
+        assert result["exit_code"] == 0
+    finally:
+        if not task.done():
+            task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_a_program_a_finished_command_started_in_the_background_keeps_running(
+    tmp_path: Path,
+) -> None:
+    """A command that finishes leaves running what it started to outlive it
+    (a server, say), on every OS: on Windows its job is let go of, not ended,
+    once its request is done."""
+    config = make_config(tmp_path)
+    handler = CommandHandler(config)
+    ready, go, survived = tmp_path / "ready", tmp_path / "go", tmp_path / "survived"
+    child = textwrap.dedent(
+        f"""
+        import os, time
+        open({str(ready)!r} + ".tmp", "w").close()
+        os.replace({str(ready)!r} + ".tmp", {str(ready)!r})
+        deadline = time.monotonic() + 60
+        while not os.path.exists({str(go)!r}) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        open({str(survived)!r}, "w").close()
+        """
+    )
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen(
+            [sys.executable, "-c", {child!r}],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        while not os.path.exists({str(ready)!r}):
+            time.sleep(0.01)
+        """
+    )
+
+    response = await handler.handle(
+        _cmd_msg(argv=[sys.executable, "-c", command], cwd=str(tmp_path), timeout_seconds=30)
+    )
+
+    assert isinstance(response, CommandResultMessage)
+    assert response.payload.exit_code == 0
+    go.touch()
+    assert await _wait_until(survived.exists, timeout=60)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
 @pytest.mark.asyncio
 async def test_a_group_stop_cut_short_in_its_grace_period_kills_the_group(

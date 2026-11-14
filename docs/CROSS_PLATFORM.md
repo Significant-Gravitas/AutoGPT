@@ -95,9 +95,9 @@ paths only; navigation and selection use short-lived opaque references.
 | Dimension | macOS | Linux | Windows | Notes |
 |---|---|---|---|---|
 | Graceful terminate | `SIGTERM` | `SIGTERM` | `CTRL_BREAK_EVENT` for console apps; `TerminateProcess` for GUI apps | Shim picks per-OS in command runner. |
-| Hard kill | `SIGKILL` | `SIGKILL` | `TerminateProcess` | Always available. |
-| Timeout enforcement | `asyncio.wait_for` + SIGTERM to the group → SIGKILL to whatever is left of it after 2s, even once the command itself has exited | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → TerminateProcess | Common timeout sequence; per-OS signal differs. |
-| Process group / job control | `setsid` + kill PGID | same | `CREATE_NEW_PROCESS_GROUP` flag | So we kill child processes spawned by the command. |
+| Hard kill | `SIGKILL` | `SIGKILL` | `TerminateJobObject` on the command's job (`TerminateProcess` on the command alone if it has none) | Always available. |
+| Timeout enforcement | `asyncio.wait_for` + SIGTERM to the group → SIGKILL to whatever is left of it after 2s, even once the command itself has exited; a cancelled command is stopped the same way | same | `asyncio.wait_for` + CTRL_BREAK → wait 2s → end the job, even once the command itself has exited; a cancelled command is stopped the same way | Common timeout sequence; per-OS signal differs. |
+| Process group / job control | `setsid` + kill PGID | same | `CREATE_NEW_PROCESS_GROUP` flag, and a job object per command: the command starts suspended and runs once it is in its job, so every process it starts is in the job | So we kill child processes spawned by the command. The job doesn't kill on close: what a command that finished started to outlive it keeps running, as on POSIX, and a program that asks to leave the job (`CREATE_BREAKAWAY_FROM_JOB`) may, as a POSIX one may leave its group. |
 
 ### Environment variables
 

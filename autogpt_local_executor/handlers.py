@@ -31,12 +31,13 @@ import subprocess
 import sys
 import threading
 import time
+import weakref
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
-from . import local_llm_limits, platform_info
+from . import local_llm_limits, platform_info, windows_jobs
 from .audit import AuditWriter
 from .computer_use import (
     APPROVAL_ARGUMENTS,
@@ -266,6 +267,14 @@ _TERMINATE_GRACE_SECONDS = 2.0
 # How long a command's output is still read once it has exited: a child it
 # left running can hold its output pipes open.
 _OUTPUT_DRAIN_SECONDS = 2.0
+# How long a Windows command has to exit after CTRL_BREAK_EVENT before its
+# job, every process it started, is ended.
+_WINDOWS_BREAK_GRACE_SECONDS = 2.0
+# Each running Windows command's job (windows_jobs), held from its start
+# until its request is done.
+_command_jobs: weakref.WeakKeyDictionary[asyncio.subprocess.Process, windows_jobs.CommandJob] = (
+    weakref.WeakKeyDictionary()
+)
 # The most entries one FILE_LIST returns, whatever max_entries asks for.
 MAX_FILE_LIST_ENTRIES = 10_000
 # The most directory entries one FILE_LIST looks at. A glob that matches
@@ -299,6 +308,22 @@ async def _terminate_process_group(pgid: int) -> None:
         _signal_process_group(pgid, signal.SIGKILL)
         raise
     _signal_process_group(pgid, signal.SIGKILL)
+
+
+def _end_windows_command(
+    proc: asyncio.subprocess.Process, job: windows_jobs.CommandJob | None
+) -> None:
+    """End a Windows command and every process it started (its job), or the
+    command alone where it has no job: TerminateProcess ends one process."""
+    if job is not None:
+        try:
+            job.terminate()
+            return
+        except OSError:
+            logger.warning("A command's job could not be ended", exc_info=True)
+    if proc.returncode is None:
+        with contextlib.suppress(OSError):
+            proc.kill()
 
 
 def _signal_process_group(pgid: int, sig: int) -> bool:
@@ -710,6 +735,12 @@ class CommandHandler:
                 self._stop_cancelled(proc, msg.id, payload, cwd=str(cwd), env=env, start=start)
             )
             raise
+        finally:
+            # Done with the command, however its request ended: what it left
+            # running keeps running, as on Linux and macOS.
+            job = _command_jobs.pop(proc, None)
+            if job is not None:
+                job.close()
         exit_code = proc.returncode if proc.returncode is not None else -1
 
         elapsed_ms = _elapsed_ms(start)
@@ -841,15 +872,29 @@ class CommandHandler:
         creation_flags: int,
         new_session: bool,
     ) -> asyncio.subprocess.Process:
-        return await asyncio.create_subprocess_exec(
+        # On Windows the command starts suspended, and runs once it is in a
+        # job of its own, which a stop ends whole (windows_jobs).
+        in_job = sys.platform == "win32"
+        proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
             env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            creationflags=creation_flags,
+            creationflags=creation_flags | (windows_jobs.CREATE_SUSPENDED if in_job else 0),
             start_new_session=new_session,
         )
+        if in_job and isinstance(proc, asyncio.subprocess.Process):
+            try:
+                job = windows_jobs.run_in_job(proc.pid)
+            except OSError:
+                # Still suspended: it never ran.
+                with contextlib.suppress(OSError):
+                    proc.kill()
+                raise
+            if job is not None:
+                _command_jobs[proc] = job
+        return proc
 
     @staticmethod
     async def _terminate_tree(proc: asyncio.subprocess.Process) -> None:
@@ -857,25 +902,26 @@ class CommandHandler:
         plat = platform_info.detect_platform()
         try:
             if plat == "windows":
-                # Reached through the command's own handle, so not once it
-                # has exited.
-                if proc.returncode is not None:
-                    return
-                # CTRL_BREAK to the process group, then TerminateProcess.
-                try:
-                    proc.send_signal(getattr(__import__("signal"), "CTRL_BREAK_EVENT"))
-                except (AttributeError, OSError):
-                    pass
-                try:
-                    await asyncio.sleep(2.0)
-                except asyncio.CancelledError:
-                    # Cut short, as _terminate_process_group is: killed now.
-                    if proc.returncode is None:
-                        with contextlib.suppress(OSError):
-                            proc.kill()
-                    raise
+                job = _command_jobs.get(proc)
                 if proc.returncode is None:
-                    proc.kill()
+                    # CTRL_BREAK to the process group, then end the job.
+                    try:
+                        proc.send_signal(getattr(signal, "CTRL_BREAK_EVENT"))
+                    except (AttributeError, OSError):
+                        pass
+                    try:
+                        await asyncio.sleep(_WINDOWS_BREAK_GRACE_SECONDS)
+                    except asyncio.CancelledError:
+                        # Cut short, as _terminate_process_group is: ended now.
+                        _end_windows_command(proc, job)
+                        raise
+                elif job is None or not job.has_processes():
+                    # Nothing it started is left, or nothing can reach it:
+                    # the command's own handle can't once it has exited.
+                    return
+                # What is left: the command, and the processes it started
+                # that outlived the break or the command itself.
+                _end_windows_command(proc, job)
             else:
                 # setsid at spawn made the command its group's leader, so the
                 # group's ID is the command's PID. Signalled even once the
