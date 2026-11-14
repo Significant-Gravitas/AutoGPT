@@ -1216,27 +1216,27 @@ def _running_command(session: ShimDaemon) -> tuple[asyncio.Event, asyncio.Event]
 
 
 async def _chat_running_a_command(
-    daemon: ShimDaemon, tmp_path: Path
+    daemon: ShimDaemon, tmp_path: Path, *, session_id: str = "session-1"
 ) -> tuple[asyncio.Task[None], asyncio.Event]:
     """One of `daemon`'s chats, writing to its audit log as those
     _start_child_session starts do, with a command running. Returns the
     chat's session and an event set once the command has stopped."""
     config = ShimConfig(
-        session_id="session-1",
+        session_id=session_id,
         machine_id="machine-1",
-        allowed_root=tmp_path / "chat-root",
+        allowed_root=tmp_path / f"{session_id}-root",
         audit_log_path=daemon.config.audit_log_path,
     )
     chat = ShimDaemon(
         config,
         token_store=object(),
-        audit=SessionAuditWriter(daemon.audit, "session-1"),
+        audit=SessionAuditWriter(daemon.audit, session_id),
         manage_audit_lifecycle=False,
     )
     running, stopped = _running_command(chat)
-    chat_ws = _ConnectedSocket("session-1")
+    chat_ws = _ConnectedSocket(session_id)
     session = asyncio.create_task(chat._run_session(chat_ws))
-    daemon._child_sessions["session-1"] = _ActiveChild(daemon=chat, task=session)
+    daemon._child_sessions[session_id] = _ActiveChild(daemon=chat, task=session)
     await _until(lambda: chat._status_task is not None)
     await chat._on_frame(chat_ws, _stat_request("/tmp/command"))
     await asyncio.wait_for(running.wait(), timeout=10)
@@ -1344,3 +1344,65 @@ async def test_a_session_closed_as_revoked_stops_its_work_while_that_is_recorded
     assert [(details["source"], details["close_code"]) for details in _revocations(daemon)] == [
         ("ws_close_code", code)
     ]
+
+
+# ── Every chat stops before any of them is waited for ────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["revoked", "closed_as_revoked", "shut_down"])
+async def test_every_chat_stops_before_one_held_up_stopping_is_waited_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
+) -> None:
+    """The machine stopped its chats one after another, waiting for each in
+    full, and a chat's stop waits for its WS_DISCONNECTED record: with the
+    audit writer held up (its lock taken by `audit verify` on a large log,
+    say), the first chat's stop waited, and the chats after it went on
+    running their commands, after the machine's session was revoked too.
+    Every chat's work stops, and its connection closes, before any of them
+    is waited for: on a revocation, on a close as revoked, and when the
+    machine stops them all (`stop`, the end of `run`, its next connection)."""
+    daemon = _control_daemon(tmp_path)
+    ws = _PlatformClosesSocket(None)
+    session = asyncio.create_task(daemon._run_session(ws))
+    try:
+        await _until(lambda: daemon._status_task is not None)
+        chats = [
+            await _chat_running_a_command(daemon, tmp_path, session_id=session_id)
+            for session_id in ("session-1", "session-2")
+        ]
+        chat_sockets = [active.daemon._ws for active in daemon._child_sessions.values()]
+        writer_free = _hold_the_audit_writer(daemon, monkeypatch)
+        stopping: asyncio.Future[None]
+        if how == "revoked":
+            revoked = dump_message(
+                SessionRevokedMessage(
+                    id=new_id(),
+                    ts=now_ts(),
+                    payload=SessionRevokedPayload(reason="revoked_by_user"),
+                )
+            )
+            stopping = asyncio.ensure_future(daemon._on_frame(ws, revoked))
+        elif how == "closed_as_revoked":
+            ws.close_from_platform(4428)
+            stopping = session
+        else:
+            stopping = asyncio.ensure_future(daemon._shutdown_children())
+        try:
+            for _chat, stopped in chats:
+                await asyncio.wait_for(stopped.wait(), timeout=10)
+            await _until(lambda: all(chat_ws.closed_with is not None for chat_ws in chat_sockets))
+            assert not stopping.done()
+        finally:
+            writer_free.set()
+        if how == "closed_as_revoked":
+            with pytest.raises(websockets.exceptions.ConnectionClosed):
+                await asyncio.wait_for(stopping, timeout=10)
+        else:
+            await asyncio.wait_for(stopping, timeout=10)
+    finally:
+        session.cancel()
+        await asyncio.gather(session, return_exceptions=True)
+
+    assert all(chat.done() for chat, _stopped in chats)
+    assert daemon._child_sessions == {}

@@ -266,7 +266,19 @@ def check_arguments(
                 tool, "text", "clipboard_write takes exactly one of text, file_path or image_path"
             )
     if tool == "run_steps":
-        for index, step in enumerate(arguments.get("steps") or []):
+        # Steps the shim can't look inside are refused: a number stopped this
+        # check with a TypeError, which left the call unaudited, and a string
+        # or an object was read a character or a key at a time, none a step.
+        steps = arguments.get("steps")
+        if steps is not None and not isinstance(steps, list):
+            raise ArgumentRefused(tool, "steps", "it must be a list of steps, each an object")
+        for index, step in enumerate(steps or []):
+            if not isinstance(step, Mapping):
+                raise ArgumentRefused(
+                    tool,
+                    f"steps[{index}]",
+                    "a step must be an object, {tool, args} or {<tool>: args}",
+                )
             for step_tool, step_args in _step_calls(step):
                 if used := _given(_STEP_DISK_ARGUMENTS, step_args):
                     raise ArgumentRefused(

@@ -180,7 +180,9 @@ sixteen tools; all of them are in the catalog, which
   and neither may the `observe` that ends a batch, which the driver runs as
   a `get_window_state` call. Nor may a step be a `launch_app`, whose name
   the shim checks against the installed apps only when it's called on its
-  own; cua-driver 0.38 batches no launch anyway.
+  own; cua-driver 0.38 batches no launch anyway. A batch the shim can't
+  look inside is refused: `steps` that isn't a list, or a step that isn't
+  an object.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
   raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,
