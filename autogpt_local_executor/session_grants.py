@@ -98,7 +98,9 @@ class RootGrantSigner:
             if not isinstance(allowed_root, str) or not isinstance(fingerprint, str):
                 raise RootGrantError("Root grant claims are invalid")
             root = canonical_directory(Path(allowed_root))
-            if directory_fingerprint(root) != fingerprint:
+            # A grant issued while every system's fingerprint held st_dev
+            # restores while that number holds.
+            if fingerprint not in (directory_fingerprint(root), _fingerprint(root, device=True)):
                 raise RootGrantError("The selected directory changed after the grant was issued")
             # A filesystem that reuses a freed inode (ext4, tmpfs) gives a
             # recreated directory the old identity; its creation time still
@@ -134,16 +136,33 @@ def canonical_directory(path: Path) -> Path:
 
 
 def directory_fingerprint(path: Path) -> str:
-    root = canonical_directory(path)
+    """What tells the selected folder from one put in its place: its inode
+    number and canonical path, and on Windows its volume's serial number,
+    which is st_dev there and kept from when the volume was formatted.
+
+    A POSIX st_dev is the number the system gives a device when it is
+    attached or mounted: a reboot can number a btrfs subvolume or an LVM
+    volume afresh, a share or a FUSE folder has a new one each time it is
+    mounted, and a removable disk's depends on what else is plugged in. A
+    grant that held it stopped restoring once it changed. A folder put in
+    place of the selected one has another inode number or, on a filesystem
+    that reuses a freed one, another creation time (directory_birth, which
+    the grant checks too).
+    """
+    return _fingerprint(canonical_directory(path), device=sys.platform == "win32")
+
+
+def _fingerprint(root: Path, *, device: bool) -> str:
     try:
         stat = root.stat(follow_symlinks=False)
     except OSError as exc:
         raise RootGrantError("Selected root is unavailable") from exc
-    identity = {
-        "device": stat.st_dev,
+    identity: dict[str, int | str] = {
         "inode": stat.st_ino,
         "path": os.path.normcase(str(root)),
     }
+    if device:
+        identity["device"] = stat.st_dev
     raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
