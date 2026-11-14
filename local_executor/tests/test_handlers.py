@@ -6,6 +6,8 @@ import asyncio
 import base64
 import contextlib
 import errno
+import gc
+import logging
 import os
 import signal
 import stat
@@ -2376,6 +2378,148 @@ async def test_what_a_chats_command_left_running_is_read_until_the_machines_hand
         )
     finally:
         _let_the_writer_go(tmp_path)
+
+
+def _a_command_leaving_a_program(folder: Path, name: str) -> list[str]:
+    """A command that exits once it has started a program holding its
+    stdout and stderr. Once `go` is made in `folder`, the program writes a
+    line to each and makes `<name>.ok`, or, where a write fails,
+    `<name>.failed` holding the failure's errno; it exits once `stop` is
+    made, or a minute after its start."""
+    ready, go, ok, failed, stop = (
+        str(folder / part)
+        for part in (f"{name}.ready", "go", f"{name}.ok", f"{name}.failed", "stop")
+    )
+    program = textwrap.dedent(
+        f"""
+        import os, time
+        deadline = time.monotonic() + 60
+        def wait_for(path):
+            while not os.path.exists(path) and time.monotonic() < deadline:
+                time.sleep(0.01)
+        def make(path, text):
+            with open(path + ".tmp", "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(path + ".tmp", path)
+        make({ready!r}, "")
+        wait_for({go!r})
+        try:
+            for fd in (1, 2):
+                os.write(fd, b"still running\\n")
+        except OSError as exc:
+            make({failed!r}, str(exc.errno))
+        else:
+            make({ok!r}, "")
+        wait_for({stop!r})
+        """
+    )
+    command = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        subprocess.Popen([sys.executable, "-c", {program!r}], stdout=1, stderr=2)
+        while not os.path.exists({ready!r}):
+            time.sleep(0.01)
+        print("started", flush=True)
+        """
+    )
+    return [sys.executable, "-c", command]
+
+
+def _pipes_open_here() -> int | None:
+    """How many pipes this process holds open, by /proc/self/fd or /dev/fd;
+    None on Windows, which has neither."""
+    if sys.platform == "win32":
+        return None
+    fds = "/proc/self/fd" if os.path.isdir("/proc/self/fd") else "/dev/fd"
+    count = 0
+    for name in os.listdir(fds):
+        with contextlib.suppress(OSError, ValueError):
+            if stat.S_ISFIFO(os.fstat(int(name)).st_mode):
+                count += 1
+    return count
+
+
+@pytest.mark.asyncio
+async def test_the_output_of_at_most_so_many_programs_commands_left_running_is_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Each program a command left holding its output kept two of the
+    shim's pipes open, read until it closed them, and nothing limited how
+    many, so a command that starts a server in the background, run again
+    and again, used up the shim's file descriptors (a launchd agent may open
+    256). At most _MAX_OUTPUT_DRAINS programs' output is read now. Past
+    that, the pipes of the program whose command went over are closed, and
+    its next write to them fails, while the programs already read keep
+    running."""
+    monkeypatch.setattr(handlers_module, "_MAX_OUTPUT_DRAINS", 2, raising=False)
+    # Only how soon each command's result comes back.
+    monkeypatch.setattr(handlers_module, "_OUTPUT_DRAIN_SECONDS", 0.5)
+    config = make_config(tmp_path)
+    config.command_timeout_seconds = 600
+    handler = CommandHandler(config)
+    started: list[asyncio.subprocess.Process] = []
+    spawn = CommandHandler._spawn_argv
+
+    async def spawn_and_keep(argv: list[str], **kwargs: Any) -> asyncio.subprocess.Process:
+        proc = await spawn(argv, **kwargs)
+        started.append(proc)
+        return proc
+
+    monkeypatch.setattr(CommandHandler, "_spawn_argv", staticmethod(spawn_and_keep))
+
+    async def run(name: str) -> None:
+        response = await handler.handle(
+            _cmd_msg(
+                argv=_a_command_leaving_a_program(tmp_path, name),
+                cwd=str(tmp_path),
+                timeout_seconds=40,
+            )
+        )
+        assert isinstance(response, CommandResultMessage)
+        assert response.payload.timed_out is False
+        assert response.payload.exit_code == 0
+
+    def wrote(name: str) -> bool:
+        return any((tmp_path / f"{name}.{how}").exists() for how in ("ok", "failed"))
+
+    names = ("first", "second", "third")
+    try:
+        gc.collect()
+        before = _pipes_open_here()
+        for name in names[:2]:
+            await run(name)
+        with_two = _pipes_open_here()
+        with caplog.at_level(logging.WARNING, logger=handlers_module.__name__):
+            await run("third")
+
+        # The first two programs' output is still read, and the third's
+        # isn't: the shim's ends of its pipes are closed.
+        assert set(handler._output_drains.values()) == set(started[:2])
+        assert not any(read.done() for read in handler._output_drains)
+        third = started[2]._transport
+        assert all(third.get_pipe_transport(fd).is_closing() for fd in (1, 2))
+        assert "its pipes are closed" in caplog.text
+        if before is not None and with_two is not None:
+            # The shim holds the first two programs' pipes, and no more.
+            assert with_two >= before + 4
+            assert await _wait_until(lambda: _pipes_open_here() <= with_two, timeout=30)
+
+        (tmp_path / "go").touch()
+        assert await _wait_until(lambda: all(wrote(name) for name in names), timeout=60)
+        assert (tmp_path / "first.ok").exists()
+        assert (tmp_path / "second.ok").exists()
+        failure = int((tmp_path / "third.failed").read_text(encoding="utf-8"))
+        if sys.platform != "win32":
+            assert failure == errno.EPIPE
+    finally:
+        (tmp_path / "go").touch()
+        (tmp_path / "stop").touch()
+        await handler.close()
+        # The programs exit, and their pipes close before this test's event
+        # loop does.
+        for proc in started:
+            streams = tuple(stream for stream in (proc.stdout, proc.stderr) if stream is not None)
+            await asyncio.wait_for(handlers_module._discard_until_closed(streams), timeout=60)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")

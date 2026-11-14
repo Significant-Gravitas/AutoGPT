@@ -144,6 +144,12 @@ def _creation_time(monkeypatch: pytest.MonkeyPatch, birth: str | None) -> None:
     monkeypatch.setattr(session_grants, "directory_birth", lambda path: birth)
 
 
+def _off_btrfs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """From now on statfs says no folder is on Btrfs, as it does of ext4 or
+    tmpfs, whatever the filesystem this test's folder is on."""
+    monkeypatch.setattr(session_grants, "_on_btrfs", lambda _root: False)
+
+
 def _mounts(monkeypatch: pytest.MonkeyPatch, table: Path, root: Path, source: str | None) -> None:
     """From now on the shim's mount table (/proc/self/mountinfo) has the
     folder that holds `root` mounted over NFS from `source`, on the device
@@ -201,10 +207,15 @@ def test_a_grant_restores_once_its_folders_device_is_numbered_afresh(
     could no longer use this computer. Where the folder has a creation time,
     its inode number, creation time and path still tell one put in its place
     apart. Windows' st_dev is the volume's serial number, kept from when it
-    was formatted, and still counts there."""
+    was formatted, and still counts there.
+
+    The folder is on a filesystem statfs knows isn't Btrfs. Where it can't
+    tell, or on Btrfs with no subvolume to read, the device number counts,
+    and the tests of those keep to it."""
     root = tmp_path / "workspace"
     root.mkdir()
     _creation_time(monkeypatch, "ns:1700000000123456789")
+    _off_btrfs(monkeypatch)
     signer = RootGrantSigner(b"a" * 32, "machine-1")
     issued = signer.issue("session-1", root, 1)
     _renumber_the_device(monkeypatch, root)

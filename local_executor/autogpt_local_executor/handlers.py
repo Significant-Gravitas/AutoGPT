@@ -268,6 +268,11 @@ _TERMINATE_GRACE_SECONDS = 2.0
 # exited: a child it left running can hold its output pipes open, and what it
 # writes after that is read and dropped (CommandHandler._keep_draining).
 _OUTPUT_DRAIN_SECONDS = 2.0
+# The most programs left running by commands whose output is read and
+# dropped so, each holding two of the shim's file descriptors: a launchd
+# agent may open 256, a systemd service 1024. Past it, the pipes of the
+# program whose command went over are closed.
+_MAX_OUTPUT_DRAINS = 32
 # How long a Windows command has to exit after CTRL_BREAK_EVENT before its
 # job, every process it started, is ended.
 _WINDOWS_BREAK_GRACE_SECONDS = 2.0
@@ -335,6 +340,20 @@ async def _discard_until_closed(streams: tuple[asyncio.StreamReader, ...]) -> No
             pass
 
     await asyncio.gather(*(discard(stream) for stream in streams), return_exceptions=True)
+
+
+def _close_output_pipes(proc: asyncio.subprocess.Process) -> None:
+    """Close the shim's ends of a command's stdout and stderr now, through
+    the transport `proc` holds, so their descriptors are released at once,
+    not whenever the transport is collected: a program holding the other
+    ends fails its next write to them."""
+    transport = getattr(proc, "_transport", None)
+    if not isinstance(transport, asyncio.SubprocessTransport):
+        return
+    for fd in (1, 2):
+        pipe = transport.get_pipe_transport(fd)
+        if pipe is not None:
+            pipe.close()
 
 
 def _end_windows_command(
@@ -643,7 +662,8 @@ class CommandHandler:
         self._command_rate = _SlidingWindowRateLimiter(config.max_commands_per_minute)
         self._concurrency = _CommandConcurrency(config.max_concurrent_commands)
         # The reads of what commands left running write (_keep_draining),
-        # each held with its command's process until its pipes close.
+        # each held with its command's process until its pipes close, at
+        # most _MAX_OUTPUT_DRAINS of them.
         self._output_drains: dict[asyncio.Task[None], asyncio.subprocess.Process] = {}
         self._owns_output_drains = True
 
@@ -673,9 +693,26 @@ class CommandHandler:
         running (a server started in the background) still holds them.
         Unread, they would fill, and the program would stop on its next
         write, or end on a broken pipe once they were collected. The read is
-        held with `proc`, which holds the pipes, until it ends."""
-        streams = tuple(stream for stream in (proc.stdout, proc.stderr) if stream is not None)
+        held with `proc`, which holds the pipes, until it ends.
+
+        Each read keeps two of the shim's file descriptors open, and a
+        command that starts a program in the background, run again and
+        again, would use them all up, so at most _MAX_OUTPUT_DRAINS programs'
+        output is read. Past that, the pipes of the program whose command
+        went over are closed, so the programs already read keep running, and
+        that one's next write to them fails."""
         reads = self._output_drains
+        if len(reads) >= _MAX_OUTPUT_DRAINS:
+            logger.warning(
+                "A command left a program holding its output while the output of %d "
+                "others was read, the most there may be: its pipes are closed, so its "
+                "next write to them fails. A program meant to outlive its command "
+                "should send its output to a file.",
+                len(reads),
+            )
+            _close_output_pipes(proc)
+            return
+        streams = tuple(stream for stream in (proc.stdout, proc.stderr) if stream is not None)
         read = asyncio.create_task(_discard_until_closed(streams))
         reads[read] = proc
         read.add_done_callback(lambda done: reads.pop(done, None))
@@ -946,7 +983,8 @@ class CommandHandler:
                 await asyncio.gather(*drain_tasks, return_exceptions=True)
                 # A program the command left running holds the pipes: the
                 # result has what came by now, and what comes later is read
-                # and dropped, never kept.
+                # and dropped, never kept, or, past _MAX_OUTPUT_DRAINS such
+                # programs, the pipes are closed.
                 self._keep_draining(proc)
         except asyncio.CancelledError:
             for task in drain_tasks:

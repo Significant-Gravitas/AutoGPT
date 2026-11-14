@@ -429,7 +429,13 @@ when it exits: a program it started that still holds its stdout or stderr
 (a server started in the background, say) keeps running, and what it writes
 there in the next 2 seconds is in the result, with `timed_out: false`. What
 it writes after that is read and dropped until it closes them, or the shim
-stops, so it never blocks on a full pipe.
+stops, so it never blocks on a full pipe. The shim reads the output of at
+most 32 such programs, each holding two of its file descriptors. Past that,
+it closes the pipes of the program whose command went over, and logs it: the
+programs it reads keep running, and that program's next write to its stdout
+or stderr fails (a broken pipe, which ends most programs). A program meant to
+outlive its command should send its output to a file
+(`server > server.log 2>&1 &`), and then holds none of the shim's pipes.
 
 ---
 

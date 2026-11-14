@@ -131,7 +131,7 @@ Not offered:
 |---|---|
 | `get_config`, `set_config`, `check_for_update`, `install_extension`, `install_ffmpeg` | The driver's configuration and installation belong to the person at the machine. |
 | `start_session`, `end_session`, `get_session`, `get_session_state`, `list_sessions`, `escalate_session` | The shim owns sessions: it sets one label per shim session. |
-| `set_agent_cursor_enabled`, `set_agent_cursor_motion`, `set_agent_cursor_theme`, `get_agent_cursor_state` | The cursor overlay shows the person where the agent is working; the agent may not hide or restyle it. |
+| `set_agent_cursor_enabled`, `set_agent_cursor_motion`, `set_agent_cursor_theme`, `get_agent_cursor_state` | On Windows and Linux the cursor overlay shows the person where the agent is working; the agent may not hide or restyle it. macOS has no overlay ([How the driver runs](#how-the-driver-runs)). |
 | `start_recording`, `stop_recording`, `get_recording_state`, `replay_trajectory` | Write and read trajectories on disk. |
 | `kill_app` | Ends processes. |
 | `browser_download` | Writes downloads to the disk, and needs cua-driver's own host approval, which the shim doesn't relay yet. |
@@ -219,11 +219,15 @@ Computer use acts with the person's own rights through their GUI. An agent
 that can type can open a terminal. The shim doesn't claim otherwise: the
 capability is off until the person turns it on, the platform must grant it
 to each session, the calls it takes are audited (best effort, see Audit),
-and the agent cursor shows where the agent works. The approval arguments keep disk access out of side channels the
-person can't see: each one waits for the person to approve it, unless the
-chat runs Unsupervised or a standing rule the person set on an earlier card
-("from now on") approves later calls of that kind, whatever their
-arguments (see Enforcement). They are not a sandbox around the GUI.
+and on Windows and Linux the agent cursor shows where the agent works. On
+macOS it doesn't (the overlay needs CuaDriver.app's AppKit host; see
+[How the driver runs](#how-the-driver-runs)), so only what the agent does
+on screen shows it working. The approval arguments keep disk access out of
+side channels the person can't see: each one waits for the person to
+approve it, unless the chat runs Unsupervised or a standing rule the person
+set on an earlier card ("from now on") approves later calls of that kind,
+whatever their arguments (see Enforcement). They are not a sandbox around
+the GUI.
 
 Known gaps:
 
