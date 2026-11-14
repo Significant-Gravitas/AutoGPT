@@ -9,15 +9,26 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 from aiohttp import web
+from pydantic import SecretStr
 
 from backend.blocks.discord.bot_blocks import (
     MAX_TEXT_ATTACHMENT_BYTES,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    CreateDiscordThreadBlock,
+    DiscordChannelInfoBlock,
+    DiscordUserInfoBlock,
     ReadDiscordMessagesBlock,
+    ReplyToDiscordMessageBlock,
+    SendDiscordDMBlock,
+    SendDiscordEmbedBlock,
+    SendDiscordFileBlock,
     SendDiscordMessageBlock,
+    ThreadArchiveDuration,
 )
+from backend.data.execution import ExecutionContext
 from backend.util.request import Requests
+from backend.util.type import MediaFileType
 
 
 class _FakeClient:
@@ -34,6 +45,14 @@ class _FakeClient:
         self.user = "bot"
         self.guilds = []
         _FakeClient.instances.append(self)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        # Like discord.py: exiting closes the client unless a handler already did.
+        if not self._closed.is_set():
+            await self.close()
 
     def event(self, fn):
         self._on_ready = fn
@@ -169,6 +188,14 @@ class _FakeReadClient:
         self.user = "bot"
         self.close = AsyncMock()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        # Like discord.py: exiting closes the client unless a handler already did.
+        if not self.close.await_count:
+            await self.close()
+
     def event(self, fn):
         self._handlers[fn.__name__] = fn
         return fn
@@ -279,3 +306,73 @@ async def _read_message_with_attachment(
     finally:
         await runner.cleanup()
     return dict(outputs)["message_content"]
+
+
+_TOKEN = "refused-token"
+
+# Every discord.Client the module creates, reached through the method that starts it.
+_LOGINS = [
+    pytest.param(
+        lambda: ReadDiscordMessagesBlock().run_bot(SecretStr(_TOKEN)), id="read"
+    ),
+    pytest.param(
+        lambda: SendDiscordMessageBlock().send_message(_TOKEN, "1", None, "hi"),
+        id="send_message",
+    ),
+    pytest.param(lambda: SendDiscordDMBlock().send_dm(_TOKEN, "1", "hi"), id="dm"),
+    pytest.param(
+        lambda: SendDiscordEmbedBlock().send_embed(_TOKEN, "1", None, {}), id="embed"
+    ),
+    pytest.param(
+        lambda: SendDiscordFileBlock().send_file(
+            _TOKEN, "1", None, MediaFileType("a.txt"), "a.txt", "", ExecutionContext()
+        ),
+        id="file",
+    ),
+    pytest.param(
+        lambda: ReplyToDiscordMessageBlock().send_reply(_TOKEN, "1", "2", "hi", False),
+        id="reply",
+    ),
+    pytest.param(
+        lambda: DiscordUserInfoBlock().get_user_info(_TOKEN, "1"), id="user_info"
+    ),
+    pytest.param(
+        lambda: DiscordChannelInfoBlock().get_channel_info(_TOKEN, "1", None),
+        id="channel_info",
+    ),
+    pytest.param(
+        lambda: CreateDiscordThreadBlock().create_thread(
+            _TOKEN, "1", None, "t", False, ThreadArchiveDuration.ONE_HOUR, "hi"
+        ),
+        id="thread",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("login", _LOGINS)
+async def test_a_refused_token_closes_the_client(mocker, login):
+    # discord.py opens its aiohttp session before the login request, and
+    # LoginFailure leaves it open unless the caller closes the client.
+    real_client = discord.Client
+    clients: list[discord.Client] = []
+
+    def record(**kwargs):
+        clients.append(real_client(**kwargs))
+        return clients[-1]
+
+    mocker.patch("backend.blocks.discord.bot_blocks.discord.Client", side_effect=record)
+    request = mocker.patch.object(
+        discord.http.HTTPClient,
+        "request",
+        side_effect=discord.HTTPException(
+            MagicMock(status=401, reason="Unauthorized"), "401: Unauthorized"
+        ),
+    )
+
+    with pytest.raises(discord.LoginFailure):
+        await login()
+
+    request.assert_awaited_once()
+    assert len(clients) == 1
+    assert clients[0].is_closed()
