@@ -1169,10 +1169,11 @@ minor extension); the table above is the 2.0 set.
 
 Codes below 4426 follow IETF/RFC semantics (1000 normal, 1011 server
 error, etc.) and the shim DOES auto-reconnect with exponential backoff —
-only the application-layer codes in the table above are treated as fatal
-"do not retry without operator action". A clean close (1000, 1001) counts as
-any other drop (see [Reconnection](#reconnection)): one right after
-`HELLO_ACK` keeps the backoff growing, preventing a hot loop.
+only 4426, 4427 and 4428 in the table above are treated as fatal "do not
+retry without operator action"; after 4429 the shim reconnects too, as the
+table says. A clean close (1000, 1001) counts as any other drop (see
+[Reconnection](#reconnection)): one right after `HELLO_ACK` keeps the
+backoff growing, preventing a hot loop.
 
 > The platform sends `SESSION_REVOKED` and close code 4427 to the connection
 > a newer one replaces. It doesn't yet reject a newcomer from a different
