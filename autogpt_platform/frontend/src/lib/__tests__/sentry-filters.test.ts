@@ -19,6 +19,7 @@ import { CLIENT_IP_TOKEN_HEADER_NAME } from "@/lib/constants";
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
+  isHandledTransientFailure,
   isNextRSCNavigationFallback,
   stripLogUserPII,
   stripSpanDataPII,
@@ -30,6 +31,7 @@ import {
 // Drives a real Sentry client with the same console capture as
 // instrumentation-client.ts, so the events are built exactly as in production.
 const sent: Sentry.ErrorEvent[] = [];
+const hints: Sentry.EventHint[] = [];
 
 beforeAll(() => {
   // Spy before init so the console patch wraps the spy.
@@ -46,8 +48,10 @@ beforeAll(() => {
     integrations: [
       Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     ],
-    beforeSend(event) {
-      if (!isNextRSCNavigationFallback(event)) sent.push(event);
+    beforeSend(event, hint) {
+      if (isNextRSCNavigationFallback(event)) return null;
+      sent.push(event);
+      hints.push(hint);
       return null;
     },
   });
@@ -55,6 +59,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   sent.length = 0;
+  hints.length = 0;
 });
 
 afterEach(() => {
@@ -161,6 +166,64 @@ describe("Sentry filter for crawler noise", () => {
     "Mozilla/5.0 (Linux; Android 10; Cubot P40) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
   ])("treats %j as a person", (userAgent) => {
     expect(isFromBot(userAgent)).toBe(false);
+  });
+});
+
+describe("Sentry filter for handled network failures", () => {
+  async function sentAndKept() {
+    await Sentry.flush(2000);
+    expect(sent).toHaveLength(1);
+    return !isHandledTransientFailure(sent[0], hints[0]);
+  }
+
+  it.each(["Failed to fetch", "Load failed", "network error"])(
+    "drops a caught fetch failure logged as %j",
+    async (message) => {
+      console.error("Get user error:", new TypeError(message));
+
+      expect(await sentAndKept()).toBe(false);
+    },
+  );
+
+  it("drops a caught fetch failure reported with captureException", async () => {
+    Sentry.captureException(new TypeError("Failed to fetch"));
+
+    expect(await sentAndKept()).toBe(false);
+  });
+
+  it("drops a cancelled request logged as a warning", async () => {
+    console.warn(
+      "Onboarding initialization deferred:",
+      new DOMException("signal is aborted without reason", "AbortError"),
+    );
+
+    expect(await sentAndKept()).toBe(false);
+  });
+
+  it("still reports an uncaught fetch failure", async () => {
+    Sentry.captureException(new TypeError("Load failed"), {
+      mechanism: {
+        type: "auto.browser.global_handlers.onunhandledrejection",
+        handled: false,
+      },
+    });
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports other TypeErrors", async () => {
+    console.error(
+      "Failed to render:",
+      new TypeError("Cannot read properties of undefined"),
+    );
+
+    expect(await sentAndKept()).toBe(true);
+  });
+
+  it("still reports a console error that only names a fetch failure", async () => {
+    console.error("Failed to fetch agents");
+
+    expect(await sentAndKept()).toBe(true);
   });
 });
 
