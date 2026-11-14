@@ -42,11 +42,13 @@ class BrowserOutput(StrictModel):
     image: str = ""
 
 
-def reveal_token(value: SecretStr, info: SerializationInfo) -> str | SecretStr:
+def reveal_token(
+    value: SecretStr | None, info: SerializationInfo
+) -> str | SecretStr | None:
     """The Link token crosses to a remote broker only when the sender asks
     for it explicitly (``context={"reveal_secrets": True}``); any other dump,
     a log line included, keeps it masked."""
-    if info.context and info.context.get("reveal_secrets"):
+    if value is not None and info.context and info.context.get("reveal_secrets"):
         return value.get_secret_value()
     return value
 
@@ -81,6 +83,14 @@ class RaiseCheckout(CheckoutReference):
     # Where the customer approves the new total while nothing exists in Link
     # yet; a request already in Link is always raised and re-approved there.
     approval_mode: ApprovalMode = "link"
+
+    _serialize_token = field_serializer("access_token")(reveal_token)
+
+
+class ResetCheckout(CheckoutReference):
+    # Cancels the Link request of a checkout never attempted. Without one (no
+    # usable Link connection) that request is left to expire.
+    access_token: SecretStr | None = None
 
     _serialize_token = field_serializer("access_token")(reveal_token)
 

@@ -150,3 +150,14 @@ async def test_a_raise_reaches_the_remote_broker_with_its_token(remote):
     assert operation == "checkout/raise"
     assert payload.amount == 250
     assert payload.access_token.get_secret_value() == "liwltoken_test"
+
+
+@pytest.mark.asyncio
+async def test_a_command_the_browser_does_not_take_fails_like_a_command(remote):
+    with engine.caller("owner", "chat", "owner"):
+        code, output, error = await engine.run_browser_command(
+            "chat", ("eval", "document.cookie")
+        )
+
+    assert (code, output, error) == (1, "", "Unsupported browser command")
+    remote.assert_not_awaited()

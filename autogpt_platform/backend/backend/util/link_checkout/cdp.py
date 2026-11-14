@@ -40,6 +40,9 @@ _logger.addHandler(logging.NullHandler())
 _logger.propagate = False
 _logger.disabled = True
 
+# Preparing takes a few DevTools calls of milliseconds each.
+PREPARE_TIMEOUT_SECONDS = 30
+
 
 class CDP:
     def __init__(self, socket: ClientConnection):
@@ -149,7 +152,7 @@ class CDP:
             if target is None:
                 continue
             wanted = target.frame_url or plan.checkout_url
-            matches = [f for f in frames if f.frame.url == wanted]
+            matches = [f for f in frames if wanted in addresses(f.frame)]
             if not matches and target.frame_url:
                 # The agent can rarely read a frame's full address, query
                 # included; the address without it is enough when only one
@@ -284,6 +287,12 @@ def flatten_frames(tree: FrameTree) -> list[Frame]:
     ]
 
 
+def addresses(frame: Frame) -> tuple[str, str]:
+    """The frame's document address, and the address a tab shows for it,
+    #fragment included."""
+    return frame.url, frame.url + frame.urlFragment
+
+
 def connection(endpoint: str):
     parsed = urlsplit(endpoint)
     if (
@@ -297,6 +306,16 @@ def connection(endpoint: str):
 
 
 async def prepare_browser(endpoint: str, plan: CheckoutPlan) -> BrowserBinding:
+    """Pin the plan's payment fields to the tab's DOM nodes. It runs under the
+    chat's browser lock, so a page that stops answering ends it."""
+    try:
+        async with asyncio.timeout(PREPARE_TIMEOUT_SECONDS):
+            return await _pin_fields(endpoint, plan)
+    except TimeoutError:
+        raise RuntimeError("The checkout page stopped answering") from None
+
+
+async def _pin_fields(endpoint: str, plan: CheckoutPlan) -> BrowserBinding:
     async with connection(endpoint) as socket:
         cdp = CDP(socket)
         binding = await cdp.bind(plan.checkout_url)

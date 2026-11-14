@@ -101,6 +101,8 @@ class FakeWorker:
         self.raise_error: Literal["link_rejected"] | None = None
         # The total each job carried, in order: a raise sends the new one.
         self.amounts: list[int] = []
+        # Link answers a create with a request for another amount.
+        self.mismatched_create = False
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
@@ -119,6 +121,8 @@ class FakeWorker:
         if job.action == "raise" and self.raise_error:
             return WorkerResult(error=self.raise_error)
         spend = await synthetic_spend(job)
+        if job.action == "create" and self.mismatched_create:
+            spend.amount += 1
         if job.action == "cancel":
             spend.status = "canceled"
         elif job.action == "raise":

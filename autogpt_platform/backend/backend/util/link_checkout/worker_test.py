@@ -62,6 +62,11 @@ class ScriptedBrowser:
         # Other targets the browser lists, and which of them fail to attach.
         self.other_targets: list[dict] = []
         self.broken_targets: set[str] = set()
+        # The tab's address, and its top frame as DevTools describes it.
+        self.tab_url = CHECKOUT_URL
+        self.top_frame = {"id": "frame", "url": CHECKOUT_URL, "loaderId": "doc"}
+        # Calls a frozen page never answers.
+        self.unanswered: set[str] = set()
         self.filled: dict[str, str] = {}
         self.clicks = 0
         self.closed = False
@@ -79,6 +84,8 @@ class ScriptedBrowser:
     async def send(self, raw: str) -> None:
         message = json.loads(raw)
         params = message.get("params", {})
+        if message["method"] in self.unanswered:
+            return
         if (
             message["method"] == "Target.attachToTarget"
             and params.get("targetId") in self.broken_targets
@@ -98,7 +105,7 @@ class ScriptedBrowser:
         if method == "Target.getTargets":
             return {
                 "targetInfos": [
-                    {"targetId": "tab", "type": "page", "url": CHECKOUT_URL},
+                    {"targetId": "tab", "type": "page", "url": self.tab_url},
                     *self.other_targets,
                 ]
             }
@@ -107,7 +114,7 @@ class ScriptedBrowser:
         if method == "Page.getFrameTree":
             return {
                 "frameTree": {
-                    "frame": {"id": "frame", "url": CHECKOUT_URL, "loaderId": "doc"},
+                    "frame": self.top_frame,
                     "childFrames": [
                         {"frame": {**frame, "parentId": "frame"}}
                         for frame in self.child_frames
@@ -532,3 +539,37 @@ async def test_a_page_without_the_agent_option_cannot_take_a_pay_token(browser, 
         await cdp.prepare_browser("ws://127.0.0.1:9222/x", pay_token_plan(intent.plan))
     assert str(refused.value) == PAY_TOKEN_UNAVAILABLE
     assert not browser.steering_ticked
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_address_with_a_fragment_finds_its_fields(browser, intent):
+    """DevTools reports a frame's #fragment apart from its URL, so a
+    hash-routed checkout still finds the frame its fields are in."""
+    address = f"{CHECKOUT_URL}#/payment"
+    browser.tab_url = address
+    browser.top_frame["urlFragment"] = "#/payment"
+    plan = intent.plan.model_copy(update={"checkout_url": address})
+
+    binding = await cdp.prepare_browser("ws://127.0.0.1:9222/x", plan)
+
+    assert {field.role for field in binding.fields} == {
+        "number",
+        "cvc",
+        "expiry",
+        "submit",
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_page_that_stops_answering_ends_the_preparation(
+    browser, intent, monkeypatch
+):
+    """Preparing holds the chat's browser lock, so a frozen page must end it
+    rather than hold every later browser command of the chat."""
+    monkeypatch.setattr(cdp, "PREPARE_TIMEOUT_SECONDS", 0.2)
+    browser.unanswered.add("Runtime.callFunctionOn")
+
+    with pytest.raises(RuntimeError, match="stopped answering"):
+        await asyncio.wait_for(
+            cdp.prepare_browser("ws://127.0.0.1:9222/x", intent.plan), 30
+        )
