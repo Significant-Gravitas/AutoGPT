@@ -175,7 +175,10 @@ async function uploadFiles(
         console.error("File upload failed:", err);
         toast({
           title: "File upload failed",
-          description: file.name,
+          description:
+            err instanceof Error && err.message
+              ? `${file.name}: ${err.message}`
+              : file.name,
           variant: "destructive",
         });
         throw err;

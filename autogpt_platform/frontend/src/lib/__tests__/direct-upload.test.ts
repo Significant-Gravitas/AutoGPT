@@ -120,11 +120,16 @@ describe("uploadSubmissionMediaDirect", () => {
     );
   });
 
-  it("surfaces a clear size message on HTTP 413 instead of a bare status", async () => {
-    mockFetchOnce({ ok: false, status: 413, statusText: "Payload Too Large" });
+  it("surfaces a clear size message when a proxy rejects with a non-JSON 413", async () => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => "<html><body>413 Request Entity Too Large</body></html>",
+    });
 
     await expect(uploadSubmissionMediaDirect(makeFile(10))).rejects.toThrow(
-      /too large/i,
+      "File is too large. Please choose a smaller file.",
     );
   });
 
@@ -178,7 +183,12 @@ describe("uploadOAuthAppLogoDirect", () => {
   });
 
   it("throws a clear size message on 413", async () => {
-    mockFetchOnce({ ok: false, status: 413, statusText: "Payload Too Large" });
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => "",
+    });
 
     await expect(
       uploadOAuthAppLogoDirect("app-123", makeFile(10)),
@@ -209,6 +219,22 @@ describe("uploadFileDirect (workspace)", () => {
     );
     expect(calledUrl).toContain("overwrite=true");
     expect(calledUrl).toContain("session_id=sess-1");
+  });
+
+  it.each([
+    "Storage limit exceeded. You've used 250 MB of your 250 MB quota. Delete some files or upgrade your plan for more storage.",
+    "File exceeds maximum size of 100 MB",
+  ])("surfaces the backend's 413 reason: %s", async (detail) => {
+    mockFetchOnce({
+      ok: false,
+      status: 413,
+      statusText: "Payload Too Large",
+      text: () => JSON.stringify({ detail }),
+    });
+
+    await expect(uploadFileDirect(makeFile(10), "sess-1")).rejects.toThrow(
+      detail,
+    );
   });
 });
 
