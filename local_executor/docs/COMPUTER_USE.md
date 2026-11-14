@@ -141,7 +141,7 @@ the call only once it's approved. Without an approval the shim answers
 
 A script (`run_script`) asks too, on a card that shows it: the
 shim can't check the calls a script makes inside cua-driver, and one of
-them can save a screenshot to a file.
+them can save a screenshot to a file or start a program.
 
 So does a `launch_app` call that runs more than an app by its name: a
 command line or a program's path, extra command-line arguments, links or

@@ -121,7 +121,7 @@ reviewed against cua-driver 0.38.0:
 | Group | Tools | Notes |
 |---|---|---|
 | Observe | `list_apps`, `list_windows`, `get_window_state`, `get_desktop_state`, `zoom`, `verify_state`, `get_screen_size`, `get_cursor_position`, `check_permissions`, `get_guide` | Read-only. `check_permissions` only reports. |
-| Act | `launch_app`, `click`, `double_click`, `right_click`, `type_text`, `press_key`, `hotkey`, `scroll`, `drag`, `set_value`, `invoke_menu`, `set_window_frame`, `bring_to_front`, `move_cursor`, `mouse_button_down`, `mouse_button_up`, `mouse_drag`, `run_steps`, `run_script` | `run_steps` batches input; `run_script` runs sandboxed JavaScript whose only API is the driver's, and every script needs approval (below). |
+| Act | `launch_app`, `click`, `double_click`, `right_click`, `type_text`, `press_key`, `hotkey`, `scroll`, `drag`, `set_value`, `invoke_menu`, `set_window_frame`, `bring_to_front`, `move_cursor`, `mouse_button_down`, `mouse_button_up`, `mouse_drag`, `run_steps`, `run_script` | `run_steps` batches input; `run_script` runs sandboxed JavaScript whose only API is the driver's, and every script needs approval (below). On macOS a `click` that saves a screenshot (`debug_image_out`) needs approval too. |
 | Browser | `get_browser_state`, `browser_prepare`, `browser_navigate`, `browser_click`, `browser_type`, `browser_select`, `browser_pointer`, `browser_dialog`, `browser_set_input_files` | Typed control of Chromium pages. In `standard` mode, without a grant, which the shim never gives, the driver reaches only a browser it launched with its own profile, never the person's signed-in one. `browser_set_input_files` hands files from the disk to a page, so every call needs approval (below). |
 | Clipboard | `clipboard_read`, `clipboard_write` | Only with `--enable-clipboard`; see [Clipboard](#clipboard). |
 
@@ -157,12 +157,14 @@ sixteen tools; all of them are in the catalog, which
 - Only an offered tool is relayed (`FEATURE_NOT_SUPPORTED` otherwise).
 - Arguments that reach the disk need approval, call by call:
   `screenshot_out_file` on `get_window_state` and `get_desktop_state`
-  (writes the screenshot to a file), `file_path` and `image_path` on
-  `clipboard_write` (puts a file from anywhere on disk on the clipboard),
+  (writes the screenshot to a file), `debug_image_out` on macOS `click`
+  (writes a screenshot to a file before it clicks), `file_path` and
+  `image_path` on `clipboard_write` (puts a file from anywhere on disk on
+  the clipboard),
   `files` on `browser_set_input_files` (hands files to a page), and
   `script` on `run_script`, so every script: its calls run inside the
   driver, where the shim can't check them, and one can save a screenshot to
-  a file. So do `launch_app`'s `launch_path`, `path`,
+  a file or start any program. So do `launch_app`'s `launch_path`, `path`,
   `additional_arguments`, `urls` and `webkit_inspector_port`, which start a
   program out of sight (see Residual risk); `name`, `bundle_id` and `aumid`
   must name an app. The tool list names them in each tool's `approval_arguments`. The platform
@@ -173,8 +175,12 @@ sixteen tools; all of them are in the catalog, which
   kind whatever path they name. The shim, which can't tell these apart,
   trusts the field. Without it the shim answers
   `APPROVAL_REQUIRED` and nothing reaches the driver. A
-  `run_steps` step may not use one at all, and neither may the `observe`
-  that ends a batch, which the driver runs as a `get_window_state` call.
+  `run_steps` step may not use one at all, whatever tool it names (the
+  driver runs a `press` with a target, and a `triple_click`, as a click),
+  and neither may the `observe` that ends a batch, which the driver runs as
+  a `get_window_state` call. Nor may a step be a `launch_app`, whose name
+  the shim checks against the installed apps only when it's called on its
+  own; cua-driver 0.38 batches no launch anyway.
 - `prompt: true` on `check_permissions` is refused: permission prompts are
   raised by the person, with `autogpt-shim doctor`.
 - `session` is set to the shim session's label on every call that takes it,
@@ -220,13 +226,16 @@ arguments (see Enforcement). They are not a sandbox around the GUI.
 Known gaps:
 
 - A `run_script` script can pass `screenshot_out_file` to
-  `get_window_state` inside the driver, writing a PNG where the script says.
+  `get_window_state` inside the driver, writing a PNG where the script says
+  (on macOS `click`'s `debug_image_out` too), and can call `launch_app`,
+  which starts any program, unchecked.
   cua-driver 0.38's policy can allow a tool but can't forbid one of its
   arguments, and the shim can't see into scripts, so every script needs
   approval instead: a card that shows it, unless the chat runs Unsupervised
   or a standing rule set on an earlier `run_script` card approves later
   scripts, whatever they hold, unasked. A policy rule that forbids an
-  argument belongs upstream; with one, scripts could run unasked safely.
+  argument belongs upstream; with one that kept scripts from those
+  arguments and from `launch_app`, scripts could run unasked safely.
 - `launch_app` can start any program with any arguments: `launch_path` (on
   Linux the `Exec=` line of a `.desktop` file, run split at spaces), a
   Windows `path`, and `additional_arguments`, where a Chromium flag such as
@@ -364,12 +373,16 @@ prompt for the shim's app (the driver leaves prompting to its host).
 1. Bump the pin in `pyproject.toml` and `REVIEWED_DRIVER_VERSION`.
 2. Diff the new release's `tools/list` against the old: new tools stay off
    until reviewed; new arguments on offered tools need the same review as
-   the approval arguments and refusals above, file paths especially. The
-   contract tests fail on any tool the catalog doesn't name, offered or in
-   `NOT_OFFERED_TOOLS`.
+   the approval arguments and refusals above, file paths especially, on
+   every OS: macOS's `click.debug_image_out` was missed in a review of the
+   Linux list. The contract tests fail on any tool the catalog doesn't
+   name, offered or in `NOT_OFFERED_TOOLS`, and, on the OS they run on, on
+   an offered tool's argument named for a path (a `path`, `file`, `dir` or
+   `out` word) that isn't an approval argument.
 3. Check the new release's script and batch allowlists, its policy format,
    and its permission modes. If its policy can forbid an argument, forbid
-   `screenshot_out_file` inside scripts and drop `run_script` from
+   `screenshot_out_file` and `debug_image_out` inside scripts, and, once
+   scripts can't reach `launch_app` either, drop `run_script` from
    `APPROVAL_ARGUMENTS`.
 4. Run `tests/test_cua_driver_contract.py` on macOS, Windows and Linux; CI
    does.

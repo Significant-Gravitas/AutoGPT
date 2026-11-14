@@ -139,6 +139,33 @@ async def test_every_approval_argument_is_one_the_driver_takes(bridge: CuaDriver
         assert here <= set(properties), tool
 
 
+# Words in an argument's name that say it holds a file or folder's path.
+PATH_WORDS = frozenset(
+    {"dir", "directory", "file", "files", "folder", "out", "path", "paths", "root", "roots"}
+)
+# Arguments of offered tools named for a path that hold none.
+NOT_A_PATH = frozenset({("invoke_menu", "path")})  # menu labels, top level first
+
+
+async def test_every_argument_named_for_a_path_needs_approval(bridge: CuaDriverBridge) -> None:
+    """A path argument can read or write any file the person can. The
+    catalog was reviewed against the Linux tool list, and on macOS `click`
+    takes `debug_image_out`, which writes a screenshot to that path before
+    it clicks, with no approval until it was made an approval argument."""
+    snapshot = await bridge.snapshot()
+
+    unreviewed = sorted(
+        f"{tool['name']}.{argument}"
+        for tool in snapshot.tools
+        for argument in (tool.get("inputSchema") or {}).get("properties") or {}
+        if PATH_WORDS & set(argument.split("_"))
+        and argument not in catalog.APPROVAL_ARGUMENTS.get(tool["name"], {})
+        and (tool["name"], argument) not in NOT_A_PATH
+    )
+
+    assert not unreviewed, unreviewed
+
+
 async def test_batches_reach_only_catalog_tools(bridge: CuaDriverBridge) -> None:
     """run_steps and run_script call other tools inside the driver, where
     the shim can't look; the driver limits them to these, all reviewed. None

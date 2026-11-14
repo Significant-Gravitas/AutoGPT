@@ -932,10 +932,12 @@ approval card, but a chat that runs Unsupervised approves without asking,
 and a standing rule the person set on an earlier card ("from now on")
 approves later calls of that kind whatever their arguments. The shim can't
 tell which and trusts the field. An argument in a tool's
-`approval_arguments` can reach the disk (`screenshot_out_file`, clipboard
-`file_path` / `image_path`, `browser_set_input_files.files`, and
+`approval_arguments` can reach the disk (`screenshot_out_file`, macOS
+`click.debug_image_out`, clipboard `file_path` / `image_path`,
+`browser_set_input_files.files`, and
 `run_script.script`, whose calls inside the driver can save a screenshot to
-a file where the shim can't check them) or runs a program out of sight
+a file or start a program where the shim can't check them) or runs a
+program out of sight
 (`launch_app`'s `launch_path`, `path`, `additional_arguments`, `urls` and
 `webkit_inspector_port`); a call that
 uses one without naming it there gets `APPROVAL_REQUIRED` with
@@ -944,11 +946,14 @@ an approval argument of the called tool may be named.
 
 The shim refuses, with `FEATURE_NOT_SUPPORTED` and `details.tool`, a tool it
 doesn't offer, and, with `details.argument` too, an argument it never
-accepts: `check_permissions` with `prompt: true`; any approval argument
-inside a `run_steps` step or its `observe`; and a `launch_app` `name`,
-`bundle_id` or `aumid` that isn't an app's name or id (a path, a URL scheme,
-a leading `-`, a control character, on Linux a name whose first word is
-a program, a program's own name included, or, unless `urls` or `launch_path`
+accepts: `check_permissions` with `prompt: true`; any tool's approval
+argument inside a `run_steps` step, whatever tool the step names, or its
+`observe`; a `run_steps` step that is a `launch_app` (`details.argument`
+`steps[i]`), since only a launch called on its own has its name checked
+against the installed apps; and a `launch_app` `name`, `bundle_id` or
+`aumid` that isn't an app's name or id (a path, a URL scheme, a leading
+`-`, a control character, on Linux a name whose first word is a program,
+a program's own name included, or, unless `urls` or `launch_path`
 is given, one that isn't an installed app's name or desktop-file id in
 `list_apps`, and on Windows a `bundle_id` that isn't an AUMID or a `name` no
 installed app in `list_apps` would match).
@@ -1164,10 +1169,11 @@ minor extension); the table above is the 2.0 set.
 
 Codes below 4426 follow IETF/RFC semantics (1000 normal, 1011 server
 error, etc.) and the shim DOES auto-reconnect with exponential backoff —
-only the application-layer codes in the table above are treated as fatal
-"do not retry without operator action". A clean close (1000, 1001) counts as
-any other drop (see [Reconnection](#reconnection)): one right after
-`HELLO_ACK` keeps the backoff growing, preventing a hot loop.
+only 4426, 4427 and 4428 in the table above are treated as fatal "do not
+retry without operator action"; after 4429 the shim reconnects too, as the
+table says. A clean close (1000, 1001) counts as any other drop (see
+[Reconnection](#reconnection)): one right after `HELLO_ACK` keeps the
+backoff growing, preventing a hot loop.
 
 > The platform sends `SESSION_REVOKED` and close code 4427 to the connection
 > a newer one replaces. It doesn't yet reject a newcomer from a different

@@ -138,7 +138,10 @@ def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path |
     """The cua-driver to run: an explicit path, else the bundled wheel's,
     else one on PATH. An explicit one is made absolute: Path drops the `./`
     of `./cua-driver`, and the OS looks a bare name up on PATH, which would
-    run another install, or none, rather than the file checked here."""
+    run another install, or none, rather than the file checked here. So is
+    one found on PATH, where shutil.which keeps a relative entry (`bin`):
+    a Linux driver starts in an empty folder of its own, where
+    `bin/cua-driver` names nothing."""
     if explicit:
         try:
             path = Path(explicit).expanduser().absolute()
@@ -152,7 +155,7 @@ def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path |
     if bundled is not None:
         return bundled
     found = shutil.which(_executable_name())
-    return Path(found) if found else None
+    return Path(found).absolute() if found else None
 
 
 def ensure_executable(path: Path) -> None:

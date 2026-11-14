@@ -823,6 +823,38 @@ def test_an_explicit_driver_in_the_current_folder_runs_from_there(
     assert Path(driver.driver_argv(found, "direct")[0]).is_absolute()
 
 
+async def test_a_driver_found_through_a_relative_path_entry_starts_in_its_own_folder(
+    fake_log: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """shutil.which keeps a relative PATH entry (`bin`) in the path it
+    returns, and a Linux driver starts in an empty folder of its own, where
+    `bin/cua-driver` names nothing: its start failed, and HELLO went on
+    without computer use."""
+    name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
+    (tmp_path / "bin").mkdir()
+    binary = tmp_path / "bin" / name
+    shutil.copyfile(FAKE, binary)
+    binary.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", os.pathsep.join(["bin", os.environ.get("PATH", "")]))
+    monkeypatch.setattr(driver, "bundled_binary", lambda: None)
+    bridge = CuaDriverBridge(
+        tools=catalog.offered_tools(enable_clipboard=False),
+        platform="linux",
+        client_factory=_fake_client,
+    )
+
+    try:
+        snapshot = await bridge.snapshot()
+    finally:
+        await bridge.close()
+
+    assert snapshot.tools
+    found = driver.find_driver_binary()
+    assert found is not None and found.is_absolute()
+    assert found.samefile(binary)
+
+
 def test_an_explicit_driver_path_that_cannot_be_expanded_is_not_found(monkeypatch) -> None:
     """Path.expanduser raises RuntimeError for `~someone` with no such
     account, or a home it can't find, and no caller of find_driver_binary
@@ -855,6 +887,9 @@ def test_clipboard_tools_are_offered_only_when_enabled() -> None:
     [
         ("get_window_state", {"pid": 1, "screenshot_out_file": "~/.bashrc"}, "screenshot_out_file"),
         ("get_desktop_state", {"screenshot_out_file": "/tmp/x.png"}, "screenshot_out_file"),
+        # On a Mac the driver writes a screenshot there before it clicks.
+        ("click", {"pid": 1, "window_id": 2, "x": 10, "y": 20,
+                   "debug_image_out": "/Users/me/.zshrc"}, "debug_image_out"),
         ("clipboard_write", {"file_path": "/etc/passwd"}, "file_path"),
         ("clipboard_write", {"image_path": "/a.png"}, "image_path"),
         ("browser_set_input_files", {"ref": "p1:2", "files": ["/home/me/cv.pdf"]}, "files"),
@@ -910,6 +945,35 @@ def test_arguments_that_reach_the_disk_wait_for_approval(
             "steps[0].screenshot_out_file",
         ),
         ("run_steps", {"steps": [{"run_script": {"script": "return 1"}}]}, [], "steps[0].script"),
+        # A click on a Mac writes a screenshot to `debug_image_out`, and the
+        # driver runs a `press` with a target, and a `triple_click` in any
+        # case, as a click.
+        (
+            "run_steps",
+            {"steps": [{"tool": "click", "args": {"debug_image_out": "/x"}}]},
+            [],
+            "steps[0].debug_image_out",
+        ),
+        (
+            "run_steps",
+            {"steps": [{"tool": "press", "args": {"pid": 1, "window_id": 2, "x": 1, "y": 1,
+                                                  "debug_image_out": "/x"}}]},
+            [],
+            "steps[0].debug_image_out",
+        ),
+        (
+            "run_steps",
+            {"steps": [{"Triple_Click": {"pid": 1, "window_id": 2, "x": 1, "y": 1,
+                                         "debug_image_out": "/x"}}]},
+            [],
+            "steps[0].debug_image_out",
+        ),
+        # A launch's name is checked against the installed apps only when
+        # launch_app is called on its own.
+        ("run_steps", {"steps": [{"tool": "launch_app", "args": {"name": "logoff"}}]}, [],
+         "steps[0]"),
+        ("run_steps", {"steps": [{"launch_app": {"name": "Calculator"}}]}, [], "steps[0]"),
+        ("run_steps", {"steps": [{"tool": "Launch_App", "args": {}}]}, [], "steps[0]"),
         # The driver runs `observe` as get_window_state, which writes the
         # screenshot to the file it names.
         (
@@ -1122,6 +1186,7 @@ async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler
     }
     assert approval == {
         "browser_set_input_files": ["files"],
+        "click": ["debug_image_out"],
         "clipboard_write": ["file_path", "image_path"],
         "get_desktop_state": ["screenshot_out_file"],
         "get_window_state": ["screenshot_out_file"],
@@ -1134,6 +1199,26 @@ async def test_the_tool_list_names_the_arguments_that_need_approval(make_handler
         ],
         "run_script": ["script"],
     }
+
+
+async def test_a_click_that_saves_a_screenshot_waits_for_approval(make_handler, fake_log) -> None:
+    """On a Mac cua-driver 0.38's click takes `debug_image_out` and writes a
+    screenshot of the window to that path before it clicks: over any file
+    the person can write, with no card asking first."""
+    handler = make_handler(platform="darwin")
+    arguments = {"pid": 1, "window_id": 2, "x": 10, "y": 20, "debug_image_out": "/Users/me/.zshrc"}
+
+    waiting = await handler.handle(_call("click", dict(arguments)))
+    approved = await handler.handle(
+        _call("click", dict(arguments), approved_arguments=["debug_image_out"])
+    )
+
+    assert isinstance(waiting, ErrorMessage)
+    assert waiting.payload.code == ErrorCode.APPROVAL_REQUIRED
+    assert waiting.payload.details == {"tool": "click", "argument": "debug_image_out"}
+    assert isinstance(approved, ComputerToolResultMessage)
+    [call] = _records(fake_log, "call")
+    assert call["arguments"]["debug_image_out"] == "/Users/me/.zshrc"
 
 
 async def test_a_launch_that_runs_a_command_line_waits_for_approval(make_handler, fake_log) -> None:
@@ -1458,6 +1543,42 @@ async def test_a_windows_launch_by_an_installed_apps_name_goes_ahead(
         "list_apps",
         "launch_app",
     ]
+
+
+@pytest.mark.parametrize(
+    ("platform", "name"),
+    [
+        ("win32", "logoff"),
+        ("win32", "Notepad"),
+        ("linux", ".bash_history"),
+        ("linux", "Zebra Notes"),
+    ],
+)
+async def test_a_launch_in_a_batch_never_reaches_the_driver(
+    make_handler, fake_log, monkeypatch, platform: str, name: str
+) -> None:
+    """A launch by name goes ahead only once an installed app has the name,
+    which was checked only for a launch_app called on its own: a run_steps
+    step that launched went to the driver unchecked, and only the driver's
+    own list of what a batch may run, which has no launch_app, kept the name
+    from ShellExecuteEx (`logoff`) or xdg-open. The step is refused now,
+    whatever it names, before the driver hears of it."""
+    apps: list = (
+        ["Notepad"]
+        if platform == "win32"
+        else [{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]
+    )
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(apps))
+    handler = make_handler(platform=platform)
+    click = {"tool": "click", "args": {"pid": 1, "x": 1, "y": 1}}
+
+    for step in ({"tool": "launch_app", "args": {"name": name}}, {"launch_app": {"name": name}}):
+        response = await handler.handle(_call("run_steps", {"steps": [click, step]}))
+
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+        assert response.payload.details == {"tool": "run_steps", "argument": "steps[1]"}
+    assert _records(fake_log, "call") == []
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])

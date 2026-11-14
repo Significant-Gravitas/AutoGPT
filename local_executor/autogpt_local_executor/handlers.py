@@ -2442,8 +2442,9 @@ def _instructions(snapshot: DriverSnapshot, config: ShimConfig) -> str:
         "`approval_arguments`) need approval on every call: the platform asks the person, "
         "unless the chat runs Unsupervised or a standing rule the person set approves the "
         "call without asking. Use one only when the task needs that file. A `run_script` "
-        "script needs approval too, since its calls can save a screenshot to a file: use "
-        "`run_steps` or single calls unless the flow needs a script's logic.",
+        "script needs approval too, since its calls can start a program or save a "
+        "screenshot to a file: use `run_steps` or single calls unless the flow needs a "
+        "script's logic.",
         "- Open an app with `launch_app` by its `name` as `list_apps` shows it (or its "
         "`bundle_id`) alone. A command "
         "line, a path, links or files to open, extra arguments or an inspector port need "
