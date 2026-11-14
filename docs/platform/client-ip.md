@@ -4,7 +4,7 @@
 
 A few parts of the AutoGPT Platform count or record callers by their IP address:
 
-- [Rate limits](rate-limits.md) that count per IP address: store search when signed out, signing in and account emails, and calls to the External API (v2) without a key.
+- [Rate limits](rate-limits.md) that count per IP address: store search when signed out, signing in and account emails, calls to the External API (v2) without a key, and API-key checks on the External API's deprecated v1.
 - The sign-in history on an account's page under **Admin → Users**, which lists the IP addresses it signed up and signed in from.
 - IP blocks, which an admin sets on that page to refuse sign-ups and sign-ins from an address.
 
@@ -24,9 +24,9 @@ Once the backend trusts that address, let nothing else reach it there: the backe
 
 ### Limits on the External API
 
-The External API's per-IP limits, which only [API v2](rate-limits.md#api-v2) has, read the caller's address through `TRUSTED_PROXIES` like every other request.
+The External API's per-IP limits read the caller's address through `TRUSTED_PROXIES` like every other request: those of [API v2](rate-limits.md#api-v2), and v1's [limit on API-key checks](integrating/authentication.md#api-key-validation-limits-on-v1), which counts by the address [the backend](#the-backend) uses.
 
-While `TRUSTED_PROXIES` is unset, they fall back to the deprecated `TRUSTED_PROXY_COUNT` and take the `X-Forwarded-For` entry that many places from the right, whichever address connected, because everything further left is whatever the caller sent. Its default, `3`, is AutoGPT Cloud's own chain: Cloudflare appends the caller's address, and Google's load balancer appends two more. Without `TRUSTED_PROXIES`, set it to the number of entries your own proxies add, or `0` to count by the address the backend already uses, as [the backend](#the-backend) describes. When the header has fewer entries than the setting, the limit falls back to that same address; when the setting is higher than the entries your proxies add, it counts by an entry the caller can choose. This fallback takes the header from whatever connects, so with a setting above `0`, let callers reach the backend only through your proxies.
+While `TRUSTED_PROXIES` is unset, API v2's limits fall back to the deprecated `TRUSTED_PROXY_COUNT` and take the `X-Forwarded-For` entry that many places from the right, whichever address connected, because everything further left is whatever the caller sent. Its default, `3`, is AutoGPT Cloud's own chain: Cloudflare appends the caller's address, and Google's load balancer appends two more. Without `TRUSTED_PROXIES`, set it to the number of entries your own proxies add, or `0` to count by the address the backend already uses, as [the backend](#the-backend) describes. When the header has fewer entries than the setting, the limit falls back to that same address; when the setting is higher than the entries your proxies add, it counts by an entry the caller can choose. This fallback takes the header from whatever connects, so with a setting above `0`, let callers reach the backend only through your proxies.
 
 ## The frontend
 
