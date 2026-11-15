@@ -3,9 +3,23 @@ import { describe, expect, it } from "vitest";
 import { UsageBar } from "../UsageBar";
 
 describe("UsageBar", () => {
-  it('renders "Unlimited" when limit is 0', () => {
-    render(<UsageBar used={100} limit={0} />);
+  it('renders "Unlimited" when the limit is negative (no cap)', () => {
+    // A negative limit is the backend's "no cap" sentinel and the self-hosted
+    // default, so GET /api/copilot/admin/rate_limit returns -1 for both
+    // windows. Formatting it as money read "$-0.00 limit, 0.0% used".
+    render(<UsageBar used={1_234_567} limit={-1} />);
+    expect(screen.getByText("$1.23 spent")).toBeDefined();
     expect(screen.getByText("Unlimited")).toBeDefined();
+    expect(screen.queryByText(/limit$/)).toBeNull();
+    expect(screen.queryByText(/% used/)).toBeNull();
+  });
+
+  it('renders "No allowance" when the limit is 0 (spending blocked)', () => {
+    // 0 does not mean unlimited: the backend blocks every spend at 0, so
+    // labelling it "Unlimited" told the admin the opposite of the truth.
+    render(<UsageBar used={0} limit={0} />);
+    expect(screen.getByText("No allowance")).toBeDefined();
+    expect(screen.queryByText("Unlimited")).toBeNull();
   });
 
   it("renders spent + limit in USD", () => {

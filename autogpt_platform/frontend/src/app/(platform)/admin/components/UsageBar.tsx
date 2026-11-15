@@ -4,9 +4,19 @@ import type { CSSProperties } from "react";
 import { formatMicrodollarsAsUsd } from "@/app/(platform)/copilot/components/usageHelpers";
 
 export function UsageBar({ used, limit }: { used: number; limit: number }) {
-  if (limit === 0) {
+  // The backend encodes both "no cap" and "no spend allowed" as non-dollar
+  // values: a negative limit disables the window's cap (the self-hosted
+  // default) and 0 blocks all spend (see ChatConfig.daily_cost_limit_microdollars
+  // and weekly_cost_limit_microdollars). Neither one is a cap to divide by, so
+  // show the spend next to what the limit actually means.
+  if (limit <= 0) {
     return (
-      <span className="text-body text-foreground-tertiary">Unlimited</span>
+      <div className="flex justify-between text-body">
+        <span>{formatMicrodollarsAsUsd(used)} spent</span>
+        <span className="text-foreground-tertiary">
+          {limit < 0 ? "Unlimited" : "No allowance"}
+        </span>
+      </div>
     );
   }
   const pct = Math.min(Math.max(0, (used / limit) * 100), 100);
