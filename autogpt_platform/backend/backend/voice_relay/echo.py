@@ -21,14 +21,17 @@ decides, per call, whether the microphone carries Otto:
   Speech heard while he is audible opens an overheard stretch
   (:class:`Overheard`), which keeps the person's captions until Otto's next
   turn begins. By then their turn is usually closed and its caption whole,
-  and the stretch is judged: it is Otto's when most of it was heard over him
-  and its whole caption is a run of his words. Then the call goes ``half``
-  for good, what it made count as an answer is dropped, and the model is told
-  once (``ECHO_NOTE``, sent as a server note), unless the call is already
-  saying goodbye. Otherwise its caption is the person's; when most of it was
-  heard over him, a caption arriving after the verdict, until his next turn
-  ends, joins it and the stretch is judged again (:class:`LateCaptions`)
-  before the caption counts as an answer.
+  and the stretch is judged: it is Otto's when most of it was heard over him,
+  with under ``OVERHEARD_CLEAR_MAX_S`` of it in the clear, and its whole
+  caption is a run of his words. Then the call goes ``half`` for good, what
+  it made count as an answer is dropped, and the model is told once
+  (``ECHO_NOTE``, sent as a server note), unless the call is already saying
+  goodbye. Otherwise its caption is the person's, though one mostly heard
+  over him whose caption is a single word of his answers nothing
+  (``end_tool``); when most of it was heard over him, a caption arriving
+  after the verdict, until his next turn ends, joins it and the stretch is
+  judged again (:class:`LateCaptions`) before the caption counts as an
+  answer.
 - Nothing heard before Otto's echo tail has passed counts as an answer to
   his turn (``end_tool``).
 - The transcript of record cannot take a caught echo for the person's words:
@@ -61,6 +64,10 @@ MIN_ECHO_WORDS = 2
 # mostly in the clear.
 OVERHEARD_MIN_S = 0.3
 OVERHEARD_OVER_CLEAR = 2.0
+# A stretch with this much speech heard clear of Otto is the person's, however
+# much was heard over him: an echo is clear of him only for as long as its
+# delay outlasts the echo tail, and a delay that long defeats the tail anyway.
+OVERHEARD_CLEAR_MAX_S = 1.0
 
 ECHO_NOTE = (
     "What you just heard was your own voice coming back through the user's "
@@ -127,11 +134,12 @@ class Overheard(BaseModel):
 
     @property
     def mostly_over(self) -> bool:
-        """Whether enough of it was heard over Otto, and enough more than in
-        the clear, for it to be his."""
+        """Whether enough of it was heard over Otto, enough more than in the
+        clear, and too little in the clear, for it to be his."""
         return (
             self.over_s >= OVERHEARD_MIN_S
             and self.over_s >= OVERHEARD_OVER_CLEAR * self.clear_s
+            and self.clear_s < OVERHEARD_CLEAR_MAX_S
         )
 
     def is_otto(self, *otto_turns: str) -> bool:
@@ -139,16 +147,21 @@ class Overheard(BaseModel):
         whole caption a run of his words in one of *otto_turns*."""
         return self.mostly_over and is_echo(self.text, *otto_turns)
 
+    def may_be_otto(self, *otto_turns: str) -> bool:
+        """Whether the stretch may be Otto's voice, though too short to be
+        judged his: mostly heard over him, and its whole caption one or more
+        of his words in a run. Such a stretch answers nothing."""
+        return self.mostly_over and is_echo(self.text, *otto_turns, min_words=1)
+
 
 class LateCaptions(BaseModel):
     """An overheard stretch judged the person's while mostly heard over Otto,
     whose caption may still be arriving: until his next turn ends, captions
     added to the person's words are added to it and it is judged again
-    against the turns it was judged by. *span* is where it lies in the
-    recording, and *kept_from* where its words start in the person's."""
+    against the turns it was judged by. *kept_from* is where its words start
+    in the person's."""
 
     stretch: Overheard
-    span: tuple[int, int]
     otto_turns: tuple[str, ...]
     kept_from: int
 
@@ -163,11 +176,11 @@ def words_of(text: str) -> list[str]:
     return _WORDS.findall(text.lower())
 
 
-def is_echo(caption: str, *otto_turns: str) -> bool:
-    """Whether *caption* is ``MIN_ECHO_WORDS`` or more words found in order,
-    as one run, in one of *otto_turns*."""
+def is_echo(caption: str, *otto_turns: str, min_words: int = MIN_ECHO_WORDS) -> bool:
+    """Whether *caption* is *min_words* or more words found in order, as one
+    run, in one of *otto_turns*."""
     said = words_of(caption)
-    if len(said) < MIN_ECHO_WORDS:
+    if len(said) < min_words:
         return False
     return any(_holds_run(words_of(turn), said) for turn in otto_turns)
 

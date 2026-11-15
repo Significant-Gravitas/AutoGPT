@@ -1063,15 +1063,16 @@ class Session:
         """A caption of the person's: kept in an overheard stretch while one
         is open, until it is judged, and judged with a stretch whose caption
         came late (``LateCaptions``). Either way the browser shows it at once,
-        and, unless it is caught as Otto's, it counts toward an answer."""
+        and, unless it is caught as Otto's or may be his, it counts toward an
+        answer."""
         if self.overheard is not None:
             self.overheard.text += text
+            counts = True
         else:
             self.user_buf += text
-            if await self._late_caption(text):
-                await self.send_json({"type": "user_text", "text": text})
-                return
-        self.answer.caption(text, now)
+            counts = await self._late_caption(text)
+        if counts:
+            self.answer.caption(text, now)
         await self.send_json({"type": "user_text", "text": text})
 
     async def _judge_overheard(self) -> None:
@@ -1084,14 +1085,14 @@ class Session:
             return
         self.overheard = None
         otto_turns = tuple(turn.text for turn in self.turns[-2:])
-        span = stretch.span
         if stretch.is_otto(*otto_turns):
-            await self._caught_echo(span)
+            await self._caught_echo(stretch)
             return
+        if stretch.may_be_otto(*otto_turns):
+            self._answers_nothing(stretch)
         if stretch.mostly_over:
             self.late = LateCaptions(
                 stretch=stretch,
-                span=span,
                 otto_turns=otto_turns,
                 kept_from=len(self.user_buf),
             )
@@ -1099,14 +1100,30 @@ class Session:
 
     async def _late_caption(self, text: str) -> bool:
         """Judge a stretch whose caption came late again with *text*; whether
-        it is now caught as Otto's, its words dropped from the person's."""
+        *text* counts toward an answer: not once the stretch is caught as
+        Otto's, its words dropped from the person's, nor while it may be his."""
         late = self.late
-        if late is None or not late.caption(text):
+        if late is None:
+            return True
+        if late.caption(text):
+            self.late = None
+            self.user_buf = self.user_buf[: late.kept_from]
+            await self._caught_echo(late.stretch)
             return False
-        self.late = None
-        self.user_buf = self.user_buf[: late.kept_from]
-        await self._caught_echo(late.span)
+        if late.stretch.may_be_otto(*late.otto_turns):
+            self._answers_nothing(late.stretch)
+            return False
         return True
+
+    def _answers_nothing(self, stretch: Overheard) -> None:
+        """One word of Otto's, heard mostly over him, may be his echo though
+        too short to be judged his: what the person had said counts as no
+        answer to him. The call stays as it is, and the word the person's."""
+        logger.info(
+            f"Voice call {self.call_id}: one word of Otto's heard mostly over him "
+            f"({_heard_over_and_clear(stretch)}): no answer"
+        )
+        self.answer.forget()
 
     def _release_overheard(self) -> None:
         """A stretch the call will not judge is the person's."""
@@ -1116,17 +1133,17 @@ class Session:
             self.overheard = None
             self.user_buf += stretch.text
 
-    async def _caught_echo(self, span: tuple[int, int]) -> None:
-        """Otto's words came back as the person's, at *span* of the
-        recording: the call is half-duplex for good, the span goes on the
-        call's record, the caption is dropped with what it made count as an
-        answer, and the model is told, once, unless the call is already
-        saying goodbye."""
+    async def _caught_echo(self, stretch: Overheard) -> None:
+        """Otto's words came back as the person's, in *stretch*: the call is
+        half-duplex for good, its span of the recording goes on the call's
+        record, the caption is dropped with what it made count as an answer,
+        and the model is told, once, unless the call is already saying
+        goodbye."""
         logger.info(
-            f"Voice call {self.call_id}: speech heard over Otto was his own words: "
-            f"half-duplex from here"
+            f"Voice call {self.call_id}: speech heard over Otto was his own words "
+            f"({_heard_over_and_clear(stretch)}): half-duplex from here"
         )
-        self.echo_spans.append(span)
+        self.echo_spans.append(stretch.span)
         self.answer.forget()
         await self._go_half("captions")
         # On the call's record at once, so a call whose pod dies is
@@ -1706,3 +1723,9 @@ class Session:
 def _as_heard(text: str) -> str:
     """Words from the call, made unable to pass as a server note."""
     return text.replace("[", "(").replace("]", ")")
+
+
+def _heard_over_and_clear(stretch: Overheard) -> str:
+    """The seconds of an overheard stretch's speech heard over Otto and in
+    the clear, for a log line; none of its words."""
+    return f"{stretch.over_s:.2f}s over him, {stretch.clear_s:.2f}s clear"

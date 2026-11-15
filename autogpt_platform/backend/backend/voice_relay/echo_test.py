@@ -5,12 +5,14 @@ overhears while he is audible until his next turn, then judges it once."""
 
 import asyncio
 import logging
+import re
 import time
 
 import pytest
 from prometheus_client import REGISTRY
 
 from backend.voice_relay import locks, vad
+from backend.voice_relay.config import IN_RATE
 from backend.voice_relay.conftest import silence, speech, until
 from backend.voice_relay.echo import (
     ECHO_NOTE,
@@ -21,7 +23,7 @@ from backend.voice_relay.echo import (
     is_echo,
     silenced,
 )
-from backend.voice_relay.end_tool import NOT_CONFIRMED
+from backend.voice_relay.end_tool import NOT_CONFIRMED, SAVED
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.locks import DuplexStats
 from backend.voice_relay.session import SERVER_NOTE
@@ -39,6 +41,7 @@ from backend.voice_relay.vendor import (
 GREETING = "Hi, I'm Otto, an AI. What do you do?"
 ASKED = "Is it more customer emails or invoices?"
 ECHOED = "That's a unique bakery. What do you sell?"
+CONFIRMING = "So, customer emails first. Does that sound right?"
 # The probe counts from a tenth of a second after Otto's first audio until a
 # fifth of a second after his first turn played out.
 TIMING = FAST.model_copy(update={"echo_probe_skip_s": 0.1, "echo_tail_s": 0.2})
@@ -115,6 +118,15 @@ async def _heard(call: Call, frames: list[bytes]) -> None:
     before = call.session.received
     call.say(frames)
     await until(lambda: call.session.received >= before + len(b"".join(frames)) // 2)
+
+
+async def _room_for(call: Call, seconds: float) -> None:
+    """Wait until the call can take *seconds* of the person's audio at once."""
+    session = call.session
+    await until(
+        lambda: session.bucket + (time.monotonic() - session.bucket_at) * IN_RATE
+        >= seconds * IN_RATE
+    )
 
 
 async def _captioned(call: Call, text: str) -> None:
@@ -424,11 +436,11 @@ async def test_an_end_tool_call_that_opens_that_next_turn_is_refused(redis, tmp_
     await _hung_up(call)
 
 
-def _calls_end_tool() -> ToolCall:
+def _calls_end_tool(call_id: str = "call-1") -> ToolCall:
     return ToolCall(
         calls=(
             FunctionCall(
-                call_id="call-1",
+                call_id=call_id,
                 name="finish_onboarding",
                 args={"first_task": "Answer customer emails"},
             ),
@@ -534,6 +546,143 @@ async def test_a_caught_stretch_silences_only_what_was_heard_over_otto(redis, tm
     assert vad.heard(kept[heard_over_him * 2 :])
 
 
+async def test_one_word_of_ottos_heard_mostly_over_him_is_no_answer(
+    redis, tmp_path, caplog
+):
+    """Sound over his question, then one of his words past the tail: too
+    short to be judged his, it still answers nothing, so the end tool is
+    refused once. The call stays full-duplex and the word stays the
+    person's; their next answer is one."""
+    caplog.set_level(logging.INFO, logger="backend.voice_relay.session")
+    before = _echo_total("captions")
+    call = await _full_duplex(redis, tmp_path)
+    live = call.vendor.sessions[0]
+    await _otto_speaks(call, CONFIRMING, 2.0)
+    await _heard(call, speech(1.0))
+    await _otto_ends_his_turn(call)
+    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _heard(call, speech(0.4))
+    await _captioned(call, "Right.")
+
+    live.emit(_calls_end_tool())
+    await until(lambda: bool(live.tool_results))
+
+    assert [result.response for result in live.tool_results] == [NOT_CONFIRMED]
+    assert not call.session.finish_called
+    assert call.session.duplex == "full"
+    assert call.session.user_buf == "Right."
+    assert call.session.echo_spans == []
+    assert live.notes_after_opening == []
+    assert _echo_total("captions") == before
+    [line] = [r.getMessage() for r in caplog.records if "one word" in r.getMessage()]
+    assert re.search(r"\d+\.\d\ds over him, \d+\.\d\ds clear", line)
+    assert "Right" not in line
+
+    await _otto_speaks(call, "Take your time.", 0.3)
+    await _otto_ends_his_turn(call)
+    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _heard(call, speech(0.4))
+    await _captioned(call, "Yes.")
+    live.emit(_calls_end_tool("call-2"))
+    await until(lambda: len(live.tool_results) == 2)
+
+    assert live.tool_results[1].response == SAVED
+    assert call.session.finish_called
+    await _hung_up(call)
+
+
+async def test_a_late_one_word_caption_of_ottos_heard_mostly_over_him_is_no_answer(
+    redis, tmp_path
+):
+    """The stretch was judged at his next turn's first word, before its
+    caption came: one word of his arriving then answers nothing either, and
+    stays the person's."""
+    call = await _full_duplex(redis, tmp_path)
+    live = call.vendor.sessions[0]
+    await _otto_speaks(call, CONFIRMING, 2.0)
+    await _heard(call, speech(1.0))
+    await _otto_ends_his_turn(call)
+    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _heard(call, speech(0.4))
+    await _next_turn_begins(call, "Great.")
+
+    await _captioned(call, "Right.")
+    live.emit(_calls_end_tool())
+    await until(lambda: bool(live.tool_results))
+
+    assert [result.response for result in live.tool_results] == [NOT_CONFIRMED]
+    assert call.session.duplex == "full"
+    assert call.session.user_buf == "Right."
+    assert call.session.echo_spans == []
+    assert live.notes_after_opening == []
+    await _hung_up(call)
+
+
+async def test_one_word_in_the_clear_with_nothing_heard_over_otto_answers_him(
+    redis, tmp_path
+):
+    """With nothing heard over him, a word of his said past the tail is an
+    answer like any other."""
+    call = await _full_duplex(redis, tmp_path)
+    live = call.vendor.sessions[0]
+    await _otto_speaks(call, CONFIRMING, 2.0)
+    await _otto_ends_his_turn(call)
+    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _heard(call, speech(0.4))
+    await _captioned(call, "Right.")
+
+    live.emit(_calls_end_tool())
+    await until(lambda: bool(live.tool_results))
+
+    assert [result.response for result in live.tool_results] == [SAVED]
+    assert call.session.finish_called
+    await _hung_up(call)
+
+
+async def test_a_second_of_speech_clear_of_otto_is_the_persons_whatever_was_heard_over_him(
+    redis, tmp_path
+):
+    """Twice as much heard over his question as after it, and a run of his
+    words, but over a second of it in the clear: an echo is never clear of
+    him that long, so it is the person's answer."""
+    call = await _full_duplex(redis, tmp_path)
+    await _otto_speaks(call, ASKED, 3.0)
+    # The relay takes at most two seconds of audio at once: the 2.4 s heard
+    # over him comes in two halves.
+    await _heard(call, speech(1.2))
+    await _room_for(call, 1.2)
+    await _heard(call, speech(1.2))
+    await _otto_ends_his_turn(call)
+    await _otto_inaudible(call)
+    await _heard(call, speech(1.2))
+    await _captioned(call, "customer emails")
+
+    await _next_turn_begins(call, "Got it.")
+
+    assert call.session.duplex == "full"
+    assert call.session.user_buf == "customer emails"
+    assert call.vendor.sessions[0].notes_after_opening == []
+    assert call.session.echo_spans == []
+    await _hung_up(call)
+
+
+async def test_a_catch_is_logged_with_the_seconds_heard_over_and_clear_of_otto_and_no_words(
+    redis, tmp_path, caplog
+):
+    caplog.set_level(logging.INFO, logger="backend.voice_relay.session")
+    call = await _full_duplex(redis, tmp_path)
+    await _overheard_echo(call)
+
+    await _next_turn_begins(call)
+
+    [line] = [
+        r.getMessage() for r in caplog.records if "his own words" in r.getMessage()
+    ]
+    assert re.search(r"\d+\.\d\ds over him, \d+\.\d\ds clear", line)
+    assert "unique" not in line
+    await _hung_up(call)
+
+
 @pytest.mark.parametrize("saying_goodbye", ["wrapping", "finishing"])
 async def test_no_note_while_wrapping_or_finishing(redis, tmp_path, saying_goodbye):
     """ "Carry on from your last question" must not restart a goodbye. The
@@ -599,6 +748,33 @@ def test_a_caption_is_ottos_words_when_two_or_more_run_in_his_turn(caption, echo
 
 
 @pytest.mark.parametrize(
+    "caption,echo",
+    [("Right.", True), ("Yes.", False)],
+    ids=["one-of-his-words", "not-one-of-his"],
+)
+def test_one_word_is_ottos_words_where_one_word_is_enough(caption, echo):
+    assert is_echo(caption, CONFIRMING, min_words=1) is echo
+
+
+@pytest.mark.parametrize(
+    "over_s,clear_s,text,may_be",
+    [
+        (1.0, 0.4, "Right.", True),
+        (0.6, 0.31, "Right.", False),
+        (1.0, 0.4, "Yes.", False),
+        (1.0, 0.4, "", False),
+    ],
+    ids=["one-of-his-words-over-him", "mostly-in-the-clear", "not-his", "no-caption"],
+)
+def test_one_word_of_ottos_may_be_his_only_when_mostly_heard_over_him(
+    over_s, clear_s, text, may_be
+):
+    stretch = Overheard(start=0, end=0, over_s=over_s, clear_s=clear_s, text=text)
+
+    assert stretch.may_be_otto(GREETING, CONFIRMING) is may_be
+
+
+@pytest.mark.parametrize(
     "over_s,clear_s,text,otto",
     [
         (0.6, 0.0, "That's a unique", True),
@@ -607,6 +783,8 @@ def test_a_caption_is_ottos_words_when_two_or_more_run_in_his_turn(caption, echo
         (0.6, 0.3, "That's a unique", True),
         (0.6, 0.0, "What do you mean", False),
         (0.6, 0.0, "customer", False),
+        (3.0, 0.99, "That's a unique", True),
+        (3.0, 1.0, "That's a unique", False),
     ],
     ids=[
         "over-otto-and-his-words",
@@ -615,6 +793,8 @@ def test_a_caption_is_ottos_words_when_two_or_more_run_in_his_turn(caption, echo
         "twice-as-much-over-him",
         "not-a-run-of-his",
         "one-word",
+        "under-a-second-clear",
+        "a-second-clear",
     ],
 )
 def test_an_overheard_stretch_is_ottos_when_mostly_heard_over_him_and_a_run_of_his(
