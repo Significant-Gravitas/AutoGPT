@@ -25,8 +25,8 @@ Prompts are read from the project whose project API key is `POSTHOG_PROMPTS_PROJ
 
 ## Caching and failures
 
-- **System prompt.** Each process fetches it at most once per `CHAT_SYSTEM_PROMPT_CACHE_TTL` seconds (default 300; the legacy `CHAT_LANGFUSE_PROMPT_CACHE_TTL` is still read). Each fetch makes one attempt with a 5-second timeout. If a fetch fails, the process serves the copy it already holds. With no copy held, it serves the prompt in code.
-- **Onboarding greeting.** It uses the SDK's 5-minute cache, also with a 5-second timeout.
+- **System prompt.** Each process keeps the copy it last fetched for `CHAT_SYSTEM_PROMPT_CACHE_TTL` seconds (default 300; the legacy `CHAT_LANGFUSE_PROMPT_CACHE_TTL` is still read). Once it holds a copy, it refetches at most once per TTL: one turn fetches while the others serve the held copy. Before it holds one, turns that start together share one fetch. A turn waits at most 5 seconds for a fetch; the SDK's request itself can keep retrying in the background for about 30 seconds, on a pool of 4 threads kept for prompt reads. If a fetch fails, the process serves the copy it already holds. With no copy held, it serves the prompt in code until the TTL has passed, then tries again.
+- **Onboarding greeting.** It uses the SDK's 5-minute cache. The greeting waits at most 5 seconds for a fetch, on the same thread pool. An empty PostHog copy counts as none: the greeting uses the prompt in code.
 
 Neither prompt can fail a chat turn or onboarding.
 
@@ -39,6 +39,6 @@ Neither prompt can fail a chat turn or onboarding.
 
 ## Editing the system prompt
 
-The system prompt must stay identical for every user, so that the model provider's prompt cache keeps working. Per-user context goes into the first user message (`inject_user_context`), never into the prompt. Templates use `{{variable}}`. The backend compiles the system prompt with `users_information` set to an empty string, and logs an error if a single-brace `{users_information}` is left in the result.
+The system prompt must stay identical for every user, so that the model provider's prompt cache keeps working. Per-user context goes into the first user message (`inject_user_context`), never into the prompt. Templates use `{{variable}}`; `{{ variable }}`, which Langfuse allowed, works too. The backend compiles the system prompt with `users_information` set to an empty string, and logs an error if a single-brace `{users_information}`, spaced or not, is left in the result.
 
 Rules that every turn needs go in the supplements appended to the prompt (`SHARED_TOOL_NOTES`), not in the prompt itself, because the PostHog copy replaces the copy in code. For the same reason, keep the copy in code and the PostHog copy in step.
