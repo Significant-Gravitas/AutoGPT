@@ -18,6 +18,7 @@ from backend.api.features.orgs import db as orgs_db
 from backend.api.features.orgs.routes import router as orgs_router
 from backend.api.rest_api import app as rest_app
 from backend.data.user import get_or_create_user
+from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
 
@@ -38,10 +39,18 @@ async def test_two_concurrent_transfers_by_one_owner_leave_one_owner(
     )
 
     assert sorted(type(r).__name__ for r in results) == ["NoneType", "ValueError"]
-    owners = await prisma.models.OrgMember.prisma().find_many(
-        where={"orgId": org.id, "isOwner": True}
-    )
-    assert [m.userId for m in owners] in ([first], [second])
+    assert await _owners(org.id) in ([first], [second])
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_transfer_to_a_non_member_keeps_the_owner(server: SpinTestServer):
+    owner, stranger = await _user(), await _user()
+    org = await _create_org(owner)
+
+    with pytest.raises(NotFoundError):
+        await orgs_db.transfer_ownership(org.id, owner, stranger)
+
+    assert await _owners(org.id) == [owner]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -61,6 +70,27 @@ async def test_a_member_who_belongs_to_no_other_org_is_removed(
     )
     assert not await prisma.models.TeamMember.prisma().find_many(
         where={"userId": member, "Team": {"orgId": org.id}}
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_removal_that_fails_part_way_keeps_the_membership(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    owner, member = await _user(), await _user()
+    org = await _create_org(owner)
+    await orgs_db.add_org_member(org.id, member)
+
+    async def fail(self, *args, **kwargs):
+        raise RuntimeError("team memberships could not be deleted")
+
+    monkeypatch.setattr(prisma.actions.TeamMemberActions, "delete_many", fail)
+
+    with pytest.raises(RuntimeError):
+        await orgs_db.remove_org_member(org.id, member, requesting_user_id=owner)
+
+    assert await prisma.models.OrgMember.prisma().find_unique(
+        where={"orgId_userId": {"orgId": org.id, "userId": member}}
     )
 
 
@@ -130,6 +160,13 @@ async def _user_without_an_org() -> str:
         }
     )
     return user.id
+
+
+async def _owners(org_id: str) -> list[str]:
+    owners = await prisma.models.OrgMember.prisma().find_many(
+        where={"orgId": org_id, "isOwner": True}
+    )
+    return [m.userId for m in owners]
 
 
 async def _create_org(user_id: str):

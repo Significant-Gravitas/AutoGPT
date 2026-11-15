@@ -610,6 +610,16 @@ class TestOrgDbMembers:
         )
 
     @pytest.mark.asyncio
+    async def test_remove_owner_raises_value_error(self):
+        from backend.api.features.orgs.db import remove_org_member
+
+        owner = _make_member(userId=USER_ID, isOwner=True)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=owner)
+
+        with pytest.raises(ValueError, match="Cannot remove the org owner"):
+            await remove_org_member(ORG_ID, USER_ID, requesting_user_id="admin-user")
+
+    @pytest.mark.asyncio
     async def test_remove_member_made_owner_meanwhile_keeps_everything(self):
         """The owner check is repeated by the delete itself."""
         from backend.api.features.orgs.db import remove_org_member
@@ -622,16 +632,6 @@ class TestOrgDbMembers:
         with pytest.raises(ValueError, match="Cannot remove the org owner"):
             await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
         self.prisma.teammember.delete_many.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_remove_owner_raises_value_error(self):
-        from backend.api.features.orgs.db import remove_org_member
-
-        owner = _make_member(userId=USER_ID, isOwner=True)
-        self.prisma.orgmember.find_unique = AsyncMock(return_value=owner)
-
-        with pytest.raises(ValueError, match="Cannot remove the org owner"):
-            await remove_org_member(ORG_ID, USER_ID, requesting_user_id="admin-user")
 
     @pytest.mark.asyncio
     async def test_remove_nonexistent_member_raises_not_found(self):

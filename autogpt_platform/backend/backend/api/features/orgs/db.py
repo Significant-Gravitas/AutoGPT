@@ -23,6 +23,7 @@ from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgDa
 logger = logging.getLogger(__name__)
 
 MAX_ORGS_PER_USER = 50
+_OWNER_REMOVAL_REFUSED = "Cannot remove the org owner. Transfer ownership first."
 
 
 # ---------------------------------------------------------------------------
@@ -681,9 +682,6 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
         await tx.teammember.delete_many(
             where={"userId": user_id, "Team": {"is": {"orgId": org_id}}}
         )
-
-
-_OWNER_REMOVAL_REFUSED = "Cannot remove the org owner. Transfer ownership first."
 
 
 async def transfer_ownership(

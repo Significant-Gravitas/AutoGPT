@@ -59,8 +59,8 @@ _LOCK_RENEW_EVERY = 50
 # conversion's "-personal-1" can take the final slug to 120 characters.
 _MAX_SLUG_LENGTH = 100
 
-# Numbered suffixes keep a common slug readable; the random ones after them end
-# the search however many numbered slugs are taken.
+# Numbered suffixes keep a common slug readable; the random ones guarantee the
+# search ends.
 _NUMBERED_SLUG_ATTEMPTS = 20
 _RANDOM_SLUG_ATTEMPTS = 3
 
