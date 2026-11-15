@@ -492,6 +492,19 @@ describe("the call's copy", () => {
         }),
       ),
     ).toBe(
+      "Otto can't take calls right now. You can type instead, or try again in a minute.",
+    );
+    expect(
+      callStartFailureCopy({
+        kind: "unavailable",
+        retryAfterSeconds: 5 * 3600,
+      }),
+    ).toBe(
+      "Otto can't take calls right now. You can type instead, or try again in 5 hours.",
+    );
+    expect(
+      callStartFailureCopy({ kind: "unavailable", retryAfterSeconds: null }),
+    ).toBe(
       "Otto can't take calls right now. You can type instead, or try again in a moment.",
     );
     expect(

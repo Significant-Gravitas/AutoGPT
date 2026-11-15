@@ -954,6 +954,28 @@ describe("onboarding interview by voice: opening", () => {
     ]);
   });
 
+  it("says how long until Otto takes calls again when the start is refused for that long", async () => {
+    refuseCallStartOnce({
+      status: 503,
+      body: {
+        detail: {
+          message: "Voice calls are not available right now.",
+          retry_after_seconds: 5 * 3600,
+        },
+      },
+    });
+
+    render(<OnboardingPage />);
+    await talkToOtto();
+
+    expect(
+      await screen.findByText(
+        "Otto can't take calls right now. You can type instead, or try again in 5 hours.",
+      ),
+    ).toBeDefined();
+    expect(fakes.joinedRooms()).toEqual([]);
+  });
+
   it("lets go of the call's audio when the start is refused", async () => {
     refuseCallStartOnce({
       status: 429,

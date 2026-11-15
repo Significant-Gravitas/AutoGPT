@@ -455,7 +455,10 @@ export function callStartFailureCopy(failure: CallStartFailure) {
     return `You've made a few calls already. You can call again ${wait}, or type instead.`;
   }
   if (failure.kind === "unavailable") {
-    return "Otto can't take calls right now. You can type instead, or try again in a moment.";
+    const wait = failure.retryAfterSeconds
+      ? describeWait(failure.retryAfterSeconds)
+      : "a moment";
+    return `Otto can't take calls right now. You can type instead, or try again in ${wait}.`;
   }
   if (failure.kind === "audio") {
     return "We couldn't connect the call's audio. Try again, or type instead.";
