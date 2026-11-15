@@ -2724,10 +2724,10 @@ async def stream_chat_post(
         if claim == "claimed" and client_message_id is not None:
             await accept_client_message(session_id, client_message_id, claim_owner)
 
+    turn_id: str | None = None
+    queued_behind_cap = False
     try:
-        if claim == "accepted":
-            turn_id = None
-        else:
+        if claim != "accepted":
             if interview_plan is not None:
                 # Charged once the key is this request's, so a retransmit the
                 # claim turned away costs nothing, and a refusal here releases
@@ -2816,12 +2816,14 @@ async def stream_chat_post(
             f"[STREAM] Queued turn for session={session_id} "
             f"(running cap reached; inflight cap={inflight_cap})"
         )
-        if interview_plan is not None:
-            await _record_interview_turn_started(user_id, session_id, interview_plan)
-        return _empty_ui_message_stream_response()
+        queued_behind_cap = True
     except BaseException:
         await release_client_message_claim()
         raise
+    if queued_behind_cap:
+        if interview_plan is not None:
+            await _record_interview_turn_started(user_id, session_id, interview_plan)
+        return _empty_ui_message_stream_response()
     await accept_client_message_claim()
 
     if turn_id is None:

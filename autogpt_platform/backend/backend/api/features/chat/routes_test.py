@@ -7332,6 +7332,42 @@ def test_an_interview_turn_is_admitted_by_the_interview_alone(
     started.assert_awaited_once_with(test_user_id, "sess-1", plan)
 
 
+def test_an_interview_message_queued_behind_the_running_cap_counts_as_started(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """Queued for a free slot rather than dispatched, the message is in the
+    interview all the same, and its message id stays taken."""
+    mocks = _mock_stream_internals(mocker)
+    mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    plan = InterviewTurnPlan(reply=3)
+    mocker.patch(
+        f"{_ROUTES}.admit_onboarding_interview_turn",
+        new_callable=AsyncMock,
+        return_value=plan,
+    )
+    _interview_charge(mocker)
+    accepted = mocker.patch(f"{_ROUTES}.typed_message_accepted", new_callable=AsyncMock)
+    started = mocker.patch(
+        f"{_ROUTES}.record_onboarding_interview_turn_started",
+        new_callable=AsyncMock,
+    )
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy", cap=5)
+    queue = mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "We bake bread.", "message_id": "client-click-id"},
+    )
+
+    assert response.status_code == 200
+    queue.assert_awaited_once()
+    accepted.assert_awaited_once_with(test_user_id)
+    started.assert_awaited_once_with(test_user_id, "sess-1", plan)
+    assert list(mocks.claims.values.values()) == ["accepted"]
+
+
 def test_a_turn_the_interview_refuses_is_never_stored(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
