@@ -24,9 +24,9 @@ from backend.copilot.constants import (
 )
 from backend.copilot.model import ChatSession
 
-# Private name on purpose: the alternative is editing sharing/models.py to
-# add an alias, which shifts a docstring the secrets baseline trips on.
-from backend.copilot.sharing.models import _redact_secret_keys
+# The shared-chat redactor's key walk. It leaves strings as written, so the
+# card shows what the call will send.
+from backend.copilot.sharing.redaction import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
 from .classifier import DecidedBy
