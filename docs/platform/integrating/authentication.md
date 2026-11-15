@@ -182,6 +182,8 @@ Every request acts inside exactly one organization, and the key decides which: i
 
 What a request creates belongs to that organization, and its runs are billed to that organization's balance. It can only see and change that organization's agents, graphs, folders, runs and schedules: anything in another organization answers `404`, as if it did not exist, and search leaves it out. To work in several organizations, create one key in each.
 
+A key works only while you are an active member of its organization, and of its team if it is restricted to one. Being removed from an organization revokes the keys you created in it. Leaving a team, or being removed from it, revokes your keys restricted to that team, and deleting a team revokes every key restricted to it.
+
 Two kinds of data belong to you rather than to an organization, so every key you create reaches them, whatever organization it acts in:
 
 * **Workspace files** (`/files`): one workspace per account.
@@ -216,7 +218,7 @@ OAuth access tokens act in your personal organization. There is no way yet to ch
 | Status and code | Message | Fix |
 | --- | --- | --- |
 | `401 unauthorized` | `Missing authentication. Provide API key or access token.` | Send the `X-API-Key` header. Check the header name and that your HTTP client isn't dropping it on a redirect. |
-| `401 unauthorized` | `Invalid API key` | The key is wrong, revoked, or from another instance: keys from AutoGPT Cloud don't work on a self-hosted instance, and the reverse. |
+| `401 unauthorized` | `Invalid API key` | The key is wrong, revoked (also when you leave its [organization or team](#organizations-and-teams)), or from another instance: keys from AutoGPT Cloud don't work on a self-hosted instance, and the reverse. |
 | `403 forbidden` | `Missing required permission(s): ...` | Keys can't be edited: create a key with the named permissions and delete the old one. |
 | `403 forbidden` | `These credentials belong to an organization you are not an active member of` | You left the organization the key was created in. Create a new key. |
 | `404 not_found` | `... not found` | The resource doesn't exist, or belongs to an organization or team this key can't see. |

@@ -56,10 +56,6 @@ function submitSignupForm() {
   fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
     target: { value: PASSWORD },
   });
-  fireEvent.change(
-    screen.getByLabelText("Confirm Password", { selector: "input" }),
-    { target: { value: PASSWORD } },
-  );
   fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
 }
 
@@ -101,7 +97,6 @@ describe("SignupPage sends a new account to onboarding first", () => {
       // routes by onboarding state for a default landing too.
       expect(mockSignupAction).toHaveBeenCalledWith(
         EMAIL,
-        PASSWORD,
         PASSWORD,
         false,
         safeNext,
@@ -149,7 +144,6 @@ describe("SignupPage sends a new account to onboarding first", () => {
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(next));
     expect(mockSignupAction).toHaveBeenCalledWith(
       EMAIL,
-      PASSWORD,
       PASSWORD,
       false,
       next,

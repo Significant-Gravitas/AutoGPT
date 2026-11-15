@@ -20,7 +20,6 @@ import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
 export async function signup(
   email: string,
   password: string,
-  confirmPassword: string,
   marketingOptOut: boolean,
   next?: string | null,
   name?: string,
@@ -30,7 +29,6 @@ export async function signup(
       name,
       email,
       password,
-      confirmPassword,
       marketingOptOut,
     });
 

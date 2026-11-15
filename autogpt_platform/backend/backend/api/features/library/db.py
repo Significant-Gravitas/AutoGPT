@@ -869,7 +869,17 @@ async def create_graph_in_library(
 
     Without ``organization_id`` the graph is untagged and the library entry
     goes to the user's default team.
+
+    A graph ID belonging to somebody else makes the new graph a copy of
+    theirs, such as one Otto saves from the JSON of their workflow: the
+    sub-graph nodes it inherited that name one of the user's own graphs are
+    blanked, and ones the user added are kept (see
+    `graph_db.clear_sub_graph_refs_owned_by`).
     """
+    if await graph_db.graph_owner_id(graph.id) not in (None, user_id):
+        await graph_db.clear_sub_graph_refs_owned_by(
+            graph, user_id, edited_from=graph.id
+        )
     graph.version = 1
     graph_model = graph_db.make_graph_model(graph, user_id)
     graph_model.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -1007,7 +1017,12 @@ async def fork_graph_in_library(
     team_id: str | None = None,
 ) -> tuple[graph_db.GraphModel, library_model.LibraryAgent]:
     """Save *graph* as a new graph in the user's library, forked from version
-    *forked_from_version* of the graph ID it carries."""
+    *forked_from_version* of the graph ID it carries, which belongs to
+    somebody else.
+
+    Sub-graph nodes it inherited that name one of the user's own graphs are
+    blanked; ones the user added are kept (see `create_graph_in_library`).
+    """
     logger.info(
         f"Saving graph {graph.id} v{forked_from_version} as a fork for user {user_id}"
     )

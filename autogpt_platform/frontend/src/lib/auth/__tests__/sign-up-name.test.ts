@@ -109,7 +109,7 @@ describe("an email sign-up", () => {
   ])("keeps %s and is greeted by it", async (_case, email, given, expected) => {
     const { auth, signup } = await createAuth();
 
-    const result = await signup(email, password, password, false, null, given);
+    const result = await signup(email, password, false, null, given);
 
     expect(result).toEqual({ success: true, next: "/onboarding" });
     const user = await sessionUser(auth, email);
@@ -123,14 +123,7 @@ describe("an email sign-up", () => {
     async (given) => {
       const { auth, signup } = await createAuth();
 
-      await signup(
-        "jane.doe87@example.com",
-        password,
-        password,
-        false,
-        null,
-        given,
-      );
+      await signup("jane.doe87@example.com", password, false, null, given);
 
       const user = await sessionUser(auth, "jane.doe87@example.com");
       expect(user.user_metadata.name).toBe("");

@@ -22,32 +22,23 @@ export const loginFormSchema = z.object({
     .max(64, "Password must contain at most 64 characters"),
 });
 
-export const signupFormSchema = z
-  .object({
-    name: z
-      .string()
-      .trim()
-      .max(50, "Name must contain at most 50 characters")
-      .optional(),
-    email: z
-      .string()
-      .email()
-      .max(128, "Email must contain at most 128 characters")
-      .trim(),
-    password: z
-      .string()
-      .min(AUTH_PASSWORD_MIN_LENGTH, MIN_LENGTH_MESSAGE)
-      .max(64, "Password must contain at most 64 characters"),
-    confirmPassword: z
-      .string()
-      .min(AUTH_PASSWORD_MIN_LENGTH, MIN_LENGTH_MESSAGE)
-      .max(64, "Password must contain at most 64 characters"),
-    marketingOptOut: z.boolean().default(false),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
+export const signupFormSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .max(50, "Name must contain at most 50 characters")
+    .optional(),
+  email: z
+    .string()
+    .email()
+    .max(128, "Email must contain at most 128 characters")
+    .trim(),
+  password: z
+    .string()
+    .min(AUTH_PASSWORD_MIN_LENGTH, MIN_LENGTH_MESSAGE)
+    .max(64, "Password must contain at most 64 characters"),
+  marketingOptOut: z.boolean().default(false),
+});
 
 export const sendEmailFormSchema = z.object({
   email: z

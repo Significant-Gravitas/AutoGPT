@@ -70,8 +70,6 @@ export default function SignupPage() {
     );
   }
 
-  const confirmPasswordError = form.formState.errors.confirmPassword?.message;
-
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
@@ -132,21 +130,6 @@ export default function SignupPage() {
                 type="password"
                 autoComplete="new-password"
                 error={form.formState.errors.password?.message}
-                {...field}
-              />
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Confirm Password"
-                placeholder="Confirm your password"
-                type="password"
-                autoComplete="new-password"
-                error={confirmPasswordError}
                 {...field}
               />
             )}

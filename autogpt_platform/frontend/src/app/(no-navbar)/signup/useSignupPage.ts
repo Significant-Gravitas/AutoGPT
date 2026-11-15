@@ -85,7 +85,6 @@ export function useSignupPage() {
       name: "",
       email: "",
       password: "",
-      confirmPassword: "",
       marketingOptOut: false,
     },
   });
@@ -165,7 +164,6 @@ export function useSignupPage() {
       const result = await signupAction(
         data.email,
         data.password,
-        data.confirmPassword,
         data.marketingOptOut,
         safeNext,
         data.name,
