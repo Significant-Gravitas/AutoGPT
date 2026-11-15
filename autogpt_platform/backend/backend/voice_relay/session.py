@@ -336,7 +336,11 @@ class Session:
         on_end: Callable[[], None] | None = None,
         recording: CallRecording | None = None,
         reaper: RoomCloser | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        # The call's monotonic clock: every moment the call keeps or compares
+        # is read from it.
+        self.clock = clock
         self.call_id = call_id
         self.user_id = user_id
         self.edge = edge
@@ -364,7 +368,7 @@ class Session:
         self.postcall_claimed = False
         # When the start message arrived (monotonic): the first audio is
         # measured from here.
-        self.started = time.monotonic() if started is None else started
+        self.started = self.clock() if started is None else started
         # Called once the call's shared state is released, before the relay
         # waits on the browser's socket again.
         self.on_end = on_end
@@ -401,7 +405,7 @@ class Session:
         self.received = self.forwarded = self.dropped = self.agent_out = 0
         self.bad_frames = 0
         self.bucket = BURST_S * IN_RATE
-        self.bucket_at = time.monotonic()
+        self.bucket_at = self.clock()
         # The idle cutoff counts quiet time while Otto's audio is not playing,
         # which it is estimated to do until playout_end.
         self.playout_end = 0.0
@@ -467,7 +471,7 @@ class Session:
     # --- lifecycle --------------------------------------------------------
 
     def elapsed(self) -> float:
-        return time.monotonic() - self.t0 if self.t0 is not None else 0.0
+        return self.clock() - self.t0 if self.t0 is not None else 0.0
 
     def end(self, reason: EndReason) -> None:
         if self.end_reason is None:
@@ -540,7 +544,7 @@ class Session:
         self.tasks.add(joining)
         naming = asyncio.create_task(self._read_first_name(), name="first_name")
         self.tasks.add(naming)
-        connecting = time.monotonic()
+        connecting = self.clock()
         try:
             live = await bounded(
                 self.vendor.connect(), timeout=self.timing.vendor_connect_timeout_s
@@ -550,7 +554,7 @@ class Session:
             raise _StartFailed(
                 "vendor_error", f"connect: {failure.summary()}"
             ) from error
-        vendor_s = time.monotonic() - connecting
+        vendor_s = self.clock() - connecting
         VENDOR_CONNECT_SECONDS.observe(vendor_s)
         try:
             room_s = await joining
@@ -593,7 +597,7 @@ class Session:
         while not self.ended.is_set():
             if heard.done() and self.away_since is None:
                 return
-            now = time.monotonic()
+            now = self.clock()
             if now >= deadline:
                 logger.info(
                     f"Voice call {self.call_id}: not ready "
@@ -621,7 +625,7 @@ class Session:
         """The call is ready: it is counted against the person's allowance and
         goes live, the browser hears ``ready``, and then the model is sent the
         call's opening, so the first token paid for comes after the count."""
-        self.t0 = time.monotonic()
+        self.t0 = self.clock()
         self.bucket_at = self.t0
         await self.store.count_call()
         await self.store.advance(
@@ -781,8 +785,8 @@ class Session:
         """Take the call's audio into its LiveKit room, and return how long the
         join took. Raises whatever the join failed with."""
         # Away until the person's microphone is found in the room.
-        self.away_since = time.monotonic()
-        joining = time.monotonic()
+        self.away_since = self.clock()
+        joining = self.clock()
         self.audio = await self.edge.join(
             call_id=self.call_id,
             user_id=self.user_id,
@@ -792,7 +796,7 @@ class Session:
             stall=self.on_stall,
             lost=self.on_room_lost,
         )
-        room_s = time.monotonic() - joining
+        room_s = self.clock() - joining
         ROOM_JOIN_SECONDS.observe(room_s)
         return room_s
 
@@ -817,7 +821,7 @@ class Session:
             self.away_since = None
             return
         if self.away_since is None:
-            self.away_since = time.monotonic()
+            self.away_since = self.clock()
         if not self.ended.is_set():
             # Their audio stopped, maybe mid-sentence: close their open turn
             # so it does not hang the vendor's turn detection.
@@ -878,7 +882,7 @@ class Session:
             logger.info(f"Voice call {self.call_id}: browser gone before ready ({why})")
             self.end("client_gone")
             return
-        self.detached_at = time.monotonic()
+        self.detached_at = self.clock()
         self._socket_done.set()
         # The person's audio goes on through the room meanwhile.
         logger.info(f"Voice call {self.call_id}: browser detached ({why})")
@@ -893,7 +897,7 @@ class Session:
             # From here on the old socket hears nothing: what the call says is
             # kept for *ws*.
             if self.detached_at is None:
-                self.detached_at = time.monotonic()
+                self.detached_at = self.clock()
             away_since = self.detached_at
             if self.upstream_task is not None and not self.upstream_task.done():
                 self.upstream_task.cancel()
@@ -906,7 +910,7 @@ class Session:
                 self._socket_done.set()
                 self._socket_done = asyncio.Event()
                 self.ws = ws
-                gap = time.monotonic() - away_since
+                gap = self.clock() - away_since
                 outbox, self.outbox, self.outbox_bytes = self.outbox, [], 0
                 self.outbox_full = False
                 self.detached_at = None
@@ -947,7 +951,7 @@ class Session:
                 return
 
     async def on_mic(self, pcm: bytes) -> None:
-        now = time.monotonic()
+        now = self.clock()
         if not pcm or len(pcm) > MAX_FRAME_BYTES or len(pcm) % 2:
             self.bad_frames += 1
             return
@@ -1236,7 +1240,7 @@ class Session:
         Only the relay can: it holds the conversation, the timers and the
         browser's socket, so the person hears a short apology, not a dead line.
         """
-        dropped_at = time.monotonic()
+        dropped_at = self.clock()
         self.reconnecting = True
         # The replacement starts on the call so far, the person's words in it.
         self._release_overheard()
@@ -1289,7 +1293,7 @@ class Session:
         self.spawn(self.downstream(live), "downstream")
         logger.info(
             f"Voice call {self.call_id}: vendor reconnected in "
-            f"{time.monotonic() - dropped_at:.2f}s"
+            f"{self.clock() - dropped_at:.2f}s"
         )
 
     def reseed_text(self) -> str:
@@ -1332,7 +1336,7 @@ class Session:
         return lines
 
     async def on_event(self, event: VendorEvent) -> None:
-        now = time.monotonic()
+        now = self.clock()
         match event:
             case Usage():
                 await self.meter.live_usage(
@@ -1432,7 +1436,7 @@ class Session:
         call logs its line. A round refused in a turn that already had one
         refused counts as one of his turns, and ends the call at the turn
         cap."""
-        now = time.monotonic()
+        now = self.clock()
         speaking = self._otto_speaking()
         refused_before = self.cur.end_refused
         # An overheard stretch is judged before the call is: what an echo made
@@ -1514,7 +1518,7 @@ class Session:
     async def on_turn_complete(self) -> None:
         # What the person says next answers this turn, once it has played and
         # its echo can no longer come back.
-        played = max(time.monotonic(), self.playout_end)
+        played = max(self.clock(), self.playout_end)
         self.answer.reopen(played + self.timing.echo_tail_s, played=played)
         self.prompted = False
         # The person's words from here on answer this turn: a stretch whose
@@ -1569,13 +1573,13 @@ class Session:
 
     async def watchdog(self) -> None:
         tick = self.timing.tick_s
-        last = time.monotonic()
+        last = self.clock()
         next_end_check = last
         next_refresh = last + LIVE_CALL_REFRESH_S
         next_checkpoint = last + self.timing.checkpoint_s
         while not self.ended.is_set():
             await asyncio.sleep(tick)
-            now = time.monotonic()
+            now = self.clock()
             gap, last = now - last, now
             elapsed = self.elapsed()
             if elapsed >= self.caps.max_call_s:
@@ -1707,7 +1711,7 @@ class Session:
     async def wrap_up(self, reason: EndReason) -> None:
         """Have Otto say goodbye, then end the call with *reason*."""
         self.wrapping = reason
-        self.wrap_started = time.monotonic()
+        self.wrap_started = self.clock()
         self.wrap_deadline = self.wrap_started + self.timing.wrap_grace_s
         logger.info(f"Voice call {self.call_id}: wrapping up ({reason})")
         self.prompted = True

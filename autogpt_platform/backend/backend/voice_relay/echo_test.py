@@ -6,14 +6,13 @@ overhears while he is audible until his next turn, then judges it once."""
 import asyncio
 import logging
 import re
-import time
 
 import pytest
 from prometheus_client import REGISTRY
 
 from backend.voice_relay import locks, vad
 from backend.voice_relay.config import IN_RATE
-from backend.voice_relay.conftest import silence, speech, until
+from backend.voice_relay.conftest import ManualClock, silence, speech, until
 from backend.voice_relay.echo import (
     ECHO_NOTE,
     HALF_DUPLEX_SHARE,
@@ -55,29 +54,44 @@ def _echo_total(by: str) -> float:
 
 
 async def _greeting(redis, tmp_path, timing=TIMING) -> Call:
-    """A call whose Otto is greeting the person, for two seconds of audio."""
+    """A call whose Otto is greeting the person, for two seconds of audio. Its
+    clock moves only when the test moves it: whether a frame is heard over
+    Otto, in his echo tail or in the probe never depends on how fast the test
+    runs."""
     vendor = FakeVendor([Reply(text=GREETING, audio_s=2.0)])
-    return await open_call(redis, vendor, timing=timing, spool_dir=tmp_path)
-
-
-async def _in_the_probe(call: Call) -> None:
-    """Wait until the probe counts the microphone."""
-    session = call.session
-    await until(
-        lambda: session.probe_from is not None
-        and time.monotonic() >= session.probe_from
+    return await open_call(
+        redis, vendor, timing=timing, spool_dir=tmp_path, clock=ManualClock()
     )
 
 
+def _clock(call: Call) -> ManualClock:
+    clock = call.session.clock
+    assert isinstance(clock, ManualClock)
+    return clock
+
+
+async def _in_the_probe(call: Call) -> None:
+    """Move the call's clock on to where the probe counts the microphone."""
+    session = call.session
+    await until(lambda: session.probe_from is not None)
+    assert session.probe_from is not None
+    _clock(call).advance_to(session.probe_from)
+
+
 async def _decided(call: Call) -> None:
-    await until(lambda: call.session.duplex != "probing")
+    """Move the call's clock on past the probe, and wait for its verdict."""
+    session = call.session
+    await until(lambda: session.probe_ends is not None)
+    assert session.probe_ends is not None
+    _clock(call).advance_to(session.probe_ends)
+    await until(lambda: session.duplex != "probing")
 
 
 async def _half_duplex(redis, tmp_path) -> Call:
     """A call whose microphone carried Otto's greeting."""
     call = await _greeting(redis, tmp_path)
     await _in_the_probe(call)
-    call.say(speech(1.2))
+    await _heard(call, speech(1.2))
     await _decided(call)
     assert call.session.duplex == "half"
     return call
@@ -87,7 +101,7 @@ async def _full_duplex(redis, tmp_path, timing=TIMING) -> Call:
     """A call the probe found clean, past its greeting."""
     call = await _greeting(redis, tmp_path, timing)
     await _in_the_probe(call)
-    call.say(silence(1.2))
+    await _heard(call, silence(1.2))
     await _decided(call)
     assert call.session.duplex == "full"
     return call
@@ -109,8 +123,16 @@ async def _otto_ends_his_turn(call: Call) -> None:
 
 
 async def _otto_inaudible(call: Call) -> None:
+    """Move the call's clock on past Otto's audio and its echo tail."""
     session = call.session
-    await until(lambda: time.monotonic() >= session.playout_end + TIMING.echo_tail_s)
+    _clock(call).advance_to(session.playout_end + session.timing.echo_tail_s)
+
+
+async def _answer_window_open(call: Call) -> None:
+    """Move the call's clock on to when what the person says answers Otto."""
+    opened = call.session.answer.opened_at
+    assert opened is not None
+    _clock(call).advance_to(opened)
 
 
 async def _heard(call: Call, frames: list[bytes]) -> None:
@@ -121,12 +143,11 @@ async def _heard(call: Call, frames: list[bytes]) -> None:
 
 
 async def _room_for(call: Call, seconds: float) -> None:
-    """Wait until the call can take *seconds* of the person's audio at once."""
+    """Move the call's clock on until it can take *seconds* of the person's
+    audio at once."""
     session = call.session
-    await until(
-        lambda: session.bucket + (time.monotonic() - session.bucket_at) * IN_RATE
-        >= seconds * IN_RATE
-    )
+    short_s = (seconds * IN_RATE - session.bucket) / IN_RATE
+    _clock(call).advance_to(session.bucket_at + short_s + 0.01)
 
 
 async def _captioned(call: Call, text: str) -> None:
@@ -207,7 +228,7 @@ async def test_a_probe_with_under_1_s_of_mic_records_a_null_share(
     await _in_the_probe(call)
 
     # A third of a second of it, all heard.
-    call.say(speech(0.3))
+    await _heard(call, speech(0.3))
     await _decided(call)
 
     assert call.session.duplex == "full"
@@ -227,10 +248,11 @@ async def test_what_a_working_canceller_leaks_as_it_settles_is_not_counted(
         vendor,
         timing=TIMING.model_copy(update={"echo_probe_skip_s": 5.0}),
         spool_dir=tmp_path,
+        clock=ManualClock(),
     )
     await until(lambda: call.session.probe_from is not None)
 
-    call.say(speech(1.2))
+    await _heard(call, speech(1.2))
     await _decided(call)
 
     assert call.session.duplex == "full"
@@ -267,7 +289,7 @@ async def test_a_half_duplex_call_takes_nothing_while_otto_is_audible(redis, tmp
     assert call.session.answer.speech_s == 0
 
     await _otto_ends_his_turn(call)
-    await until(lambda: call.session.mic_open(time.monotonic()))
+    await _otto_inaudible(call)
     said = speech(0.4)
     call.say(said)
     await until(lambda: live.speech_in_bytes > 0)
@@ -412,7 +434,7 @@ async def test_an_end_tool_call_that_opens_that_next_turn_is_refused(redis, tmp_
     live.emit(Interrupted())
     await _otto_ends_his_turn(call)
     await _heard(call, speech(1.0))
-    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _answer_window_open(call)
     await _heard(call, speech(0.4))
     await _captioned(call, "That's a unique")
     assert call.session.answer.answered
@@ -457,7 +479,7 @@ async def test_ottos_echo_in_the_tail_after_his_question_is_no_answer(redis, tmp
     live = call.vendor.sessions[0]
     await _otto_speaks(call, "So, customer emails first. Does that sound right?", 0.3)
     await _otto_ends_his_turn(call)
-    await until(lambda: time.monotonic() >= call.session.playout_end)
+    _clock(call).advance_to(call.session.playout_end)
 
     await _heard(call, speech(0.5))
     await _captioned(call, "Right.")
@@ -482,7 +504,7 @@ async def test_a_late_caption_of_ottos_words_heard_over_him_is_caught_before_it_
     await _heard(call, speech(1.0))
     await _otto_ends_his_turn(call)
     await _otto_inaudible(call)
-    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _answer_window_open(call)
     await _heard(call, speech(0.4))
     await _next_turn_begins(call, "Great.")
     assert call.session.duplex == "full"
@@ -560,7 +582,7 @@ async def test_one_word_of_ottos_heard_mostly_over_him_is_no_answer(
     await _otto_speaks(call, CONFIRMING, 2.0)
     await _heard(call, speech(1.0))
     await _otto_ends_his_turn(call)
-    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _answer_window_open(call)
     await _heard(call, speech(0.4))
     await _captioned(call, "Right.")
 
@@ -580,7 +602,7 @@ async def test_one_word_of_ottos_heard_mostly_over_him_is_no_answer(
 
     await _otto_speaks(call, "Take your time.", 0.3)
     await _otto_ends_his_turn(call)
-    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _answer_window_open(call)
     await _heard(call, speech(0.4))
     await _captioned(call, "Yes.")
     live.emit(_calls_end_tool("call-2"))
@@ -602,7 +624,7 @@ async def test_a_late_one_word_caption_of_ottos_heard_mostly_over_him_is_no_answ
     await _otto_speaks(call, CONFIRMING, 2.0)
     await _heard(call, speech(1.0))
     await _otto_ends_his_turn(call)
-    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _answer_window_open(call)
     await _heard(call, speech(0.4))
     await _next_turn_begins(call, "Great.")
 
@@ -627,7 +649,7 @@ async def test_one_word_in_the_clear_with_nothing_heard_over_otto_answers_him(
     live = call.vendor.sessions[0]
     await _otto_speaks(call, CONFIRMING, 2.0)
     await _otto_ends_his_turn(call)
-    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _answer_window_open(call)
     await _heard(call, speech(0.4))
     await _captioned(call, "Right.")
 
@@ -694,7 +716,7 @@ async def test_no_note_while_wrapping_or_finishing(redis, tmp_path, saying_goodb
         await call.session.wrap_up("scope")
     else:
         call.session.finish_called = True
-        call.session.finish_at = time.monotonic()
+        call.session.finish_at = call.session.clock()
     goodbye_notes = list(live.notes_after_opening)
 
     await _next_turn_begins(call, "Goodbye for now.")

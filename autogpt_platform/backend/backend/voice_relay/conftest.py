@@ -94,6 +94,24 @@ def silence(seconds: float) -> list[bytes]:
     return [frame for _ in range(max(1, round(seconds / 0.04)))]
 
 
+class ManualClock:
+    """A call's monotonic clock that moves only when the test moves it, so a
+    pause of the test runner moves nothing the call measures."""
+
+    def __init__(self) -> None:
+        self.now = time.monotonic()
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+    def advance_to(self, moment: float) -> None:
+        """Move on to *moment*, never back."""
+        self.now = max(self.now, moment)
+
+
 LIVEKIT = LiveKitProject(
     url="wss://agpt-test.livekit.cloud",
     api_key="APItest",
@@ -717,7 +735,7 @@ class RunningRelay:
         session = self.relay.sessions[call_id]
 
         def hears() -> bool:
-            now = time.monotonic()
+            now = session.clock()
             return session.answer.is_open(now) and session.mic_open(now)
 
         await until(hears)

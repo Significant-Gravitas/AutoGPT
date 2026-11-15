@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -94,7 +95,7 @@ class Call:
 def _hears_the_person(session: Session) -> bool:
     """Otto's turn has played out, and the person's microphone reaches the
     call past the echo gate."""
-    now = time.monotonic()
+    now = session.clock()
     return session.answer.is_open(now) and session.mic_open(now)
 
 
@@ -113,6 +114,7 @@ def _session(
     reaper=None,
     spool_dir: Path | None = None,
     read_first_name=None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> Session:
     """A call's session; with *spool_dir*, one that records the person."""
     call_id = tokens.new_call_id()
@@ -142,6 +144,7 @@ def _session(
         timing=timing,
         on_end=on_end,
         reaper=reaper,
+        clock=clock,
         recording=(
             None
             if spool_dir is None

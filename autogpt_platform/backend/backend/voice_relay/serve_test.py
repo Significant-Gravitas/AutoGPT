@@ -407,8 +407,7 @@ async def call_and_transcribe(spool):
     await ws.wait_for("turn_complete")
     # The person answers once Otto has played out and the echo probe is done.
     while not (
-        session.answer.is_open(time.monotonic())
-        and session.mic_open(time.monotonic())
+        session.answer.is_open(session.clock()) and session.mic_open(session.clock())
     ):
         await asyncio.sleep(0.02)
     (await media.hearing()).say(speech(0.4))
