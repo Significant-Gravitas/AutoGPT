@@ -72,6 +72,7 @@ bot/
     │   ├── adapter.py       # Inbound event/command routes, sends, mrkdwn, attachments
     │   ├── commands.py      # Slash commands (/setup, /help, /unlink)
     │   ├── config.py        # Slack token + signing secret + platform limits
+    │   ├── file_download.py # Inbound file downloads, from Slack's file host only
     │   ├── history.py       # Thread-history fetch (paginated tail + char budget)
     │   ├── oauth.py         # Multi-workspace "Add to Slack" install flow
     │   ├── pending.py       # Pending-install flags for the Bots settings page

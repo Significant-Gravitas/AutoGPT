@@ -21,7 +21,6 @@ import time
 from collections.abc import Iterator
 from typing import Any, Optional
 
-import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from slack_sdk.errors import SlackApiError
@@ -52,7 +51,7 @@ from backend.copilot.bot.text import iter_chunks, resolve_mentions
 from backend.data.db_accessors import bot_installs_db
 from backend.platform_linking.models import Platform
 
-from . import choice_ui, commands, config, history, oauth, signing
+from . import choice_ui, commands, config, file_download, history, oauth, signing
 from .text import to_mrkdwn
 
 logger = logging.getLogger(__name__)
@@ -523,12 +522,12 @@ class SlackAdapter(WebhookAdapter):
     ) -> bytes:
         # Slack file URLs are private — download needs the workspace's bot token
         # as a bearer credential (files:read scope), unlike Discord's public CDN.
-        url = file_obj.get("url_private_download") or file_obj.get("url_private") or ""
-        token = await self._token_for(team_id)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers={"Authorization": f"Bearer {token}"})
-            resp.raise_for_status()
-            return resp.content
+        # file_download sends it only for files Slack hosts.
+        return await file_download.download(
+            file_obj,
+            await self._token_for(team_id),
+            max_bytes=self.max_attachment_bytes,
+        )
 
     async def _token_for(self, team_id: str) -> str:
         client = await self._client_for(team_id)
