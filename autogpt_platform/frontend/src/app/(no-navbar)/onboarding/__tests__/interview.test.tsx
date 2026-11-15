@@ -780,7 +780,7 @@ describe("onboarding interview", () => {
 
     expect(
       await screen.findByText(
-        "You've sent a lot of messages in a short time. Your progress is saved; try again in 20 minutes.",
+        "You've tried a few times already. Your progress is saved; try again in 20 minutes.",
       ),
     ).toBeDefined();
     expect(

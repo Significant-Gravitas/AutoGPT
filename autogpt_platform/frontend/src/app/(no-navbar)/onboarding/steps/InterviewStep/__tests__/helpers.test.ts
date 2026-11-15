@@ -180,8 +180,12 @@ describe("what a finish answered", () => {
     );
     const down = finishFailureOf(new ApiError("down", 503, null));
 
+    // The finish spends the personalization budget, not the message one.
     expect(finishFailureCopy(busy)).toBe(
-      "You've sent a lot of messages in a short time. Your progress is saved; try again in 20 minutes.",
+      "You've tried a few times already. Your progress is saved; try again in 20 minutes.",
+    );
+    expect(finishFailureCopy({ kind: "busy", retryAfterSeconds: null })).toBe(
+      "You've tried a few times already. Your progress is saved; try again in a little while.",
     );
     expect(finishFailureCopy(down)).toBe("That didn't go through. Try again.");
     expect(finishFailureCopy(finishFailureOf(new Error("offline")))).toBe(

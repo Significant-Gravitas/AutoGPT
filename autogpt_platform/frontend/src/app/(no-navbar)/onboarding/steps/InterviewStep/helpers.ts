@@ -85,9 +85,11 @@ export function finishFailureOf(error: unknown): StartFailure {
   return { kind: "failed" };
 }
 
+// The finish spends the personalization budget, which counts tries at
+// finishing, not messages.
 export function finishFailureCopy(failure: StartFailure) {
   return failure.kind === "busy"
-    ? startFailureCopy(failure)
+    ? `You've tried a few times already. Your progress is saved; try again ${busyWait(failure.retryAfterSeconds)}.`
     : "That didn't go through. Try again.";
 }
 
@@ -104,10 +106,7 @@ export function finishPathOf(response: FinalizeResponse): "A" | "B" | null {
 
 export function startFailureCopy(failure: StartFailure) {
   if (failure.kind === "busy") {
-    const wait = failure.retryAfterSeconds
-      ? `in ${describeWait(failure.retryAfterSeconds)}`
-      : "in a little while";
-    return `You've sent a lot of messages in a short time. Your progress is saved; try again ${wait}.`;
+    return `You've sent a lot of messages in a short time. Your progress is saved; try again ${busyWait(failure.retryAfterSeconds)}.`;
   }
   if (failure.kind === "unavailable") {
     const wait = failure.retryAfterSeconds
@@ -116,6 +115,12 @@ export function startFailureCopy(failure: StartFailure) {
     return `Otto can't chat right now. Your progress is saved; try again in ${wait}.`;
   }
   return "We couldn't start your interview. Try again.";
+}
+
+function busyWait(retryAfterSeconds: number | null) {
+  return retryAfterSeconds
+    ? `in ${describeWait(retryAfterSeconds)}`
+    : "in a little while";
 }
 
 export function describeWait(seconds: number) {

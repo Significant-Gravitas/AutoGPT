@@ -376,9 +376,10 @@ describe("the call's copy", () => {
       "We didn't hear anything for a while, so the call ended.",
     );
     expect(endedCopy("something_new")).toBe("The call ended.");
-    // Ended through the end route, by the person or from another device.
+    // Ended through the end route: by the person, from another tab or
+    // device, or by choosing to type. Nothing went wrong.
     expect(endedCopy("superseded")).toBe(
-      "The call ended before Otto could finish.",
+      "You ended the call from another tab or device, or chose to type instead.",
     );
     expect(endedCopy(null)).toBe("The call ended.");
     // The relay lost the call's room.

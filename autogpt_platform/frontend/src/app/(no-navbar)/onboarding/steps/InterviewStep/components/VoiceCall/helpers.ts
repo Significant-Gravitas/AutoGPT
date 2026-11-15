@@ -412,7 +412,8 @@ const ENDED_COPY: Record<string, string> = {
   vendor_error: "Otto's line dropped.",
   room_error: "The call's audio dropped.",
   server_restart: "Our server restarted during the call.",
-  superseded: "The call ended before Otto could finish.",
+  superseded:
+    "You ended the call from another tab or device, or chose to type instead.",
   crashed: "Our server stopped during the call.",
 };
 
