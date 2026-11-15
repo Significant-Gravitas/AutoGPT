@@ -45,7 +45,8 @@ person ended it from another device (``superseded``), their socket closed, or
 no microphone came within ``Timing.ready_within_s`` (``client_gone``).
 
 Browser to relay, after ``start``: JSON ``hangup`` and ``ping {id}``; a
-binary frame is counted and dropped. Relay to browser: JSON ``ready``,
+binary frame is counted and dropped, and after ``MAX_UNREADABLE_TEXT`` text
+frames the call cannot read the socket is closed (1008). Relay to browser: JSON ``ready``,
 ``user_text``, ``agent_text``, ``interrupted``, ``turn_complete``,
 ``wrap_up``, ``duplex {mode, by}``, ``resumed``, ``ended`` and ``pong``. The
 browser has no way to put text into the conversation: the server's notes are
@@ -71,8 +72,9 @@ from backend.voice_relay.config import (
     CAPS,
     IN_RATE,
     LIVE_CALL_REFRESH_S,
+    MAX_CALL_TEXT_BYTES,
     MAX_FRAME_BYTES,
-    MAX_TEXT_BYTES,
+    MAX_UNREADABLE_TEXT,
     OUT_RATE,
     RELAY_ROOM_GRACE_S,
     RESUME_GRACE_S,
@@ -183,8 +185,10 @@ GOODBYES: dict[EndReason, str] = {
 # has died is replaced by the reconnect.
 VENDOR_SEND_TIMEOUT_S = 2.0
 
-# Close codes: a normal end, and a server going away for a restart.
+# Close codes: a normal end, a socket that broke the protocol, and a server
+# going away for a restart.
 CLOSE_NORMAL = 1000
+CLOSE_POLICY = 1008
 CLOSE_SERVICE_RESTART = 1012
 # The browser's old socket, replaced by a re-attach.
 CLOSE_REPLACED = 4000
@@ -915,6 +919,7 @@ class Session:
             return self._socket_done
 
     async def upstream(self, ws: ClientSocket) -> None:
+        unreadable = 0
         while not self.ended.is_set():
             message: Mapping[str, Any]
             try:
@@ -929,8 +934,13 @@ class Session:
                 self.bad_frames += 1
                 continue
             text = message.get("text")
-            if text:
-                await self.on_control(text)
+            if not text or await self.on_control(text):
+                continue
+            unreadable += 1
+            if unreadable >= MAX_UNREADABLE_TEXT:
+                await self._close(ws, CLOSE_POLICY)
+                self.detach(f"{unreadable} unreadable control messages", ws)
+                return
 
     async def on_mic(self, pcm: bytes) -> None:
         now = time.monotonic()
@@ -1122,15 +1132,18 @@ class Session:
             lambda live: live.send_note(SERVER_NOTE + ECHO_NOTE, turn_complete=True),
         )
 
-    async def on_control(self, text: str) -> None:
-        if len(text.encode()) > MAX_TEXT_BYTES:
-            return
+    async def on_control(self, text: str) -> bool:
+        """Act on one of the browser's control messages; whether it could
+        be read: a JSON object of at most ``MAX_CALL_TEXT_BYTES``. One of a
+        type the call does not know is read, and ignored."""
+        if len(text.encode()) > MAX_CALL_TEXT_BYTES:
+            return False
         try:
             message = json.loads(text)
         except ValueError:
-            return
+            return False
         if not isinstance(message, dict):
-            return
+            return False
         kind = message.get("type")
         if kind == "hangup":
             self.end("user_hangup")
@@ -1139,6 +1152,7 @@ class Session:
             echoable = isinstance(ping_id, int) and not isinstance(ping_id, bool)
             echoable = echoable or (isinstance(ping_id, str) and len(ping_id) <= 64)
             await self.send_json({"type": "pong", "id": ping_id if echoable else None})
+        return True
 
     # --- the vendor's session ---------------------------------------------
 

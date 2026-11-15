@@ -607,6 +607,35 @@ async def test_the_browser_cannot_put_text_into_the_conversation(redis):
     ]
 
 
+async def test_a_socket_sending_unreadable_control_messages_is_closed(redis):
+    """Every message the browser sends during a call is a few dozen bytes:
+    the longest ping the relay echoes, each character of its id escaped, is
+    taken, and a socket that sends three it cannot read is closed as a
+    policy breach and held for a re-attach."""
+    vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)])
+    call = await open_call(redis, vendor)
+    ws = call.ws
+    longest = chr(1) * 64
+    ws.send_json({"type": "ping", "id": longest})
+    assert await ws.wait_for("pong") == {"type": "pong", "id": longest}
+
+    for text in (
+        "{not json",
+        json.dumps(["not", "an", "object"]),
+        json.dumps({"type": "ping", "id": 1, "pad": "x" * 600}),
+    ):
+        ws.send_raw_text(text)
+    await until(lambda: ws.closed_with is not None)
+
+    assert ws.closed_with == 1008
+    assert [m for m in ws.sent if m["type"] == "pong"] == [
+        {"type": "pong", "id": longest}
+    ]
+    assert call.session.detached_at is not None
+    await asyncio.wait_for(call.task, timeout=5)
+    assert call.session.end_reason == "client_gone"
+
+
 async def test_ending_the_call_from_another_device_supersedes_it(redis):
     call = await open_call(redis, FakeVendor([Reply(text="Hi", audio_s=0.1)]))
     await locks.request_end(redis, call.session.call_id)

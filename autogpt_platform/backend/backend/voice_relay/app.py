@@ -58,15 +58,15 @@ from backend.voice_relay.record import (
 )
 from backend.voice_relay.room_reaper import RoomReaper
 from backend.voice_relay.scope import ScopeClassifier
-from backend.voice_relay.session import RoomEdge, Session
+from backend.voice_relay.session import CLOSE_POLICY, RoomEdge, Session
 from backend.voice_relay.vendor import VendorConnector
 from backend.voice_relay.waits import bounded, stop
 
 logger = logging.getLogger(__name__)
 
-# Close codes for a refused socket: a bad request, a server that cannot take
-# the call now (try again), and a call that is not on this server.
-CLOSE_POLICY = 1008
+# Close codes for a refused socket, beside a bad request (``CLOSE_POLICY``):
+# a server that cannot take the call now (try again), and a call that is not
+# on this server.
 CLOSE_TRY_AGAIN = 1013
 CLOSE_NO_CALL = 4404
 

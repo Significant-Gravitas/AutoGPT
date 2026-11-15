@@ -17,8 +17,15 @@ OUT_RATE = 24_000
 
 # A frame of the person's audio past this size is dropped, not buffered.
 MAX_FRAME_BYTES = 16_000
-# Control messages from the browser are JSON text frames under this size.
+# Control messages from the browser are JSON text frames under this size: a
+# socket's first, which carries a start token or a resume ticket, and every
+# one after it, during the call (``hangup``, and ``ping``, whose id of up to
+# 64 characters is at most about 410 bytes with each one escaped).
 MAX_TEXT_BYTES = 4_096
+MAX_CALL_TEXT_BYTES = 512
+# A socket that sends this many text frames the relay cannot read during the
+# call is closed.
+MAX_UNREADABLE_TEXT = 3
 # The server's own frame limit. The control socket carries no audio: a frame
 # under this reaches the relay, which drops what it cannot read, instead of
 # closing the call.
