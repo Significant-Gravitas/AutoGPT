@@ -400,6 +400,52 @@ async def test_the_sweep_hands_off_a_confirm_arms_call_left_unconfirmed_an_hour(
     assert (await rig.read(waiting)).status == locks.TRANSCRIBED
 
 
+# Sorted before any call id the relay mints, so the sweep reaches it first.
+UNREADABLE = "0" * 32
+
+
+def _unreadable_call(mocker: MockerFixture, error: BaseException) -> None:
+    """A pending call whose record raises *error* on every read."""
+    read = locks.read_call
+
+    async def read_call(redis, call_id: str):
+        if call_id == UNREADABLE:
+            raise error
+        return await read(redis, call_id)
+
+    mocker.patch.object(locks, "read_call", new=read_call)
+
+
+async def test_a_call_that_raises_holds_up_neither_the_next_call_nor_the_typed_pass(
+    rig: Rig, mocker: MockerFixture
+):
+    """A call that raises on every sweep, its record unreadable say, is
+    passed over: the call after it is handed off, and the owed typed
+    interviews are swept as ever."""
+    handed = await rig.call()
+    await locks.add_postcall_pending(rig.redis, UNREADABLE)
+    assert sorted([UNREADABLE, handed]) == [UNREADABLE, handed]
+    _unreadable_call(mocker, ValueError("a record that won't parse"))
+    lapsed = time.time() - interview.OWED_HAND_OFF_TTL_S - 1
+    await rig.redis.zadd(interview.OWED_HAND_OFFS_KEY, {"user-2": lapsed})
+
+    assert await voice_handoff.sweep() == [handed]
+
+    assert (await rig.read(handed)).status == locks.HANDED_OFF
+    # The typed pass ran: the lapsed entry left its index.
+    assert await rig.redis.zcard(interview.OWED_HAND_OFFS_KEY) == 0
+
+
+async def test_a_sweep_cancelled_on_a_call_stops(rig: Rig, mocker: MockerFixture):
+    """Only a call's errors are passed over, so stopping the sweep stops it."""
+    await rig.call()
+    await locks.add_postcall_pending(rig.redis, UNREADABLE)
+    _unreadable_call(mocker, asyncio.CancelledError())
+
+    with pytest.raises(asyncio.CancelledError):
+        await voice_handoff.sweep()
+
+
 async def test_an_unconfirmed_cut_off_call_handed_off_after_an_hour_takes_nothing(
     rig: Rig, dumps: DumpStore
 ):

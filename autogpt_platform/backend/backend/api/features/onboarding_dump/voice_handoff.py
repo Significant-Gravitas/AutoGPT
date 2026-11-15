@@ -666,32 +666,40 @@ async def sweep(stop: asyncio.Event | None = None) -> list[str]:
     backoff has passed, and every confirm arm's call left unconfirmed for
     ``UNCONFIRMED_HANDOFF_S``, then every typed interview whose hand-off is
     owed (``interview.hand_off_owed_typed_interviews``); *stop* ends it
-    between them. Returns the calls this sweep handed off."""
+    between them. A call that raises is passed over, so one that raises on
+    every sweep holds up neither the calls after it nor the typed pass.
+    Returns the calls this sweep handed off."""
     redis = await get_redis_async()
     now = time.time()
     handed: list[str] = []
     for call_id in await locks.postcall_pending(redis):
         if stop is not None and stop.is_set():
             break
-        record = await locks.read_call(redis, call_id)
-        if record is None or not retry_due(record, now):
-            continue
-        if owed(record):
-            outcome = await hand_off_owed(call_id, trigger="sweep")
-        elif unconfirmed_too_long(record, now):
-            outcome = await hand_off_owed(
-                call_id, trigger="unconfirmed", confirmed=True
-            )
-        else:
-            continue
-        if outcome not in (HELD, SETTLED, WAITING):
-            handed.append(call_id)
+        try:
+            if await _sweep_call(redis, call_id, now):
+                handed.append(call_id)
+        except Exception:
+            logger.warning(f"Voice call {call_id}: not swept", exc_info=True)
     if stop is None or not stop.is_set():
         try:
             await hand_off_owed_typed_interviews(stop)
         except Exception:
             logger.warning("Owed typed hand-offs not swept", exc_info=True)
     return handed
+
+
+async def _sweep_call(redis: AsyncRedisClient, call_id: str, now: float) -> bool:
+    """Hand *call_id* off if it is owed one now; whether this sweep did."""
+    record = await locks.read_call(redis, call_id)
+    if record is None or not retry_due(record, now):
+        return False
+    if owed(record):
+        outcome = await hand_off_owed(call_id, trigger="sweep")
+    elif unconfirmed_too_long(record, now):
+        outcome = await hand_off_owed(call_id, trigger="unconfirmed", confirmed=True)
+    else:
+        return False
+    return outcome not in (HELD, SETTLED, WAITING)
 
 
 async def sweep_forever(stop: asyncio.Event, sweep_s: float = HANDOFF_SWEEP_S) -> None:
