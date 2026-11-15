@@ -46,6 +46,14 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OnboardingPage from "../page";
 import { reportCallStart } from "../steps/InterviewStep/components/VoiceCall/callTimings";
+import {
+  ENDING_WINDOW_MS,
+  HANGUP_FALLBACK_MS,
+  OPENING_READ_TIMEOUT_MS,
+  REATTACH_WINDOW_MS,
+  ROOM_JOIN_TIMEOUT_MS,
+  ROOM_PLAYOUT_MS,
+} from "../steps/InterviewStep/components/VoiceCall/helpers";
 import { useOnboardingWizardStore } from "../store";
 import { makeProgress } from "./progress-fixture";
 
@@ -102,32 +110,21 @@ const CAPS = {
   idle_s: 20,
 };
 
-// The longest the browser's join of a call's room may take: short, so a
-// join that never answers fails soon; long while a test holds a join.
-let roomJoinTimeoutMs = 150;
-
-// The call's waits, shortened so a test waits on what the step does, not on
-// the clock.
+// The call's polls, shortened so a test waits on what the step does, not on
+// the clock. Its limits keep their real lengths, so a slow runner never
+// reaches one on the way to what a test expects; a test of a limit moves
+// fake timers past it.
 vi.mock(
   "../steps/InterviewStep/components/VoiceCall/helpers",
   async (importOriginal) => ({
     ...(await importOriginal<
       typeof import("../steps/InterviewStep/components/VoiceCall/helpers")
     >()),
-    REATTACH_WINDOW_MS: 2_000,
     REATTACH_RETRY_MS: 20,
     ENDING_POLL_MS: 20,
-    ENDING_WINDOW_MS: 300,
     ENDING_SLOW_POLL_MS: 40,
     END_POLL_MS: 20,
-    END_WAIT_MS: 500,
     START_RETRY_MS: 20,
-    HANGUP_FALLBACK_MS: 150,
-    OPENING_READ_TIMEOUT_MS: 400,
-    get ROOM_JOIN_TIMEOUT_MS() {
-      return roomJoinTimeoutMs;
-    },
-    ROOM_PLAYOUT_MS: 300,
     OTTO_STATS_POLL_MS: 30,
   }),
 );
@@ -599,10 +596,9 @@ async function relaySocketAfter(previous?: FakeWebSocket) {
   });
 }
 
-// The next joins of the call's room wait, without timing out, until the
-// function this returns lets them in.
+// The next joins of the call's room wait until the function this returns
+// lets them in.
 function holdRoomJoins() {
-  roomJoinTimeoutMs = 10_000;
   return fakes.holdRoomJoins();
 }
 
@@ -758,7 +754,6 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   sdkFails = false;
-  roomJoinTimeoutMs = 150;
   vi.mocked(reportCallStart).mockClear();
 });
 
@@ -904,9 +899,17 @@ describe("onboarding interview by voice: opening", () => {
   });
 
   it("falls back to the choice when the latest call's read does not answer in time", async () => {
-    server.use(http.get(VOICE, () => new Promise<never>(() => undefined)));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    server.use(
+      http.get(VOICE, () => {
+        latestReads += 1;
+        return new Promise<never>(() => undefined);
+      }),
+    );
 
     render(<OnboardingPage />);
+    await waitFor(() => expect(latestReads).toBe(1));
+    await passTime(OPENING_READ_TIMEOUT_MS);
 
     expect(
       await screen.findByRole("button", { name: "Talk to Otto" }),
@@ -1631,6 +1634,7 @@ describe("onboarding interview by voice: the call", () => {
   });
 
   it("loses a dropped call once the relay's window passes, then reads its words", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     callStates[CALL_ID] = [callRecord({ end_reason: "client_gone" })];
     render(<OnboardingPage />);
     const socket = await liveCall();
@@ -1638,14 +1642,9 @@ describe("onboarding interview by voice: the call", () => {
     // The network is gone: the re-attach never opens.
     act(() => socket.drop(1006));
     expect(await screen.findByText("Reconnecting…")).toBeDefined();
+    await passTime(REATTACH_WINDOW_MS);
 
-    expect(
-      await screen.findByText(
-        "The connection dropped.",
-        {},
-        { timeout: 6_000 },
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText("The connection dropped.")).toBeDefined();
     expect(screen.getByText("What you said so far is saved.")).toBeDefined();
     expect(statusReads).toContain(CALL_ID);
   });
@@ -1685,8 +1684,8 @@ describe("onboarding interview by voice: the call", () => {
       ),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "End that call" })).toBeDefined();
-    // Past the whole re-attach window (2 s here): no socket tries again.
-    await passTime(3_000);
+    // Past the whole re-attach window: no socket tries again.
+    await passTime(REATTACH_WINDOW_MS + 1_000);
     expect(fakes.sockets).toEqual([socket]);
     expect(microphone.getTracks()[0].stop).toHaveBeenCalled();
   });
@@ -1736,6 +1735,7 @@ describe("onboarding interview by voice: the call", () => {
   });
 
   it("ends the call through the REST API when the relay does not answer Hang up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(<OnboardingPage />);
     await liveCall();
 
@@ -1743,6 +1743,7 @@ describe("onboarding interview by voice: the call", () => {
       .setup()
       .click(screen.getByRole("button", { name: "Hang up" }));
     expect(ends).toEqual([]);
+    await passTime(HANGUP_FALLBACK_MS);
 
     await waitFor(() => expect(ends).toEqual([CALL_ID]));
   });
@@ -2373,6 +2374,7 @@ describe("onboarding interview by voice: how a call ends", () => {
       await screen.findByRole("button", { name: "Meet your team" }),
     );
     expect(await screen.findByText("Saving what you said…")).toBeDefined();
+    await passTime(ENDING_WINDOW_MS);
     await user.click(
       await screen.findByRole("button", { name: "Type instead" }),
     );
@@ -2439,6 +2441,7 @@ describe("onboarding interview by voice: how a call ends", () => {
   });
 
   it("reports how a lost call ended when the person types before its words have an answer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     callStates[CALL_ID] = [
       callRecord({ status: "live", end_reason: null, hand_off: null }),
       callRecord({
@@ -2456,6 +2459,7 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(
       await screen.findByText("We lost the call. Saving what you said…"),
     ).toBeDefined();
+    await passTime(ENDING_WINDOW_MS);
     await userEvent
       .setup()
       .click(await screen.findByRole("button", { name: "Type instead" }));
@@ -2520,6 +2524,7 @@ describe("onboarding interview by voice: how a call ends", () => {
       const socket = await liveCall();
 
       endCall(socket, "finished");
+      await passTime(ENDING_WINDOW_MS);
       const typeInstead = await screen.findByRole("button", {
         name: "Type instead",
       });
@@ -2980,9 +2985,12 @@ describe("onboarding interview by voice: the call's room", () => {
   );
 
   it("says the call's audio could not connect when the join takes too long", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     fakes.hangRoomJoins();
     render(<OnboardingPage />);
     await talkToOtto();
+    await joiningRoom();
+    await passTime(ROOM_JOIN_TIMEOUT_MS);
 
     expect(await screen.findByText(AUDIO_FAILED)).toBeDefined();
     // The join that never answered is let go, and so is the call's socket.
@@ -3128,6 +3136,7 @@ describe("onboarding interview by voice: the call's room", () => {
   });
 
   it("leaves the room once its wait for Otto's last words runs out", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     callStates[CALL_ID] = [callRecord({ interview: "taken" })];
     render(<OnboardingPage />);
     const { socket, room } = await liveRoomCall();
@@ -3136,6 +3145,8 @@ describe("onboarding interview by voice: the call's room", () => {
     });
 
     endCall(socket, "finished");
+    expect(room.isLeft).toBe(false);
+    await passTime(ROOM_PLAYOUT_MS);
 
     await waitFor(() => expect(room.isLeft).toBe(true));
   });
