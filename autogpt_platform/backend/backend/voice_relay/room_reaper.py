@@ -34,16 +34,20 @@ every room has an owner here from before it can exist to after it is gone:
   closes it like any other. On a project other deployments share, such a
   room is theirs, and is only counted.
 
-Closing is idempotent, so relays need no claim between them. A sweep writes
-the heartbeat only when it read the registry and the listing, and every
-close and revocation it made went through: while they keep failing, the REST
-API starts no call.
+Closing is idempotent, so relays need no claim between them. A sweep settles
+at most ``ROOM_SWEEP_CONCURRENCY`` rooms at once, within
+``ROOM_SWEEP_TIME_BOX_S``. It writes the heartbeat once it read the registry
+and the listing, unless two or more of its closes and revocations failed and
+none went through: while they keep failing, the REST API starts no call. A
+room LiveKit refuses, or is slow to close, waits for the next sweep without
+holding the heartbeat back.
 """
 
 import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
 from backend.data.redis_client import AsyncRedisClient
@@ -58,7 +62,9 @@ from backend.voice_relay.config import (
     ROOM_REVOKE_AGAIN_AFTER_S,
     ROOM_REVOKE_AHEAD_S,
     ROOM_START_GRACE_S,
+    ROOM_SWEEP_CONCURRENCY,
     ROOM_SWEEP_S,
+    ROOM_SWEEP_TIME_BOX_S,
     ROOM_UNREGISTERED_GRACE_S,
     RoomCloseWhy,
 )
@@ -69,7 +75,7 @@ from backend.voice_relay.metering import (
     LIVEKIT_ROOMS_CLOSED,
     LIVEKIT_SWEEPS,
 )
-from backend.voice_relay.waits import bounded
+from backend.voice_relay.waits import bounded, stop
 
 if TYPE_CHECKING:
     from livekit import api
@@ -115,6 +121,8 @@ class RoomReaper:
         service: RoomService | None = None,
         clock: Callable[[], float] = time.time,
         sweep_s: float = ROOM_SWEEP_S,
+        sweep_concurrency: int = ROOM_SWEEP_CONCURRENCY,
+        sweep_time_box_s: float = ROOM_SWEEP_TIME_BOX_S,
         exclusive: bool = False,
         unregistered_grace_s: float = ROOM_UNREGISTERED_GRACE_S,
     ) -> None:
@@ -124,6 +132,8 @@ class RoomReaper:
         self._api: "api.LiveKitAPI | None" = None
         self._clock = clock
         self._sweep_s = sweep_s
+        self._sweep_concurrency = sweep_concurrency
+        self._sweep_time_box_s = sweep_time_box_s
         self._exclusive = exclusive
         self._unregistered_grace_s = unregistered_grace_s
         # Closes and revocations under way, which a drain waits for.
@@ -250,7 +260,8 @@ class RoomReaper:
         and write the heartbeat.
 
         False, with no heartbeat, when the registry or the listing could not
-        be read, or a close or a revocation the sweep made failed.
+        be read, or when two or more of the sweep's closes and revocations
+        failed and none went through.
         """
         from livekit import api
 
@@ -279,28 +290,28 @@ class RoomReaper:
         LIVEKIT_OLDEST_ROOM_SECONDS.set(
             max((now - room.creation_time for room in ours), default=0.0)
         )
-        settled = True
-        for entry in entries.values():
-            try:
-                done = await self._settle(
-                    redis, entry, rooms.room_name(entry.call_id) in listed, now
-                )
-            except Exception:
-                logger.warning(
-                    f"Voice call {entry.call_id}: its room could not be swept",
-                    exc_info=True,
-                )
-                done = False
-            settled = settled and done
+        settles: list[Callable[[], Awaitable[bool | None]]] = [
+            partial(
+                self._settle_logged,
+                redis,
+                entry,
+                rooms.room_name(entry.call_id) in listed,
+                now,
+            )
+            for entry in entries.values()
+        ]
         if self._exclusive:
-            for room in unregistered:
-                if now - room.creation_time > self._unregistered_grace_s:
-                    settled = await self._adopt(redis, room) and settled
-        if not settled:
+            settles += [
+                partial(self._adopt, redis, room)
+                for room in unregistered
+                if now - room.creation_time > self._unregistered_grace_s
+            ]
+        outcomes = await self._settle_within_the_pass(settles)
+        if outcomes.count(False) >= 2 and True not in outcomes:
             LIVEKIT_SWEEPS.labels("failed").inc()
             logger.warning(
-                "Voice rooms: a close or a revocation failed, so this sweep "
-                "writes no heartbeat"
+                "Voice rooms: every close and revocation this sweep made "
+                "failed, so it writes no heartbeat"
             )
             return False
         try:
@@ -312,28 +323,77 @@ class RoomReaper:
         LIVEKIT_SWEEPS.labels("ok").inc()
         return True
 
+    async def _settle_within_the_pass(
+        self, settles: list[Callable[[], Awaitable[bool | None]]]
+    ) -> list[bool | None]:
+        """Run *settles*, at most ``sweep_concurrency`` at once, until the
+        pass's time box ends; the ones it ends wait for the next sweep. Each
+        answers True once its close or revocation went through, False when
+        one failed, and None when it made none."""
+        if not settles:
+            return []
+        gate = asyncio.Semaphore(self._sweep_concurrency)
+
+        async def settle_in_turn(
+            settle: Callable[[], Awaitable[bool | None]],
+        ) -> bool | None:
+            async with gate:
+                return await settle()
+
+        tasks = [asyncio.create_task(settle_in_turn(settle)) for settle in settles]
+        done, pending = await asyncio.wait(tasks, timeout=self._sweep_time_box_s)
+        if pending:
+            logger.warning(
+                f"Voice rooms: {len(pending)} rooms were not settled within "
+                f"the sweep's {self._sweep_time_box_s:.0f}s; the next sweep "
+                f"takes them up"
+            )
+            await stop(pending)
+        return [task.result() for task in tasks if task in done]
+
+    async def _settle_logged(
+        self,
+        redis: AsyncRedisClient,
+        entry: locks.RoomEntry,
+        is_listed: bool,
+        now: float,
+    ) -> bool | None:
+        """:meth:`_settle`, with a failure to read the room's state logged
+        and answered as a failed close."""
+        try:
+            return await self._settle(redis, entry, is_listed, now)
+        except Exception:
+            logger.warning(
+                f"Voice call {entry.call_id}: its room could not be swept",
+                exc_info=True,
+            )
+            return False
+
     async def _settle(
         self,
         redis: AsyncRedisClient,
         entry: locks.RoomEntry,
         is_listed: bool,
         now: float,
-    ) -> bool:
+    ) -> bool | None:
         """Close, revoke again or forget *entry*'s room, as far as its state
-        asks. False when a close or a revocation failed."""
+        asks. True once a close or a revocation went through, False when one
+        failed, and None when none was due."""
         closed_at = entry.closed_at
         if closed_at is None:
             why = await _unused(redis, entry, now)
-            return why is None or await self.close(entry.call_id, entry.uid, why)
+            if why is None:
+                return None
+            return await self.close(entry.call_id, entry.uid, why)
         if is_listed:
             return await self.close(entry.call_id, entry.uid, "reopened")
         if entry.revoked_again_at is None:
             if now - closed_at < ROOM_REVOKE_AGAIN_AFTER_S:
-                return True
+                return None
             return await self.revoke_again(entry.call_id, entry.uid, closed_at)
         if now - entry.revoked_again_at > ROOM_FORGET_AFTER_REVOKED_S:
             await _bounded(locks.forget_room(redis, entry.call_id))
-        return True
+        return None
 
     async def _adopt(self, redis: AsyncRedisClient, room: "api.Room") -> bool:
         """Enter a ``voice-`` room the registry has no entry for under the

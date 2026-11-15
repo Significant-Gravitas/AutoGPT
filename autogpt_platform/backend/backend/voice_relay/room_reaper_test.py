@@ -324,7 +324,7 @@ async def test_a_closed_rooms_person_is_revoked_again_before_the_first_revocatio
     assert service.kinds().count("remove") == 1
 
 
-async def test_a_second_revocation_that_fails_is_tried_again_and_holds_the_heartbeat_back(
+async def test_a_second_revocation_that_fails_is_tried_again_by_the_next_sweep(
     redis,
 ):
     service = FakeRoomService()
@@ -335,12 +335,11 @@ async def test_a_second_revocation_that_fails_is_tried_again_and_holds_the_heart
     reaper = reaper_on(redis, service, clock=clock)
     before = _closed("revoke_again", "failed")
 
-    assert not await reaper.sweep()
+    assert await reaper.sweep()
 
     entry = await _entry(redis)
     assert entry is not None and entry.revoked_again_at is None
     assert _closed("revoke_again", "failed") - before == 1
-    assert not await locks.rooms_swept(redis)
 
     del service.fail["remove"]
     clock.now += ROOM_SWEEP_S
@@ -529,11 +528,10 @@ async def test_on_an_exclusive_project_a_room_whose_people_cannot_be_listed_wait
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock, exclusive=True)
 
-    assert not await reaper.sweep()
+    assert await reaper.sweep()
 
     assert service.kinds() == ["list", "participants"]
     assert await locks.registered_rooms(redis) == {}
-    assert not await locks.rooms_swept(redis)
 
     del service.fail["participants"]
     clock.now += ROOM_SWEEP_S
@@ -563,7 +561,7 @@ async def test_on_an_exclusive_project_an_adopted_room_whose_close_failed_is_clo
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock, exclusive=True)
 
-    assert not await reaper.sweep()
+    assert await reaper.sweep()
     entry = await _entry(redis, STRAY_CALL)
     assert entry is not None and entry.uid == "someone" and entry.closed_at is None
 
@@ -649,7 +647,7 @@ async def test_a_sweep_that_cannot_reach_redis_closes_nothing_and_writes_no_hear
     assert service.requests == []
 
 
-async def test_a_room_the_sweep_cannot_settle_leaves_the_rest_of_the_sweep_running_with_no_heartbeat(
+async def test_a_room_the_sweep_cannot_settle_waits_for_the_next_sweep_without_holding_back_the_heartbeat(
     redis, monkeypatch
 ):
     service = FakeRoomService()
@@ -664,15 +662,17 @@ async def test_a_room_the_sweep_cannot_settle_leaves_the_rest_of_the_sweep_runni
 
     monkeypatch.setattr(room_reaper, "_unused", unused)
 
-    assert not await reaper_on(redis, service, clock=Clock()).sweep()
+    assert await reaper_on(redis, service, clock=Clock()).sweep()
 
     [_, (_, remove), _] = service.requests
     assert isinstance(remove, api.RoomParticipantIdentity)
     assert remove.room == rooms.room_name(OTHER_CALL)
-    assert not await locks.rooms_swept(redis)
+    assert await locks.rooms_swept(redis)
+    unsettled = await _entry(redis)
+    assert unsettled is not None and unsettled.closed_at is None
 
 
-async def test_while_closes_keep_failing_no_heartbeat_is_written_and_no_call_starts(
+async def test_one_room_whose_close_is_refused_waits_for_the_next_sweep_with_calls_still_starting(
     redis,
 ):
     service = FakeRoomService()
@@ -684,22 +684,104 @@ async def test_while_closes_keep_failing_no_heartbeat_is_written_and_no_call_sta
     clock = Clock()
     reaper = reaper_on(redis, service, clock=clock)
 
-    assert not await reaper.sweep()
+    assert await reaper.sweep()
 
-    # The room went even so; the close is not stamped, and no heartbeat says
-    # rooms are being closed.
+    # The room went even so; the close is not stamped, so the next sweep
+    # closes it again.
     assert service.kinds() == ["list", "remove", "delete"]
     assert service.rooms == {}
     entry = await _entry(redis)
     assert entry is not None and entry.closed_at is None
-    assert not await locks.rooms_swept(redis)
+    assert await locks.rooms_swept(redis)
 
     del service.fail["remove"]
     clock.now += ROOM_SWEEP_S
     assert await reaper.sweep()
     entry = await _entry(redis)
     assert entry is not None and entry.closed_at == clock.now
+
+
+async def test_while_closes_keep_failing_no_heartbeat_is_written_and_no_call_starts(
+    redis,
+):
+    service = FakeRoomService()
+    service.fail["delete"] = api.TwirpError("internal", "unavailable", status=503)
+    for call_id in (CALL, OTHER_CALL):
+        service.open(rooms.room_name(call_id), rooms.person_identity(USER, call_id))
+        await locks.register_room(redis, call_id, USER, NOW - 200)
+    clock = Clock()
+    reaper = reaper_on(redis, service, clock=clock)
+
+    assert not await reaper.sweep()
+
+    assert sorted(service.kinds()) == ["delete", "delete", "list", "remove", "remove"]
+    for call_id in (CALL, OTHER_CALL):
+        entry = await _entry(redis, call_id)
+        assert entry is not None and entry.closed_at is None
+    assert not await locks.rooms_swept(redis)
+
+    del service.fail["delete"]
+    clock.now += ROOM_SWEEP_S
+    assert await reaper.sweep()
+    for call_id in (CALL, OTHER_CALL):
+        entry = await _entry(redis, call_id)
+        assert entry is not None and entry.closed_at == clock.now
     assert await locks.rooms_swept(redis)
+
+
+async def test_a_close_that_outlasts_the_sweeps_time_box_waits_for_the_next_sweep(
+    redis, monkeypatch
+):
+    monkeypatch.setattr(room_reaper, "ROOM_LEAVE_TIMEOUT_S", 30.0)
+    service = FakeRoomService()
+    service.open(rooms.room_name(CALL), PERSON)
+    service.hang.add("delete")
+    await locks.register_room(redis, CALL, USER, NOW - 200)
+    reaper = reaper_on(redis, service, clock=Clock(), sweep_time_box_s=0.05)
+
+    async with asyncio.timeout(5):
+        assert await reaper.sweep()
+
+    assert await locks.rooms_swept(redis)
+    entry = await _entry(redis)
+    assert entry is not None and entry.closed_at is None
+    # The close the time box ended is no longer under way.
+    assert reaper.closing == 0
+
+
+async def test_a_sweep_settles_at_most_its_concurrency_of_rooms_at_once(
+    redis, monkeypatch
+):
+    service = FakeRoomService()
+    calls = [f"{index:032x}" for index in range(12)]
+    for call_id in calls:
+        await locks.register_room(redis, call_id, USER, NOW - 200)
+    in_flight = 0
+    most = 0
+    take = service._take
+
+    async def take_a_while(kind: str, request: object) -> None:
+        nonlocal in_flight, most
+        if kind == "list":
+            await take(kind, request)
+            return
+        in_flight += 1
+        most = max(most, in_flight)
+        try:
+            await asyncio.sleep(0.01)
+            await take(kind, request)
+        finally:
+            in_flight -= 1
+
+    monkeypatch.setattr(service, "_take", take_a_while)
+    reaper = reaper_on(redis, service, clock=Clock(), sweep_concurrency=3)
+
+    assert await reaper.sweep()
+
+    assert most == 3
+    for call_id in calls:
+        entry = await _entry(redis, call_id)
+        assert entry is not None and entry.closed_at == NOW
 
 
 async def test_the_relay_sweeps_again_and_again(redis):

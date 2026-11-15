@@ -878,8 +878,8 @@ async def registered_rooms(redis: AsyncRedisClient) -> dict[str, RoomEntry]:
 
 
 async def mark_rooms_swept(redis: AsyncRedisClient, now: float) -> None:
-    """The relay's heartbeat: a sweep of the registry ran, and closed all it
-    had to."""
+    """The relay's heartbeat: a sweep of the registry ran, and its closes did
+    not all fail (``room_reaper``)."""
     await redis.set(ROOMS_SWEPT_KEY, str(now), ex=ROOM_SWEEP_HEARTBEAT_S)
 
 

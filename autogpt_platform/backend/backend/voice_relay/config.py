@@ -97,6 +97,11 @@ ROOM_START_GRACE_S = 75.0
 ROOM_END_GRACE_S = 30.0
 ROOM_SWEEP_S = 30.0
 ROOM_SWEEP_HEARTBEAT_S = 120
+# A sweep settles at most this many rooms at once, and its pass ends this long
+# after its listing: a room it did not settle in time waits for the next
+# sweep, so one LiveKit is slow to close never holds back the heartbeat.
+ROOM_SWEEP_CONCURRENCY = 8
+ROOM_SWEEP_TIME_BOX_S = 60.0
 # A closed room's person has their tokens revoked again this long after the
 # close, some sweeps before the first revocation lapses: a token LiveKit
 # issued just before the close is taken for ROOM_TOKEN_LEEWAY_S past its
