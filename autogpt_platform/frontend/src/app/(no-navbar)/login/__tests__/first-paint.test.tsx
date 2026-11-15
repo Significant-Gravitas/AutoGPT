@@ -74,6 +74,7 @@ describe("LoginPage first paint", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const container of serverContainers.splice(0)) container.remove();
   });
 
