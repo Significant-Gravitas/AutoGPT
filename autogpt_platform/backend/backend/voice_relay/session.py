@@ -1037,8 +1037,10 @@ class Session:
             if not audible:
                 return
             # Where this frame starts in the recording.
-            stretch = self.overheard = Overheard(start=self.received - samples)
-        stretch.hear(samples / IN_RATE, otto_audible=audible)
+            stretch = self.overheard = Overheard(
+                start=self.received - samples, end=self.received
+            )
+        stretch.hear(samples / IN_RATE, otto_audible=audible, end=self.received)
 
     async def on_user_text(self, text: str, now: float) -> None:
         """A caption of the person's: kept in an overheard stretch while one
@@ -1065,7 +1067,7 @@ class Session:
             return
         self.overheard = None
         otto_turns = tuple(turn.text for turn in self.turns[-2:])
-        span = (stretch.start, self.received)
+        span = stretch.span
         if stretch.is_otto(*otto_turns):
             await self._caught_echo(span)
             return

@@ -32,8 +32,9 @@ decides, per call, whether the microphone carries Otto:
 - Nothing heard before Otto's echo tail has passed counts as an answer to
   his turn (``end_tool``).
 - The transcript of record cannot take a caught echo for the person's words:
-  the recording is silenced where it was caught (the stretch's span, on the
-  call's record), before the post-call job cuts it into clips.
+  the recording is silenced where it was caught (the stretch's span, from its
+  start to the end of its speech heard over Otto, on the call's record),
+  before the post-call job cuts it into clips.
 
 Nothing here uses a LiveKit Cloud feature, so hosted and self-hosted calls
 behave the same.
@@ -100,20 +101,29 @@ class Probe(BaseModel):
 
 class Overheard(BaseModel):
     """Speech heard on a full-duplex call while Otto was audible, kept until
-    his next turn begins: where it starts in the recording, the seconds of
-    speech heard while he was audible and while he was not, and the person's
-    captions meanwhile."""
+    his next turn begins: where it starts in the recording and where its
+    speech heard over him ends, the seconds of speech heard while he was
+    audible and while he was not, and the person's captions meanwhile."""
 
     start: int
+    end: int
     over_s: float = 0.0
     clear_s: float = 0.0
     text: str = ""
 
-    def hear(self, seconds: float, *, otto_audible: bool) -> None:
+    def hear(self, seconds: float, *, otto_audible: bool, end: int) -> None:
+        """Count *seconds* of speech, which ends at *end* in the recording."""
         if otto_audible:
             self.over_s += seconds
+            self.end = end
         else:
             self.clear_s += seconds
+
+    @property
+    def span(self) -> tuple[int, int]:
+        """Where it was heard over Otto in the recording: what is silenced
+        when it is caught as his, leaving what came in the clear."""
+        return (self.start, self.end)
 
     @property
     def mostly_over(self) -> bool:

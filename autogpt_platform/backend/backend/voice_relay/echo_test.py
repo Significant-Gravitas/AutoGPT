@@ -486,6 +486,29 @@ async def test_a_caption_after_ottos_next_turn_ended_is_not_judged_with_the_stre
     await _hung_up(call)
 
 
+async def test_a_caught_stretch_silences_only_what_was_heard_over_otto(redis, tmp_path):
+    """Speech over Otto's question, then an answer in the clear in his
+    words: the stretch is caught, and the answer stays in the recording the
+    transcript of record is made from."""
+    call = await _full_duplex(redis, tmp_path)
+    await _otto_speaks(call, ASKED, 2.0)
+    await _heard(call, speech(1.0))
+    heard_over_him = call.session.received
+    await _otto_ends_his_turn(call)
+    await _otto_inaudible(call)
+    await _heard(call, speech(0.4))
+    await _captioned(call, "customer emails")
+
+    await _next_turn_begins(call, "Got it.")
+
+    record = await _hung_up(call)
+    assert record.duplex is not None
+    [(start, end)] = record.duplex.echo_spans
+    assert 0 <= start < end <= heard_over_him
+    kept = silenced(await _recorded(call), record.duplex.echo_spans)
+    assert vad.heard(kept[heard_over_him * 2 :])
+
+
 @pytest.mark.parametrize("saying_goodbye", ["wrapping", "finishing"])
 async def test_no_note_while_wrapping_or_finishing(redis, tmp_path, saying_goodbye):
     """ "Carry on from your last question" must not restart a goodbye. The
@@ -572,7 +595,7 @@ def test_a_caption_is_ottos_words_when_two_or_more_run_in_his_turn(caption, echo
 def test_an_overheard_stretch_is_ottos_when_mostly_heard_over_him_and_a_run_of_his(
     over_s, clear_s, text, otto
 ):
-    stretch = Overheard(start=0, over_s=over_s, clear_s=clear_s, text=text)
+    stretch = Overheard(start=0, end=0, over_s=over_s, clear_s=clear_s, text=text)
 
     assert stretch.is_otto(ECHOED, GREETING) is otto
 
