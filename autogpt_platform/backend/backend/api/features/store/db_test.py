@@ -274,6 +274,25 @@ async def test_a_submission_in_an_organization_lands_on_a_listing_it_owns(
     version_prisma.create.assert_awaited_once()
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_running_another_users_unpublished_workflow_is_refused(
+    mocker,
+):
+    _, version_prisma = _patch_submission(mocker, existing_listing=None)
+    foreign_refs = mocker.patch(
+        "backend.api.features.store.db.foreign_sub_graph_refs",
+        new_callable=AsyncMock,
+        return_value=[("their-graph", 2)],
+    )
+
+    with pytest.raises(PreconditionFailed, match="#their-graph v2"):
+        await _submit()
+
+    assert foreign_refs.await_args.args[0].id == "agent-id"
+    version_prisma.create.assert_not_awaited()
+    version_prisma.update_many.assert_not_awaited()
+
+
 def _patch_submission(
     mocker, existing_listing: prisma.models.StoreListing | None
 ) -> tuple[MagicMock, MagicMock]:
@@ -1737,6 +1756,40 @@ async def test_an_approval_versions_its_creators_sub_agent_listing(
     await _review(is_approved=True)
 
     review_mocks.slv.create.assert_awaited_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_of_a_workflow_running_another_users_unpublished_workflow_is_refused(
+    mocker, review_mocks
+):
+    foreign_refs = mocker.patch(
+        "backend.api.features.store.db.foreign_sub_graph_refs",
+        new_callable=AsyncMock,
+        return_value=[("their-graph", 2)],
+    )
+
+    with pytest.raises(PreconditionFailed, match="#their-graph v2"):
+        await _review(is_approved=True)
+
+    assert foreign_refs.await_args.args[0].id == "agent-id"
+    review_mocks.slv.update.assert_not_awaited()
+    review_mocks.listing.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_running_another_users_unpublished_workflow_can_be_rejected(
+    mocker, review_mocks
+):
+    foreign_refs = mocker.patch(
+        "backend.api.features.store.db.foreign_sub_graph_refs",
+        new_callable=AsyncMock,
+        return_value=[("their-graph", 2)],
+    )
+
+    result = await _review(is_approved=False)
+
+    assert result.status == prisma.enums.SubmissionStatus.REJECTED
+    foreign_refs.assert_not_awaited()
 
 
 def _sub_agent_listed_by(mocker, review_mocks, owning_user_id: str) -> None:

@@ -124,6 +124,9 @@ async def create_new_graph(
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     submitted_node_ids = graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    if create_graph.source == "upload":
+        # An uploaded file is a copy too: it may come from someone else.
+        await graph_db.clear_sub_graph_refs_owned_by(graph, user_id)
     _validate_graph_to_save(graph, submitted_node_ids)
 
     # Validate node credentials (and clear stale optional ones) BEFORE

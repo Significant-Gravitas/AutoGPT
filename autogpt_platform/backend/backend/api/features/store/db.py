@@ -14,6 +14,7 @@ from backend.data.db import query_raw_with_schema, transaction
 from backend.data.graph import (
     GraphModel,
     GraphModelWithoutNodes,
+    foreign_sub_graph_refs,
     get_graph,
     get_graph_as_admin,
     get_sub_graphs,
@@ -962,7 +963,7 @@ async def create_store_submission(
             ]
         graph = await prisma.models.AgentGraph.prisma().find_first(
             where=graph_where,
-            include={"User": {"include": {"Profile": True}}},
+            include={"User": {"include": {"Profile": True}}, "Nodes": True},
         )
 
         if not graph:
@@ -985,6 +986,13 @@ async def create_store_submission(
             logger.warning(f"User #{user_id} does not have a Profile")
             raise PreconditionFailed(
                 "User must create a Marketplace Profile before submitting a workflow"
+            )
+
+        if foreign_refs := await foreign_sub_graph_refs(graph):
+            raise PreconditionFailed(
+                "This workflow runs sub-workflows that are neither yours nor "
+                f"published in the Marketplace: {_format_graph_refs(foreign_refs)}. "
+                "Remove them before submitting it."
             )
 
         async with transaction() as tx:
@@ -1589,6 +1597,12 @@ async def review_store_submission(
 
         # If approving, update the listing to indicate it has an approved version
         if is_approved:
+            if foreign_refs := await foreign_sub_graph_refs(submission.AgentGraph):
+                raise PreconditionFailed(
+                    "This workflow runs sub-workflows that are neither its "
+                    "creator's nor published in the Marketplace: "
+                    f"{_format_graph_refs(foreign_refs)}, so it can't be approved."
+                )
             sub_graphs = await get_sub_graphs(submission.AgentGraph)
             async with transaction() as tx:
                 # Handle sub-agent approvals in transaction
@@ -1984,6 +1998,10 @@ def _owns_listing(
             listing.owningOrgId is None and listing.owningUserId == user_id
         )
     return listing.owningUserId == user_id
+
+
+def _format_graph_refs(refs: list[tuple[str, int]]) -> str:
+    return ", ".join(f"#{graph_id} v{version}" for graph_id, version in refs)
 
 
 def _create_sub_agent_version_data(
