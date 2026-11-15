@@ -3,6 +3,7 @@ closed, the probe finds a microphone that carries him, a half-duplex call
 takes nothing of it while he is audible, and a full-duplex call keeps what it
 overhears while he is audible until his next turn, then judges it once."""
 
+import asyncio
 import logging
 import time
 
@@ -360,6 +361,30 @@ async def test_ottos_words_heard_while_he_plays_are_caught_once_at_his_next_turn
     assert 0 < start < end <= call.session.received
     # Otto's words are not in what the call heard of the person.
     assert all(line["text"] != "That's a unique" for line in call.session.transcript())
+
+
+async def test_a_caught_span_is_on_the_calls_record_before_the_call_ends(
+    redis, tmp_path
+):
+    """A call whose pod dies is transcribed from its last upload and its
+    record as it stood: the span is silenced there too."""
+    call = await _full_duplex(redis, tmp_path)
+    await _overheard_echo(call)
+
+    await _next_turn_begins(call)
+    await until(lambda: call.session.duplex == "half")
+
+    async def recorded_spans() -> list[tuple[int, int]]:
+        while True:
+            record = await locks.read_call(redis, call.session.call_id)
+            if record is not None and record.duplex is not None:
+                return record.duplex.echo_spans
+            await asyncio.sleep(0.02)
+
+    spans = await asyncio.wait_for(recorded_spans(), timeout=5)
+    assert spans == call.session.echo_spans and len(spans) == 1
+    assert not call.session.ended.is_set()
+    await _hung_up(call)
 
 
 async def test_an_end_tool_call_that_opens_that_next_turn_is_refused(redis, tmp_path):

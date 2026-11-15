@@ -693,12 +693,7 @@ class Session:
                 ended_at=round(time.time(), 3),
                 elapsed_s=round(elapsed, 1),
                 end_tool=self.end_tool.model_dump(),
-                duplex=DuplexStats(
-                    mode=self.duplex,
-                    by=self.echo_by,
-                    probe_share=self.probe_share,
-                    echo_spans=self.echo_spans,
-                ).model_dump(),
+                duplex=self._duplex_stats(),
                 agent_turns=len(self.turns),
                 usd=round(self.meter.usd, 6),
                 first_task=self.first_task,
@@ -739,6 +734,15 @@ class Session:
             finally:
                 self.closed.set()
                 self._socket_done.set()
+
+    def _duplex_stats(self) -> dict[str, object]:
+        """The call's echo gate as its record keeps it (``DuplexStats``)."""
+        return DuplexStats(
+            mode=self.duplex,
+            by=self.echo_by,
+            probe_share=self.probe_share,
+            echo_spans=self.echo_spans,
+        ).model_dump()
 
     async def leave_room(self, reason: EndReason) -> None:
         """Stop carrying the call's audio: Otto's last words play out in the
@@ -1114,9 +1118,10 @@ class Session:
 
     async def _caught_echo(self, span: tuple[int, int]) -> None:
         """Otto's words came back as the person's, at *span* of the
-        recording: the call is half-duplex for good, the caption is dropped
-        with what it made count as an answer, and the model is told, once,
-        unless the call is already saying goodbye."""
+        recording: the call is half-duplex for good, the span goes on the
+        call's record, the caption is dropped with what it made count as an
+        answer, and the model is told, once, unless the call is already
+        saying goodbye."""
         logger.info(
             f"Voice call {self.call_id}: speech heard over Otto was his own words: "
             f"half-duplex from here"
@@ -1124,6 +1129,9 @@ class Session:
         self.echo_spans.append(span)
         self.answer.forget()
         await self._go_half("captions")
+        # On the call's record at once, so a call whose pod dies is
+        # transcribed with it silenced too.
+        await self.store.record(duplex=self._duplex_stats())
         if self.wrapping or self.finish_called:
             return
         self.prompted = True
