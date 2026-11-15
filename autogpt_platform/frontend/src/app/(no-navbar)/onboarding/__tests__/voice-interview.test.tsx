@@ -1948,6 +1948,47 @@ describe("onboarding interview by voice: how a call ends", () => {
     },
   );
 
+  it("opens the typed interview when a call leaves nothing and the person's typing superseded the call before it", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "user_hangup" })];
+    render(<OnboardingPage />);
+    const user = userEvent.setup();
+    const first = await liveCall();
+    endCall(first, "user_hangup");
+    const callAgain = await screen.findByRole("button", { name: "Call again" });
+    mintAnswer = { ...STARTED, call_id: OTHER_CALL_ID };
+    callStates[OTHER_CALL_ID] = [
+      callRecord({
+        call_id: OTHER_CALL_ID,
+        status: "failed",
+        end_reason: "user_hangup",
+        hand_off: {
+          status: "failed",
+          input_mode: "typed",
+          error_code: "no_usable_speech",
+        },
+      }),
+    ];
+    // The server's read looks back past the second call to the first, which
+    // what the person typed since has superseded.
+    latestCall = callRecord({
+      end_reason: "user_hangup",
+      interview: "superseded",
+    });
+    await user.click(callAgain);
+    const second = await relaySocketAfter(first);
+    act(() => second.accept());
+    ready(second);
+    await screen.findByText("You're on the call with Otto");
+
+    endCall(second, "user_hangup");
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(typedStartCount).toBe(1);
+    expect(screen.queryByText(DIDNT_HEAR_YOU)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    expect(finishes).toEqual([]);
+  });
+
   it("offers another call or typing, never Try again, for a call whose words were not kept", async () => {
     callStates[CALL_ID] = [
       callRecord({

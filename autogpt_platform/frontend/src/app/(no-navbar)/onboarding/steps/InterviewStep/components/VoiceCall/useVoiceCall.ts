@@ -842,6 +842,11 @@ export function useVoiceCall(args: Args) {
     if (leavesNoTake(answer)) {
       const latest = await readLatestCall();
       if (poll !== conn.poll) return;
+      // The person's typing owns the interview: the typed interview opens.
+      if (latest && answerOf(latest) === "typed") {
+        openTypedForLaterTake();
+        return;
+      }
       if (latest && latest.call_id !== call.call_id) earlier = latest;
     }
     const shown = endingWithEarlierTake(answer, earlier);
