@@ -814,17 +814,17 @@ async def test_a_sweep_cancelled_mid_settlement_leaves_no_settlement_running(
     reaper = reaper_on(redis, service, clock=Clock(), sweep_concurrency=2)
     before = asyncio.all_tasks()
     sweeping = asyncio.create_task(reaper.sweep())
-    # Two closes under way, four waiting their turn.
-    await until(lambda: in_flight == 2)
-
-    await stop([sweeping])
-
-    left = [task for task in asyncio.all_tasks() - before if not task.done()]
     try:
-        assert left == []
+        # Two closes under way, four waiting their turn.
+        await until(lambda: in_flight == 2)
+
+        await stop([sweeping])
+
+        assert [task for task in asyncio.all_tasks() - before if not task.done()] == []
         assert in_flight == 0
     finally:
-        await stop(left)
+        # Whatever failed above, the sweep and all it started end with the test.
+        await stop(asyncio.all_tasks() - before)
 
 
 async def test_the_relay_sweeps_again_and_again(redis):
