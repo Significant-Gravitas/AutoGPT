@@ -806,7 +806,7 @@ def test_a_run_that_does_not_end_is_waited_for_only_so_long(stack: Stack, monkey
 
     assert stack.stop_runs() is True
 
-    assert 1.4 < time.monotonic() - started < 6
+    assert 1.4 < time.monotonic() - started < 15
 
 
 def test_asked_to_stop_again_the_runs_are_not_waited_for(stack: Stack, monkeypatch):

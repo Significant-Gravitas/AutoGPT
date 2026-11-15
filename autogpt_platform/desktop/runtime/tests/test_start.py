@@ -828,12 +828,21 @@ def closed_port() -> int:
         return probe.getsockname()[1]
 
 
-def test_a_closed_port_is_known_to_be_closed_at_once():
+def test_a_closed_port_is_known_to_be_closed_at_once(monkeypatch):
     """Windows retries a refused connection for two seconds; a start that
-    asked nine services in turn fell twenty seconds behind."""
-    started = time.monotonic()
+    asked nine services in turn fell twenty seconds behind. So the question
+    gives up well inside that retry."""
+    timeouts: list[float | None] = []
+    connect = socket.create_connection
+
+    def recorded(address, timeout=None, *args, **kwargs):
+        timeouts.append(timeout)
+        return connect(address, timeout, *args, **kwargs)
+
+    monkeypatch.setattr(process.socket, "create_connection", recorded)
+
     assert process.listening(closed_port()) is False
-    assert time.monotonic() - started < 1.5
+    assert timeouts and all(t is not None and 0 < t < 2 for t in timeouts)
 
 
 def test_an_open_port_is_seen_even_when_nobody_accepts():
@@ -860,26 +869,30 @@ def test_no_client_is_pointed_at_a_server_that_is_not_listening(
 
 
 def test_services_are_asked_all_at_once(stack: Stack, monkeypatch):
-    """One that is not up yet costs its own wait, not everybody's."""
-    asked_at: list[float] = []
+    """One that is not up yet costs its own wait, not everybody's: no
+    service of a round answers before every one of them has been asked."""
+    services = len(apps.health_urls(PORTS))
+    everyone_asked = threading.Barrier(services)
+    answered: list[str] = []
+    asked_alone: list[str] = []
 
-    def slow_no(url: str) -> bool:
-        asked_at.append(time.monotonic())
-        time.sleep(0.4)
+    def no_once_all_are_asked(url: str) -> bool:
+        try:
+            everyone_asked.wait(timeout=30)
+            answered.append(url)
+        except threading.BrokenBarrierError:
+            asked_alone.append(url)
         return False
 
-    monkeypatch.setattr(supervisor, "_http_ok", slow_no)
+    monkeypatch.setattr(supervisor, "_http_ok", no_once_all_are_asked)
     monkeypatch.setattr(supervisor, "APP_READY_TIMEOUT_SECONDS", 1)
-    started = time.monotonic()
 
     with pytest.raises(StartupError, match="did not become ready"):
         stack.wait_for_apps(PORTS)
 
-    services = len(apps.health_urls(PORTS))
-    rounds = len(asked_at) / services
+    assert asked_alone == []
+    rounds = len(answered) / services
     assert rounds == int(rounds) and rounds >= 2
-    # In turn, one round alone would take 0.4 s x 9.
-    assert time.monotonic() - started < 0.4 * services
 
 
 # --- the broker, started as a node --------------------------------------------
