@@ -8,6 +8,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import TeamMember
 from prisma.types import TeamMemberWhereUniqueInput
 
+from backend.data.auth.api_key import revoke_api_keys
 from backend.data.db import prisma, transaction
 from backend.util.exceptions import ConflictError, NotFoundError
 
@@ -114,7 +115,8 @@ async def update_team(ws_id: str, data: dict) -> TeamResponse:
 
 
 async def delete_team(ws_id: str) -> None:
-    """Delete a workspace by archiving it. Cannot delete the default workspace.
+    """Delete a workspace by archiving it, and revoke the API keys restricted to
+    it. Cannot delete the default workspace.
 
     Its agents, runs and other content keep their teamId, so with the
     memberships gone each row stays visible to its own author only.
@@ -131,6 +133,7 @@ async def delete_team(ws_id: str) -> None:
         await tx.teaminvite.delete_many(where={"teamId": ws_id})
         await tx.apikey.delete_many(where={"teamId": ws_id})
         await tx.integrationcredential.delete_many(where={"teamId": ws_id})
+        await revoke_api_keys(tx, {"teamIdRestriction": ws_id})
         await tx.team.update(
             where={"id": ws_id},
             # (orgId, name) is unique: free the name for a new workspace.
@@ -176,7 +179,8 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
 
 
 async def leave_team(ws_id: str, user_id: str) -> None:
-    """Leave a workspace. Cannot leave the default workspace."""
+    """Leave a workspace, revoking the API keys restricted to it that the
+    member made. Cannot leave the default workspace."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
     if ws is None or ws.archivedAt is not None:
         raise NotFoundError(f"Workspace {ws_id} not found")
@@ -196,6 +200,7 @@ async def leave_team(ws_id: str, user_id: str) -> None:
             "Promote another member to admin first.",
         )
         await tx.teammember.delete_many(where={"teamId": ws_id, "userId": user_id})
+        await revoke_api_keys(tx, {"userId": user_id, "teamIdRestriction": ws_id})
 
 
 async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
@@ -316,7 +321,8 @@ async def update_team_member(
 
 
 async def remove_team_member(ws_id: str, user_id: str) -> None:
-    """Remove a member from a workspace.
+    """Remove a member from a workspace, revoking the API keys restricted to it
+    that they made.
 
     Guards against removing the last admin — workspace would become unmanageable.
     """
@@ -334,6 +340,7 @@ async def remove_team_member(ws_id: str, user_id: str) -> None:
             "Promote another member to admin first.",
         )
         await tx.teammember.delete(where=where)
+        await revoke_api_keys(tx, {"userId": user_id, "teamIdRestriction": ws_id})
 
 
 async def _lock_team_admins(tx: Prisma, ws_id: str) -> None:
