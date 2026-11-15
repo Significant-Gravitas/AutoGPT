@@ -1354,6 +1354,27 @@ def test_corrections_keep_their_place_inside_the_typed_take_limit() -> None:
     assert interview.with_corrections("", "Eight staff.") == "Eight staff."
 
 
+@pytest.mark.parametrize(
+    ("limit", "handed_off"),
+    [
+        pytest.param(10, "Eight staf", id="longer-than-the-limit"),
+        pytest.param(23, "Eight staff, two vans.", id="one-short-of-the-limit"),
+    ],
+)
+def test_corrections_that_leave_the_interview_no_room_are_handed_off_alone(
+    monkeypatch: pytest.MonkeyPatch, limit: int, handed_off: str
+) -> None:
+    """Were the corrections' limit to reach the typed take's, none of the
+    interview's words would fit before them: the corrections go alone, within
+    the limit, with no cut-off start of the interview before them."""
+    monkeypatch.setattr(interview, "MAX_CORRECTION_CHARS", 100)
+    monkeypatch.setattr(interview, "MAX_TYPED_CHARS", limit)
+
+    words = interview.with_corrections("We bake bread.", "Eight staff, two vans.")
+
+    assert words == handed_off
+
+
 @pytest.mark.asyncio
 async def test_an_arm_that_cannot_be_stamped_still_decides_the_hand_off(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, mocker

@@ -1418,14 +1418,15 @@ def with_corrections(transcript: str, corrections: str | None) -> str:
     on an ending screen, as their own words too.
 
     The corrections are their latest word, so they are kept within the typed
-    take's limit and the interview's words are cut to make room before them.
+    take's limit and the interview's words are cut to make room before them;
+    where they leave no room, they go alone.
     """
     extra = _own_corrections(corrections)
     if not extra:
         return transcript
-    if not transcript.strip():
-        return extra
     room = MAX_TYPED_CHARS - len(extra) - 1
+    if room <= 0 or not transcript.strip():
+        return extra[:MAX_TYPED_CHARS]
     return f"{transcript[:room]}\n{extra}"
 
 
