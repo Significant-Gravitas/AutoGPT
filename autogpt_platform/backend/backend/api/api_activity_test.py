@@ -106,6 +106,21 @@ async def test_an_api_key_request_counts_once_as_external(user_id, day, path):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("path", ["/external-api/v1/me", "/api/v2/me"])
+async def test_a_former_members_key_is_counted_once_and_refused(user_id, day, path):
+    # Issued in an organization its owner is no longer a member of.
+    headers = await _api_key_headers(user_id, organization_id=str(uuid4()))
+
+    async with _client() as client:
+        response = await client.get(path, headers=headers)
+    await api_activity.flush()
+
+    assert response.status_code == 403
+    counts = await api_activity.get_request_counts(day, [user_id])
+    assert counts[user_id].model_dump() == {"internal": 0, "external": 1}
+
+
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize(
     "path, credential, closed_status",
     [
@@ -192,9 +207,14 @@ async def test_requests_answer_while_redis_fails_or_hangs(
     assert api_activity._failures.held_back == 1
 
 
-async def _api_key_headers(user_id: str) -> dict[str, str]:
+async def _api_key_headers(
+    user_id: str, organization_id: str | None = None
+) -> dict[str, str]:
     _, key = await api_key_db.create_api_key(
-        "counted", user_id, [APIKeyPermission.IDENTITY]
+        "counted",
+        user_id,
+        [APIKeyPermission.IDENTITY],
+        organization_id=organization_id,
     )
     return {"X-API-Key": key}
 
