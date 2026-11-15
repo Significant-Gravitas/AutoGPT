@@ -144,6 +144,9 @@ interface Props {
   /** Out of AutoPilot budget with a reset ahead: the text stays editable and
    *  submitting sets it to send at the reset. Text only. */
   atReset?: { onSchedule: (message: string) => Promise<void> };
+  /** For a host whose `onSend` takes text alone: no + menu, and neither a
+   *  paste nor `@` adds a file. */
+  textOnly?: boolean;
 }
 
 // memo-boundary: the chat page re-renders on every streamed flush, and the
@@ -180,6 +183,7 @@ export const ChatInput = memo(function ChatInput({
   assistantName = null,
   canAttachWhileStreaming = false,
   atReset,
+  textOnly = false,
 }: Props) {
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
   const setIsDryRun = useCopilotUIStore((s) => s.setIsDryRun);
@@ -297,7 +301,7 @@ export const ChatInput = memo(function ChatInput({
     expertId,
     // Files and folders become attachments, so the cap closes them off;
     // integrations only edit the text and stay available.
-    includeWorkspaceFiles: showWorkspaceFiles && !isAtCap,
+    includeWorkspaceFiles: showWorkspaceFiles && !isAtCap && !textOnly,
     integrations,
   });
 
@@ -339,7 +343,7 @@ export const ChatInput = memo(function ChatInput({
   }
 
   function handlePaste(e: ClipboardEvent<HTMLElement>) {
-    if (isBusy || atReset) return;
+    if (isBusy || atReset || textOnly) return;
     const files = getFilesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
@@ -521,32 +525,36 @@ export const ChatInput = memo(function ChatInput({
             voiceBar && "hidden",
           )}
         >
-          <InputGroupAddon
-            align="inline-start"
-            className={cn(
-              "relative order-none gap-1 py-1 pl-1.5",
-              stacked && "gap-1.5 p-0",
-              isCompact && "gap-0.5 py-1 pl-1",
-            )}
-          >
-            <ComposerPlusMenu
-              onFilesSelected={handleFilesSelected}
-              onUseWorkspaceFile={() => setIsPickerOpen(true)}
-              onClearGuidedPrompt={handleClearGuidedPrompt}
-              disabled={isBusy || !!atReset}
-              isAtCap={isAtCap}
-              extraItems={plusMenuItems}
-              className={
-                stacked
-                  ? cn(
-                      CARD_ICON_BUTTON_CLASS,
-                      "[&_svg]:transition-transform [&_svg]:duration-200 [&[aria-expanded=true]_svg]:rotate-45",
-                    )
-                  : iconButtonClass
-              }
-            />
-            {recipientPicker}
-          </InputGroupAddon>
+          {(!textOnly || recipientPicker) && (
+            <InputGroupAddon
+              align="inline-start"
+              className={cn(
+                "relative order-none gap-1 py-1 pl-1.5",
+                stacked && "gap-1.5 p-0",
+                isCompact && "gap-0.5 py-1 pl-1",
+              )}
+            >
+              {!textOnly && (
+                <ComposerPlusMenu
+                  onFilesSelected={handleFilesSelected}
+                  onUseWorkspaceFile={() => setIsPickerOpen(true)}
+                  onClearGuidedPrompt={handleClearGuidedPrompt}
+                  disabled={isBusy || !!atReset}
+                  isAtCap={isAtCap}
+                  extraItems={plusMenuItems}
+                  className={
+                    stacked
+                      ? cn(
+                          CARD_ICON_BUTTON_CLASS,
+                          "[&_svg]:transition-transform [&_svg]:duration-200 [&[aria-expanded=true]_svg]:rotate-45",
+                        )
+                      : iconButtonClass
+                  }
+                />
+              )}
+              {recipientPicker}
+            </InputGroupAddon>
+          )}
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
           <div

@@ -20,6 +20,7 @@ import {
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   renderHook,
   screen,
@@ -476,6 +477,36 @@ describe("onboarding interview", () => {
 
     expect(await screen.findByText(NEXT_QUESTION)).toBeDefined();
     expect(streamBodies.join()).toContain("I run a bakery with five staff.");
+  });
+
+  it("offers no way to add a file to an answer, which carries text alone", async () => {
+    serverInterview = {
+      messages: [KICKOFF_ROW],
+      stage: null,
+      activeTurn: "turn-greeting",
+    };
+    startsWith({
+      session_id: SESSION_ID,
+      turn_id: "turn-greeting",
+      stage: null,
+    });
+    server.use(...interviewHandlers());
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    const input = await screen.findByPlaceholderText("Type your answer…");
+    await waitFor(() => expect(input).toHaveProperty("disabled", false));
+    expect(
+      screen.queryByRole("button", { name: "Add files and more" }),
+    ).toBeNull();
+
+    const notes = new File(["notes"], "notes.txt", { type: "text/plain" });
+    fireEvent.paste(input, { clipboardData: { files: [notes] } });
+
+    expect(
+      screen.queryByRole("button", { name: "Remove notes.txt" }),
+    ).toBeNull();
   });
 
   it("floats no name chip over the transcript, whose heading already names Otto", async () => {

@@ -93,6 +93,7 @@ export function InterviewChat({
                   placeholder="Type your answer…"
                   hasSession={true}
                   variant="compact"
+                  textOnly
                 />
               </div>
               {canFinishEarly && (
