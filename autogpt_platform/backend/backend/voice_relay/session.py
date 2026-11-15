@@ -1200,7 +1200,8 @@ class Session:
     def _vendor_failed(self, stage: VendorStage, error: BaseException) -> VendorFailure:
         """Log and count a failed Live connect or session with what the
         vendor said about why: its HTTP status, or its close code and reason,
-        and never a key nor anything said on the call."""
+        with no key, token or URL credential, and nothing from a close
+        reason's first quote mark on (``VendorFailure.describe``)."""
         failure = vendor_failure(
             error, after_notice=stage == "session" and self.vendor_notice
         )
