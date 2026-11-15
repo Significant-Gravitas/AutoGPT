@@ -3,6 +3,7 @@ import {
   getGetV2GetLibraryAgentResponseMock,
   getGetV2ListTriggerAgentsMockHandler,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
+import { getTimezoneDisplayName } from "@/lib/timezone-utils";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
@@ -73,3 +74,48 @@ describe.each(["schedule", "trigger"] as const)("%s next run", (view) => {
     },
   );
 });
+
+describe("SelectedScheduleView timezone labels", () => {
+  test("labels Next run with the profile timezone when schedule timezone differs", async () => {
+    const agent = getGetV2GetLibraryAgentResponseMock({
+      id: "agent-id",
+      graph_id: "graph-id",
+      graph_version: 1,
+      name: "Scheduled Agent",
+      input_schema: { properties: {} },
+      credentials_input_schema: { properties: {} },
+    });
+
+    server.use(
+      getGetV1GetUserTimezoneMockHandler({ timezone: "America/Los_Angeles" }),
+      http.get("/api/proxy/api/graphs/:graphId/schedules", ({ params }) =>
+        HttpResponse.json([
+          {
+            id: "schedule-id",
+            name: "Teig ansetzen",
+            user_id: "user-id",
+            graph_id: params.graphId,
+            graph_version: 1,
+            cron: "45 2 * * 1-5",
+            timezone: "Asia/Tokyo",
+            next_run_time: "2026-11-12T02:45:00+09:00",
+            input_data: {},
+            input_credentials: {},
+          },
+        ]),
+      ),
+    );
+
+    render(<SelectedScheduleView agent={agent} scheduleId="schedule-id" />);
+
+    expect(
+      await screen.findByText("November 11, 2026 at 09:45"),
+    ).toBeDefined();
+    expect(
+      await screen.findByText(
+        getTimezoneDisplayName("America/Los_Angeles"),
+      ),
+    ).toBeDefined();
+  });
+});
+
