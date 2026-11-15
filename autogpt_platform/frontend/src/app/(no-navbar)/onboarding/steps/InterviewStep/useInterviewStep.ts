@@ -113,6 +113,9 @@ export function useInterviewStep() {
     sessionQuery.data?.status === 200 ? sessionQuery.data.data : null;
   const hasActiveStream = !!session?.active_stream;
 
+  // A memo, as in the copilot's useChatSession: useCopilotStream's effects
+  // depend on this array, and useHydrateOnStreamEnd compares it by reference
+  // to tell a fresh refetch from the snapshot it saw when the stream ended.
   const hydratedMessages = useMemo<UiMessages | undefined>(() => {
     if (!session || !sessionId) return undefined;
     return convertChatSessionMessagesToUiMessages(

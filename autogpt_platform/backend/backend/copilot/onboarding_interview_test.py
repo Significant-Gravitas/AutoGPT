@@ -160,7 +160,7 @@ def test_the_interview_ends_once_their_team_can_start_on_something() -> None:
         "and say a short goodbye in their language. Their team starts on that "
         "first and learns the rest of their work as it goes."
     ) in supplement
-    # The confirmed summary is no longer what ends it.
+    # The interview ends on an agreed first task, not on a confirmed summary.
     assert "sum up what you heard" not in supplement
     assert "ask if you got it right" not in supplement
 
