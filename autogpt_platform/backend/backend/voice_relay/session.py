@@ -439,6 +439,9 @@ class Session:
         self.prompted = True
         self.end_tool = EndToolStats()
         self.tool_calls: dict[str, int] = {}
+        # End-tool rounds refused in a turn that already had one refused:
+        # each counts as one of Otto's turns toward the turn cap.
+        self.refused_rounds = 0
         # Whether the microphone carries Otto (``echo``): probed during his
         # first turn, from probe_from until probe_ends (monotonic), then full
         # or half, and what made it half.
@@ -1386,9 +1389,12 @@ class Session:
     async def on_tool_call(self, event: ToolCall) -> None:
         """Answer Otto's tool calls, in the order he made them. The end tool
         is accepted only once the person has answered (``end_tool``); each
-        call logs its line."""
+        call logs its line. A round refused in a turn that already had one
+        refused counts as one of his turns, and ends the call at the turn
+        cap."""
         now = time.monotonic()
         speaking = self._otto_speaking()
+        refused_before = self.cur.end_refused
         # An overheard stretch is judged before the call is: what an echo made
         # count as an answer is not one.
         await self._turn_begins(now)
@@ -1409,6 +1415,17 @@ class Session:
         for line in lines:
             END_TOOL_CALLS.labels(outcome=line.outcome).inc()
             logger.info(line.describe(reached=reached))
+        if refused_before and any(
+            line.outcome == "refused_unanswered" for line in lines
+        ):
+            self.refused_rounds += 1
+            if self._turns_used() >= self.caps.max_agent_turns:
+                self.end("turn_cap")
+
+    def _turns_used(self) -> int:
+        """Otto's completed turns, and the end-tool rounds refused again
+        within a turn, each counted as one."""
+        return len(self.turns) + self.refused_rounds
 
     def _take_tool_call(
         self, call: FunctionCall, now: float, speaking: bool
@@ -1475,7 +1492,7 @@ class Session:
             {
                 "type": "turn_complete",
                 "turn": turn.index,
-                "turns_left": max(0, self.caps.max_agent_turns - len(self.turns)),
+                "turns_left": max(0, self.caps.max_agent_turns - self._turns_used()),
             }
         )
         heard = self.user_buf.strip()
@@ -1502,10 +1519,10 @@ class Session:
         ):
             self.end("finished")
             return
-        if len(self.turns) >= self.caps.max_agent_turns:
+        if self._turns_used() >= self.caps.max_agent_turns:
             self.end("turn_cap")
             return
-        if len(self.turns) >= self.caps.max_agent_turns - self.caps.soft_wrap_turns:
+        if self._turns_used() >= self.caps.max_agent_turns - self.caps.soft_wrap_turns:
             await self.nudge("turns")
 
     # --- the controls -----------------------------------------------------

@@ -21,7 +21,7 @@ from backend.voice_relay.end_tool import (
 )
 from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.locks import EndToolStats
-from backend.voice_relay.session_test import FAST, Call, open_call
+from backend.voice_relay.session_test import CAPS, FAST, Call, open_call
 from backend.voice_relay.vendor import (
     AgentAudio,
     AgentText,
@@ -116,6 +116,46 @@ async def test_a_tool_call_that_starts_a_turn_with_no_answer_is_refused(redis):
     assert record.end_tool == EndToolStats(calls=1, refused=1)
     # Nothing the refused call carried is kept as the person's first task.
     assert record.first_task is None
+
+
+async def test_end_tool_calls_refused_again_within_one_turn_count_toward_the_turn_cap(
+    redis,
+):
+    """Each refused round after a turn's first counts as one of Otto's
+    turns, so a model that keeps calling the end tool in a turn that never
+    ends meets the turn cap."""
+    vendor = FakeVendor([Reply(text=QUESTION, audio_s=0.1)])
+    call = await open_call(
+        redis, vendor, caps=CAPS.model_copy(update={"max_agent_turns": 4})
+    )
+    await call.ws.wait_for("turn_complete")
+    live = call.vendor.sessions[0]
+
+    for n in range(8):
+        if call.session.ended.is_set():
+            break
+        live.emit(_calls_end_tool("Answer customer emails", f"call-{n}"))
+        await until(lambda: len(live.tool_results) == n + 1)
+
+    assert (await call.ended(timeout=5.0))["reason"] == "turn_cap"
+    assert len(call.session.turns) == 1
+    assert [result.response for result in live.tool_results] == [NOT_CONFIRMED] * 4
+
+
+async def test_one_refused_end_tool_call_a_turn_spends_no_turn_of_its_own(redis):
+    vendor = FakeVendor([Reply(text=QUESTION, audio_s=0.1)])
+    call = await open_call(
+        redis, vendor, caps=CAPS.model_copy(update={"max_agent_turns": 4})
+    )
+    await call.ws.wait_for("turn_complete")
+    live = call.vendor.sessions[0]
+
+    live.emit(_calls_end_tool("Answer customer emails"))
+    await until(lambda: bool(live.tool_results))
+    live.emit(*_otto_says("Take your time."), TurnComplete())
+
+    assert (await call.ws.wait_for("turn_complete", count=2))["turns_left"] == 2
+    assert (await _hung_up(call))["reason"] == "user_hangup"
 
 
 async def test_an_answer_out_loud_then_the_end_tool_ends_the_call_finished(redis):

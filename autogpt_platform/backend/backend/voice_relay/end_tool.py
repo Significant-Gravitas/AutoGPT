@@ -16,7 +16,8 @@ have acknowledged the answer before calling the tool, and no more: at most
 said is a new proposal nobody has answered yet. A call refused in a turn
 leaves every later call in that turn refused too. A refused call leaves the
 call as it was, and its answer tells Otto to wait for the person and call
-again once they have answered.
+again once they have answered; each round refused again within one turn
+counts as one of his turns toward the turn cap (``session``).
 
 Each tool call logs one line of counts and names (:class:`ToolCallLine`):
 never the first task's text, which is Otto's wording of what the person
