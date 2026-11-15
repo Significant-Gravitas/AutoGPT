@@ -14,6 +14,7 @@ from backend.api.external.auth_rate_limit import (
     enforce_api_key_validate_rate_limit,
     refund_api_key_validate_rate_limit,
 )
+from backend.api.features.orgs.db import is_active_member
 from backend.data.auth.api_key import validate_api_key
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.auth.oauth import (
@@ -23,11 +24,24 @@ from backend.data.auth.oauth import (
     validate_access_token,
 )
 from backend.data.user import is_user_banned
+from backend.util.cache import cached
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
 _REQUEST_AUTH = "external_api_auth"
+
+FORMER_MEMBER_DETAIL = (
+    "These credentials belong to an organization or team you are not an active "
+    "member of"
+)
+
+# How long a membership answer is reused. Nearly every key names an
+# organization, and the rate limiter and the route each check the caller, so
+# without it every request would read the membership twice. Removing a member
+# revokes their keys there at once; the cache only delays the other ways a
+# membership ends, such as a deleted organization, by this much.
+MEMBERSHIP_CACHE_SECONDS = 10
 
 
 class VerifiedCredential(BaseModel):
@@ -144,7 +158,12 @@ async def require_auth(
 
     Resolved once per request: v1's rate limiter and its routes ask for it under
     different scopes, which FastAPI caches apart. Verifying an API key first
-    reserves from v1's pre-Scrypt budget, which a valid key gets back.
+    reserves from v1's pre-Scrypt budget, which a valid key gets back. The
+    membership check below runs on every call, stored result or not, so
+    credentials whose owner has left the organization or team they were issued
+    in are refused, and like a closed or banned account's key they keep their
+    reservation. Every v1 route reaches this, directly or through
+    `require_permission`.
     """
     key = _plaintext_api_key(api_key, bearer)
     budget: APIKeyValidationBudget | None = None
@@ -162,6 +181,7 @@ async def require_auth(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication. Provide API key or access token.",
         )
+    await _refuse_former_member(auth)
     await refund_api_key_validate_rate_limit(budget)
     return auth
 
@@ -188,6 +208,34 @@ async def owner_is_banned(auth: APIAuthorizationInfo) -> bool:
     """Whether the account a credential belongs to is banned; for verifiers that
     resolve credentials outside `resolve_auth_info`, such as v2's MCP server."""
     return await is_user_banned(auth.user_id)
+
+
+async def _refuse_former_member(auth: APIAuthorizationInfo) -> None:
+    """Refuse a credential issued in an organization or team its owner has left.
+
+    v1 acts in the organization and team stored on the credential, so it is
+    good only while its owner is an active member of both, as v2 checks too.
+    It is refused, never moved to the owner's personal organization, which it
+    wasn't issued for. A credential that names no organization (a key made
+    before organizations existed) acts in that personal organization, so there
+    is nothing to check; one that names a team but no organization is refused.
+    """
+    if auth.organization_id is None and auth.team_id_restriction is None:
+        return
+    if auth.organization_id is None or not await holds_membership(
+        auth.user_id, auth.organization_id, auth.team_id_restriction
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=FORMER_MEMBER_DETAIL
+        )
+
+
+@cached(maxsize=1000, ttl_seconds=MEMBERSHIP_CACHE_SECONDS)
+async def holds_membership(
+    user_id: str, organization_id: str, team_id: str | None
+) -> bool:
+    """`is_active_member`, reused for `MEMBERSHIP_CACHE_SECONDS`."""
+    return await is_active_member(user_id, organization_id, team_id)
 
 
 def require_permission(*permissions: APIKeyPermission):
