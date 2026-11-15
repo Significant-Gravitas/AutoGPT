@@ -346,11 +346,19 @@ class TestEnsureLinked:
         assert "/setup" in adapter.send_message.await_args.args[1]
 
     @pytest.mark.asyncio
-    async def test_unlinked_dm_prompts_link_flow(self):
-        handler = MessageHandler(_api(user_linked=False))
+    @pytest.mark.parametrize("platform", ["discord", "slack", "telegram", "teams"])
+    async def test_unlinked_dm_prompts_link_flow(self, platform):
+        # A DM links the member's own account, so it needs no admin role.
+        api = _api(user_linked=False)
+        handler = MessageHandler(api)
         adapter = _adapter()
-        await handler.handle(_ctx(channel_type="dm", server_id=None), adapter)
+        ctx = _ctx(channel_type="dm", server_id=None).with_changes(platform=platform)
+        await handler.handle(ctx, adapter)
+        api.create_user_link_token.assert_awaited_once_with(
+            platform=platform, platform_user_id="user-1", platform_username="Bently"
+        )
         adapter.send_link.assert_awaited_once()
+        assert adapter.send_link.await_args.args[0] == "chan-1"
         assert adapter.send_link.await_args.kwargs["link_url"].startswith(
             "https://example.com/link/"
         )

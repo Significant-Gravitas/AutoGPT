@@ -13,7 +13,12 @@ from discord import app_commands
 
 from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.bot_backend import BotBackend, ChatSummary
-from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
+from backend.copilot.bot.command_core import (
+    AdminCheck,
+    CommandReply,
+    setup_reply,
+    unlink_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +104,12 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         )
         return
 
-    if not interaction.permissions.manage_guild:
+    admin_check = (
+        AdminCheck.ADMIN
+        if interaction.permissions.manage_guild
+        else AdminCheck.NOT_ADMIN
+    )
+    if admin_check is not AdminCheck.ADMIN:
         await interaction.response.send_message(
             "Only members with the Manage Server permission can link this "
             "server to an AutoGPT account.",
@@ -112,6 +122,8 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         api,
         platform="discord",
         server_noun="server",
+        admin_check=admin_check,
+        admin_role="member with the Manage Server permission",
         platform_server_id=str(interaction.guild.id),
         platform_user_id=str(interaction.user.id),
         platform_username=interaction.user.display_name,

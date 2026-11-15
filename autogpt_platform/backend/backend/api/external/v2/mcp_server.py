@@ -51,7 +51,10 @@ from backend.api.external.v2.mcp_calls import (
     missing_scopes,
 )
 from backend.api.external.v2.mcp_tenancy import check_ids_in_tenant
-from backend.api.external.v2.tenancy import resolve_credential_tenancy
+from backend.api.external.v2.tenancy import (
+    RESOURCE_PERMISSIONS,
+    resolve_credential_tenancy,
+)
 from backend.copilot.context import set_execution_context, set_turn_unattended
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.tool_adapter import _execute_tool_sync
@@ -65,6 +68,7 @@ from backend.data.auth.oauth import (
     is_access_token,
     validate_access_token,
 )
+from backend.data.tenancy import resource_role_refusal
 from backend.util.exceptions import NotAuthorizedError
 from backend.util.settings import Settings
 
@@ -354,11 +358,14 @@ class TenantedAccessToken(AccessToken):
     """An MCP access token carrying the tenant its credentials act in.
 
     MCP has no per-request dependency chain, so the tenant is resolved here,
-    once per token verification, instead of by `v2.tenancy`.
+    once per token verification, instead of by `v2.tenancy`. So is the
+    caller's role there: `role_refusal` says why it doesn't cover the
+    tenant's workflows, runs, library and schedules, when it doesn't.
     """
 
     organization_id: str
     team_id: str | None = None
+    role_refusal: str | None = None
 
 
 class ExternalAPITokenVerifier(TokenVerifier):
@@ -402,6 +409,9 @@ class ExternalAPITokenVerifier(TokenVerifier):
             scopes=[s.value for s in auth.scopes],
             organization_id=organization_id,
             team_id=team_id,
+            role_refusal=await resource_role_refusal(
+                auth.user_id, organization_id, team_id
+            ),
         )
 
 
@@ -418,10 +428,12 @@ def _create_tool_handler(
 
     Before the tool runs, the call is held to the caller's credential: its
     arguments to the advertised schema, its scopes to ``required_scopes`` plus
-    whatever the arguments add, the ids it names to the credential's
-    organization, the caller to an active plan, and a tool that spends platform
-    money to the caller's allowance.
+    whatever the arguments add, the caller's role for a tool that reaches the
+    organization's workflows, runs, library or schedules, the ids it names to
+    the credential's organization, the caller to an active plan, and a tool
+    that spends platform money to the caller's allowance.
     """
+    reaches_resources = acts_on_resources(required_scopes)
 
     async def handler(ctx: Context, **kwargs: Any) -> str | CallToolResult:
         # Raised, not returned: a rejection returned as content is reported to
@@ -435,6 +447,8 @@ def _create_tool_handler(
             tool, required_scopes, kwargs, access_token.scopes
         ):
             raise ToolError(f"Missing required permission(s): {', '.join(missing)}")
+        if reaches_resources and access_token.role_refusal:
+            raise ToolError(access_token.role_refusal)
 
         user_id = access_token.client_id
         await check_ids_in_tenant(
@@ -487,6 +501,12 @@ def _create_tool_handler(
         return text
 
     return handler
+
+
+def acts_on_resources(required_scopes: Sequence[str]) -> bool:
+    """Whether a tool needing these scopes reaches the organization's
+    workflows, runs, library or schedules."""
+    return any(APIKeyPermission(s) in RESOURCE_PERMISSIONS for s in required_scopes)
 
 
 def _mcp_tool(tool: BaseTool, required_perms: Sequence[APIKeyPermission]) -> MCPTool:

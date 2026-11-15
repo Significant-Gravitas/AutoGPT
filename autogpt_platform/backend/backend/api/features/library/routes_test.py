@@ -5,12 +5,16 @@ from unittest.mock import AsyncMock
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.rest_api import app as rest_app
 from backend.copilot.rate_limit import enforce_payment_paywall
+from backend.data.execution import GraphExecutionMeta
 from backend.data.onboarding_steps import OnboardingStep
-from backend.util.exceptions import MissingConfigError
+from backend.util.exceptions import MissingConfigError, NotAuthorizedError
 from backend.util.models import MAX_PAGE, Pagination
 
 from . import model as library_model
@@ -444,3 +448,137 @@ async def test_list_trigger_agents_route(
         user_id=test_user_id,
         library_agent_id="parent-id",
     )
+
+
+def _team_preset(**overrides) -> library_model.LibraryAgentPreset:
+    now = datetime.datetime.now(tz=datetime.UTC)
+    return library_model.LibraryAgentPreset.model_validate(
+        {
+            "id": "p-1",
+            "user_id": "test-user-id",
+            "graph_id": "graph-1",
+            "graph_version": 1,
+            "name": "Preset",
+            "description": "",
+            "inputs": {},
+            "credentials": {},
+            "created_at": now,
+            "updated_at": now,
+            "webhook_id": None,
+            "webhook": None,
+            "organization_id": "org-1",
+            "team_id": "team-1",
+            **overrides,
+        }
+    )
+
+
+def test_executing_a_preset_checks_the_role_where_the_preset_lives(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """The run lands in the preset's own org and team, not the request's, so
+    the role there must allow it."""
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    mocker.patch(
+        "backend.api.features.library.routes.presets.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_team_preset(),
+    )
+    role_check = mocker.patch(
+        "backend.api.features.library.routes.presets.require_role_where_resource_lives",
+        new_callable=AsyncMock,
+        side_effect=NotAuthorizedError(
+            "Your role in this workspace doesn't allow this."
+        ),
+    )
+    add = mocker.patch(
+        "backend.api.features.library.routes.presets.add_graph_execution",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post("/presets/p-1/execute", json={})
+
+    assert response.status_code == 403
+    role_check.assert_awaited_once_with(
+        test_user_id,
+        "org-1",
+        "team-1",
+        OrgAction.EXECUTE_RESOURCES,
+        TeamAction.EXECUTE_AGENTS,
+    )
+    add.assert_not_awaited()
+
+
+def test_executing_an_untagged_preset_checks_the_role_the_request_names(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    mocker.patch(
+        "backend.api.features.library.routes.presets.db.get_preset",
+        new_callable=AsyncMock,
+        return_value=_team_preset(organization_id=None, team_id=None),
+    )
+    role_check = mocker.patch(
+        "backend.api.features.library.routes.presets.require_role_where_resource_lives",
+        new_callable=AsyncMock,
+    )
+    add = mocker.patch(
+        "backend.api.features.library.routes.presets.add_graph_execution",
+        new_callable=AsyncMock,
+        return_value=GraphExecutionMeta.model_validate(
+            {
+                "id": "run-1",
+                "user_id": "test-user-id",
+                "graph_id": "graph-1",
+                "graph_version": 1,
+                "inputs": {},
+                "credential_inputs": None,
+                "nodes_input_masks": None,
+                "preset_id": "p-1",
+                "status": "QUEUED",
+                "stats": None,
+            }
+        ),
+    )
+
+    response = client.post("/presets/p-1/execute", json={})
+
+    assert response.status_code == 200, response.text
+    assert role_check.await_args.args[1:3] == ("test-org", "test-team")
+    assert add.await_args.kwargs["organization_id"] == "test-org"
+    assert add.await_args.kwargs["team_id"] == "test-team"
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [("get", "/agents"), ("post", "/presets/p-1/execute")],
+)
+def test_a_billing_manager_role_is_refused_listing_and_running_from_the_library(
+    mocker: pytest_mock.MockFixture, method: str, path: str
+) -> None:
+    app.dependency_overrides[enforce_payment_paywall] = lambda: None
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(
+        user_id="test-user-id",
+        org_id="test-org",
+        team_id="test-team",
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=False,
+        is_team_admin=False,
+        is_team_billing_manager=True,
+        seat_status="ACTIVE",
+    )
+    listing = mocker.patch(
+        "backend.api.features.library.routes.agents.library_db.list_library_agents",
+        new_callable=AsyncMock,
+    )
+    preset = mocker.patch(
+        "backend.api.features.library.routes.presets.db.get_preset",
+        new_callable=AsyncMock,
+    )
+
+    response = client.request(method, path, json={} if method == "post" else None)
+
+    assert response.status_code == 403
+    listing.assert_not_awaited()
+    preset.assert_not_awaited()
