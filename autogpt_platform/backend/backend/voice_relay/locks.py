@@ -669,11 +669,12 @@ async def replace_start(
     one start at a time, so a start the person moved on from has its room
     closed at the next sweep, not at the end of its grace. Returns the start
     ended, or None."""
-    replaced = as_str(
-        await redis.set(
-            latest_start_key(user_id), call_id, ex=int(ROOM_START_GRACE_S), get=True
-        )
-    )
+    key = latest_start_key(user_id)
+    pipe = redis.pipeline(transaction=True)
+    pipe.get(key)
+    pipe.set(key, call_id, ex=int(ROOM_START_GRACE_S))
+    previous, _ = await pipe.execute()
+    replaced = as_str(previous)
     if not replaced or replaced == call_id:
         return None
     if await redis.exists(call_record_key(replaced)):
