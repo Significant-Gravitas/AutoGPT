@@ -2388,6 +2388,11 @@ def test_an_unreadable_budget_or_stream_is_a_503(start_interview: AsyncMock):
 
     assert response.status_code == 503
     assert response.headers["retry-after"] == "30"
+    # In the body as well: the browser's API client keeps a refusal's body.
+    assert response.json()["detail"] == {
+        "message": "The interview is temporarily unavailable.",
+        "retry_after_seconds": 30,
+    }
 
 
 @pytest.fixture

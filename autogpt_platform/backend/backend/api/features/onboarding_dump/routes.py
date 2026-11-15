@@ -233,14 +233,15 @@ async def start_onboarding_interview(
     close, or that the person confirmed), each naming the call
     (``call_id``). A call that was cut off, or that the person hung up,
     leaves the typed interview open. 429 at its turn budget, 503 while the
-    budget, the chat stream or the person's calls cannot be read. A 429 carries its wait in the body
-    (``retry_after_seconds``) as well as in ``Retry-After``: the browser's API
-    client keeps a refusal's body, not its headers.
+    budget, the chat stream or the person's calls cannot be read. A 429 or
+    503 carries its wait in the body (``retry_after_seconds``) as well as in
+    ``Retry-After``: the browser's API client keeps a refusal's body, not its
+    headers.
     """
     try:
         started = await interview.start_onboarding_interview(user_id)
     except fastapi.HTTPException as e:
-        if e.status_code == 429:
+        if e.status_code in (429, 503):
             raise _with_wait_in_body(e) from e
         if e.status_code != 409 or e.detail != interview.TURN_IN_PROGRESS:
             raise

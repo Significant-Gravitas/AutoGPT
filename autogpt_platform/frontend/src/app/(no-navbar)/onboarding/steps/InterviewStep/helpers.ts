@@ -27,7 +27,7 @@ export const STAGE_READ_WINDOW_MS = 10_000;
 
 export type StartFailure =
   | { kind: "busy"; retryAfterSeconds: number | null }
-  | { kind: "unavailable" }
+  | { kind: "unavailable"; retryAfterSeconds: number | null }
   | { kind: "failed" };
 
 export function isEndedStage(stage: string | null | undefined) {
@@ -68,7 +68,12 @@ export function startFailureOf(error: unknown): StartFailure {
     if (error.status === 429) {
       return { kind: "busy", retryAfterSeconds: retryAfterSecondsOf(error) };
     }
-    if (error.status === 503) return { kind: "unavailable" };
+    if (error.status === 503) {
+      return {
+        kind: "unavailable",
+        retryAfterSeconds: retryAfterSecondsOf(error),
+      };
+    }
   }
   return { kind: "failed" };
 }
@@ -105,7 +110,10 @@ export function startFailureCopy(failure: StartFailure) {
     return `You've sent a lot of messages in a short time. Your progress is saved; try again ${wait}.`;
   }
   if (failure.kind === "unavailable") {
-    return "Otto can't chat right now. Your progress is saved; try again in a moment.";
+    const wait = failure.retryAfterSeconds
+      ? describeWait(failure.retryAfterSeconds)
+      : "a moment";
+    return `Otto can't chat right now. Your progress is saved; try again in ${wait}.`;
   }
   return "We couldn't start your interview. Try again.";
 }

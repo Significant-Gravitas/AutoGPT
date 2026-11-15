@@ -110,12 +110,30 @@ describe("a start that fails", () => {
     expect(startFailureCopy(failure)).toContain("try again in a little while");
   });
 
+  it("says how long an outage lasts when the server names its wait", () => {
+    const failure = startFailureOf(
+      new ApiError("down", 503, {
+        detail: {
+          message: "The interview is temporarily unavailable.",
+          retry_after_seconds: 30,
+        },
+      }),
+    );
+
+    expect(failure).toEqual({ kind: "unavailable", retryAfterSeconds: 30 });
+    expect(startFailureCopy(failure)).toBe(
+      "Otto can't chat right now. Your progress is saved; try again in a minute.",
+    );
+  });
+
   it("tells an outage from any other failure", () => {
     const outage = startFailureOf(new ApiError("down", 503, null));
     const other = startFailureOf(new Error("socket hang up"));
 
-    expect(outage).toEqual({ kind: "unavailable" });
-    expect(startFailureCopy(outage)).toContain("Otto can't chat right now");
+    expect(outage).toEqual({ kind: "unavailable", retryAfterSeconds: null });
+    expect(startFailureCopy(outage)).toBe(
+      "Otto can't chat right now. Your progress is saved; try again in a moment.",
+    );
     expect(other).toEqual({ kind: "failed" });
     expect(startFailureCopy(other)).toBe(
       "We couldn't start your interview. Try again.",
