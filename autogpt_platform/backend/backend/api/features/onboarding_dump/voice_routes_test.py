@@ -158,7 +158,16 @@ async def test_a_start_is_a_span_with_one_for_each_read_and_step(
     assert route == "voice.call.start"
     assert sorted(steps) == [
         f"voice.call.start.{step}"
-        for step in ("arm", "budget", "calls", "flag", "interview", "register")
+        for step in (
+            "arm",
+            "budget",
+            "calls",
+            "flag",
+            "interview",
+            "register",
+            "replace",
+            "starts",
+        )
     ]
 
 
@@ -440,6 +449,63 @@ async def test_a_start_voice_cannot_carry_leaves_the_allowance_untouched(
     assert (await start()).status_code == 503
 
     assert {key: await redis.get(key) for key in await _counted(redis)} == counted
+
+
+class _MidHour(datetime):
+    """The rate limiter's clock, halfway through an hour."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 11, 9, 12, 30, tzinfo=tz or UTC)
+
+
+async def _started(redis) -> list[str]:
+    return sorted(await redis.keys("onboarding:voice_start:*"))
+
+
+async def test_a_start_past_the_persons_start_budget_waits_with_the_wait_in_the_body(
+    paying_platform, redis, mocker
+):
+    mocker.patch.object(rate_limit, "datetime", _MidHour)
+    mocker.patch.object(rate_limit.settings.config, "voice_interview_hourly_starts", 2)
+    for _ in range(2):
+        assert (await start()).status_code == 200
+
+    response = await start()
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "1800"
+    assert response.json()["detail"]["retry_after_seconds"] == 1800
+    # Starts are counted apart from calls, which the relay counts at ready.
+    assert await _counted(redis) == []
+
+
+async def test_a_start_refused_for_another_reason_counts_no_start(
+    paying_platform, voice_on, redis
+):
+    voice_on.taken_by.return_value = "a" * 32
+
+    assert (await start()).status_code == 409
+
+    assert await _started(redis) == []
+
+
+async def test_a_start_ends_the_persons_earlier_start_whose_call_never_began(redis):
+    first = (await start()).json()["call_id"]
+
+    second = (await start()).json()["call_id"]
+
+    assert await locks.end_requested(redis, first)
+    assert not await locks.end_requested(redis, second)
+
+
+async def test_a_start_leaves_alone_an_earlier_call_that_began(redis, test_user_id):
+    first = (await start()).json()["call_id"]
+    await _record(redis, test_user_id, call_id=first, status="ended")
+
+    assert (await start()).status_code == 200
+
+    assert not await locks.end_requested(redis, first)
 
 
 async def test_a_person_whose_call_took_the_interview_cannot_call_again(voice_on):
@@ -850,6 +916,18 @@ async def test_ending_a_start_the_person_gave_up_on_asks_for_its_end_and_counts_
 
     assert response.status_code == 202
     assert await locks.end_requested(redis, CALL)
+    assert _abandoned() - before == 1
+
+
+async def test_ending_a_start_the_person_gave_up_on_twice_counts_it_once(
+    redis, test_user_id
+):
+    await locks.register_room(redis, CALL, test_user_id, time.time())
+    before = _abandoned()
+
+    for _ in range(2):
+        assert (await request("POST", f"/{CALL}/end")).status_code == 202
+
     assert _abandoned() - before == 1
 
 

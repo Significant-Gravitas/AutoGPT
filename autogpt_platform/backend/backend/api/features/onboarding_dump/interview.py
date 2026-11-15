@@ -501,7 +501,11 @@ async def _calls_back_to_a_take(
     expired or is not the person's."""
     calls: list[locks.CallRecord] = []
     current = await get_onboarding_voice_call_id(user_id)
-    while current is not None and all(call.call_id != current for call in calls):
+    while (
+        current is not None
+        and all(call.call_id != current for call in calls)
+        and len(calls) < locks.CALL_CHAIN_HOPS
+    ):
         record = await locks.read_call(redis, current)
         if record is None or record.uid != user_id:
             break
@@ -851,7 +855,11 @@ async def _superseded_from(redis: AsyncRedisClient, user_id: str, call_id: str) 
     latest take, so a claim on a call after *call_id* outranks it too."""
     seen: set[str] = set()
     current = await get_onboarding_voice_call_id(user_id)
-    while current is not None and current not in seen:
+    while (
+        current is not None
+        and current not in seen
+        and len(seen) < locks.CALL_CHAIN_HOPS
+    ):
         seen.add(current)
         record = await locks.read_call(redis, current)
         if record is None or record.uid != user_id:
@@ -1270,7 +1278,12 @@ async def _call_standing(user_id: str, call_id: str) -> CallStanding:
         return "superseded"
     seen: set[str] = set()
     current = await get_onboarding_voice_call_id(user_id)
-    while current is not None and current != call_id and current not in seen:
+    while (
+        current is not None
+        and current != call_id
+        and current not in seen
+        and len(seen) < locks.CALL_CHAIN_HOPS
+    ):
         seen.add(current)
         record = await locks.read_call(redis, current)
         if record is None:

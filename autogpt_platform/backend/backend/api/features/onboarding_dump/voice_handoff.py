@@ -257,7 +257,11 @@ async def settle_the_take_before(
     try:
         seen = {record.call_id}
         current = record.prev
-        while current is not None and current not in seen:
+        while (
+            current is not None
+            and current not in seen
+            and len(seen) < locks.CALL_CHAIN_HOPS
+        ):
             seen.add(current)
             earlier = await locks.read_call(redis, current)
             if earlier is None or earlier.uid != record.uid:

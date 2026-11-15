@@ -21,15 +21,19 @@ the browser's token for it. In order, it checks:
 - the platform's daily voice budget and its live-call ceiling: 503 with
   ``Retry-After``;
 - the person's own call allowance, on every tier: 429 with ``Retry-After``.
-  Read, not written: the relay counts a call once it is ready, so a start
-  that never got that far costs the person nothing.
+  Read, not written: the relay counts a call once it is ready, so a call
+  that never got that far takes nothing from it.
 
 The checks' reads are independent and run side by side, each in a span of
 its own under the start's span in its trace; their refusals are still made in
-this order. None of them costs the person anything. Then it registers the
-call's room (``locks.register_room``), a 503 when it cannot, and mints the
-browser's token for it (``rooms.person_token``); the relay closes the room
-(``room_reaper``). It reads the person's arm of the voice ending experiment,
+this order, and none of them costs the person anything. A start that passes
+them is counted on the person's start budget (``VOICE_INTERVIEW_HOURLY_STARTS``
+and ``VOICE_INTERVIEW_DAILY_STARTS``, every tier): one past it is a 429 with
+``Retry-After``. Then it registers the call's room (``locks.register_room``),
+a 503 when it cannot, and mints the browser's token for it
+(``rooms.person_token``); the relay closes the room (``room_reaper``). The
+start replaces the person's earlier one whose call never began, whose room
+the next sweep closes (``locks.replace_start``). It reads the person's arm of the voice ending experiment,
 which stores it on first read (``experiments.assign``), and the start token
 carries the arm to the relay, which reads no flags. The relay records the
 call on the person's onboarding row once the call starts, and its record in
@@ -74,7 +78,10 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
 )
-from backend.api.features.onboarding_dump.rate_limit import enforce_voice_call_budget
+from backend.api.features.onboarding_dump.rate_limit import (
+    enforce_voice_call_budget,
+    enforce_voice_start_budget,
+)
 from backend.api.features.onboarding_dump.voice_handoff import (
     HANDOFF_CLAIM_TTL_S,
     HandOffClaim,
@@ -157,17 +164,21 @@ async def _start_voice_call(user_id: str) -> VoiceCallStartResponse:
     for refusal in refusals:
         if refusal is not None:
             raise refusal
+    # Counted only for a start that is going ahead: each opens a room.
+    await _timed("starts", enforce_voice_start_budget(user_id))
     redis = await _bounded(get_redis_async())
     call_id = tokens.new_call_id()
     # The arm is read only for a start that is going ahead, since reading it
     # enrols the person. The room is registered before its token is minted,
-    # so every room a token can open is closed in the end.
-    arm, _ = await asyncio.gather(
+    # so every room a token can open is closed in the end, and this start
+    # replaces the person's earlier one whose call never began.
+    arm, *_ = await asyncio.gather(
         _timed("arm", assigned_ending(user_id, "voice")),
         _timed(
             "register",
             _bounded(locks.register_room(redis, call_id, user_id, time.time())),
         ),
+        _timed("replace", _bounded(locks.replace_start(redis, user_id, call_id))),
     )
     ending = _voice_arm(arm)
     return VoiceCallStartResponse(
@@ -394,8 +405,10 @@ async def _call_to_answer(
     seen = {record.call_id}
     reached = None if record.never_went_live else record
     while (
-        record.never_went_live or call_words(record) == "no_words"
-    ) and record.prev not in (None, *seen):
+        (record.never_went_live or call_words(record) == "no_words")
+        and record.prev not in (None, *seen)
+        and len(seen) < locks.CALL_CHAIN_HOPS
+    ):
         earlier = await _bounded(locks.read_call(redis, record.prev or ""))
         if earlier is None or earlier.uid != user_id:
             break
@@ -509,9 +522,10 @@ async def end_call(user_id: str, call_id: str) -> None:
         theirs = abandoned
     if not theirs:
         raise HTTPException(status_code=404, detail=NO_SUCH_CALL)
-    await _bounded(locks.request_end(redis, call_id))
+    first_ask = await _bounded(locks.request_end(redis, call_id))
     if abandoned:
-        ABANDONED_STARTS.inc()
+        if first_ask:
+            ABANDONED_STARTS.inc()
         return
     if not await _bounded(locks.call_is_live(redis, call_id, time.time())):
         await _bounded(locks.release_user_lock(redis, user_id, call_id))

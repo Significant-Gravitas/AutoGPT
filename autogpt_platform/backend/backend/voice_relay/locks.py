@@ -70,6 +70,7 @@ from backend.voice_relay.config import (
     END_REQUEST_TTL_S,
     LIVE_CALL_STALE_S,
     POSTCALL_CLAIM_TTL_S,
+    ROOM_START_GRACE_S,
     ROOM_SWEEP_HEARTBEAT_S,
     USER_LOCK_TTL_S,
 )
@@ -120,6 +121,12 @@ RUNNING: tuple[CallStatus, ...] = (CONNECTING, LIVE)
 # first keeps it (:func:`claim_interview`).
 INTERVIEW_TAKEN: VoiceCallInterview = "taken"
 INTERVIEW_SUPERSEDED: VoiceCallInterview = "superseded"
+
+# The most records a walk back along a person's calls (each record's
+# ``prev``) reads. The person's start budget keeps a real chain far shorter
+# within a record's lifetime; a walk that reaches it stops there, as at a
+# record that expired.
+CALL_CHAIN_HOPS = 64
 
 
 def user_lock_key(user_id: str) -> str:
@@ -643,9 +650,36 @@ async def live_call_count(redis: AsyncRedisClient, now: float) -> int:
     )
 
 
-async def request_end(redis: AsyncRedisClient, call_id: str) -> None:
-    """Ask the pod that owns *call_id* to end it."""
-    await redis.set(end_flag_key(call_id), "1", ex=END_REQUEST_TTL_S)
+async def request_end(redis: AsyncRedisClient, call_id: str) -> bool:
+    """Ask the pod that owns *call_id* to end it. True when nobody had asked
+    already."""
+    asked = await redis.set(end_flag_key(call_id), "1", ex=END_REQUEST_TTL_S, get=True)
+    return asked is None
+
+
+def latest_start_key(user_id: str) -> str:
+    return f"voice:start:{user_id}"
+
+
+async def replace_start(
+    redis: AsyncRedisClient, user_id: str, call_id: str
+) -> str | None:
+    """Make *call_id* the person's latest start, and ask for the end of the
+    start it replaces when that one's call never began (it has no record):
+    one start at a time, so a start the person moved on from has its room
+    closed at the next sweep, not at the end of its grace. Returns the start
+    ended, or None."""
+    replaced = as_str(
+        await redis.set(
+            latest_start_key(user_id), call_id, ex=int(ROOM_START_GRACE_S), get=True
+        )
+    )
+    if not replaced or replaced == call_id:
+        return None
+    if await redis.exists(call_record_key(replaced)):
+        return None
+    await request_end(redis, replaced)
+    return replaced
 
 
 async def end_requested(redis: AsyncRedisClient, call_id: str) -> bool:

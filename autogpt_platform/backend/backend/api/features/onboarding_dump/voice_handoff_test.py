@@ -2414,6 +2414,43 @@ async def test_finishing_an_earlier_call_waits_while_a_later_one_is_unsettled(
     assert await rig.redis.get(locks.postcall_claim_key(earlier)) is None
 
 
+@pytest.mark.parametrize(
+    "walk",
+    ["reload", "take_before", "standing", "back_to_a_take", "superseded_from"],
+)
+async def test_a_walk_back_along_the_persons_calls_reads_no_further_than_the_hop_cap(
+    rig: Rig, monkeypatch, walk: str
+):
+    monkeypatch.setattr(locks, "CALL_CHAIN_HOPS", 4)
+    first = await rig.call()
+    latest = first
+    for _ in range(10):
+        latest = await rig.call(None)
+        await rig.no_words(latest, quality.NO_USABLE_SPEECH)
+    read_call = locks.read_call
+    reads: list[str] = []
+
+    async def counted(redis, call_id: str):
+        reads.append(call_id)
+        return await read_call(redis, call_id)
+
+    monkeypatch.setattr(locks, "read_call", counted)
+    if walk == "reload":
+        await voice.latest_call(USER)
+    elif walk == "take_before":
+        record = await read_call(rig.redis, latest)
+        assert record is not None
+        assert await voice_handoff.settle_the_take_before(rig.redis, record) is None
+    elif walk == "standing":
+        assert await interview._call_standing(USER, first) == "clear"
+    elif walk == "back_to_a_take":
+        assert len(await interview._calls_back_to_a_take(rig.redis, USER)) == 4
+    else:
+        assert not await interview._superseded_from(rig.redis, USER, first)
+
+    assert len(reads) <= 4 + 1
+
+
 async def test_a_reload_looks_past_a_no_words_call_to_the_one_before(rig: Rig):
     earlier = await rig.call(ending=InterviewEnding.PROFILE_CARD.value)
     later = await rig.call(None)

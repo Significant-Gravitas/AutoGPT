@@ -591,6 +591,22 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "day turns.",
     )
 
+    voice_interview_hourly_starts: int = Field(
+        default=10,
+        ge=1,
+        description="Onboarding voice call starts one person may make in an "
+        "hour, counted at the start route whether or not the call goes live; "
+        "past it the route answers 429 with Retry-After. Keep it above twice "
+        "the hourly call allowance, as a call can take two starts.",
+    )
+
+    voice_interview_daily_starts: int = Field(
+        default=30,
+        ge=1,
+        description="Onboarding voice call starts one person may make in a "
+        "UTC day, counted as the hourly ones are.",
+    )
+
     voice_interview_model: str = Field(
         default="gemini-3.8-live",
         description="The Gemini Live model the onboarding voice interview runs "

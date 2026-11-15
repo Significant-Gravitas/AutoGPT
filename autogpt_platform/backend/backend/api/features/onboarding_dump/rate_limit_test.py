@@ -270,6 +270,20 @@ async def voice_counters(admission, mocker):
     await redis.aclose()
 
 
+class _MidHour(datetime):
+    """The rate limiter's clock, held halfway through an hour, so counts made
+    one after another all land in the same windows."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2026, 11, 9, 12, 30, tzinfo=tz or UTC)
+
+
+@pytest.fixture
+def mid_hour(mocker):
+    mocker.patch.object(rate_limit, "datetime", _MidHour)
+
+
 @pytest.mark.asyncio
 async def test_reading_the_voice_call_allowance_counts_no_call(voice_counters):
     for _ in range(rate_limit.VOICE_HOURLY_CALLS + 1):
@@ -280,7 +294,7 @@ async def test_reading_the_voice_call_allowance_counts_no_call(voice_counters):
 
 @pytest.mark.asyncio
 async def test_calls_the_relay_counts_spend_the_allowance_the_start_reads(
-    voice_counters,
+    voice_counters, mid_hour
 ):
     for _ in range(rate_limit.VOICE_HOURLY_CALLS):
         await rate_limit.count_voice_call(voice_counters, "user-1")
@@ -292,6 +306,33 @@ async def test_calls_the_relay_counts_spend_the_allowance_the_start_reads(
     assert 0 < int(caught.value.headers["Retry-After"]) <= 3600
     # Another person's allowance is their own.
     await rate_limit.enforce_voice_call_budget("user-2")
+
+
+@pytest.mark.asyncio
+async def test_starts_count_on_their_own_budget_and_one_past_it_waits(
+    voice_counters, mid_hour, mocker
+):
+    mocker.patch.object(rate_limit.settings.config, "voice_interview_hourly_starts", 3)
+    for _ in range(3):
+        await rate_limit.enforce_voice_start_budget("user-1")
+
+    with pytest.raises(HTTPException) as caught:
+        await rate_limit.enforce_voice_start_budget("user-1")
+
+    assert caught.value.status_code == 429
+    assert int(caught.value.headers["Retry-After"]) == 1800
+    # The call allowance is the relay's to count, at ready.
+    assert await voice_counters.keys("onboarding:voice_interview:*") == []
+    assert len(await voice_counters.keys("onboarding:voice_start:*")) == 2
+    # Another person's starts are their own.
+    await rate_limit.enforce_voice_start_budget("user-2")
+
+
+def test_the_start_budget_fits_two_starts_for_every_call_the_allowance_lets_through():
+    """A click can take two starts: one the relay waits out, then a fresh one."""
+    config = rate_limit.settings.config
+    assert config.voice_interview_hourly_starts >= 2 * rate_limit.VOICE_HOURLY_CALLS
+    assert config.voice_interview_daily_starts >= 2 * rate_limit.VOICE_DAILY_CALLS
 
 
 @pytest.mark.asyncio

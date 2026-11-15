@@ -181,6 +181,18 @@ When you tell the Platform about yourself during onboarding, by voice or typing,
 - **What you see:** `429`, with "You have made several personalization attempts. Your progress is saved; please try again later." and a `Retry-After` header.
 - Not configurable, and off on a self-hosted install.
 
+### Interview with Otto
+
+When onboarding offers an interview with Otto, typed or as a voice call, the interview has limits of its own, separate from your plan's chat allowance. On AutoGPT Cloud they apply to every account, whatever its plan, and they are off on a self-hosted install.
+
+- **Typed messages:** 20 an hour and 32 a day, counting Otto's greeting and each message that starts a reply. Over the limit you see `429`, with "You have sent a lot of messages in a short time. Your progress is saved; please try again later." and a `Retry-After` header.
+- **Calls:** 2 an hour and 3 a day. A call counts once it connects, so a call that never got that far doesn't count. Not configurable.
+- **Starting calls:** 10 starts an hour and 30 a day, counted at each start, whether or not the call connects. Configurable with `VOICE_INTERVIEW_HOURLY_STARTS` and `VOICE_INTERVIEW_DAILY_STARTS`. A new start ends your earlier one if its call never began.
+- **What you see over a call limit:** `429`, with "You have started several voice calls. Your progress is saved; you can type instead, or call again later." and a `Retry-After` header. The app says when you can call again.
+- **Counted per:** account. The hour starts on the clock hour, and the day at 00:00 UTC.
+
+Across all accounts, the Platform also limits live calls at once (`VOICE_INTERVIEW_MAX_CONCURRENT`, 25 by default) and what calls may cost in a day (`VOICE_INTERVIEW_DAILY_BUDGET_USD`, $25 by default). Past either, a call is refused with `503` and a `Retry-After` header: "All voice lines are busy. Please try again shortly." or "Voice calls are paused until tomorrow. You can type instead." These apply on a self-hosted install too.
+
 ## Connecting integrations
 
 ### Sign-in with a code

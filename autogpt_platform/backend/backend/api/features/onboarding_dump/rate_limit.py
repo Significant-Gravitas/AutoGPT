@@ -36,7 +36,8 @@ INTERVIEW_DAILY_TURNS = 2 * INTERVIEW_TURN_CAP
 # Onboarding voice calls a person may make: a call and a retry in an hour,
 # three in a day. The relay caps each call, so these bound how many calls,
 # not how long any one runs. A call counts once the relay has it ready,
-# before the model is sent anything; the start route only reads the count.
+# before the model is sent anything; the start route only reads this count,
+# and counts the start itself on the start budget (``_voice_start_budget``).
 VOICE_HOURLY_CALLS = 2
 VOICE_DAILY_CALLS = 3
 
@@ -140,6 +141,32 @@ async def enforce_interview_turn_budget(user_id: str) -> None:
     that cannot be read is a 503 rather than a turn nobody counted.
     """
     await _enforce(user_id, _INTERVIEW)
+
+
+def _voice_start_budget() -> _Budget:
+    """A person's starts of an onboarding voice call, counted apart from
+    their calls: each start opens a room and a token for it, whether or not
+    its call ever goes live (``VOICE_INTERVIEW_HOURLY_STARTS``,
+    ``VOICE_INTERVIEW_DAILY_STARTS``)."""
+    return _Budget(
+        scope="voice_start",
+        hourly=settings.config.voice_interview_hourly_starts,
+        daily=settings.config.voice_interview_daily_starts,
+        route=_VOICE_INTERVIEW.route,
+        unavailable=_VOICE_INTERVIEW.unavailable,
+        exhausted=_VOICE_INTERVIEW.exhausted,
+        all_tiers=True,
+    )
+
+
+async def enforce_voice_start_budget(user_id: str) -> None:
+    """Count one start of an onboarding voice call against the person's
+    start budget, on every tier where the platform takes payment: one past
+    it is a 429 with Retry-After, and a budget that cannot be read is a 503.
+    Counted when the start goes ahead, so a start refused for another reason
+    costs nothing; the call itself counts against the call allowance once the
+    relay has it ready (:func:`count_voice_call`)."""
+    await _enforce(user_id, _voice_start_budget())
 
 
 async def enforce_voice_call_budget(user_id: str) -> None:
