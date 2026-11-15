@@ -141,8 +141,7 @@ export function SubscriptionTierSection() {
       {needsSubscription && (
         <div
           role="status"
-          // oxlint-disable-next-line design-system/no-raw-colors -- violet-900 #4C1D95 has no role (accent-strong is lighter); violet-300 #C4B5FD likewise; deferred
-          className="rounded-md border border-violet-300 bg-accent-surface px-4 py-3 text-violet-900"
+          className="rounded-md border border-brand/40 bg-accent-surface px-4 py-3 text-accent-strong"
         >
           <Text variant="body-medium-tight" as="p" tone="inherit">
             Pick a plan to continue using AutoGPT.

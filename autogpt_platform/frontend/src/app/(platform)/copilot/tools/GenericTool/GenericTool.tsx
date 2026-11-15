@@ -643,10 +643,10 @@ function getTodoAccordionData(input: unknown): AccordionData {
             <span
               className={
                 todo.status === "completed"
-                  ? "text-muted-foreground line-through"
+                  ? "text-foreground-tertiary line-through"
                   : todo.status === "in_progress"
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
+                    ? "font-medium text-foreground-base"
+                    : "text-foreground-tertiary"
               }
             >
               {todo.content}
@@ -800,7 +800,7 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden text-caption text-foreground-tertiary">
         <ToolIcon
           category={category}
           isStreaming={isStreaming}

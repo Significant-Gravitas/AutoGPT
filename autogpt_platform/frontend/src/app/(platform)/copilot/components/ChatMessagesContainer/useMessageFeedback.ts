@@ -4,7 +4,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
-import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+import { getRatedMessageId } from "./helpers";
 
 type Rating = "upvote" | "downvote";
 
@@ -23,14 +23,7 @@ export function useMessageFeedback({
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const { mutateAsync: submitFeedback } = usePostV2SubmitMessageFeedback();
 
-  // Only a saved reply can be rated. A reply that just streamed is keyed by
-  // the stream until the chat swaps in its saved id or learns it.
-  const ratedMessageId =
-    savedMessageId !== undefined
-      ? savedMessageId
-      : extractDbSequence(message) !== null
-        ? message.id
-        : null;
+  const ratedMessageId = getRatedMessageId(message, savedMessageId);
   const canRate = sessionID !== null && ratedMessageId !== null;
 
   async function sendScore(score: Omit<MessageFeedbackRequest, "message_id">) {

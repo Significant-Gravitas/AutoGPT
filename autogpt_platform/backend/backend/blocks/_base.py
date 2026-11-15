@@ -291,8 +291,10 @@ class BlockSchema(BaseModel):
         )
 
     @classmethod
-    def get_mismatch_error(cls, data: BlockInput) -> str | None:
-        return cls.validate_data(data)
+    def get_mismatch_error(
+        cls, data: BlockInput, exclude_fields: set[str] | None = None
+    ) -> str | None:
+        return cls.validate_data(data, exclude_fields=exclude_fields)
 
     # JSON-schema keywords whose violations are NOT already prevented at the
     # widget level (number bounds and length bounds are bypassable by typing
@@ -599,6 +601,13 @@ DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS: int = 30 * 60
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     _optimized_description: ClassVar[str | None] = None
     execution_timeout_seconds: int | None = DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
+    # The block keeps what it creates in the vendor account behind its key, so
+    # it can't run on the platform's shared keys (a "Use Credits for X" system
+    # credential or an SDK ``<provider>-default``). Graph validation refuses
+    # those keys for it up front and the builder doesn't auto-select one; the
+    # block's own ``refuse_platform_credentials`` call in ``run`` is the
+    # backstop. See ``backend.blocks._platform_credentials``.
+    refuses_platform_credentials: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -801,11 +810,36 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             return "service"
         return "primitive"
 
+    def refuses_platform_credentials_for(self, input_data: BlockInput) -> bool:
+        """Whether a run with ``input_data`` refuses the platform's shared keys.
+
+        Override when only some inputs make the block keep or spend something
+        in the vendor account; inputs supplied by links at run time aren't in
+        ``input_data``, and ``run`` still refuses then.
+        """
+        return self.refuses_platform_credentials
+
+    def _input_jsonschema(self) -> dict[str, Any]:
+        """The input schema, with ``refuses_platform_credentials`` set on each
+        credentials field of a block that refuses the platform's shared keys,
+        so the frontend doesn't auto-select one for it."""
+        schema = self.input_schema.jsonschema()
+        if not self.refuses_platform_credentials:
+            return schema
+        properties = dict(schema.get("properties", {}))
+        for name in self.input_schema.get_credentials_fields():
+            if name in properties:
+                properties[name] = {
+                    **properties[name],
+                    "refuses_platform_credentials": True,
+                }
+        return {**schema, "properties": properties}
+
     def to_dict(self):
         return {
             "id": self.id,
             "name": self.name,
-            "inputSchema": self.input_schema.jsonschema(),
+            "inputSchema": self._input_jsonschema(),
             "outputSchema": self.output_schema.jsonschema(),
             "description": self.description,
             "categories": [category.dict() for category in self.categories],
@@ -822,7 +856,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return BlockInfo(
             id=self.id,
             name=self.name,
-            inputSchema=self.input_schema.jsonschema(),
+            inputSchema=self._input_jsonschema(),
             outputSchema=self.output_schema.jsonschema(),
             costs=get_block_cost(self),
             description=self.description,

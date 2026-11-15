@@ -113,7 +113,7 @@ export function MessageAttachments({
             className={`inline-block rounded-lg border p-1.5 ${
               isUser
                 ? "border-brand/70 bg-accent-surface"
-                : "border-border-base bg-background"
+                : "border-border-base bg-canvas"
             }`}
           >
             {rendered}

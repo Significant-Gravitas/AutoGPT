@@ -18,8 +18,8 @@ const APPEARANCE: Record<
 > = {
   listening: { source: "mic", color: "bg-success" },
   hearing: { source: "mic", color: "bg-success" },
-  transcribing: { source: "pulse", color: "bg-accent" },
-  thinking: { source: "pulse", color: "bg-accent" },
+  transcribing: { source: "pulse", color: "bg-brand" },
+  thinking: { source: "pulse", color: "bg-brand" },
   speaking: { source: "speech", color: "bg-action-hover" },
 };
 

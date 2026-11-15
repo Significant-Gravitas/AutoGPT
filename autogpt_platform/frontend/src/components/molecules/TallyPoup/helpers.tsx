@@ -3,7 +3,7 @@ import { getPostHogReplayUrl } from "@/services/analytics/posthog-request-contex
 
 const TALLY_EMBED_URL = "https://tally.so/widgets/embed.js";
 export const FEEDBACK_TALLY_FORM_ID = "3yx2L0";
-const FEEDBACK_FORM_URL = `https://tally.so/r/${FEEDBACK_TALLY_FORM_ID}`;
+export const FEEDBACK_FORM_URL = `https://tally.so/r/${FEEDBACK_TALLY_FORM_ID}`;
 
 interface TallyPopupOptions {
   emoji?: { text: string; animation: string };

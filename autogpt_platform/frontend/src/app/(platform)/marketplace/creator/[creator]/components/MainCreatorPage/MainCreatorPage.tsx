@@ -75,10 +75,7 @@ export function MainCreatorPage({ params }: Props) {
           {/* Creator info - left side */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div
-                // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
-                className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-info/30 to-indigo-200 p-px"
-              >
+              <div className="max-w-[45rem] rounded-2xl bg-gradient-to-r from-info/30 to-indigo/30 p-px">
                 <div className="flex flex-col rounded-large bg-surface-muted p-4">
                   {/* Avatar */}
                   <Avatar className="mb-4 h-20 w-20 sm:h-24 sm:w-24">

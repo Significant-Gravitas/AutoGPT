@@ -584,7 +584,12 @@ describe("useChatMentions", () => {
       expect(result.current.onKeyDown(keyEvent("Enter"))).toBe(true);
     });
     const request = result.current.connectRequest!;
-    expect(request).toEqual({ query: "linear", start: 4, end: 11 });
+    expect(request).toEqual({
+      trigger: "@",
+      query: "linear",
+      start: 4,
+      end: 11,
+    });
     expect(result.current.isOpen).toBe(false);
     expect(setValue).not.toHaveBeenCalled();
 
@@ -868,6 +873,7 @@ describe("useChatMentions", () => {
       });
 
       expect(result.current.connectRequest).toEqual({
+        trigger: "@",
         query: "goo",
         start: 3,
         end: 7,

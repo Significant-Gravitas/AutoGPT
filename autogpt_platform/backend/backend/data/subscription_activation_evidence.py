@@ -22,6 +22,10 @@ class ExpandedInvoiceId(BaseModel):
 
 INVOICE_REFERENCE = TypeAdapter(InvoiceId | ExpandedInvoiceId)
 
+# Ending a trial early with trial_end="now" starts the paid period just after
+# trial_end (seen: one second). A renewal starts a billing period later.
+FIRST_PERIOD_START_TOLERANCE_SECONDS = 60
+
 
 def qualifying_invoice(
     invoice: dict,
@@ -55,10 +59,15 @@ def qualifying_invoice(
             and line.get("quantity") == 1
             and not line.get("proration", False)
             and period.get("end", 0) > period.get("start", 0)
-            and (trial_end is None or period.get("start") == trial_end)
+            and (trial_end is None or _starts_at_trial_end(period, trial_end))
         ):
             return True
     return False
+
+
+def _starts_at_trial_end(period: dict, trial_end: int) -> bool:
+    start = period.get("start", 0)
+    return trial_end <= start <= trial_end + FIRST_PERIOD_START_TOLERANCE_SECONDS
 
 
 def settled_recurring_invoice(invoice: dict) -> bool:

@@ -578,3 +578,45 @@ async def test_built_in_mode_stopped_mid_call_records_estimated_input() -> None:
 
     assert block.execution_stats.abandoned_input_token_count > 100
     assert block.execution_stats.input_token_count == 0
+
+
+# ---------------------------------------------------------------------------
+# prompt_values keys with whitespace still fill their variables
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_value_key_with_whitespace_fills_its_variable():
+    block = OrchestratorBlock()
+    input_data = _make_input_data(model=LLMModel.GPT4O)
+    input_data.prompt = "Greet {{name}}"
+    input_data.sys_prompt = "You talk to {{name}}."
+    input_data.prompt_values = {"name ": "Ada"}
+
+    # The extended-thinking provider check fails right after the prompt is
+    # filled in, so the run stops before any model call.
+    with (
+        patch.object(
+            block,
+            "_create_tool_node_signatures",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        pytest.raises(ValueError, match="Anthropic-compatible"),
+    ):
+        await _collect_run_outputs(
+            block,
+            input_data,
+            credentials=MagicMock(),
+            graph_id="g",
+            node_id="n",
+            graph_exec_id="ge",
+            node_exec_id="ne",
+            user_id="u",
+            graph_version=1,
+            execution_context=MagicMock(),
+            execution_processor=MagicMock(),
+        )
+
+    assert input_data.prompt == "Greet Ada"
+    assert input_data.sys_prompt == "You talk to Ada."

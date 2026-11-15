@@ -23,17 +23,19 @@ export function useWizardProgress({
   userID,
   ready,
   steps,
+  hasPaywall = true,
 }: {
   userID: string | null;
   ready: boolean;
   steps: StepLayout;
+  hasPaywall?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const currentUserID = useRef(userID);
   currentUserID.current = userID;
-  const latest = useRef({ steps, params, router });
-  latest.current = { steps, params, router };
+  const latest = useRef({ steps, params, router, hasPaywall });
+  latest.current = { steps, params, router, hasPaywall };
   const layout = JSON.stringify(steps);
   const reloadLatest = useRef(false);
   const accountChanged = useRef(false);
@@ -157,6 +159,7 @@ export function useWizardProgress({
         progress,
         steps,
         requestedStep: params.get("step"),
+        hasPaywall: latest.current.hasPaywall,
       });
       const { currentStep: savedStep, version, ...fields } = progress ?? {};
       void savedStep;

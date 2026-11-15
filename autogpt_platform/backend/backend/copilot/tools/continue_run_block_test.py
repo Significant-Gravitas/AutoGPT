@@ -5,6 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
+from backend.blocks._base import BlockType
+from backend.copilot.context import _current_permissions
+from backend.copilot.permissions import CopilotPermissions
+from backend.integrations.providers import ProviderName
+
 from ._test_data import make_session
 from .continue_run_block import ContinueRunBlockTool
 from .models import BlockOutputResponse, ErrorResponse
@@ -132,6 +137,7 @@ class TestContinueRunBlock:
 
         mock_block = MagicMock()
         mock_block.name = "Delete Branch"
+        mock_block.disabled = False
 
         async def mock_execute(data, **kwargs):
             yield "result", "Branch deleted"
@@ -185,6 +191,140 @@ class TestContinueRunBlock:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_approved_review_of_a_since_disabled_block_does_not_run():
+    """An approval outlives the turn that asked for it, so a block switched off
+    in between must still be refused when the approval is used, and the
+    approval used up so it cannot run the block once it is re-enabled."""
+    tool = ContinueRunBlockTool()
+    session = make_session(user_id=_TEST_USER_ID)
+    review_id = "copilot-node-some-block:abc12345"
+    review = _make_review_model(review_id, session_id=session.session_id)
+    mock_db = MagicMock()
+    mock_db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    mock_db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+    block = MagicMock()
+    block.name = "Some Block"
+    block.disabled = True
+
+    with (
+        patch(
+            "backend.copilot.tools.continue_run_block.review_db",
+            return_value=mock_db,
+        ),
+        patch("backend.copilot.tools.continue_run_block.get_block", return_value=block),
+        patch(
+            "backend.copilot.tools.continue_run_block.execute_block",
+            new_callable=AsyncMock,
+        ) as execute,
+    ):
+        response = await tool._execute(
+            user_id=_TEST_USER_ID, session=session, review_id=review_id
+        )
+
+    assert isinstance(response, ErrorResponse)
+    assert "disabled" in response.message
+    execute.assert_not_awaited()
+    mock_db.delete_review_by_node_exec_id.assert_awaited_once_with(
+        review_id, _TEST_USER_ID
+    )
+
+
+_BLOCK_ID = "11111111-2222-3333-4444-555555555555"
+
+
+async def _resume_in_a_turn_with(permissions: CopilotPermissions | None, block):
+    """Resume an approved review of *block* in a turn governed by *permissions*."""
+    tool = ContinueRunBlockTool()
+    session = make_session(user_id=_TEST_USER_ID)
+    review_id = f"copilot-node-{_BLOCK_ID}:abc12345"
+    review = _make_review_model(review_id, session_id=session.session_id)
+    mock_db = MagicMock()
+    mock_db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
+    mock_db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+    token = _current_permissions.set(permissions)
+    try:
+        with (
+            patch(
+                "backend.copilot.tools.continue_run_block.review_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.tools.continue_run_block.get_block",
+                return_value=block,
+            ),
+            patch(
+                "backend.copilot.tools.continue_run_block.resolve_block_credentials",
+                new_callable=AsyncMock,
+                return_value=({}, []),
+            ) as resolve,
+            patch(
+                "backend.copilot.tools.continue_run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as execute,
+        ):
+            response = await tool._execute(
+                user_id=_TEST_USER_ID, session=session, review_id=review_id
+            )
+    finally:
+        _current_permissions.reset(token)
+    return response, resolve, execute, mock_db
+
+
+def _block(name: str, block_type: BlockType = BlockType.STANDARD) -> MagicMock:
+    block = MagicMock()
+    block.name = name
+    block.disabled = False
+    block.block_type = block_type
+    return block
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_turn_that_does_not_permit_the_block_does_not_run_its_approval():
+    """An approval from an earlier turn is no exemption from this turn's
+    permissions. The approval stays, for a turn that permits the block."""
+    response, resolve, execute, db = await _resume_in_a_turn_with(
+        CopilotPermissions(blocks=[_BLOCK_ID], blocks_exclude=True),
+        _block("HTTP Request"),
+    )
+
+    assert isinstance(response, ErrorResponse)
+    assert "not permitted" in response.message
+    resolve.assert_not_awaited()
+    execute.assert_not_awaited()
+    db.delete_review_by_node_exec_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_turn_whose_provider_ceiling_excludes_the_block_does_not_run_it():
+    block = _block("Create PR")
+    block.input_schema.get_credentials_fields_info.return_value = {
+        "credentials": MagicMock(provider=frozenset({ProviderName.GITHUB}))
+    }
+
+    response, resolve, execute, db = await _resume_in_a_turn_with(
+        CopilotPermissions(providers=["github"], providers_exclude=True), block
+    )
+
+    assert isinstance(response, ErrorResponse)
+    assert "GitHub account" in response.message
+    resolve.assert_not_awaited()
+    execute.assert_not_awaited()
+    db.delete_review_by_node_exec_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_block_that_cannot_be_run_directly_does_not_run_from_an_approval():
+    response, resolve, execute, _ = await _resume_in_a_turn_with(
+        None, _block("Run Workflow", BlockType.AGENT)
+    )
+
+    assert isinstance(response, ErrorResponse)
+    assert "cannot be run directly" in response.message
+    resolve.assert_not_awaited()
+    execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_continuation_resolves_credentials_under_the_experts_grants():
     """The approved continuation re-resolves credentials, so it must be held
     to the expert's grants like the original run_block call."""
@@ -196,6 +336,7 @@ async def test_continuation_resolves_credentials_under_the_experts_grants():
     mock_db.get_reviews_by_node_exec_ids = AsyncMock(return_value={review_id: review})
     block = MagicMock()
     block.name = "Some Block"
+    block.disabled = False
 
     with (
         patch(

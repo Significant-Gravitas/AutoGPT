@@ -42,7 +42,7 @@ export function SuccessView({
           <Icon icon={CheckmarkCircle02Icon} size={40} />
         </div>
 
-        <div className="w-full rounded-xl bg-muted px-6 py-5 text-center">
+        <div className="w-full rounded-xl bg-surface-hover px-6 py-5 text-center">
           <Text variant="body-medium" tone="muted">
             <strong>{label}</strong> is now connected to your AutoGPT account.
             <br />

@@ -11,7 +11,7 @@ from autogpt_libs.auth.models import RequestContext
 
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.integrations.providers import ProviderName
-from backend.util.models import Pagination
+from backend.util.models import MAX_PAGE, Pagination
 
 from . import db as builder_db
 from . import model as builder_model
@@ -95,7 +95,7 @@ async def get_blocks(
     category: Annotated[str | None, fastapi.Query()] = None,
     type: Annotated[builder_model.BlockTypeFilter | None, fastapi.Query()] = None,
     provider: Annotated[ProviderName | None, fastapi.Query()] = None,
-    page: Annotated[int, fastapi.Query(ge=1)] = 1,
+    page: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE)] = 1,
     page_size: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> builder_model.BlockResponse:
     """
@@ -135,7 +135,7 @@ async def get_specific_blocks(
     response_model=builder_model.ProviderResponse,
 )
 async def get_providers(
-    page: Annotated[int, fastapi.Query(ge=1)] = 1,
+    page: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE)] = 1,
     page_size: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> builder_model.ProviderResponse:
     """
@@ -161,7 +161,7 @@ async def search(
     filter: Annotated[str | None, fastapi.Query()] = None,
     search_id: Annotated[str | None, fastapi.Query()] = None,
     by_creator: Annotated[list[str] | None, fastapi.Query()] = None,
-    page: Annotated[int, fastapi.Query(ge=1)] = 1,
+    page: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE)] = 1,
     page_size: Annotated[int, fastapi.Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
 ) -> builder_model.SearchResponse:
     """

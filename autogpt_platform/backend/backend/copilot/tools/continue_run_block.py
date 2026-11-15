@@ -12,7 +12,7 @@ from backend.copilot.tool_display import emit_tool_display_name
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
-from .helpers import execute_block, resolve_block_credentials
+from .helpers import block_run_refusal, execute_block, resolve_block_credentials
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -111,6 +111,10 @@ class ContinueRunBlockTool(BaseTool):
             return ErrorResponse(
                 message=f"Block '{block_id}' not found", session_id=session_id
             ).from_outside()
+        if block.disabled:
+            return await refuse_disabled_block(block_id, review_id, user_id, session_id)
+        if refusal := block_run_refusal(block, block_id, session_id):
+            return refusal
 
         emit_tool_display_name(block.name)
 
@@ -186,3 +190,15 @@ async def run_claimed(
     else:
         await review_db().delete_review_by_node_exec_id(review_id, user_id)
     return result
+
+
+async def refuse_disabled_block(
+    block_id: str, review_id: str, user_id: str, session_id: str
+) -> ErrorResponse:
+    """Refuse an approved review whose block has since been disabled, and use
+    the approval up: it outlives the turn that asked for it, and must not run
+    the block once the block is enabled again."""
+    await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    return ErrorResponse(
+        message=f"Block '{block_id}' is disabled", session_id=session_id
+    ).from_outside()

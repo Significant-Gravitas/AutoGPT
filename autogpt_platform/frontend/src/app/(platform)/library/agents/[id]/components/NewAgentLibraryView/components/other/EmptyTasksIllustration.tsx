@@ -1,4 +1,3 @@
-/* oxlint-disable design-system/no-raw-colors -- illustration artwork: a fixed palette, not UI colour */
 type Props = {
   className?: string;
 };

@@ -100,7 +100,7 @@ export function APIKeysSection() {
                           onClick={() => handleRevokeKey(key.id)}
                           disabled={isDeleting}
                         >
-                          <span className="text-destructive">Revoke</span>
+                          <span className="text-error">Revoke</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

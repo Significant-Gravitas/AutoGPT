@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, LiteralString
 from uuid import uuid4
 
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import Organization
 
@@ -107,6 +108,7 @@ async def create_personal_org(
     slug_base: str,
     display_name: str,
     replaces_org_id: str | None = None,
+    check_first: Callable[[Prisma], Awaitable[None]] | None = None,
 ) -> Organization:
     """Create a personal Organization for *user_id* with all baseline records.
 
@@ -124,6 +126,9 @@ async def create_personal_org(
     commits, by the time the loser sees ``UniqueViolationError`` the winner's
     org *and* member (same tx) are already visible.
 
+    *check_first* runs as the transaction's first statement, so a refusal
+    leaves nothing written.
+
     *replaces_org_id* is the user's personal org being converted: it becomes a
     team org with a zero balance in this same transaction.
 
@@ -135,6 +140,8 @@ async def create_personal_org(
     slug = await _resolve_unique_slug(slug_base)
 
     async with transaction() as tx:
+        if check_first is not None:
+            await check_first(tx)
         if replaces_org_id is not None:
             # First: the old org holds the user's one-personal-org index slot.
             flipped = await tx.organization.update_many(

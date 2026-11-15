@@ -248,6 +248,8 @@ class TrialUpdateData(LifecycleData):
     kind: Literal[
         "started",
         "ending",
+        "expiring",
+        "last_call",
         "canceled",
         "resumed",
         "ended",

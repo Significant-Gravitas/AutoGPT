@@ -74,6 +74,28 @@ Use the base URL exactly as given, with `https` for AutoGPT Cloud, so no redirec
 An API key is a password to your account. Keep it on servers and in secret stores. Never put it in browser code, a mobile app, a public repository or a log line. If a key leaks, revoke it on the API keys page and create a new one.
 {% endhint %}
 
+## API-key validation limits on v1
+
+The deprecated `/external-api/v1` API limits failed and in-flight cryptographic
+key checks to 60 per client address and key prefix in a 60-second window.
+IPv6 addresses in the same `/64` share a budget; IPv4 addresses are counted
+individually. This applies to both `X-API-Key` and API keys sent as Bearer tokens.
+Successful authentication refunds its reservation; concurrent requests still
+occupy reservations until validation completes. A burst of valid requests can
+therefore receive `429` while earlier requests are still being verified.
+Callers sharing an address and key prefix share this budget; other prefixes
+have independent budgets. Excess attempts receive `429` with `Retry-After`.
+v2 has its own [pre-verification limits](api-conventions.md#rate-limits).
+
+For self-hosting, this limit applies automatically when Redis is available and
+the server has a valid client address. Set Uvicorn's `FORWARDED_ALLOW_IPS` to your
+own reverse proxies' addresses, never `*`, and restrict direct backend access.
+Bundled Nginx passes its connection's remote address to Uvicorn over loopback.
+If another proxy sits in front of Nginx, configure trusted client-address
+restoration there; otherwise its callers share a budget for each key prefix.
+Verify separate caller budgets and resistance to forged forwarding headers
+through the complete deployed chain.
+
 ## Check what a key can do
 
 `GET /me` needs the **Identity** permission and answers who the key acts as, in which organization and team, and with which permissions:
@@ -144,9 +166,9 @@ The app shows each permission in title case (**Run Agent**); the API and OAuth u
 | `READ_CREDITS` | Read the credit balance, transactions, invoices, subscription and cost summary. |
 | `USE_TOOLS` | MCP tools that act from platform infrastructure: web search (which counts against your AutoPilot usage allowance), web fetch and searching feature requests. |
 
-Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`. For the same reason, `RUN_AGENT` is needed as well as `WRITE_LIBRARY` by `PATCH /library/presets/{preset_id}` when it sets `is_active: true` or gives an active trigger new `inputs` or `credentials_inputs`, and by `POST /library/presets` for an active preset of an agent with a webhook trigger.
+Three endpoints need two permissions at once: `POST /schedules` needs `WRITE_SCHEDULE` and `RUN_AGENT`, `POST /library/presets/setup-trigger` needs `WRITE_LIBRARY` and `RUN_AGENT`, because a webhook trigger starts runs, and sharing a run needs `READ_RUN` and `SHARE_RUN`. For the same reason, `RUN_AGENT` is needed as well as `WRITE_LIBRARY` by `PATCH /library/presets/{preset_id}` when it sets `is_active: true` or gives an active trigger new `inputs`, `trigger_config` or `credentials_inputs`, and by `POST /library/presets` for an active preset of an agent with a webhook trigger.
 
-A webhook trigger's secret settings, such as a generic webhook's `secret_token`, are returned only by the request that creates the trigger. Later reads list them in `hidden_inputs` and leave them out of `inputs`; an update that leaves them out keeps them.
+A preset of a webhook trigger keeps the trigger's settings in `trigger_config`, apart from the agent's own `inputs`. Its secret settings, such as a generic webhook's `secret_token`, are returned only by the request that creates the trigger. Later reads list them in `hidden_inputs` and leave them out of `trigger_config`; an update whose `trigger_config` leaves them out keeps them.
 
 Activating a version, with `PUT /graphs/{graph_id}` or by setting the active version, moves the agent's webhook triggers onto it only if the credential also has `RUN_AGENT`: a trigger runs the version it is attached to, so moving it decides what its next event runs. Without `RUN_AGENT` the triggers keep running the version they were on.
 
@@ -159,6 +181,8 @@ These need a valid credential but no particular permission: browsing the public 
 Every request acts inside exactly one organization, and the key decides which: it keeps the organization it was created in for its whole life. There is no per-request organization parameter. A key created before organizations existed acts in your personal organization.
 
 What a request creates belongs to that organization, and its runs are billed to that organization's balance. It can only see and change that organization's agents, graphs, folders, runs and schedules: anything in another organization answers `404`, as if it did not exist, and search leaves it out. To work in several organizations, create one key in each.
+
+A key works only while you are an active member of its organization, and of its team if it is restricted to one. Being removed from an organization revokes the keys you created in it. Leaving a team, or being removed from it, revokes your keys restricted to that team, and deleting a team revokes every key restricted to it.
 
 Two kinds of data belong to you rather than to an organization, so every key you create reaches them, whatever organization it acts in:
 
@@ -194,10 +218,11 @@ OAuth access tokens act in your personal organization. There is no way yet to ch
 | Status and code | Message | Fix |
 | --- | --- | --- |
 | `401 unauthorized` | `Missing authentication. Provide API key or access token.` | Send the `X-API-Key` header. Check the header name and that your HTTP client isn't dropping it on a redirect. |
-| `401 unauthorized` | `Invalid API key` | The key is wrong, revoked, or from another instance: keys from AutoGPT Cloud don't work on a self-hosted instance, and the reverse. |
+| `401 unauthorized` | `Invalid API key` | The key is wrong, revoked (also when you leave its [organization or team](#organizations-and-teams)), or from another instance: keys from AutoGPT Cloud don't work on a self-hosted instance, and the reverse. |
 | `403 forbidden` | `Missing required permission(s): ...` | Keys can't be edited: create a key with the named permissions and delete the old one. |
 | `403 forbidden` | `These credentials belong to an organization you are not an active member of` | You left the organization the key was created in. Create a new key. |
 | `404 not_found` | `... not found` | The resource doesn't exist, or belongs to an organization or team this key can't see. |
+| `429` (v1) | `Too many API key authentication attempts. Try again shortly.` | Wait the number of seconds in `Retry-After` before retrying. See [v1 API-key validation limits](#api-key-validation-limits-on-v1). |
 
 ## OAuth access tokens
 

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.data.db_manager import DatabaseManagerAsyncClient
+from backend.util.feature_flag import Flag
 
 from . import registry, scope_crons
 from .registry_fakes_test import (
@@ -186,6 +187,7 @@ async def test_record_scope_run_gives_up_at_the_deadline(env, monkeypatch):
 async def test_forgetting_a_deleted_cron_lets_ensure_register_it_again(
     env, fake_dream_redis
 ):
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
     await registry.ensure_scope_scheduled(ACCOUNT)
 
     assert await scope_crons.forget_registration(
@@ -193,10 +195,10 @@ async def test_forgetting_a_deleted_cron_lets_ensure_register_it_again(
     )
 
     assert env.db.rows[USER].nightly_job_id is None
-    assert env.db.rows[USER].community_job_id == f"community_rebuild_{USER}"
+    assert env.db.rows[USER].learning_job_id == f"skill_learning_nightly_{USER}"
     assert f"dream_nightly_batch_registered:{USER}" not in fake_dream_redis.store
     again = await registry.ensure_scope_scheduled(ACCOUNT)
-    assert again["community_rebuild"] is None
+    assert again["skill_learning_nightly"] is None
     assert again["dream_nightly_batch"]["id"] == f"dream_nightly_batch_{USER}"
 
 

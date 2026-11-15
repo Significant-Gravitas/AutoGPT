@@ -57,7 +57,7 @@ export function SkillDialog({ slug, onClose }: Props) {
                 <button
                   type="button"
                   onClick={() => refetch()}
-                  className="font-medium text-accent underline-offset-2 transition-colors hover:underline"
+                  className="font-medium text-brand underline-offset-2 transition-colors hover:underline"
                 >
                   Retry
                 </button>

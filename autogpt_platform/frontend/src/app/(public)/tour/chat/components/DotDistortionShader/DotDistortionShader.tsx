@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { resolveCanvasColour } from "./helpers";
 
 interface DotDistortionShaderProps {
   className?: string;
@@ -39,8 +40,8 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
   className,
   dotGap = 16,
   dotSize = 1,
-  dotColor = "var(--color-sky-700)",
-  glowColor = "var(--color-sky-700)",
+  dotColor = "var(--color-foreground-base)",
+  glowColor = "var(--color-foreground-base)",
   mouseRadius = 100,
   distortionStrength = 1,
   breathingSpeed = 1,
@@ -109,15 +110,8 @@ export const DotDistortionShader: React.FC<DotDistortionShaderProps> = ({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const resolveColor = (color: string) => {
-      if (color.startsWith("var(")) {
-        const varName = color.match(/var\(([^)]+)\)/)?.[1];
-        if (varName) {
-          return getComputedStyle(container).getPropertyValue(varName).trim();
-        }
-      }
-      return color;
-    };
+    const resolveColor = (color: string) =>
+      resolveCanvasColour(color, container);
 
     let stopped = false;
     const dpr = Math.max(1, window.devicePixelRatio || 1);

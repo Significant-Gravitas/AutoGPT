@@ -37,6 +37,7 @@ export interface TurnSegment {
   /** Two drift events on one turn: the persisted view is shown instead. */
   frozen: boolean;
   reconciled: boolean;
+  recoveredError: LogRow | null;
   /** Fields that never stream, adopted at the reconcile. */
   durationMs: number | null;
   createdAt: string | null;
@@ -81,6 +82,7 @@ export function newTurnSegment(
     stopped: false,
     frozen: false,
     reconciled: false,
+    recoveredError: null,
     durationMs: null,
     createdAt: null,
     rowCreatedAt: {},
@@ -166,12 +168,17 @@ export function reconcileTurn(
 ): TurnSegment {
   const rows = seg.frozen
     ? [...persisted.rows]
-    : mergeRows(seg.log.rows, persisted.rows);
+    : mergeRows(
+        seg.log.rows.filter((row) => row.key !== seg.recoveredError?.key),
+        persisted.rows,
+      );
   const rowCreatedAt: Record<string, string> = {};
   rows.forEach((row, i) => {
     const at = createdAtOf(persisted.raw[i]);
     if (at) rowCreatedAt[row.key] = at;
   });
+  if (seg.recoveredError && (!rows.length || !isMarker(rows[rows.length - 1])))
+    rows.push(seg.recoveredError);
   const durations = persisted.raw
     .map((r) => (r as { duration_ms?: unknown }).duration_ms)
     .filter((d): d is number => typeof d === "number");
@@ -246,7 +253,10 @@ export function tailEndSequence(segments: readonly Segment[]) {
   if (last.kind === "rows")
     return last.rows[last.rows.length - 1]?.sequence ?? null;
   if (last.kind === "user") return last.sequence;
-  return last.log.rows[last.log.rows.length - 1]?.sequence ?? null;
+  const rows = last.log.rows.filter(
+    (row) => row.key !== last.recoveredError?.key,
+  );
+  return rows[rows.length - 1]?.sequence ?? null;
 }
 
 /** Rows equal to the ones on screen keep their object and key; others take the persisted content under the on-screen key. */

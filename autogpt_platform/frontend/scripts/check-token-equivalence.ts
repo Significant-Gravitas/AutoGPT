@@ -40,7 +40,10 @@ import {
   SIZE_TOKENS,
   TOKEN_GROUPS,
 } from "./codemod-tokens";
+import { buildAliasMap } from "./ds/alias-to-role";
 import { comparePngs } from "./screenshot-pages";
+
+const ALIASES = buildAliasMap();
 
 const localRequire = createRequire(join(process.cwd(), "package.json"));
 const postcss = localRequire("postcss");
@@ -51,9 +54,10 @@ interface Pair {
   newClass: string;
 }
 
-// shadcn names keep their names; only their variables moved from HSL to RGB.
-// Against a base checkout these prove the values did not move.
-const UNCHANGED_NAMES = [
+// The shadcn names, renamed to the role each aliased (scripts/ds/alias-to-role.ts).
+// Against a base checkout that still has the names, these prove the rename
+// moved no pixel.
+const ALIAS_CLASSES = [
   "bg-background",
   "text-foreground",
   "bg-card",
@@ -81,23 +85,23 @@ const UNCHANGED_NAMES = [
   "text-sidebar-accent-foreground",
   "border-sidebar-border",
   "ring-sidebar-ring",
-  "agpt-card",
-  "agpt-border-input",
 ];
+
+const UNCHANGED_NAMES = ["agpt-card", "agpt-border-input"];
 
 // The body background, and the colour every bordered element gets from
 // `* { @apply border-border }` without a colour class of its own.
 const SPECIAL_PAIRS: Pair[] = [
-  // sidebar.tsx's `outline` variant read the deleted HSL variables.
+  // The Sidebar's `outline` variant read the shadcn variables directly.
   {
     group: "Sidebar",
-    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-border))]",
-    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))]",
+    oldClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-border))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-border-base))]",
   },
   {
     group: "Sidebar",
-    oldClass: "shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
-    newClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
+    oldClass: "shadow-[0_0_0_1px_rgb(var(--color-sidebar-accent))]",
+    newClass: "shadow-[0_0_0_1px_rgb(var(--color-surface-hover))]",
   },
   { group: "Page", oldClass: "bg-[#F6F7F8]", newClass: "bg-canvas" },
   { group: "Page", oldClass: "border", newClass: "border" },
@@ -108,13 +112,18 @@ const SPECIAL_PAIRS: Pair[] = [
     oldClass: "bg-violet-50/50",
     newClass: "bg-accent-surface/50",
   },
-  { group: "Opacity", oldClass: "bg-accent/5", newClass: "bg-accent/5" },
-  { group: "Opacity", oldClass: "bg-muted/50", newClass: "bg-muted/50" },
+  { group: "Opacity", oldClass: "bg-accent/5", newClass: "bg-brand/5" },
+  {
+    group: "Opacity",
+    oldClass: "bg-muted/50",
+    newClass: "bg-surface-hover/50",
+  },
   {
     group: "Opacity",
     oldClass: "text-muted-foreground/70",
-    newClass: "text-muted-foreground/70",
+    newClass: "text-foreground-tertiary/70",
   },
+  { group: "Opacity", oldClass: "bg-black/80", newClass: "bg-scrim/80" },
 ];
 
 function allPairs(): Pair[] {
@@ -129,8 +138,13 @@ function allPairs(): Pair[] {
   );
   return [
     ...oneForOne,
-    ...UNCHANGED_NAMES.map((name) => ({
+    ...ALIAS_CLASSES.map((oldClass) => ({
       group: "shadcn names",
+      oldClass,
+      newClass: ALIASES.get(oldClass) ?? oldClass,
+    })),
+    ...UNCHANGED_NAMES.map((name) => ({
+      group: "Design components",
       oldClass: name,
       newClass: name,
     })),

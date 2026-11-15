@@ -4,12 +4,13 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from functools import wraps
 from uuid import uuid4
 
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     retry_if_not_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
@@ -151,7 +152,7 @@ def create_retry_decorator(
     max_wait: float = 30.0,
     context: str = "",
     reraise: bool = True,
-    retry_anyway: tuple[type[BaseException], ...] = (),
+    retry_if: Callable[[BaseException], bool] | None = None,
     also_stop: stop_base | None = None,
 ):
     """
@@ -165,7 +166,7 @@ def create_retry_decorator(
         max_wait: Maximum wait time in seconds (default: 30)
         context: Optional context string for log messages
         reraise: Whether to reraise the final exception (default: True)
-        retry_anyway: Subclasses of excluded exception types to retry after all
+        retry_if: Retries only an exception this accepts, in place of exclude_exceptions
         also_stop: Another stop condition, ending the retries when either does
 
     Returns:
@@ -179,8 +180,8 @@ def create_retry_decorator(
     retry_on: retry_base | None = (
         retry_if_not_exception_type(exclude_exceptions) if exclude_exceptions else None
     )
-    if retry_on is not None and retry_anyway:
-        retry_on = retry_on | retry_if_exception_type(retry_anyway)
+    if retry_if is not None:
+        retry_on = retry_if_exception(retry_if)
 
     def decorator(func):
         # Pick the interruptible sleep matching the wrapped function so a

@@ -9,8 +9,7 @@ interface Props {
 export function DreamEntityInvalidationRow({ item }: Props) {
   const touched = item.edges_touched ?? [];
   return (
-    // oxlint-disable-next-line design-system/no-raw-colors -- rose has no role; error would change the hue (deferred)
-    <li className="border-l-2 border-rose-200 py-1.5 pl-3">
+    <li className="border-l-2 border-error/20 py-1.5 pl-3">
       <Text variant="small-medium" className="break-words">
         {item.reason}
       </Text>

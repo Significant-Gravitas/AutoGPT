@@ -74,8 +74,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
       ) : files.files.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-            <span key="image" className="inline-flex text-sky-500">
+            <span key="image" className="inline-flex text-sky">
               <Icon icon={Image01Icon} size={22} />
             </span>,
             <span key="table" className="inline-flex text-success">

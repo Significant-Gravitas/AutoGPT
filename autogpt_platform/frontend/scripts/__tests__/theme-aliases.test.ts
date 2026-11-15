@@ -18,44 +18,40 @@ const plugins = Object.entries(postcssConfig.plugins).map(
   ([name, options]) => require(name)(options) as AcceptedPlugin,
 );
 
-const SHADCN_ALIASES: Record<string, string> = {
+// The shadcn names streamdown's prebuilt markup uses, and the role each one
+// renders (src/app/tokens/theme.css). The app itself names roles only.
+const VENDOR_ALIASES: Record<string, string> = {
   background: "canvas",
   foreground: "foreground-base",
-  card: "surface",
-  "card-foreground": "foreground-base",
-  popover: "surface",
-  "popover-foreground": "foreground-base",
-  primary: "action",
-  "primary-foreground": "action-foreground",
-  secondary: "surface-hover",
-  "secondary-foreground": "foreground-strong",
   muted: "surface-hover",
   "muted-foreground": "foreground-tertiary",
-  accent: "brand",
-  "accent-foreground": "action-foreground",
-  destructive: "error",
-  "destructive-foreground": "action-foreground",
   border: "border-base",
-  input: "border-strong",
-  ring: "focus",
-  sidebar: "surface-muted",
-  "sidebar-foreground": "foreground-emphasis",
-  "sidebar-primary": "action",
-  "sidebar-primary-foreground": "action-foreground",
-  "sidebar-accent": "surface-hover",
-  "sidebar-accent-foreground": "foreground-strong",
-  "sidebar-border": "border-base",
-  "sidebar-ring": "info",
+  primary: "action",
+  "primary-foreground": "action-foreground",
 };
 
 let root: Root;
 
 beforeAll(async () => {
   const from = join(frontend, "src/app/globals.css");
-  const classes = "dark:bg-surface bg-primary";
+  const classes = [
+    "dark:bg-surface bg-muted/40 text-card",
+    ...Object.keys(VENDOR_ALIASES).map((name) => `bg-${name}`),
+  ].join(" ");
   const css = `${readFileSync(from, "utf8")}\n@source inline(${JSON.stringify(classes)});\n`;
   root = (await postcss(plugins).process(css, { from })).root;
 });
+
+function declarations(selector: string) {
+  const found: Record<string, string> = {};
+  root.walkRules((rule) => {
+    if (rule.selector !== selector) return;
+    rule.walkDecls((decl) => {
+      found[decl.prop] = decl.value;
+    });
+  });
+  return found;
+}
 
 function rootVariables() {
   const vars: Record<string, string> = {};
@@ -68,12 +64,24 @@ function rootVariables() {
 }
 
 describe("theme", () => {
-  it("aliases every shadcn name to its role", () => {
+  it("keeps only streamdown's shadcn names, each rendering its role", () => {
     const vars = rootVariables();
-    for (const [name, role] of Object.entries(SHADCN_ALIASES)) {
-      expect(vars[`--color-${name}`]).toBe(`var(--color-${role})`);
+    expect(
+      Object.keys(vars).filter((name) => vars[name].startsWith("var(")),
+    ).toEqual([]);
+    for (const [name, role] of Object.entries(VENDOR_ALIASES)) {
       expect(vars[`--color-${role}`]).toMatch(/^\d+ \d+ \d+$/);
+      expect(declarations(`.bg-${name}`)).toEqual({
+        "background-color": `rgb(var(--color-${role}) / 1)`,
+      });
     }
+    expect(declarations(".bg-muted\\/40")).toEqual({
+      "background-color": "rgb(var(--color-surface-hover) / 0.4)",
+    });
+  });
+
+  it("generates nothing for the shadcn names it dropped", () => {
+    expect(declarations(".text-card")).toEqual({});
   });
 
   it("has no .dark overrides of the colour roles", () => {

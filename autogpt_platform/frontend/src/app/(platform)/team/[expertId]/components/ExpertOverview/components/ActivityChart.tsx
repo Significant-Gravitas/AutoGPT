@@ -47,17 +47,14 @@ export function ActivityChart({ days }: Props) {
             data={days}
             margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
           >
-            <CartesianGrid
-              // TODO(tokens): no exact role: literal #F0F0EF; recharts writes it as an SVG attribute, where var() does not resolve
-              vertical={false}
-              stroke="#f0f0ef"
-            />
+            {/* Hex throughout: recharts writes these colours as SVG attributes,
+                where CSS variables do not resolve (ds-colour-exempt.json). */}
+            <CartesianGrid vertical={false} stroke="#f0f0ef" />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
               interval={6}
-              // TODO(tokens): no fitting role for literal #71717A; #71717A is muted-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               tick={{ fontSize: 11, fill: "#71717a" }}
             />
             <YAxis
@@ -65,20 +62,14 @@ export function ActivityChart({ days }: Props) {
               tickLine={false}
               axisLine={false}
               width={48}
-              // TODO(tokens): no fitting role for literal #71717A; #71717A is muted-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               tick={{ fontSize: 11, fill: "#71717a" }}
             />
-            <Tooltip
-              // TODO(tokens): no fitting role for literal #F4F4F5; #F4F4F5 is secondary (a surface fill), muted (a surface fill), sidebar-accent (a surface fill); recharts writes it as an SVG attribute, where var() does not resolve
-              cursor={{ fill: "#f4f4f5" }}
-              content={<ChartTooltip />}
-            />
+            <Tooltip cursor={{ fill: "#f4f4f5" }} content={<ChartTooltip />} />
             <Bar
               dataKey="sessions"
               name="Conversations"
               stackId="activity"
               fill={SERIES_COLORS.sessions}
-              // TODO(tokens): no fitting role for literal #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               stroke="#ffffff"
               strokeWidth={2}
               maxBarSize={16}
@@ -88,7 +79,6 @@ export function ActivityChart({ days }: Props) {
               name="Workflow runs"
               stackId="activity"
               fill={SERIES_COLORS.runs}
-              // TODO(tokens): no fitting role for literal #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               stroke="#ffffff"
               strokeWidth={2}
               radius={[4, 4, 0, 0]}

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import tempfile
 import typing
@@ -16,6 +17,7 @@ import backend.api.features.store.skill_model as skill_model
 import backend.api.features.store.skill_routes as skill_routes
 import backend.api.features.store.skill_submission_db as skill_submission_db
 import backend.util.json
+from backend.util.models import MAX_PAGE, MAX_PAGE_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +35,8 @@ router = fastapi.APIRouter(
 async def get_admin_listings_with_versions(
     status: typing.Optional[prisma.enums.SubmissionStatus] = None,
     search: typing.Optional[str] = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = fastapi.Query(default=1, ge=1, le=MAX_PAGE),
+    page_size: int = fastapi.Query(default=20, ge=1, le=MAX_PAGE_SIZE),
 ) -> store_model.StoreListingsWithVersionsAdminViewResponse:
     """
     Get store listings with their version history for admins.
@@ -94,7 +96,7 @@ async def review_submission(
     state_changed = already_approved != request.is_approved
     # Clear caches whenever approval state changes, since store visibility can change
     if state_changed:
-        store_cache.clear_all_caches()
+        await asyncio.to_thread(store_cache.clear_all_caches)
     return submission
 
 
@@ -234,5 +236,5 @@ async def review_skill_submission(
         internal_comments=request.internal_comments or "",
     )
     if request.is_approved:
-        store_cache.clear_all_caches()
+        await asyncio.to_thread(store_cache.clear_all_caches)
     return submission

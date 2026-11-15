@@ -6,8 +6,6 @@ export const AUTOPILOT_AVATAR_URL =
 export const AUTOPILOT_TRANSPARENT_AVATAR_URL =
   "/experts/transparent/otto.webp";
 
-export const AUTOPILOT_AVATAR_BG_CLASS = "bg-accent-surface";
-
 export const AUTOPILOT_COVER_URL = "/experts/covers/otto-cover-3.png";
 
 /** Light and mid lavender, for effects drawn around Otto — the voice aura's

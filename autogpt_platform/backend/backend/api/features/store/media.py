@@ -90,35 +90,10 @@ async def upload_media(
         logger.error(f"Error reading file content: {str(e)}")
         raise store_exceptions.FileReadError("Failed to read file content") from e
 
-    content_type = file.content_type
-    if content_type is None:
-        content_type = "image/jpeg"
-
-    # Validate file signature/magic bytes
-    if content_type in ALLOWED_IMAGE_TYPES:
-        # Check image file signatures
-        if content.startswith(b"\xff\xd8\xff"):  # JPEG
-            if content_type != "image/jpeg":
-                raise store_exceptions.InvalidFileTypeError(
-                    "File signature does not match content type"
-                )
-        elif content.startswith(b"\x89PNG\r\n\x1a\n"):  # PNG
-            if content_type != "image/png":
-                raise store_exceptions.InvalidFileTypeError(
-                    "File signature does not match content type"
-                )
-        elif content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):  # GIF
-            if content_type != "image/gif":
-                raise store_exceptions.InvalidFileTypeError(
-                    "File signature does not match content type"
-                )
-        elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":  # WebP
-            if content_type != "image/webp":
-                raise store_exceptions.InvalidFileTypeError(
-                    "File signature does not match content type"
-                )
-        else:
-            raise store_exceptions.InvalidFileTypeError("Invalid image file signature")
+    detected_type = _image_type_from_signature(content)
+    content_type = detected_type or file.content_type or "image/jpeg"
+    if content_type in ALLOWED_IMAGE_TYPES and detected_type is None:
+        raise store_exceptions.InvalidFileTypeError("Invalid image file signature")
 
     elif content_type in ALLOWED_VIDEO_TYPES:
         # Check video file signatures
@@ -238,6 +213,18 @@ async def upload_media(
         raise store_exceptions.MediaUploadError(
             "Unexpected error during media upload"
         ) from e
+
+
+def _image_type_from_signature(content: bytes) -> str | None:
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 def _serves_private_urls(config: Config) -> bool:

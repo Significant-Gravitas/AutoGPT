@@ -115,7 +115,7 @@ export function ExpandableRow({
       {expanded && (
         <TableRow>
           <td colSpan={7} className="p-0">
-            <div className="bg-muted/30 px-4 py-3">
+            <div className="bg-surface-hover/30 px-4 py-3">
               <Text
                 variant="body-semibold-tight"
                 as="h4"
@@ -197,8 +197,7 @@ export function ExpandableRow({
                         <TableCell className="max-w-xs overflow-hidden">
                           {version.internal_comments ? (
                             <div
-                              // oxlint-disable-next-line design-system/no-raw-colors -- pink has no role; a role would change the hue (deferred)
-                              className="truncate text-pink-600"
+                              className="truncate text-pink-foreground"
                               title={version.internal_comments}
                             >
                               {version.internal_comments}

@@ -47,9 +47,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Outputs that stop a call to wait on the user (an approval card, a sign-in),
-# which is not the tool failing.
+# which is not the tool failing.  The chat mounts the card from the output's
+# own JSON, so these are never digested or previewed, however long.
 _AWAITING_THE_USER = frozenset(
-    {ResponseType.APPROVAL_REQUIRED.value, ResponseType.NEED_LOGIN.value}
+    {
+        ResponseType.APPROVAL_REQUIRED.value,
+        ResponseType.NEED_LOGIN.value,
+        ResponseType.REVIEW_REQUIRED.value,
+    }
 )
 
 # The Claude CLI saves any tool result longer than 50,000 characters (it
@@ -167,12 +172,14 @@ async def _persist_and_summarize(
         # everything back, which is how a digest ends up costing more.
         retrieval = (
             f"\nThe preview above is a structural outline of the {total:,}-char "
-            f"output, not a literal prefix of it. Each `@offset+length` is that "
-            f"node's exact window in the file: "
+            f"output, not a literal prefix of it. Each `@offset+length` is a "
+            f"window in the file: "
             f'read_workspace_file(path="{file_path}", offset=<offset>, '
             f"length=<length>) starts that window. Reads may return less than "
             f"requested; continue from the returned end offset with the "
-            f"remaining length until the node's window is complete."
+            f"remaining length until the node's window is complete. On a node "
+            f"too large to quote whole the window is its first chunk — "
+            f"continue from offset+length."
             f"\n{sandbox}"
         )
     else:
@@ -273,6 +280,7 @@ def _render_outline(
     used = 0
     # read_workspace_file base64-encodes its slice, so a window past three
     # quarters of the file costs more to read back than the whole output did.
+    # A node over that gets its first chunk rather than no window at all.
     widest = offsets.get("$", (0, 0))[1] * 3 // 4
     queue: deque[tuple[str, Any]] = deque([("$", root)])
     while queue:
@@ -285,7 +293,7 @@ def _render_outline(
                 braces = "{}" if isinstance(value, dict) else "[]"
                 unit = "keys" if isinstance(value, dict) else "items"
                 start, length = offsets.get(child, (0, 0))
-                window = f" @{start}+{length}" if length < widest else ""
+                window = f" @{start}+{min(length, widest)}" if widest else ""
                 parts.append(
                     f"{key}={braces[0]}…{len(value)} {unit}{window}{braces[1]}"
                 )
@@ -697,6 +705,7 @@ class BaseTool:
                 and user_id
                 and session.session_id
                 and not session.external_caller
+                and result.type.value not in _AWAITING_THE_USER
             ):
                 raw_output = await _persist_and_summarize(
                     raw_output,

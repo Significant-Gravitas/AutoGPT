@@ -4,11 +4,8 @@ import pytest
 
 from backend.blocks.github import ci
 from backend.blocks.github._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
-from backend.blocks.github.ci import (
-    SEARCH_PATTERN_MAX_LENGTH,
-    SEARCH_TIMEOUT_SECONDS,
-    GithubGetCIResultsBlock,
-)
+from backend.blocks.github.ci import SEARCH_TIMEOUT_SECONDS, GithubGetCIResultsBlock
+from backend.util.user_regex import MAX_PATTERN_LENGTH
 
 CHECK_RUNS = [
     {"name": "lint", "output_text": "starting\nerror: unused import\ndone"},
@@ -65,7 +62,7 @@ async def test_search_in_logs_shares_one_time_budget_across_the_lines(mocker):
     clock = _Clock()
     mocker.patch("backend.blocks.github.ci.monotonic", clock.monotonic)
     pattern = _RecordingPattern(clock, seconds_per_search=SEARCH_TIMEOUT_SECONDS / 2)
-    mocker.patch("backend.blocks.github.ci.regex.compile", return_value=pattern)
+    mocker.patch("backend.blocks.github.ci.compile_user_regex", return_value=pattern)
 
     # The lint check has three lines: each search gets what the last left,
     # and the third is refused before it's searched
@@ -86,7 +83,7 @@ async def test_search_in_logs_stops_once_the_time_is_used_up(mocker):
 @pytest.mark.asyncio
 async def test_search_in_logs_surfaces_a_regex_timeout_as_an_input_error(mocker):
     mocker.patch(
-        "backend.blocks.github.ci.regex.compile",
+        "backend.blocks.github.ci.compile_user_regex",
         return_value=_RecordingPattern(raises=TimeoutError),
     )
 
@@ -102,11 +99,11 @@ async def test_search_in_logs_reports_an_invalid_pattern():
 
 @pytest.mark.asyncio
 async def test_search_in_logs_rejects_an_oversized_pattern_before_compiling(mocker):
-    compile_pattern = mocker.patch("backend.blocks.github.ci.regex.compile")
+    compile_pattern = mocker.patch("backend.util.user_regex.regex.compile")
 
     with pytest.raises(ValueError, match="too large"):
         await GithubGetCIResultsBlock.search_in_logs(
-            CHECK_RUNS, "a" * (SEARCH_PATTERN_MAX_LENGTH + 1)
+            CHECK_RUNS, "a" * (MAX_PATTERN_LENGTH + 1)
         )
 
     compile_pattern.assert_not_called()

@@ -3,7 +3,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 const STATUS_CONFIG = {
-  working: { label: "Working", dot: "bg-primary", pulse: true },
+  working: { label: "Working", dot: "bg-action", pulse: true },
   ready: { label: "Ready", dot: "bg-success", pulse: false },
   needs_setup: { label: "Finish setup", dot: "bg-warning", pulse: false },
   paused: { label: "Paused", dot: "bg-foreground-subtle", pulse: false },

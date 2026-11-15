@@ -2,10 +2,12 @@ import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { cleanup } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SubSessionCard } from "../AgentCards";
 
 const SESSION_ROUTE = "/api/proxy/api/chat/sessions/:sessionId";
+/** Mirrors POLL_CAP_MS in SubSessionLive.tsx: where a foreground card gives up. */
+const POLL_CAP_MS = 5 * 60_000;
 
 function idleSession(outcome?: string) {
   return {
@@ -43,7 +45,6 @@ describe("background subtask recovery status", () => {
             status: "queued",
             sub_session_id: "sub-1",
             background_task_id: "task",
-            background_expires_at: new Date(Date.now() + 60_000).toISOString(),
           }}
         />,
       );
@@ -63,21 +64,29 @@ describe("background subtask recovery status", () => {
     },
   );
 
-  it("pauses an unresolved idle child at the server expiry without claiming success", async () => {
+  it("keeps following an unresolved idle child past the foreground poll cap", async () => {
     server.use(http.get(SESSION_ROUTE, () => HttpResponse.json(idleSession())));
-    render(
-      <SubSessionCard
-        output={{
-          status: "queued",
-          sub_session_id: "sub-1",
-          background_task_id: "task",
-          background_expires_at: new Date(Date.now() - 1000).toISOString(),
-        }}
-      />,
-    );
-    await screen.findByText("Partial result before recovery.");
-    expect(await screen.findByText("Live updates paused")).toBeDefined();
-    expect(screen.getByText(/^unknown$/i)).toBeDefined();
-    expect(screen.queryByText(/^completed$/i)).toBeNull();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      render(
+        <SubSessionCard
+          output={{
+            status: "queued",
+            sub_session_id: "sub-1",
+            background_task_id: "task",
+          }}
+        />,
+      );
+      await screen.findByText("Partial result before recovery.");
+      await vi.advanceTimersByTimeAsync(POLL_CAP_MS + 1);
+      expect(screen.queryByText("Live updates paused")).toBeNull();
+      expect(screen.queryByText(/^unknown$/i)).toBeNull();
+      expect(screen.queryByText(/^completed$/i)).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Stop background subtask" }),
+      ).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

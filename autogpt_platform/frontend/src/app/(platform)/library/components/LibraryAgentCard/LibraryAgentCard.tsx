@@ -26,15 +26,13 @@ import {
 import { Chatting01Icon, EyeIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-/* oxlint-disable design-system/no-raw-colors -- placeholder artwork for workflows without an image, not UI colour */
 const PLACEHOLDER_GRADIENTS = [
-  "bg-gradient-to-r from-green-200 to-blue-200",
-  "bg-gradient-to-r from-pink-200 to-purple-200",
-  "bg-gradient-to-r from-yellow-200 to-orange-200",
-  "bg-gradient-to-r from-blue-200 to-cyan-200",
-  "bg-gradient-to-r from-indigo-200 to-purple-200",
+  "bg-gradient-to-r from-success/45 to-info/30",
+  "bg-gradient-to-r from-pink/45 to-brand/30",
+  "bg-gradient-to-r from-warning-border to-orange/45",
+  "bg-gradient-to-r from-info/30 to-sky/30",
+  "bg-gradient-to-r from-indigo/30 to-brand/30",
 ];
-/* oxlint-enable design-system/no-raw-colors */
 
 interface Props {
   agent: LibraryAgent;
@@ -171,8 +169,8 @@ export function LibraryAgentCard({
         <TooltipTrigger asChild>{card}</TooltipTrigger>
         <TooltipPortal>
           <TooltipContent
-            // oxlint-disable-next-line design-system/no-restyle, design-system/no-raw-colors -- red-300 #F69999 on the dark tooltip has no role; deferred (see PR)
-            className="max-w-xs text-red-300"
+            // oxlint-disable-next-line design-system/no-restyle -- Text has no tone for the dark tooltip (deferred)
+            className="max-w-xs text-error-inverse"
           >
             {statusInfo.lastError}
           </TooltipContent>

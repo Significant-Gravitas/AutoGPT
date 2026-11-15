@@ -17,7 +17,7 @@ import { createUsageCapturingFetch } from "../tokenDevtool/usageTap";
 import { fetchSse, type SseFrame } from "./sseClient";
 import { TextReveal } from "./textReveal";
 import { applyEntry, type StreamEntry, type WireChunk } from "./turnConverter";
-import { seedTurnLog } from "./turnLog";
+import { appendErrorMarker, seedTurnLog } from "./turnLog";
 import { diffRows, formatDiffs, sha256Hex } from "./turnShadow";
 import {
   checkpointOf,
@@ -545,6 +545,11 @@ export class TurnRuntime {
     if (frame.kind === "entry") {
       conn.entries += 1;
       this.applyFrom(conn, frame.entry);
+    } else if (
+      frame.kind === "synthetic" &&
+      frame.chunk.type === "data-turn-error"
+    ) {
+      this.onRecoveredError(conn, frame.chunk.data);
     } else if (frame.kind === "synthetic" && frame.chunk.type === "error") {
       conn.syntheticError = str(frame.chunk.errorText);
     } else if (
@@ -554,6 +559,45 @@ export class TurnRuntime {
       conn.followUp = true;
     }
     this.emit();
+  }
+
+  private onRecoveredError(conn: Connection, data: unknown) {
+    if (
+      !data ||
+      typeof data !== "object" ||
+      !("turnId" in data) ||
+      !("errorText" in data) ||
+      typeof data.turnId !== "string" ||
+      !data.turnId ||
+      typeof data.errorText !== "string" ||
+      (conn.turnId !== null && conn.turnId !== data.turnId)
+    )
+      return;
+    let seg = this.turnFor(data.turnId);
+    if (!seg) {
+      if (conn.kind !== "post" || conn.turnId !== null) return;
+      seg = newTurnSegment(
+        data.turnId,
+        seedTurnLog({ turnId: data.turnId, rows: [], checkpoint: null }),
+      );
+      this.segments.push(seg);
+    }
+    conn.turnId = data.turnId;
+    if (seg.ended || seg.stopped || seg.frozen) return;
+    const { errorText, turnId } = data;
+    this.reveal.clear();
+    this.updateTurn(seg.key, (s) => {
+      const log = appendErrorMarker(s.log, `terminal:${turnId}`, errorText);
+      const marker = log.rows.at(-1);
+      return {
+        ...s,
+        log,
+        recoveredError:
+          marker?.key === `error:terminal:${turnId}` ? marker : null,
+      };
+    });
+    this.onChunk(seg.key, { type: "error", errorText });
+    this.endTurn(seg.key);
   }
 
   private applyFrom(conn: Connection, entry: StreamEntry) {
@@ -1080,7 +1124,16 @@ export class TurnRuntime {
         }));
       return;
     }
-    const drift = diffRows(seg.log.rows, persisted.rows);
+    const drift = diffRows(seg.log.rows, persisted.rows).filter(
+      ({ index, fields }) =>
+        !(
+          seg.log.rows[index]?.key === seg.recoveredError?.key &&
+          index === seg.log.rows.length - 1 &&
+          index >= persisted.rows.length &&
+          fields.length === 1 &&
+          fields[0] === "missing"
+        ),
+    );
     if (drift.length > 0 && !seg.stopped && !seg.frozen) {
       this.deps.report("finish", {
         turnId: seg.log.turnId,

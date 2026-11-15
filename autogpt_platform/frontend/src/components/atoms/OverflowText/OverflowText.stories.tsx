@@ -73,7 +73,7 @@ export const LongText: Story = {
 export const CustomStyling: Story = {
   args: {
     value: "Text with custom styling",
-    className: "text-lead font-semibold text-indigo-600",
+    className: "text-lead font-semibold text-indigo",
   },
   render: function CustomStylingStory(args) {
     return (

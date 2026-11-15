@@ -12,7 +12,7 @@ from backend.data.platform_cost import (
     get_platform_cost_logs,
     get_platform_cost_logs_for_export,
 )
-from backend.util.models import Pagination
+from backend.util.models import MAX_PAGE, Pagination
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ async def get_cost_logs(
     end: datetime | None = Query(None),
     provider: str | None = Query(None),
     user_id: str | None = Query(None),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=MAX_PAGE),
     page_size: int = Query(50, ge=1, le=200),
     model: str | None = Query(None),
     block_name: str | None = Query(None),

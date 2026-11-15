@@ -29,7 +29,7 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
         color
           ? {
               // oxlint-disable-next-line design-system/no-inline-styles -- tinted by the expert's own colour, which is runtime data
-              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-foreground-strong)))`,
             }
           : undefined
       }

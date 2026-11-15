@@ -94,8 +94,7 @@ export function ExpertSchedulesSection({
       {schedules.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-            <span key="clock" className="inline-flex text-sky-500">
+            <span key="clock" className="inline-flex text-sky">
               <Icon icon={Clock01Icon} size={22} />
             </span>,
             <span key="repeat" className="inline-flex text-success">

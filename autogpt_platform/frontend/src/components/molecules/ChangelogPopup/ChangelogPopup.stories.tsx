@@ -33,9 +33,9 @@ type Story = StoryObj<typeof meta>;
 export const LatestRelease: Story = {
   render: function Render() {
     return (
-      <div className="min-h-[calc(100vh-4rem)] bg-background">
+      <div className="min-h-[calc(100vh-4rem)] bg-canvas">
         <Text variant="h3">Latest release</Text>
-        <Text variant="body" className="mt-2 text-muted-foreground">
+        <Text variant="body" className="mt-2 text-foreground-tertiary">
           The notification appears in the bottom corner. Hover or focus to
           pause.
         </Text>

@@ -109,6 +109,23 @@ def sanitize_pin_name(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def parse_dynamic_field(field_name: str) -> tuple[str, list[tuple[str, str]]] | None:
+    """
+    Split a field name into its base name and its `(delimiter, identifier)` path,
+    e.g. "items_$_0_#_name" → ("items", [("_$_", "0"), ("_#_", "name")]).
+
+    A plain name has an empty path; malformed syntax returns None, and a
+    path over the size caps raises ValueError.
+    """
+    delim, pos = _next_delim(field_name)
+    if delim is None:
+        return field_name, []
+    tokens = _tokenise_bounded(field_name[pos:])
+    if tokens is None:
+        return None
+    return field_name[:pos], tokens
+
+
 def assert_safe_pin_name(name: str) -> None:
     """
     Raise ValueError if a (possibly flattened) pin name encodes an unsafe
@@ -341,19 +358,13 @@ def merge_execution_input(data: dict[str, Any]) -> dict[str, Any]:
     padding = _PaddingBudget()
 
     for key, value in data.items():
-        # Split off the base name (before the first delimiter, if any)
-        delim, pos = _next_delim(key)
-        if delim is None:
+        parsed = parse_dynamic_field(key)
+        if parsed is None or not parsed[1]:
+            # A plain key, or an invalid one kept as a scalar under the raw name
             merged[key] = value
             continue
 
-        base, path = key[:pos], key[pos:]
-        tokens = _tokenise_bounded(path)
-        if tokens is None:
-            # Invalid key; treat as scalar under the raw name
-            merged[key] = value
-            continue
-
+        base, tokens = parsed
         merged[base] = _assign(merged.get(base), tokens, value, padding)
 
     data.update(merged)

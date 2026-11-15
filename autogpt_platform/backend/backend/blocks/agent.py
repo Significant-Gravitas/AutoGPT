@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+NO_WORKFLOW_TO_RUN = (
+    "This sub-workflow has no workflow to run: remove it, or add the workflow you "
+    "want in its place"
+)
+
 
 class AgentExecutorBlock(Block):
     # Coordination block: waits on a child graph's full execution. The child
@@ -65,7 +70,9 @@ class AgentExecutorBlock(Block):
             return set(required_fields) - set(provided)
 
         @classmethod
-        def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        def get_mismatch_error(
+            cls, data: BlockInput, exclude_fields: set[str] | None = None
+        ) -> str | None:
             # `data` holds the flattened `inputs` (see validate_exec), never the
             # node's `input_schema`; the child graph validates its own inputs.
             return None
@@ -93,6 +100,12 @@ class AgentExecutorBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         from backend.executor import utils as execution_utils
+
+        if not input_data.graph_id:
+            # A copy of someone else's workflow keeps a node like this where
+            # the original named one of its new owner's own workflows (see
+            # `clear_sub_graph_refs_owned_by`).
+            raise ValueError(NO_WORKFLOW_TO_RUN)
 
         graph_exec = await execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,

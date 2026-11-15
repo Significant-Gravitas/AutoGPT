@@ -22,7 +22,7 @@ describe("getExpertAccent", () => {
       "text-accent-strong",
     );
     expect(getExpertAccent("Sales").pill).toContain("text-warning-foreground");
-    expect(getExpertAccent("Ops").pill).toContain("text-sky-700");
+    expect(getExpertAccent("Ops").pill).toContain("text-sky-foreground");
     expect(getExpertAccent("Astrologer").pill).toContain(
       "text-foreground-secondary",
     );

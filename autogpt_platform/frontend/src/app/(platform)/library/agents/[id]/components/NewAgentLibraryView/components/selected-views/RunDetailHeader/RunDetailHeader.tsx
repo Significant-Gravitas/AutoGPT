@@ -41,10 +41,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   )}
                 </div>
               ) : scheduleRecurrence ? (
-                <div
-                  // oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
-                  className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-700"
-                >
+                <div className="inline-flex items-center gap-1 rounded-md bg-warning-surface p-1 text-yellow-foreground">
                   <Icon icon={TimeScheduleIcon} size={16} />
                   <Text variant="small-medium" tone="inherit">
                     Scheduled

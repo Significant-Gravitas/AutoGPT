@@ -6,7 +6,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_backend_skips.py"
@@ -22,7 +24,9 @@ on:
     paths:
       - ".github/workflows/platform-backend-ci.yml"
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
+      - ".github/actions/generate-prisma-client/**"
       - ".github/scripts/docker-pull-with-retry.sh"
+      - ".github/scripts/install-prisma-cli-with-retry.sh"
       - ".github/scripts/validate_junit.py"
       - ".github/scripts/test_validate_junit.py"
       - ".github/scripts/validate_backend_skips.py"
@@ -211,7 +215,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
@@ -554,7 +558,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        run: poetry run prisma generate && poetry run gen-prisma-stub
+        uses: ./.github/actions/generate-prisma-client
 
       - name: Wait for isolated stateful services
         wait: stateful-services

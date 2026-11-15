@@ -258,7 +258,7 @@ function SheetBody({
       {!editing && version && version.id !== currentId ? (
         <div
           data-slot="skill-learning-sheet-footer"
-          className="flex shrink-0 justify-end gap-2 border-t border-t-sidebar-border px-5 py-3"
+          className="flex shrink-0 justify-end gap-2 border-t border-t-border-base px-5 py-3"
         >
           <Button
             variant="primary"

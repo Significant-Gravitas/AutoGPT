@@ -699,20 +699,17 @@ class TestNewlyRegisteredBlockCosts:
         assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 150
 
     def test_claude_code_block_registered(self):
-        """ClaudeCodeBlock spawns an E2B sandbox + runs Claude inside it.
-
-        Claude Code CLI returns ``total_cost_usd`` on every response; the
-        block pipes it into execution_stats and bills via COST_USD 150 cr/$
-        (1.5× margin matching TOKEN_COST).
-        """
+        """ClaudeCodeBlock is billed for the platform's E2B sandbox by walltime,
+        at the other E2B blocks' 1 credit per 10 seconds."""
         from backend.blocks._base import BlockCostType
         from backend.blocks.claude_code import ClaudeCodeBlock
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert ClaudeCodeBlock in BLOCK_COSTS
         entry = BLOCK_COSTS[ClaudeCodeBlock][0]
-        assert entry.cost_type == BlockCostType.COST_USD
-        assert entry.cost_amount == 150
+        assert entry.cost_type == BlockCostType.SECOND
+        assert entry.cost_amount == 1
+        assert entry.cost_divisor == 10
         # Filter keys on `e2b_credentials` (not `credentials`) — verifies the
         # cost gate matches the block's actual input field name.
         assert "e2b_credentials" in entry.cost_filter
@@ -1089,8 +1086,8 @@ def _make_simple_block(
 
 
 def _patch_excluded(block_ids: set | None = None, block_types: set | None = None):
-    # ``prepare_block_execution`` imports these from ``block_meta`` inside the
-    # function, so the source module is the patch target.  They were read from
+    # ``block_run_refusal`` reads these off ``block_meta`` each time it runs,
+    # so the source module is the patch target.  They were read from
     # ``tools.find_block`` until that module went; ``create=True`` meant the
     # patch kept "working" against a name that was no longer there, and the
     # exclusions under test silently stopped being exercised.
@@ -1322,6 +1319,29 @@ async def test_check_hitl_reuses_existing_waiting_review() -> None:
 
     assert isinstance(result, ReviewRequiredResponse)
     assert result.review_id == "existing-review-42"
+
+
+@pytest.mark.asyncio
+async def test_check_hitl_does_not_reuse_a_review_whose_input_differs_in_type() -> None:
+    """Python's ``1 == True``, but the block receives ``true``: the waiting
+    review shows ``1``, so the call with ``true`` gets a review of its own."""
+    prep = _make_hitl_prep(input_data={"force": True}, needs_review=True)
+
+    existing = MagicMock()
+    existing.node_id = prep.synthetic_node_id
+    existing.status.value = "WAITING"
+    existing.payload = {"force": 1}
+    existing.node_exec_id = "existing-review-42"
+
+    mock_rdb = MagicMock()
+    mock_rdb.get_pending_reviews_for_chat_session = AsyncMock(return_value=[existing])
+
+    with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
+        result = await check_hitl_review(prep, "user1", "hitl-sess")
+
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.review_id != "existing-review-42"
+    prep.block.is_block_exec_need_review.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,8 @@ from collections import defaultdict
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import openai
 import pytest
 
 from backend.api.model import CreateGraph
@@ -614,6 +616,59 @@ async def test_orchestrator_does_not_retry_a_refused_prompt():
                 pass
 
     assert mock_llm_call.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_retry_a_request_too_large():
+    """The provider refuses the same oversized request every time, and the
+    user is told to shorten it rather than shown the provider's raw error."""
+    import backend.blocks.llm as llm_module
+    from backend.blocks.orchestrator import OrchestratorBlock
+
+    too_large = openai.RateLimitError(
+        "Error code: 429 - Request too large for gpt-4.1-mini-2025-04-14 on "
+        "tokens per min (TPM): Limit 400000, Requested 520131.",
+        response=httpx.Response(
+            429, request=httpx.Request("POST", "https://api.openai.com")
+        ),
+        body={"code": "rate_limit_exceeded", "type": "tokens"},
+    )
+    with patch(
+        "backend.blocks.llm._llm_call",
+        new_callable=AsyncMock,
+        side_effect=too_large,
+    ) as mock_provider_call, patch.object(
+        OrchestratorBlock,
+        "_create_tool_node_signatures",
+        new_callable=AsyncMock,
+        return_value=[],
+    ):
+        input_data = OrchestratorBlock.Input(
+            prompt="Search for keywords",
+            model=llm_module.DEFAULT_LLM_MODEL,
+            credentials=cast(
+                llm_module.AICredentials, llm_module.TEST_CREDENTIALS_INPUT
+            ),
+            retry=3,
+            agent_mode_max_iterations=0,
+        )
+        # A ValueError, so the executor treats it as the user's to fix.
+        with pytest.raises(ValueError, match="Shorten the input"):
+            async for _ in OrchestratorBlock().run(
+                input_data,
+                credentials=llm_module.TEST_CREDENTIALS,
+                graph_id="test-graph-id",
+                node_id="test-node-id",
+                graph_exec_id="test-exec-id",
+                node_exec_id="test-node-exec-id",
+                user_id="test-user-id",
+                graph_version=1,
+                execution_context=ExecutionContext(human_in_the_loop_safe_mode=False),
+                execution_processor=MagicMock(),
+            ):
+                pass
+
+    assert mock_provider_call.call_count == 1
 
 
 @pytest.mark.asyncio

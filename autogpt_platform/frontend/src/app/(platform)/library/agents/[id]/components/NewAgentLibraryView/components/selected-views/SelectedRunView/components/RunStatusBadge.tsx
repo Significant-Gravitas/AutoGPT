@@ -19,8 +19,7 @@ type StatusIconMap = {
   colors: string;
 };
 
-// oxlint-disable-next-line design-system/no-raw-colors -- yellow-700 #AE8800 has no role; mustard to orange-brown change deferred (see PR)
-const PENDING_COLORS = "bg-warning-surface text-yellow-700";
+const PENDING_COLORS = "bg-warning-surface text-yellow-foreground";
 
 const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   INCOMPLETE: {

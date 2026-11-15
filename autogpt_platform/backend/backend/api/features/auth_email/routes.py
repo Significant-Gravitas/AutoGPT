@@ -19,9 +19,10 @@ from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
-from backend.notifications.auth import AuthEmailType, render_auth_email
+from backend.data.account_erasure.ban_record import is_banned_address
+from backend.notifications.auth import AuthLinkEmailType, render_auth_email
 from backend.util.clients import get_notification_manager_client
 from backend.util.exceptions import EmailUndeliverableError
 from backend.util.settings import Settings
@@ -33,12 +34,18 @@ auth_email_router = APIRouter()
 
 # Module-level so tests can override the exact dependency instance.
 requires_auth_email_service = requires_frontend_service("auth-email:send")
+requires_sign_up_check_service = requires_frontend_service("auth-sign-up:check")
 
 
 class AuthEmailRequest(BaseModel):
-    type: AuthEmailType
+    # Link emails only: the account-deleted confirmation is sent by the
+    # deletion service, never on a service token's say-so.
+    type: AuthLinkEmailType
     to: EmailStr
     url: str
+    # For change_email: the address the account is moving to, shown to the
+    # current address so its owner can check the request before approving it.
+    new_email: EmailStr | None = None
 
 
 class AuthEmailSuppressionRequest(BaseModel):
@@ -47,6 +54,14 @@ class AuthEmailSuppressionRequest(BaseModel):
 
 class AuthEmailSuppressionResponse(BaseModel):
     suppressed: bool
+
+
+class AuthEmailBanRecordRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class AuthEmailBanRecordResponse(BaseModel):
+    banned: bool
 
 
 @auth_email_router.post(
@@ -76,7 +91,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             detail="url must point at a trusted frontend origin.",
         )
 
-    email = render_auth_email(request.type, request.url)
+    email = render_auth_email(request.type, request.url, request.to, request.new_email)
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
@@ -121,6 +136,25 @@ async def check_auth_email_suppression(
         get_notification_manager_client().is_email_suppressed, request.to
     )
     return AuthEmailSuppressionResponse(suppressed=suppressed)
+
+
+@auth_email_router.post(
+    "/ban-record",
+    dependencies=[Security(requires_sign_up_check_service)],
+    summary="Check whether an address belongs to an erased, banned account",
+    operation_id="checkAuthEmailBanRecord",
+    responses={
+        403: {"description": "Service token is missing the required scope"},
+        503: {"description": "Service-token verification is not configured"},
+    },
+)
+async def check_auth_email_ban_record(
+    request: AuthEmailBanRecordRequest,
+) -> AuthEmailBanRecordResponse:
+    """Asked by sign-up before it creates an account: an address whose banned
+    account was erased can't sign up again while its ban record lasts
+    (`account_erasure/ban_record.py`)."""
+    return AuthEmailBanRecordResponse(banned=await is_banned_address(request.email))
 
 
 def _url_origin_allowed(url: str) -> bool:

@@ -13,8 +13,10 @@ from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
 from backend.api.features.billing.client_country import ClientCountry
 from backend.api.model import RequestTopUp
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.checkout_audience import schedule_checkout_opened
 from backend.data.credit import (
+    MAX_TOP_UP_AMOUNT,
     AutoTopUpConfig,
     CardDeclinedError,
     InvoiceListItem,
@@ -139,7 +141,14 @@ async def configure_user_auto_top_up(
         raise HTTPException(
             status_code=422, detail="Amount must be greater than or equal to threshold"
         )
+    if max(request.amount, request.threshold) > MAX_TOP_UP_AMOUNT:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Amount and threshold must be at most ${MAX_TOP_UP_AMOUNT // 100:,}",
+        )
 
+    # Past the auth cache, before a charge: closing switched auto top-up off.
+    await refuse_closed_account(user_id)
     credit_model = await get_credit_model(user_id, ctx.org_id)
     current_balance = await credit_model.get_credits(user_id)
 
@@ -189,6 +198,14 @@ async def configure_user_auto_top_up(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    try:
+        # Read again after the write: either it sees a close that came while
+        # this ran and switches auto top-up off, or the close came after the
+        # write and closing's sweep switches it off.
+        await refuse_closed_account(user_id)
+    except HTTPException:
+        await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
+        raise
     return "Auto top-up settings updated"
 
 

@@ -31,8 +31,14 @@ PASS_CLAIM_TTL_SECONDS = 60 * 60 * 36
 _PREFIX = "notification_claim"
 
 
-async def claim_once(key: str, ttl_seconds: int = CLAIM_TTL_SECONDS) -> bool:
-    """Returns True for the first caller with this key, False afterwards."""
+async def claim_once(
+    key: str, ttl_seconds: int = CLAIM_TTL_SECONDS, *, fail_open: bool = True
+) -> bool:
+    """Returns True for the first caller with this key, False afterwards.
+
+    `fail_open=False` refuses on a Redis error instead. Use it where the same
+    key is retried on a schedule: failing open there sends again on every
+    run until Redis is back, and the next run sends once it is."""
     try:
         redis_client = await get_redis_async()
         claimed = await redis_client.set(
@@ -41,9 +47,23 @@ async def claim_once(key: str, ttl_seconds: int = CLAIM_TTL_SECONDS) -> bool:
         return bool(claimed)
     except Exception:
         logger.warning(
-            "Dedupe claim failed for %s; proceeding anyway", key, exc_info=True
+            "Dedupe claim failed for %s; %s",
+            key,
+            "proceeding anyway" if fail_open else "skipping until the next run",
+            exc_info=True,
         )
-        return True
+        return fail_open
+
+
+async def is_claimed(key: str) -> bool:
+    """Whether the key is already claimed. A cheap early exit only: on a Redis
+    error it answers False and leaves the decision to `claim_once`."""
+    try:
+        redis_client = await get_redis_async()
+        return bool(await redis_client.exists(f"{_PREFIX}:{key}"))
+    except Exception:
+        logger.warning("Dedupe lookup failed for %s", key, exc_info=True)
+        return False
 
 
 async def release_claim(key: str) -> None:

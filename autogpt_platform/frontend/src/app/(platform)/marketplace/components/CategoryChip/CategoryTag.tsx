@@ -16,8 +16,8 @@ const TAG_ICON_SIZE: Record<ChipSize, number> = {
  *  for the fill and edge, so the tag reads clearly on white. */
 export function categoryTagStyle(color: string): CSSProperties {
   return {
-    color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
-    backgroundColor: `color-mix(in srgb, ${color} 12%, rgb(var(--color-card)))`,
+    color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-foreground-strong)))`,
+    backgroundColor: `color-mix(in srgb, ${color} 12%, rgb(var(--color-surface)))`,
     borderColor: `color-mix(in srgb, ${color} 35%, rgb(var(--color-surface)))`,
   };
 }

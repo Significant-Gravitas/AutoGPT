@@ -14,6 +14,7 @@ from backend.blocks.http import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import HostScopedCredentials
+from backend.util.file import MediaFileType
 from backend.util.request import Response
 
 
@@ -201,6 +202,34 @@ async def test_http_response_body_contract(
     ]
 
     assert outputs == [(output_name, expected)]
+
+
+@pytest.mark.asyncio
+async def test_prepare_files_limits_total_size(tmp_path):
+    (tmp_path / "pad.bin").write_bytes(b"x" * 40)
+
+    with (
+        patch(
+            "backend.blocks.http.store_media_file",
+            new=AsyncMock(return_value="pad.bin"),
+        ) as mock_store,
+        patch(
+            "backend.blocks.http.get_exec_file_path",
+            side_effect=lambda _, path: str(tmp_path / path),
+        ),
+        patch("backend.util.file.MAX_TOTAL_FILE_SIZE_BYTES", 100),
+    ):
+        payload = await SendWebRequestBlock._prepare_files(
+            make_test_context(), "file", [MediaFileType("pad.bin")] * 2
+        )
+        assert [handle.getvalue() for _, (_, handle, _) in payload] == [b"x" * 40] * 2
+
+        mock_store.reset_mock()
+        with pytest.raises(ValueError, match="Files too large"):
+            await SendWebRequestBlock._prepare_files(
+                make_test_context(), "file", [MediaFileType("pad.bin")] * 50
+            )
+        assert mock_store.await_count == 3
 
 
 class TestHttpBlockWithHostScopedCredentials:

@@ -92,7 +92,7 @@ export function RaiseFlow() {
   }
 
   return (
-    <main className="min-h-screen bg-background lg:h-screen lg:overflow-hidden">
+    <main className="min-h-screen bg-canvas lg:h-screen lg:overflow-hidden">
       <div className="grid w-full items-stretch lg:h-full lg:grid-cols-2">
         <div className="relative order-2 lg:order-1 lg:h-screen">
           <div
@@ -110,7 +110,7 @@ export function RaiseFlow() {
         </div>
 
         {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 40px panel radius has no rounded-* step (4xl is 32px) */}
-        <div className="relative order-1 m-2 overflow-hidden rounded-[2.5rem] bg-muted/40 lg:order-2">
+        <div className="relative order-1 m-2 overflow-hidden rounded-[2.5rem] bg-surface-hover/40 lg:order-2">
           <DitheredWaves
             className="absolute inset-0"
             colors={ditherColorsFor(color)}
@@ -187,8 +187,8 @@ function ScrollFade({
       className={cn(
         "pointer-events-none absolute inset-x-0 h-16 transition-opacity duration-200",
         edge === "top"
-          ? "top-0 bg-gradient-to-b from-background to-transparent"
-          : "bottom-0 bg-gradient-to-t from-background to-transparent",
+          ? "top-0 bg-gradient-to-b from-canvas to-transparent"
+          : "bottom-0 bg-gradient-to-t from-canvas to-transparent",
         isVisible ? "opacity-100" : "opacity-0",
       )}
     />

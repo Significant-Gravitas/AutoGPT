@@ -285,7 +285,7 @@ function StarsDemo() {
       <p className="text-body text-brand">Large star-shaped confetti</p>
       <button
         onClick={fireStars}
-        className="rounded-lg bg-brand-hover px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-purple-700 active:scale-95"
+        className="rounded-lg bg-brand-hover px-8 py-3 text-body-lg font-medium text-action-foreground shadow-md transition-colors hover:bg-accent-strong active:scale-95"
       >
         Purple Stars
       </button>

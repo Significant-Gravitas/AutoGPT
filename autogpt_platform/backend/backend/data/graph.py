@@ -18,10 +18,14 @@ from typing import (
 
 from prisma import Prisma
 from prisma.enums import SubmissionStatus
+from prisma.errors import ForeignKeyViolationError
 from prisma.models import (
     AgentGraph,
+    AgentGraphExecution,
     AgentNode,
+    AgentNodeExecutionInputOutput,
     AgentNodeLink,
+    AgentPreset,
     LibraryAgent,
     StoreListingVersion,
 )
@@ -44,6 +48,7 @@ from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 from backend.util.exceptions import (
+    GraphInUseError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
     GraphValidationError,
@@ -54,10 +59,20 @@ from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
 from backend.util.text import split_camelcase
+from backend.util.text_limits import (
+    MAX_CRON_LENGTH,
+    MAX_INSTRUCTIONS_LENGTH,
+    MAX_LONG_NAME_LENGTH,
+)
 
 from .block import BlockInput
-from .db import BaseDbModel, execute_raw_with_schema, transaction
-from .dynamic_fields import assert_safe_pin_name, is_tool_pin, sanitize_pin_name
+from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
+from .dynamic_fields import (
+    DICT_SPLIT,
+    assert_safe_pin_name,
+    is_tool_pin,
+    sanitize_pin_name,
+)
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
 
@@ -67,6 +82,11 @@ if TYPE_CHECKING:
     from .execution import NodesInputMasks
 
 logger = logging.getLogger(__name__)
+
+SUB_WORKFLOW_RUNS_ITSELF = (
+    "A workflow can't run itself as a sub-workflow, directly or through other "
+    "workflows"
+)
 
 
 class GraphSettings(BaseModel):
@@ -273,6 +293,16 @@ def _holds_picked_file(annotation: Any) -> bool:
     )
 
 
+# Checked at the save rather than on the model, because `GraphMeta` and
+# `GraphModel` read stored rows through it.
+GRAPH_TEXT_MAX_LENGTHS = {
+    "name": MAX_LONG_NAME_LENGTH,
+    "description": MAX_INSTRUCTIONS_LENGTH,
+    "instructions": MAX_INSTRUCTIONS_LENGTH,
+    "recommended_schedule_cron": MAX_CRON_LENGTH,
+}
+
+
 class GraphBaseMeta(BaseDbModel):
     """
     Shared base for `GraphMeta` and `BaseGraph`, with core graph metadata fields.
@@ -412,15 +442,14 @@ class BaseGraph(GraphBaseMeta):
                             if k not in ["description", "default", "secret"]
                         },
                         "secret": False,
-                        # Default value has to be set for advanced fields.
-                        "advanced": p.advanced and p.value is not None,
+                        "advanced": p.advanced and p.is_optional(),
                         "title": p.title or p.name,
                         **({"description": p.description} if p.description else {}),
                         **({"default": p.value} if p.value is not None else {}),
                     }
                     for p in schema_fields
                 },
-                "required": [p.name for p in schema_fields if p.value is None],
+                "required": [p.name for p in schema_fields if not p.is_optional()],
             }
         except AttributeError as e:
             raise ValueError(str(e)) from e
@@ -947,6 +976,10 @@ class GraphModel(Graph, GraphMeta):
         self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
             self._validate_graph(sub_graph, for_run, nodes_input_masks)
+        if cycle_errors := self._sub_workflow_cycle_errors():
+            raise GraphValidationError(
+                SUB_WORKFLOW_RUNS_ITSELF, node_errors=cycle_errors
+            )
 
     @staticmethod
     def _validate_graph(
@@ -972,7 +1005,7 @@ class GraphModel(Graph, GraphMeta):
 
         Returns: dict[node_id, dict[field_name, error_message]]
         """
-        return {
+        errors = {
             **self._validate_graph_get_errors(self, for_run, nodes_input_masks),
             **{
                 node_id: error
@@ -981,6 +1014,36 @@ class GraphModel(Graph, GraphMeta):
                     sub_graph, for_run, nodes_input_masks
                 ).items()
             },
+        }
+        for node_id, cycle_error in self._sub_workflow_cycle_errors().items():
+            errors[node_id] = {**errors.get(node_id, {}), **cycle_error}
+        return errors
+
+    def _sub_workflow_cycle_errors(self) -> dict[str, dict[str, str]]:
+        """Sub-workflow nodes that would start a workflow already running in
+        their chain, so that it starts itself again without end.
+
+        Chains follow the version each node names, through this graph and the
+        sub-graphs it was saved or loaded with. A version not among them is
+        checked when its run starts (see `backend.executor.nesting`).
+        """
+        agent_block_id = AgentExecutorBlock().id
+        calls: dict[tuple[str, int], list[tuple[str, str, Any]]] = {
+            (graph.id, graph.version): [
+                (node.id, target, node.input_default.get("graph_version"))
+                for node in graph.nodes
+                if node.block_id == agent_block_id
+                and isinstance(target := node.input_default.get("graph_id"), str)
+                and target
+            ]
+            for graph in (*self.sub_graphs, self)
+        }
+        above = _workflows_above(calls, (self.id, self.version))
+        return {
+            node_id: {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
+            for graph_key, node_calls in calls.items()
+            for node_id, target, _ in node_calls
+            if target in above.get(graph_key, set())
         }
 
     @staticmethod
@@ -1043,6 +1106,10 @@ class GraphModel(Graph, GraphMeta):
                 ]
                 + ([name for name in node_input_mask] if node_input_mask else [])
             )
+            if block.block_type == BlockType.MCP_TOOL:
+                provided_inputs |= _linked_tool_arguments(
+                    node, input_links.get(node.id, [])
+                )
             InputSchema = block.input_schema
 
             for name in (required_fields := InputSchema.get_required_fields()):
@@ -1306,6 +1373,14 @@ class GraphModel(Graph, GraphMeta):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
+                    if block.block_type == BlockType.MCP_TOOL:
+                        # Tool arguments: the executor folds them into tool_arguments.
+                        properties = _tool_properties(vals)
+                        if properties is None:
+                            raise ValueError(
+                                f"{prefix}, tool_input_schema is not an object"
+                            )
+                        fields = {*fields, *properties}
                 if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
@@ -1403,6 +1478,48 @@ def _describe_node_errors(
     return problems[0]
 
 
+def _workflows_above(
+    calls: Mapping[tuple[str, int], Sequence[tuple[str, str, Any]]],
+    top: tuple[str, int],
+) -> dict[tuple[str, int], set[str]]:
+    """For each (graph id, version) a run of `top` reaches, the ids of the
+    graphs some chain from `top` runs on the way to it, its own included.
+    `calls` holds each graph's (node id, graph id, version) sub-workflow
+    calls; a call to a version not in it, or to a version that is not a
+    number, reaches nothing further."""
+    callees = {
+        caller: {
+            (graph_id, version)
+            for _, graph_id, version in node_calls
+            if isinstance(version, int) and (graph_id, version) in calls
+        }
+        for caller, node_calls in calls.items()
+    }
+    reached = _reachable(callees, top)
+    callers: dict[tuple[str, int], set[tuple[str, int]]] = defaultdict(set)
+    for caller in reached:
+        for callee in callees[caller]:
+            callers[callee].add(caller)
+    return {
+        graph: {graph_id for graph_id, _ in _reachable(callers, graph)}
+        for graph in reached
+    }
+
+
+def _reachable(
+    edges: Mapping[tuple[str, int], Collection[tuple[str, int]]],
+    start: tuple[str, int],
+) -> set[tuple[str, int]]:
+    seen = {start}
+    pending = [start]
+    while pending:
+        for follower in edges.get(pending.pop(), ()):
+            if follower not in seen:
+                seen.add(follower)
+                pending.append(follower)
+    return seen
+
+
 def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
     """An input or output named "" has no name, and the graph's interface needs
     one; one wired in from a link still counts."""
@@ -1411,6 +1528,26 @@ def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
         and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
         and not str(value or "").strip()
     )
+
+
+def _linked_tool_arguments(node: Node, links: list[Link]) -> set[str]:
+    """The MCP tool arguments that `tool_arguments_#_<argument>` links feed. A
+    tool that declares its own `tool_arguments` takes them there, as one value."""
+    if "tool_arguments" in (_tool_properties(node.input_default) or {}):
+        return set()
+    prefix = f"tool_arguments{DICT_SPLIT}"
+    return {
+        sanitize_pin_name(link.sink_name.removeprefix(prefix))
+        for link in links
+        if link.sink_name.startswith(prefix)
+    }
+
+
+def _tool_properties(node_input: BlockInput) -> dict[str, Any] | None:
+    """An MCP tool node's argument schemas, or None if its schema is malformed."""
+    schema = node_input.get("tool_input_schema") or {}
+    properties = schema.get("properties") or {} if isinstance(schema, dict) else None
+    return properties if isinstance(properties, dict) else None
 
 
 def _node_title(node: Node) -> str:
@@ -1549,6 +1686,17 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
         version=graph.version,
         is_active=graph.isActive,
     )
+
+
+async def get_copied_graph_ids(graph_ids: list[str]) -> list[str]:
+    """The ids in ``graph_ids`` with any version copied from another graph."""
+    # A version saved in the builder drops ``forkedFromId``, so the latest
+    # version alone can't tell a copy from an original.
+    copies = await AgentGraph.prisma().find_many(
+        where={"id": {"in": graph_ids}, "forkedFromId": {"not": None}},
+        distinct=["id"],
+    )
+    return [copy.id for copy in copies]
 
 
 async def get_graph(
@@ -1846,6 +1994,105 @@ async def get_sub_graphs_of_each(
     ]
 
 
+async def foreign_sub_graph_refs(graph: AgentGraph) -> list[tuple[str, int]]:
+    """The sub-graph versions that *graph* runs, directly or through its owner's
+    own sub-graphs, that are neither its owner's nor published in the
+    marketplace. *graph* needs its `Nodes`.
+
+    `get_sub_graphs()` drops such references silently, which suits reading a
+    graph, but a graph that is shared runs them as whoever runs it.
+    """
+    agent_block_id = AgentExecutorBlock().id
+    seen = {(graph.id, graph.version)}
+    frontier = [graph]
+    foreign: set[tuple[str, int]] = set()
+    while frontier:
+        refs = {ref for g in frontier for ref in _sub_graph_refs(g, agent_block_id)}
+        refs -= seen
+        if not refs:
+            break
+        seen |= refs
+        frontier = await AgentGraph.prisma().find_many(
+            where={
+                "OR": [
+                    {"id": graph_id, "version": version, "userId": graph.userId}
+                    for graph_id, version in refs
+                ]
+            },
+            include={"Nodes": True},
+        )
+        foreign |= refs - {(g.id, g.version) for g in frontier}
+    if not foreign:
+        return []
+    published = await StoreListingVersion.prisma().find_many(
+        where={
+            "OR": [
+                {"agentGraphId": graph_id, "agentGraphVersion": version}
+                for graph_id, version in foreign
+            ],
+            "submissionStatus": SubmissionStatus.APPROVED,
+            "isDeleted": False,
+        }
+    )
+    return sorted(foreign - {(v.agentGraphId, v.agentGraphVersion) for v in published})
+
+
+async def clear_sub_graph_refs_owned_by(
+    graph: Graph, user_id: str, edited_from: str | None = None
+) -> int:
+    """Blank the `graph_id` of each sub-graph node, in *graph* and the
+    sub-graphs it carries, that names one of *user_id*'s own graphs, and return
+    how many it blanked.
+
+    For a copy of someone else's graph, before it is saved as *user_id*'s: its
+    nodes were chosen by the original's owner, and which of *user_id*'s graphs
+    a graph of theirs runs is theirs to choose. Sub-graphs the copy carries
+    have new IDs by then (`reassign_ids`), so the nodes naming them stay. A
+    blanked node fails when it runs, and says why, until its owner replaces it.
+
+    With *edited_from*, the ID of the graph a copy was edited from, only nodes
+    naming a graph that some version of that one names are blanked, so
+    sub-graphs the user added while editing are kept.
+    """
+    agent_block_id = AgentExecutorBlock().id
+    nodes = [
+        node
+        for g in [graph, *graph.sub_graphs]
+        for node in g.nodes
+        if node.block_id == agent_block_id
+        and isinstance(node.input_default.get("graph_id"), str)
+        and node.input_default["graph_id"]
+    ]
+    if not nodes:
+        return 0
+    owned = await AgentGraph.prisma().find_many(
+        where={
+            "id": {"in": sorted({node.input_default["graph_id"] for node in nodes})},
+            "userId": user_id,
+        },
+        distinct=["id"],
+    )
+    targets = {g.id for g in owned}
+    if targets and edited_from is not None:
+        targets &= await _sub_graph_ids_named_by(edited_from)
+    cleared = [node for node in nodes if node.input_default["graph_id"] in targets]
+    for node in cleared:
+        node.input_default["graph_id"] = ""
+    return len(cleared)
+
+
+async def _sub_graph_ids_named_by(graph_id: str) -> set[str]:
+    """The graph IDs that sub-graph nodes in any version of *graph_id* name."""
+    nodes = await AgentNode.prisma().find_many(
+        where={"agentGraphId": graph_id, "agentBlockId": AgentExecutorBlock().id}
+    )
+    return {
+        named
+        for node in nodes
+        if isinstance(named := dict(node.constantInput).get("graph_id"), str)
+    }
+
+
 def _sub_graph_refs(graph: AgentGraph, agent_block_id: str) -> list[tuple[str, int]]:
     return [
         (graph_id, graph_version)
@@ -2036,9 +2283,9 @@ async def _graph_versions_where(
     return where_clause
 
 
-async def delete_graph(
-    graph_id: str, user_id: str, organization_id: str | None = None
-) -> int:
+def _owned_graph_where(
+    graph_id: str, user_id: str, organization_id: str | None
+) -> AgentGraphWhereInput:
     where: AgentGraphWhereInput = {"id": graph_id, "userId": user_id}
     if organization_id is not None:
         # Scope the delete to the caller's active org. Tenant-less rows
@@ -2049,10 +2296,147 @@ async def delete_graph(
             {"organizationId": organization_id},
             {"organizationId": None},
         ]
-    entries_count = await AgentGraph.prisma().delete_many(where=where)
+    return where
+
+
+async def delete_graph(
+    graph_id: str,
+    user_id: str,
+    organization_id: str | None = None,
+    *,
+    tx: Prisma | None = None,
+) -> int:
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    entries_count = await AgentGraph.prisma(tx).delete_many(where=where)
     if entries_count:
         logger.info(f"Deleted {entries_count} graph entries for Graph #{graph_id}")
     return entries_count
+
+
+async def user_owns_graph(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> bool:
+    """Whether the user owns any version of the graph, scoped the same way
+    `delete_graph` scopes its delete."""
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    return bool(await AgentGraph.prisma().count(where=where))
+
+
+async def owned_graph_scopes(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> set[tuple[str | None, str | None]]:
+    """The (org, team) pairs of the versions `delete_graph` would remove."""
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    return {
+        (graph.organizationId, graph.teamId)
+        for graph in await AgentGraph.prisma().find_many(where=where)
+    }
+
+
+# Whether anything outside the owner's own rows still points at the graph:
+# another user's library entry, preset or run, or any store listing version
+# (the StoreListingVersion → AgentGraph FK is RESTRICT whoever owns the
+# listing, and expert workflows hang off listing versions). Mirrors the
+# shared-agent predicate used for account deletion (#15487), minus its
+# sub-agent recursion: deleting this graph doesn't touch its sub-agents.
+# $1 = graph id, $2 = owner user id.
+_GRAPH_SHARED_QUERY = """
+    SELECT
+      EXISTS (SELECT 1 FROM {schema_prefix}"LibraryAgent" la
+               WHERE la."agentGraphId" = $1 AND la."userId" <> $2)
+      OR EXISTS (SELECT 1 FROM {schema_prefix}"AgentPreset" p
+                  WHERE p."agentGraphId" = $1 AND p."userId" <> $2)
+      OR EXISTS (SELECT 1 FROM {schema_prefix}"AgentGraphExecution" e
+                  WHERE e."agentGraphId" = $1 AND e."userId" <> $2)
+      AS "shared",
+      EXISTS (SELECT 1 FROM {schema_prefix}"StoreListingVersion" v
+               WHERE v."agentGraphId" = $1)
+      AS "listed"
+"""
+
+
+async def assert_graph_deletable(
+    graph_id: str, user_id: str, *, tx: Prisma | None = None
+) -> None:
+    """Raise `GraphInUseError` if permanently deleting the graph would take
+    other users' data with it or is blocked by a store listing.
+
+    Call this for the graph's owner only (see `user_owns_graph`): "other
+    users" means anyone but `user_id`."""
+    rows = await query_raw_with_schema(
+        _GRAPH_SHARED_QUERY, graph_id, user_id, client=tx
+    )
+    row = rows[0] if rows else {}
+    if row.get("listed"):
+        raise GraphInUseError(
+            f"Workflow #{graph_id} has been submitted to the store and can't be "
+            "permanently deleted; remove it from your library instead."
+        )
+    if row.get("shared"):
+        raise GraphInUseError(
+            f"Workflow #{graph_id} is in use by other users and can't be "
+            "permanently deleted; remove it from your library instead."
+        )
+
+
+_LOCK_GRAPH_ROWS_QUERY = """
+    SELECT 1 FROM {schema_prefix}"AgentGraph"
+     WHERE "id" = $1 AND "userId" = $2
+     FOR UPDATE
+"""
+
+
+async def delete_graph_permanently(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> int:
+    """Delete all versions of the user's graph in the org, together with the
+    user's own library entries (soft-deleted ones included) and presets on
+    those versions, in one transaction. Nodes and the owner's runs cascade with the graph.
+
+    Raises `GraphInUseError` if other users or a store listing reference the
+    graph; nothing is deleted then. Schedules, webhooks and trigger agents are
+    the caller's to clean up first (see
+    `library_db.cleanup_graph_for_permanent_delete`).
+    """
+    try:
+        async with transaction() as tx:
+            # A new reference takes a key-share lock on the graph row for its
+            # foreign key check, so with the rows locked the check below sees
+            # every reference that will exist. Without it, another user's run
+            # added in between would cascade away with the graph unnoticed.
+            await query_raw_with_schema(
+                _LOCK_GRAPH_ROWS_QUERY, graph_id, user_id, client=tx
+            )
+            await assert_graph_deletable(graph_id, user_id, tx=tx)
+            where = _owned_graph_where(graph_id, user_id, organization_id)
+            versions = [
+                graph.version
+                for graph in await AgentGraph.prisma(tx).find_many(where=where)
+            ]
+            if not versions:
+                return 0
+            # Only rows on the versions being deleted: versions saved under
+            # another org stay, and so do their presets and library entries.
+            version_filter: dict = {
+                "agentGraphId": graph_id,
+                "agentGraphVersion": {"in": versions},
+                "userId": user_id,
+            }
+            # A preset's saved inputs only lose their link (ON DELETE SET
+            # NULL), so they go explicitly, as in update_preset.
+            await AgentNodeExecutionInputOutput.prisma(tx).delete_many(
+                where={"AgentPreset": {"is": version_filter}}
+            )
+            await AgentPreset.prisma(tx).delete_many(where=version_filter)
+            await LibraryAgent.prisma(tx).delete_many(where=version_filter)
+            return await delete_graph(graph_id, user_id, organization_id, tx=tx)
+    except ForeignKeyViolationError as e:
+        # Backstop: a reference created after the check (e.g. a concurrent
+        # store install) still blocks the delete; report it as a conflict.
+        raise GraphInUseError(
+            f"Workflow #{graph_id} is still referenced elsewhere and can't be "
+            "permanently deleted."
+        ) from e
 
 
 async def get_graph_settings(
@@ -2099,7 +2483,11 @@ async def get_graph_settings(
 
 
 async def validate_graph_execution_permissions(
-    user_id: str, graph_id: str, graph_version: int, is_sub_graph: bool = False
+    user_id: str,
+    graph_id: str,
+    graph_version: int,
+    parent_graph_exec_id: str | None = None,
+    is_sub_graph: bool = False,
 ) -> None:
     """
     Validate that a user has permission to execute a specific graph.
@@ -2116,37 +2504,49 @@ async def validate_graph_execution_permissions(
        This is the only case where execute is allowed without read; see
        SECRT-1125 and the INVARIANT comment in the body below.
 
+    A sub-agent named by a graph someone else owns must also be one that
+    owner could use: see `_validate_sub_graph_of_other_owner()`.
+
     Args:
         graph_id: The ID of the graph to check
         user_id: The ID of the user
         graph_version: The version of the graph to check
-        is_sub_graph: Whether this is being executed as a sub-graph.
-            If `True`, the graph isn't required to be in the user's Library.
+        parent_graph_exec_id: For a sub-graph, the user's run whose node
+            starts it. A sub-graph isn't required to be in the user's Library.
+        is_sub_graph: Marks a sub-graph without naming its parent run. Callers
+            that predate `parent_graph_exec_id` send only this, over the
+            database manager's RPC, which drops arguments it doesn't know.
+            Such a call is checked as a sub-graph but not against the parent
+            graph's owner. Remove it once no caller sends it alone.
 
     Raises:
         GraphNotAccessibleError: If the graph is not accessible to the user.
         GraphNotInLibraryError: If the graph is not in the user's library (deleted).
         NotAuthorizedError: If the user lacks execution permissions for other reasons
     """
-    graph, library_agent, any_live_library_entry = await asyncio.gather(
-        AgentGraph.prisma().find_unique(
-            where={"graphVersionId": {"id": graph_id, "version": graph_version}}
-        ),
-        # The read gate's own predicate, reused rather than restated, so the
-        # two can't drift apart.
-        LibraryAgent.prisma().find_first(
-            where=graph_in_library_filter(user_id, graph_id, graph_version)
-        ),
-        # Only the owner branch reads this, but an owner running their own
-        # unpublished agent never matches the filter above, so fetching it
-        # here keeps the common case at one round trip instead of two.
-        LibraryAgent.prisma().find_first(
-            where={
-                "userId": user_id,
-                "agentGraphId": graph_id,
-                "isDeleted": False,
-            }
-        ),
+    is_sub_graph = is_sub_graph or parent_graph_exec_id is not None
+    graph, library_agent, any_live_library_entry, parent_graph_owner_id = (
+        await asyncio.gather(
+            AgentGraph.prisma().find_unique(
+                where={"graphVersionId": {"id": graph_id, "version": graph_version}}
+            ),
+            # The read gate's own predicate, reused rather than restated, so the
+            # two can't drift apart.
+            LibraryAgent.prisma().find_first(
+                where=graph_in_library_filter(user_id, graph_id, graph_version)
+            ),
+            # Only the owner branch reads this, but an owner running their own
+            # unpublished agent never matches the filter above, so fetching it
+            # here keeps the common case at one round trip instead of two.
+            LibraryAgent.prisma().find_first(
+                where={
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "isDeleted": False,
+                }
+            ),
+            _graph_owner_of_run(user_id, parent_graph_exec_id),
+        )
     )
 
     # Step 1: Check if user owns this graph
@@ -2181,6 +2581,11 @@ async def validate_graph_execution_permissions(
     ):
         raise GraphNotInLibraryError(f"Workflow #{graph_id} is not in your library")
 
+    if parent_graph_owner_id is not None and parent_graph_owner_id != user_id:
+        await _validate_sub_graph_of_other_owner(
+            user_id, parent_graph_owner_id, graph, graph_id, graph_version
+        )
+
     # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:
     # 1. Check if user has execution credits (future)
@@ -2191,6 +2596,52 @@ async def validate_graph_execution_permissions(
     # For now, the above check logic is sufficient for execution permission.
     # Future enhancements can add more granular permission checks here.
     # When adding new checks, raise NotAuthorizedError for non-library issues.
+
+
+async def _graph_owner_of_run(user_id: str, graph_exec_id: str | None) -> str | None:
+    """The owner of the graph that the user's run *graph_exec_id* runs, or None
+    when there is no run."""
+    if graph_exec_id is None:
+        return None
+    graph_exec = await AgentGraphExecution.prisma().find_first(
+        where={"id": graph_exec_id, "userId": user_id},
+        include={"AgentGraph": True},
+    )
+    if graph_exec is None or graph_exec.AgentGraph is None:
+        raise GraphNotAccessibleError(f"Workflow run #{graph_exec_id} not found")
+    return graph_exec.AgentGraph.userId
+
+
+async def _validate_sub_graph_of_other_owner(
+    user_id: str,
+    parent_graph_owner_id: str,
+    graph: AgentGraph | None,
+    graph_id: str,
+    graph_version: int,
+) -> None:
+    """Refuse a sub-graph that a graph owned by someone else names, unless that
+    owner could use it.
+
+    The parent graph's owner wrote the node that starts the sub-graph, but the
+    sub-graph runs as the user running the parent (a marketplace agent run from
+    their library, say): with their identity, credentials and credits, and its
+    outputs go back to the owner's graph. So the node may name the owner's own
+    graphs, or versions published in the marketplace, and never one of the
+    user's own, published or not.
+    """
+    target_owner_id = graph.userId if graph else None
+    if target_owner_id == user_id:
+        raise GraphNotAccessibleError(
+            f"Workflow #{graph_id} is one of yours, so a workflow someone else "
+            "created can't run it"
+        )
+    if target_owner_id == parent_graph_owner_id:
+        return
+    if not await is_graph_published_in_marketplace(graph_id, graph_version):
+        raise GraphNotAccessibleError(
+            f"Workflow #{graph_id} v{graph_version} isn't published in the "
+            "Marketplace, so a workflow by another creator can't run it"
+        )
 
 
 async def is_graph_published_in_marketplace(graph_id: str, graph_version: int) -> bool:
@@ -2252,11 +2703,10 @@ async def fork_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    # Set forked from ID and version as itself as it's about ot be copied
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
-    graph.name = f"{graph.name} (copy)"
+    record_copy_sources([graph, *graph.sub_graphs])
+    graph.name = fork_name(graph.name)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
 
     async with transaction() as tx:
@@ -2269,6 +2719,12 @@ async def fork_graph(
         )
 
     return graph
+
+
+def fork_name(name: str) -> str:
+    """The fork's name, shortened so the suffix fits the saved-name bound."""
+    suffix = " (copy)"
+    return name[: GRAPH_TEXT_MAX_LENGTHS["name"] - len(suffix)] + suffix
 
 
 async def copy_graph(
@@ -2290,10 +2746,10 @@ async def copy_graph(
     if not graph:
         raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-    graph.forked_from_id = graph.id
-    graph.forked_from_version = graph.version
+    record_copy_sources([graph, *graph.sub_graphs])
     # Preserve the original graph name (no "Copy of" prefix)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    await clear_sub_graph_refs_owned_by(graph, user_id)
     graph.validate_graph(for_run=False)
 
     dest_team = target_team_id or team_id
@@ -2310,6 +2766,13 @@ async def copy_graph(
     return graph
 
 
+def record_copy_sources(graphs: Iterable[BaseGraph]) -> None:
+    """Make each graph about to be copied the source its copy records."""
+    for graph in graphs:
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
+
+
 async def __create_graph(
     tx,
     graph: Graph,
@@ -2321,6 +2784,16 @@ async def __create_graph(
     graphs = [graph] + graph.sub_graphs
     for g in graphs:
         g.links = dedupe_links(g.links)
+
+    # Bound the metadata before anything is written, so every save path
+    # (route, fork, copy, copilot) is covered by one check.
+    for g in graphs:
+        for field_name, max_length in GRAPH_TEXT_MAX_LENGTHS.items():
+            if len(getattr(g, field_name) or "") > max_length:
+                raise ValueError(
+                    f"Graph {field_name} is too long: "
+                    f"at most {max_length} characters are allowed"
+                )
 
     # Reject unsafe dynamic pin names before anything is written, so no save
     # path (route, fork, copy, copilot) can persist one. The use-site guards in
@@ -2591,3 +3064,21 @@ class _UnknownBlockBase(Block):
     async def run(self, input_data, **kwargs):
         """Always yield an error for missing blocks."""
         yield "error", f"Block {self.id} no longer exists"
+
+
+_HAND_OVER_GRAPHS = """
+    UPDATE {schema_prefix}"AgentGraph" SET "userId" = $1
+     WHERE "userId" = $2 AND "id" = ANY($3::text[])
+"""
+
+
+async def hand_over_graphs(
+    graph_ids: list[str], *, from_user_id: str, to_user_id: str, tx: Prisma
+) -> int:
+    """Give every version of these graphs to another account, in the caller's
+    transaction. Only rows `from_user_id` still owns move. Account erasure
+    hands the agents other accounts use to the "deleted user" placeholder
+    with this (`account_erasure/shared_agents.py`)."""
+    return await execute_raw_with_schema(
+        _HAND_OVER_GRAPHS, to_user_id, from_user_id, graph_ids, client=tx
+    )

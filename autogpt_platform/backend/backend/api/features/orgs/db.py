@@ -2,10 +2,14 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
+from prisma.types import OrgMemberWhereInput
 
+from backend.data.auth.api_key import revoke_api_keys
 from backend.data.db import prisma, transaction
 from backend.data.org_credit import forget_personal_org_owner
 from backend.data.org_migration import (
@@ -13,11 +17,14 @@ from backend.data.org_migration import (
     _soft_delete_blocking_orphan,
     create_personal_org,
 )
+from backend.data.tenancy import resource_role_refusal
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
 
 logger = logging.getLogger(__name__)
+
+MAX_ORGS_PER_USER = 50
 
 
 # ---------------------------------------------------------------------------
@@ -208,18 +215,26 @@ async def resolve_member_tenancy(
     user's own default. Unlike a request, a team
     the user isn't on doesn't fall back to the org's home: everyone in the org
     sees that, and what was made for a team mustn't spread to the whole org.
+    A membership whose only role is billing manager doesn't count: that role
+    covers spend, not creating or running workflows.
     Nothing to inherit stays ``(None, None)``.
     """
+    if organization_id and await resource_role_refusal(
+        user_id, organization_id, team_id
+    ):
+        return await resolve_default_tenancy(user_id)
     if not organization_id:
         return None, None
-    if await _is_active_member(user_id, organization_id, team_id):
+    if await is_active_member(user_id, organization_id, team_id):
         return organization_id, team_id
     return await resolve_default_tenancy(user_id)
 
 
-async def _is_active_member(
+async def is_active_member(
     user_id: str, organization_id: str, team_id: str | None
 ) -> bool:
+    """Whether the user is an active member of the organization, which isn't
+    deleted, and, when ``team_id`` is given, of that team within it."""
     org_member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
         include={"Org": True},
@@ -249,6 +264,7 @@ async def _create_personal_org_for_user(
     slug_base: str,
     display_name: str,
     replaces_org_id: str | None = None,
+    check_first: Callable[[Prisma], Awaitable[None]] | None = None,
 ) -> OrgResponse:
     """Create a new personal org with all required records.
 
@@ -258,7 +274,11 @@ async def _create_personal_org_for_user(
     becomes a team org).
     """
     org = await create_personal_org(
-        user_id, slug_base, display_name, replaces_org_id=replaces_org_id
+        user_id,
+        slug_base,
+        display_name,
+        replaces_org_id=replaces_org_id,
+        check_first=check_first,
     )
     return OrgResponse.from_db(org, member_count=1)
 
@@ -291,6 +311,7 @@ async def create_org(
     # One transaction: a failure partway must not leave an org without its
     # default workspace, owner membership, profile, seat, or balance row.
     async with transaction() as tx:
+        await _check_membership_count(tx, user_id)
         org = await tx.organization.create(
             data={
                 "name": name,
@@ -489,6 +510,8 @@ async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
         slug_base=slug_base,
         display_name=display_name,
         replaces_org_id=org_id,
+        # The new personal org is a membership like any other.
+        check_first=lambda tx: _check_membership_count(tx, user_id),
     )
     # New runs bill the team org's balance now, not after the cached minute.
     forget_personal_org_owner(org_id)
@@ -525,17 +548,19 @@ async def add_org_member(
             "Cannot add a member to a personal organization. Convert it first."
         )
 
-    member = await prisma.orgmember.create(
-        data={
-            "orgId": org_id,
-            "userId": user_id,
-            "isAdmin": is_admin,
-            "isBillingManager": is_billing_manager,
-            "status": "ACTIVE",
-            "invitedByUserId": invited_by,
-        },
-        include={"User": True},
-    )
+    async with transaction() as tx:
+        await _check_membership_count(tx, user_id, joining_org_id=org_id)
+        member = await tx.orgmember.create(
+            data={
+                "orgId": org_id,
+                "userId": user_id,
+                "isAdmin": is_admin,
+                "isBillingManager": is_billing_manager,
+                "status": "ACTIVE",
+                "invitedByUserId": invited_by,
+            },
+            include={"User": True},
+        )
 
     default_ws = await prisma.team.find_first(
         where={"orgId": org_id, "isDefault": True}
@@ -553,6 +578,33 @@ async def add_org_member(
         )
 
     return OrgMemberResponse.from_db(member)
+
+
+async def _check_membership_count(
+    tx: Prisma, user_id: str, *, joining_org_id: str | None = None
+) -> None:
+    """Refuse a membership past `MAX_ORGS_PER_USER`; the transaction's first call.
+
+    Bounded at the write, because the listing has no page to truncate. The lock
+    makes concurrent adds count one after another, which needs READ COMMITTED.
+    """
+    await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"org-memberships:{user_id}",
+    )
+    where: OrgMemberWhereInput = {
+        "userId": user_id,
+        "status": "ACTIVE",
+        "Org": {"deletedAt": None},
+    }
+    if joining_org_id:
+        # Re-joining the same org stays the unique violation callers expect.
+        where["orgId"] = {"not": joining_org_id}
+    if await tx.orgmember.count(where=where) >= MAX_ORGS_PER_USER:
+        raise ValueError(
+            f"An account belongs to at most {MAX_ORGS_PER_USER} organizations"
+        )
 
 
 async def update_org_member(
@@ -602,7 +654,8 @@ async def update_org_member(
 
 
 async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) -> None:
-    """Remove a member from an organization and all its workspaces.
+    """Remove a member from an organization and all its workspaces, and revoke
+    the API keys they made in it.
 
     Guards:
     - Cannot remove the org owner (transfer ownership first)
@@ -651,6 +704,12 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
     await prisma.orgmember.delete(
         where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
     )
+
+    # A key acts in the organization it was made in, so it goes with the
+    # membership. Revoked after the delete: from then on no key can be made
+    # here, so this catches every one that was. Keys for the member's other
+    # organizations are kept.
+    await revoke_api_keys(prisma, {"userId": user_id, "organizationId": org_id})
 
 
 async def transfer_ownership(

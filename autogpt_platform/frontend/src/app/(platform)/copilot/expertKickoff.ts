@@ -39,6 +39,12 @@ export interface ExpertKickoffSend {
 export type KickoffStatus = "idle" | "pending" | "done";
 export type KickoffAttemptToken = string;
 
+/** Opens the expert's chat, adopting their latest thread, or starts their
+ *  first one with the introduction when they have none yet. */
+export function expertKickoffHref(expertId: string) {
+  return `/copilot?expertId=${encodeURIComponent(expertId)}&kickoff=1`;
+}
+
 export function buildKickoffMessage(
   expertId: string,
   attemptToken?: KickoffAttemptToken,
@@ -199,6 +205,16 @@ export function markKickoffDone(
     return true;
   } catch {
     return false;
+  }
+}
+
+// A reset expert starts over, so it introduces itself again on its next open.
+export function forgetKickoff(userId: string, expertId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(kickoffStorageKey(userId, expertId));
+  } catch {
+    return;
   }
 }
 

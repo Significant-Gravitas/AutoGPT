@@ -1,56 +1,120 @@
 // Targets for the AutoGPT Platform load tests, picked by K6_ENVIRONMENT
-// (default DEV). PREVIEW also needs PR_NUMBER.
+// (default PREVIEW, which also needs PR_NUMBER).
 //
 // - BACKEND_URL: the backend's origin; /health lives here.
 // - API_BASE_URL: the backend's REST root (BACKEND_URL + /api).
 // - FRONTEND_URL: the Next.js app. Better Auth runs under /api/auth there,
 //   and the backend verifies tokens against its /api/auth/jwks.
+// - WS_URL: the backend's WebSocket server (graph execution events).
 // - SIGNUP_ALLOWED: whether the authenticated tests may sign up throwaway
 //   accounts when LOAD_TEST_ACCOUNTS is unset (see lib/auth.js).
-function target(name, backendUrl, frontendUrl, signupAllowed) {
+// - SENTRY: where the target's backend traces land, for perf-compare.
+// - PRODUCTION: whether any of the URLs is production's.
+//
+// K6_BACKEND_URL, K6_FRONTEND_URL and K6_WS_URL override the URLs of any
+// target, for a stack on other ports or behind another name. The target's
+// name then says which were overridden, and a URL on one of production's
+// hosts needs K6_ALLOW_PROD=true whichever target it overrides.
+const PRODUCTION_URLS = {
+  backend: "https://backend.agpt.co",
+  frontend: "https://platform.agpt.co",
+  ws: "wss://ws-backend.agpt.co/ws",
+};
+const PRODUCTION_HOSTS = Object.values(PRODUCTION_URLS).map(hostOf);
+
+const ALLOW_PROD_HINT = "agree it with the team, then set K6_ALLOW_PROD=true";
+
+function hostOf(url) {
+  const match = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(String(url));
+  if (!match) return "";
+  return match[1]
+    .replace(/^.*@/, "")
+    .replace(/:\d*$/, "")
+    .replace(/\.$/, "")
+    .toLowerCase();
+}
+
+function isProductionUrl(url) {
+  return PRODUCTION_HOSTS.includes(hostOf(url));
+}
+
+function target(name, urls, signupAllowed, sentry) {
+  const overridden = [];
+  function resolve(variable, fallback) {
+    const value = __ENV[variable];
+    if (!value) return fallback;
+    overridden.push(variable);
+    return value;
+  }
+  const backend = resolve("K6_BACKEND_URL", urls.backend);
+  const frontend = resolve("K6_FRONTEND_URL", urls.frontend);
+  const ws = resolve("K6_WS_URL", urls.ws);
+
+  const atProduction = [
+    ["K6_BACKEND_URL", backend],
+    ["K6_FRONTEND_URL", frontend],
+    ["K6_WS_URL", ws],
+  ].filter(([, url]) => isProductionUrl(url));
+  const production = name === "PROD" || atProduction.length > 0;
+  if (production && __ENV.K6_ALLOW_PROD !== "true") {
+    const what =
+      name === "PROD"
+        ? "K6_ENVIRONMENT=PROD"
+        : `${atProduction.map(([variable]) => variable).join(", ")} on a production host`;
+    throw new Error(`${what} sends load at production; ${ALLOW_PROD_HINT}`);
+  }
+
   return {
-    NAME: name,
-    BACKEND_URL: backendUrl,
-    API_BASE_URL: `${backendUrl}/api`,
-    FRONTEND_URL: frontendUrl,
-    SIGNUP_ALLOWED: signupAllowed,
+    NAME:
+      overridden.length > 0
+        ? `${name} (overridden by ${overridden.join(", ")})`
+        : name,
+    BACKEND_URL: backend,
+    API_BASE_URL: `${backend}/api`,
+    FRONTEND_URL: frontend,
+    WS_URL: ws,
+    SIGNUP_ALLOWED: signupAllowed && !production,
+    // A backend somewhere else reports to its own Sentry project, if any.
+    SENTRY: overridden.includes("K6_BACKEND_URL") ? null : sentry,
+    PRODUCTION: production,
   };
 }
 
 export function getEnvironmentConfig() {
-  const env = (__ENV.K6_ENVIRONMENT || "DEV").toUpperCase();
+  const env = (__ENV.K6_ENVIRONMENT || "PREVIEW").toUpperCase();
   switch (env) {
     case "LOCAL": {
       // k6.sh sets LOCAL_HOST so k6 inside Docker reaches the host's stack.
       const host = __ENV.LOCAL_HOST || "localhost";
       return target(
         "LOCAL",
-        `http://${host}:8006`,
-        `http://${host}:3000`,
+        {
+          backend: `http://${host}:8006`,
+          frontend: `http://${host}:3000`,
+          ws: `ws://${host}:8001/ws`,
+        },
         true,
+        null,
       );
     }
     case "DEV":
       return target(
         "DEV",
-        "https://dev-server.agpt.co",
-        "https://dev-builder.agpt.co",
+        {
+          backend: "https://dev-server.agpt.co",
+          frontend: "https://dev-builder.agpt.co",
+          ws: "wss://dev-ws-server.agpt.co/ws",
+        },
         false,
+        { project: "autogpt-server", environment: "app:dev-behave:cloud" },
       );
     case "PREVIEW":
       return getPreviewConfig(__ENV.PR_NUMBER);
     case "PROD":
-      if (__ENV.K6_ALLOW_PROD !== "true") {
-        throw new Error(
-          "K6_ENVIRONMENT=PROD sends load at production; agree it with the team, then set K6_ALLOW_PROD=true",
-        );
-      }
-      return target(
-        "PROD",
-        "https://backend.agpt.co",
-        "https://platform.agpt.co",
-        false,
-      );
+      return target("PROD", PRODUCTION_URLS, false, {
+        project: "autogpt-server",
+        environment: "app:prod-behave:cloud",
+      });
     default:
       throw new Error(
         `Unknown K6_ENVIRONMENT "${env}": use PREVIEW, DEV, LOCAL or PROD`,
@@ -67,78 +131,12 @@ function getPreviewConfig(prNumber) {
   }
   return target(
     `PREVIEW pr-${prNumber}`,
-    `https://pr-${prNumber}-server.agpt.co`,
-    `https://autogpt-pr-${prNumber}.vercel.app`,
+    {
+      backend: `https://pr-${prNumber}-server.agpt.co`,
+      frontend: `https://autogpt-pr-${prNumber}.vercel.app`,
+      ws: `wss://pr-${prNumber}-ws.agpt.co/ws`,
+    },
     true,
+    { project: "autogpt-server-previews", environment: `pr-${prNumber}` },
   );
-}
-
-// Performance test configurations - Environment variable overrides supported
-export const PERFORMANCE_CONFIG = {
-  // Default load test parameters (override with env vars: VUS, DURATION, RAMP_UP, RAMP_DOWN)
-  DEFAULT_VUS: parseInt(__ENV.VUS) || 10,
-  DEFAULT_DURATION: __ENV.DURATION || "2m",
-  DEFAULT_RAMP_UP: __ENV.RAMP_UP || "30s",
-  DEFAULT_RAMP_DOWN: __ENV.RAMP_DOWN || "30s",
-
-  // Stress test parameters (override with env vars: STRESS_VUS, STRESS_DURATION, etc.)
-  STRESS_VUS: parseInt(__ENV.STRESS_VUS) || 50,
-  STRESS_DURATION: __ENV.STRESS_DURATION || "5m",
-  STRESS_RAMP_UP: __ENV.STRESS_RAMP_UP || "1m",
-  STRESS_RAMP_DOWN: __ENV.STRESS_RAMP_DOWN || "1m",
-
-  // Spike test parameters (override with env vars: SPIKE_VUS, SPIKE_DURATION, etc.)
-  SPIKE_VUS: parseInt(__ENV.SPIKE_VUS) || 100,
-  SPIKE_DURATION: __ENV.SPIKE_DURATION || "30s",
-  SPIKE_RAMP_UP: __ENV.SPIKE_RAMP_UP || "10s",
-  SPIKE_RAMP_DOWN: __ENV.SPIKE_RAMP_DOWN || "10s",
-
-  // Volume test parameters (override with env vars: VOLUME_VUS, VOLUME_DURATION, etc.)
-  VOLUME_VUS: parseInt(__ENV.VOLUME_VUS) || 20,
-  VOLUME_DURATION: __ENV.VOLUME_DURATION || "10m",
-  VOLUME_RAMP_UP: __ENV.VOLUME_RAMP_UP || "2m",
-  VOLUME_RAMP_DOWN: __ENV.VOLUME_RAMP_DOWN || "2m",
-
-  // SLA thresholds (adjustable via env vars: THRESHOLD_P95, THRESHOLD_P99, etc.)
-  THRESHOLDS: {
-    http_req_duration: [
-      `p(95)<${__ENV.THRESHOLD_P95 || "2000"}`,
-      `p(99)<${__ENV.THRESHOLD_P99 || "5000"}`,
-    ],
-    http_req_failed: [`rate<${__ENV.THRESHOLD_ERROR_RATE || "0.05"}`],
-    http_reqs: [`rate>${__ENV.THRESHOLD_RPS || "10"}`],
-    checks: [`rate>${__ENV.THRESHOLD_CHECK_RATE || "0.95"}`],
-  },
-};
-
-// Helper function to get load test configuration based on test type
-export function getLoadTestConfig(testType = "default") {
-  const configs = {
-    default: {
-      vus: PERFORMANCE_CONFIG.DEFAULT_VUS,
-      duration: PERFORMANCE_CONFIG.DEFAULT_DURATION,
-      rampUp: PERFORMANCE_CONFIG.DEFAULT_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.DEFAULT_RAMP_DOWN,
-    },
-    stress: {
-      vus: PERFORMANCE_CONFIG.STRESS_VUS,
-      duration: PERFORMANCE_CONFIG.STRESS_DURATION,
-      rampUp: PERFORMANCE_CONFIG.STRESS_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.STRESS_RAMP_DOWN,
-    },
-    spike: {
-      vus: PERFORMANCE_CONFIG.SPIKE_VUS,
-      duration: PERFORMANCE_CONFIG.SPIKE_DURATION,
-      rampUp: PERFORMANCE_CONFIG.SPIKE_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.SPIKE_RAMP_DOWN,
-    },
-    volume: {
-      vus: PERFORMANCE_CONFIG.VOLUME_VUS,
-      duration: PERFORMANCE_CONFIG.VOLUME_DURATION,
-      rampUp: PERFORMANCE_CONFIG.VOLUME_RAMP_UP,
-      rampDown: PERFORMANCE_CONFIG.VOLUME_RAMP_DOWN,
-    },
-  };
-
-  return configs[testType] || configs.default;
 }

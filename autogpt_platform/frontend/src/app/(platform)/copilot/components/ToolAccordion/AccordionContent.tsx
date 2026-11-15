@@ -187,7 +187,7 @@ export function ContentBadge({
       variant="small"
       as="span"
       className={cn(
-        "shrink-0 rounded-full border bg-muted px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
+        "shrink-0 rounded-full border bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
         className,
       )}
     >

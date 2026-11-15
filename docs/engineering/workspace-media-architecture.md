@@ -106,7 +106,7 @@ manager.read_file("/sessions/other-session/file.txt")  # Works
 
 | Method | Description |
 |--------|-------------|
-| `write_file(content, filename, path?, mime_type?, overwrite?)` | Write file to workspace |
+| `write_file(content, filename, path?, mime_type?, overwrite?, rename_on_conflict?)` | Write file to workspace |
 | `read_file(path)` | Read file by virtual path |
 | `read_file_by_id(file_id)` | Read file by ID |
 | `list_files(path?, limit?, offset?, include_all_sessions?)` | List files |
@@ -249,6 +249,9 @@ output = await store_media_file(
 # In CoPilot: Returns "workspace://file-id#image/png"
 # In graphs:  Returns "data:image/png;base64,..."
 ```
+
+A stored output never replaces another file: when its name is taken, it is
+stored beside it as `name (1).ext`, `name (2).ext`, and so on.
 
 ### Execution Context
 

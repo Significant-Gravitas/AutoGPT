@@ -52,6 +52,7 @@ from backend.util.exceptions import (
     InvalidInputError,
     MissingConfigError,
     NotFoundError,
+    UserPaywalledError,
 )
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
@@ -483,10 +484,12 @@ class RunAgentTool(BaseTool):
                     message=(
                         f"Workflow '{graph.name}' runs on a webhook trigger, so it "
                         "can't be run or scheduled directly. Set it up with "
-                        "tool:setup_agent_webhook_trigger using the trigger block's "
-                        "config (see trigger_info.config_schema). For provider "
-                        "webhooks (e.g. GitHub), ask the user which connected "
-                        "account to register the webhook under — never auto-pick."
+                        "tool:setup_agent_webhook_trigger using the trigger "
+                        "block's config (see trigger_info.config_schema), plus "
+                        "constant_inputs for any workflow inputs it has (see "
+                        "agent.inputs). For provider webhooks (e.g. GitHub), ask "
+                        "the user which connected account to register the "
+                        "webhook under — never auto-pick."
                     ),
                     session_id=session_id,
                     agent=self._build_agent_details(graph, credentials),
@@ -1121,6 +1124,13 @@ class RunAgentTool(BaseTool):
                 expert_id=session.expert_id,
                 inputs=inputs,
             )
+        except UserPaywalledError as e:
+            logger.info(f"run_agent refused for user {user_id}: no subscription")
+            return ErrorResponse(
+                message=str(e),
+                error="subscription_required",
+                session_id=session_id,
+            ).from_outside()
 
         library_agent_link = f"/library/agents/{library_agent.id}"
         if execution.status == ExecutionStatus.REVIEW:

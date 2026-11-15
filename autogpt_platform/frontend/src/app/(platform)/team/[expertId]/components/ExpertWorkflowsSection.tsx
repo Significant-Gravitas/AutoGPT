@@ -96,12 +96,10 @@ export function ExpertWorkflowsSection({
       {workflows.length === 0 ? (
         <SectionEmptyState
           tiles={[
-            // oxlint-disable-next-line design-system/no-raw-colors -- sky has no role; info blue would change the hue (deferred)
-            <span key="flow" className="inline-flex text-sky-500">
+            <span key="flow" className="inline-flex text-sky">
               <Icon icon={WorkflowSquare01Icon} size={22} />
             </span>,
-            // oxlint-disable-next-line design-system/no-raw-colors -- orange has no role; amber would change the hue (deferred)
-            <span key="play" className="inline-flex text-orange-500">
+            <span key="play" className="inline-flex text-orange">
               <Icon icon={PlayIcon} size={22} />
             </span>,
             <span key="calendar" className="inline-flex text-brand">

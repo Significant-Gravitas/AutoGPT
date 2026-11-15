@@ -19,10 +19,7 @@ export function CreatorPageLoading() {
           {/* Left: Creator info card */}
           <div className="w-full lg:w-2/5">
             <div className="w-full px-4 sm:px-6 lg:px-0">
-              <div
-                // oxlint-disable-next-line design-system/no-raw-colors -- indigo has no role; info or brand would change the frame\'s hue (deferred)
-                className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo-100/50 p-px"
-              >
+              <div className="rounded-2xl bg-gradient-to-r from-info/10 to-indigo/10 p-px">
                 <div className="flex flex-col rounded-large bg-surface-muted p-4">
                   {/* Avatar */}
                   <Skeleton className="mb-4 h-20 w-20 rounded-full sm:h-24 sm:w-24" />

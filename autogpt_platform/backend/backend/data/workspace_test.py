@@ -6,8 +6,9 @@ deleted file keeps the path it was deleted at and the next write takes it.
 the path two writes to one path race on.
 """
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from prisma.errors import UniqueViolationError
@@ -152,3 +153,22 @@ async def _write(workspace_id: str, path: str) -> str:
         size_bytes=3,
     )
     return stored.id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_listing_can_be_bounded_by_when_files_were_written(
+    server: SpinTestServer,
+):
+    """The bound applies in the query, ahead of the limit, so newer files
+    cannot crowd out the ones a window asks for."""
+    workspace = await _workspace()
+    early = await _write(workspace, "/early.txt")
+    (first,) = await list_workspace_files(workspace)
+    cutoff = first.created_at + timedelta(milliseconds=1)
+    await asyncio.sleep(0.02)
+    late = await _write(workspace, "/late.txt")
+
+    before = await list_workspace_files(workspace, created_before=cutoff)
+    assert [f.id for f in before] == [early]
+    after = await list_workspace_files(workspace, created_after=cutoff, limit=1)
+    assert [f.id for f in after] == [late]

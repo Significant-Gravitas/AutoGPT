@@ -112,7 +112,7 @@ export function ExportCopilotUsageButton() {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <p className="text-body text-muted-foreground">
+          <p className="text-body text-foreground-tertiary">
             Aggregates copilot:* spend by user and ISO week and joins each row
             against the user&apos;s tier-derived weekly limit.
           </p>
@@ -142,7 +142,7 @@ export function ExportCopilotUsageButton() {
               />
             </div>
           </div>
-          <p className="text-caption text-muted-foreground">
+          <p className="text-caption text-foreground-tertiary">
             Window is capped at 90 days and 100k rows.
           </p>
         </div>

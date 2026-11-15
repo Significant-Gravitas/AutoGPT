@@ -198,7 +198,7 @@ export function ExportCreditTransactionsButton() {
               onChange={(e) => setUserId(e.target.value)}
             />
           </div>
-          <p className="text-caption text-muted-foreground">
+          <p className="text-caption text-foreground-tertiary">
             Window is capped at 90 days and 100k rows. Narrow the range if the
             backend returns a 400.
           </p>

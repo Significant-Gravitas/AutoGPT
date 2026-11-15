@@ -12,8 +12,7 @@ export function EmptyFollowups() {
         <Icon
           icon={Calendar03Icon}
           size={24}
-          // oxlint-disable-next-line design-system/no-raw-colors -- orange/yellow hue kept; warning-foreground would be a hue change (deferred visual change)
-          className="text-yellow-700"
+          className="text-yellow-foreground"
         />
       </div>
       <Text variant="h4" tone="primary">

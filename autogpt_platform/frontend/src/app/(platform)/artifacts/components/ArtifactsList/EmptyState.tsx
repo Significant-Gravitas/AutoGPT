@@ -177,12 +177,12 @@ function Sheet({ x, rotate }: { x: number; rotate: number }) {
     <g transform={`rotate(${rotate} ${cx} ${cy})`}>
       <path
         d={`M${x + 12} ${y}H${x + width - fold}L${x + width} ${y + fold}V${y + height - 12}a12 12 0 0 1-12 12H${x + 12}a12 12 0 0 1-12-12V${y + 12}a12 12 0 0 1 12-12Z`}
-        className="fill-card stroke-border"
+        className="fill-surface stroke-border-base"
         strokeWidth={1}
       />
       <path
         d={`M${x + width - fold} ${y}V${y + fold}H${x + width}`}
-        className="fill-muted stroke-border"
+        className="fill-surface-hover stroke-border-base"
         strokeWidth={1}
       />
       {[0, 1, 2, 3].map((line) => (

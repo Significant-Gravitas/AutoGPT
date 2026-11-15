@@ -7,12 +7,16 @@ from prisma.errors import UniqueViolationError
 from prisma.models import TeamMember
 from prisma.types import TeamMemberWhereUniqueInput
 
+from backend.data.auth.api_key import revoke_api_keys
 from backend.data.db import prisma, transaction
 from backend.util.exceptions import ConflictError, NotFoundError
 
 from .team_model import TeamMemberResponse, TeamResponse
 
 logger = logging.getLogger(__name__)
+
+# Bounded at the create, because the listing has no page to truncate.
+MAX_TEAMS_PER_ORG = 500
 
 
 async def create_team(
@@ -23,27 +27,48 @@ async def create_team(
     join_policy: str = "OPEN",
 ) -> TeamResponse:
     """Create a workspace and make the creator an admin."""
-    ws = await prisma.team.create(
-        data={
-            "name": name,
-            "orgId": org_id,
-            "description": description,
-            "joinPolicy": join_policy,
-            "createdByUserId": user_id,
-        }
-    )
+    async with transaction() as tx:
+        await _check_team_count(tx, org_id)
+        ws = await tx.team.create(
+            data={
+                "name": name,
+                "orgId": org_id,
+                "description": description,
+                "joinPolicy": join_policy,
+                "createdByUserId": user_id,
+            }
+        )
 
-    # Creator becomes admin
-    await prisma.teammember.create(
-        data={
-            "teamId": ws.id,
-            "userId": user_id,
-            "isAdmin": True,
-            "status": "ACTIVE",
-        }
-    )
+        # Creator becomes admin
+        await tx.teammember.create(
+            data={
+                "teamId": ws.id,
+                "userId": user_id,
+                "isAdmin": True,
+                "status": "ACTIVE",
+            }
+        )
 
     return TeamResponse.from_db(ws, member_count=1)
+
+
+async def _check_team_count(tx: Prisma, org_id: str) -> None:
+    """Refuse a workspace past `MAX_TEAMS_PER_ORG`; the transaction's first call.
+
+    The lock makes concurrent creates count one after another, which needs
+    READ COMMITTED.
+    """
+    await tx.execute_raw("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"org-teams:{org_id}",
+    )
+    if await tx.team.count(where={"orgId": org_id, "archivedAt": None}) >= (
+        MAX_TEAMS_PER_ORG
+    ):
+        raise ValueError(
+            f"An organization holds at most {MAX_TEAMS_PER_ORG} workspaces"
+        )
 
 
 async def list_teams(org_id: str, user_id: str) -> list[TeamResponse]:
@@ -89,7 +114,8 @@ async def update_team(ws_id: str, data: dict) -> TeamResponse:
 
 
 async def delete_team(ws_id: str) -> None:
-    """Delete a workspace. Cannot delete the default workspace."""
+    """Delete a workspace, and revoke the API keys restricted to it. Cannot
+    delete the default workspace."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
     if ws is None:
         raise NotFoundError(f"Workspace {ws_id} not found")
@@ -97,6 +123,7 @@ async def delete_team(ws_id: str) -> None:
         raise ValueError("Cannot delete the default workspace")
 
     await prisma.team.delete(where={"id": ws_id})
+    await revoke_api_keys(prisma, {"teamIdRestriction": ws_id})
 
 
 async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
@@ -134,7 +161,8 @@ async def join_team(ws_id: str, user_id: str, org_id: str) -> TeamResponse:
 
 
 async def leave_team(ws_id: str, user_id: str) -> None:
-    """Leave a workspace. Cannot leave the default workspace."""
+    """Leave a workspace, revoking the API keys restricted to it that the
+    member made. Cannot leave the default workspace."""
     ws = await prisma.team.find_unique(where={"id": ws_id})
     if ws is None:
         raise NotFoundError(f"Workspace {ws_id} not found")
@@ -154,6 +182,7 @@ async def leave_team(ws_id: str, user_id: str) -> None:
             "Promote another member to admin first.",
         )
         await tx.teammember.delete_many(where={"teamId": ws_id, "userId": user_id})
+        await revoke_api_keys(tx, {"userId": user_id, "teamIdRestriction": ws_id})
 
 
 async def list_team_members(ws_id: str) -> list[TeamMemberResponse]:
@@ -266,7 +295,8 @@ async def update_team_member(
 
 
 async def remove_team_member(ws_id: str, user_id: str) -> None:
-    """Remove a member from a workspace.
+    """Remove a member from a workspace, revoking the API keys restricted to it
+    that they made.
 
     Guards against removing the last admin — workspace would become unmanageable.
     """
@@ -284,6 +314,7 @@ async def remove_team_member(ws_id: str, user_id: str) -> None:
             "Promote another member to admin first.",
         )
         await tx.teammember.delete(where=where)
+        await revoke_api_keys(tx, {"userId": user_id, "teamIdRestriction": ws_id})
 
 
 async def _lock_team_admins(tx: Prisma, ws_id: str) -> None:

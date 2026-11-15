@@ -176,8 +176,10 @@ function StatRow({ items }: { items: StatItem[] }) {
             <Text
               variant="body-medium"
               tone={item.tone === "warn" ? undefined : "emphasis"}
-              // oxlint-disable-next-line design-system/no-restyle, design-system/no-raw-colors -- orange-600 #E77B00 has no role or tone; orange to amber change deferred (see PR)
-              className={item.tone === "warn" ? "text-orange-600" : undefined}
+              className={
+                // oxlint-disable-next-line design-system/no-restyle -- Text has no orange tone (deferred)
+                item.tone === "warn" ? "text-orange-foreground" : undefined
+              }
             >
               {item.value}
             </Text>

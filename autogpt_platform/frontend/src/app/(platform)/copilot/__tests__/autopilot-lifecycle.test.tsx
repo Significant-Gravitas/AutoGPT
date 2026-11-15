@@ -135,7 +135,6 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
             type: "sub_session_status",
             status: "queued",
             background_task_id: "background-task",
-            background_expires_at: new Date(Date.now() + 60_000).toISOString(),
           }),
         },
         {
@@ -144,7 +143,6 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           sequence: 3,
         },
       ];
-      const until = new Date(Date.now() + 60_000).toISOString();
       let sends = 0;
       server.use(
         http.post(
@@ -156,7 +154,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         ),
       );
       renderHost({
-        sessionOverride: { messages: pending, background_pending_until: until },
+        sessionOverride: { messages: pending, background_pending: true },
       });
       await screen.findByText("I will return with the result.");
       const queued: NonNullable<SessionOverride["messages"]> = [
@@ -188,7 +186,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
           sessionHandler({
             messages: queued,
             chat_status: "queued",
-            background_pending_until: until,
+            background_pending: true,
           }),
         );
         await screen.findByText(
