@@ -784,6 +784,49 @@ async def test_a_sweep_settles_at_most_its_concurrency_of_rooms_at_once(
         assert entry is not None and entry.closed_at == NOW
 
 
+async def test_a_sweep_cancelled_mid_settlement_leaves_no_settlement_running(
+    redis, monkeypatch
+):
+    """Cancelled as the relay shuts down, with closes under way and more
+    waiting their turn: every settlement the sweep started ends with it."""
+    monkeypatch.setattr(room_reaper, "ROOM_LEAVE_TIMEOUT_S", 30.0)
+    service = FakeRoomService()
+    for index in range(6):
+        call_id = f"{index:032x}"
+        service.open(rooms.room_name(call_id), rooms.person_identity(USER, call_id))
+        await locks.register_room(redis, call_id, USER, NOW - 200)
+    service.hang.add("delete")
+    in_flight = 0
+    take = service._take
+
+    async def counted(kind: str, request: object) -> None:
+        nonlocal in_flight
+        if kind != "delete":
+            await take(kind, request)
+            return
+        in_flight += 1
+        try:
+            await take(kind, request)
+        finally:
+            in_flight -= 1
+
+    monkeypatch.setattr(service, "_take", counted)
+    reaper = reaper_on(redis, service, clock=Clock(), sweep_concurrency=2)
+    before = asyncio.all_tasks()
+    sweeping = asyncio.create_task(reaper.sweep())
+    # Two closes under way, four waiting their turn.
+    await until(lambda: in_flight == 2)
+
+    await stop([sweeping])
+
+    left = [task for task in asyncio.all_tasks() - before if not task.done()]
+    try:
+        assert left == []
+        assert in_flight == 0
+    finally:
+        await stop(left)
+
+
 async def test_the_relay_sweeps_again_and_again(redis):
     service = FakeRoomService()
     sweeping = asyncio.create_task(

@@ -329,7 +329,8 @@ class RoomReaper:
         """Run *settles*, at most ``sweep_concurrency`` at once, until the
         pass's time box ends; the ones it ends wait for the next sweep. Each
         answers True once its close or revocation went through, False when
-        one failed, and None when it made none."""
+        one failed, and None when it made none. Every settlement started here
+        has ended by the time this returns or is cancelled."""
         if not settles:
             return []
         gate = asyncio.Semaphore(self._sweep_concurrency)
@@ -341,14 +342,16 @@ class RoomReaper:
                 return await settle()
 
         tasks = [asyncio.create_task(settle_in_turn(settle)) for settle in settles]
-        done, pending = await asyncio.wait(tasks, timeout=self._sweep_time_box_s)
+        try:
+            done, pending = await asyncio.wait(tasks, timeout=self._sweep_time_box_s)
+        finally:
+            await stop(tasks)
         if pending:
             logger.warning(
                 f"Voice rooms: {len(pending)} rooms were not settled within "
                 f"the sweep's {self._sweep_time_box_s:.0f}s; the next sweep "
                 f"takes them up"
             )
-            await stop(pending)
         return [task.result() for task in tasks if task in done]
 
     async def _settle_logged(
