@@ -23,6 +23,9 @@ interface Props {
   /** The composer's tab shows the integrations on mobile instead (new
    *  layout, see ComposerPanelTab). */
   hideIntegrationsOnMobile?: boolean;
+  /** A Local PC chat runs on the user's own computer and has no cloud
+   *  computer to show. */
+  hideComputer?: boolean;
 }
 
 // Sized and stroked like the sidebar's nav icons so the chat's top-right
@@ -39,6 +42,7 @@ export function ContextPanelToggle({
   sessionId = null,
   expert = null,
   hideIntegrationsOnMobile = false,
+  hideComputer = false,
 }: Props) {
   const { deliverables, documentCount: liveDocumentCount } =
     useSessionFiles(sessionId);
@@ -61,7 +65,7 @@ export function ContextPanelToggle({
   const isMobile = useIsMobile();
   // The mobile sheet has no computer face to open, and mobile already floats
   // a files button over the chat's top-left corner.
-  const showComputerToggle = !!sessionId && !isMobile;
+  const showComputerToggle = !!sessionId && !isMobile && !hideComputer;
   const showFilesToggle = !isMobile;
   const showIntegrations = !!expert && !(isMobile && hideIntegrationsOnMobile);
 

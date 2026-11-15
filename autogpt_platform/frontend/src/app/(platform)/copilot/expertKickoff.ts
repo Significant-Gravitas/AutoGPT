@@ -208,6 +208,16 @@ export function markKickoffDone(
   }
 }
 
+// A reset expert starts over, so it introduces itself again on its next open.
+export function forgetKickoff(userId: string, expertId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(kickoffStorageKey(userId, expertId));
+  } catch {
+    return;
+  }
+}
+
 export function clearKickoffPending(
   userId: string,
   expertId: string,

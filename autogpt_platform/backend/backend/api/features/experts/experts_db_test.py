@@ -20,16 +20,12 @@ import prisma.models
 import pydantic
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import (
-    experts_db,
-    raise_attachments,
-    routine_jobs,
-    routines,
-    scheduling,
-    seed,
-)
+from backend.api.features.experts import experts_db, raise_attachments
+from backend.api.features.experts import reset as expert_reset
+from backend.api.features.experts import routine_jobs, routines, scheduling, seed
 from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
@@ -43,6 +39,8 @@ from backend.api.features.experts.models import (
     encode_voice_preferences,
 )
 from backend.api.features.experts.roster import RosterError, load_roster
+from backend.api.features.graph_executions.review.model import ReviewItem
+from backend.api.features.graph_executions.review.service import process_reviews
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store.categories import StoreCategory
@@ -50,6 +48,8 @@ from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
+from backend.copilot import db as copilot_db
+from backend.copilot import model as copilot_model
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.model import ChatSession, create_chat_session
 from backend.copilot.tools.models import ErrorResponse
@@ -58,6 +58,7 @@ from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
+from backend.data.human_review import get_pending_reviews_for_user
 from backend.data.onboarding import get_user_onboarding
 from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_or_create_user
@@ -7662,3 +7663,312 @@ async def _record_marketplace_step() -> None:
         ),
         return_exceptions=True,
     )
+
+
+# ─── Reset ────────────────────────────────────────────────────────────
+
+
+async def _hire_with_history(user_id: str) -> tuple[str, prisma.models.Expert, str]:
+    """A hire the owner has lived with: an edited soul, a routine of their
+    own beside the template's, and a first thread. Returns the expert id,
+    its template and the id of that thread."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    template = await prisma.models.Expert.prisma().update(
+        where={"id": template.id},
+        data={"boundaries": "Never invent statistics."},
+    )
+    assert template is not None
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": template.id,
+            "key": "weekly-digest",
+            "title": "Weekly digest",
+            "prompt": "Summarise the week.",
+            "crons": ["0 9 * * 1"],
+        }
+    )
+    hired = await experts_db.hire_expert(user_id, template.id, None)
+    expert_id = hired.expert.id
+    await prisma.models.Expert.prisma().update(
+        where={"id": expert_id},
+        data={
+            "name": "My Maria",
+            "identity": "Remember the codeword HERON.",
+            "boundaries": "Edited by the owner.",
+        },
+    )
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": expert_id,
+            "key": "owner-routine",
+            "title": "Owner routine",
+            "prompt": "Check the inbox.",
+            "crons": ["0 8 * * *"],
+            "source": prisma.enums.ExpertRoutineSource.OWNER,
+        }
+    )
+    kickoff = await copilot_model.get_or_create_expert_kickoff_session(
+        user_id, expert_id, dry_run=False
+    )
+    return expert_id, template, kickoff.session_id
+
+
+@pytest.fixture
+def reset_externals():
+    """The memory graph and the E2B volume live outside the test database;
+    PostHog too."""
+    with (
+        patch.object(
+            expert_reset, "erase_scope", new=AsyncMock(return_value=12)
+        ) as erase,
+        patch.object(
+            expert_reset, "_erase_computer", new=AsyncMock(return_value=True)
+        ) as computer,
+        patch.object(expert_reset, "emit_funnel_event") as track,
+    ):
+        yield SimpleNamespace(erase=erase, computer=computer, track=track)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_puts_a_hire_back_to_how_it_arrived(
+    server: SpinTestServer, test_user, reset_externals
+):
+    expert_id, template, _ = await _hire_with_history(test_user.id)
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.model_dump() == {
+        # Erased first, and once more after the chats are archived.
+        "memory_nodes_erased": 24,
+        "computer_erased": True,
+        "soul_reset": True,
+        "routines_reset": 1,
+        "chats_archived": 1,
+        "approvals_cleared": 0,
+    }
+    assert reset_externals.erase.await_count == 2
+    # One event per reset, with ids and counts only: no name, no chat text.
+    reset_externals.track.assert_called_once_with(
+        test_user.id,
+        PostHogEvent.EXPERT_RESET,
+        {"expert_id": expert_id, "template_id": template.id, **result.model_dump()},
+    )
+    scope = reset_externals.erase.await_args.args[0]
+    assert (scope.owner_user_id, scope.expert_id) == (test_user.id, expert_id)
+    reset_externals.computer.assert_awaited_once_with(expert_id)
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert row.identity == template.identity
+    assert row.boundaries == "Never invent statistics."
+    # The user named it; the reset keeps the name.
+    assert row.name == "My Maria"
+
+    routines = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": expert_id}
+    )
+    assert [(r.key, r.enabledAt) for r in routines] == [("weekly-digest", None)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_archives_the_chats_and_the_next_kickoff_starts_fresh(
+    server: SpinTestServer, test_user, reset_externals
+):
+    expert_id, _, old_thread = await _hire_with_history(test_user.id)
+
+    await expert_reset.reset_expert(test_user.id, expert_id)
+
+    old = await prisma.models.ChatSession.prisma().find_unique(where={"id": old_thread})
+    assert old is not None and old.archivedAt is not None
+    listed = await copilot_db.get_user_chat_sessions(test_user.id, expert_id=expert_id)
+    assert listed == []
+    assert (
+        await copilot_db.get_user_session_count(test_user.id, expert_id=expert_id) == 0
+    )
+    # The expert has no open thread, so it introduces itself again, in a new
+    # thread rather than the archived one its kickoff id used to name.
+    fresh = await copilot_model.get_or_create_expert_kickoff_session(
+        test_user.id, expert_id, dry_run=False
+    )
+    assert fresh.session_id != old_thread
+    assert fresh.archived_at is None
+    again = await copilot_model.get_or_create_expert_kickoff_session(
+        test_user.id, expert_id, dry_run=False
+    )
+    assert again.session_id == fresh.session_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_refuses_someone_elses_expert(
+    server: SpinTestServer, test_user, other_user, reset_externals
+):
+    expert_id, _, _ = await _hire_with_history(test_user.id)
+
+    with pytest.raises(NotFoundError):
+        await expert_reset.reset_expert(other_user.id, expert_id)
+
+    reset_externals.erase.assert_not_awaited()
+    reset_externals.computer.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_stops_when_a_routine_job_cannot_be_deleted(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """Unlike switching a routine off, a reset deletes the row, so a job left
+    behind would fire with nothing to stop it: the reset fails instead and
+    the routine stays until a retry succeeds."""
+    expert_id, _, _ = await _hire_with_history(test_user.id)
+    await prisma.models.ExpertRoutine.prisma().update_many(
+        where={"expertId": expert_id, "key": "owner-routine"},
+        data={"scheduleIds": ["sched-live"], "enabledAt": datetime.now(timezone.utc)},
+    )
+    scheduler = MagicMock()
+    scheduler.delete_schedule = AsyncMock(side_effect=RuntimeError("scheduler down"))
+
+    with (
+        patch.object(expert_reset, "get_scheduler_client", return_value=scheduler),
+        pytest.raises(RuntimeError),
+    ):
+        await expert_reset.reset_expert(test_user.id, expert_id)
+
+    kept = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": expert_id, "key": "owner-routine"}
+    )
+    assert [r.scheduleIds for r in kept] == [["sched-live"]]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_waits_for_a_turn_in_flight(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A turn ending mid-reset would hand its conversation to memory
+    ingestion after the erase, so a busy expert is not reset."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={"chatStatus": prisma.enums.ChatSessionStatus.running},
+    )
+
+    with pytest.raises(expert_reset.ExpertBusyError):
+        await expert_reset.reset_expert(test_user.id, expert_id)
+
+    reset_externals.erase.assert_not_awaited()
+    reset_externals.computer.assert_not_awaited()
+    still_open = await prisma.models.ChatSession.prisma().find_unique(
+        where={"id": thread}
+    )
+    assert still_open is not None and still_open.archivedAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_stops_sharing_the_chats_it_archives(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A shared chat's link stops serving once archived; the reset also runs
+    the owner's stop-sharing cascade so runs shared through it close too."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={
+            "isShared": True,
+            "shareToken": str(uuid.uuid4()),
+            "sharedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    await expert_reset.reset_expert(test_user.id, expert_id)
+
+    row = await prisma.models.ChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None
+    assert row.archivedAt is not None
+    assert row.isShared is False
+    assert row.shareToken is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_retried_reset_unshares_a_chat_an_earlier_one_archived(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A reset interrupted between archiving and unsharing must not leave a
+    chat archived but still shared: the retry picks it up."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={
+            "archivedAt": datetime.now(timezone.utc),
+            "isShared": True,
+            "shareToken": str(uuid.uuid4()),
+            "sharedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.chats_archived == 0
+    row = await prisma.models.ChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None
+    assert row.isShared is False
+    assert row.shareToken is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_declines_an_approval_waiting_in_needs_you(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A held call waiting in the expert's chat shows in Needs you. Approving
+    it after the reset would wake a turn in a chat that is gone, so the reset
+    declines it, and answering it anyway says the chat was removed."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
+    await prisma.models.PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": card,
+            "userId": test_user.id,
+            "chatSessionId": thread,
+            "payload": SafeJson({"tool": "create_routine"}),
+        }
+    )
+    elsewhere = await create_chat_session(test_user.id, dry_run=False)
+    other_card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
+    await prisma.models.PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": other_card,
+            "userId": test_user.id,
+            "chatSessionId": elsewhere.session_id,
+            "payload": SafeJson({"tool": "create_routine"}),
+        }
+    )
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.approvals_cleared == 1
+    declined = await prisma.models.PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": card}
+    )
+    assert declined is not None
+    assert (declined.status, declined.processed) == (
+        prisma.enums.ReviewStatus.REJECTED,
+        True,
+    )
+    # Needs you lists waiting reviews: the card is gone from it.
+    waiting = await get_pending_reviews_for_user(test_user.id, page_size=100)
+    assert card not in {review.node_exec_id for review in waiting}
+    untouched = await prisma.models.PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": other_card}
+    )
+    assert untouched is not None
+    assert untouched.status == prisma.enums.ReviewStatus.WAITING
+
+    with pytest.raises(HTTPException) as answered:
+        await process_reviews(
+            test_user.id, [ReviewItem(node_exec_id=card, approved=True)]
+        )
+    assert answered.value.status_code == 410
+    assert answered.value.detail == {
+        "type": "chat_removed",
+        # Still on the team, so the page can offer a chat with them.
+        "expert_id": expert_id,
+        "expert_name": "My Maria",
+        "message": "This chat was removed when My Maria was reset.",
+    }

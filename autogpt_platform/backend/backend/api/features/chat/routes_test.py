@@ -1,10 +1,12 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import fastapi
 import fastapi.testclient
@@ -23,10 +25,21 @@ from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.background_task import BackgroundSessionState
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.continuation import KEEP_GOING_NOTE
-from backend.copilot.model import AutopilotMode, ChatSession
+from backend.copilot.model import (
+    AutopilotMode,
+    ChatSession,
+    ChatSessionGroup,
+    SessionIdConflictError,
+)
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
+from backend.copilot.tools.local_pc_machine import (
+    MachineControlError,
+    MachineNotConnectedError,
+    MachineSessionBinding,
+)
+from backend.copilot.tools.local_pc_shim import ShimHello
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import HostScopedCredentials, OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
@@ -56,6 +69,13 @@ async def _not_found_handler(
 
 
 client = fastapi.testclient.TestClient(app)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def graph_cleanup():
+    """These route tests mock service boundaries and do not create graphs."""
+    yield
+
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 VALID_CODEX_PROVIDER_STATE = encode_provider_state(
@@ -317,6 +337,7 @@ def _mock_stream_internals(
         organization_id=None,
         team_id=None,
         expert_id=None,
+        archived_at=None,
     )
     mock_session.metadata.llm_auth_provider = llm_auth_provider
     mock_session.metadata.llm_credential_id = (
@@ -2480,6 +2501,736 @@ def test_create_session_dry_run_default_false(
 
     assert response.status_code == 200
     assert response.json()["metadata"]["dry_run"] is False
+    assert response.json()["metadata"]["execution_target"] == {"kind": "cloud"}
+
+
+def test_create_session_explicit_cloud_uses_normal_creation(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    create = _mock_create_chat_session(mocker)
+    local_create = mocker.patch(
+        "backend.api.features.chat.routes._create_local_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions",
+        json={"execution_target": {"kind": "cloud"}},
+    )
+
+    assert response.status_code == 200
+    create.assert_awaited_once()
+    local_create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_activation_failure_detaches_and_deletes(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    detach, delete = _patch_failing_local_activation(mocker)
+
+    with pytest.raises(fastapi.HTTPException) as raised:
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+        )
+
+    assert raised.value.status_code == 503
+    detach.assert_awaited_once()
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["organization_id"] == "org-1"
+
+
+@pytest.mark.asyncio
+async def test_local_session_cleanup_deletes_under_the_tenancy_it_was_saved_with(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """create_chat_session resolves a private expert's tenancy again. If that
+    moved since this request resolved it, the cleanup must delete under the
+    tenancy the row was saved with, or the delete matches nothing and the
+    session is orphaned."""
+    mocker.patch(
+        "backend.api.features.chat.routes.experts_db.resolve_private_expert_tenancy",
+        new_callable=AsyncMock,
+        return_value=("org-resolved", "team-resolved"),
+    )
+
+    async def create_after_a_move(user_id, *, session_id, execution_target, **_):
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=execution_target,
+            organization_id="org-moved",
+            team_id="team-moved",
+        )
+
+    _, delete = _patch_failing_local_activation(mocker, create=create_after_a_move)
+
+    with pytest.raises(fastapi.HTTPException):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+            expert_id="expert-1",
+        )
+
+    delete.assert_awaited_once()
+    assert delete.await_args.kwargs["organization_id"] == "org-moved"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("attach_error", "undone"),
+    [
+        (MachineControlError("MACHINE_REQUEST_TIMEOUT", "no reply"), True),
+        (
+            MachineControlError("SESSION_ALREADY_ACTIVE", "busy", refused=True),
+            False,
+        ),
+    ],
+)
+async def test_an_attach_the_machine_never_answered_is_undone(
+    mocker: pytest_mock.MockerFixture, attach_error: MachineControlError, undone: bool
+) -> None:
+    """An attach that timed out may have happened on the machine, and would
+    refuse the user's retry as SESSION_ALREADY_ACTIVE; undo it. One the
+    machine refused changed nothing there, so leave the machine alone."""
+    detach, delete = _patch_failing_local_activation(mocker, attach_error=attach_error)
+
+    with pytest.raises(fastapi.HTTPException):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+        )
+
+    assert detach.await_count == (1 if undone else 0)
+    # The insert comes after the attach, so no row of this request's exists.
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_cloud_chat_that_won_the_id_survives_the_local_cleanup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Cloud create for the same id takes no Local PC lock. If it inserts
+    first, this create's insert fails, and the cleanup must leave the Cloud
+    chat that won alone."""
+
+    async def insert_after_the_cloud_create(user_id, *, session_id, **_):
+        raise RuntimeError("Unique constraint failed on the fields: (`id`)")
+
+    detach, delete = _patch_failing_local_activation(
+        mocker, create=insert_after_the_cloud_create
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        side_effect=lambda session_id, user_id: ChatSession.new(
+            user_id, dry_run=False, session_id=session_id
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="Unique constraint"):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=_LOCAL_TARGET,
+        )
+
+    detach.assert_awaited_once()
+    delete.assert_not_awaited()
+
+
+_LOCAL_TARGET = chat_routes.LocalExecutionTargetRequest(
+    machine_id="machine-1",
+    expected_connection_id="connection-1",
+    browse_id="browse-1",
+    directory_ref="directory-1",
+)
+
+
+def _patch_failing_local_activation(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    create=None,
+    attach_error: BaseException | None = None,
+):
+    """Stub a Local PC create through attach and save, failing at activation.
+
+    The default ``create`` saves the row under the tenancy it is given, as
+    ``create_chat_session`` does. Returns the detach and delete mocks."""
+    binding = MachineSessionBinding(
+        session_id="placeholder",
+        allowed_root="/workspace",
+        fingerprint="a" * 64,
+        revision=1,
+        root_grant="grant-1",
+    )
+
+    async def _attach(_presence, *, session_id, browse_id, directory_ref):
+        return binding.model_copy(update={"session_id": session_id})
+
+    async def _create(
+        user_id, *, session_id, execution_target, organization_id, team_id, **_
+    ):
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=execution_target,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
+
+    mocker.patch(
+        "backend.api.features.chat.routes.is_local_executor_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.ChatConfig",
+        return_value=SimpleNamespace(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(connection_id="connection-1"),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.attach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=attach_error or _attach,
+    )
+    saved: dict[str, ChatSession] = {}
+
+    async def _insert(*args, **kwargs):
+        row = await (create or _create)(*args, **kwargs)
+        saved[row.session_id] = row
+        return row
+
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_insert,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        side_effect=lambda session_id, user_id: saved.get(session_id),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.activate_machine_session",
+        new_callable=AsyncMock,
+        side_effect=MachineControlError("ACTIVATE_FAILED", "activate failed"),
+    )
+    detach = mocker.patch(
+        "backend.api.features.chat.routes.detach_machine_session",
+        new_callable=AsyncMock,
+    )
+    delete = mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    return detach, delete
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+@pytest.mark.parametrize("llm_auth_provider", ["platform", "codex"])
+async def test_local_session_success_detaches_validation_child(
+    mocker: pytest_mock.MockerFixture,
+    expert_id: str | None,
+    llm_auth_provider: CopilotLlmAuthProvider,
+) -> None:
+    llm_credential_id = "credential-1" if llm_auth_provider == "codex" else None
+    tenancy = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.resolve_private_expert_tenancy",
+        new=AsyncMock(return_value=("private-org", None)),
+    )
+    target = chat_routes.LocalExecutionTargetRequest(
+        machine_id="machine-1",
+        expected_connection_id="connection-1",
+        browse_id="browse-1",
+        directory_ref="directory-1",
+    )
+    presence = SimpleNamespace(connection_id="connection-1")
+
+    async def _attach(_presence, *, session_id, browse_id, directory_ref):
+        return MachineSessionBinding(
+            session_id=session_id,
+            allowed_root="/workspace",
+            fingerprint="a" * 64,
+            revision=1,
+            root_grant="grant-1",
+        )
+
+    async def _create(user_id, *, session_id, execution_target, **_kwargs):
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=execution_target,
+            llm_auth_provider=_kwargs["llm_auth_provider"],
+            llm_credential_id=_kwargs["llm_credential_id"],
+            expert_id=_kwargs["expert_id"],
+            organization_id=_kwargs["organization_id"],
+        )
+
+    async def _activate(_presence, binding):
+        return binding
+
+    manager = MagicMock()
+    manager.wait_for = AsyncMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            platform="linux",
+            arch="x86_64",
+            allowed_root="/workspace",
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_local_executor_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.ChatConfig",
+        return_value=SimpleNamespace(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        return_value=presence,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.attach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_attach,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_create,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.activate_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_activate,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_shim_manager",
+        return_value=manager,
+    )
+    detach = mocker.patch(
+        "backend.api.features.chat.routes.detach_machine_session",
+        new_callable=AsyncMock,
+    )
+
+    session = await chat_routes._create_local_chat_session(
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        dry_run=False,
+        target=target,
+        llm_auth_provider=llm_auth_provider,
+        llm_credential_id=llm_credential_id,
+        expert_id=expert_id,
+    )
+
+    assert session.metadata.llm_auth_provider == llm_auth_provider
+    assert session.metadata.llm_credential_id == llm_credential_id
+    assert session.expert_id == expert_id
+    if expert_id:
+        tenancy.assert_awaited_once_with("user-1", expert_id)
+        assert session.organization_id == "private-org"
+    else:
+        tenancy.assert_not_awaited()
+        assert session.organization_id == "org-1"
+    assert session.metadata.execution_target.kind == "local"
+    detach.assert_awaited_once_with(presence, session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_local_session_detach_failure_preserves_valid_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    target = chat_routes.LocalExecutionTargetRequest(
+        machine_id="machine-1",
+        expected_connection_id="connection-1",
+        browse_id="browse-1",
+        directory_ref="directory-1",
+    )
+    presence = SimpleNamespace(connection_id="connection-1")
+
+    async def _attach(_presence, *, session_id, browse_id, directory_ref):
+        return MachineSessionBinding(
+            session_id=session_id,
+            allowed_root="/workspace",
+            fingerprint="a" * 64,
+            revision=1,
+            root_grant="grant-1",
+        )
+
+    async def _create(user_id, *, session_id, execution_target, **_kwargs):
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=execution_target,
+        )
+
+    async def _activate(_presence, binding):
+        return binding
+
+    manager = MagicMock()
+    manager.wait_for = AsyncMock()
+    manager.get_hello_async = AsyncMock(
+        return_value=ShimHello(
+            machine_id="machine-1",
+            platform="linux",
+            arch="x86_64",
+            allowed_root="/workspace",
+        )
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_local_executor_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.ChatConfig",
+        return_value=SimpleNamespace(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        return_value=presence,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.attach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_attach,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_create,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.activate_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_activate,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_shim_manager",
+        return_value=manager,
+    )
+    detach = mocker.patch(
+        "backend.api.features.chat.routes.detach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("control channel unavailable"),
+    )
+    delete = mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    session = await chat_routes._create_local_chat_session(
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        dry_run=False,
+        target=target,
+    )
+
+    assert session.metadata.execution_target.kind == "local"
+    detach.assert_awaited_once_with(presence, session.session_id)
+    delete.assert_not_awaited()
+
+
+def _bound_local_session(
+    session_id: str, directory_ref: str = "directory-1"
+) -> ChatSession:
+    return ChatSession.new(
+        "user-1",
+        dry_run=False,
+        session_id=session_id,
+        organization_id="org-1",
+        team_id="team-1",
+        execution_target=chat_routes.LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref=directory_ref,
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+        ),
+    )
+
+
+def _mock_local_create_preconditions(mocker: pytest_mock.MockerFixture) -> MagicMock:
+    mocker.patch(
+        "backend.api.features.chat.routes.is_local_executor_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.ChatConfig",
+        return_value=SimpleNamespace(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(connection_id="connection-1"),
+    )
+    return mocker.patch(
+        "backend.api.features.chat.routes.attach_machine_session",
+        new_callable=AsyncMock,
+    )
+
+
+@pytest.mark.asyncio
+async def test_local_session_retry_adopts_the_session_its_first_attempt_made(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A retry after a lost response names the same session id and target; it
+    gets the committed session back and never touches the machine again."""
+    session_id = str(uuid4())
+    attach = _mock_local_create_preconditions(mocker)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_bound_local_session(session_id),
+    )
+    create = mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session", new_callable=AsyncMock
+    )
+
+    session = await chat_routes._create_local_chat_session(
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        dry_run=False,
+        session_id=session_id,
+        target=chat_routes.LocalExecutionTargetRequest(
+            machine_id="machine-1",
+            expected_connection_id="connection-1",
+            browse_id="browse-1",
+            directory_ref="directory-1",
+        ),
+    )
+
+    assert session.session_id == session_id
+    attach.assert_not_awaited()
+    create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_retry_adopts_even_while_the_machine_is_offline(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Adopting a committed session needs nothing from the machine, so a retry
+    still gets it back after the machine went offline."""
+    session_id = str(uuid4())
+    attach = _mock_local_create_preconditions(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        side_effect=MachineNotConnectedError("MACHINE_NOT_CONNECTED", "offline"),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_bound_local_session(session_id),
+    )
+
+    session = await chat_routes._create_local_chat_session(
+        user_id="user-1",
+        organization_id="org-1",
+        team_id="team-1",
+        dry_run=False,
+        session_id=session_id,
+        target=_LOCAL_TARGET,
+    )
+
+    assert session.session_id == session_id
+    attach.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_id_of_another_user_is_refused_before_attaching(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The insert would fail on another user's id only after the machine had
+    attached a folder; refuse the id before touching the machine."""
+    session_id = str(uuid4())
+    attach = _mock_local_create_preconditions(mocker)
+
+    async def _get(session_id_: str, user_id: str | None = None):
+        return None if user_id else _bound_local_session(session_id_)
+
+    mocker.patch("backend.copilot.model.get_chat_session", side_effect=_get)
+
+    with pytest.raises(SessionIdConflictError):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            session_id=session_id,
+            target=_LOCAL_TARGET,
+        )
+
+    attach.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_id_bound_elsewhere_is_refused_untouched(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """An id already bound to another folder is a conflict, and the request
+    that lost it detaches and deletes nothing."""
+    session_id = str(uuid4())
+    attach = _mock_local_create_preconditions(mocker)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=_bound_local_session(session_id, directory_ref="directory-2"),
+    )
+    detach = mocker.patch(
+        "backend.api.features.chat.routes.detach_machine_session",
+        new_callable=AsyncMock,
+    )
+    delete = mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            session_id=session_id,
+            target=chat_routes.LocalExecutionTargetRequest(
+                machine_id="machine-1",
+                expected_connection_id="connection-1",
+                browse_id="browse-1",
+                directory_ref="directory-1",
+            ),
+        )
+
+    attach.assert_not_awaited()
+    detach.assert_not_awaited()
+    delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_local_session_creation_cancellation_still_compensates(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    target = chat_routes.LocalExecutionTargetRequest(
+        machine_id="machine-1",
+        expected_connection_id="connection-1",
+        browse_id="browse-1",
+        directory_ref="directory-1",
+    )
+    presence = SimpleNamespace(connection_id="connection-1")
+
+    async def _attach(_presence, *, session_id, browse_id, directory_ref):
+        return MachineSessionBinding(
+            session_id=session_id,
+            allowed_root="/workspace",
+            fingerprint="a" * 64,
+            revision=1,
+            root_grant="grant-1",
+        )
+
+    mocker.patch(
+        "backend.api.features.chat.routes.is_local_executor_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.ChatConfig",
+        return_value=SimpleNamespace(
+            local_pc_executor_oauth_client_id="autogpt-local-executor",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_machine_presence",
+        new_callable=AsyncMock,
+        return_value=presence,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.attach_machine_session",
+        new_callable=AsyncMock,
+        side_effect=_attach,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=asyncio.CancelledError,
+    )
+    # The insert committed before the cancellation landed, so the row there is
+    # this request's own, bound to the folder it attached.
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=ChatSession.new(
+            "user-1",
+            dry_run=False,
+            execution_target=chat_routes.LocalExecutionTargetMetadata(
+                machine_id="machine-1",
+                directory_ref="directory-1",
+                allowed_root="/workspace",
+                root_fingerprint="a" * 64,
+                root_grant="grant-1",
+            ),
+        ),
+    )
+    detach = mocker.patch(
+        "backend.api.features.chat.routes.detach_machine_session",
+        new_callable=AsyncMock,
+    )
+    delete = mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await chat_routes._create_local_chat_session(
+            user_id="user-1",
+            organization_id="org-1",
+            team_id="team-1",
+            dry_run=False,
+            target=target,
+        )
+
+    detach.assert_awaited_once()
+    delete.assert_awaited_once()
 
 
 def test_create_session_rejects_nested_metadata(
@@ -3169,6 +3920,7 @@ def _mock_stream_queue_internals(
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
         mock_session.expert_id = None
+        mock_session.archived_at = None
         mocker.patch(
             "backend.api.features.chat.routes._validate_and_get_session",
             new_callable=AsyncMock,
@@ -3532,7 +4284,7 @@ def test_get_pending_messages_returns_200_with_empty_buffer(
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(),
+        return_value=mocker.MagicMock(archived_at=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
@@ -3555,7 +4307,7 @@ def test_get_pending_messages_returns_queued_messages(
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
         new_callable=AsyncMock,
-        return_value=mocker.MagicMock(),
+        return_value=mocker.MagicMock(archived_at=None),
     )
     mocker.patch(
         "backend.api.features.chat.routes.peek_pending_messages",
@@ -3946,11 +4698,136 @@ def test_list_sessions_empty(mocker: pytest_mock.MockerFixture) -> None:
     assert data["sessions"] == []
 
 
+def test_list_sessions_passes_the_otto_scope_and_pinned_filter(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Paging through Otto's group asks for his own chats, unpinned when the
+    sidebar lists pinned chats on their own."""
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=([], 0),
+    )
+
+    response = client.get("/sessions?autopilot_only=true&pinned=false")
+
+    assert response.status_code == 200
+    assert mock_get.await_args.kwargs["autopilot_only"] is True
+    assert mock_get.await_args.kwargs["pinned"] is False
+
+
+def test_list_sessions_rejects_an_expert_and_the_otto_scope_together(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_get = mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/sessions?expert_id=expert-1&autopilot_only=true")
+
+    assert response.status_code == 400
+    mock_get.assert_not_awaited()
+
+
+def test_list_session_groups_returns_each_group_with_its_real_total(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Each group carries the count of all its chats next to the few listed,
+    and the running chat is marked wherever it is listed."""
+    maria = _make_session_info("sess-maria", expert_id="expert-maria")
+    otto = _make_session_info("sess-otto")
+    pinned = _make_session_info("sess-pinned", is_pinned=True)
+    mock_groups = mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+        return_value=(
+            [
+                ChatSessionGroup(expert_id="expert-maria", total=17, sessions=[maria]),
+                ChatSessionGroup(expert_id=None, total=29, sessions=[otto]),
+            ],
+            [pinned],
+        ),
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    # Read in the order the route asks: pinned first, then each group's chats.
+    mock_pipe.execute = AsyncMock(return_value=["done", "running", None])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get(
+        "/session-groups?min_per_group=5&limit=40&pinned_separately=true"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [(g["expert_id"], g["total"]) for g in data["groups"]] == [
+        ("expert-maria", 17),
+        (None, 29),
+    ]
+    assert [
+        (s["id"], s["is_processing"]) for g in data["groups"] for s in g["sessions"]
+    ] == [("sess-maria", True), ("sess-otto", False)]
+    assert [(s["id"], s["is_pinned"]) for s in data["pinned"]] == [
+        ("sess-pinned", True)
+    ]
+    assert mock_groups.await_args.args[1:] == (5, 40)
+    assert mock_groups.await_args.kwargs["pinned_separately"] is True
+
+
+def test_list_session_groups_with_no_chats_skips_redis(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+        return_value=([], []),
+    )
+    mock_redis = mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/session-groups")
+
+    assert response.status_code == 200
+    assert response.json() == {"groups": [], "pinned": []}
+    mock_redis.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "query", ["min_per_group=0", "min_per_group=21", "limit=0", "limit=101"]
+)
+def test_list_session_groups_rejects_sizes_out_of_range(
+    mocker: pytest_mock.MockerFixture, query: str
+) -> None:
+    mock_groups = mocker.patch(
+        "backend.api.features.chat.routes.get_user_session_groups",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get(f"/session-groups?{query}")
+
+    assert response.status_code == 422
+    mock_groups.assert_not_awaited()
+
+
 # ─── delete_session ───────────────────────────────────────────────────
 
 
 def test_delete_session_success(mocker: pytest_mock.MockerFixture) -> None:
     """DELETE /sessions/{id} returns 204 when deleted successfully."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_make_session_info("sess-1"),
+    )
     mocker.patch(
         "backend.api.features.chat.routes.delete_chat_session",
         new_callable=AsyncMock,
@@ -3959,7 +4836,7 @@ def test_delete_session_success(mocker: pytest_mock.MockerFixture) -> None:
     # Patch use_e2b_sandbox env-var to disable E2B so the route skips sandbox cleanup.
     # Patching the Pydantic property directly doesn't work (Pydantic v2 intercepts
     # attribute setting on BaseSettings instances and raises AttributeError).
-    mocker.patch.dict("os.environ", {"USE_E2B_SANDBOX": "false"})
+    mocker.patch.dict("os.environ", {"CHAT_USE_E2B_SANDBOX": "false"})
 
     response = client.delete("/sessions/sess-1")
 
@@ -3968,6 +4845,11 @@ def test_delete_session_success(mocker: pytest_mock.MockerFixture) -> None:
 
 def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
     """DELETE /sessions/{id} returns 404 when session not found or not owned."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     mocker.patch(
         "backend.api.features.chat.routes.delete_chat_session",
         new_callable=AsyncMock,
@@ -3986,6 +4868,11 @@ def test_delete_session_without_e2b_spawns_no_cleanup(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """With E2B inactive the delete starts no sandbox-kill task."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_make_session_info("sess-1"),
+    )
     mocker.patch(
         "backend.api.features.chat.routes.delete_chat_session",
         new_callable=AsyncMock,
@@ -4011,6 +4898,11 @@ def test_delete_session_kills_sandbox_in_background(
 ) -> None:
     """The E2B sandbox kill is handed to a background task, not awaited inline."""
     mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=_make_session_info("sess-1"),
+    )
+    mocker.patch(
         "backend.api.features.chat.routes.delete_chat_session",
         new_callable=AsyncMock,
         return_value=True,
@@ -4034,6 +4926,54 @@ def test_delete_session_kills_sandbox_in_background(
 
 
 # ─── cancel_session_task ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("deleted", [True, False])
+def test_delete_local_session_only_cleans_up_after_deletion(
+    mocker: pytest_mock.MockerFixture, deleted: bool
+) -> None:
+    session = _make_session_info()
+    session.metadata.execution_target = chat_routes.LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+    )
+    mocker.patch.object(
+        chat_routes, "get_chat_session_metadata", AsyncMock(return_value=session)
+    )
+    delete = mocker.patch.object(
+        chat_routes, "delete_chat_session", AsyncMock(return_value=deleted)
+    )
+
+    async def presence_after_delete(*args, **kwargs):
+        delete.assert_awaited_once()
+        return None
+
+    presence = mocker.patch.object(
+        chat_routes,
+        "get_machine_presence",
+        AsyncMock(side_effect=presence_after_delete),
+    )
+    detach = mocker.patch.object(chat_routes, "detach_machine_session", AsyncMock())
+    manager = MagicMock()
+    manager.close_existing_session = AsyncMock()
+    mocker.patch.object(chat_routes, "get_shim_manager", return_value=manager)
+    mocker.patch.object(chat_routes, "kill_sandbox", AsyncMock())
+    mocker.patch.dict("os.environ", {"CHAT_USE_E2B_SANDBOX": "false"})
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == (204 if deleted else 404)
+    manager.get_or_create_shim_for_session.assert_not_called()
+    if deleted:
+        detach.assert_awaited_once_with(None, "sess-1")
+        manager.close_existing_session.assert_awaited_once_with("sess-1")
+    else:
+        presence.assert_not_awaited()
+        detach.assert_not_awaited()
+        manager.close_existing_session.assert_not_awaited()
 
 
 def _mock_validate_session(
@@ -4775,8 +5715,51 @@ def test_reset_usage_refunds_on_redis_failure(
 # ─── resume_session_stream ───────────────────────────────────────────
 
 
+@pytest.fixture
+def resumed_chat(mocker: pytest_mock.MockerFixture):
+    """The chat a resume reads, still open; a test archives it to reset it."""
+    chat = _make_session_info(expert_id="expert-1")
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new=AsyncMock(return_value=chat),
+    )
+    return chat
+
+
+@pytest.mark.parametrize("query", ["", "?turn=turn-1&after=0-0"])
+def test_resume_session_stream_of_a_reset_experts_chat_says_it_was_removed(
+    mocker: pytest_mock.MockerFixture, resumed_chat, query: str
+) -> None:
+    """A finished turn of a chat a reset removed stays in Redis until it
+    expires; resuming it answers like opening the chat, not with the turn."""
+    resumed_chat.archived_at = datetime.now(UTC)
+    mock_registry = MagicMock()
+    mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
+    find = mocker.patch(
+        "backend.api.features.chat.removed_chat.prisma.models.Expert.prisma"
+    )
+    expert = MagicMock(id="expert-1", isArchived=False)
+    expert.name = "Remy"
+    find.return_value.find_first = AsyncMock(return_value=expert)
+
+    response = client.get(f"/sessions/sess-1/stream{query}")
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {
+            "type": "chat_removed",
+            "expert_id": "expert-1",
+            "expert_name": "Remy",
+            "message": "This chat was removed when Remy was reset.",
+        }
+    }
+    mock_registry.subscribe_to_turn.assert_not_called()
+    mock_registry.get_active_session.assert_not_called()
+    mock_registry.subscribe_to_session.assert_not_called()
+
+
 def test_resume_session_stream_no_active_session(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, resumed_chat
 ) -> None:
     """GET /sessions/{id}/stream returns 204 when no active session."""
     mock_registry = MagicMock()
@@ -4789,7 +5772,7 @@ def test_resume_session_stream_no_active_session(
 
 
 def test_resume_session_stream_no_subscriber_queue(
-    mocker: pytest_mock.MockerFixture,
+    mocker: pytest_mock.MockerFixture, resumed_chat
 ) -> None:
     """GET /sessions/{id}/stream returns 204 when subscribe_to_session returns None."""
     from backend.copilot.stream_registry import ActiveSession
@@ -4945,6 +5928,76 @@ def test_get_session_reports_background_state_from_the_durable_record(
     data = response.json()
     assert data["background_outcome"] == "completed"
     assert data["background_pending"] is True
+
+
+@pytest.mark.parametrize(
+    "expert_name, is_fired, expert_id, message",
+    [
+        ("Remy", False, "expert-1", "This chat was removed when Remy was reset."),
+        # Fired since: still named, but there is no chat with them to offer.
+        ("Remy", True, None, "This chat was removed when Remy was reset."),
+        (None, False, None, "This chat was removed when its expert was reset."),
+    ],
+)
+def test_get_session_of_a_reset_experts_chat_says_it_was_removed(
+    mocker: pytest_mock.MockerFixture,
+    expert_name: str | None,
+    is_fired: bool,
+    expert_id: str | None,
+    message: str,
+) -> None:
+    """Resetting an expert archives its chats: an old link no longer opens
+    one, though the row is kept, and the page is told why and, while the
+    expert is still on the team, which expert to chat with instead."""
+    page, _ = _make_paginated_messages(mocker)
+    page.session.archived_at = datetime.now(UTC)
+    page.session.expert_id = "expert-1"
+    find = mocker.patch(
+        "backend.api.features.chat.removed_chat.prisma.models.Expert.prisma"
+    )
+    find.return_value.find_first = AsyncMock(
+        return_value=MagicMock(name="expert") if expert_name else None
+    )
+    if expert_name:
+        expert = find.return_value.find_first.return_value
+        expert.name = expert_name
+        expert.id = "expert-1"
+        expert.isArchived = is_fired
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 410
+    assert response.json() == {
+        "detail": {
+            "type": "chat_removed",
+            "expert_id": expert_id,
+            "expert_name": expert_name,
+            "message": message,
+        }
+    }
+    find.return_value.find_first.assert_awaited_once_with(
+        where={"id": "expert-1", "ownerUserId": TEST_USER_ID}
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_reset_experts_chat_cannot_be_continued(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    archived = _make_session_info(expert_id="expert-1")
+    archived.archived_at = datetime.now(UTC)
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new=AsyncMock(return_value=archived),
+    )
+    owns = mocker.patch(
+        "backend.api.features.chat.routes.experts_db.owns_active_expert",
+        new=AsyncMock(return_value=True),
+    )
+
+    with pytest.raises(NotFoundError):
+        await chat_routes._validate_and_get_writable_session("sess-1", TEST_USER_ID)
+    owns.assert_not_awaited()
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(
@@ -5416,11 +6469,97 @@ def test_standard_tier_is_not_gated(
     allowed.assert_not_called()
 
 
+def test_a_named_local_create_runs_inside_the_session_create_lock(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    """A resent create must wait for the first attempt to keep or delete the
+    session, so the route adopts or creates only while holding the lock on
+    the session id the browser named."""
+    session_id = str(uuid4())
+    held: list[tuple[str, str | None]] = []
+    released: list[str | None] = []
+
+    @asynccontextmanager
+    async def lock(user_id: str, named: str | None):
+        held.append((user_id, named))
+        yield
+        released.append(named)
+
+    async def create_local(*, user_id: str, session_id: str | None, **_kwargs):
+        assert held == [(user_id, session_id)] and released == []
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            session_id=session_id,
+            execution_target=chat_routes.LocalExecutionTargetMetadata(
+                machine_id="machine-1",
+                directory_ref="directory-1",
+                allowed_root="/workspace",
+                root_fingerprint="a" * 64,
+                root_grant="grant-1",
+            ),
+        )
+
+    mocker.patch.object(chat_routes, "client_named_local_create", lock)
+    mocker.patch.object(
+        chat_routes,
+        "_create_local_chat_session",
+        new=AsyncMock(side_effect=create_local),
+    )
+
+    response = client.post(
+        "/sessions",
+        json={
+            "session_id": session_id,
+            "execution_target": {
+                "kind": "local",
+                "machine_id": "machine-1",
+                "expected_connection_id": "connection-1",
+                "browse_id": "browse-1",
+                "directory_ref": "directory-1",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == session_id
+    assert held == [(test_user_id, session_id)]
+    assert released == [session_id]
+
+
+def test_local_pc_expert_kickoff_rejects_before_session_creation(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    create = _mock_create_chat_session(mocker)
+    local_create = mocker.patch.object(
+        chat_routes, "_create_local_chat_session", new=AsyncMock()
+    )
+    response = client.post(
+        "/sessions",
+        json={
+            "expert_id": "expert-1",
+            "expert_kickoff": True,
+            "execution_target": {
+                "kind": "local",
+                "machine_id": "machine-1",
+                "expected_connection_id": "connection-1",
+                "browse_id": "browse-1",
+                "directory_ref": "directory-1",
+            },
+        },
+    )
+    assert response.status_code == 422
+    create.assert_not_awaited()
+    local_create.assert_not_awaited()
+
+
 # --- Computer -----------------------------------------------------------------
 
 
 def _session_like(expert_id: str | None):
-    return MagicMock(session_id="sess-1", user_id="u1", expert_id=expert_id)
+    return MagicMock(
+        session_id="sess-1", user_id="u1", expert_id=expert_id, archived_at=None
+    )
 
 
 def test_get_session_computer_uses_the_expert_owner_for_expert_chats(
@@ -5540,6 +6679,37 @@ def test_start_session_desktop_without_e2b_is_503(
     config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
     config.return_value.active_e2b_api_key = None
     assert client.post("/sessions/sess-1/desktop").status_code == 503
+
+
+def test_start_session_desktop_is_refused_for_a_local_pc_chat(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A Local PC chat's commands run on the user's computer, so the panel must
+    not start a cloud box and show it as that chat's machine."""
+    session = _session_like(None)
+    session.metadata.execution_target = chat_routes.LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=session,
+    )
+    config = mocker.patch("backend.api.features.chat.routes.ChatConfig")
+    config.return_value.active_e2b_api_key = "e2b-key"
+    open_desktop = mocker.patch(
+        "backend.api.features.chat.routes.open_desktop", new_callable=AsyncMock
+    )
+
+    response = client.post("/sessions/sess-1/desktop")
+
+    assert response.status_code == 409
+    assert "Local PC" in response.json()["detail"]
+    open_desktop.assert_not_awaited()
 
 
 def test_start_session_desktop_is_refused_for_an_archived_experts_chat(

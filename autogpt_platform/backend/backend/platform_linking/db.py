@@ -43,6 +43,7 @@ from .models import (
     LinkTokenResponse,
     LinkTokenStatusResponse,
     LinkType,
+    Platform,
     PlatformLinkInfo,
     PlatformUserLinkInfo,
     ResolveResponse,
@@ -322,6 +323,17 @@ async def confirm_server_link(
         raise LinkTokenExpiredError("This link has expired.")
     if not link_token.platformServerId:
         raise LinkFlowMismatchError("Server token missing server ID.")
+    if (
+        link_token.platform == Platform.TELEGRAM.value
+        and verified_platform_user_id is None
+    ):
+        # The bot posts a group's link in the group itself, so only the
+        # identity Telegram signs onto the button tells the admin who ran
+        # /setup apart from any other member who opens it.
+        raise NotAuthorizedError(
+            "Open this link with the button in your Telegram group, so "
+            "Telegram can confirm it's you."
+        )
     _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
     owner = await find_server_link_owner(

@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # `copilot/transcript.py` strips everything but hex and hyphens from the user
 # ID in transcript paths, so only such an ID maps onto its own folder there.
 _TRANSCRIPT_ID = re.compile(r"[0-9a-fA-F-]{8,36}")
+# AutoPilot transcripts: `chat-transcripts` until April 2026 (#12804 moved
+# them; the old ones were kept), `cli-sessions` since.
+_TRANSCRIPT_FOLDERS = ("cli-sessions", "chat-transcripts")
 _CONCURRENT_DELETES = 16
 # URLs of the account's media that a listing staying in the marketplace, or
 # another account's library entry, still shows. $1 = the account (an ID
@@ -64,7 +67,10 @@ async def delete_files(subject: Subject, *, dry_run: bool) -> StepReport:
     # (`workspace_storage.py`), even with a public media bucket configured.
     if not Settings().config.resolved_private_user_data_bucket:
         kept_files = {media_root() / path for path in kept}
-        counts["local_files"] = _sweep_local(_local_dirs(subject), kept_files, dry_run)
+        # Off the event loop: a long sweep would starve the lease's heartbeat.
+        counts["local_files"] = await asyncio.to_thread(
+            _sweep_local, _local_dirs(subject), kept_files, dry_run
+        )
         # A cloud pod missing the bucket setting looks the same as a stack
         # that keeps files on disk, so this counts as the buckets skipped: the
         # erasure stops unless the stack lists "buckets" as unused.
@@ -135,7 +141,7 @@ def _prefixes(subject: Subject) -> list[str]:
     if subject.workspace_id:
         prefixes.append(f"workspaces/{subject.workspace_id}/")
     if _TRANSCRIPT_ID.fullmatch(uid):
-        prefixes.append(f"workspaces/cli-sessions/{uid}/")
+        prefixes += [f"workspaces/{folder}/{uid}/" for folder in _TRANSCRIPT_FOLDERS]
     prefixes += [f"oauth-apps/{app_id}/" for app_id in subject.oauth_app_ids]
     return prefixes
 
@@ -194,7 +200,9 @@ def _local_dirs(subject: Subject) -> list[Path]:
     if subject.workspace_id:
         dirs.append(workspaces / subject.workspace_id)
     if _TRANSCRIPT_ID.fullmatch(subject.user_id):
-        dirs.append(workspaces / "cli-sessions" / subject.user_id)
+        dirs += [
+            workspaces / folder / subject.user_id for folder in _TRANSCRIPT_FOLDERS
+        ]
     return dirs
 
 
