@@ -108,13 +108,9 @@ describe("SelectedScheduleView timezone labels", () => {
 
     render(<SelectedScheduleView agent={agent} scheduleId="schedule-id" />);
 
+    expect(await screen.findByText("November 11, 2026 at 09:45")).toBeDefined();
     expect(
-      await screen.findByText("November 11, 2026 at 09:45"),
-    ).toBeDefined();
-    expect(
-      await screen.findByText(
-        getTimezoneDisplayName("America/Los_Angeles"),
-      ),
+      await screen.findByText(getTimezoneDisplayName("America/Los_Angeles")),
     ).toBeDefined();
   });
 });
