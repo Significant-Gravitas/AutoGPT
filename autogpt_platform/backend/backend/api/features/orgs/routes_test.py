@@ -643,6 +643,7 @@ class TestOrgDbMembers:
         with pytest.raises(ValueError, match="Cannot remove the org owner"):
             await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
         self.prisma.teammember.delete_many.assert_not_awaited()
+        self.prisma.apikey.update_many.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_remove_nonexistent_member_raises_not_found(self):
