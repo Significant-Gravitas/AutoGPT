@@ -63,6 +63,7 @@ from backend.util.exceptions import (
     ExpertLimitExceededError,
     NotFoundError,
 )
+from backend.util.feature_flag import Flag
 from backend.util.gcs_utils_test import _gcs_http_error
 from backend.util.posthog_events import PostHogEvent
 
@@ -2184,6 +2185,40 @@ INTERVIEW_URL = "/onboarding/brain-dump/interview"
 INTERVIEW_FINISH_URL = "/onboarding/brain-dump/interview/finish"
 # The id recorded on the person's onboarding row when they first opened it.
 INTERVIEW_SESSION_ID = "interview-session-1"
+
+
+@pytest.fixture(autouse=True)
+def interview_flag(mocker: MockerFixture) -> AsyncMock:
+    """The interview's flag read: on for the person unless a test says not."""
+    return mocker.patch.object(
+        routes, "evaluate_feature_flag", new=AsyncMock(return_value=(True, True))
+    )
+
+
+@pytest.mark.parametrize("method", ["POST", "GET"])
+@pytest.mark.parametrize("unreadable", [False, True], ids=["off", "unreadable"])
+def test_the_interview_answers_404_and_opens_nothing_while_it_is_off_for_the_person(
+    method: str,
+    unreadable: bool,
+    interview_flag: AsyncMock,
+    start_interview: AsyncMock,
+    mocker: MockerFixture,
+    test_user_id: str,
+):
+    if unreadable:
+        interview_flag.side_effect = RuntimeError("flag vendor down")
+    else:
+        interview_flag.return_value = (False, True)
+    read = mocker.patch.object(interview, "read_onboarding_interview", new=AsyncMock())
+
+    response = client.request(method, INTERVIEW_URL)
+
+    assert response.status_code == 404
+    start_interview.assert_not_awaited()
+    read.assert_not_awaited()
+    interview_flag.assert_awaited_once_with(
+        Flag.ONBOARDING_INTERVIEW, test_user_id, default=False
+    )
 
 
 def _interview(user_id: str, stage: str | None = None) -> ChatSession:

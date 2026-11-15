@@ -52,6 +52,7 @@ from backend.api.features.store.exceptions import VirusDetectedError, VirusScanE
 from backend.copilot.onboarding_interview import find_onboarding_interview_session
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,25 @@ async def finalize_brain_dump(
         raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.post("/interview", operation_id="start_onboarding_interview")
+async def _interview_enabled(user_id: Annotated[str, Security(get_user_id)]) -> None:
+    """404 while the onboarding interview is off for the person, or its flag
+    cannot be read."""
+    try:
+        enabled, _ = await evaluate_feature_flag(
+            Flag.ONBOARDING_INTERVIEW, user_id, default=False
+        )
+    except Exception:
+        logger.warning("Onboarding interview flag could not be read", exc_info=True)
+        enabled = False
+    if not enabled:
+        raise fastapi.HTTPException(status_code=404, detail="Feature not available")
+
+
+@router.post(
+    "/interview",
+    operation_id="start_onboarding_interview",
+    dependencies=[fastapi.Depends(_interview_enabled)],
+)
 async def start_onboarding_interview(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> InterviewStartResponse:
@@ -214,14 +233,14 @@ async def start_onboarding_interview(
     interview that is over is answered the same way, with its ``stage``, so
     the client shows how it ended and the finish button.
 
-    A person has one interview, typed or spoken: 409 ``call_in_progress``
-    while a voice call of theirs is live, and 409
-    ``onboarding_interview_closed`` once a call took the interview (its words
-    accepted from a call that ran to its close, or that the person
-    confirmed), each naming the call (``call_id``). A call that was cut off,
-    or that the person hung up, leaves the typed interview open. 429 at its
-    turn budget, 503 while the budget, the chat stream or the person's calls
-    cannot be read. A 429 carries its wait in the body
+    404 while the interview is off for the person. A person has one
+    interview, typed or spoken: 409 ``call_in_progress`` while a voice call
+    of theirs is live, and 409 ``onboarding_interview_closed`` once a call
+    took the interview (its words accepted from a call that ran to its
+    close, or that the person confirmed), each naming the call
+    (``call_id``). A call that was cut off, or that the person hung up,
+    leaves the typed interview open. 429 at its turn budget, 503 while the
+    budget, the chat stream or the person's calls cannot be read. A 429 carries its wait in the body
     (``retry_after_seconds``) as well as in ``Retry-After``: the browser's API
     client keeps a refusal's body, not its headers.
     """
@@ -245,7 +264,11 @@ async def start_onboarding_interview(
     )
 
 
-@router.get("/interview", operation_id="get_onboarding_interview")
+@router.get(
+    "/interview",
+    operation_id="get_onboarding_interview",
+    dependencies=[fastapi.Depends(_interview_enabled)],
+)
 async def get_onboarding_interview(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> InterviewStateResponse:
@@ -257,7 +280,8 @@ async def get_onboarding_interview(
     where voice can be offered. Nothing is created, greeted, charged or
     refused. An interview that is over but not yet handed off is handed off
     in the background, as the start does. A person who has not opened their
-    interview reads with no session.
+    interview reads with no session. 404 while the interview is off for the
+    person.
     """
     read = await interview.read_onboarding_interview(user_id)
     voice_available = await voice.voice_available(user_id)

@@ -105,6 +105,10 @@ class Flag(str, Enum):
     # off so a stale frontend cannot spend TTS budget. Fail-closed.
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
+    # The onboarding wizard's typed interview with Otto, in place of the brain
+    # dump step. The routes that open and read it 404 when off. Fail-closed.
+    ONBOARDING_INTERVIEW = "onboarding-interview"
+
     # The onboarding voice interview: the step offers a call with Otto, and
     # the call start route mints calls. The route 404s when off, so a stale
     # frontend cannot start a call. Fail-closed.
