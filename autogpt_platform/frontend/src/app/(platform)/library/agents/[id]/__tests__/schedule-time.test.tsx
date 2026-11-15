@@ -114,4 +114,3 @@ describe("SelectedScheduleView timezone labels", () => {
     ).toBeDefined();
   });
 });
-
