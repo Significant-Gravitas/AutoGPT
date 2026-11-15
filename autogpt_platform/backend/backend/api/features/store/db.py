@@ -8,6 +8,7 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 
 from backend.data.account_deletion import is_account_closed
 from backend.data.db import query_raw_with_schema, transaction
@@ -22,6 +23,7 @@ from backend.data.graph import (
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
 from backend.data.profile import ensure_user_profile
+from backend.data.tenancy import require_role_where_resource_lives
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import (
     ConflictError,
@@ -981,6 +983,14 @@ async def create_store_submission(
                     f"Workflow #{graph_id} v{graph_version} not found "
                     f"for this user (#{user_id})"
                 )
+        # The workflow can live in a team the request doesn't name.
+        await require_role_where_resource_lives(
+            user_id,
+            graph.organizationId,
+            graph.teamId,
+            OrgAction.PUBLISH_TO_STORE,
+            TeamAction.PUBLISH_AGENTS,
+        )
 
         if not graph.User or not graph.User.Profile:
             logger.warning(f"User #{user_id} does not have a Profile")

@@ -2322,6 +2322,17 @@ async def user_owns_graph(
     return bool(await AgentGraph.prisma().count(where=where))
 
 
+async def owned_graph_scopes(
+    graph_id: str, user_id: str, organization_id: str | None = None
+) -> set[tuple[str | None, str | None]]:
+    """The (org, team) pairs of the versions `delete_graph` would remove."""
+    where = _owned_graph_where(graph_id, user_id, organization_id)
+    return {
+        (graph.organizationId, graph.teamId)
+        for graph in await AgentGraph.prisma().find_many(where=where)
+    }
+
+
 # Whether anything outside the owner's own rows still points at the graph:
 # another user's library entry, preset or run, or any store listing version
 # (the StoreListingVersion → AgentGraph FK is RESTRICT whoever owns the

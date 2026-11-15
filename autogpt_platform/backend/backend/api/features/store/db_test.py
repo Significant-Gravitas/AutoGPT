@@ -6,10 +6,16 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import pytest
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from prisma import Prisma
 
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
-from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
+from backend.util.exceptions import (
+    DatabaseError,
+    NotAuthorizedError,
+    NotFoundError,
+    PreconditionFailed,
+)
 
 from . import categories as store_categories
 from . import db
@@ -232,6 +238,35 @@ async def test_create_store_submission(mocker):
     assert result.listing_version_id == "version-id"
     graph_prisma.find_first.assert_called_once()
     version_prisma.create.assert_called_once()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_submission_checks_the_role_where_the_workflow_lives(mocker):
+    """The workflow can live in a team the request doesn't name, so leaving
+    the team header off must not get a listing past the role there."""
+    graph_prisma, version_prisma = _patch_submission(mocker, existing_listing=None)
+    graph_prisma.find_first.return_value = (
+        graph_prisma.find_first.return_value.model_copy(
+            update={"organizationId": "org-1", "teamId": "team-1"}
+        )
+    )
+    role_check = mocker.patch.object(
+        db,
+        "require_role_where_resource_lives",
+        AsyncMock(side_effect=NotAuthorizedError("no")),
+    )
+
+    with pytest.raises(NotAuthorizedError):
+        await _submit(organization_id="org-1")
+
+    role_check.assert_awaited_once_with(
+        "user-id",
+        "org-1",
+        "team-1",
+        OrgAction.PUBLISH_TO_STORE,
+        TeamAction.PUBLISH_AGENTS,
+    )
+    version_prisma.create.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

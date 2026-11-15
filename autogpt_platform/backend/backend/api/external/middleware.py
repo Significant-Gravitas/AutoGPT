@@ -23,6 +23,7 @@ from backend.data.auth.oauth import (
     is_access_token,
     validate_access_token,
 )
+from backend.data.tenancy import resource_role_refusal
 from backend.data.user import is_user_banned
 from backend.util.cache import cached
 
@@ -260,6 +261,31 @@ def require_permission(*permissions: APIKeyPermission):
         return auth
 
     return check_permissions
+
+
+def require_resource_permission(*permissions: APIKeyPermission):
+    """`require_permission`, for routes that create, run or read workflows and
+    runs in the credential's organization and team.
+
+    The web app holds these to the caller's role there: a membership whose only
+    role is billing manager covers spend, not workflows and runs. A credential
+    that names no organization acts in its owner's personal organization, which
+    its owner owns.
+    """
+    check_permissions = require_permission(*permissions)
+
+    async def check_resource_role(
+        auth: APIAuthorizationInfo = Security(check_permissions),
+    ) -> APIAuthorizationInfo:
+        if auth.organization_id and (
+            reason := await resource_role_refusal(
+                auth.user_id, auth.organization_id, auth.team_id_restriction
+            )
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
+        return auth
+
+    return check_resource_role
 
 
 def add_auth_responses_to_openapi(app: FastAPI) -> None:

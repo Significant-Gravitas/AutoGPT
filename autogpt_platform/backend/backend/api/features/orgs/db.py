@@ -17,6 +17,7 @@ from backend.data.org_migration import (
     _soft_delete_blocking_orphan,
     create_personal_org,
 )
+from backend.data.tenancy import resource_role_refusal
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
@@ -214,8 +215,14 @@ async def resolve_member_tenancy(
     user's own default. Unlike a request, a team
     the user isn't on doesn't fall back to the org's home: everyone in the org
     sees that, and what was made for a team mustn't spread to the whole org.
+    A membership whose only role is billing manager doesn't count: that role
+    covers spend, not creating or running workflows.
     Nothing to inherit stays ``(None, None)``.
     """
+    if organization_id and await resource_role_refusal(
+        user_id, organization_id, team_id
+    ):
+        return await resolve_default_tenancy(user_id)
     if not organization_id:
         return None, None
     if await is_active_member(user_id, organization_id, team_id):
