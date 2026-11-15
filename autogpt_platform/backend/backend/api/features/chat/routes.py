@@ -35,6 +35,12 @@ from backend.api.features.chat.removed_chat import (
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
 from backend.api.features.local_executor.gating import is_local_executor_enabled
+from backend.api.features.onboarding_dump.interview import (
+    admit_onboarding_interview_turn,
+    enforce_onboarding_interview_allowance,
+    record_onboarding_interview_turn_started,
+    typed_message_accepted,
+)
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
 from backend.copilot import service as chat_service
@@ -322,36 +328,14 @@ async def enforce_platform_allowance(user_id: str) -> None:
         ) from e
 
 
-async def _charge_interview_turn(user_id: str) -> None:
-    # Deferred: the onboarding interview's web module imports this one.
-    from backend.api.features.onboarding_dump.interview import (
-        enforce_onboarding_interview_allowance,
-    )
-
-    await enforce_onboarding_interview_allowance(user_id)
-
-
 async def _record_interview_turn_started(
     user_id: str, session_id: str, plan: InterviewTurnPlan
 ) -> None:
-    # Deferred: the onboarding interview's web module imports this one.
-    from backend.api.features.onboarding_dump.interview import (
-        record_onboarding_interview_turn_started,
-        typed_message_accepted,
-    )
-
     # The person's message is in the interview now, so it outranks a voice
     # call of theirs that ended before it; a message refused before this
     # point, at the budget or the queue, outranks nothing.
     await typed_message_accepted(user_id)
     await record_onboarding_interview_turn_started(user_id, session_id, plan)
-
-
-async def _note_interview_message_queued(user_id: str) -> None:
-    # Deferred: the onboarding interview's web module imports this one.
-    from backend.api.features.onboarding_dump.interview import typed_message_accepted
-
-    await typed_message_accepted(user_id)
 
 
 async def _chat_message_reply_status_for_http(
@@ -2525,10 +2509,6 @@ async def stream_chat_post(
     # is dispatched.
     interview_plan = None
     if is_onboarding_interview(session):
-        from backend.api.features.onboarding_dump.interview import (
-            admit_onboarding_interview_turn,
-        )
-
         interview_plan = await admit_onboarding_interview_turn(
             session,
             user_id,
@@ -2752,7 +2732,7 @@ async def stream_chat_post(
                 # Charged once the key is this request's, so a retransmit the
                 # claim turned away costs nothing, and a refusal here releases
                 # the key below.
-                await _charge_interview_turn(user_id)
+                await enforce_onboarding_interview_allowance(user_id)
             turn_id = await schedule_chat_turn(
                 session_id=session_id,
                 user_id=user_id,
@@ -3056,10 +3036,6 @@ async def queue_pending_message(
     """Queue a follow-up message while the session has an active turn."""
     session = await _validate_and_get_writable_session(session_id, user_id)
     if is_onboarding_interview(session):
-        from backend.api.features.onboarding_dump.interview import (
-            admit_onboarding_interview_turn,
-        )
-
         await admit_onboarding_interview_turn(
             session,
             user_id,
@@ -3113,7 +3089,7 @@ async def queue_pending_message(
         client_message_id=client_message_id,
     )
     if is_onboarding_interview(session):
-        await _note_interview_message_queued(user_id)
+        await typed_message_accepted(user_id)
     return queued
 
 

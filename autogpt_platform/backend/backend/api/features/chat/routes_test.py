@@ -7279,13 +7279,14 @@ def test_a_refused_message_writes_nothing_first(
 
 # ─── Onboarding interview turns ───────────────────────────────────────
 
-_INTERVIEW = "backend.api.features.onboarding_dump.interview"
+# The interview's functions, where the chat routes call them.
+_ROUTES = "backend.api.features.chat.routes"
 
 
 def _interview_charge(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     """The interview's turn budget, charged when a turn is dispatched."""
     return mocker.patch(
-        f"{_INTERVIEW}.enforce_onboarding_interview_allowance",
+        f"{_ROUTES}.enforce_onboarding_interview_allowance",
         new_callable=AsyncMock,
     )
 
@@ -7299,12 +7300,12 @@ def test_an_interview_turn_is_admitted_by_the_interview_alone(
     mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     plan = InterviewTurnPlan(reply=INTERVIEW_TURN_CAP)
     admit = mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         return_value=plan,
     )
     started = mocker.patch(
-        f"{_INTERVIEW}.record_onboarding_interview_turn_started",
+        f"{_ROUTES}.record_onboarding_interview_turn_started",
         new_callable=AsyncMock,
     )
     platform_allowance = mocker.patch(
@@ -7337,7 +7338,7 @@ def test_a_turn_the_interview_refuses_is_never_stored(
     mocks = _mock_stream_internals(mocker)
     mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         side_effect=fastapi.HTTPException(status_code=409, detail="closed"),
     )
@@ -7352,12 +7353,12 @@ def _interview_turn(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
     mocks = _mock_stream_internals(mocker)
     mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         return_value=InterviewTurnPlan(reply=3),
     )
     mocker.patch(
-        f"{_INTERVIEW}.record_onboarding_interview_turn_started",
+        f"{_ROUTES}.record_onboarding_interview_turn_started",
         new_callable=AsyncMock,
     )
     mocker.patch(
@@ -7366,7 +7367,7 @@ def _interview_turn(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
         return_value=False,
     )
     mocks.accepted = mocker.patch(
-        f"{_INTERVIEW}.typed_message_accepted", new_callable=AsyncMock
+        f"{_ROUTES}.typed_message_accepted", new_callable=AsyncMock
     )
     return mocks
 
@@ -7482,7 +7483,7 @@ def _interview_follow_up(
     session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     session.metadata.llm_auth_provider = "platform"
     mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         return_value=InterviewTurnPlan(reply=3),
     )
@@ -7492,7 +7493,7 @@ def _interview_follow_up(
     )
     return SimpleNamespace(
         accepted=mocker.patch(
-            f"{_INTERVIEW}.typed_message_accepted", new_callable=AsyncMock
+            f"{_ROUTES}.typed_message_accepted", new_callable=AsyncMock
         )
     )
 
@@ -7531,7 +7532,7 @@ def test_attachments_in_an_interview_go_to_the_interview_s_admission(
     mocks = _mock_stream_internals(mocker)
     mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     admit = mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         side_effect=fastapi.HTTPException(status_code=422, detail="no files"),
     )
@@ -7553,7 +7554,7 @@ def test_a_follow_up_queued_in_an_interview_is_admitted_by_the_interview(
     session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     session.metadata.llm_auth_provider = "platform"
     admit = mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         return_value=InterviewTurnPlan(reply=3),
     )
@@ -7584,12 +7585,12 @@ def test_an_interview_turn_ignores_the_request_s_model_voice_and_approval_mode(
     mocks = _mock_stream_internals(mocker)
     mocks.session.metadata.kind = ONBOARDING_INTERVIEW_KIND
     mocker.patch(
-        f"{_INTERVIEW}.admit_onboarding_interview_turn",
+        f"{_ROUTES}.admit_onboarding_interview_turn",
         new_callable=AsyncMock,
         return_value=InterviewTurnPlan(reply=3),
     )
     mocker.patch(
-        f"{_INTERVIEW}.record_onboarding_interview_turn_started",
+        f"{_ROUTES}.record_onboarding_interview_turn_started",
         new_callable=AsyncMock,
     )
     _interview_charge(mocker)
