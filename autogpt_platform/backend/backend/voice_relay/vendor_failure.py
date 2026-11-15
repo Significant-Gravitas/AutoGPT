@@ -16,8 +16,9 @@ message, it gives a bounded :data:`Reason`. A drop that follows the session's
 closing notice (GoAway) is a reset the server warned of.
 
 :meth:`VendorFailure.describe` is what gets logged. It carries no API key,
-token or credential in a URL, and nothing quoted from the request, which is
-how the vendor echoes content it refused: nothing the person said.
+token or credential in a URL, and nothing from a close reason's first quote
+mark on, since quoting is how the vendor echoes content it refused: nothing
+the person said.
 """
 
 import re
@@ -53,9 +54,10 @@ _SECRETS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
     # A bearer token.
     (re.compile(r"(?i)\b(bearer)\s+\S+"), rf"\1 {REDACTED}"),
-    # Anything quoted.
-    (re.compile(r"\"[^\"]*\"|'[^']*'|“[^”]*”"), REDACTED),
 )
+# Any quote mark, straight, typographic or a backtick: a close reason is cut
+# at its first, so nothing quoted follows it, closed or not.
+_QUOTE = re.compile(r"[\"'`‘’‚‛“”„‟«»‹›]")
 
 
 class VendorFailure(BaseModel):
@@ -159,10 +161,13 @@ def _reason_of(failure: VendorFailure, *, after_notice: bool) -> Reason:
 
 
 def scrubbed(text: str | None) -> str | None:
-    """*text* with no key, token or URL credential, and nothing quoted, cut
-    to ``MAX_REASON_CHARS``; None for nothing left."""
+    """*text* with no key, token or URL credential, cut at its first quote
+    mark and to ``MAX_REASON_CHARS``; None for nothing left."""
     if not text:
         return None
+    quote = _QUOTE.search(text)
+    if quote is not None:
+        text = f"{text[: quote.start()]}{REDACTED}"
     for pattern, stand_in in _SECRETS:
         text = pattern.sub(stand_in, text)
     text = " ".join(text.split())[:MAX_REASON_CHARS]

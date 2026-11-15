@@ -173,6 +173,32 @@ def test_a_close_reason_carries_no_key_token_credential_or_quoted_words():
     assert "close 1007" in described
 
 
+@pytest.mark.parametrize(
+    "reason",
+    [
+        f'Rejected content "{SAID}',
+        f"Can't accept '{SAID}'",
+        f"Rejected content ‘{SAID}’",
+        f"Rejected content `{SAID}`",
+        f"Rejected content „{SAID}“",
+    ],
+    ids=[
+        "unterminated-quote",
+        "apostrophe-before-a-quote",
+        "typographic-single-quotes",
+        "backticks",
+        "low-double-quote",
+    ],
+)
+def test_a_close_reason_is_cut_at_its_first_quote_mark(reason):
+    described = vendor_failure(closed(1007, reason)).describe()
+
+    assert SAID not in described
+    assert "bakery" not in described
+    assert REDACTED in described
+    assert "close 1007, reason: " in described
+
+
 def test_a_long_close_reason_is_cut():
     assert len(scrubbed("x" * 1_000) or "") == MAX_REASON_CHARS
 
