@@ -226,6 +226,71 @@ async def test_health_endpoint_is_answered_by_the_proxy(stack):
         assert await response.text() == "ok\n"
 
 
+@pytest.mark.parametrize("path", ["/healthz", "/_agpt/api/graphs", "/library"])
+async def test_a_request_addressed_to_another_name_is_not_answered(stack, path):
+    client, base, rest = stack
+    port = base.rsplit(":", 1)[1]
+    async with client.get(
+        f"{base}{path}", headers={"Host": f"rebound.example:{port}"}
+    ) as response:
+        assert response.status == 421
+        assert "frontend" not in await response.text()
+    assert rest[REQUESTS] == []
+
+
+async def test_the_same_port_named_as_localhost_is_answered(stack):
+    client, base, _ = stack
+    port = base.rsplit(":", 1)[1]
+    async with client.get(
+        f"{base}/_agpt/api/graphs", headers={"Host": f"LocalHost:{port}"}
+    ) as response:
+        assert response.status == 200
+        assert (await response.json())["host"] == base.split("://")[1]
+
+
+async def test_a_websocket_addressed_to_another_name_is_not_opened(stack):
+    client, base, _ = stack
+    port = base.rsplit(":", 1)[1]
+    with pytest.raises(aiohttp.WSServerHandshakeError) as refused:
+        await client.ws_connect(
+            f"{base.replace('http', 'ws', 1)}/_agpt/ws",
+            headers={"Host": f"rebound.example:{port}"},
+        )
+    assert refused.value.status == 421
+
+
+@pytest.mark.parametrize(
+    "version, host_lines",
+    [
+        ("1.0", []),
+        ("1.1", ["{own}", "rebound.example:{port}"]),
+        ("1.1", ["{own}", "{own}"]),
+    ],
+    ids=["no Host", "a second Host", "the same Host twice"],
+)
+async def test_a_request_without_exactly_one_own_host_is_not_answered(
+    stack, version, host_lines
+):
+    _, base, rest = stack
+    own = base.split("://")[1]
+    port = own.rsplit(":", 1)[1]
+    headers = "".join(
+        f"Host: {line.format(own=own, port=port)}\r\n" for line in host_lines
+    )
+    request = (
+        f"GET /_agpt/api/graphs HTTP/{version}\r\n{headers}Connection: close\r\n\r\n"
+    )
+    reader, writer = await asyncio.open_connection("127.0.0.1", int(port))
+    try:
+        writer.write(request.encode())
+        await writer.drain()
+        status_line = await asyncio.wait_for(reader.readline(), 30)
+    finally:
+        writer.close()
+    assert status_line.split()[1] in (b"400", b"421"), status_line
+    assert rest[REQUESTS] == []
+
+
 async def test_api_prefix_is_stripped_and_public_host_is_forwarded(stack):
     client, base, _ = stack
     async with client.post(
@@ -451,14 +516,15 @@ async def test_websockets_are_proxied_with_their_query_string(stack):
 
 async def test_a_down_upstream_is_a_bad_gateway_not_a_crash(stack):
     client, base, _ = stack
+    port = free_port()
     proxy_with_dead_upstream = ProxyThread(
         Upstreams(
-            public_url="http://127.0.0.1:1",
+            public_url=f"http://127.0.0.1:{port}",
             rest=f"http://127.0.0.1:{free_port()}",
             websocket=f"http://127.0.0.1:{free_port()}",
             frontend=f"http://127.0.0.1:{free_port()}",
         ),
-        port := free_port(),
+        port,
     )
     await asyncio.to_thread(proxy_with_dead_upstream.start)
     try:

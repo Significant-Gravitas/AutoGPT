@@ -14,6 +14,9 @@ compressed.
 
 Cookies are kept apart from those of other installs of the app on the same
 machine, which a browser would otherwise mix up (cookies.py).
+
+Only a request addressed to the app's own address is answered: a page whose
+own name resolves to 127.0.0.1 would otherwise reach the app as itself.
 """
 
 from __future__ import annotations
@@ -54,6 +57,7 @@ MAX_BODY = 256 * 1024 * 1024
 UPSTREAMS: web.AppKey[Upstreams] = web.AppKey("upstreams")
 CLIENT: web.AppKey[aiohttp.ClientSession] = web.AppKey("client")
 COOKIE_MARK: web.AppKey[str] = web.AppKey("cookie_mark")
+OWN_HOSTS: web.AppKey[frozenset[str]] = web.AppKey("own_hosts")
 
 
 @dataclass(frozen=True)
@@ -68,9 +72,17 @@ def build_app(upstreams: Upstreams, install_name: str | None = None) -> web.Appl
     app = web.Application(client_max_size=MAX_BODY)
     app[UPSTREAMS] = upstreams
     app[COOKIE_MARK] = cookies.mark_of(install_name or install.name())
+    app[OWN_HOSTS] = own_hosts(upstreams.public_url)
     app.cleanup_ctx.append(_client_session)
     app.router.add_route("*", "/{tail:.*}", _route)
     return app
+
+
+def own_hosts(public_url: str) -> frozenset[str]:
+    """The Host headers a request for this app can carry: the public
+    address, or the same port named as localhost."""
+    public = urlsplit(public_url)
+    return frozenset({public.netloc.lower(), f"localhost:{public.port}"})
 
 
 async def _client_session(app: web.Application):
@@ -82,6 +94,9 @@ async def _client_session(app: web.Application):
 
 async def _route(request: web.Request) -> web.StreamResponse:
     upstreams = request.app[UPSTREAMS]
+    hosts = request.headers.getall("Host", [])
+    if len(hosts) != 1 or hosts[0].lower() not in request.app[OWN_HOSTS]:
+        raise web.HTTPMisdirectedRequest(text="This address is not AutoGPT's.\n")
     path = request.path
     if any(segment in (".", "..") for segment in path.split("/")):
         raise web.HTTPNotFound()

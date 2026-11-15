@@ -244,13 +244,25 @@ def platform_app() -> web.Application:
     return app
 
 
-async def serve(app: web.Application) -> tuple[web.AppRunner, str]:
+async def serve(app: web.Application, port: int = 0) -> tuple[web.AppRunner, str]:
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
+    site = web.TCPSite(runner, "127.0.0.1", port)
     await site.start()
     port = runner.addresses[0][1]
     return runner, f"http://127.0.0.1:{port}"
+
+
+async def serve_proxy(upstream: str) -> tuple[web.AppRunner, str]:
+    """The install's proxy, on the public address it answers to."""
+    port = free_port()
+    upstreams = proxy.Upstreams(
+        public_url=f"http://127.0.0.1:{port}",
+        rest=upstream,
+        websocket=upstream,
+        frontend=upstream,
+    )
+    return await serve(proxy.build_app(upstreams), port)
 
 
 async def test_two_installs_in_one_browser_keep_their_sign_ins_apart(monkeypatch):
@@ -262,13 +274,7 @@ async def test_two_installs_in_one_browser_keep_their_sign_ins_apart(monkeypatch
     addresses = {}
     for name in ("AutoGPT", "AutoGPT-voice"):
         monkeypatch.setenv(install.VARIABLE, name)
-        upstreams = proxy.Upstreams(
-            public_url="http://127.0.0.1:1",
-            rest=upstream,
-            websocket=upstream,
-            frontend=upstream,
-        )
-        runner, addresses[name] = await serve(proxy.build_app(upstreams))
+        runner, addresses[name] = await serve_proxy(upstream)
         runners.append(runner)
     jar: dict[str, str] = {}
 
@@ -309,13 +315,7 @@ async def test_a_variant_asked_with_only_another_installs_cookies_passes_none_on
 ):
     platform, upstream = await serve(platform_app())
     monkeypatch.setenv(install.VARIABLE, "AutoGPT-voice")
-    upstreams = proxy.Upstreams(
-        public_url="http://127.0.0.1:1",
-        rest=upstream,
-        websocket=upstream,
-        frontend=upstream,
-    )
-    runner, address = await serve(proxy.build_app(upstreams))
+    runner, address = await serve_proxy(upstream)
     try:
         async with aiohttp.ClientSession() as client:
             headers = {"Cookie": f"{SESSION}=normal; AutoGPT-lab.{SESSION}=lab"}
