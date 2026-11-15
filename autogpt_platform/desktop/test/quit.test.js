@@ -54,23 +54,23 @@ test("anything running counts, of either kind", () => {
 
 test("what is running is said in words", () => {
   assert.equal(describeActivity(IDLE), null);
-  assert.equal(describeActivity(oneRun), "1 agent run");
+  assert.equal(describeActivity(oneRun), "1 workflow run");
   // Not "turns": the app never calls them that where its user can read it.
-  assert.equal(describeActivity({ graphRuns: 0, copilotTurns: 2 }), "2 AutoPilot replies");
-  assert.equal(describeActivity(busy), "2 agent runs and 1 AutoPilot reply");
+  assert.equal(describeActivity({ graphRuns: 0, copilotTurns: 2 }), "2 Otto replies");
+  assert.equal(describeActivity(busy), "2 workflow runs and 1 Otto reply");
 });
 
 test("the tray menu has one line about it, and none when nothing runs", () => {
   assert.deepEqual(activityMenuItems(IDLE), []);
   assert.deepEqual(activityMenuItems(busy), [
-    { label: "2 agent runs and 1 AutoPilot reply in progress", enabled: false },
+    { label: "2 workflow runs and 1 Otto reply in progress", enabled: false },
   ]);
 });
 
 test("the tray icon says which install it is, what runs, and that it is being stopped", () => {
   assert.equal(trayToolTip(normal, IDLE), "AutoGPT");
-  assert.equal(trayToolTip(variant, oneRun), "AutoGPT (experimental): 1 agent run in progress");
-  assert.equal(trayToolTip(variant, oneRun, true), "AutoGPT (experimental): stopping 1 agent run");
+  assert.equal(trayToolTip(variant, oneRun), "AutoGPT (experimental): 1 workflow run in progress");
+  assert.equal(trayToolTip(variant, oneRun, true), "AutoGPT (experimental): stopping 1 workflow run");
   assert.equal(trayToolTip(variant, IDLE, true), "AutoGPT (experimental)");
 });
 
@@ -219,7 +219,7 @@ test("outside macOS the application menu has Quit, so the app can be quit withou
 
 test("the question says what runs and offers the three ways out", () => {
   const question = quitQuestion({ install: normal, activity: busy, platform: "win32" });
-  assert.equal(question.message, "2 agent runs and 1 AutoPilot reply are in progress.");
+  assert.equal(question.message, "2 workflow runs and 1 Otto reply are in progress.");
   assert.deepEqual(question.buttons, ["Keep running in the background", "Stop and quit AutoGPT", "Cancel"]);
   assert.match(question.detail, /notification area/);
   assert.match(question.detail, /do not start again/);
@@ -234,7 +234,7 @@ test("the question says what runs and offers the three ways out", () => {
   // Enter keeps the runs, Escape cancels: neither ends anything.
   assert.equal(quitAnswer(question.defaultId), KEEP_RUNNING);
   assert.equal(quitAnswer(question.cancelId), CANCEL);
-  assert.equal(quitQuestion({ install: normal, activity: oneRun, platform: "darwin" }).message, "1 agent run is in progress.");
+  assert.equal(quitQuestion({ install: normal, activity: oneRun, platform: "darwin" }).message, "1 workflow run is in progress.");
   assert.match(quitQuestion({ install: normal, activity: oneRun, platform: "darwin" }).detail, /menu bar/);
   assert.match(quitQuestion({ install: normal, activity: oneRun, platform: "linux" }).detail, /system tray/);
 });
@@ -265,7 +265,7 @@ test("restarting to update asks once: with something running it says what a yes 
 
   const running = updateQuestion({ install: normal, version: "1.2.3", activity: busy });
   assert.deepEqual(running.buttons, ["Stop and restart", "Later"]);
-  assert.match(running.detail, /^2 agent runs and 1 AutoPilot reply are in progress\./);
+  assert.match(running.detail, /^2 workflow runs and 1 Otto reply are in progress\./);
   // Enter does not end anybody's runs.
   assert.equal(running.defaultId, 1);
   assert.equal(running.cancelId, 1);

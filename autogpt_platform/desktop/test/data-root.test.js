@@ -202,7 +202,7 @@ for (const variant of ["", "experimental"]) {
     assert.match(dialogs[0][1], /Reinstall/);
     assert.ok(dialogs[0][1].includes(identity(variant).productName));
     assert.ok(dialogs[0][1].includes(require("../src/updater").releaseUrl(null, identity(variant))));
-    assert.match(dialogs[0][1], /saved accounts and agents/);
+    assert.match(dialogs[0][1], /saved accounts and workflows/);
   });
 }
 

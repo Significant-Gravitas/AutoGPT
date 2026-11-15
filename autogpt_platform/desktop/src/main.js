@@ -84,7 +84,7 @@ try {
     launchRefusalTitle = "AutoGPT runtime needs repair";
     launchRefusal = "AutoGPT could not start its bundled runtime. Try opening it again. " +
       `Reinstall ${install.productName} from a complete installer if this keeps happening. ` +
-      "Your saved accounts and agents remain in the data folder.\n\n" +
+      "Your saved accounts and workflows remain in the data folder.\n\n" +
       `Installers: ${releaseUrl(null, install)}`;
   } else {
     launchRefusal = error?.message || "AutoGPT could not open its data folder.";
@@ -194,7 +194,7 @@ function startRuntime() {
       event: "error",
       fatal: true,
       message: "AutoGPT's bundled runtime is missing or incomplete. Reinstall AutoGPT from a complete installer. " +
-        "Your saved accounts and agents stay in the data folder. Show logs for the missing file details.",
+        "Your saved accounts and workflows stay in the data folder. Show logs for the missing file details.",
     });
     lookForAFixedVersion();
     return;

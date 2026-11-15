@@ -1922,7 +1922,7 @@ def lifecycle_stop(tmp_path, monkeypatch):
             if self.total - clock.seconds > timeout:
                 raise subprocess.TimeoutExpired("fake-runtime", timeout)
             clock.seconds = self.total
-            message = "Stopping 1 agent run"
+            message = "Stopping 1 workflow run"
             install.said.events.append(
                 {"step": "stopping", "message": message, "grace_seconds": self.grace}
             )

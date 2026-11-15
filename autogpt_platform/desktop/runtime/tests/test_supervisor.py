@@ -627,7 +627,7 @@ def test_stopping_the_runs_ends_one_that_lost_its_lock_too(
     assert stack.stopping == both
     assert runs.read_stopped(stack.stopped_runs) == both
     assert cancels.cancelled == [both]
-    assert events_of(capsys)[0]["message"] == "Stopping 2 agent runs"
+    assert events_of(capsys)[0]["message"] == "Stopping 2 workflow runs"
     # Waited for until the database no longer has it as running: it has no
     # lock whose going would say so.
     assert asked == [("no-lock",), None, ("no-lock",), ("no-lock",)]
@@ -652,7 +652,7 @@ def test_stopping_the_runs_ends_every_run_the_database_has_running(
     assert stack.stopping == all_of_it
     assert runs.read_stopped(stack.stopped_runs) == all_of_it
     assert cancels.cancelled == [all_of_it]
-    assert events_of(capsys)[0]["message"] == "Stopping 2 agent runs"
+    assert events_of(capsys)[0]["message"] == "Stopping 2 workflow runs"
 
 
 def test_with_only_runs_in_nobodys_hands_there_is_nothing_to_wait_for(
@@ -749,7 +749,7 @@ def test_a_cache_that_does_not_answer_at_the_stop_is_not_taken_to_say_nothing_ru
     assert cache.asked == asked
     assert runs.read_stopped(stack.stopped_runs) == ONE_RUN
     assert cancels.cancelled == [ONE_RUN]
-    assert events_of(capsys)[0]["message"] == "Stopping 1 agent run"
+    assert events_of(capsys)[0]["message"] == "Stopping 1 workflow run"
     assert ("stopping what it last said" in caplog.text) == (asked == 4)
 
 
@@ -766,7 +766,7 @@ def test_stopping_the_runs_records_the_choice_asks_them_to_cancel_and_waits_for_
     assert runs.read_stopped(stack.stopped_runs) == ONE_RUN
     assert cancels.cancelled == [ONE_RUN]
     [event, cancellation] = events_of(capsys)
-    assert event["step"] == "stopping" and event["message"] == "Stopping 1 agent run"
+    assert event["step"] == "stopping" and event["message"] == "Stopping 1 workflow run"
     assert event["grace_seconds"] == supervisor.STOPPING_RUNS_GRACE_SECONDS
     assert cancellation["event"] == "shutdown"
     assert cancellation["phase"] == "cancellation"

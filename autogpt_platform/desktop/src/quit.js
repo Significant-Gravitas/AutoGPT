@@ -4,7 +4,7 @@
 // tested.
 //
 // The runtime says how many agent runs and AutoPilot turns (to the user:
-// AutoPilot replying) are in progress, whenever that changes
+// workflow runs and Otto replying) are in progress, whenever that changes
 // (runtime/autogpt_desktop/runs.py):
 //
 //   {"event": "activity", "graph_runs": 2, "copilot_turns": 1}
@@ -51,11 +51,11 @@ function isActive(activity) {
   return activity.graphRuns + activity.copilotTurns > 0;
 }
 
-// "2 agent runs and 1 AutoPilot reply", or null with nothing running.
+// "2 workflow runs and 1 Otto reply", or null with nothing running.
 function describeActivity({ graphRuns, copilotTurns }) {
   const parts = [];
-  if (graphRuns) parts.push(`${graphRuns} agent ${graphRuns === 1 ? "run" : "runs"}`);
-  if (copilotTurns) parts.push(`${copilotTurns} AutoPilot ${copilotTurns === 1 ? "reply" : "replies"}`);
+  if (graphRuns) parts.push(`${graphRuns} workflow ${graphRuns === 1 ? "run" : "runs"}`);
+  if (copilotTurns) parts.push(`${copilotTurns} Otto ${copilotTurns === 1 ? "reply" : "replies"}`);
   return parts.length ? parts.join(" and ") : null;
 }
 

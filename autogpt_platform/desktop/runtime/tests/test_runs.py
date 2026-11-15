@@ -290,12 +290,12 @@ def test_concurrent_cache_observation_preserves_turn_tracking(monkeypatch, opera
 
 
 def test_what_is_running_is_said_in_words():
-    assert runs.Activity(("a",), ()).describe() == "1 agent run"
+    assert runs.Activity(("a",), ()).describe() == "1 workflow run"
     assert (
         runs.Activity(("a", "b"), ("s",)).describe()
-        == "2 agent runs and 1 AutoPilot reply"
+        == "2 workflow runs and 1 Otto reply"
     )
-    assert runs.Activity((), ("s", "t")).describe() == "2 AutoPilot replies"
+    assert runs.Activity((), ("s", "t")).describe() == "2 Otto replies"
     assert not runs.Activity()
     assert runs.Activity((), ("s",))
 

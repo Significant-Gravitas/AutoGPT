@@ -166,7 +166,7 @@ that was working on it lives. AutoPilot's running-session metadata keeps
 a turn counted after its lock expires. If that metadata also disappears,
 the runtime remembers the observed session and turn until metadata records
 completion or the executor host exits. The tray menu
-shows the count as its first line ("2 agent runs in progress", "1 AutoPilot
+shows the count as its first line ("2 workflow runs in progress", "1 Otto
 reply in progress"; no line when nothing runs), and so does the tray icon's
 tooltip. With nothing running, quitting is immediate. With something
 running, quitting (the tray's *Quit*, *File > Quit* in the menu bar that Alt

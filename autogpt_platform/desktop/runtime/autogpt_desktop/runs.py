@@ -159,7 +159,7 @@ WHERE id = ANY(%(ids)s) AND "executionStatus" IN ('RUNNING', 'QUEUED') AND NOT "
 @dataclass(frozen=True)
 class Activity:
     """What is in flight: the ids of agent runs, and the session ids of
-    AutoPilot turns (to their user: AutoPilot replying)."""
+    AutoPilot turns (to their user: workflow runs and Otto replying)."""
 
     graph_runs: tuple[str, ...] = ()
     copilot_turns: tuple[str, ...] = ()
@@ -175,12 +175,8 @@ class Activity:
     def describe(self) -> str:
         runs, turns = self.counts
         parts = [
-            f"{runs} agent run{'' if runs == 1 else 's'}" if runs else "",
-            (
-                f"{turns} AutoPilot {'reply' if turns == 1 else 'replies'}"
-                if turns
-                else ""
-            ),
+            f"{runs} workflow run{'' if runs == 1 else 's'}" if runs else "",
+            (f"{turns} Otto {'reply' if turns == 1 else 'replies'}" if turns else ""),
         ]
         return " and ".join(part for part in parts if part) or "nothing"
 
