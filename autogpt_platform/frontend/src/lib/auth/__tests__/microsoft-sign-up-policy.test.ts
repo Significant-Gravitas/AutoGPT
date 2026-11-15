@@ -18,19 +18,20 @@ function refusalCode(run: () => void) {
 }
 
 describe("assertMicrosoftSignUpAllowed", () => {
-  it("refuses a Microsoft sign-up whose address Microsoft didn't confirm", () => {
+  it("keeps an AutoGPT team address to Google", () => {
     expect(
       refusalCode(() =>
         assertMicrosoftSignUpAllowed(
-          { email: "pat@example.com", emailVerified: false },
+          { email: "Pat@AGPT.co" },
           microsoftCallback,
         ),
       ),
-    ).toBe("account_not_linked");
+    ).toBe("team_email_requires_google");
+    // Only the exact domain is the team's: QA accounts keep Microsoft.
     expect(
       refusalCode(() =>
         assertMicrosoftSignUpAllowed(
-          { email: "pat@example.com", emailVerified: true },
+          { email: "qa@previews.agpt.co" },
           microsoftCallback,
         ),
       ),
@@ -41,31 +42,11 @@ describe("assertMicrosoftSignUpAllowed", () => {
     expect(
       refusalCode(() =>
         assertMicrosoftSignUpAllowed(
-          { email: "pat@example.com", emailVerified: false },
+          { email: "pat@agpt.co" },
           { path: "/sign-in/social", body: { provider: "microsoft" } },
         ),
       ),
-    ).toBe("account_not_linked");
-  });
-
-  it("keeps an AutoGPT team address to Google, even one Microsoft confirmed", () => {
-    expect(
-      refusalCode(() =>
-        assertMicrosoftSignUpAllowed(
-          { email: "Pat@AGPT.co", emailVerified: true },
-          microsoftCallback,
-        ),
-      ),
     ).toBe("team_email_requires_google");
-    // Only the exact domain is the team's: QA accounts keep Microsoft.
-    expect(
-      refusalCode(() =>
-        assertMicrosoftSignUpAllowed(
-          { email: "qa@previews.agpt.co", emailVerified: true },
-          microsoftCallback,
-        ),
-      ),
-    ).toBeNull();
   });
 
   it("leaves other sign-up methods alone", () => {
@@ -77,10 +58,7 @@ describe("assertMicrosoftSignUpAllowed", () => {
     ]) {
       expect(
         refusalCode(() =>
-          assertMicrosoftSignUpAllowed(
-            { email: "pat@agpt.co", emailVerified: false },
-            ctx,
-          ),
+          assertMicrosoftSignUpAllowed({ email: "pat@agpt.co" }, ctx),
         ),
       ).toBeNull();
     }

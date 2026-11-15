@@ -10,7 +10,17 @@ What closing stopped stays stopped: the plan (they subscribe again), the
 connected apps, API keys and app grants (they reconnect), schedules and
 triggers, share links, Marketplace listings and reviews, and product email
 (switched back on in settings). A person banned for another reason can't sign
-in, so they can't keep the account.
+in, and an access token from before the ban, still valid for up to an hour,
+can't keep the account either: the keep refuses an account whose ban is in
+force.
+
+Closing can't stop what was made in the seconds after it, while the other
+workers' closed-account cache still let a token issued before it through.
+API keys and app grants made then are revoked as the account opens
+(``reopen_account``). Sign-ins are not: closing ended every session, but a
+token issued before the close (on another device, valid for up to an hour)
+and the session cookie cached in the browser (for up to 5 minutes) are only
+refused while the account is closed, and work again once it is kept.
 """
 
 import logging
@@ -26,7 +36,7 @@ from backend.data.account_deletion import (
     get_deletion_request,
     reopen_account,
 )
-from backend.data.user import forget_refusal, get_user_by_id
+from backend.data.user import forget_refusal, get_user_by_id, is_user_banned
 from backend.util.posthog_client import capture_anonymous
 from backend.util.posthog_events import PostHogEvent
 
@@ -35,6 +45,10 @@ logger = logging.getLogger(__name__)
 
 class TooLateToRestoreError(Exception):
     """The 14 days are over: the erasure may already be running."""
+
+
+class BannedAccountError(Exception):
+    """A ban is in force on the account: it can be deleted, not kept."""
 
 
 async def get_deletion_status(user_id: str) -> AccountDeletionResponse:
@@ -61,9 +75,13 @@ async def get_deletion_status(user_id: str) -> AccountDeletionResponse:
 async def restore_account(user_id: str) -> None:
     """Cancel the deletion request. A no-op for an account that is open.
 
-    Raises TooLateToRestoreError, having changed nothing, once the erasure
-    date has passed.
+    Raises BannedAccountError while a ban is in force, and
+    TooLateToRestoreError once the erasure date has passed, having changed
+    nothing either way.
     """
+    if await is_user_banned(user_id):
+        logger.info(f"Account deletion: banned user {user_id} asked to keep it")
+        raise BannedAccountError()
     request = await get_deletion_request(user_id)
     outcome = await reopen_account(user_id)
     if outcome is ReopenOutcome.TOO_LATE:
