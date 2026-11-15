@@ -574,10 +574,12 @@ async def _get_prompt_bounded_stale() -> _ManagedPrompt:
     """
     claim = _claim_prompt_revalidation()
     if claim is None:
-        cached = _cached_prompt
+        # Read together under the lock: a fetch on another thread keeps its
+        # copy before it retires, so no copy and no fetch means it failed.
+        with _prompt_revalidation_lock:
+            cached, in_flight = _cached_prompt, _prompt_in_flight
         if cached is not None:
             return cached
-        in_flight = _prompt_in_flight
         if in_flight is None:
             raise RuntimeError("PostHog prompt fetch failed earlier in this window")
         # Shielded: a waiter's timeout must not cancel the shared fetch.

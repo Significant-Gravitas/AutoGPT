@@ -1146,15 +1146,23 @@ class TestPromptRevalidation:
 
         monkeypatch.setattr(service, "fetch_prompt", held_fetch)
         first = asyncio.create_task(_served())
-        await asyncio.wait_for(started.wait(), timeout=5)
-        second = asyncio.create_task(_served())
-        # Let the second turn reach the fetch in flight before it ends.
-        for _ in range(5):
-            await asyncio.sleep(0)
-        assert not second.done()
-        release.set()
+        second: asyncio.Task[str | None] | None = None
+        try:
+            await asyncio.wait_for(started.wait(), timeout=5)
+            second = asyncio.create_task(_served())
+            # Let the second turn reach the fetch in flight before it ends.
+            for _ in range(5):
+                await asyncio.sleep(0)
+            assert not second.done()
+            release.set()
 
-        served = await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+            served = await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+        finally:
+            release.set()
+            tasks = [task for task in (first, second) if task is not None]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
         assert served == ["v36 prompt", "v36 prompt"]
         assert calls == 1
 

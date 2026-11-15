@@ -112,7 +112,9 @@ def test_prompt_label(app_env: AppEnvironment, label: str, expected: str | None)
 @pytest.mark.asyncio
 async def test_fetch_reads_the_prompt_at_the_environments_label():
     client = MagicMock()
-    result = PromptResult(source="api", prompt="text", name="p", version=1)
+    result = PromptResult(
+        source="api", prompt="text", name="p", version=1, label="production"
+    )
     client.get.return_value = result
     settings = _settings(app_env=AppEnvironment.PRODUCTION)
     with (
@@ -159,3 +161,19 @@ async def test_fetch_runs_on_the_prompts_own_threads():
         await fetch_prompt("p", cache_ttl_seconds=0, timeout_seconds=5)
 
     assert threads and threads[0].startswith("posthog-prompts")
+
+
+@pytest.mark.asyncio
+async def test_a_prompt_at_another_label_is_refused():
+    """A server that ignores the label serves the newest version, unlabelled."""
+    client = MagicMock()
+    client.get.return_value = PromptResult(
+        source="api", prompt="text", name="p", version=2
+    )
+    settings = _settings(app_env=AppEnvironment.PRODUCTION)
+    with (
+        patch.object(posthog_prompts, "Settings", return_value=settings),
+        patch.object(posthog_prompts, "get_posthog_prompts_client", lambda: client),
+        pytest.raises(RuntimeError, match="label"),
+    ):
+        await fetch_prompt("p", cache_ttl_seconds=0, timeout_seconds=5)

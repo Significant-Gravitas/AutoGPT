@@ -116,7 +116,8 @@ async def fetch_prompt(
 
     The SDK serves its own copy within ``cache_ttl_seconds`` and an expired copy
     when a refetch fails (``result.source`` says which). Raises when there is no
-    copy to serve, or when the read takes longer than ``timeout_seconds``.
+    copy to serve, when the read takes longer than ``timeout_seconds``, or when
+    the copy is not at the label asked for.
     """
     client = get_posthog_prompts_client()
     label = prompt_label()
@@ -130,9 +131,16 @@ async def fetch_prompt(
         )
 
     loop = asyncio.get_running_loop()
-    return await asyncio.wait_for(
+    result = await asyncio.wait_for(
         loop.run_in_executor(_FETCH_EXECUTOR, get), timeout=timeout_seconds
     )
+    # A server that ignores the label answers with the newest version and no
+    # label; that is not the version this environment should run.
+    if label is not None and result.label != label:
+        raise RuntimeError(
+            f"PostHog served prompt {name!r} at label {result.label!r}, not {label!r}"
+        )
+    return result
 
 
 def compile_prompt(template: str, variables: PromptVariables) -> str:
