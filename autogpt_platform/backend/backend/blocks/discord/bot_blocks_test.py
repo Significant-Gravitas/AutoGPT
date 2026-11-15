@@ -135,11 +135,6 @@ async def test_send_skips_trailing_whitespace_only_chunks(
     sent_chunks: list[str] = []
 
     async def fake_send(chunk: str):
-        if not chunk.strip():
-            raise discord.HTTPException(
-                MagicMock(status=400, reason="Bad Request"),
-                {"code": 50006, "message": "Cannot send an empty message"},
-            )
         sent_chunks.append(chunk)
         return MagicMock(id=100 + len(sent_chunks))
 

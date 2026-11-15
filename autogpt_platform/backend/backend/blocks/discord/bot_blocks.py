@@ -307,8 +307,6 @@ class SendDiscordMessageBlock(Block):
                 # Split message into chunks if it exceeds 2000 characters
                 chunks = self.chunk_message(message_content)
                 for chunk in chunks:
-                    if not chunk.strip():
-                        continue
                     last_message = await channel.send(chunk)  # type: ignore
                 if last_message is None:
                     result["status"] = "Error: no message was sent"
