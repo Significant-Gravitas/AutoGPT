@@ -118,6 +118,44 @@ async def test_send_rejects_empty_content_without_logging_in(mocker, content):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content,expected_chunks",
+    [
+        ("x" * 2000 + "\n", ["x" * 2000]),
+        ("x" * 4000 + "\n\n", ["x" * 2000, "x" * 2000]),
+    ],
+)
+async def test_send_skips_trailing_whitespace_only_chunks(
+    mocker, content: str, expected_chunks: list[str]
+):
+    """Regression test for #16820: whitespace-only slices past a 2000-char boundary
+    must not be sent to Discord."""
+    channel = MagicMock()
+    channel.id = 987654321098765432
+    sent_chunks: list[str] = []
+
+    async def fake_send(chunk: str):
+        if not chunk.strip():
+            raise discord.HTTPException(
+                MagicMock(status=400, reason="Bad Request"),
+                {"code": 50006, "message": "Cannot send an empty message"},
+            )
+        sent_chunks.append(chunk)
+        return MagicMock(id=100 + len(sent_chunks))
+
+    channel.send = AsyncMock(side_effect=fake_send)
+    _patch_client(mocker, channel)
+
+    out = dict(await _run(SendDiscordMessageBlock(), content))
+
+    assert out["status"] == "Message sent"
+    assert out["message_id"] == str(100 + len(expected_chunks))
+    assert out["channel_id"] == "987654321098765432"
+    assert sent_chunks == expected_chunks
+    _FakeClient.instances[0].close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_partial_send_reports_the_chunks_already_delivered(mocker):
     channel = MagicMock()
     channel.id = 987654321098765432
