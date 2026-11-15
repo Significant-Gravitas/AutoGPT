@@ -84,9 +84,9 @@ async def _resolve_user_id(
     # Verify the user exists in the database and resolve their email.
     try:
         resolved_email = await get_user_email_by_id(user_id)
-    except Exception:
-        logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
-        resolved_email = None
+    except Exception as e:
+        logger.exception("Failed to resolve email for user %s", user_id)
+        raise HTTPException(status_code=500, detail="Failed to look up user") from e
 
     if resolved_email is None:
         raise HTTPException(status_code=404, detail=f"User {user_id} not found")
@@ -152,9 +152,9 @@ async def reset_user_rate_limit(
 
     try:
         resolved_email = await get_user_email_by_id(user_id)
-    except Exception:
-        logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
-        resolved_email = None
+    except Exception as e:
+        logger.exception("Failed to resolve email for user %s", user_id)
+        raise HTTPException(status_code=500, detail="Failed to look up user") from e
 
     if resolved_email is None:
         raise HTTPException(status_code=404, detail=f"User {user_id} not found")

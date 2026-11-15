@@ -10,6 +10,7 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
 from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
+from backend.util.exceptions import DatabaseError
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
 
@@ -290,17 +291,42 @@ def test_get_rate_limit_email_lookup_failure(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
 ) -> None:
-    """Test that failing to resolve a user email returns 404 (user unverifiable)."""
+    """Test that a database error during user lookup returns 500."""
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
         new_callable=AsyncMock,
-        side_effect=Exception("DB connection lost"),
+        side_effect=DatabaseError("DB connection lost"),
     )
 
     response = client.get("/admin/rate_limit", params={"user_id": target_user_id})
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == f"User {target_user_id} not found"
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to look up user"
+
+
+def test_reset_user_usage_email_lookup_failure(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that a database error during user lookup on reset returns 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        side_effect=DatabaseError("DB connection lost"),
+    )
+    mock_reset = mocker.patch(
+        f"{_MOCK_MODULE}.reset_user_usage",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/admin/rate_limit/reset",
+        json={"user_id": target_user_id},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to look up user"
+    mock_reset.assert_not_awaited()
 
 
 def test_admin_endpoints_require_admin_role(mock_jwt_user) -> None:
