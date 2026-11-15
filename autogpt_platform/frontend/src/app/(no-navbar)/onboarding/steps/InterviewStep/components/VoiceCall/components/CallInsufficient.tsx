@@ -18,23 +18,20 @@ export function CallInsufficient({
   onSkip,
 }: Props) {
   return (
-    <div
-      role="alert"
-      className="flex max-w-md flex-col items-center gap-4 text-center"
-    >
-      <Text variant="body" tone="muted">
+    <div className="flex max-w-md flex-col items-center gap-4 text-center">
+      <Text variant="body" tone="muted" role="alert">
         {"We heard you, but there wasn't enough about your work to " +
           "personalize things yet. A few sentences about what you do — " +
           "in any language — is all it takes."}
       </Text>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button variant="primary" size="small" onClick={onCallAgain}>
+        <Button variant="primary" size="large" onClick={onCallAgain}>
           Call again
         </Button>
-        <Button variant="secondary" size="small" onClick={onTypeInstead}>
+        <Button variant="secondary" size="large" onClick={onTypeInstead}>
           Type instead
         </Button>
-        <Button variant="ghost" size="small" onClick={onSkip}>
+        <Button variant="ghost" size="large" onClick={onSkip}>
           Continue without it
         </Button>
       </div>

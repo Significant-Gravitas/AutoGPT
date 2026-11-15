@@ -2499,6 +2499,10 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(
       screen.getByRole("button", { name: "Continue without it" }),
     ).toBeDefined();
+    // Read out without its ways on, which keep the other endings' size.
+    const said = screen.getByRole("alert");
+    expect(said.textContent).toMatch(/We heard you, but there wasn't enough/);
+    expect(said.querySelector("button")).toBeNull();
     // A call keeps its own not-enough screen; the brain dump's asks its
     // question instead.
     expect(
