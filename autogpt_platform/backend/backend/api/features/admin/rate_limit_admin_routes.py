@@ -81,13 +81,15 @@ async def _resolve_user_id(
             detail="Either user_id or email query parameter is required.",
         )
 
-    # We have a user_id; try to look up their email for display purposes.
-    # This is non-critical -- a failure should not block the response.
+    # Verify the user exists in the database and resolve their email.
     try:
         resolved_email = await get_user_email_by_id(user_id)
     except Exception:
         logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
         resolved_email = None
+
+    if resolved_email is None:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
     return user_id, resolved_email
 
 
@@ -149,6 +151,15 @@ async def reset_user_rate_limit(
     )
 
     try:
+        resolved_email = await get_user_email_by_id(user_id)
+    except Exception:
+        logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
+        resolved_email = None
+
+    if resolved_email is None:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+
+    try:
         await reset_user_usage(user_id, reset_weekly=reset_weekly)
     except Exception as e:
         logger.exception("Failed to reset user usage")
@@ -161,12 +172,6 @@ async def reset_user_rate_limit(
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
     multipliers = await get_tier_multipliers()
-
-    try:
-        resolved_email = await get_user_email_by_id(user_id)
-    except Exception:
-        logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
-        resolved_email = None
 
     return UserRateLimitResponse(
         user_id=user_id,
