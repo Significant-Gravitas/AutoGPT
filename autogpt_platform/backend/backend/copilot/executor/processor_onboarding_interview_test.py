@@ -68,6 +68,9 @@ class _Turn:
 
     def __init__(self, session: ChatSession) -> None:
         self.session = session
+        # The session's metadata as the database holds it: the cached copy's,
+        # unless a test says the database moved on.
+        self.stored = AsyncMock(return_value=SimpleNamespace(metadata=session.metadata))
         self.refusal = AsyncMock(return_value=PAUSE)
         self.complete = AsyncMock()
         self.baseline = MagicMock(return_value=MagicMock())
@@ -107,6 +110,7 @@ class _Turn:
                 "backend.copilot.model.get_chat_session",
                 AsyncMock(return_value=self.session),
             ),
+            patch("backend.copilot.model.get_chat_session_metadata", self.stored),
         ):
             await CoPilotProcessor()._execute_async(
                 entry,
@@ -176,6 +180,8 @@ async def test_an_ordinary_chat_still_passes_the_allowance_and_the_engine_flags(
     turn.use_sdk.assert_awaited_once()
     turn.sdk.assert_called_once()
     turn.baseline.assert_not_called()
+    # Only an interview's stage is read past the cache.
+    turn.stored.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -194,6 +200,25 @@ async def test_a_closed_interview_takes_no_turn_whatever_queued_it(stage: str):
         skip_error_publish=False,
         turn_id="turn-1",
     )
+
+
+@pytest.mark.asyncio
+async def test_an_interview_the_database_has_closed_takes_no_turn_while_the_cache_says_open():
+    """A turn queued before the close: the cached copy still has the
+    interview open, and the stage the close recorded is in the database."""
+    session = _interview(*_answered(2))
+    turn = _Turn(session)
+    turn.stored.return_value = SimpleNamespace(
+        metadata=session.metadata.model_copy(
+            update={"onboarding_interview_stage": INTERVIEW_STAGE_CLOSED}
+        )
+    )
+
+    await turn.run()
+
+    turn.baseline.assert_not_called()
+    turn.stored.assert_awaited_once_with("sess-1", "user-1")
+    assert turn.complete.await_args.kwargs["error_code"] == INTERVIEW_CLOSED
 
 
 @pytest.mark.asyncio

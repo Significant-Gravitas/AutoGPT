@@ -274,6 +274,18 @@ async def _building_mode_forces_sdk(session_id: str) -> bool:
     return session is not None and session_entered_building_mode(session)
 
 
+async def _as_stored(session: "ChatSession") -> "ChatSession":
+    """*session* with its metadata as the database holds it, as turn
+    admission reads it: the cached copy can trail a stage a close recorded a
+    moment ago."""
+    from backend.copilot.model import get_chat_session_metadata
+
+    stored = await get_chat_session_metadata(session.session_id, session.user_id)
+    if stored is None:
+        return session
+    return session.model_copy(update={"metadata": stored.metadata})
+
+
 async def _normalize_private_expert_session_tenancy(
     session: "ChatSession",
 ) -> "ChatSession":
@@ -847,9 +859,10 @@ class CoPilotProcessor:
             # its own (``onboarding_dump.interview``) instead of the
             # allowance. The bounds that hold whatever queued the turn are
             # here: an interview that is over takes no turn, and one that is
-            # open takes only its owner's own messages.
+            # open takes only its owner's own messages. Whether it is over is
+            # read as stored.
             interview = is_onboarding_interview(session)
-            if interview and interview_is_over(session):
+            if interview and interview_is_over(await _as_stored(session)):
                 log.info("Turn not started: the onboarding interview is over")
                 error_msg = "The interview is over."
                 error_code = INTERVIEW_CLOSED
