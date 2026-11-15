@@ -232,7 +232,7 @@ class SlackAdapter(WebhookAdapter):
         form: dict[str, str] = {
             k: v for k, v in form_data.items() if isinstance(v, str)
         }
-        return await commands.handle(self._api, form)
+        return await commands.handle(self._api, form, self._client_for)
 
     async def _handle_interactive_request(self, request: Request) -> Response:
         # Same body-then-form sequence as _handle_command_request: Slack's
