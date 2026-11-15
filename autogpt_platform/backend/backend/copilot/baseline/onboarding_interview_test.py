@@ -219,6 +219,29 @@ async def test_an_ordinary_chat_gets_neither_the_supplement_nor_the_block(
     assert "end_interview" not in names
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "charges_plan"),
+    [(ONBOARDING_INTERVIEW_KIND, False), ("normal", True)],
+)
+async def test_an_interview_turn_is_logged_and_draws_on_no_plan(
+    monkeypatch: pytest.MonkeyPatch,
+    baseline_io: list[ChatSession],
+    kind: str,
+    charges_plan: bool,
+) -> None:
+    """The platform pays for the interview, as for a call: its turns are
+    logged, and the person's plan windows and credits are left alone."""
+    usage = AsyncMock(return_value=0)
+    monkeypatch.setattr(service, "persist_and_record_usage", usage)
+
+    await _run_turn(monkeypatch, _session(kind))
+
+    usage.assert_awaited_once()
+    assert usage.await_args is not None
+    assert usage.await_args.kwargs["charge_plan"] is charges_plan
+
+
 _HAIKU = ResolvedModel("anthropic/claude-haiku-5.5", "catalog")
 
 

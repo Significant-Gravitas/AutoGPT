@@ -3362,6 +3362,9 @@ async def stream_chat_completion_baseline(
                 if baseline_provider == "openrouter"
                 else config.transport.cost_log_provider
             ),
+            # The platform pays for the onboarding interview, which draws on
+            # no plan: its turns are logged and leave the plan alone.
+            charge_plan=not interview,
         )
 
         # Persist structured tool-call history (assistant + tool messages)
