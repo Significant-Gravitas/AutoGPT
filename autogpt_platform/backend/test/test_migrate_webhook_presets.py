@@ -341,6 +341,8 @@ def _make_graph_mock(*, has_webhook: bool, version: int = 2, is_active: bool = T
     graph.id = "graph-xyz"
     graph.version = version
     graph.is_active = is_active
+    graph.organization_id = None
+    graph.team_id = None
     graph.webhook_input_node = object() if has_webhook else None
     # reassign_ids / validate_graph are sync methods on the real model; keep
     # the MagicMock default (returns MagicMock) so they don't trigger async
@@ -438,6 +440,8 @@ async def test_v1_update_graph_migrates_when_webhook_node_present(mocker):
     existing_version = MagicMock()
     existing_version.version = new_graph.version - 1
     existing_version.is_active = True
+    existing_version.organization_id = None
+    existing_version.team_id = None
     mocker.patch.object(
         graph_routes.graph_db,
         "get_graph_all_versions",
@@ -503,6 +507,8 @@ async def test_v1_update_graph_skips_when_no_webhook_node(mocker):
     existing_version = MagicMock()
     existing_version.version = new_graph.version - 1
     existing_version.is_active = True
+    existing_version.organization_id = None
+    existing_version.team_id = None
     mocker.patch.object(
         graph_routes.graph_db,
         "get_graph_all_versions",
