@@ -353,6 +353,18 @@ def test_nothing_of_otto_s_or_the_server_s_reaches_the_transcript() -> None:
     assert "<" not in transcript
 
 
+def test_a_copy_of_the_kickoff_stored_without_its_marker_never_reaches_the_transcript() -> (
+    None
+):
+    """The server wrote it, so it is not the person's words, hidden or not."""
+    messages = _session().messages
+    messages.insert(
+        1, ChatMessage(role="user", content=ONBOARDING_INTERVIEW_KICKOFF_MESSAGE)
+    )
+
+    assert interview.interview_transcript(messages) == SAID
+
+
 def test_a_card_s_answers_reach_the_transcript_without_otto_s_questions() -> None:
     """The stored row quotes Otto's questions and the platform's framing
     around the user's picks; only the picks are the user's words."""

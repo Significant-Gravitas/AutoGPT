@@ -56,6 +56,33 @@ async def test_schedule_chat_turn_redispatches_admitted_persisted_message() -> N
 
 
 @pytest.mark.asyncio
+async def test_a_stored_message_dispatched_again_hands_the_turn_its_metadata() -> None:
+    """A kickoff dispatched again after its turn failed: the turn carries the
+    stored row's metadata, so the engine knows the row for what it is."""
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    hidden = {"hidden": True, "kind": "onboarding_interview_kickoff"}
+    dispatch = AsyncMock()
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="kickoff",
+            message_metadata=hidden,
+            message_already_persisted=True,
+        )
+
+    assert dispatch.await_args.kwargs["message_metadata"] == hidden
+
+
+@pytest.mark.asyncio
 async def test_schedule_chat_turn_skips_concurrent_persisted_redispatch() -> None:
     slot = MagicMock(admitted=False)
 

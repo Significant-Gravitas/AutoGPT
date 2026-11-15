@@ -40,6 +40,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
 from .duplicate_message_id import is_duplicate_chat_message_id_error
+from .expert_kickoff import is_hidden_chat_message
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -543,7 +544,9 @@ def maybe_append_user_message(
 
     The route handler already persists the user message before enqueueing,
     so we check trailing same-role messages to avoid re-appending when the
-    session cache is slightly stale.
+    session cache is slightly stale. A row the server hid (a kickoff) is
+    written once, so one already stored is never appended again: not after a
+    failed turn's error row, nor once its text was prefixed with context.
 
     Returns True if the message was appended, False if skipped.
     """
@@ -552,10 +555,28 @@ def maybe_append_user_message(
     role = "user" if is_user_message else "assistant"
     if is_message_duplicate(session.messages, role, message):
         return False
+    if _holds_hidden_row(session.messages, role, metadata):
+        return False
     session.messages.append(
         ChatMessage(role=role, content=message, metadata=metadata or None)
     )
     return True
+
+
+def _holds_hidden_row(
+    messages: list[ChatMessage], role: str, metadata: dict[str, Any] | None
+) -> bool:
+    """Whether *metadata* marks a hidden row whose kind *messages* already
+    hold as a hidden row of *role*."""
+    if metadata is None or not is_hidden_chat_message(metadata):
+        return False
+    kind = metadata.get("kind")
+    return kind is not None and any(
+        stored.role == role
+        and is_hidden_chat_message(stored.metadata)
+        and (stored.metadata or {}).get("kind") == kind
+        for stored in messages
+    )
 
 
 class Usage(BaseModel):

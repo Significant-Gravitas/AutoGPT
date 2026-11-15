@@ -1036,6 +1036,9 @@ async def schedule_chat_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            # The row's metadata rides with the turn, so the engine knows a
+            # row it finds stored, such as a hidden kickoff, for what it is.
+            message_metadata=message_metadata,
             impersonated=impersonated,
         )
         return turn_id

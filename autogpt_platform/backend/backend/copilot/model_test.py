@@ -18,7 +18,7 @@ from prisma.models import Expert
 from pytest_mock import MockerFixture
 
 from backend.copilot import model as chat_model
-from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError, RedisError
@@ -878,6 +878,42 @@ def test_maybe_append_user_message_skips_duplicate():
     result = maybe_append_user_message(session, "dup", is_user_message=True)
     assert result is False
     assert len(session.messages) == 2
+
+
+def test_maybe_append_user_message_never_stores_a_hidden_row_twice():
+    """A kickoff dispatched again after its turn failed: the error row that
+    turn wrote ends the pending turn, but the hidden kickoff is already
+    stored, its text since prefixed with the first turn's context, so no
+    second copy is added."""
+    hidden = {"hidden": True, "kind": "onboarding_interview_kickoff"}
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(
+            role="user",
+            content="<session_context>\nNew chat.\n</session_context>\n\n"
+            "Start the interview.",
+            metadata=hidden,
+        ),
+        ChatMessage(role="assistant", content=f"{COPILOT_ERROR_PREFIX} Key refused."),
+    ]
+
+    assert (
+        maybe_append_user_message(session, "Start the interview.", True, hidden)
+        is False
+    )
+    assert len(session.messages) == 2
+
+
+def test_maybe_append_user_message_takes_a_message_sent_again_after_a_failed_turn():
+    """The person's own message sent again once a turn failed is a new turn."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="user", content="hello"),
+        ChatMessage(role="assistant", content=f"{COPILOT_ERROR_PREFIX} Key refused."),
+    ]
+
+    assert maybe_append_user_message(session, "hello", is_user_message=True) is True
+    assert [m.content for m in session.messages][-1] == "hello"
 
 
 def test_maybe_append_user_message_none_message():

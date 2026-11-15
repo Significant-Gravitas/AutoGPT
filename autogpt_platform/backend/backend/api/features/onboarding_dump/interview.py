@@ -88,6 +88,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.onboarding_interview import (
     INTERVIEW_CLOSED,
+    ONBOARDING_INTERVIEW_KICKOFF_MESSAGE,
     InterviewEndReason,
     InterviewTurnPlan,
     InterviewTurnRefused,
@@ -1439,9 +1440,9 @@ def interview_transcript(messages: Sequence[ChatMessage]) -> str:
     """The user's own words from an interview, one message per line.
 
     Otto's side is left out, and so are rows the user never saw (the hidden
-    kickoff), rows sent from another session (``from_session_id``), and the
-    blocks the server put in front of a message (``<user_context>``,
-    ``<voice_turn>``, ...). An answer given on an
+    kickoff, and its text however it was stored), rows sent from another
+    session (``from_session_id``), and the blocks the server put in front of
+    a message (``<user_context>``, ``<voice_turn>``, ...). An answer given on an
     ``ask_question`` card keeps only the answer: the stored row also quotes
     Otto's questions and the platform's framing (:func:`_own_answers`). The
     pipeline treats the whole text as something the user said: the greeting
@@ -1459,7 +1460,7 @@ def interview_transcript(messages: Sequence[ChatMessage]) -> str:
         text = _own_answers(
             strip_injected_context_for_display(message.content or "").strip()
         )
-        if text:
+        if text and text != ONBOARDING_INTERVIEW_KICKOFF_MESSAGE:
             lines.append(text)
     return "\n".join(lines)[:MAX_TYPED_CHARS]
 

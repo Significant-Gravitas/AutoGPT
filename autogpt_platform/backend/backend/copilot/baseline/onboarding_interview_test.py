@@ -2,20 +2,26 @@
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
+import openai
 import pytest
 from openai.types.chat import ChatCompletionChunk
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.onboarding_dump.interview import interview_transcript
-from backend.copilot import pending_message_helpers
+from backend.copilot import onboarding_interview, pending_message_helpers
 from backend.copilot.baseline import service
 from backend.copilot.baseline.reasoning import thinking_off_extra_body
 from backend.copilot.baseline.service_cancellation_test import baseline_io
 from backend.copilot.config import CopilotLLMModel
 from backend.copilot.constants import EMPTY_COMPLETION_NOTICE
+from backend.copilot.executor import utils as executor_utils
+from backend.copilot.expert_kickoff import is_hidden_chat_message
+from backend.copilot.markers import is_error_marker
 from backend.copilot.model import (
     INTERVIEW_STAGE_CLOSED,
     ONBOARDING_INTERVIEW_KIND,
@@ -27,7 +33,9 @@ from backend.copilot.onboarding_interview import (
     INTERVIEW_STATE_TAG,
     ONBOARDING_INTERVIEW_KICKOFF_MESSAGE,
     get_onboarding_interview_supplement,
+    onboarding_interview_kickoff_message_id,
     onboarding_interview_kickoff_metadata,
+    user_has_spoken,
 )
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import (
@@ -86,12 +94,16 @@ async def _run_turn(
     message: str = "I run a bakery.",
     is_user_message: bool = True,
     model: CopilotLLMModel | None = None,
+    message_metadata: dict[str, Any] | None = None,
+    provider: AsyncMock | None = None,
 ) -> Sent:
-    """One turn with the provider stubbed; the request it was sent."""
-    stream = MagicMock()
-    stream.__aiter__.return_value = []
-    stream.close = AsyncMock()
-    provider = AsyncMock(return_value=stream)
+    """One turn with the provider stubbed (*provider*, or one that answers
+    with nothing); the request it was sent."""
+    if provider is None:
+        stream = MagicMock()
+        stream.__aiter__.return_value = []
+        stream.close = AsyncMock()
+        provider = AsyncMock(return_value=stream)
     monkeypatch.setattr(service, "call_provider_stream", provider)
     monkeypatch.setattr(service, "download_transcript", AsyncMock(return_value=None))
     monkeypatch.setattr(service, "clear_pending_question", AsyncMock())
@@ -109,12 +121,108 @@ async def _run_turn(
             is_user_message=is_user_message,
             permissions=resolve_session_permissions(session),
             model=model,
+            message_metadata=message_metadata,
         ):
             pass
 
     provider.assert_awaited()
     assert provider.await_args is not None
     return Sent(request=provider.await_args.kwargs)
+
+
+def _key_refused() -> openai.AuthenticationError:
+    """The provider refusing the platform's key, as an invalid one is."""
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    return openai.AuthenticationError(
+        "Invalid API key", response=httpx.Response(401, request=request), body=None
+    )
+
+
+async def _dispatched_again(mocker, session: ChatSession) -> dict[str, Any]:
+    """The start dispatching the kickoff again, as it does once the kickoff's
+    turn failed; what the executor is handed."""
+
+    @asynccontextmanager
+    async def admitted(*_args, **_kwargs):
+        yield MagicMock(admitted=True)
+
+    dispatch = AsyncMock()
+    mocker.patch(
+        "backend.copilot.db.chat_message_has_assistant_reply",
+        AsyncMock(return_value=True),
+    )
+    mocker.patch.object(
+        onboarding_interview,
+        "_stored_messages",
+        AsyncMock(return_value=list(session.messages)),
+    )
+    mocker.patch.object(executor_utils, "acquire_turn_slot", admitted)
+    mocker.patch.object(executor_utils, "dispatch_turn", dispatch)
+
+    assert await onboarding_interview.kick_off_onboarding_interview(session)
+    return dispatch.await_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_a_kickoff_dispatched_again_after_its_turn_failed_stays_hidden_and_stored_once(
+    monkeypatch: pytest.MonkeyPatch, mocker, baseline_io: list[ChatSession]
+) -> None:
+    """The kickoff's turn fails at the provider, which writes an error row
+    after it, and the start dispatches the kickoff again. The person's chat
+    holds one kickoff, hidden, and none of its text as their words."""
+    for name in ("build_budget_ctx", "build_session_context", "build_skills_context"):
+        monkeypatch.setattr(service, name, AsyncMock(return_value=""))
+
+    async def inject(_understanding, _message, _session_id, rows, **_kwargs):
+        # As the real one does: the first turn's context goes in front of the
+        # first user row, which is stored that way.
+        first = next(row for row in rows if row.role == "user")
+        first.content = (
+            f"<session_context>\nNew chat.\n</session_context>\n\n{first.content}"
+        )
+        return first.content
+
+    monkeypatch.setattr(service, "inject_user_context", inject)
+    session = ChatSession.new("user-1", dry_run=False)
+    session.metadata.kind = ONBOARDING_INTERVIEW_KIND
+    session.title = "Onboarding interview"
+    session.messages = [
+        ChatMessage(
+            id=onboarding_interview_kickoff_message_id(
+                session.user_id, session.session_id
+            ),
+            role="user",
+            content=ONBOARDING_INTERVIEW_KICKOFF_MESSAGE,
+            metadata=onboarding_interview_kickoff_metadata(),
+        )
+    ]
+    await _run_turn(
+        monkeypatch,
+        session,
+        message=ONBOARDING_INTERVIEW_KICKOFF_MESSAGE,
+        message_metadata=onboarding_interview_kickoff_metadata(),
+        provider=AsyncMock(side_effect=_key_refused()),
+    )
+    assert is_error_marker(session.messages[-1])
+
+    dispatched = await _dispatched_again(mocker, session)
+    await _run_turn(
+        monkeypatch,
+        session,
+        message=dispatched["message"],
+        message_metadata=dispatched.get("message_metadata"),
+    )
+
+    kickoffs = [
+        m
+        for m in session.messages
+        if m.role == "user"
+        and (m.content or "").endswith(ONBOARDING_INTERVIEW_KICKOFF_MESSAGE)
+    ]
+    assert len(kickoffs) == 1
+    assert is_hidden_chat_message(kickoffs[0].metadata)
+    assert not user_has_spoken(session)
+    assert interview_transcript(session.messages) == ""
 
 
 @pytest.mark.asyncio
