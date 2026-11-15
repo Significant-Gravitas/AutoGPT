@@ -58,6 +58,7 @@ from backend.copilot.onboarding_interview import (
 )
 from backend.copilot.prompting import VOICE_TURN_PREFIX
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag
 from backend.voice_relay import locks
 
 __all__ = [
@@ -1096,6 +1097,31 @@ async def test_an_open_interview_admits_the_next_message_without_charging_it(
     plan = await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
 
     assert plan == InterviewTurnPlan(reply=4)
+    allowance.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unreadable", [False, True], ids=["off", "unreadable"])
+async def test_a_message_is_refused_while_the_interview_is_off_for_the_person(
+    stored: StoredInterview,
+    allowance: AsyncMock,
+    onboarding_interview_flag: AsyncMock,
+    unreadable: bool,
+):
+    """The flag stops an interview taking more turns, as it stops one
+    starting; finishing it stays open."""
+    if unreadable:
+        onboarding_interview_flag.side_effect = RuntimeError("flag service down")
+    else:
+        onboarding_interview_flag.return_value = (False, True)
+
+    with pytest.raises(HTTPException) as refused:
+        await interview.admit_onboarding_interview_turn(stored.session, USER_ID)
+
+    assert refused.value.status_code == 404
+    onboarding_interview_flag.assert_awaited_once_with(
+        Flag.ONBOARDING_INTERVIEW, USER_ID, default=False
+    )
     allowance.assert_not_awaited()
 
 

@@ -2187,12 +2187,10 @@ INTERVIEW_FINISH_URL = "/onboarding/brain-dump/interview/finish"
 INTERVIEW_SESSION_ID = "interview-session-1"
 
 
-@pytest.fixture(autouse=True)
-def interview_flag(mocker: MockerFixture) -> AsyncMock:
+@pytest.fixture
+def interview_flag(onboarding_interview_flag: AsyncMock) -> AsyncMock:
     """The interview's flag read: on for the person unless a test says not."""
-    return mocker.patch.object(
-        routes, "evaluate_feature_flag", new=AsyncMock(return_value=(True, True))
-    )
+    return onboarding_interview_flag
 
 
 @pytest.mark.parametrize("method", ["POST", "GET"])
@@ -2597,6 +2595,26 @@ def test_finishing_hands_the_interview_off_and_answers_its_take(
     assert user_id == test_user_id
     assert session_id == INTERVIEW_SESSION_ID
     assert isinstance(background_tasks, fastapi.BackgroundTasks)
+
+
+def test_an_interview_under_way_still_finishes_once_its_flag_is_off(
+    interview_flag: AsyncMock,
+    finalize_interview: AsyncMock,
+    find_interview: AsyncMock,
+):
+    """The flag stops interviews starting; one under way can still be
+    finished, so turning it off strands nobody."""
+    interview_flag.return_value = (False, True)
+    finalize_interview.return_value = FinalizeResponse(
+        status=BrainDumpStatus.transcribed,
+        input_mode=BrainDumpInputMode.typed,
+        transcript_preview="I run a bakery with five staff.",
+    )
+
+    response = client.post(INTERVIEW_FINISH_URL)
+
+    assert response.status_code == 200
+    finalize_interview.assert_awaited_once()
 
 
 def test_finishing_with_no_interview_on_record_is_a_404(

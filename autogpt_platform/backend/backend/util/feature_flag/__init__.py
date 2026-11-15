@@ -106,12 +106,15 @@ class Flag(str, Enum):
     COPILOT_VOICE_MODE = "copilot-voice-mode"
 
     # The onboarding wizard's typed interview with Otto, in place of the brain
-    # dump step. The routes that open and read it 404 when off. Fail-closed.
+    # dump step. Off, the routes that open or read it, its typed turns and
+    # the call start 404, while finishing what is under way stays open.
+    # Fail-closed.
     ONBOARDING_INTERVIEW = "onboarding-interview"
 
     # The onboarding voice interview: the step offers a call with Otto, and
-    # the call start route mints calls. The route 404s when off, so a stale
-    # frontend cannot start a call. Fail-closed.
+    # the call start route mints calls. The start 404s when this or the
+    # interview's flag is off, so a stale frontend cannot start a call; a call
+    # under way can still be read, ended and finished. Fail-closed.
     ONBOARDING_INTERVIEW_VOICE = "onboarding-interview-voice"
 
     # Offers Otto the render_ui tool. The chat draws stored cards either way,

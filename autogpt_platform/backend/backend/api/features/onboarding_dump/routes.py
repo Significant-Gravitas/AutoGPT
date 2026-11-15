@@ -52,7 +52,6 @@ from backend.api.features.store.exceptions import VirusDetectedError, VirusScanE
 from backend.copilot.onboarding_interview import find_onboarding_interview_session
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.exceptions import NotFoundError
-from backend.util.feature_flag import Flag, evaluate_feature_flag
 
 logger = logging.getLogger(__name__)
 
@@ -203,15 +202,9 @@ async def finalize_brain_dump(
 
 async def _interview_enabled(user_id: Annotated[str, Security(get_user_id)]) -> None:
     """404 while the onboarding interview is off for the person, or its flag
-    cannot be read."""
-    try:
-        enabled, _ = await evaluate_feature_flag(
-            Flag.ONBOARDING_INTERVIEW, user_id, default=False
-        )
-    except Exception:
-        logger.warning("Onboarding interview flag could not be read", exc_info=True)
-        enabled = False
-    if not enabled:
+    cannot be read: it starts nothing then. Finishing, and the routes of a
+    call, stay open."""
+    if not await interview.interview_enabled(user_id):
         raise fastapi.HTTPException(status_code=404, detail="Feature not available")
 
 
@@ -329,10 +322,11 @@ async def start_onboarding_voice_call(
     The call counts against the person's allowance once it is ready on the
     relay.
 
-    404 while voice is off for the person; 409 once their interview is over,
-    or while a call of theirs is live (``call_id`` names it); 429 past their
-    call allowance; 503 past the platform's voice budget or live-call
-    ceiling, or while voice cannot be served. A 429 or 503 carries its wait
+    404 while the interview or voice is off for the person, though a call
+    under way can still be read, ended and finished; 409 once their
+    interview is over, or while a call of theirs is live (``call_id`` names
+    it); 429 past their call allowance; 503 past the platform's voice budget
+    or live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait
     in the body (``retry_after_seconds``) as well as in ``Retry-After``.
     """
     try:

@@ -159,6 +159,16 @@ def _no_bans(mocker):
         mocker.patch(site, new=ban_off)
 
 
+@pytest.fixture(autouse=True)
+def onboarding_interview_flag(mocker):
+    """The onboarding interview's flag reads on in every API test, as no flag
+    service runs here; the tests of the flag set it off themselves."""
+    return mocker.patch(
+        "backend.api.features.onboarding_dump.interview.evaluate_feature_flag",
+        new=mocker.AsyncMock(return_value=(True, True)),
+    )
+
+
 @pytest.fixture
 def real_ban_lookup(mocker):
     """Undoes ``_no_bans``."""

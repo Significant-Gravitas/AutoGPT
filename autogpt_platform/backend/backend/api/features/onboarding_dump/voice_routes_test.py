@@ -182,6 +182,50 @@ async def test_a_flag_that_cannot_be_read_keeps_voice_off(voice_on):
     assert (await start()).status_code == 404
 
 
+async def test_no_call_starts_while_the_interview_is_off_whatever_voice_s_flag_says(
+    voice_on, onboarding_interview_flag: AsyncMock
+):
+    """A call is the interview's, so the interview's flag stops calls too."""
+    onboarding_interview_flag.return_value = (False, True)
+
+    assert (await start()).status_code == 404
+    voice_on.flag.assert_not_awaited()
+
+
+async def test_a_live_call_is_still_read_and_ended_once_the_flags_are_off(
+    redis, test_user_id, voice_on, onboarding_interview_flag: AsyncMock
+):
+    """The flags stop calls starting; a call under way can still be read and
+    ended, so turning them off leaves no call or room behind."""
+    voice_on.flag.return_value = (False, True)
+    onboarding_interview_flag.return_value = (False, True)
+    await _record(redis, test_user_id, status="live")
+
+    assert (await request("GET", f"/{CALL}")).status_code == 200
+    assert (await request("POST", f"/{CALL}/end")).status_code == 202
+    assert await locks.end_requested(redis, CALL)
+
+
+async def test_a_call_is_still_finished_once_the_flags_are_off(
+    redis, test_user_id, voice_on, onboarding_interview_flag: AsyncMock
+):
+    voice_on.flag.return_value = (False, True)
+    onboarding_interview_flag.return_value = (False, True)
+    await _record(
+        redis,
+        test_user_id,
+        status="handed_off",
+        hand_off=_take().model_dump(mode="json"),
+        transcript_of_record="I run a bakery.",
+        interview=locks.INTERVIEW_TAKEN,
+    )
+
+    response = await request("POST", f"/{CALL}/finish")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "transcribed"
+
+
 async def test_a_start_names_its_call_socket_caps_and_a_token_the_relay_trusts(
     test_user_id,
 ):

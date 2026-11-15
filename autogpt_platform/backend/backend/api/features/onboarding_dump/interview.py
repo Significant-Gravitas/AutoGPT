@@ -123,6 +123,7 @@ from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.redis_helpers import as_str
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.voice_relay import locks
 
 logger = logging.getLogger(__name__)
@@ -347,6 +348,21 @@ def _voice_calls_unreadable() -> HTTPException:
     )
 
 
+async def interview_enabled(user_id: str) -> bool:
+    """Whether the onboarding interview is on for the person: its flag's
+    answer, and off while the flag cannot be read. Off, nothing starts or
+    extends an interview or a call; finishing, ending and reading what is
+    under way stay open."""
+    try:
+        enabled, _ = await evaluate_feature_flag(
+            Flag.ONBOARDING_INTERVIEW, user_id, default=False
+        )
+    except Exception:
+        logger.warning("Onboarding interview flag could not be read", exc_info=True)
+        return False
+    return enabled
+
+
 async def admit_onboarding_interview_turn(
     session: ChatSessionInfo,
     user_id: str,
@@ -372,12 +388,15 @@ async def admit_onboarding_interview_turn(
     interview first is refused here already.
 
     Raises:
-        HTTPException: 409 once the interview is over, 422 for a request an
-            interview never takes (a non-user turn, an expert kickoff, files),
-            and whatever :func:`refuse_while_a_call_holds_the_interview` and
+        HTTPException: 404 while the interview is off for the person, 409
+            once it is over, 422 for a request an interview never takes (a
+            non-user turn, an expert kickoff, files), and whatever
+            :func:`refuse_while_a_call_holds_the_interview` and
             :func:`refuse_once_the_latest_call_took_it` raise while a voice
             call holds the interview.
     """
+    if not await interview_enabled(user_id):
+        raise HTTPException(status_code=404, detail="Feature not available")
     full = await get_chat_session(session.session_id, user_id)
     if full is None:
         raise HTTPException(status_code=404, detail="Session not found")

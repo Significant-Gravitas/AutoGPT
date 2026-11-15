@@ -65,6 +65,7 @@ from backend.api.features.onboarding_dump.interview import (
     LaterCallUnsettled,
     call_that_took_the_interview,
     call_words,
+    interview_enabled,
     superseded_take,
 )
 from backend.api.features.onboarding_dump.interview_endings import (
@@ -234,6 +235,10 @@ def relay_socket_url() -> str | None:
 
 
 async def _voice_enabled(user_id: str) -> bool:
+    """Whether a call may start for the person: the onboarding interview and
+    its voice flag both on, and neither when a flag cannot be read."""
+    if not await interview_enabled(user_id):
+        return False
     try:
         enabled, _ = await evaluate_feature_flag(
             Flag.ONBOARDING_INTERVIEW_VOICE, user_id, default=False
