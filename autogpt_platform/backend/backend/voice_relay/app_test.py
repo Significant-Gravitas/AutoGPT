@@ -76,6 +76,18 @@ async def test_a_socket_from_an_origin_the_platform_does_not_allow_is_refused(
 
 
 @pytest.mark.parametrize(
+    "configured",
+    [["*"], [ORIGIN, "*"]],
+    ids=["only-the-wildcard", "beside-a-named-origin"],
+)
+def test_a_relay_will_not_load_with_every_origin_allowed(configured: list[str]):
+    """With ``*`` a page of any site could open a call socket. The relay
+    serves the platform's own pages, so each origin it allows is named."""
+    with pytest.raises(ValueError, match="every origin"):
+        Relay(max_calls=1, origins=build_cors_params(configured, AppEnvironment.LOCAL))
+
+
+@pytest.mark.parametrize(
     "first",
     [
         json.dumps({"type": "hangup"}),

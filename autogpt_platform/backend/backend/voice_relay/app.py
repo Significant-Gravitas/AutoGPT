@@ -4,8 +4,9 @@
   first message, within ``START_TIMEOUT_S``, then runs the call or re-attaches
   to it (``session``). The token rides the first message, never the URL, so it
   stays out of load balancer logs. The browser's origin must be one the
-  platform allows (``BACKEND_CORS_ALLOW_ORIGINS``). The socket carries the
-  call's control; its audio travels through the call's LiveKit room.
+  platform allows (``BACKEND_CORS_ALLOW_ORIGINS``), each named: the relay
+  will not load with ``*`` among them. The socket carries the call's
+  control; its audio travels through the call's LiveKit room.
 - ``GET /healthz`` is liveness. ``GET /readyz`` is readiness, which fails
   while the process drains, so the load balancer sends it no new calls, and
   while it could not record a call: its spool directory takes no writes.
@@ -156,6 +157,11 @@ class Relay:
         origins: CorsParams,
         deps: RelayDeps | None = None,
     ) -> None:
+        if "*" in origins["allow_origins"]:
+            raise ValueError(
+                "The voice relay will not allow every origin: name each origin "
+                "it serves in BACKEND_CORS_ALLOW_ORIGINS, without '*'"
+            )
         self.max_calls = max_calls
         self.origins = origins
         self.deps = deps
@@ -201,8 +207,7 @@ class Relay:
     def origin_allowed(self, origin: str | None) -> bool:
         if not origin:
             return False
-        allowed = self.origins["allow_origins"]
-        if "*" in allowed or origin in allowed:
+        if origin in self.origins["allow_origins"]:
             return True
         pattern = self.origins["allow_origin_regex"]
         return pattern is not None and re.fullmatch(pattern, origin) is not None
