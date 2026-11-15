@@ -18,6 +18,7 @@ from backend.voice_relay.config import IN_RATE, Caps, Timing
 from backend.voice_relay.conftest import (
     FakeMedia,
     FakeSocket,
+    ManualClock,
     MemoryRecordings,
     counted_calls,
     livekit_edge,
@@ -90,6 +91,23 @@ class Call:
         ended = [message for message in socket.sent if message["type"] == "ended"]
         assert ended, f"no ended message in {socket.types()}"
         return ended[-1]
+
+
+async def _past_the_probe(call: Call, clock: ManualClock) -> None:
+    """Move the call's clock past the echo probe of Otto's first turn, and
+    wait for its verdict."""
+    session = call.session
+    await until(lambda: session.probe_ends is not None)
+    assert session.probe_ends is not None
+    clock.advance_to(session.probe_ends)
+    await until(lambda: session.duplex != "probing")
+
+
+async def _said(call: Call, frames: list[bytes]) -> None:
+    """The person says *frames*, all of them taken by the call."""
+    before = call.session.received
+    call.say(frames)
+    await until(lambda: call.session.received >= before + len(b"".join(frames)) // 2)
 
 
 def _hears_the_person(session: Session) -> bool:
@@ -281,15 +299,25 @@ async def test_the_wall_clock_ends_a_call_mid_turn_after_its_nudge(redis):
         ],
         pace_s=0.04,
     )
+    clock = ManualClock()
     call = await open_call(
         redis,
         vendor,
         caps=CAPS.model_copy(
             update={"max_call_s": 1.5, "soft_wrap_s": 1.0, "idle_s": 30.0}
         ),
+        clock=clock,
     )
     await call.ws.wait_for("turn_complete")
+    await _past_the_probe(call, clock)
     call.say(speech(0.2))
+    # Otto is into his long second turn.
+    await until(lambda: call.session.cur.first_audio is not None)
+    started = call.session.t0
+    assert started is not None
+    clock.advance_to(started + 0.5)
+    await until(lambda: (NUDGES["time"], False) in vendor.sessions[0].notes)
+    clock.advance_to(started + 1.5)
     ended = await call.ended()
     assert ended["reason"] == "wall_clock"
     assert ended["elapsed_s"] >= 1.4
@@ -338,12 +366,20 @@ async def test_idle_counts_only_once_ottos_speech_has_played(redis):
 
 async def test_speech_keeps_a_quiet_call_open(redis):
     vendor = FakeVendor([Reply(text="Hi", audio_s=0.1)], end_of_speech_s=60.0)
-    call = await open_call(redis, vendor, caps=CAPS.model_copy(update={"idle_s": 1.0}))
+    clock = ManualClock()
+    call = await open_call(
+        redis, vendor, caps=CAPS.model_copy(update={"idle_s": 1.0}), clock=clock
+    )
+    await call.ws.wait_for("turn_complete")
+    await _past_the_probe(call, clock)
     # A word every tenth of a second, for half again the idle cutoff.
     for _ in range(15):
-        await asyncio.sleep(0.1)
-        call.say(speech(0.04))
+        clock.advance(0.1)
+        await _said(call, speech(0.04))
     assert not call.session.ended.is_set()
+
+    clock.advance(1.0)
+
     assert (await call.ended())["reason"] == "idle"
 
 
@@ -752,21 +788,27 @@ async def test_fillers_between_side_task_requests_do_not_clear_the_count(redis):
 
 
 async def test_quiet_while_the_browser_is_away_does_not_count_toward_idle(redis):
+    clock = ManualClock()
     call = await open_call(
         redis,
         FakeVendor([Reply(text="Hi", audio_s=0.1)]),
         caps=CAPS.model_copy(update={"idle_s": 0.4}),
         timing=FAST.model_copy(update={"reattach_s": 10.0}),
+        clock=clock,
     )
     await call.ws.wait_for("turn_complete")
     call.ws.drop()
     await until(lambda: call.session.detached_at is not None)
-    # Away for longer than the idle cutoff.
-    await asyncio.sleep(1.0)
+    # Away for longer than the idle cutoff, while the watchdog ticks: every
+    # tick it has scheduled comes before the test's sleep ends.
+    clock.advance(1.0)
+    await asyncio.sleep(10 * FAST.tick_s)
     assert not call.session.ended.is_set()
 
     fresh = FakeSocket()
     await call.session.attach(fresh)
+    clock.advance(0.5)
+
     assert (await call.ended(fresh))["reason"] == "idle"
 
 
