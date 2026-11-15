@@ -49,8 +49,9 @@ function resetPasswordFile(dataDir) {
   return path.join(dataDir, "config", RESET_PASSWORD_FILE);
 }
 
-// Private to the user from the moment it exists, and never half-written:
-// the runtime may be reading the directory while this runs.
+// Private to the user from the moment it exists (on Windows, where these
+// modes do nothing, through the permissions of the data folder it is in), and
+// never half-written: the runtime may be reading the directory while this runs.
 function writePasswordReset(dataDir, password) {
   const target = resetPasswordFile(dataDir);
   const temporary = `${target}.${process.pid}.tmp`;

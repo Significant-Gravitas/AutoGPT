@@ -495,14 +495,22 @@ def test_bounded_repetition_has_no_handle_growth(tmp_path):
     )
     before, after = w.DWORD(), w.DWORD()
     path = str(tmp_path / "file")
+
+    def repeat(times: int) -> None:
+        for _ in range(times):
+            fd = open_no_follow(path, os.O_CREAT | os.O_RDWR)
+            os.close(fd)
+            with ExitStack() as lifetime:
+                ensure_private_directory(str(tmp_path / "private"), lifetime=lifetime)
+
+    # Handles opened once per process, not per call, are held from here on.
+    repeat(1)
     assert count(w.HANDLE(-1), c.byref(before))
-    for _ in range(40):
-        fd = open_no_follow(path, os.O_CREAT | os.O_RDWR)
-        os.close(fd)
-        with ExitStack() as lifetime:
-            ensure_private_directory(str(tmp_path / "private"), lifetime=lifetime)
+    repeat(100)
     assert count(w.HANDLE(-1), c.byref(after))
-    assert after.value <= before.value
+    # A handle left behind per call would be 100 or more; other threads of
+    # the process may hold a few more for a moment.
+    assert after.value <= before.value + 8
 
 
 def convert_fixture_to_junction(parent, outside, access):

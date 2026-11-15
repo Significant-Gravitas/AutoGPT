@@ -12,10 +12,10 @@ import re
 import stat
 import sys
 
-# O_PATH walks a directory with search permission only, as path lookup does.
 if os.name == "nt":
     from backend.copilot import host_fs_windows
 else:
+    # O_PATH walks a directory with search permission only, as path lookup does.
     _DIR_ACCESS = os.O_PATH if sys.platform == "linux" else os.O_RDONLY
     _DIR_FLAGS = _DIR_ACCESS | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
