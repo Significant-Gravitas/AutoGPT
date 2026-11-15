@@ -1,3 +1,4 @@
+import threading
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -130,3 +131,31 @@ def test_compile_fills_double_brace_variables_only():
     with patch.object(posthog_prompts, "Settings", return_value=_settings()):
         compiled = compile_prompt(template, {"users_information": ""})
     assert compiled == "Hello {{other}} {users_information}"
+
+
+def test_compile_fills_spaced_placeholders_too():
+    """Langfuse templates allowed ``{{ name }}``; PostHog's compile does not."""
+    template = "Hello{{ users_information }}|{{users_information }}|{{ other }}"
+    with patch.object(posthog_prompts, "Settings", return_value=_settings()):
+        compiled = compile_prompt(template, {"users_information": ""})
+    assert compiled == "Hello||{{ other }}"
+
+
+@pytest.mark.asyncio
+async def test_fetch_runs_on_the_prompts_own_threads():
+    """A stalled read must not hold the default executor's threads."""
+    client = MagicMock()
+    threads: list[str] = []
+
+    def get(*_args, **_kwargs) -> PromptResult:
+        threads.append(threading.current_thread().name)
+        return PromptResult(source="api", prompt="text", name="p", version=1)
+
+    client.get.side_effect = get
+    with (
+        patch.object(posthog_prompts, "Settings", return_value=_settings()),
+        patch.object(posthog_prompts, "get_posthog_prompts_client", lambda: client),
+    ):
+        await fetch_prompt("p", cache_ttl_seconds=0, timeout_seconds=5)
+
+    assert threads and threads[0].startswith("posthog-prompts")

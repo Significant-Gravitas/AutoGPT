@@ -17,10 +17,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from posthog.ai.prompts import PromptResult, Prompts
 
+from backend.copilot import service
 from backend.copilot.graphiti.context import CONTEXT_TAG_NAME
 from backend.copilot.graphiti.context_marker import INJECTED_MEMORY_ATTRIBUTE
 from backend.copilot.llm_attribution import start_turn_prompt, turn_prompt
-from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT, _ManagedPrompt
+from backend.copilot.service import (
+    _CACHEABLE_SYSTEM_PROMPT,
+    _fetch_managed_prompt,
+    _ManagedPrompt,
+)
 from backend.util import posthog_prompts
 from backend.util.posthog_prompts import PromptRef
 
@@ -1074,8 +1079,6 @@ _TTL = 60
 
 async def _served() -> str | None:
     """The system prompt text the fetch serves, or None for the copy in code."""
-    from backend.copilot.service import _fetch_managed_prompt
-
     managed = await _fetch_managed_prompt()
     return managed.text if managed else None
 
@@ -1083,8 +1086,6 @@ async def _served() -> str | None:
 @pytest.fixture
 def prompt_server(monkeypatch):
     """A process holding v35 that has just revalidated, and a server at v36."""
-    from backend.copilot import service
-
     client = Prompts(
         personal_api_key="phx_test",
         project_api_key="phc_test",
@@ -1105,8 +1106,6 @@ def prompt_server(monkeypatch):
 @pytest.fixture
 def open_window(monkeypatch):
     """Put the last revalidation far enough back that the next call owns it."""
-    from backend.copilot import service
-
     monkeypatch.setattr(
         service, "_last_prompt_revalidation", time.monotonic() - _TTL - 1
     )
@@ -1125,6 +1124,51 @@ class TestPromptRevalidation:
     async def test_revalidates_past_the_ttl(self, prompt_server, open_window):
 
         assert await _served() == "v36 prompt"
+        assert prompt_server.fetches == 1
+
+    @pytest.mark.asyncio
+    async def test_cold_turns_share_one_fetch(self, prompt_server, monkeypatch):
+        """With no copy held, a turn that loses the claim waits on the fetch in
+        flight instead of making its own."""
+        monkeypatch.setattr(service, "_cached_prompt", None)
+        monkeypatch.setattr(service, "_last_prompt_revalidation", 0.0)
+        started, release = asyncio.Event(), asyncio.Event()
+        calls = 0
+
+        async def held_fetch(*_args, **_kwargs) -> PromptResult:
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()
+            return PromptResult(
+                source="api", prompt="v36 prompt", name="copilot-prompt", version=36
+            )
+
+        monkeypatch.setattr(service, "fetch_prompt", held_fetch)
+        first = asyncio.create_task(_served())
+        await asyncio.wait_for(started.wait(), timeout=5)
+        second = asyncio.create_task(_served())
+        # Let the second turn reach the fetch in flight before it ends.
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert not second.done()
+        release.set()
+
+        served = await asyncio.wait_for(asyncio.gather(first, second), timeout=5)
+        assert served == ["v36 prompt", "v36 prompt"]
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_a_failed_cold_fetch_is_not_retried_every_turn(
+        self, prompt_server, monkeypatch
+    ):
+        """Until the window ends, the turns get the copy in code."""
+        monkeypatch.setattr(service, "_cached_prompt", None)
+        monkeypatch.setattr(service, "_last_prompt_revalidation", 0.0)
+        prompt_server.error = RuntimeError("posthog unreachable")
+
+        for _ in range(3):
+            assert await _served() is None
         assert prompt_server.fetches == 1
 
     @pytest.mark.asyncio
@@ -1246,3 +1290,32 @@ class TestTurnPromptRecord:
 
         assert prompt == _CACHEABLE_SYSTEM_PROMPT
         assert turn_prompt() == PromptRef(name="copilot-prompt")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "template, compiled, flagged",
+    [
+        ("A{{users_information}}", "A", False),
+        ("A{{ users_information }}", "A", False),
+        ("A{users_information}", "A{users_information}", True),
+        ("A{ users_information }", "A{ users_information }", True),
+    ],
+    ids=["double", "double spaced", "single", "single spaced"],
+)
+async def test_a_placeholder_left_in_the_prompt_is_logged(
+    monkeypatch, template: str, compiled: str, flagged: bool
+):
+    """User context in the system prompt breaks cross-session caching; the
+    compile blanks the double-brace forms, spaced or not, and the guard
+    catches what it leaves."""
+    result = PromptResult(
+        source="api", prompt=template, name="copilot-prompt", version=1
+    )
+    monkeypatch.setattr(service, "fetch_prompt", AsyncMock(return_value=result))
+
+    with patch.object(service.logger, "error") as error:
+        managed = await service._revalidate_prompt()
+
+    assert managed.text == compiled
+    assert error.called is flagged

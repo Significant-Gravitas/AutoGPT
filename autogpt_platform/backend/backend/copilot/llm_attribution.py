@@ -160,9 +160,14 @@ def start_turn_prompt() -> None:
 
 def record_turn_prompt(ref: PromptRef) -> None:
     """Note the system prompt the running turn runs on; outside a turn,
-    nothing."""
+    nothing.
+
+    The first prompt recorded in a turn stays: the reply that started the turn
+    ran on it, so a later build in the same turn (an auto-continue) that got a
+    newer version does not replace it.
+    """
     record = _turn_prompt.get()
-    if record is not None:
+    if record is not None and record.ref is None:
         record.ref = ref
 
 

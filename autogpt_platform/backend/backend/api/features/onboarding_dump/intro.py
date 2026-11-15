@@ -200,6 +200,8 @@ async def generate_intro(transcript: str) -> tuple[str, list[SuggestedPrompt]]:
         return fallback_intro(text)
 
     managed = await _fetch_managed_prompt()
+    if managed is not None and not managed.prompt.strip():
+        managed = None  # an empty version falls back to the copy in code
     instructions = managed.prompt if managed else _LOCAL_PROMPT
     prompt_ref = PromptRef(
         name=MANAGED_PROMPT_NAME, version=managed.version if managed else None

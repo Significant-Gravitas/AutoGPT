@@ -258,6 +258,34 @@ def test_a_prompt_recorded_outside_a_turn_is_dropped():
     assert contextvars.copy_context().run(call) is None
 
 
+def test_a_turn_keeps_the_first_prompt_it_recorded():
+    """An auto-continue rebuilds the prompt and can get a newer version, but
+    the reply that started the turn ran on the first one."""
+
+    def call() -> PromptRef | None:
+        start_turn_prompt()
+        record_turn_prompt(PromptRef(name="copilot-prompt", version=7))
+        record_turn_prompt(PromptRef(name="copilot-prompt", version=8))
+        return turn_prompt()
+
+    assert contextvars.copy_context().run(call) == PromptRef(
+        name="copilot-prompt", version=7
+    )
+
+
+def test_a_new_turn_records_its_own_prompt():
+    def call() -> PromptRef | None:
+        start_turn_prompt()
+        record_turn_prompt(PromptRef(name="copilot-prompt", version=7))
+        start_turn_prompt()
+        record_turn_prompt(PromptRef(name="copilot-prompt", version=8))
+        return turn_prompt()
+
+    assert contextvars.copy_context().run(call) == PromptRef(
+        name="copilot-prompt", version=8
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_prompt_recorded_in_a_task_the_turn_started_reaches_the_turn():
     """The engines build the prompt under ``asyncio.gather``, in a child task

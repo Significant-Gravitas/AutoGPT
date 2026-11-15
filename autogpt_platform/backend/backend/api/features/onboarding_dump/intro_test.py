@@ -313,6 +313,30 @@ async def test_a_local_endpoint_gets_no_broadcast_fields(
     assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", ["", "  \n"], ids=["empty", "whitespace"])
+async def test_an_empty_posthog_prompt_falls_back_to_the_local_prompt(
+    client: MagicMock, mocker: MockerFixture, empty: str
+):
+    mocker.patch.object(
+        intro, "openrouter_helper_cost_provider", return_value="open_router"
+    )
+    mocker.patch.object(
+        intro,
+        "_fetch_managed_prompt",
+        new=AsyncMock(
+            return_value=PromptResult(source="api", prompt=empty, name="n", version=5)
+        ),
+    )
+
+    await intro.generate_intro(TRANSCRIPT)
+
+    assert intro._LOCAL_PROMPT in _sent(client, "user")
+    trace = _sent_trace(client)
+    assert trace is not None and trace["prompt_source"] == "code"
+    assert "prompt_version" not in trace
+
+
 def test_the_local_prompt_offers_an_optional_why_per_prompt():
     assert '"why" (optional)' in intro._LOCAL_PROMPT
     assert f"at most {intro.MAX_WHY_CHARS} characters" in intro._LOCAL_PROMPT

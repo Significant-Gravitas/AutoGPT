@@ -9,10 +9,12 @@ This module contains:
 - Shared config and client instances
 """
 
+import asyncio
 import logging
 import re
 import threading
 import time
+from concurrent.futures import Future
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -93,13 +95,18 @@ class _ManagedPrompt(BaseModel):
 
 
 # The system prompt this process last fetched, the monotonic timestamp of that
-# fetch, and the lock that hands the next window to one caller.
-# See _get_prompt_bounded_stale().
+# fetch, the fetch in flight, and the lock that hands the next window to one
+# caller. See _get_prompt_bounded_stale(). The fetch in flight is a
+# concurrent.futures.Future because the executor runs turns on more than one
+# event loop.
 _cached_prompt: _ManagedPrompt | None = None
 _last_prompt_revalidation = 0.0
+_prompt_in_flight: Future[_ManagedPrompt] | None = None
 _prompt_revalidation_lock = threading.Lock()
 
 _PROMPT_REVALIDATION_TIMEOUT_SECONDS = 5
+# The placeholder as the compile leaves it: {users_information}, spaced or not.
+_USERS_INFORMATION_PLACEHOLDER = re.compile(r"\{\s*users_information\s*\}")
 
 
 def _get_main_client() -> AsyncOpenAI:
@@ -558,41 +565,79 @@ async def _get_prompt_bounded_stale() -> _ManagedPrompt:
     concurrent turns serve the copy we hold, where the PostHog SDK would make
     them wait on its request.
 
-    A revalidation that fails keeps the window and serves the copy we hold: it
-    is the freshest thing available while PostHog is unreachable, and retrying
-    on every turn would hammer an endpoint that is already failing.
+    While no copy is held, concurrent turns share the one fetch in flight
+    rather than each making their own. A revalidation that fails keeps the
+    window and serves the copy we hold: it is the freshest thing available
+    while PostHog is unreachable, and retrying on every turn would hammer an
+    endpoint that is already failing. A first fetch that fails keeps the
+    window too, so until it ends the turns get the copy in code.
     """
-    claimed = _claim_prompt_revalidation()
-    cached = _cached_prompt
-    if not claimed and cached is not None:
-        return cached
-    try:
-        return await _revalidate_prompt()
-    except Exception as e:
+    claim = _claim_prompt_revalidation()
+    if claim is None:
         cached = _cached_prompt
-        if cached is None:
+        if cached is not None:
+            return cached
+        in_flight = _prompt_in_flight
+        if in_flight is None:
+            raise RuntimeError("PostHog prompt fetch failed earlier in this window")
+        # Shielded: a waiter's timeout must not cancel the shared fetch.
+        return await asyncio.wait_for(
+            asyncio.shield(asyncio.wrap_future(in_flight)),
+            timeout=_PROMPT_REVALIDATION_TIMEOUT_SECONDS,
+        )
+    try:
+        prompt = await _revalidate_prompt()
+    except BaseException as e:
+        _settle_prompt_fetch(claim, error=e)
+        cached = _cached_prompt
+        if cached is None or not isinstance(e, Exception):
             raise
         logger.warning(f"PostHog prompt revalidation failed, serving cached: {e}")
         return cached
+    _settle_prompt_fetch(claim, prompt=prompt)
+    return prompt
 
 
-def _claim_prompt_revalidation() -> bool:
-    """Whether this caller should re-fetch rather than serve the cached copy.
+def _claim_prompt_revalidation() -> Future[_ManagedPrompt] | None:
+    """The fetch this caller should make, or None to serve the cached copy (or
+    wait on the fetch in flight).
 
     The window is marked used before the fetch, so concurrent turns serve the
     cached copy instead of stampeding PostHog. A TTL of 0 disables caching, so
     every caller re-fetches.
     """
-    global _last_prompt_revalidation
+    global _last_prompt_revalidation, _prompt_in_flight
     ttl = config.system_prompt_cache_ttl
     if ttl == 0:
-        return True
+        return Future()
     with _prompt_revalidation_lock:
         now = time.monotonic()
         if now - _last_prompt_revalidation < ttl:
-            return False
+            return None
         _last_prompt_revalidation = now
-        return True
+        _prompt_in_flight = Future()
+        return _prompt_in_flight
+
+
+def _settle_prompt_fetch(
+    fetch: Future[_ManagedPrompt],
+    *,
+    prompt: _ManagedPrompt | None = None,
+    error: BaseException | None = None,
+) -> None:
+    """Hand the fetch's outcome to the turns waiting on it, and retire it."""
+    global _prompt_in_flight
+    with _prompt_revalidation_lock:
+        if _prompt_in_flight is fetch:
+            _prompt_in_flight = None
+    if prompt is not None:
+        fetch.set_result(prompt)
+        return
+    # A cancelled fetch reaches the waiters as a failure, not as their own
+    # cancellation.
+    if not isinstance(error, Exception):
+        error = RuntimeError("PostHog prompt fetch was cancelled")
+    fetch.set_exception(error)
 
 
 async def _revalidate_prompt() -> _ManagedPrompt:
@@ -614,12 +659,13 @@ async def _revalidate_prompt() -> _ManagedPrompt:
         raise RuntimeError(f"PostHog prompt fetch failed (SDK served {result.source})")
     compiled = compile_prompt(result.prompt, {"users_information": ""})
     # Guard the caching contract: if the PostHog template is ever updated
-    # to re-embed the {users_information} placeholder, the compiled text
-    # will contain a literal "{users_information}" (because we passed an
-    # empty string). That would mean user-specific text is back in the
-    # system prompt, defeating cross-session caching. Log an error so the
-    # regression is immediately visible in production observability.
-    if "{users_information}" in compiled:
+    # to re-embed the {users_information} placeholder in a form the compile
+    # leaves in place (single braces, with or without spaces), the compiled
+    # text still carries it (because we passed an empty string). That would
+    # mean user-specific text is back in the system prompt, defeating
+    # cross-session caching. Log an error so the regression is immediately
+    # visible in production observability.
+    if _USERS_INFORMATION_PLACEHOLDER.search(compiled):
         logger.error(
             "PostHog prompt still contains {users_information} placeholder — "
             "user context has been re-embedded in the system prompt, which "

@@ -18,6 +18,8 @@ resolves them before it answers, so what a fetch returns is the assembled text.
 
 import asyncio
 import functools
+import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal
 
 from posthog.ai.prompts import PromptResult, Prompts, PromptVariables
@@ -29,6 +31,15 @@ PRODUCTION_LABEL = "production"
 # PostHog reserves this label for the newest version and refuses it as a query
 # parameter; the newest version is what a fetch without a label returns.
 LATEST_LABEL = "latest"
+
+# The SDK's reads block, and one that stalls keeps retrying past our timeout.
+# They get threads of their own, so a PostHog stall cannot take the default
+# executor's from every other ``asyncio.to_thread`` caller.
+_FETCH_EXECUTOR = ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="posthog-prompts"
+)
+# ``{{ name }}``, which Langfuse templates allowed; the SDK fills ``{{name}}`` only.
+_SPACED_PLACEHOLDER = re.compile(r"\{\{\s*([\w.-]+)\s*\}\}")
 
 
 class PromptRef(BaseModel):
@@ -118,12 +129,23 @@ async def fetch_prompt(
             label=label,
         )
 
-    return await asyncio.wait_for(asyncio.to_thread(get), timeout=timeout_seconds)
+    loop = asyncio.get_running_loop()
+    return await asyncio.wait_for(
+        loop.run_in_executor(_FETCH_EXECUTOR, get), timeout=timeout_seconds
+    )
 
 
 def compile_prompt(template: str, variables: PromptVariables) -> str:
-    """Fill ``{{name}}`` placeholders; the ones not in ``variables`` stay."""
-    return get_posthog_prompts_client().compile(template, variables)
+    """Fill ``{{name}}`` placeholders, spaced (``{{ name }}``) or not; the ones
+    not in ``variables`` stay as written."""
+
+    def unspaced(match: re.Match[str]) -> str:
+        name = match.group(1)
+        return f"{{{{{name}}}}}" if name in variables else match.group(0)
+
+    return get_posthog_prompts_client().compile(
+        _SPACED_PLACEHOLDER.sub(unspaced, template), variables
+    )
 
 
 def _project_api_key(secrets: Secrets) -> str:
