@@ -126,6 +126,28 @@ def exit_code(process: ManagedProcess, timeout: float = 20) -> int | None:
     return process.exit_code()
 
 
+def give_cleanup(monkeypatch, seconds: float) -> None:
+    """Set the hosts' cleanup budget and keep the time before the runtime
+    kills them, so that a host that ran out its budget still has seconds
+    to leave by itself."""
+    real = apps.host_argv
+
+    def argv(bundle: Bundle, group: apps.Group) -> list[str]:
+        args = real(bundle, group)
+        args[args.index("--stop-budget") + 1] = f"{seconds:g}"
+        return args
+
+    monkeypatch.setattr(apps, "host_argv", argv)
+
+
+def test_a_host_has_its_cleanup_budget_inside_the_time_before_it_is_killed():
+    group = apps.Group("host", (apps.SERVICES[0].name,))
+    argv = apps.host_argv(Bundle(FAKE_BUNDLE), group)
+    budget = float(argv[argv.index("--stop-budget") + 1])
+    assert budget == apps.HOST_STOP_BUDGET_SECONDS
+    assert 0 < budget < apps.host_stop_timeout(group)
+
+
 def test_services_share_a_process_each_in_a_thread_of_its_own(hosting: Hosting):
     hosting.start("one", "two")
     hosting.wait_for("one.started", "two.started")
@@ -139,12 +161,11 @@ def test_a_stop_runs_every_cleanup_and_the_host_exits_by_itself(hosting: Hosting
     """On Windows too, where the request is an event and not a signal."""
     process = hosting.start("one", "two", "forever")
     hosting.wait_for("one.started", "two.started", "forever.started")
-    started = time.monotonic()
 
     process.stop()
 
     assert process.exit_code() == 0, hosting.log()  # it left; it was not killed
-    assert time.monotonic() - started < apps.STOP_TIMEOUT_SECONDS
+    assert "still running after" not in hosting.log()
     for mark in ("one.cleaned", "two.cleaned", "forever.cleaned"):
         assert hosting.marked(mark)
     # Services whose run() returns once cleaned up got to finish in their
@@ -154,17 +175,20 @@ def test_a_stop_runs_every_cleanup_and_the_host_exits_by_itself(hosting: Hosting
     assert "stopped with code 0" in hosting.log()
 
 
-def test_a_cleanup_that_hangs_is_given_the_budget_and_no_more(hosting: Hosting):
+def test_a_cleanup_that_hangs_is_given_the_budget_and_no_more(
+    hosting: Hosting, monkeypatch
+):
+    """A hanging cleanup alone would get the host killed: leaving with 0,
+    the host stopped waiting for it when its budget ran out."""
+    give_cleanup(monkeypatch, 0.3)
     process = hosting.start("stubborn", "one")
     hosting.wait_for("stubborn.started", "one.started")
-    started = time.monotonic()
 
     process.stop()
 
     assert process.exit_code() == 0, hosting.log()
-    assert time.monotonic() - started < apps.STOP_TIMEOUT_SECONDS
     assert hosting.marked("stubborn.cleaning") and hosting.marked("one.cleaned")
-    assert "1 cleanup(s) still running after 2.5s" in hosting.log()
+    assert "1 cleanup(s) still running after 0.3s" in hosting.log()
 
 
 def test_a_cleanup_that_fails_does_not_keep_the_others_from_theirs(hosting: Hosting):
@@ -190,14 +214,14 @@ def test_a_service_that_ends_takes_its_host_down_and_the_log_names_it(hosting: H
 
 
 def test_a_stop_during_the_imports_does_not_wait_for_them(hosting: Hosting):
+    """The import takes 20 s: a host that waited for it would be killed, and
+    would not leave with 0."""
     process = hosting.start("slow")
     hosting.wait_for("slow.importing")
-    started = time.monotonic()
 
     process.stop()
 
     assert process.exit_code() == 0, hosting.log()
-    assert time.monotonic() - started < apps.STOP_TIMEOUT_SECONDS
 
 
 def test_the_hosts_arguments_are_not_left_for_the_backend_to_parse(hosting: Hosting):
