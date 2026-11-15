@@ -20,12 +20,17 @@ decides, per call, whether the microphone carries Otto:
   reaches the microphone while Otto is audible, an answer after he stops.
   Speech heard while he is audible opens an overheard stretch
   (:class:`Overheard`), which keeps the person's captions until Otto's next
-  turn begins. By then their turn is closed and its caption whole, and the
-  stretch is judged once: it is Otto's when most of it was heard over him and
-  its whole caption is a run of his words. Then the call goes ``half`` for
-  good, what it made count as an answer is dropped, and the model is told
+  turn begins. By then their turn is usually closed and its caption whole,
+  and the stretch is judged: it is Otto's when most of it was heard over him
+  and its whole caption is a run of his words. Then the call goes ``half``
+  for good, what it made count as an answer is dropped, and the model is told
   once (``ECHO_NOTE``, sent as a server note), unless the call is already
-  saying goodbye. Otherwise its caption is the person's.
+  saying goodbye. Otherwise its caption is the person's; when most of it was
+  heard over him, a caption arriving after the verdict, until his next turn
+  ends, joins it and the stretch is judged again (:class:`LateCaptions`)
+  before the caption counts as an answer.
+- Nothing heard before Otto's echo tail has passed counts as an answer to
+  his turn (``end_tool``).
 - The transcript of record cannot take a caught echo for the person's words:
   the recording is silenced where it was caught (the stretch's span, on the
   call's record), before the post-call job cuts it into clips.
@@ -110,14 +115,37 @@ class Overheard(BaseModel):
         else:
             self.clear_s += seconds
 
-    def is_otto(self, *otto_turns: str) -> bool:
-        """Whether the stretch is Otto's voice: mostly heard over him, and its
-        whole caption a run of his words in one of *otto_turns*."""
+    @property
+    def mostly_over(self) -> bool:
+        """Whether enough of it was heard over Otto, and enough more than in
+        the clear, for it to be his."""
         return (
             self.over_s >= OVERHEARD_MIN_S
             and self.over_s >= OVERHEARD_OVER_CLEAR * self.clear_s
-            and is_echo(self.text, *otto_turns)
         )
+
+    def is_otto(self, *otto_turns: str) -> bool:
+        """Whether the stretch is Otto's voice: mostly heard over him, and its
+        whole caption a run of his words in one of *otto_turns*."""
+        return self.mostly_over and is_echo(self.text, *otto_turns)
+
+
+class LateCaptions(BaseModel):
+    """An overheard stretch judged the person's while mostly heard over Otto,
+    whose caption may still be arriving: until his next turn ends, captions
+    added to the person's words are added to it and it is judged again
+    against the turns it was judged by. *span* is where it lies in the
+    recording, and *kept_from* where its words start in the person's."""
+
+    stretch: Overheard
+    span: tuple[int, int]
+    otto_turns: tuple[str, ...]
+    kept_from: int
+
+    def caption(self, text: str) -> bool:
+        """Add *text* to the stretch's caption; whether it is now Otto's."""
+        self.stretch.text += text
+        return self.stretch.is_otto(*self.otto_turns)
 
 
 def words_of(text: str) -> list[str]:

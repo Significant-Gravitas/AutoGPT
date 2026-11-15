@@ -81,7 +81,14 @@ from backend.voice_relay.config import (
     RoomCloseWhy,
     Timing,
 )
-from backend.voice_relay.echo import ECHO_NOTE, Duplex, EchoBy, Overheard, Probe
+from backend.voice_relay.echo import (
+    ECHO_NOTE,
+    Duplex,
+    EchoBy,
+    LateCaptions,
+    Overheard,
+    Probe,
+)
 from backend.voice_relay.end_tool import (
     Answer,
     ToolCallLine,
@@ -446,6 +453,9 @@ class Session:
         # judged his voice.
         self.overheard: Overheard | None = None
         self.echo_spans: list[tuple[int, int]] = []
+        # A stretch judged the person's whose caption may still arrive, until
+        # Otto's next turn ends.
+        self.late: LateCaptions | None = None
 
     # --- lifecycle --------------------------------------------------------
 
@@ -1032,45 +1042,71 @@ class Session:
 
     async def on_user_text(self, text: str, now: float) -> None:
         """A caption of the person's: kept in an overheard stretch while one
-        is open, until it is judged. Either way the browser shows it at once,
-        and it counts toward an answer."""
+        is open, until it is judged, and judged with a stretch whose caption
+        came late (``LateCaptions``). Either way the browser shows it at once,
+        and, unless it is caught as Otto's, it counts toward an answer."""
         if self.overheard is not None:
             self.overheard.text += text
         else:
             self.user_buf += text
+            if await self._late_caption(text):
+                await self.send_json({"type": "user_text", "text": text})
+                return
         self.answer.caption(text, now)
         await self.send_json({"type": "user_text", "text": text})
 
     async def _judge_overheard(self) -> None:
-        """Judge the overheard stretch, once, as Otto's next turn begins: by
-        then the vendor has closed the person's turn and its caption is
-        whole."""
+        """Judge the overheard stretch as Otto's next turn begins: by then the
+        vendor has usually closed the person's turn and its caption is whole.
+        One mostly heard over him is judged again on each caption that comes
+        late, until his turn ends."""
         stretch = self.overheard
         if stretch is None:
             return
         self.overheard = None
-        if not stretch.is_otto(*(turn.text for turn in self.turns[-2:])):
-            self.user_buf += stretch.text
+        otto_turns = tuple(turn.text for turn in self.turns[-2:])
+        span = (stretch.start, self.received)
+        if stretch.is_otto(*otto_turns):
+            await self._caught_echo(span)
             return
-        self.echo_spans.append((stretch.start, self.received))
-        await self._caught_echo()
+        if stretch.mostly_over:
+            self.late = LateCaptions(
+                stretch=stretch,
+                span=span,
+                otto_turns=otto_turns,
+                kept_from=len(self.user_buf),
+            )
+        self.user_buf += stretch.text
+
+    async def _late_caption(self, text: str) -> bool:
+        """Judge a stretch whose caption came late again with *text*; whether
+        it is now caught as Otto's, its words dropped from the person's."""
+        late = self.late
+        if late is None or not late.caption(text):
+            return False
+        self.late = None
+        self.user_buf = self.user_buf[: late.kept_from]
+        await self._caught_echo(late.span)
+        return True
 
     def _release_overheard(self) -> None:
         """A stretch the call will not judge is the person's."""
+        self.late = None
         stretch = self.overheard
         if stretch is not None:
             self.overheard = None
             self.user_buf += stretch.text
 
-    async def _caught_echo(self) -> None:
-        """Otto's words came back as the person's: the call is half-duplex
-        for good, the caption is dropped with what it made count as an
-        answer, and the model is told, once, unless the call is already
-        saying goodbye."""
+    async def _caught_echo(self, span: tuple[int, int]) -> None:
+        """Otto's words came back as the person's, at *span* of the
+        recording: the call is half-duplex for good, the caption is dropped
+        with what it made count as an answer, and the model is told, once,
+        unless the call is already saying goodbye."""
         logger.info(
             f"Voice call {self.call_id}: speech heard over Otto was his own words: "
             f"half-duplex from here"
         )
+        self.echo_spans.append(span)
         self.answer.forget()
         await self._go_half("captions")
         if self.wrapping or self.finish_called:
@@ -1334,7 +1370,7 @@ class Session:
         if not self.turns or self.prompted or not self.answer.silent:
             return
         UNPROMPTED_TURNS.inc()
-        opened = self.answer.opened_at
+        opened = self.answer.played_at
         since = "" if opened is None else f", {now - opened:.1f}s after his last played"
         logger.info(
             f"Voice call {self.call_id}: Otto began turn {len(self.turns)} "
@@ -1400,7 +1436,7 @@ class Session:
             self.end_tool.accepted_at_s = round(self.elapsed(), 1)
         if outcome in ("accepted", "repeat") and first_task:
             self.first_task = first_task[:MAX_FIRST_TASK_CHARS]
-        opened = self.answer.opened_at
+        opened = self.answer.played_at
         return ToolCallLine(
             call_id=self.call_id,
             name=name,
@@ -1417,10 +1453,14 @@ class Session:
         )
 
     async def on_turn_complete(self) -> None:
-        # What the person says next answers this turn, once it has played.
+        # What the person says next answers this turn, once it has played and
+        # its echo can no longer come back.
         played = max(time.monotonic(), self.playout_end)
-        self.answer.reopen(played)
+        self.answer.reopen(played + self.timing.echo_tail_s, played=played)
         self.prompted = False
+        # The person's words from here on answer this turn: a stretch whose
+        # caption came late is no longer judged.
+        self.late = None
         if self.duplex == "probing" and self.probe_ends is None:
             self.probe_ends = played + self.timing.echo_tail_s
         turn = self.cur

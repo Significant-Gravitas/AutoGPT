@@ -6,7 +6,8 @@ first task he proposed, and the relay ends the call after the goodbye that
 follows. A live model can call the tool with nothing said since its
 question, and the tool's answer starts its next turn: a goodbye to someone
 who never answered. So the relay accepts the call only when, since Otto's
-last completed turn finished playing, its voice detector has heard at least
+last completed turn finished playing and the echo tail after it
+(``Timing.echo_tail_s``) passed, its voice detector has heard at least
 ``MIN_ANSWER_SPEECH_S`` of the person's speech and a caption of theirs has
 arrived (:class:`Answer`). Otto's last completed turn is the latest whose
 end has arrived; the turn he is in never moves it. In that open turn he may
@@ -57,17 +58,22 @@ MAX_ARG_NAMES = 10
 
 class Answer(BaseModel):
     """What the person has said since Otto's last completed turn finished
-    playing: the seconds of speech the voice detector heard, and the
-    characters of their captions. It opens once that turn has played out;
-    before Otto's first turn has, nothing counts."""
+    playing and his echo of it stopped: the seconds of speech the voice
+    detector heard, and the characters of their captions. It opens once that
+    turn has played out and its echo tail passed; before Otto's first turn
+    has, nothing counts."""
 
+    # When counting starts, and when the turn finished playing (monotonic).
     opened_at: float | None = None
+    played_at: float | None = None
     speech_s: float = 0.0
     caption_chars: int = 0
 
-    def reopen(self, at: float) -> None:
-        """Count from *at* (monotonic), when Otto's turn finishes playing."""
+    def reopen(self, at: float, *, played: float | None = None) -> None:
+        """Count from *at* (monotonic), past Otto's turn and its echo tail;
+        *played*: when the turn finished playing, *at* by default."""
         self.opened_at = at
+        self.played_at = at if played is None else played
         self.speech_s = 0.0
         self.caption_chars = 0
 

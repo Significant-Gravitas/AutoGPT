@@ -363,9 +363,10 @@ async def test_ottos_words_heard_while_he_plays_are_caught_once_at_his_next_turn
 
 
 async def test_an_end_tool_call_that_opens_that_next_turn_is_refused(redis, tmp_path):
-    """Otto's voice cut him off, and its tail and caption landed after his
-    cut-off turn ended, so they count as an answer to it; what the echo made
-    count as one is not."""
+    """Otto's voice cut him off and ran on past his echo tail, and its
+    caption landed after his cut-off turn ended, so what was heard past the
+    tail counts as an answer to it; what the echo made count as one is
+    not."""
     call = await _full_duplex(
         redis, tmp_path, TIMING.model_copy(update={"echo_tail_s": 1.0})
     )
@@ -373,7 +374,9 @@ async def test_an_end_tool_call_that_opens_that_next_turn_is_refused(redis, tmp_
     await _otto_speaks(call, ECHOED, 2.0)
     live.emit(Interrupted())
     await _otto_ends_his_turn(call)
-    await _heard(call, speech(0.6))
+    await _heard(call, speech(1.0))
+    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _heard(call, speech(0.4))
     await _captioned(call, "That's a unique")
     assert call.session.answer.answered
 
@@ -393,6 +396,93 @@ async def test_an_end_tool_call_that_opens_that_next_turn_is_refused(redis, tmp_
     assert call.session.duplex == "half"
     assert [result.response for result in live.tool_results] == [NOT_CONFIRMED]
     assert not call.session.finish_called
+    await _hung_up(call)
+
+
+def _calls_end_tool() -> ToolCall:
+    return ToolCall(
+        calls=(
+            FunctionCall(
+                call_id="call-1",
+                name="finish_onboarding",
+                args={"first_task": "Answer customer emails"},
+            ),
+        )
+    )
+
+
+async def test_ottos_echo_in_the_tail_after_his_question_is_no_answer(redis, tmp_path):
+    """His last word comes back while his echo may still be heard, captioned
+    as one word, which is never judged his: it does not answer him either."""
+    call = await _full_duplex(
+        redis, tmp_path, TIMING.model_copy(update={"echo_tail_s": 1.0})
+    )
+    live = call.vendor.sessions[0]
+    await _otto_speaks(call, "So, customer emails first. Does that sound right?", 0.3)
+    await _otto_ends_his_turn(call)
+    await until(lambda: time.monotonic() >= call.session.playout_end)
+
+    await _heard(call, speech(0.5))
+    await _captioned(call, "Right.")
+    live.emit(_calls_end_tool())
+    await until(lambda: bool(live.tool_results))
+
+    assert call.session.duplex == "full"
+    assert [result.response for result in live.tool_results] == [NOT_CONFIRMED]
+    assert not call.session.finish_called
+    await _hung_up(call)
+
+
+async def test_a_late_caption_of_ottos_words_heard_over_him_is_caught_before_it_counts(
+    redis, tmp_path
+):
+    """The stretch was judged at his next turn's first word, before its
+    caption came: the caption is still checked against his turns, and what
+    the stretch made count as an answer is dropped."""
+    call = await _full_duplex(redis, tmp_path)
+    live = call.vendor.sessions[0]
+    await _otto_speaks(call, ECHOED, 2.0)
+    await _heard(call, speech(1.0))
+    await _otto_ends_his_turn(call)
+    await _otto_inaudible(call)
+    await until(lambda: call.session.answer.is_open(time.monotonic()))
+    await _heard(call, speech(0.4))
+    await _next_turn_begins(call, "Great.")
+    assert call.session.duplex == "full"
+
+    await _captioned(call, "That's a unique")
+    live.emit(_calls_end_tool())
+    await until(lambda: bool(live.tool_results))
+
+    assert call.session.duplex == "half"
+    assert call.session.echo_by == "captions"
+    assert [result.response for result in live.tool_results] == [NOT_CONFIRMED]
+    assert not call.session.finish_called
+    assert call.session.user_buf == ""
+    assert live.notes_after_opening == [NOTE]
+    record = await _hung_up(call)
+    assert record.duplex is not None
+    [(start, end)] = record.duplex.echo_spans
+    assert 0 < start < end <= call.session.received
+    assert all(line["text"] != "That's a unique" for line in call.session.transcript())
+
+
+async def test_a_caption_after_ottos_next_turn_ended_is_not_judged_with_the_stretch(
+    redis, tmp_path
+):
+    """What the person says once his next turn has ended answers that turn."""
+    call = await _full_duplex(redis, tmp_path)
+    await _otto_speaks(call, ECHOED, 2.0)
+    await _heard(call, speech(1.0))
+    await _otto_ends_his_turn(call)
+    await _next_turn_begins(call, "What else do you sell?")
+    await _otto_ends_his_turn(call)
+
+    await _captioned(call, "That's a unique")
+
+    assert call.session.duplex == "full"
+    assert call.session.user_buf == "That's a unique"
+    assert call.vendor.sessions[0].notes_after_opening == []
     await _hung_up(call)
 
 
