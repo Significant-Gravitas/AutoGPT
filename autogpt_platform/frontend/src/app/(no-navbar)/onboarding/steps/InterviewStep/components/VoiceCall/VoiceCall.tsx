@@ -95,7 +95,7 @@ export function VoiceCall({ call }: Props) {
         />
       )}
 
-      <CallCaptions lines={call.captions} />
+      <CallCaptions lines={call.captions} isLive={isOnCall} />
 
       {isOnCall && (
         <div className="flex flex-wrap items-center justify-center gap-3">

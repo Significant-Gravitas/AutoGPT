@@ -1204,7 +1204,7 @@ describe("onboarding interview by voice: the call", () => {
     act(() => {
       room.ottoJoins();
     });
-    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await act(() => fakes.ottoSoundRead());
     expect(reportCallStart).toHaveBeenCalledTimes(1);
   });
 
@@ -1216,7 +1216,7 @@ describe("onboarding interview by voice: the call", () => {
       fakes.ottoSounds();
     });
     // Otto's speech is heard while the page still waits for the ready.
-    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await act(() => fakes.ottoSoundRead());
     expect(reportCallStart).not.toHaveBeenCalled();
 
     ready(socket);
@@ -1239,7 +1239,7 @@ describe("onboarding interview by voice: the call", () => {
       fakes.ottoSounds();
     });
     // Otto is heard while the page's join of the room has not settled.
-    await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await act(() => fakes.ottoSoundRead());
     expect(reportCallStart).not.toHaveBeenCalled();
 
     act(() => letIn());
@@ -1757,6 +1757,25 @@ describe("onboarding interview by voice: the call", () => {
     expect(captions.classList.contains("ph-no-capture")).toBe(true);
   });
 
+  it("keeps screen readers from reading the captions over the call, and lets them once it ends", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "user_hangup" })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() => socket.relay({ type: "user_text", text: "I run a bakery." }));
+    const captions = await screen.findByRole("log", { name: "Call captions" });
+    expect(captions.getAttribute("aria-live")).toBe("off");
+
+    endCall(socket, "user_hangup");
+    await screen.findByText("You ended the call.");
+
+    expect(
+      screen
+        .getByRole("log", { name: "Call captions" })
+        .getAttribute("aria-live"),
+    ).toBe("polite");
+  });
+
   it("carries on with the call past frames the relay never sends", async () => {
     render(<OnboardingPage />);
     const socket = await liveCall();
@@ -1892,6 +1911,19 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(meetTeam.className).toContain("bg-action");
     expect(callAgain.className).not.toContain("bg-action");
     expect(typeInstead.className).not.toContain("bg-action");
+  });
+
+  it("announces how the call ended and what became of the words, without the ways on", async () => {
+    callStates[CALL_ID] = [callRecord({ end_reason: "user_hangup" })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "user_hangup");
+
+    const ended = await screen.findByText("You ended the call.");
+    const announced = ended.closest('[role="status"]');
+    expect(announced?.textContent).toContain("What you said so far is saved.");
+    expect(announced?.textContent).not.toContain("Meet your team");
   });
 
   it("starts a new call from Call again after a hang-up", async () => {

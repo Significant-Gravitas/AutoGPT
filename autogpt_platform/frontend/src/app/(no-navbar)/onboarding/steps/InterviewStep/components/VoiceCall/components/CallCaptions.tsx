@@ -8,11 +8,13 @@ import type { CaptionLine } from "../helpers";
 
 interface Props {
   lines: CaptionLine[];
+  isLive: boolean;
 }
 
 // The call as it is heard, Otto's words and the person's, newest at the
-// bottom. The person's words stay out of session replays.
-export function CallCaptions({ lines }: Props) {
+// bottom. The person's words stay out of session replays. Screen readers
+// leave them unread while the call is live, so nothing is read over Otto.
+export function CallCaptions({ lines, isLive }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function CallCaptions({ lines }: Props) {
     <div
       ref={listRef}
       role="log"
-      aria-live="polite"
+      aria-live={isLive ? "off" : "polite"}
       aria-label="Call captions"
       className={cn(
         "flex max-h-64 w-full flex-col gap-2 overflow-y-auto rounded-xl border border-border-base bg-surface px-4 py-3",

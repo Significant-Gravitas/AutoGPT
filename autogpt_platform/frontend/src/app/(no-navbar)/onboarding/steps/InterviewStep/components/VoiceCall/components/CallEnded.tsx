@@ -80,43 +80,46 @@ export function CallEnded({
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-4">
-      {ending.kind === "missing" ? (
-        <Text variant="body" tone="muted" align="center">
-          We couldn&apos;t find that call.
-        </Text>
-      ) : (
-        <Text variant="body" tone="muted" align="center">
-          {endedCopy(endReason, { handOffFailed })}
-        </Text>
-      )}
-      {ending.kind === "lost" && (
-        <Text variant="body" align="center">
-          What you said so far is saved.
-        </Text>
-      )}
-      {ending.kind === "saved_before" && (
-        <Text variant="body" align="center">
-          {savedBeforeCopy(ending.latest)}
-        </Text>
-      )}
-      {ending.kind === "retry" && (
-        <Text variant="body" align="center">
-          What you said is kept, but we couldn&apos;t finish setting up from it
-          yet.
-        </Text>
-      )}
-      {ending.kind === "no_words" && (
-        <Text variant="body" align="center">
-          We didn&apos;t hear you on that call. You can call again or type
-          instead.
-        </Text>
-      )}
-      {ending.kind === "unsaved" && (
-        <Text variant="body" align="center">
-          Something went wrong saving that call. You can call again or type
-          instead.
-        </Text>
-      )}
+      {/* Read out when the call ends, without the ways on below it. */}
+      <div role="status" className="flex w-full flex-col items-center gap-4">
+        {ending.kind === "missing" ? (
+          <Text variant="body" tone="muted" align="center">
+            We couldn&apos;t find that call.
+          </Text>
+        ) : (
+          <Text variant="body" tone="muted" align="center">
+            {endedCopy(endReason, { handOffFailed })}
+          </Text>
+        )}
+        {ending.kind === "lost" && (
+          <Text variant="body" align="center">
+            What you said so far is saved.
+          </Text>
+        )}
+        {ending.kind === "saved_before" && (
+          <Text variant="body" align="center">
+            {savedBeforeCopy(ending.latest)}
+          </Text>
+        )}
+        {ending.kind === "retry" && (
+          <Text variant="body" align="center">
+            What you said is kept, but we couldn&apos;t finish setting up from
+            it yet.
+          </Text>
+        )}
+        {ending.kind === "no_words" && (
+          <Text variant="body" align="center">
+            We didn&apos;t hear you on that call. You can call again or type
+            instead.
+          </Text>
+        )}
+        {ending.kind === "unsaved" && (
+          <Text variant="body" align="center">
+            Something went wrong saving that call. You can call again or type
+            instead.
+          </Text>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         {meetsTeam && (

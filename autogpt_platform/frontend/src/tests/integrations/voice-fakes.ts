@@ -95,6 +95,8 @@ let audioContexts: FakeAudioContext[] = [];
 // The level every analyser reads off the audio it is fed: silence, until a
 // test has Otto speak.
 let soundLevel = 0;
+// Tests waiting for the page to read Otto's speech carrying sound.
+let soundReadWaiters: (() => void)[] = [];
 
 export class FakeAudioContext {
   state: AudioContextState = "running";
@@ -130,8 +132,14 @@ export class FakeAudioContext {
       smoothingTimeConstant: 0.8,
       frequencyBinCount: 1024,
       getByteFrequencyData: (_samples: Uint8Array) => undefined,
-      getFloatTimeDomainData: (samples: Float32Array) =>
-        samples.fill(soundLevel),
+      getFloatTimeDomainData: (samples: Float32Array) => {
+        samples.fill(soundLevel);
+        if (soundLevel === 0) return;
+        // A waiting test resumes after the page has acted on this read.
+        const waiters = soundReadWaiters;
+        soundReadWaiters = [];
+        waiters.forEach((resolve) => resolve());
+      },
     });
   }
 }
@@ -318,6 +326,9 @@ export interface VoiceFakes {
   contexts(): FakeAudioContext[];
   // Otto's speech in the call's room carries sound from now on.
   ottoSounds(): void;
+  // Resolves once the page next reads Otto's speech carrying sound, after it
+  // has acted on what it heard.
+  ottoSoundRead(): Promise<void>;
   // WebRTC's stats for Otto's speech say *stats* from now on; how often the
   // page has read them.
   ottoStats(stats: Record<string, unknown>[]): void;
@@ -355,6 +366,7 @@ export function installVoiceFakes(): VoiceFakes {
   relaySockets = sockets;
   audioContexts = [];
   soundLevel = 0;
+  soundReadWaiters = [];
   ottoStatsReport = undefined;
   ottoStatsReads = 0;
   liveKitRooms = [];
@@ -400,6 +412,11 @@ export function installVoiceFakes(): VoiceFakes {
     contexts: () => audioContexts,
     ottoSounds() {
       soundLevel = 0.2;
+    },
+    ottoSoundRead() {
+      return new Promise<void>((resolve) => {
+        soundReadWaiters.push(resolve);
+      });
     },
     ottoStats(stats) {
       ottoStatsReport = new Map(stats.map((stat) => [String(stat.id), stat]));
