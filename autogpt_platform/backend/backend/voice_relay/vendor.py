@@ -7,7 +7,6 @@ double. Nothing outside this module touches the vendor SDK's own types, but
 ``vendor_failure``, which reads its errors for why a session failed.
 """
 
-import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable

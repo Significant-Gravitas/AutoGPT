@@ -40,7 +40,6 @@ The person's call allowance is counted on its own keys
 itself once it is ready (:meth:`CallStore.count_call`).
 """
 
-import asyncio
 import json
 import logging
 import time
