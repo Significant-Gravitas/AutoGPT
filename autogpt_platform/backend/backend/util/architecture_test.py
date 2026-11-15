@@ -585,6 +585,14 @@ _WORKDIR_FILE_CALL_OFFENDERS: dict[str, tuple[int, str]] = {
         1,
         _WHOLE_DIR,
     ),
+    "copilot/host_private_directory.py ensure_private_directory os.lstat": (
+        1,
+        _CLI_TMPDIR,
+    ),
+    "copilot/host_private_directory.py ensure_private_directory os.mkdir": (
+        1,
+        _CLI_TMPDIR,
+    ),
     "copilot/sdk/cost_tracking.py read_cli_session_usage .read_text": (
         1,
         _CLI_PROJECTS,
@@ -707,6 +715,11 @@ def test_workdir_file_call_scan_reads_each_form(source: str, expected: list[str]
     )
 
 
+# Scanned whether or not they name the working directory: the CLI's temp
+# directory beside it is created here for the turns that do.
+_ALWAYS_SCANNED = frozenset({"copilot/host_private_directory.py"})
+
+
 def _workdir_file_calls() -> list[tuple[str, int]]:
     found: list[tuple[str, int]] = []
     for py in sorted((BACKEND_ROOT / "copilot").rglob("*.py")):
@@ -715,19 +728,23 @@ def _workdir_file_calls() -> list[tuple[str, int]]:
             continue
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         found += [
-            (f"{rel} {fn} {call}", lineno) for fn, call, lineno in _file_calls_in(tree)
+            (f"{rel} {fn} {call}", lineno)
+            for fn, call, lineno in _file_calls_in(tree, always=rel in _ALWAYS_SCANNED)
         ]
     return found
 
 
-def _file_calls_in(tree: ast.Module) -> list[tuple[str, str, int]]:
-    """By-name file calls in *tree*, if it names the working directory at all."""
+def _file_calls_in(
+    tree: ast.Module, *, always: bool = False
+) -> list[tuple[str, str, int]]:
+    """By-name file calls in *tree*, if it names the working directory at all
+    (or *always*)."""
     names = {
         getattr(n, "id", None) or getattr(n, "arg", None) or getattr(n, "attr", None)
         for n in ast.walk(tree)
         if isinstance(n, (ast.Name, ast.arg, ast.Attribute))
     }
-    if not names & _WORKDIR_NAMES:
+    if not always and not names & _WORKDIR_NAMES:
         return []
     owner = _enclosing_functions(tree)
     imported = _imported_names(tree)
