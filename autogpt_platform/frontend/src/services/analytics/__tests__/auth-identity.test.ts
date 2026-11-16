@@ -242,6 +242,60 @@ describe("analytics identity on account transitions", () => {
     });
   });
 
+  describe("with an id an earlier page merged into user A", () => {
+    beforeEach(() => {
+      configureCookiebot();
+      installCookiebot({ statistics: true });
+      window.localStorage.setItem("agpt_anonymous_id", "merged-id");
+      window.localStorage.setItem(
+        "ph_phc_test_posthog",
+        JSON.stringify({
+          distinct_id: "user-A",
+          $device_id: "merged-id",
+          $user_state: "identified",
+        }),
+      );
+      expect(getAnonymousID()).toBe("merged-id");
+    });
+
+    it("rotates it when the page turns out to be signed out", async () => {
+      vi.mocked(fetchUser).mockResolvedValue({
+        user: null,
+        hasLoadedUser: false,
+        isUserLoading: false,
+      });
+      vi.mocked(validateSession).mockResolvedValue({
+        isValid: true,
+        shouldUpdateUser: false,
+      });
+
+      await useAuthStore.getState().initialize({
+        api: {} as never,
+        router: {} as never,
+        path: "/signup",
+      });
+
+      expect(getAnonymousID()).not.toBe("merged-id");
+      expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
+        getAnonymousID(),
+      );
+    });
+
+    it("rotates it before another account signs in", () => {
+      useAuthStore.setState({ user: userB });
+
+      expect(getAnonymousID()).not.toBe("merged-id");
+      expect(posthog.reset).not.toHaveBeenCalled();
+    });
+
+    it("keeps it for user A", () => {
+      useAuthStore.setState({ user: userA });
+      useAuthStore.setState({ user: { ...userA } });
+
+      expect(getAnonymousID()).toBe("merged-id");
+    });
+  });
+
   it("preserves the anonymous identity through login and same-user refreshes", () => {
     const previous = getAnonymousID();
     useAuthStore.setState({ user: userA });
