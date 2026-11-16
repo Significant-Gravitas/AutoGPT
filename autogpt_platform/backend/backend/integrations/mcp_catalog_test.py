@@ -68,6 +68,23 @@ def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
 
 
+def test_smartgate_catalog_entry_uses_hosted_bearer():
+    entry = get_mcp_catalog_entry_for_url("https://smartgate.network/api/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_smartgate"
+    assert entry.display_name == "SmartGate"
+    assert entry.mcp_server.icon_id == "smartgate"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.server_url == "https://smartgate.network/api/mcp"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["bearer"]
+    assert (
+        entry.mcp_server.documentation_url
+        == "https://smartgate.network/docs/mcp-endpoint"
+    )
+
+
 def test_no_catalogued_server_is_limited_to_read_access():
     for entry in get_mcp_catalog():
         server = entry.mcp_server
@@ -286,6 +303,8 @@ def test_a_tool_cannot_carry_two_effects():
         ("https://mcp.cloudflare.com/mcp", "docs", "read"),
         ("https://mcp.cloudflare.com/mcp", "whoami", "read"),
         ("https://mcp.cloudflare.com/mcp", "execute", "external"),
+        ("https://smartgate.network/api/mcp", "smart_search", "read"),
+        ("https://smartgate.network/api/mcp", "smart_memory", "external"),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )
