@@ -142,6 +142,9 @@ class SdkTurns:
             "build_skills_context": AsyncMock(return_value=""),
             "build_skills_update_notice": AsyncMock(return_value=None),
             "build_session_context": AsyncMock(return_value=""),
+            # A first turn reads the user's team from the database manager,
+            # which these tests don't run.
+            "first_message_expert_context": AsyncMock(return_value=""),
             "inject_user_context": AsyncMock(return_value=None),
             "_graphiti_enabled": MagicMock(return_value=False),
             "capture_chat_turn": AsyncMock(),

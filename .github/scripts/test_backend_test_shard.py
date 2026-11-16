@@ -16,6 +16,12 @@ class BackendShardTests(unittest.TestCase):
         paths = [
             "backend/data/sample_unit_test.py",
             "backend/copilot/sample_unit_test.py",
+            "backend/copilot/tools/sample_unit_test.py",
+            "backend/copilot/sdk/sample_unit_test.py",
+            "backend/copilot/billing_e2e/sample_unit_test.py",
+            "backend/copilot/graphiti/sample_unit_test.py",
+            "backend/copilot/dream/sample_unit_test.py",
+            "backend/copilot/sdk_like/sample_unit_test.py",
             "backend/util/sample_unit_test.py",
             "backend/executor/sample_unit_test.py",
             "backend/blocks/sample_unit_test.py",
@@ -39,7 +45,7 @@ class BackendShardTests(unittest.TestCase):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(f"def test_case_{index}(): pass\n")
             names = []
-            for shard in ("data", "copilot", "util-executor", "remainder"):
+            for shard in (*SHARDS, "remainder"):
                 report = root / f"{shard}.xml"
                 result = subprocess.run(
                     [
@@ -64,6 +70,23 @@ class BackendShardTests(unittest.TestCase):
             self.assertCountEqual(
                 names, [f"test_case_{i}" for i in range(len(paths))] + ["test_helper"]
             )
+
+    def test_a_shard_leaves_out_the_folders_a_nested_shard_runs(self):
+        self.assertEqual(
+            shard_args("copilot"),
+            [
+                "-c",
+                "pyproject.toml",
+                "backend/copilot",
+                *(f"--ignore={path}" for path in SHARDS["copilot-sdk"]),
+            ],
+        )
+        self.assertEqual(
+            shard_args("copilot-sdk"),
+            ["-c", "pyproject.toml", *SHARDS["copilot-sdk"]],
+        )
+        # The order the copilot shard ran them in, which a graphiti test needs.
+        self.assertEqual(SHARDS["copilot-sdk"], sorted(SHARDS["copilot-sdk"]))
 
     def test_unknown_shard_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -91,6 +114,7 @@ class BackendShardTests(unittest.TestCase):
             ("data", {"E2E_REDIS_CLUSTER_RESTART"}),
             ("util-executor", {"E2E_CLAMD_CONTAINER"}),
             ("copilot", set()),
+            ("copilot-sdk", set()),
             ("remainder", set()),
         ):
             with (
@@ -103,11 +127,15 @@ class BackendShardTests(unittest.TestCase):
                 patch.dict(os.environ),
                 patch.object(sys, "argv", ["backend_test_shard.py", shard, "--", "-q"]),
             ):
-                for flag in flags:
+                for flag in (*flags, "PYRO_CLIENT_COMM_RETRY"):
                     os.environ.pop(flag, None)
                 self.assertEqual(backend_test_shard.main(), 3)
                 self.assertEqual(
                     {f for f in flags if os.environ.get(f) == "1"}, enabled
+                )
+                self.assertEqual(
+                    os.environ.get("PYRO_CLIENT_COMM_RETRY"),
+                    "3" if shard == "copilot-sdk" else None,
                 )
                 run.assert_called_once_with(
                     ["poetry", "run", "pytest", *shard_args(shard), "-q"], check=False
