@@ -1,5 +1,8 @@
 "use client";
 
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
+import { cn } from "@/lib/utils";
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -34,7 +37,10 @@ export function ProfileCardEnding({
   return (
     <section
       aria-label="Your profile"
-      className="flex w-full max-w-md flex-col gap-3 rounded-large border border-border-base bg-surface p-5"
+      className={cn(
+        HIDDEN_FROM_REPLAY,
+        "flex w-full max-w-md flex-col gap-3 rounded-large border border-border-base bg-surface p-5",
+      )}
     >
       <Text variant="small-medium" tone="muted">
         {isLive ? "What Otto has heard so far" : "Is this you?"}

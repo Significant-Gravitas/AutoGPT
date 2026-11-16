@@ -1,5 +1,7 @@
 "use client";
 
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
+
 import type { Fact } from "@/app/api/__generated__/models/fact";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -48,7 +50,10 @@ export function HighlightsEnding({
   return (
     <section
       aria-label="In your words"
-      className="flex w-full max-w-md flex-col gap-4 rounded-large border border-border-base bg-surface p-5"
+      className={cn(
+        HIDDEN_FROM_REPLAY,
+        "flex w-full max-w-md flex-col gap-4 rounded-large border border-border-base bg-surface p-5",
+      )}
     >
       <div className="flex flex-col gap-1">
         <Text variant="large-medium">In your words</Text>

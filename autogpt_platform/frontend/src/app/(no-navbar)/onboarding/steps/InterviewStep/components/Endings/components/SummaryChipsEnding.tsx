@@ -1,5 +1,7 @@
 "use client";
 
+import { HIDDEN_FROM_REPLAY } from "@/lib/replay-privacy";
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
@@ -30,7 +32,10 @@ export function SummaryChipsEnding({ chips, isLeaving, onConfirm }: Props) {
   return (
     <section
       aria-label="What Otto heard"
-      className="flex w-full max-w-md flex-col gap-4 rounded-large border border-border-base bg-surface p-5"
+      className={cn(
+        HIDDEN_FROM_REPLAY,
+        "flex w-full max-w-md flex-col gap-4 rounded-large border border-border-base bg-surface p-5",
+      )}
     >
       <div className="flex flex-col gap-1">
         <Text variant="large-medium">Here&apos;s what I heard</Text>

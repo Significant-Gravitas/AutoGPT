@@ -709,6 +709,15 @@ function expectPlanStep() {
   return waitFor(() => expect(screen.getByTestId("step-plan")).toBeDefined());
 }
 
+// The person's words on an ending screen stay out of session replay.
+function expectHiddenFromReplay(region: string) {
+  expect(
+    screen
+      .getByRole("region", { name: region })
+      .classList.contains("ph-no-capture"),
+  ).toBe(true);
+}
+
 function tracked(event: string) {
   return vi
     .mocked(capturePostHogEvent)
@@ -3448,6 +3457,7 @@ describe("onboarding interview by voice: the ending screens", () => {
 
     expect(await screen.findByText(FIRST_TASK)).toBeDefined();
     expect(screen.getByText("That's everything Otto needed.")).toBeDefined();
+    expectHiddenFromReplay("Your first task");
     expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Change it" }));
     const task = screen.getByRole("textbox", { name: "Your first task" });
@@ -3538,12 +3548,14 @@ describe("onboarding interview by voice: the ending screens", () => {
 
     expect(await screen.findByText("What Otto has heard so far")).toBeDefined();
     expect(screen.getByText("Fernbrook Gardens")).toBeDefined();
+    expectHiddenFromReplay("Your profile");
 
     endCall(socket, "finished");
 
     await user.click(
       await screen.findByRole("button", { name: "Edit your team" }),
     );
+    expectHiddenFromReplay("Your profile");
     const team = screen.getByRole("textbox", { name: "Your team" });
     await user.clear(team);
     await user.type(team, "just me");
@@ -3578,6 +3590,7 @@ describe("onboarding interview by voice: the ending screens", () => {
     endCall(socket, "finished");
 
     expect(await screen.findByText("Here's what I heard")).toBeDefined();
+    expectHiddenFromReplay("What Otto heard");
     await user.click(screen.getByRole("button", { name: "QuickBooks" }));
     expect(
       screen
@@ -3609,6 +3622,7 @@ describe("onboarding interview by voice: the ending screens", () => {
         name: "Six-person crew: a crew of six",
       }),
     );
+    expectHiddenFromReplay("In your words");
     await user.click(screen.getByRole("button", { name: "Looks right" }));
 
     await expectPlanStep();

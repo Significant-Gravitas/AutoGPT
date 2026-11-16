@@ -1039,6 +1039,11 @@ describe("onboarding interview: the ending screens", () => {
 
     expect(await screen.findByText(FIRST_TASK)).toBeDefined();
     expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    expect(
+      screen
+        .getByRole("region", { name: "Your first task" })
+        .classList.contains("ph-no-capture"),
+    ).toBe(true);
     await user.click(screen.getByRole("button", { name: "Change it" }));
     const task = screen.getByRole("textbox", { name: "Your first task" });
     await user.clear(task);
@@ -1123,6 +1128,33 @@ describe("onboarding interview: the ending screens", () => {
     expect(finishCalls).toBe(1);
   });
 
+  it("fills in a tester's profile card as they type, kept out of session replay", async () => {
+    flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
+    localStorage.setItem(PICK_KEY, "02-profile-card");
+    serverInterview = {
+      messages: [KICKOFF_ROW, GREETING_ROW],
+      stage: null,
+      activeTurn: null,
+    };
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(
+      ...interviewHandlers(),
+      getGetOnboardingInterviewDetailsMockHandler200({
+        details: { business: "Fernbrook Gardens" },
+      }),
+    );
+
+    render(<OnboardingPage />);
+    await sendAnswer("I run Fernbrook Gardens.");
+
+    expect(await screen.findByText("What Otto has heard so far")).toBeDefined();
+    expect(
+      screen
+        .getByRole("region", { name: "Your profile" })
+        .classList.contains("ph-no-capture"),
+    ).toBe(true);
+  });
+
   it("ends a profile-card interview on the card read from it", async () => {
     closedOnArm("02-profile-card", null);
     server.use(
@@ -1133,9 +1165,13 @@ describe("onboarding interview: the ending screens", () => {
 
     render(<OnboardingPage />);
 
-    await userEvent
-      .setup()
-      .click(await screen.findByRole("button", { name: "That's me" }));
+    const confirm = await screen.findByRole("button", { name: "That's me" });
+    expect(
+      screen
+        .getByRole("region", { name: "Your profile" })
+        .classList.contains("ph-no-capture"),
+    ).toBe(true);
+    await userEvent.setup().click(confirm);
     await expectPlanStep();
     expect(finishBodies).toEqual([""]);
   });
