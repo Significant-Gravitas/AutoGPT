@@ -26,6 +26,10 @@ SHARD_E2E_FLAGS = {
     "util-executor": "E2E_CLAMD_CONTAINER",
 }
 
+# No test in "copilot-sdk" starts the database manager, so a call that reaches
+# for one fails after a few tries instead of retrying for most of an hour.
+SHARDS_WITHOUT_DATABASE_MANAGER = {"copilot-sdk"}
+
 
 def _is_within(path: str, parent: str) -> bool:
     return path.startswith(f"{parent}/")
@@ -67,6 +71,8 @@ def main() -> int:
         pytest_args = pytest_args[1:]
     if flag := SHARD_E2E_FLAGS.get(args.shard):
         os.environ[flag] = "1"
+    if args.shard in SHARDS_WITHOUT_DATABASE_MANAGER:
+        os.environ["PYRO_CLIENT_COMM_RETRY"] = "3"
     return subprocess.run(
         ["poetry", "run", "pytest", *shard_args(args.shard), *pytest_args],
         check=False,
