@@ -295,3 +295,85 @@ it("ignores a delayed restore after the account changes", async () => {
   expect(readLocalProgress("u1")).toBeNull();
   expect(patchState).not.toHaveBeenCalled();
 });
+
+it("reads progress before the layout is ready and applies it once it is", async () => {
+  const { result, rerender } = renderHook(
+    ({ ready }) =>
+      useWizardProgress({ userID: "u1", ready, steps: PAYWALL_LAST_STEPS }),
+    { initialProps: { ready: false } },
+  );
+  await settle();
+  expect(getState).toHaveBeenCalledOnce();
+  expect(result.current.isReady).toBe(false);
+  rerender({ ready: true });
+  await settle();
+  expect(result.current.isReady).toBe(true);
+  expect(getState).toHaveBeenCalledOnce();
+  expect(useOnboardingWizardStore.getState().userID).toBe("u1");
+});
+
+it("drops an early read for an account that switched before the layout was ready", async () => {
+  getState.mockResolvedValueOnce(response(makeProgress({ role: "First" })));
+  getState.mockResolvedValueOnce(
+    response(makeProgress({ role: "Second" }), 2, "u2"),
+  );
+  const { result, rerender } = renderHook(
+    ({ userID, ready }) =>
+      useWizardProgress({ userID, ready, steps: PAYWALL_LAST_STEPS }),
+    { initialProps: { userID: "u1", ready: false } },
+  );
+  await settle();
+  rerender({ userID: "u2", ready: false });
+  await settle();
+  rerender({ userID: "u2", ready: true });
+  await settle();
+  expect(result.current.isReady).toBe(true);
+  expect(getState).toHaveBeenCalledTimes(2);
+  expect(useOnboardingWizardStore.getState()).toMatchObject({
+    userID: "u2",
+    role: "Second",
+  });
+});
+
+it("reads again when the layout changes after the early read was used", async () => {
+  const { result, rerender } = renderHook(
+    ({ steps }) => useWizardProgress({ userID: "u1", ready: true, steps }),
+    { initialProps: { steps: PAYWALL_LAST_STEPS } },
+  );
+  await settle();
+  expect(getState).toHaveBeenCalledOnce();
+  rerender({ steps: { ...PAYWALL_LAST_STEPS, preparing: 99 } });
+  await settle();
+  expect(result.current.isReady).toBe(true);
+  expect(getState).toHaveBeenCalledTimes(2);
+});
+
+it("waits for the session to settle before reading, and keeps an applied read across a revalidation", async () => {
+  const { result, rerender } = renderHook(
+    ({ isUserSettled, ready }) =>
+      useWizardProgress({
+        userID: "u1",
+        ready,
+        isUserSettled,
+        steps: PAYWALL_LAST_STEPS,
+      }),
+    { initialProps: { isUserSettled: false, ready: false } },
+  );
+  await settle();
+  expect(getState).not.toHaveBeenCalled();
+  let resolve!: (value: ReturnType<typeof response>) => void;
+  getState.mockReturnValueOnce(
+    new Promise((r) => {
+      resolve = r;
+    }),
+  );
+  rerender({ isUserSettled: true, ready: true });
+  rerender({ isUserSettled: false, ready: true });
+  await act(async () => {
+    resolve(response());
+  });
+  await settle();
+  expect(getState).toHaveBeenCalledOnce();
+  expect(result.current.isReady).toBe(true);
+  expect(result.current.error).toBeNull();
+});
