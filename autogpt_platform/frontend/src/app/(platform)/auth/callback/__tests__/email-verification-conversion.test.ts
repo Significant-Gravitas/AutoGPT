@@ -81,12 +81,7 @@ describe("sign_up conversion across email verification", () => {
     mocks.signUpEmail.mockResolvedValue({ token: null, user: { id: "u-1" } });
     mocks.getServerSession.mockResolvedValue(null);
 
-    const signupResult = await signup(
-      "new@example.com",
-      password,
-      password,
-      true,
-    );
+    const signupResult = await signup("new@example.com", password, true);
 
     expect(signupResult).toMatchObject({ verificationRequired: true });
     expect(mocks.scheduleAccountCreatedGoal).not.toHaveBeenCalled();
@@ -123,7 +118,7 @@ describe("sign_up conversion across email verification", () => {
       mocks.getServerSession.mockResolvedValue(null);
       mocks.recordUserConsent.mockResolvedValue({ status: 200, data: {} });
 
-      await signup("new@example.com", password, password, marketingOptOut);
+      await signup("new@example.com", password, marketingOptOut);
 
       // No cookie travels with it: only the link the email carries.
       const callbackURL = mocks.signUpEmail.mock.calls[0][0].body.callbackURL;

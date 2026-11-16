@@ -1,6 +1,6 @@
 """Unit tests for platform_linking DB operations."""
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -505,6 +505,77 @@ class TestConfirmServerLink:
                 await confirm_server_link("abc", "u1")
         assert "another" in str(exc_info.value)
 
+    # A Telegram group's link is posted in the group, so it confirms only for
+    # the Telegram identity of the admin who ran /setup ("42" here).
+
+    @pytest.mark.asyncio
+    async def test_telegram_group_link_needs_a_telegram_identity(self):
+        with (
+            _pending_server_token("TELEGRAM") as (tokens, links),
+            pytest.raises(NotAuthorizedError) as exc_info,
+        ):
+            await confirm_server_link("abc", "u1")
+        assert "Telegram can confirm it's you" in str(exc_info.value)
+        tokens.update_many.assert_not_awaited()
+        links.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_telegram_group_link_refuses_another_members_identity(self):
+        with (
+            _pending_server_token("TELEGRAM") as (tokens, links),
+            pytest.raises(NotAuthorizedError),
+        ):
+            await confirm_server_link("abc", "u1", verified_platform_user_id="77")
+        tokens.update_many.assert_not_awaited()
+        links.create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_telegram_group_link_confirms_for_the_admin_who_ran_setup(self):
+        with _pending_server_token("TELEGRAM") as (_tokens, links):
+            result = await confirm_server_link(
+                "abc", "u1", verified_platform_user_id="42"
+            )
+        assert result.success
+        data = links.create.await_args.kwargs["data"]
+        assert (data["userId"], data["ownerPlatformUserId"]) == ("u1", "42")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("platform", ["DISCORD", "SLACK", "TEAMS"])
+    async def test_other_platforms_confirm_without_a_platform_identity(self, platform):
+        # Their links reach only the admin who ran /setup (an ephemeral reply,
+        # or a private chat), and they have no signed identity to offer.
+        with _pending_server_token(platform) as (_tokens, links):
+            result = await confirm_server_link("abc", "u1")
+        assert result.success
+        assert links.create.await_args.kwargs["data"]["userId"] == "u1"
+
+
+@contextmanager
+def _pending_server_token(platform: str):
+    """A live SERVER token minted for platform user "42", whose server isn't
+    linked yet. Yields the token and link tables' prisma mocks."""
+    token = MagicMock(
+        linkType=LinkType.SERVER.value,
+        usedAt=None,
+        expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+        platform=platform,
+        platformServerId="g1",
+        platformUserId="42",
+        serverName="Builders",
+    )
+    with (
+        patch("backend.platform_linking.db.PlatformLinkToken") as mock_token,
+        patch("backend.platform_linking.db.PlatformLink") as mock_link,
+        patch("backend.platform_linking.db.transaction", _fake_transaction),
+    ):
+        tokens = mock_token.prisma.return_value
+        tokens.find_unique = AsyncMock(return_value=token)
+        tokens.update_many = AsyncMock(return_value=1)
+        links = mock_link.prisma.return_value
+        links.find_first = AsyncMock(return_value=None)
+        links.create = AsyncMock()
+        yield tokens, links
+
 
 class TestConfirmUserLink:
     @pytest.mark.asyncio
@@ -559,6 +630,35 @@ class TestConfirmUserLink:
             )
             with pytest.raises(LinkAlreadyExistsError):
                 await confirm_user_link("abc", "u1")
+
+    @pytest.mark.asyncio
+    async def test_telegram_dm_link_still_confirms_without_a_telegram_identity(self):
+        # DM links are unchanged: only group links need the signed identity.
+        fake_token = MagicMock(
+            linkType=LinkType.USER.value,
+            usedAt=None,
+            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            platform="TELEGRAM",
+            platformUserId="42",
+            platformUsername="bently",
+        )
+        with (
+            patch("backend.platform_linking.db.PlatformLinkToken") as mock_token,
+            patch("backend.platform_linking.db.PlatformUserLink") as mock_user_link,
+            patch("backend.platform_linking.db.transaction", _fake_transaction),
+        ):
+            mock_token.prisma.return_value.find_unique = AsyncMock(
+                return_value=fake_token
+            )
+            mock_token.prisma.return_value.update_many = AsyncMock(return_value=1)
+            mock_user_link.prisma.return_value.find_unique = AsyncMock(
+                return_value=None
+            )
+            mock_user_link.prisma.return_value.create = AsyncMock()
+            result = await confirm_user_link("abc", "u1")
+        assert result.success
+        data = mock_user_link.prisma.return_value.create.await_args.kwargs["data"]
+        assert (data["userId"], data["platformUserId"]) == ("u1", "42")
 
 
 # ── Delete (authz checks) ────────────────────────────────────────────
