@@ -3,10 +3,12 @@ screens.
 
 Read with the shared extraction (``onboarding_interview_details``) on the
 platform's Gemini key, on the same lite model the voice relay reads a call's
-with, and kept per interview by the number of the person's turns: a read
-for a count already read answers from the cache, so the step can ask after
-every turn and the model is asked at most once per turn. The interview's
-turns are capped, which bounds what one interview can spend here.
+with. Each read is kept per interview and per count of the person's turns,
+an empty one too, and the model is asked at most ``MAX_READS_PER_TURN`` times
+for one count however many reads arrive at once: a counter per count of
+turns is taken before each model call. The interview's turns are capped, so
+one interview can ask the model at most that many times per turn. Each
+call's tokens go to the platform cost log, on the platform's account.
 """
 
 import asyncio
@@ -19,75 +21,134 @@ from backend.api.features.onboarding_dump.interview import interview_transcript
 from backend.copilot.expert_kickoff import is_hidden_chat_message
 from backend.copilot.model import ChatSession
 from backend.copilot.onboarding_interview_details import (
+    DetailsRead,
     InterviewDetails,
     extract_details,
 )
+from backend.copilot.token_tracking import persist_and_record_usage
 from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
-from backend.voice_relay.config import DETAILS_MODEL
+from backend.voice_relay.config import DETAILS_MODEL, price_of
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-_CACHE_KEY = "onboarding:interview:details:{session_id}"
+_CACHE_KEY = "onboarding:interview:details:{session_id}:{turns}"
+_READS_KEY = "onboarding:interview:details_reads:{session_id}:{turns}"
 _CACHE_TTL_S = 24 * 3600
+# An empty read is kept for a while, so a turn whose read came back empty is
+# not read again on every request.
+_EMPTY_TTL_S = 10 * 60
+MAX_READS_PER_TURN = 2
 READ_TIMEOUT_S = 8.0
+BLOCK_NAME = "onboarding:interview_details"
+COST_SOURCE = "onboarding_interview_details"
 
 
 def interview_lines(session: ChatSession) -> list[tuple[str, str]]:
-    """The interview as the extraction reads it: the person's own words, as
-    the hand-off takes them, between Otto's replies."""
-    own = interview_transcript(session.messages).splitlines()
+    """The interview as the extraction reads it: each of the person's
+    messages whole, in their own words as the hand-off takes them, between
+    Otto's replies."""
     lines: list[tuple[str, str]] = []
     for message in session.messages:
         if is_hidden_chat_message(message.metadata):
             continue
         if message.role == "assistant" and (message.content or "").strip():
             lines.append(("otto", message.content or ""))
-        elif message.role == "user" and own:
-            lines.append(("user", own.pop(0)))
+        elif message.role == "user":
+            own = interview_transcript([message]).strip()
+            if own:
+                lines.append(("user", own))
     return lines
 
 
 async def read_interview_details(session: ChatSession) -> InterviewDetails | None:
     """The details of the interview *session* as it stands; None before the
-    person has said anything, without a Gemini key, or when the read fails."""
+    person has said anything, without a Gemini key, when the read comes back
+    empty, and once this turn's reads are used up with none kept."""
     lines = interview_lines(session)
     turns = sum(1 for who, _ in lines if who == "user")
     if turns == 0 or not settings.secrets.gemini_api_key:
         return None
-    key = _CACHE_KEY.format(session_id=session.session_id)
+    keys = {"session_id": session.session_id, "turns": turns}
+    cache_key = _CACHE_KEY.format(**keys)
     redis = await get_redis_async()
     try:
-        cached = await redis.get(key)
-        if cached:
-            kept = json.loads(cached)
-            if kept.get("turns") == turns:
-                return InterviewDetails.model_validate(kept["details"])
-    except Exception:
-        logger.warning("Interview details cache unreadable", exc_info=True)
-    details = await _read(lines)
-    if details is None:
+        cached = await redis.get(cache_key)
+    except Exception as exc:
+        logger.warning(f"Interview details cache unreadable: {type(exc).__name__}")
         return None
+    if cached is not None:
+        return _kept(cached)
+    try:
+        reads = await redis.incr(_READS_KEY.format(**keys))
+        if reads == 1:
+            await redis.expire(_READS_KEY.format(**keys), _CACHE_TTL_S)
+    except Exception as exc:
+        logger.warning(f"Interview details reads uncounted: {type(exc).__name__}")
+        return None
+    if reads > MAX_READS_PER_TURN:
+        return None
+    details = await _read(session, lines)
     try:
         await redis.set(
-            key,
-            json.dumps({"turns": turns, "details": details.model_dump(mode="json")}),
-            ex=_CACHE_TTL_S,
+            cache_key,
+            json.dumps(details.model_dump(mode="json") if details else None),
+            ex=_CACHE_TTL_S if details else _EMPTY_TTL_S,
         )
-    except Exception:
-        logger.warning("Interview details not cached", exc_info=True)
+    except Exception as exc:
+        logger.warning(f"Interview details not cached: {type(exc).__name__}")
     return details
 
 
-async def _read(lines: list[tuple[str, str]]) -> InterviewDetails | None:
+def _kept(cached: str | bytes) -> InterviewDetails | None:
+    try:
+        value = json.loads(cached)
+        return None if value is None else InterviewDetails.model_validate(value)
+    except Exception as exc:
+        logger.warning(f"Interview details cache unreadable: {type(exc).__name__}")
+        return None
+
+
+async def _read(
+    session: ChatSession, lines: list[tuple[str, str]]
+) -> InterviewDetails | None:
     client = Client(api_key=settings.secrets.gemini_api_key)
     try:
         read = await asyncio.wait_for(
             extract_details(client, model=DETAILS_MODEL, lines=lines),
             timeout=READ_TIMEOUT_S,
         )
-    except Exception:
-        logger.warning("Interview details not read", exc_info=True)
+    except Exception as exc:
+        logger.warning(f"Interview details not read: {type(exc).__name__}")
         return None
+    await _log_cost(session, read)
     return read.details
+
+
+async def _log_cost(session: ChatSession, read: DetailsRead) -> None:
+    """The read's tokens on the platform cost log, on the platform's
+    account: the interview comes before any plan."""
+    price = price_of(DETAILS_MODEL)
+    usd = read.tokens_in * price.per_token(
+        "text_in"
+    ) + read.tokens_out * price.per_token("text_out")
+    try:
+        await persist_and_record_usage(
+            session=None,
+            user_id=session.user_id,
+            prompt_tokens=read.tokens_in,
+            completion_tokens=read.tokens_out,
+            log_prefix="[InterviewDetails]",
+            cost_usd=usd,
+            model=DETAILS_MODEL,
+            provider="google",
+            block_name_override=BLOCK_NAME,
+            extra_metadata={
+                "source": COST_SOURCE,
+                "session_id": session.session_id,
+            },
+            charge_plan=False,
+        )
+    except Exception as exc:
+        logger.warning(f"Interview details cost not logged: {type(exc).__name__}")

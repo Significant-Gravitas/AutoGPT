@@ -180,9 +180,9 @@ OPEN_WHILE_PAYWALLED = {
     # Reading the interview as it stands, for the step's talk-or-type choice:
     # it starts, greets and charges nothing.
     "GET /api/onboarding/brain-dump/interview",
-    # What the interview has heard, for its ending screen: read at most once
-    # per turn of the person's and kept, so the interview's own turn cap
-    # bounds it.
+    # What the interview has heard, for its ending screen: the model is asked
+    # at most twice per turn of the person's, whatever reads arrive, and every
+    # result is kept, so the interview's own turn cap bounds it.
     "GET /api/onboarding/brain-dump/interview/details",
     # The onboarding voice call starts before the plan step, so before anything
     # is paid for. The person's own call allowance and the platform's daily
