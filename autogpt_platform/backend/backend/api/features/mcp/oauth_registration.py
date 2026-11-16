@@ -9,11 +9,13 @@ from backend.util.settings import Secrets
 
 
 class PreregisteredApp(BaseModel):
-    # The ``Secrets`` fields holding the app's client id and secret.
+    # The ``Secrets`` fields holding the app's client id and secret. A public
+    # app has no secret and signs in with PKCE alone.
     client_id_field: str
-    client_secret_field: str
-    # Hosts the discovered authorize and token endpoints must be on. The secret
-    # is posted to the token endpoint, which comes from the server's metadata.
+    client_secret_field: str | None = None
+    # Hosts the discovered authorize and token endpoints must be on. The
+    # tokens, and any secret, are posted to the token endpoint, which comes
+    # from the server's metadata.
     endpoint_hosts: frozenset[str]
 
 
@@ -29,6 +31,12 @@ PREREGISTERED_APPS: dict[str, PreregisteredApp] = {
         client_id_field="hubspot_mcp_client_id",
         client_secret_field="hubspot_mcp_client_secret",
         endpoint_hosts=frozenset({"mcp.hubspot.com"}),
+    ),
+    # Allo advertises Client ID Metadata Documents but refuses clients it has
+    # not approved, so it issues each client a public app id.
+    "mcp.withallo.com": PreregisteredApp(
+        client_id_field="allo_mcp_client_id",
+        endpoint_hosts=frozenset({"api.withallo.com"}),
     ),
 }
 
@@ -90,8 +98,9 @@ def requires_registered_client(metadata: dict[str, object]) -> bool:
 
 def preregistered_client(server_url: str, secrets: Secrets) -> tuple[str, str] | None:
     """The configured ``(client_id, client_secret)`` for a server that needs a
-    pre-registered OAuth app, ``("", "")`` when it needs one but none is
-    configured, or ``None`` when the server is not one of them.
+    pre-registered OAuth app, with an empty secret for a public app; ``("", "")``
+    when it needs one but none is fully configured; or ``None`` when the server
+    is not one of them.
 
     Matches the URL's exact hostname, so a look-alike such as
     ``mcp.slack.com.evil.example`` never receives the platform's Slack app.
@@ -99,9 +108,13 @@ def preregistered_client(server_url: str, secrets: Secrets) -> tuple[str, str] |
     app = _preregistered_app(server_url)
     if not app:
         return None
-    return getattr(secrets, app.client_id_field), getattr(
-        secrets, app.client_secret_field
-    )
+    client_id = getattr(secrets, app.client_id_field)
+    if not app.client_secret_field:
+        return client_id, ""
+    client_secret = getattr(secrets, app.client_secret_field)
+    if not (client_id and client_secret):
+        return "", ""
+    return client_id, client_secret
 
 
 def check_preregistered_endpoints(server_url: str, metadata: dict[str, object]):
