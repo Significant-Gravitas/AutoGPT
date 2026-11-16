@@ -51,6 +51,7 @@ from .deadline import within_deadline
 from .scheduling import resolve_user_timezone
 from .scope_jobs import (
     flag_gate,
+    not_claimed,
     register_scope_jobs,
     remove_scope_jobs,
     scope_label,
@@ -68,8 +69,11 @@ _PAUSABLE = (MemoryScopeScheduleState.ACTIVE, MemoryScopeScheduleState.PAUSED)
 async def ensure_scope_scheduled(
     scope: MemoryScope, *, force_refresh: bool = False
 ) -> dict[str, Any]:
-    """Idempotently register every flag-enabled dream-system cron of ``scope``.
+    """Idempotently claim ``scope``'s registry row and register every
+    flag-enabled dream-system cron of it.
 
+    The row is claimed even when no cron is enabled: the hourly community
+    sweep (``community_sweep.py``) rebuilds every ACTIVE row's scope.
     Decides from the scope's registry row, never from Redis: a PAUSED or
     WIPED scope is left alone, and in an ACTIVE one a cron is (re-)registered
     only when it has no recorded job or the owner's timezone moved.
@@ -81,11 +85,10 @@ async def ensure_scope_scheduled(
     ``scope_changed``, ``timezone_lookup_failed``, ``registry_unavailable``,
     ``flag_unavailable``,
     ``registration_failed``, ``record_failed``), otherwise the scheduler's
-    own result.
+    own result. A row that could not be read or claimed adds a
+    ``REGISTRY_ROW`` entry with the reason.
     """
     results, enabled = await flag_gate(scope)
-    if not enabled:
-        return results
     try:
         row = await within_deadline(
             memory_schedule_db().get_scope_schedule(
@@ -94,14 +97,14 @@ async def ensure_scope_scheduled(
         )
     except Exception:
         logger.warning(f"Registry read failed for {scope_label(scope)}", exc_info=True)
-        return results | skip_all(enabled, "registry_unavailable")
+        return results | not_claimed(enabled, "registry_unavailable")
     if row is not None and row.state != MemoryScopeScheduleState.ACTIVE:
         return results | skip_all(enabled, state_reason(row))
     user_timezone = await resolve_user_timezone(scope.owner_user_id)
     if user_timezone is None:
         # "Unknown" is not "UTC": keep the existing crons until a later call
         # can read the real timezone.
-        return results | skip_all(enabled, "timezone_lookup_failed")
+        return results | not_claimed(enabled, "timezone_lookup_failed")
     return results | await register_scope_jobs(
         scope, enabled, row, user_timezone, force_refresh, results
     )
@@ -195,7 +198,7 @@ async def resume_scope(
     except Exception:
         logger.warning(f"Could not resume {scope_label(scope)}", exc_info=True)
         results, enabled = await flag_gate(scope)
-        return results | skip_all(enabled, "registry_unavailable")
+        return results | not_claimed(enabled, "registry_unavailable")
     return await ensure_scope_scheduled(scope, force_refresh=force_refresh)
 
 
@@ -205,9 +208,7 @@ async def reregister_user(user_id: str) -> dict[str, dict[str, Any]]:
     The account always goes through, row or not: its crons may predate the
     registry and still run in the old timezone. Each expert with a row
     follows: paused ones are skipped and take the new timezone when they
-    resume, wiped ones are skipped for good. Community maintenance remains
-    scheduled independently of the dream and skill-learning flags. Keyed by
-    scope key.
+    resume, wiped ones are skipped for good. Keyed by scope key.
     """
     try:
         account = MemoryScope.for_user(user_id)

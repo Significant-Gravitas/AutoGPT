@@ -22,6 +22,6 @@ export function LocalFileImage({ file, alt = "", className, onError }: Props) {
   });
 
   if (!src) return <span aria-hidden className={className} />;
-  // eslint-disable-next-line @next/next/no-img-element
+  // eslint-disable-next-line @next/next/no-img-element -- a local blob URL next/image cannot load
   return <img src={src} alt={alt} className={className} onError={onError} />;
 }

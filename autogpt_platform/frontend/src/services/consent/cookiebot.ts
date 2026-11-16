@@ -131,13 +131,7 @@ export function parseCookieConsent(
 export function parseCookieConsentHeader(
   cookieHeader: string | null | undefined,
 ): CookiebotConsent | null {
-  if (!cookieHeader) return null;
-  const prefix = `${COOKIEBOT_CONSENT_COOKIE}=`;
-  const answers = cookieHeader
-    .split(";")
-    .map((part) => part.trim())
-    .filter((part) => part.startsWith(prefix))
-    .map((part) => parseCookieConsent(part.slice(prefix.length)));
+  const answers = readCookieConsentValues(cookieHeader).map(parseCookieConsent);
 
   if (!answers.some(Boolean)) return null;
   return answers.reduce<CookiebotConsent>(
@@ -152,6 +146,41 @@ export function parseCookieConsentHeader(
     },
     { ...ALL_GRANTED },
   );
+}
+
+/**
+ * Tells one stored answer from another: its consent ID (`stamp`) and the time
+ * it was given (`utc`), which change whenever the visitor answers again.
+ * Null without a stored answer.
+ */
+export function readCookieConsentIdentity(
+  cookieHeader: string | null | undefined,
+): string | null {
+  const values = readCookieConsentValues(cookieHeader);
+  if (values.length === 0) return null;
+  return values.map(identifyAnswer).join("|");
+}
+
+function readCookieConsentValues(
+  cookieHeader: string | null | undefined,
+): string[] {
+  if (!cookieHeader) return [];
+  const prefix = `${COOKIEBOT_CONSENT_COOKIE}=`;
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(prefix))
+    .map((part) => part.slice(prefix.length));
+}
+
+// An answer without a stamp or time ("-1", the legacy "0") is its own identity.
+function identifyAnswer(raw: string): string {
+  const value = decodeCookieValue(raw).trim();
+  if (!value.startsWith("{") || !value.endsWith("}")) return value;
+  const entries = readTopLevelEntries(value.slice(1, -1));
+  const stamp = entries?.get("stamp")?.[0];
+  const utc = entries?.get("utc")?.[0];
+  return stamp || utc ? `${stamp ?? ""}@${utc ?? ""}` : value;
 }
 
 // Splits the object literal's body on the commas outside nested objects,

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.blocks.mcp.client import MCPCallResult
 from backend.blocks.mcp.helpers import normalize_mcp_url, server_host
 from backend.copilot.sdk.file_ref import FileRefExpansionError
 from backend.data.model import OAuth2Credentials
@@ -39,11 +40,8 @@ def _make_tool_list(*names: str):
     return tools
 
 
-def _make_call_result(content: list[dict], is_error: bool = False) -> MagicMock:
-    result = MagicMock()
-    result.is_error = is_error
-    result.content = content
-    return result
+def _make_call_result(content: list[dict], is_error: bool = False) -> MCPCallResult:
+    return MCPCallResult(content=content, is_error=is_error)
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +55,12 @@ def test_server_host_plain_url():
 
 def test_server_host_strips_credentials():
     """netloc would expose user:pass — hostname must not."""
-    assert server_host("https://user:secret@mcp.example.com/mcp") == "mcp.example.com"
+    assert (
+        server_host(
+            "https://user:secret@mcp.example.com/mcp"  # pragma: allowlist secret
+        )
+        == "mcp.example.com"
+    )
 
 
 def test_server_host_with_port():
@@ -125,7 +128,7 @@ async def test_credential_bearing_url_returns_error():
     response = await tool._execute(
         user_id=_USER_ID,
         session=session,
-        server_url="https://user:secret@mcp.example.com/mcp",
+        server_url="https://user:secret@mcp.example.com/mcp",  # pragma: allowlist secret  # noqa: E501; fmt: skip
     )
     assert isinstance(response, ErrorResponse)
     assert (
@@ -870,6 +873,67 @@ async def test_surface_connect_card_probe_5xx_reports_optimistically_connected()
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_surface_connect_card_probe_403_keeps_connected_and_names_refusal():
+    """surface_connect_card + kept creds + probe 403 → connected, refusal named.
+
+    A 403 is not a refused credential (only 401 is), so the user is still
+    signed in. A "sign in to X" card here told the model and the user the
+    account was not connected, and re-pasting the same token stores fine
+    (``/token`` does not block on a 403) and 403s again. The status alone
+    does not give a cause (a WAF answers 403 too), so the message passes on
+    the server's words and names none itself.
+    """
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    mock_creds = MagicMock()
+    mock_creds.access_token = SecretStr("valid-token")
+    mock_creds.id = "valid-cred-id"
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=mock_creds,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(
+                side_effect=HTTPClientError("Forbidden", status_code=403)
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                with patch(
+                    "backend.copilot.tools.run_mcp_tool.invalidate_mcp_credential",
+                    new_callable=AsyncMock,
+                ) as mock_invalidate:
+                    response = await tool._execute(
+                        user_id=_USER_ID,
+                        session=session,
+                        server_url=_SERVER_URL,
+                        surface_connect_card=True,
+                    )
+                    mock_invalidate.assert_not_awaited()
+
+    assert isinstance(response, SetupRequirementsResponse)
+    assert response.setup_info.user_readiness.has_all_credentials is True
+    assert response.setup_info.user_readiness.missing_credentials == {}
+    assert response.rejection is None
+    assert "HTTP 403" in response.message
+    assert "Forbidden" in response.message
+    assert "doesn't say why" in response.message
+    assert "permission limit" not in response.message
+    # The server's words reach the model, so the read screen must judge them.
+    assert response.outside is not None and "Forbidden" in response.outside
+    assert "sign in to" not in response.message.lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_surface_connect_card_probe_timeout_reports_optimistically_connected():
     """surface_connect_card + valid creds + probe TimeoutError → connected, cred kept.
 
@@ -1528,6 +1592,10 @@ async def _run_with_grants(allowed: list[str]):
         ),
         patch("backend.copilot.tools.run_mcp_tool.experts_db", return_value=experts),
         patch("backend.copilot.tools.run_mcp_tool.MCPClient", return_value=client),
+        patch(
+            "backend.copilot.tools.run_mcp_tool.annotate_expert_grants",
+            new=AsyncMock(side_effect=lambda user_id, expert_id, missing: missing),
+        ),
     ):
         return await RunMCPToolTool()._execute(
             user_id=_USER_ID,

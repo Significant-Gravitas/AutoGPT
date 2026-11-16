@@ -64,7 +64,7 @@ describe("Streamdown's mermaid plugin in chat replies", () => {
 
   it("does not load mermaid for a reply without a diagram", async () => {
     const { MessageResponse } = await import(
-      "@/components/ai-elements/message"
+      "@/components/organisms/Message/Message"
     );
     const { container } = render(
       <MessageResponse>{"Just **prose** here."}</MessageResponse>,
@@ -76,7 +76,7 @@ describe("Streamdown's mermaid plugin in chat replies", () => {
 
   it("loads mermaid and draws the diagram once a reply holds one", async () => {
     const { MessageResponse } = await import(
-      "@/components/ai-elements/message"
+      "@/components/organisms/Message/Message"
     );
     const { findByTestId } = render(
       <MessageResponse>{DIAGRAM_REPLY}</MessageResponse>,

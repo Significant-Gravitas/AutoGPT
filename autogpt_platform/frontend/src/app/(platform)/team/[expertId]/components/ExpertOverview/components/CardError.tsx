@@ -11,10 +11,15 @@ interface Props {
 export function CardError({ message, onRetry }: Props) {
   return (
     <div className="flex items-center justify-between gap-3 py-2">
-      <Text variant="body" tone="muted">
+      <Text variant="body-md" tone="muted">
         {message}
       </Text>
-      <Button variant="secondary" size="small" onClick={() => void onRetry()}>
+      <Button
+        variant="secondary"
+        size="small"
+        textSize="body-md"
+        onClick={() => void onRetry()}
+      >
         Retry
       </Button>
     </div>

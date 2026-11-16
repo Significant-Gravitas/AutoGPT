@@ -11,6 +11,7 @@ import {
   sameProgress,
 } from "./progress";
 import { loadWizardProgress } from "./loadWizardProgress";
+import { clearSkippedRecordings } from "./steps/BrainDumpStep/recordingStore";
 import { createProgressSaver } from "./progress-saver";
 import {
   snapshotProgress,
@@ -22,17 +23,19 @@ export function useWizardProgress({
   userID,
   ready,
   steps,
+  hasPaywall = true,
 }: {
   userID: string | null;
   ready: boolean;
   steps: StepLayout;
+  hasPaywall?: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const currentUserID = useRef(userID);
   currentUserID.current = userID;
-  const latest = useRef({ steps, params, router });
-  latest.current = { steps, params, router };
+  const latest = useRef({ steps, params, router, hasPaywall });
+  latest.current = { steps, params, router, hasPaywall };
   const layout = JSON.stringify(steps);
   const reloadLatest = useRef(false);
   const accountChanged = useRef(false);
@@ -86,6 +89,7 @@ export function useWizardProgress({
       if (!isCurrent()) return;
       if (result.kind === "complete") {
         clearLocalProgress(userID!);
+        void clearSkippedRecordings(userID!).catch(() => undefined);
         router.replace("/home");
         return;
       }
@@ -155,6 +159,7 @@ export function useWizardProgress({
         progress,
         steps,
         requestedStep: params.get("step"),
+        hasPaywall: latest.current.hasPaywall,
       });
       const { currentStep: savedStep, version, ...fields } = progress ?? {};
       void savedStep;
@@ -212,7 +217,9 @@ export function useWizardProgress({
 
   function finish() {
     saver.current?.dispose();
-    if (userID) clearLocalProgress(userID);
+    if (!userID) return;
+    clearLocalProgress(userID);
+    void clearSkippedRecordings(userID).catch(() => undefined);
   }
 
   return {

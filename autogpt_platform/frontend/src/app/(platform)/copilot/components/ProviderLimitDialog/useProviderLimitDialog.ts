@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadEveryRender } from "@/hooks/useReadEveryRender";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -99,6 +100,11 @@ export function useProviderLimitDialog({
     }
   }
 
+  // Relative to the clock, so read on every render rather than cached.
+  const resetHint = useReadEveryRender(() =>
+    formatResetHint(failure?.resetsAt ?? null),
+  );
+
   return {
     alternative,
     isLoadingOffers,
@@ -106,6 +112,6 @@ export function useProviderLimitDialog({
     retryOffers: () => void connectionsQuery.refetch(),
     continueHere,
     isSwitching,
-    resetHint: formatResetHint(failure?.resetsAt ?? null),
+    resetHint,
   };
 }

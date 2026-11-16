@@ -29,6 +29,12 @@ def workspace_read(monkeypatch):
         get_file_info=AsyncMock(return_value=info),
         read_file_by_id=AsyncMock(return_value=b"file content"),
     )
+
+    # A preview reads only the file's head; it serves what the whole read would.
+    async def read_head(file_id: str, max_bytes: int) -> bytes:
+        return (await manager.read_file_by_id(file_id))[:max_bytes]
+
+    manager.read_file_head_by_id = read_head
     monkeypatch.setattr(
         workspace_files, "get_workspace_manager", AsyncMock(return_value=manager)
     )
@@ -40,7 +46,7 @@ def workspace_read(monkeypatch):
     monkeypatch.setattr(BaseTool, "_gate", AsyncMock(return_value=(None, None)))
     monkeypatch.setattr(BaseTool, "_released_read", AsyncMock(return_value=None))
     monkeypatch.setattr("backend.copilot.tools.base._record_activity", AsyncMock())
-    monkeypatch.setattr(reads, "active_mode", AsyncMock(return_value="auto"))
+    monkeypatch.setattr(reads, "get_flag_variant", AsyncMock(return_value=True))
     monkeypatch.setattr(
         reads,
         "capture_cost_context",

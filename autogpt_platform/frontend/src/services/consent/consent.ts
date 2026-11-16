@@ -5,23 +5,19 @@ import {
   COOKIEBOT_SCRIPT_ID,
   getCookiebotAPI,
   parseCookieConsentHeader,
+  readCookieConsentIdentity,
   type CookiebotConsent,
 } from "./cookiebot";
 
-// "monitoring" gates Sentry session replay only. Error monitoring is part of
-// running the service (legitimate interest), so it needs no consent.
+// Error monitoring is part of running the service (legitimate interest), so
+// it needs no consent and has no category here.
 // "preferences" gates nothing in the app; it is only passed on to the Google
 // tag as Consent Mode's functionality and personalization signals.
-export type ConsentCategory =
-  | "analytics"
-  | "monitoring"
-  | "advertising"
-  | "preferences";
+export type ConsentCategory = "analytics" | "advertising" | "preferences";
 export type ConsentState = Readonly<Record<ConsentCategory, boolean>>;
 
 export const NO_CONSENT: ConsentState = Object.freeze({
   analytics: false,
-  monitoring: false,
   advertising: false,
   preferences: false,
 });
@@ -31,7 +27,6 @@ const COOKIEBOT_CATEGORY: Record<
   Exclude<keyof CookiebotConsent, "necessary">
 > = {
   analytics: "statistics",
-  monitoring: "statistics",
   advertising: "marketing",
   preferences: "preferences",
 };
@@ -50,7 +45,6 @@ export function toConsentState(
   if (!cookiebot) return NO_CONSENT;
   return {
     analytics: cookiebot[COOKIEBOT_CATEGORY.analytics],
-    monitoring: cookiebot[COOKIEBOT_CATEGORY.monitoring],
     advertising: cookiebot[COOKIEBOT_CATEGORY.advertising],
     preferences: cookiebot[COOKIEBOT_CATEGORY.preferences],
   };
@@ -66,6 +60,25 @@ export function getConsentAnswer(): ConsentState | null {
   if (!isConsentManagerConfigured()) return null;
   const answer = readBrowserConsent();
   return answer ? toConsentState(answer) : null;
+}
+
+/**
+ * Identifies the visitor's stored answer; a new answer, even the same choice
+ * given again, gets a new one. Null without a stored answer.
+ */
+export function getConsentAnswerIdentity(): string | null {
+  if (typeof document === "undefined") return null;
+  return readCookieConsentIdentity(document.cookie);
+}
+
+/**
+ * Whether the answer so far is only the stored cookie's while uc.js may still
+ * arrive and withdraw it (see readBrowserConsent).
+ */
+export function isConsentAnswerUnconfirmed(): boolean {
+  if (typeof window === "undefined") return true;
+  if (!isConsentManagerConfigured() || getCookiebotAPI()) return false;
+  return msSincePageLoaded() < COOKIEBOT_LOAD_GRACE_MS;
 }
 
 export function hasConsentFor(category: ConsentCategory): boolean {
@@ -90,7 +103,6 @@ export function hasDeclinedConsentFor(category: ConsentCategory): boolean {
 export function isSameConsent(a: ConsentState, b: ConsentState): boolean {
   return (
     a.analytics === b.analytics &&
-    a.monitoring === b.monitoring &&
     a.advertising === b.advertising &&
     a.preferences === b.preferences
   );

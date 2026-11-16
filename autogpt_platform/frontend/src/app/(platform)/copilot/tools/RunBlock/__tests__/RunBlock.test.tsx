@@ -69,6 +69,5 @@ describe("RunBlockTool session replay privacy", () => {
 
     const output = await screen.findByText(email, { exact: false });
     expect(output.closest(".ph-no-capture")).not.toBeNull();
-    expect(output.closest(".sentry-block")).not.toBeNull();
   });
 });

@@ -36,7 +36,10 @@ async def test_copilot_reloads_a_snapshot_taken_before_the_idle_sweep(scenario):
     await asyncio.wait_for(scenario.manager.refresh_idle_credentials(), timeout=2)
 
     token = await asyncio.wait_for(
-        integration_creds.get_provider_token(_USER, scenario.stored.provider), timeout=2
+        integration_creds.get_provider_token(
+            _USER, scenario.stored.provider, allowed_ids=None
+        ),
+        timeout=2,
     )
 
     scenario.assert_one_refresh(token)
@@ -49,7 +52,9 @@ async def test_copilot_waits_for_the_idle_sweep_to_finish_rotating(scenario):
     try:
         await asyncio.wait_for(scenario.refresh_started.wait(), timeout=2)
         copilot = asyncio.create_task(
-            integration_creds.get_provider_token(_USER, scenario.stored.provider)
+            integration_creds.get_provider_token(
+                _USER, scenario.stored.provider, allowed_ids=None
+            )
         )
         tasks.append(copilot)
         await asyncio.wait_for(scenario.snapshot_read.wait(), timeout=2)

@@ -12,14 +12,14 @@ export function ExpiredLinkMessage({ onRequestNewLink }: Props) {
       <Text variant="h3" className="text-center">
         Your reset password link has expired or has already been used
       </Text>
-      <Text variant="body-medium" className="text-center text-muted-foreground">
+      <Text variant="body-medium" tone="muted" className="text-center">
         Click below to request a new password reset link.
       </Text>
       <Button variant="primary" onClick={onRequestNewLink} className="w-full">
         Request a New Link
       </Button>
       <div className="flex items-center gap-1">
-        <Text variant="small" className="text-muted-foreground">
+        <Text variant="small" tone="muted">
           Already have access?
         </Text>
         <Link href="/login" variant="secondary">

@@ -20,6 +20,7 @@ from backend.copilot.integration_creds import (
     _gh_identity_null_cache,
     _null_cache,
     _token_cache,
+    expert_allowed_ids,
     get_github_user_git_identity,
     get_integration_env_vars,
     get_provider_credential_id,
@@ -162,8 +163,13 @@ class TestGitHubIdentityFollowsThePick:
     async def test_the_picked_account_is_the_one_looked_up(self):
         lookup = AsyncMock(return_value=None)
         with patch("backend.copilot.integration_creds.get_provider_token", lookup):
-            assert await get_github_user_git_identity(_USER, "cred-b") is None
-        lookup.assert_awaited_once_with(_USER, "github", frozenset(), "cred-b")
+            assert (
+                await get_github_user_git_identity(_USER, "cred-b", allowed_ids=None)
+                is None
+            )
+        lookup.assert_awaited_once_with(
+            _USER, "github", frozenset(), "cred-b", allowed_ids=None
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_one_accounts_cached_result_is_not_served_for_another(self):
@@ -171,11 +177,11 @@ class TestGitHubIdentityFollowsThePick:
         every other account the user picks for the next ten minutes."""
         lookup = AsyncMock(return_value=None)
         with patch("backend.copilot.integration_creds.get_provider_token", lookup):
-            await get_github_user_git_identity(_USER, "cred-a")
-            await get_github_user_git_identity(_USER, "cred-b")
+            await get_github_user_git_identity(_USER, "cred-a", allowed_ids=None)
+            await get_github_user_git_identity(_USER, "cred-b", allowed_ids=None)
         assert [c.args[3] for c in lookup.await_args_list] == ["cred-a", "cred-b"]
-        assert (_USER, "cred-a") in _gh_identity_null_cache
-        assert (_USER, "cred-b") in _gh_identity_null_cache
+        assert (_USER, "cred-a", None) in _gh_identity_null_cache
+        assert (_USER, "cred-b", None) in _gh_identity_null_cache
 
 
 class TestGetProviderToken:
@@ -185,7 +191,7 @@ class TestGetProviderToken:
 
         mock_manager = MagicMock()
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         assert result == "cached-tok"
         mock_manager.store.get_creds_by_provider.assert_not_called()
@@ -196,7 +202,7 @@ class TestGetProviderToken:
 
         mock_manager = MagicMock()
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         assert result is None
         mock_manager.store.get_creds_by_provider.assert_not_called()
@@ -208,7 +214,7 @@ class TestGetProviderToken:
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[api_creds])
 
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         assert result == "my-api-key"
         assert _token_cache.get((_USER, _PROVIDER)) == "my-api-key"
@@ -224,7 +230,7 @@ class TestGetProviderToken:
         mock_manager.refresh_if_needed = AsyncMock(return_value=oauth_creds)
 
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         assert result == "oauth-tok"
 
@@ -244,7 +250,7 @@ class TestGetProviderToken:
         mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
 
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         # Stale tokens must NOT be returned — forces re-auth.
         assert result is None
@@ -257,7 +263,7 @@ class TestGetProviderToken:
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
 
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         assert result is None
         assert _null_cache.get((_USER, _PROVIDER)) is True
@@ -270,7 +276,7 @@ class TestGetProviderToken:
         )
 
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
+            result = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
 
         assert result is None
         # DB errors are not cached — next call will retry
@@ -287,7 +293,9 @@ class TestGetProviderToken:
         )
         with patch("backend.copilot.integration_creds._manager", mock_manager):
             with pytest.raises(ProviderTokenUnavailable):
-                await get_provider_token(_USER, _PROVIDER, strict=True)
+                await get_provider_token(
+                    _USER, _PROVIDER, strict=True, allowed_ids=None
+                )
         assert (_USER, _PROVIDER) not in _null_cache
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -299,7 +307,9 @@ class TestGetProviderToken:
         mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
         with patch("backend.copilot.integration_creds._manager", mock_manager):
             with pytest.raises(ProviderTokenUnavailable):
-                await get_provider_token(_USER, _PROVIDER, strict=True)
+                await get_provider_token(
+                    _USER, _PROVIDER, strict=True, allowed_ids=None
+                )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_strict_still_falls_back_when_a_refresh_fails(self):
@@ -310,14 +320,24 @@ class TestGetProviderToken:
         )
         mock_manager.refresh_if_needed = AsyncMock(side_effect=RuntimeError("network"))
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            assert await get_provider_token(_USER, _PROVIDER, strict=True) == "api-tok"
+            assert (
+                await get_provider_token(
+                    _USER, _PROVIDER, strict=True, allowed_ids=None
+                )
+                == "api-tok"
+            )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_strict_not_connected_is_still_none(self):
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
         with patch("backend.copilot.integration_creds._manager", mock_manager):
-            assert await get_provider_token(_USER, _PROVIDER, strict=True) is None
+            assert (
+                await get_provider_token(
+                    _USER, _PROVIDER, strict=True, allowed_ids=None
+                )
+                is None
+            )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_token_cache_ttl_is_the_stale_token_ceiling(self):
@@ -360,7 +380,7 @@ class TestRequiredScopes:
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
             token = await get_provider_token(
-                _USER, _PROVIDER, frozenset({"repo", "read:org"})
+                _USER, _PROVIDER, frozenset({"repo", "read:org"}), allowed_ids=None
             )
         assert token == "tok-newer"
 
@@ -368,7 +388,7 @@ class TestRequiredScopes:
     async def test_without_requested_scopes_stored_order_still_decides(self):
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
-            token = await get_provider_token(_USER, _PROVIDER)
+            token = await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
         assert token == "tok-older"
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -377,7 +397,7 @@ class TestRequiredScopes:
         manager = self._manager([public, self.older])
         with patch("backend.copilot.integration_creds._manager", manager):
             token = await get_provider_token(
-                _USER, _PROVIDER, frozenset({"repo", "admin:org"})
+                _USER, _PROVIDER, frozenset({"repo", "admin:org"}), allowed_ids=None
             )
         assert token == "tok-older"
 
@@ -387,7 +407,7 @@ class TestRequiredScopes:
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
             token = await get_provider_token(
-                _USER, _PROVIDER, frozenset({"repo", "read:org"})
+                _USER, _PROVIDER, frozenset({"repo", "read:org"}), allowed_ids=None
             )
         assert token == "tok-newer"
 
@@ -409,10 +429,10 @@ class TestRequiredScopes:
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
             token = await get_provider_token(
-                _USER, _PROVIDER, credential_id=self.newer.id
+                _USER, _PROVIDER, credential_id=self.newer.id, allowed_ids=None
             )
             env = await get_integration_env_vars(
-                _USER, selected={"github": self.newer.id}
+                _USER, selected={"github": self.newer.id}, allowed_ids=None
             )
         assert token == "tok-newer"
         assert env["GH_TOKEN"] == "tok-newer"
@@ -422,7 +442,7 @@ class TestRequiredScopes:
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
             token = await get_provider_token(
-                _USER, _PROVIDER, credential_id="deleted-id"
+                _USER, _PROVIDER, credential_id="deleted-id", allowed_ids=None
             )
         assert token is None
 
@@ -441,7 +461,7 @@ class TestRequiredScopes:
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
             env = await get_integration_env_vars(
-                _USER, {"github": frozenset({"repo", "read:org"})}
+                _USER, {"github": frozenset({"repo", "read:org"})}, allowed_ids=None
             )
         assert env["GH_TOKEN"] == "tok-newer"
         assert env["GITHUB_TOKEN"] == "tok-newer"
@@ -550,7 +570,7 @@ class TestGetIntegrationEnvVars:
     async def test_injects_all_env_vars_for_provider(self):
         _token_cache[(_USER, "github")] = "gh-tok"
 
-        result = await get_integration_env_vars(_USER)
+        result = await get_integration_env_vars(_USER, allowed_ids=None)
 
         for var in PROVIDER_ENV_VARS["github"]:
             assert result[var] == "gh-tok"
@@ -559,7 +579,7 @@ class TestGetIntegrationEnvVars:
     async def test_empty_dict_when_no_credentials(self):
         _null_cache[(_USER, "github")] = True
 
-        result = await get_integration_env_vars(_USER)
+        result = await get_integration_env_vars(_USER, allowed_ids=None)
 
         assert result == {}
 
@@ -607,7 +627,10 @@ class TestCacheInvalidationListener:
             return_value=[_make_api_key_creds("old-scopes-token")]
         )
         with patch("backend.copilot.integration_creds._manager", manager):
-            assert await get_provider_token(_USER, _PROVIDER) == "old-scopes-token"
+            assert (
+                await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
+                == "old-scopes-token"
+            )
 
         published = await _write_credential_as_another_process()
         assert _token_cache[(_USER, _PROVIDER)] == "old-scopes-token"
@@ -619,7 +642,10 @@ class TestCacheInvalidationListener:
             return_value=[_make_api_key_creds("new-scopes-token")]
         )
         with patch("backend.copilot.integration_creds._manager", manager):
-            assert await get_provider_token(_USER, _PROVIDER) == "new-scopes-token"
+            assert (
+                await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
+                == "new-scopes-token"
+            )
 
 
 async def _consume(*events: CredentialsChangedEvent) -> None:
@@ -679,10 +705,12 @@ class TestPlaceholders:
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
             scoped = await placeholder_grants(
-                _USER, {"github": frozenset({"repo", "read:org"})}
+                _USER, {"github": frozenset({"repo", "read:org"})}, allowed_ids=None
             )
-            picked = await placeholder_grants(_USER, selected={"github": "older"})
-            default = await placeholder_grants(_USER)
+            picked = await placeholder_grants(
+                _USER, selected={"github": "older"}, allowed_ids=None
+            )
+            default = await placeholder_grants(_USER, allowed_ids=None)
         assert scoped == {"github": "newer"}
         assert picked == {"github": "older"}
         assert default == {"github": "older"}
@@ -694,7 +722,7 @@ class TestPlaceholders:
     async def test_no_stored_value_is_in_it(self):
         manager = self._manager([self.older, self.newer])
         with patch("backend.copilot.integration_creds._manager", manager):
-            env = placeholder_env(await placeholder_grants(_USER))
+            env = placeholder_env(await placeholder_grants(_USER, allowed_ids=None))
         for value in env.values():
             assert "tok-older" not in value and "tok-newer" not in value
             assert "test-refresh" not in value
@@ -712,6 +740,7 @@ class TestPlaceholders:
             grants = await placeholder_grants(
                 "user-without-a-usable-github",
                 selected={"github": pick} if pick else None,
+                allowed_ids=None,
             )
         assert grants == {}
         env = placeholder_env(grants)
@@ -723,9 +752,14 @@ class TestPlaceholders:
     async def test_a_provider_outside_the_runs_ceiling_gets_no_grant(self):
         manager = self._manager([self.older])
         with patch("backend.copilot.integration_creds._manager", manager):
-            assert await placeholder_grants(_USER, providers=()) == {}
-            assert await get_integration_env_vars(_USER, providers=()) == {}
-            kept = await get_integration_env_vars(_USER, providers=("github",))
+            assert await placeholder_grants(_USER, providers=(), allowed_ids=None) == {}
+            assert (
+                await get_integration_env_vars(_USER, providers=(), allowed_ids=None)
+                == {}
+            )
+            kept = await get_integration_env_vars(
+                _USER, providers=("github",), allowed_ids=None
+            )
         assert kept["GH_TOKEN"] == "tok-older"
         # And its variables are blanked, not inherited from the box's own.
         assert placeholder_env({})["GH_TOKEN"] == ""
@@ -772,7 +806,10 @@ class TestPlaceholders:
         _token_cache[(_USER, _PROVIDER)] = "tok-older"
         manager = self._manager([self.older])
         with patch("backend.copilot.integration_creds._manager", manager):
-            assert await get_provider_credential_id(_USER, _PROVIDER) == "older"
+            assert (
+                await get_provider_credential_id(_USER, _PROVIDER, allowed_ids=None)
+                == "older"
+            )
         manager.store.get_creds_by_provider.assert_awaited_once()
 
     def test_invalidation_drops_the_id_with_the_token(self):
@@ -844,7 +881,7 @@ class TestGitIdentityGoesThroughRequests:
             ),
             patch("backend.copilot.integration_creds._GITHUB_API.get", get),
         ):
-            identity = await get_github_user_git_identity(_USER)
+            identity = await get_github_user_git_identity(_USER, allowed_ids=None)
         assert identity == {
             "GIT_AUTHOR_NAME": "Ada",
             "GIT_AUTHOR_EMAIL": "7+ada@users.noreply.github.com",
@@ -870,4 +907,119 @@ class TestGitIdentityGoesThroughRequests:
             ),
             patch("backend.copilot.integration_creds._GITHUB_API.get", get),
         ):
-            assert await get_github_user_git_identity(_USER) is None
+            assert await get_github_user_git_identity(_USER, allowed_ids=None) is None
+
+
+class TestExpertGrantsNarrowTheLookup:
+    """An expert's box is handed only the credentials granted to that expert;
+    a personal chat (``allowed_ids=None``) keeps choosing among all of them."""
+
+    granted = _github_oauth("granted", "tok-granted", ["repo"])
+    # Ranks first for these scopes, so it would win if the filter ran late.
+    ungranted = _github_oauth("ungranted", "tok-ungranted", ["repo", "read:org"])
+    scopes = frozenset({"repo", "read:org"})
+
+    def _manager(self, creds: list) -> MagicMock:
+        manager = MagicMock()
+        manager.store.get_creds_by_provider = AsyncMock(return_value=creds)
+        manager.refresh_if_needed = AsyncMock(side_effect=lambda _u, c, **_k: c)
+        return manager
+
+    @pytest.mark.asyncio(loop_scope="session")
+    @pytest.mark.parametrize(
+        "allowed_ids, pick, expected",
+        [
+            (frozenset({"granted"}), None, "tok-granted"),
+            (frozenset(), None, None),
+            (frozenset({"something-else"}), None, None),
+            (frozenset({"granted"}), "ungranted", None),
+            (None, None, "tok-ungranted"),
+        ],
+        ids=["granted", "no grants", "other grant", "ungranted pick", "personal"],
+    )
+    async def test_only_a_granted_credential_is_handed_over(
+        self, allowed_ids, pick, expected
+    ):
+        manager = self._manager([self.ungranted, self.granted])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            credential_id = await get_provider_credential_id(
+                _USER, _PROVIDER, self.scopes, pick, allowed_ids=allowed_ids
+            )
+            token = await get_provider_token(
+                _USER, _PROVIDER, self.scopes, pick, allowed_ids=allowed_ids
+            )
+        assert token == expected
+        assert credential_id == (expected and expected.removeprefix("tok-"))
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_system_credential_is_never_filtered(self):
+        manager = self._manager([self.ungranted])
+        with (
+            patch("backend.copilot.integration_creds._manager", manager),
+            patch(
+                "backend.copilot.integration_creds.is_system_credential",
+                lambda credential_id: credential_id == "ungranted",
+            ),
+        ):
+            token = await get_provider_token(_USER, _PROVIDER, allowed_ids=frozenset())
+        assert token == "tok-ungranted"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_owners_cached_token_is_not_served_to_an_expert(self):
+        """And a revoke applies on the next command: each grant set has its
+        own cache entry."""
+        manager = self._manager([self.ungranted])
+        with patch("backend.copilot.integration_creds._manager", manager):
+            assert (
+                await get_provider_token(_USER, _PROVIDER, allowed_ids=None)
+                == "tok-ungranted"
+            )
+            assert (
+                await get_provider_token(
+                    _USER, _PROVIDER, allowed_ids=frozenset({"ungranted"})
+                )
+                == "tok-ungranted"
+            )
+            assert (
+                await get_provider_token(_USER, _PROVIDER, allowed_ids=frozenset())
+                is None
+            )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_env_and_the_placeholders_carry_only_the_grant(self):
+        manager = self._manager([self.ungranted, self.granted])
+        granted = frozenset({"granted"})
+        scoped = {_PROVIDER: self.scopes}
+        with patch("backend.copilot.integration_creds._manager", manager):
+            env = await get_integration_env_vars(_USER, scoped, allowed_ids=granted)
+            grants = await placeholder_grants(_USER, scoped, allowed_ids=granted)
+            nothing = await get_integration_env_vars(_USER, allowed_ids=frozenset())
+            no_grants = await placeholder_grants(_USER, allowed_ids=frozenset())
+        assert env["GH_TOKEN"] == env["GITHUB_TOKEN"] == "tok-granted"
+        assert "tok-ungranted" not in env.values()
+        assert grants[_PROVIDER] == "granted"
+        assert nothing == {} and no_grants == {}
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_git_identity_is_looked_up_under_the_experts_grants(self):
+        lookup = AsyncMock(return_value=None)
+        with patch("backend.copilot.integration_creds.get_provider_token", lookup):
+            await get_github_user_git_identity(_USER, allowed_ids=None)
+            await get_github_user_git_identity(
+                _USER, allowed_ids=frozenset({"granted"})
+            )
+        # Two lookups: the owner's cached "not connected" does not answer for
+        # the expert, nor would the owner's identity.
+        assert [c.kwargs["allowed_ids"] for c in lookup.await_args_list] == [
+            None,
+            frozenset({"granted"}),
+        ]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_expert_allowed_ids_reads_the_grants_for_an_expert_only(self):
+        db = MagicMock()
+        db.expert_allowed_credential_ids = AsyncMock(return_value=["granted"])
+        with patch("backend.copilot.integration_creds.experts_db", return_value=db):
+            assert await expert_allowed_ids(_USER, None) is None
+            assert await expert_allowed_ids(_USER, "expert-1") == frozenset({"granted"})
+        db.expert_allowed_credential_ids.assert_awaited_once_with(_USER, "expert-1")

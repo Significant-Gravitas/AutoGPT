@@ -194,21 +194,12 @@ async function importAgent(page: Page, testInfo: TestInfo, graph: GraphSpec) {
       links: graph.links,
     }),
   );
-  await importAgentFromFile(page, filePath, graph.name);
-  return findLibraryAgent(page, graph.name);
-}
-
-async function findLibraryAgent(page: Page, name: string) {
-  const response = await page.request.get("/api/proxy/api/library/agents", {
-    params: { search_term: name },
-  });
-  expect(response.ok(), `GET library agents: ${response.status()}`).toBe(true);
-  const body = (await response.json()) as {
-    agents: { id: string; graph_id: string; name: string }[];
-  };
-  const agent = body.agents.find((candidate) => candidate.name === name);
-  if (!agent) throw new Error(`library agent "${name}" should exist`);
-  return { graphID: agent.graph_id, url: `/library/agents/${agent.id}` };
+  const { importedAgent, graphID } = await importAgentFromFile(
+    page,
+    filePath,
+    graph.name,
+  );
+  return { graphID, url: importedAgent.seeRunsUrl };
 }
 
 async function startRunFromLibrary(page: Page, agentURL: string) {

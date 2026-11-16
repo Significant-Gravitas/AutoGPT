@@ -9,7 +9,9 @@ import {
 } from "../../../../helpers/workspaceAttachments";
 import { isBookkeepingPart } from "../../../../messageParts";
 import type { SentFrom } from "../../../../sentFrom";
+import type { FeedbackCardTarget } from "../../../../tools/FeedbackPrompts/helpers";
 import {
+  getRatedMessageId,
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
@@ -87,19 +89,45 @@ export function deriveLiveCompaction(
   };
 }
 
+interface FeedbackCardArgs {
+  isLastAssistant: boolean;
+  isCurrentlyStreaming: boolean;
+  readOnly: boolean;
+  sessionID?: string | null;
+  message: ChatMessage;
+  savedMessageId?: string | null;
+}
+
+// A card shows under the last reply once its turn has finished, for the
+// chat's owner, and only once that reply has a saved id to rate.
+export function getFeedbackCardTarget({
+  isLastAssistant,
+  isCurrentlyStreaming,
+  readOnly,
+  sessionID,
+  message,
+  savedMessageId,
+}: FeedbackCardArgs): FeedbackCardTarget | null {
+  if (!isLastAssistant || isCurrentlyStreaming || readOnly || !sessionID) {
+    return null;
+  }
+  const messageID = getRatedMessageId(message, savedMessageId);
+  return messageID ? { sessionID, messageID } : null;
+}
+
 export function getMessageContentClassName(compact: boolean): string {
   return cn(
     compact
-      ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-    "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
-    // Streamdown's links (buttons, `text-primary`) and light
+      ? "text-body leading-6 group-[.is-user]:rounded-xl"
+      : "text-body-lg leading-relaxed group-[.is-user]:rounded-3xl",
+    "group-[.is-user]:bg-action-hover group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-action-foreground",
+    // Streamdown's links (buttons, `text-action`) and light
     // code chips would sink into the dark bubble.
-    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
-    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
+    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-action-foreground group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-surface/10 group-[.is-user]:[&_code]:text-action-foreground",
+    "group-[.is-user]:[&_h1]:text-lead group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lead group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lead group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lead group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lead group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lead group-[.is-user]:[&_h6]:font-semibold",
     // Chain hover pills use negative margins that the base
     // overflow-hidden would clip.
-    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
+    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-foreground-strong",
   );
 }
 

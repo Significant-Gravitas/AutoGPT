@@ -17,8 +17,7 @@ exists, so a change to one must be made in all four.
 | --- | --- | --- |
 | **Postgres `analytics.*` views** | The numbers. Every metric below is a view in `autogpt_platform/analytics/queries/`. | Primary tables (`platform.*`, `auth.*`). |
 | **Looker Studio** | GTM dashboards. | Only `analytics.*` views, via the `analytics_readonly` role. |
-| **PostHog** | Funnels, session replay, experiment bucketing and significance testing. | Frontend autocapture + the server-side activation events below. Can also read `analytics.*` as a data-warehouse source. |
-| **LaunchDarkly** | Feature gating (on/off, rollouts, targeting). Not for A/B measurement. | — |
+| **PostHog** | Funnels, session replay, feature flags (on/off, rollouts, targeting), experiment bucketing and significance testing. | Frontend autocapture + the server-side activation events below. Can also read `analytics.*` as a data-warehouse source. |
 | **DataFast** | Marketing attribution: which channel brought a visitor who signed up and paid. No in-app events; PostHog has those. | Its script (visits, the `/tour` goals, and `tour_cta_click` from the logged-out marketplace sidebar), the server-side `signup` goal, and its visitor ids in Stripe Checkout metadata for purchases. |
 | **Admin dashboard** | Ops views: platform costs, copilot usage export, execution accuracy. | Backend admin routes. |
 | **Sentry** | Errors and stack traces behind `agent_run_finished` with `status: failed`. | — |
@@ -135,11 +134,12 @@ Then add each new view as a data source in Looker Studio (the header of every
 NULL on runs created before September 2026; the views expose those as
 `agent_runs_untagged` and count them as human tasks.
 
-## One identity across LaunchDarkly, PostHog and the database
+## One identity across PostHog and the database
 
-The two tools used to disagree about who a visitor is. LaunchDarkly only
-knew a user after login (every logged-out visitor shared the literal key
-`anonymous`, so it could not bucket pre-signup at all), while PostHog minted
+The analytics and flag tools used to disagree about who a visitor is.
+LaunchDarkly, the flag vendor until October 2026, only knew a user after
+login (every logged-out visitor shared the literal key `anonymous`, so it
+could not bucket pre-signup at all), while PostHog minted
 its own anonymous id and merged it into the user id at identify. Nothing
 tied a pre-signup arm to a post-signup person, and nothing tied either to
 the DataFast visitor that marketing sees.
@@ -150,33 +150,39 @@ an existing PostHog device id when there is one) and hands it to everything:
 
 - **PostHog** is bootstrapped with it as the anonymous distinct id, so
   `identify(user.id)` merges it into the person as usual.
-- **LaunchDarkly** gets it as the anonymous `user` key before login, and as
-  a `device` context alongside the `user` context after login. Rules on the
-  `user` kind are unchanged; a rule that buckets by `device` keeps the same
-  arm across signup.
+- **Feature flags** (PostHog, read through the backend) bucket a signed-out
+  visitor who allowed analytics by their PostHog id; see
+  [Feature flags](feature-flags.md).
 - **The database** stores it on the user at first login (`UserAttribution`,
   reported by the browser to `POST /api/analytics/attribution`) together
   with the PostHog device id, the DataFast visitor and session ids (from the
   request headers the frontend already sends), the first landing page, UTM
   tags and the signup method. `analytics.user_attribution` exposes it.
 
-Rule of thumb: **LaunchDarkly gates, PostHog measures, the database joins.**
-Server-side flag evaluation stays keyed by user id (the backend has no
-device context yet), so bucket pre-login experiments on the client.
+Rule of thumb: **PostHog gates and measures, the database joins.**
+Signed-in flag reads are keyed by user id, so bucket pre-login experiments on
+the client.
 
 ## Running an experiment
 
 1. Create a **multivariate feature flag** in PostHog with the arm keys you want
    (`control`, `variant-a`, `variant-b`, ...) and make it an experiment there.
-2. In the frontend, read it through `useExperiment(key)` from
+   The backend buckets users from PostHog's flag definitions, which it loads
+   only with `POSTHOG_SECRET_KEY`; without it nobody is enrolled.
+2. Add the flag's key to `Experiment` in `backend/data/experiments.py` and run
+   `pnpm generate:api`, so the frontend gets it as a generated enum.
+3. In the frontend, read it through `useExperiment(Experiment.YOUR_KEY)` from
    `src/services/experiments/useExperiment.ts`. It returns `{ variant, isResolved }`:
    render the control experience until `isResolved`, and do not fire one-shot
    side effects before then, or a late variant is mis-recorded as control.
-   The hook reports the arm to `POST /api/experiments/assignments` once per
-   user and experiment; the backend keeps the **first** arm it sees.
-3. Backend-decided experiments can call
+   The hook reads `GET /api/experiments/assignments/{experiment}`, which returns
+   the user's stored arm, or buckets the signed-in user by id and stores that
+   arm; the **first** arm stored is kept. `variant` is `null` while the user is
+   not enrolled or not signed in. The browser reports the exposure to PostHog
+   itself, once the visitor allows analytics.
+4. Backend-decided experiments can call
    `backend.data.experiments.record_assignment(user_id, key, variant, source="backend")`.
-4. Read results in PostHog (exposure + the activation events above as goals),
+5. Read results in PostHog (exposure + the activation events above as goals),
    and in Looker by joining `analytics.experiment_assignment` to
    `user_lifecycle`, `user_task_daily` or `unit_economics_monthly`.
 
@@ -269,14 +275,11 @@ missing.
 - *Did the pricing-page arm change activation or retention, not just
   conversion?* — `experiment_assignment` joined to `user_lifecycle`.
 - *Can we A/B backend behaviour (model routing, default expert, prompt)?* —
-  yes via `record_assignment(source="backend")`; LaunchDarkly stays the
+  yes via `record_assignment(source="backend")`; the PostHog flag is the
   gate, PostHog and the assignment table hold the arm.
-- *Can the team keep using LaunchDarkly for arms?* — not in the browser
-  today: the unused `useLaunchDarklyExperiment` bridge and its
-  `experiment_exposed` event were removed (SECRT-2722), so a LaunchDarkly arm
-  reaches the assignment table only through `record_assignment`. **Gap**: the
-  backend's LaunchDarkly context has no `device` kind yet, so server-evaluated
-  flags cannot bucket by the anonymous id.
+- *Where do arms come from?* — PostHog only. LaunchDarkly was removed
+  (SECRT-2708); assignment rows recorded with `source="launchdarkly"` before
+  then stay readable.
 
 **Experts and schedules**
 

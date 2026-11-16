@@ -37,12 +37,59 @@ export function fromBackendUserOnboarding(
 // onboarded user back into the wizard.
 const ONBOARDING_COMPLETE = "ONBOARDING_COMPLETE" satisfies OnboardingStep;
 
+// Same rule as the backend's GET /onboarding/completed.
+export function hasCompletedOnboarding(completedSteps: string[]): boolean {
+  return completedSteps.includes(ONBOARDING_COMPLETE);
+}
+
+export interface OnboardingCompletion {
+  userID: string | null;
+  isCompleted: boolean;
+}
+
+// The same object when nothing changed, so consumers don't re-render.
+export function withCompletion(
+  prev: OnboardingCompletion | null,
+  next: OnboardingCompletion,
+): OnboardingCompletion {
+  return prev?.userID === next.userID && prev.isCompleted === next.isCompleted
+    ? prev
+    : next;
+}
+
+// Pages the provider never redirects from.
+const ONBOARDING_EXEMPT_PREFIXES = [
+  // The public demo for signed-out prospects; a signed-in user with
+  // unfinished onboarding must not be bounced out of it.
+  "/tour",
+  // A recovery link signs the user in and lands here. They must stay until
+  // the new password is set, or the reset link becomes a one-time sign-in.
+  "/reset-password",
+  // A bot account-link page (/link/<token>, /link/slack/installed). Its token
+  // expires in 30 minutes and the wizard never returns here.
+  "/link/",
+  // Signing out from the wizard must not bounce the user back into it.
+  "/logout",
+];
+
+export function getOnboardingRoute(pathname: string) {
+  return {
+    isOnOnboardingRoute: pathname.startsWith("/onboarding"),
+    // A signed-in user on these is routed onward by the provider; otherwise
+    // the page shows its `isLoggedIn` loader forever.
+    isOnAuthRoute: pathname === "/signup" || pathname === "/login",
+    isExempt: ONBOARDING_EXEMPT_PREFIXES.some((prefix) =>
+      pathname.startsWith(prefix),
+    ),
+  };
+}
+
 export function shouldRedirectFromOnboarding(
   completedSteps: string[],
   pathname: string,
 ): boolean {
   return (
-    completedSteps.includes(ONBOARDING_COMPLETE) &&
+    hasCompletedOnboarding(completedSteps) &&
     !pathname.startsWith("/onboarding/reset")
   );
 }

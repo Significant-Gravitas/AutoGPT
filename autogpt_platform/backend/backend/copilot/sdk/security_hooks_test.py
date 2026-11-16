@@ -76,7 +76,7 @@ async def test_every_allowed_tool_passes_the_hook(use_e2b):
     pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=allowed)[
         "PreToolUse"
     ][0].hooks[0]
-    usable = set(allowed) - set(get_sdk_disallowed_tools(use_e2b=use_e2b))
+    usable = set(allowed) - set(get_sdk_disallowed_tools())
     denied = [
         name
         for name in sorted(usable)
@@ -97,7 +97,7 @@ async def test_every_unusable_builtin_is_denied(use_e2b):
     pre = create_security_hooks("u1", sdk_cwd=SDK_CWD, allowed_tools=allowed)[
         "PreToolUse"
     ][0].hooks[0]
-    usable = set(allowed) - set(get_sdk_disallowed_tools(use_e2b=use_e2b))
+    usable = set(allowed) - set(get_sdk_disallowed_tools())
     passed = [
         name
         for name in sorted(set(get_sdk_builtin_tools()) - usable)
@@ -147,14 +147,14 @@ def test_edit_builtin_blocked():
 
 def test_glob_within_workspace_allowed():
     result = _validate_tool_access(
-        "Glob", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+        "Glob", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools={"Glob"}
     )
     assert result == {}
 
 
 def test_grep_within_workspace_allowed():
     result = _validate_tool_access(
-        "Grep", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+        "Grep", {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools={"Grep"}
     )
     assert result == {}
 
@@ -184,7 +184,7 @@ def test_traversal_attack_denied():
 
 def test_no_path_allowed():
     """Glob/Grep without a path argument defaults to cwd — should pass."""
-    result = _validate_tool_access("Glob", {}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED)
+    result = _validate_tool_access("Glob", {}, sdk_cwd=SDK_CWD, allowed_tools={"Glob"})
     assert result == {}
 
 

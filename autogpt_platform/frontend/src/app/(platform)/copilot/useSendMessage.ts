@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef } from "react";
 import { pendingUploadKey, useCopilotStreamStore } from "./copilotStreamStore";
 import { toastSendFailure } from "./helpers/sendFailureToast";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
@@ -62,7 +62,9 @@ export function useSendMessage({
   // the latest closure — which captures the refreshed `sendMessage` after
   // the session has updated.
   const dispatchRef = useRef(dispatchToSession);
-  dispatchRef.current = dispatchToSession;
+  useInsertionEffect(() => {
+    dispatchRef.current = dispatchToSession;
+  });
 
   useEffect(() => {
     if (!sessionId) return;
@@ -134,10 +136,16 @@ export function useSendMessage({
     useCopilotStreamStore
       .getState()
       .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
+    return await createFirstSendSession(
+      metadata?.kind === "expert_kickoff",
+    ).finally(() => {
+      isCreatingSessionRef.current = false;
+    });
+  }
+
+  async function createFirstSendSession(expertKickoff: boolean) {
     try {
-      return await createSession({
-        expertKickoff: metadata?.kind === "expert_kickoff",
-      });
+      return await createSession({ expertKickoff });
     } catch (err) {
       const {
         pendingFirstSendSessionId,
@@ -154,8 +162,6 @@ export function useSendMessage({
       if (pendingFirstSendSessionId)
         clearPendingUploadSend(pendingFirstSendSessionId);
       throw err;
-    } finally {
-      isCreatingSessionRef.current = false;
     }
   }
 

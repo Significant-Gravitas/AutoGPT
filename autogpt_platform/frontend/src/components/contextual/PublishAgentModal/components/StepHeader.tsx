@@ -10,10 +10,10 @@ type Props = {
 export function StepHeader({ title, description }: Props) {
   return (
     <div className="flex max-w-[640px] flex-col gap-1 px-1 pb-6 sm:px-2">
-      <Text variant="body" as="h2" className="text-textBlack">
+      <Text variant="body" as="h2">
         {title}
       </Text>
-      <Text variant="small" className="text-zinc-600">
+      <Text variant="small" tone="secondary">
         {description}
       </Text>
     </div>

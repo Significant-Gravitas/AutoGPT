@@ -326,10 +326,10 @@ _bootstrap_ollama_macos() {
 }
 
 init_env() {
-    # The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY,
-    # INTERNAL_API_KEY and BETTER_AUTH_SECRET blank and the backend refuses to
-    # start without an ENCRYPTION_KEY, so generate them here exactly as
-    # `make init-env` does. Values that are already set are never overwritten.
+    # The .env.default files leave the secrets and the service passwords blank
+    # and the backend refuses to start without an ENCRYPTION_KEY, so generate
+    # them here exactly as `make init-env` does. Values you set are never
+    # overwritten; a service password still holding a published value is.
     cd "$REPO_DIR/autogpt_platform" || handle_error "Failed to navigate to autogpt_platform"
     print_color "BLUE" "Generating secrets for this install..."
 
@@ -339,17 +339,18 @@ init_env() {
     done
 
     # The generator is stdlib-only Python. Hosts without python3 run it in a
-    # container instead, as the calling user so the .env files stay readable.
+    # container instead, as the calling user so the .env files stay readable,
+    # and with this shell's POSTGRES_PASSWORD, if any, so it can point out that
+    # Docker Compose would take that one over the generated password.
     local -a generator=(python3)
     if ! command -v python3 &> /dev/null; then
         # $DOCKER_CMD may be "sudo docker", so it is split on purpose.
-        generator=($DOCKER_CMD run --rm --user "$(id -u):$(id -g)"
+        generator=($DOCKER_CMD run --rm --user "$(id -u):$(id -g)" -e POSTGRES_PASSWORD
             -v "$PWD:/platform" -w /platform python:3.13-alpine python3)
     fi
-    for dir in . backend frontend; do
-        "${generator[@]}" single-container/runtime_config.py fill-env --path "$dir/.env" \
-            || handle_error "Failed to generate secrets in $dir/.env"
-    done
+    "${generator[@]}" single-container/runtime_config.py fill-env \
+        --path .env --path backend/.env --path frontend/.env \
+        || handle_error "Failed to generate secrets in the .env files"
     print_color "GREEN" "✓ Secrets ready"
 }
 

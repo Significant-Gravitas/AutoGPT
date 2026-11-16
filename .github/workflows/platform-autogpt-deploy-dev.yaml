@@ -29,12 +29,32 @@ jobs:
     environment: develop
     name: Run migrations for AutoGPT Platform
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
 
     steps:
+      # One commit for every checkout below and for the dispatch's `sha`, so a
+      # push to the branch mid-run cannot change what this run migrates.
+      - name: Resolve the commit to deploy
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_REF: ${{ github.event.inputs.git_ref }}
+        run: |
+          if [[ -n "$GIT_REF" ]]; then
+            # Encoded, or `gh api` reads a `#` or `?` in the ref as URL syntax.
+            SHA=$(gh api "repos/${{ github.repository }}/commits/$(jq -rn --arg r "$GIT_REF" '$r | @uri')" --jq .sha)
+          else
+            SHA="${{ github.sha }}"
+          fi
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Could not resolve '${GIT_REF}' to a commit" >&2; exit 1; }
+          echo "Deploying ${SHA}"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.event.inputs.git_ref || github.ref_name }}
+          ref: ${{ steps.resolve.outputs.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -89,7 +109,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.event.inputs.git_ref || github.ref_name }}
+          ref: ${{ needs.migrate.outputs.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -137,4 +157,6 @@ jobs:
           token: ${{ secrets.DEPLOY_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
           event-type: build_deploy_dev
-          client-payload: '{"ref": "${{ github.event.inputs.git_ref || github.ref }}", "repository": "${{ github.repository }}"}'
+          # `ref` stays the branch: the infra workflow treats any ref but dev as
+          # a preview taking over Dev. `sha` is the commit migrated above.
+          client-payload: '{"ref": "${{ github.event.inputs.git_ref || github.ref }}", "sha": "${{ needs.migrate.outputs.sha }}", "repository": "${{ github.repository }}"}'

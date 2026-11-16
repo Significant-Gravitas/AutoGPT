@@ -8,7 +8,8 @@ from typing import Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
 
 from backend.util.country import country_code
-from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.util.platform_payment import is_platform_payment_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +92,7 @@ async def get_trial_offer(
         logger.info("Unrecognised client country; withholding the trial offer")
         return None
     try:
-        if not await is_feature_enabled(
-            Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-        ):
+        if not is_platform_payment_enabled():
             return None
         raw = await get_feature_flag_value(
             Flag.CARD_REQUIRED_TRIAL_OFFER,

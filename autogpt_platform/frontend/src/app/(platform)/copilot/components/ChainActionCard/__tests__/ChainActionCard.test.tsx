@@ -202,7 +202,7 @@ describe("ChainActionCard", () => {
     it("renders a row with the provider name and metadata description", () => {
       renderCard({ connectors: [connectorRequest()] });
 
-      expect(screen.getByText("Plug in what this needs")).toBeDefined();
+      expect(screen.getByText("Connect your apps")).toBeDefined();
       expect(screen.getByText("GitHub")).toBeDefined();
       expect(screen.getByText("Connect your GitHub account")).toBeDefined();
     });

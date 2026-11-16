@@ -2,7 +2,6 @@ import path from "path";
 
 export const SEEDED_TEST_PASSWORD =
   process.env.SEEDED_TEST_PASSWORD || "testpassword123";
-export const SEEDED_USER_POOL_VERSION = "2.0.0";
 
 export const SEEDED_TEST_ACCOUNTS = {
   primary: {
@@ -45,13 +44,18 @@ export const SEEDED_TEST_ACCOUNTS = {
     email: "e2e.qa.parallel.b@example.com",
     password: SEEDED_TEST_PASSWORD,
   },
+  // Signed up with Microsoft (MICROSOFT_SIGN_IN_EMAIL in e2e_test_data.py).
+  microsoftSignIn: {
+    key: "microsoftSignIn",
+    email: "e2e.qa.microsoft@example.com",
+    password: SEEDED_TEST_PASSWORD,
+  },
 } as const;
 
 export type SeededTestAccountKey = keyof typeof SEEDED_TEST_ACCOUNTS;
 export type SeededTestAccount =
   (typeof SEEDED_TEST_ACCOUNTS)[SeededTestAccountKey];
 
-export const SEEDED_TEST_USERS = Object.values(SEEDED_TEST_ACCOUNTS);
 export const SEEDED_AUTH_STATE_ACCOUNT_KEYS = [
   "smokeBuilder",
   "smokeLibrary",
@@ -76,10 +80,8 @@ export const E2E_AUTH_STATES = {
   parallelB: getAuthStatePath("parallelB"),
 } as const;
 
-export const SMOKE_AUTH_STATES = E2E_AUTH_STATES;
-
 export function getSeededTestUser(
-  accountKey: SeededTestAccountKey = "primary",
+  accountKey: SeededTestAccountKey = "primary", // pragma: allowlist secret
 ): SeededTestAccount {
   return SEEDED_TEST_ACCOUNTS[accountKey];
 }

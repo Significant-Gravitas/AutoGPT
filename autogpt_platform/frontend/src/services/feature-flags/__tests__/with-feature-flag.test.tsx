@@ -3,9 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Flag } from "../use-get-flag";
 import { withFeatureFlag } from "../with-feature-flag";
 
-// Reading through the seam is the point of this test: in posthog mode no
-// LDProvider is mounted, so a component reading the LaunchDarkly SDK directly
-// waits on an empty flag set forever.
+// Reading through the seam is the point of this test: a component reading a
+// vendor SDK directly would bypass the server's answer and the overrides.
 const source = vi.hoisted(() => ({
   results: {} as Record<string, { value: unknown; resolved: boolean }>,
 }));
@@ -22,10 +21,6 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
 }));
 
 const FORCE_ALL = "NEXT_PUBLIC_FORCE_ALL_FLAGS";

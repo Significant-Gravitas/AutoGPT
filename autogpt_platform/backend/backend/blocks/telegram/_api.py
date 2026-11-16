@@ -58,7 +58,7 @@ async def call_telegram_api(
     credentials: APIKeyCredentials,
     method: str,
     data: Optional[dict[str, Any]] = None,
-) -> TelegramMessageResult:
+) -> Any:
     """
     Make a request to the Telegram Bot API.
 
@@ -68,7 +68,8 @@ async def call_telegram_api(
         data: Request parameters
 
     Returns:
-        API response result
+        The raw ``result`` field. Its type depends on the method: a Message
+        dict for send/edit, ``True`` for deleteMessage, a File dict for getFile.
 
     Raises:
         TelegramAPIException: If the API returns an error
@@ -84,7 +85,7 @@ async def call_telegram_api(
         description = result.get("description", "Unknown error")
         raise TelegramAPIException(description, error_code)
 
-    return TelegramMessageResult(**result.get("result", {}))
+    return result.get("result")
 
 
 async def call_telegram_api_with_file(
@@ -95,7 +96,7 @@ async def call_telegram_api_with_file(
     filename: str,
     content_type: str,
     data: Optional[dict[str, Any]] = None,
-) -> TelegramMessageResult:
+) -> Any:
     """
     Make a multipart/form-data request to the Telegram Bot API with a file upload.
 
@@ -109,7 +110,8 @@ async def call_telegram_api_with_file(
         data: Additional form parameters
 
     Returns:
-        API response result
+        The raw ``result`` field. Its type depends on the method: a Message
+        dict for send/edit, ``True`` for deleteMessage, a File dict for getFile.
 
     Raises:
         TelegramAPIException: If the API returns an error
@@ -127,7 +129,16 @@ async def call_telegram_api_with_file(
         description = result.get("description", "Unknown error")
         raise TelegramAPIException(description, error_code)
 
-    return TelegramMessageResult(**result.get("result", {}))
+    return result.get("result")
+
+
+def _as_message(result: Any) -> TelegramMessageResult:
+    """Parse a Bot API ``result`` that is expected to be a Message object."""
+    if not isinstance(result, dict):
+        raise TelegramAPIException(
+            f"Unexpected result type from Telegram: {type(result).__name__}"
+        )
+    return TelegramMessageResult(**result)
 
 
 async def get_file_info(
@@ -144,7 +155,11 @@ async def get_file_info(
         File info dict containing file_id, file_unique_id, file_size, file_path
     """
     result = await call_telegram_api(credentials, "getFile", {"file_id": file_id})
-    return TelegramFileResult(**result.model_dump())
+    if not isinstance(result, dict):
+        raise TelegramAPIException(
+            f"Unexpected result type from getFile: {type(result).__name__}"
+        )
+    return TelegramFileResult(**result)
 
 
 async def get_file_download_url(credentials: APIKeyCredentials, file_id: str) -> str:

@@ -39,7 +39,7 @@ export const Basic: Story = {
             if (args.onCheckedChange) args.onCheckedChange(v);
           }}
         />
-        <span className="text-sm">{on ? "On" : "Off"}</span>
+        <span className="text-body">{on ? "On" : "Off"}</span>
       </div>
     );
   },
@@ -59,7 +59,7 @@ export const WithLabel: Story = {
     return (
       <label htmlFor={id} className="flex items-center gap-3">
         <Switch id={id} checked={on} onCheckedChange={setOn} />
-        <span className="text-sm">Enable notifications</span>
+        <span className="text-body">Enable notifications</span>
       </label>
     );
   },

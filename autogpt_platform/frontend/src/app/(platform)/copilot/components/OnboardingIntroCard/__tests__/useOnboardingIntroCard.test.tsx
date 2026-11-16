@@ -27,7 +27,7 @@ const LATER_DUMP_KEY = "autogpt:onboarding-pending-later-dump";
 const FOLLOWUP_KEY = "autogpt:onboarding-intro-awaiting-followup";
 const WELCOME_PENDING_KEY = "autogpt:onboarding-welcome-pending";
 const GREETING_DONE_KEY = "autogpt:copilot-greeting-done";
-const CAPABILITY_CARDS_KEY = "autogpt:copilot-capability-cards-seen";
+const TOUR_SEEN_KEY = "autogpt:first-run-tour-seen";
 
 const READY_INTRO: IntroCardResponse = {
   path: "A",
@@ -81,9 +81,9 @@ beforeEach(() => {
 });
 
 describe("useOnboardingIntroCard — availability", () => {
-  it("holds the composer until the wizard welcome has been dismissed", async () => {
+  it("holds the composer for a user fresh out of the wizard until the greeting answers", async () => {
     // The hold exists to stop the regular hero flashing before the
-    // greeting page takes over, and the pending overlay is seeded
+    // greeting page takes over, and the pending first run is seeded
     // synchronously — so this user is held before the intro query resolves.
     window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
 
@@ -116,15 +116,15 @@ describe("useOnboardingIntroCard — availability", () => {
 });
 
 describe("useOnboardingIntroCard — handoff from the wizard", () => {
-  it("consumes the recorded path once, opens the welcome overlay and reports it", async () => {
+  it("consumes the recorded path once, marks the first run pending and reports it", async () => {
     setIntroPath("A");
-    const urls = countIntroRequests({ ...READY_INTRO, greeting_done: true });
+    const urls = countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
 
-    await act(async () => {});
-    expect(urls).toEqual([]);
+    // The greeting loads behind the walkthrough, which ends on its tasks.
+    await waitFor(() => expect(urls).toHaveLength(1));
     expect(window.sessionStorage.getItem("autogpt:onboarding-intro-path")).toBe(
       null,
     );
@@ -140,7 +140,7 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
 
     expect(window.sessionStorage.getItem(MIC_GLOW_KEY)).toBe("1");
     // The invitation Otto just issued: the first voice message in the
@@ -149,35 +149,37 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(capture).toHaveBeenCalledWith("intro_path", { path: "B" });
   });
 
-  it("shows no overlay for a user who did not just come out of onboarding", async () => {
+  it("starts no first run for a user who did not just come out of onboarding", async () => {
     countIntroRequests();
 
     const { result } = renderIntro();
     await waitFor(() => expect(result.current.isVisible).toBe(true));
 
-    expect(result.current.isWelcomeOpen).toBe(false);
+    expect(result.current.isFirstRunPending).toBe(false);
     expect(capture).not.toHaveBeenCalledWith("intro_path", expect.anything());
   });
 
-  it("keeps the overlay up across a refresh via the pending flag", async () => {
+  it("keeps the first run pending across a refresh, with the greeting loading behind it", async () => {
     window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
     const urls = countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
 
-    // The greeting is not fetched behind a modal the user has not dismissed.
-    expect(urls).toEqual([]);
-    expect(result.current.isAwaitingGreeting).toBe(true);
+    // The walkthrough ends by pointing at the greeting's first tasks, so the
+    // greeting is fetched while it is still open.
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    expect(urls).toHaveLength(1);
+    expect(result.current.isFirstRunPending).toBe(true);
   });
 
-  it("consumes a saved wizard path without reopening cards this user already saw", async () => {
+  it("consumes a saved wizard path without reopening a walkthrough this user already saw", async () => {
     setIntroPath("A");
-    window.localStorage.setItem(CAPABILITY_CARDS_KEY, "user-1");
+    window.localStorage.setItem(TOUR_SEEN_KEY, "user-1");
     const urls = countIntroRequests();
     const { result } = renderIntro();
     await waitFor(() => expect(result.current.isVisible).toBe(true));
-    expect(result.current.isWelcomeOpen).toBe(false);
+    expect(result.current.isFirstRunPending).toBe(false);
     expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
     expect(
       window.sessionStorage.getItem("autogpt:onboarding-intro-path"),
@@ -186,39 +188,52 @@ describe("useOnboardingIntroCard — handoff from the wizard", () => {
     expect(urls).toHaveLength(1);
   });
 
-  it("drops a stale pending overlay for a user who already saw the cards", async () => {
+  it("drops a stale pending first run for a user who already saw the walkthrough", async () => {
     window.sessionStorage.setItem(WELCOME_PENDING_KEY, "1");
-    window.localStorage.setItem(CAPABILITY_CARDS_KEY, "user-1");
+    window.localStorage.setItem(TOUR_SEEN_KEY, "user-1");
     countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isWelcomeOpen).toBe(false));
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(false));
 
     expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
     await waitFor(() => expect(result.current.isVisible).toBe(true));
   });
 });
 
-describe("useOnboardingIntroCard — closing the welcome overlay", () => {
-  it("reports the close, remembers the cards, and reveals the greeting", async () => {
+describe("useOnboardingIntroCard — finishing the first run", () => {
+  it("reports the end and clears the pending flag, leaving the greeting up", async () => {
     setIntroPath("A");
-    const urls = countIntroRequests();
+    countIntroRequests();
 
     const { result } = renderIntro();
-    await waitFor(() => expect(result.current.isWelcomeOpen).toBe(true));
-    // The greeting stays hidden behind the overlay however the fetch went.
-    expect(result.current.isVisible).toBe(false);
-    expect(result.current.isAwaitingGreeting).toBe(true);
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
+    await waitFor(() => expect(result.current.isVisible).toBe(true));
 
-    act(() => result.current.closeWelcome());
+    act(() => result.current.finishFirstRun({ wasShown: true }));
 
     expect(capture).toHaveBeenCalledWith("welcome_dialog_closed", {});
     expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
-    expect(window.localStorage.getItem(CAPABILITY_CARDS_KEY)).toBe("user-1");
-
-    await waitFor(() => expect(result.current.isVisible).toBe(true));
+    expect(result.current.isFirstRunPending).toBe(false);
     expect(result.current.greeting).toBe(READY_INTRO.greeting);
-    expect(urls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("useOnboardingIntroCard — a first run that never showed", () => {
+  it("clears the pending flag without reporting a walkthrough that did not open", async () => {
+    setIntroPath("A");
+    countIntroRequests();
+    const { result } = renderIntro();
+    await waitFor(() => expect(result.current.isFirstRunPending).toBe(true));
+
+    act(() => result.current.finishFirstRun({ wasShown: false }));
+
+    expect(capture).not.toHaveBeenCalledWith(
+      "welcome_dialog_closed",
+      expect.anything(),
+    );
+    expect(window.sessionStorage.getItem(WELCOME_PENDING_KEY)).toBeNull();
+    expect(result.current.isFirstRunPending).toBe(false);
   });
 });
 

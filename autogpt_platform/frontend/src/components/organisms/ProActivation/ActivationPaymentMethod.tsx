@@ -14,8 +14,14 @@ export function ActivationPaymentMethod() {
       ? portal
       : null;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-large border border-zinc-200 px-4 py-3">
-      <div className="flex items-center gap-2 text-sm text-zinc-600">
+    <div
+      data-slot="activation-payment-method"
+      className="flex items-center justify-between gap-3 rounded-large border border-border-base px-4 py-3"
+    >
+      <div
+        data-slot="activation-payment-method-label"
+        className="flex items-center gap-2 text-body text-foreground-secondary"
+      >
         <Icon icon={CreditCardIcon} size={18} />
         Payment method
       </div>
@@ -25,8 +31,8 @@ export function ActivationPaymentMethod() {
         target="_blank"
         rel="noopener noreferrer"
         variant="ghost"
-        size="small"
-        className="h-auto min-w-0 p-0 text-sm underline underline-offset-4"
+        size="inline"
+        className="underline underline-offset-4"
         aria-label="Manage payment method in a new tab"
       >
         Manage

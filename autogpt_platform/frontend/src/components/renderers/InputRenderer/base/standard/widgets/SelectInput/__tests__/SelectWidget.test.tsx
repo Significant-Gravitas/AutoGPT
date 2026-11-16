@@ -65,7 +65,7 @@ vi.mock("@/components/atoms/Select/Select", () => ({
   Select: SelectMock,
 }));
 
-vi.mock("@/components/__legacy__/ui/multiselect", () => ({
+vi.mock("@/components/molecules/MultiSelect/MultiSelect", () => ({
   MultiSelector: MultiSelectorMock,
   MultiSelectorContent: MultiSelectorContentMock,
   MultiSelectorInput: MultiSelectorInputMock,

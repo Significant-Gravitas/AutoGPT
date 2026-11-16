@@ -99,6 +99,7 @@ export default function ArrayFieldTemplate(props: ArrayFieldTemplateProps) {
                 <div className="mt-4 flex justify-end">
                   <AddButton
                     id={buttonId(fieldPathId, "add")}
+                    // oxlint-disable-next-line design-system/no-unknown-classes -- RJSF marker class, kept for the upstream template hook
                     className="rjsf-array-item-add"
                     onClick={onAddClick}
                     disabled={disabled || readonly}

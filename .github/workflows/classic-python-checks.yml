@@ -10,7 +10,7 @@ on:
       - 'classic/direct_benchmark/**'
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
-      - '**.py'
+      - 'classic/**.py'
       - '!classic/forge/tests/vcr_cassettes'
   pull_request:
     branches: [ master, dev, release-* ]
@@ -21,7 +21,7 @@ on:
       - 'classic/direct_benchmark/**'
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
-      - '**.py'
+      - 'classic/**.py'
       - '!classic/forge/tests/vcr_cassettes'
   workflow_dispatch:
 

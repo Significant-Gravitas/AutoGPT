@@ -98,6 +98,7 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "folder",
     running: "Listing folders",
     done: "Listed folders",
+    empty: "none yet",
   },
   update_folder: {
     category: "folder",
@@ -193,5 +194,74 @@ export const AGENT_TOOL_CATALOG: Record<string, ToolMeta> = {
     category: "team",
     running: "Adding to the team",
     done: "Added to the team",
+  },
+  update_expert_soul: {
+    category: "team",
+    running: "Drafting a Soul update",
+    done: "Soul update ready",
+  },
+  confirm_expert_soul_update: {
+    category: "team",
+    running: "Updating the Soul",
+    done: "Updated the Soul",
+  },
+  expert_onboarding: {
+    category: "question",
+    running: "Preparing a few questions",
+    done: "Asked a few questions",
+  },
+  list_team: {
+    category: "team",
+    running: "Checking your team",
+    done: "Checked your team",
+    empty: "no one yet",
+  },
+  list_expert_chats: {
+    category: "team",
+    running: "Looking through expert chats",
+    done: "Looked through expert chats",
+    empty: "none yet",
+  },
+  read_expert_chat: {
+    category: "team",
+    running: "Reading an expert chat",
+    done: "Read an expert chat",
+  },
+  list_expert_workflows: {
+    category: "team",
+    running: "Checking an expert's workflows",
+    done: "Checked an expert's workflows",
+    empty: "none yet",
+  },
+  install_expert_workflow: {
+    category: "team",
+    running: "Adding a workflow to an expert",
+    done: "Added a workflow to an expert",
+  },
+  remove_expert_workflow: {
+    category: "team",
+    running: "Removing a workflow from an expert",
+    done: "Removed a workflow from an expert",
+  },
+  list_expert_credentials: {
+    category: "team",
+    running: "Checking an expert's credentials",
+    done: "Checked an expert's credentials",
+    empty: "none yet",
+  },
+  grant_expert_credential: {
+    category: "team",
+    running: "Granting an expert access",
+    done: "Granted an expert access",
+  },
+  revoke_expert_credential: {
+    category: "team",
+    running: "Revoking an expert's access",
+    done: "Revoked an expert's access",
+  },
+  request_credential_grant: {
+    category: "team",
+    running: "Asking you for access",
+    done: "Asked you for access",
   },
 };

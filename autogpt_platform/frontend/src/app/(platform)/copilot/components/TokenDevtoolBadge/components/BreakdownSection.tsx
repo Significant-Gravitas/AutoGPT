@@ -5,6 +5,7 @@ import {
   type ContextBreakdown,
 } from "../../../tokenDevtool/tokenMath";
 import { BREAKDOWN_COLORS } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   breakdown: ContextBreakdown;
@@ -51,14 +52,16 @@ export function BreakdownSection({ breakdown }: Props) {
         {rows.map((row) => (
           <div
             key={row.label}
-            className="flex items-baseline gap-1.5 font-mono text-xs"
+            className="flex items-baseline gap-1.5 font-mono text-caption"
           >
             <span className={`size-1.5 shrink-0 rounded-full ${row.color}`} />
-            <span className="text-zinc-600">{row.label}</span>
+            <span className="text-foreground-secondary">{row.label}</span>
             {row.note && (
-              <span className="text-[10px] text-zinc-400">{row.note}</span>
+              <Text variant="tiny-inherit" tone="subtle">
+                {row.note}
+              </Text>
             )}
-            <span className="ml-auto text-zinc-500">
+            <span className="ml-auto text-foreground-tertiary">
               ~{formatTokenCount(row.tokens)}
             </span>
           </div>

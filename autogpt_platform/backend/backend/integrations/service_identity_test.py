@@ -5,9 +5,14 @@ import logging
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
+from backend.data.model import (
+    APIKeyCredentials,
+    OAuth2Credentials,
+    UserPasswordCredentials,
+)
 from backend.integrations.mcp_catalog import MCPCatalogEntry, get_mcp_catalog
 from backend.integrations.service_identity import (
+    credential_display_name,
     service_for_catalog_entry,
     service_for_credential,
     service_for_provider,
@@ -44,6 +49,15 @@ def test_catalog_entry_with_a_block_provider_uses_that_provider():
     assert identity.service == "apollo"
     assert identity.name == "Apollo.io"
     assert identity.icon == entry.mcp_server.icon_id
+
+
+def test_aimlapi_mcp_connection_shares_the_aiml_api_model_provider():
+    url = _entry("mcp_aimlapi").mcp_server.server_url
+    assert url
+    identity = service_for_credential(_mcp_credential(url))
+    assert identity.service == service_for_provider("aiml_api").service
+    assert identity.name == "AI/ML API"
+    assert identity.icon == "aiml_api"
 
 
 def test_catalog_entry_without_a_block_provider_uses_its_slug():
@@ -108,3 +122,45 @@ def test_a_malformed_credential_is_warned_about_once(
         service_for_credential(credential)
     warnings = [r for r in caplog.records if "cred-warn-once" in r.getMessage()]
     assert len(warnings) == 1
+
+
+def _google_account(credential_id: str, email: str, title: str | None = None):
+    return OAuth2Credentials(
+        id=credential_id,
+        provider="google",
+        title=title,
+        username=email,
+        access_token=SecretStr("t"),
+        scopes=[],
+    )
+
+
+def test_untitled_oauth_accounts_are_named_by_their_email():
+    names = [
+        credential_display_name(_google_account("a", "work@example.com")),
+        credential_display_name(_google_account("b", "me@example.com")),
+    ]
+    assert names == ["work@example.com", "me@example.com"]
+
+
+def test_a_title_the_user_gave_wins_over_the_email():
+    credential = _google_account("a", "work@example.com", title="Work Google")
+    assert credential_display_name(credential) == "Work Google"
+
+
+def test_a_credential_with_neither_falls_back_to_its_provider():
+    credential = APIKeyCredentials(
+        id="c", provider="notion", title=None, api_key=SecretStr("k")
+    )
+    assert credential_display_name(credential) == "notion"
+
+
+def test_a_login_username_is_never_shown_because_it_is_a_secret():
+    credential = UserPasswordCredentials(
+        id="c",
+        provider="smtp",
+        title=None,
+        username=SecretStr("me@example.com"),
+        password=SecretStr("p"),
+    )
+    assert credential_display_name(credential) == "smtp"

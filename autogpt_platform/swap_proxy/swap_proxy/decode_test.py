@@ -24,7 +24,6 @@ ENCODERS = {
     "gzip": gzip.compress,
     "deflate": zlib.compress,
     "deflateraw": raw_deflate,
-    "br": brotli.compress,
     "zstd": zstandard.ZstdCompressor().compress,
 }
 
@@ -70,15 +69,21 @@ def test_an_encoding_that_cannot_be_decoded_within_a_bound_is_undecodable(encodi
         bounded_decode(b"\x1f\x8b whatever", encoding, LIMIT)
 
 
-@pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd"])
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "zstd"])
 def test_corrupt_data_is_undecodable(encoding):
     with pytest.raises(Undecodable):
         bounded_decode(b"this is not compressed data at all", encoding, LIMIT)
 
 
-def test_a_truncated_brotli_stream_is_undecodable():
+@pytest.mark.parametrize("encoding", ["br", " BR "])
+def test_a_brotli_body_is_undecodable_without_running_a_decoder(monkeypatch, encoding):
+    def decoder(*args, **kwargs):
+        raise AssertionError("a Brotli decoder ran")
+
+    monkeypatch.setattr(brotli, "Decompressor", decoder)
+    monkeypatch.setattr(brotli, "decompress", decoder)
     with pytest.raises(Undecodable):
-        bounded_decode(brotli.compress(TEXT)[:-4], "br", LIMIT)
+        bounded_decode(brotli.compress(TEXT), encoding, LIMIT)
 
 
 @pytest.mark.parametrize("encoding", ENCODERS)
@@ -118,13 +123,13 @@ def test_zero_padding_after_the_last_member_is_allowed():
     assert bounded_decode(gzip.compress(TEXT) + bytes(8), "gzip", LIMIT) == TEXT
 
 
-@pytest.mark.parametrize("encoding", ["gzip", "deflate", "deflateraw", "br", "zstd"])
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "deflateraw", "zstd"])
 def test_data_after_the_end_of_the_stream_is_undecodable(encoding):
     with pytest.raises(Undecodable):
         bounded_decode(ENCODERS[encoding](TEXT) + b"trailing " + TOKEN, encoding, LIMIT)
 
 
-@pytest.mark.parametrize("encoding", ["gzip", "deflate", "deflateraw", "br", "zstd"])
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "deflateraw", "zstd"])
 @pytest.mark.parametrize("cut", [1, 4, 0.5])
 def test_a_truncated_stream_is_undecodable(encoding, cut):
     """Cut in the checksum, or halfway through: partial output is not the body."""

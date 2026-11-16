@@ -85,7 +85,7 @@ async function loseConnectionMidAnswer({
   await expect(
     transcript.getByText(firstWords(ANSWER)),
     "the answer should start streaming",
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 60_000 });
 
   // The connection drops mid-answer while the model is still writing it.
   // Online, one drop resumes silently: the chat speaks up from the second

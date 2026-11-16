@@ -19,10 +19,13 @@ class APIKeySmith:
     PREFIX: str = "agpt_"
     HEAD_LENGTH: int = 8
     TAIL_LENGTH: int = 8
+    # The platform's OAuth access and refresh tokens start with these. No key
+    # does, so a credential that starts with one is never taken for a key.
+    RESERVED_PREFIXES: tuple[str, ...] = ("agpt_xt_", "agpt_rt_")
 
     def generate_key(self) -> APIKeyContainer:
         """Generate a new API key with secure hashing."""
-        raw_key = f"{self.PREFIX}{secrets.token_urlsafe(32)}"
+        raw_key = self._new_raw_key()
         hash, salt = self.hash_key(raw_key)
 
         return APIKeyContainer(
@@ -32,6 +35,13 @@ class APIKeySmith:
             hash=hash,
             salt=salt,
         )
+
+    def _new_raw_key(self) -> str:
+        """A fresh random key that doesn't start like an OAuth token."""
+        while True:
+            raw_key = f"{self.PREFIX}{secrets.token_urlsafe(32)}"
+            if not raw_key.startswith(self.RESERVED_PREFIXES):
+                return raw_key
 
     def verify_key(
         self, provided_key: str, known_hash: str, known_salt: str | None = None

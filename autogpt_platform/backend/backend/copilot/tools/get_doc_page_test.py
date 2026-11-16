@@ -90,6 +90,26 @@ async def test_missing_page_returns_not_found(tool, session):
 
 
 @pytest.mark.asyncio
+async def test_a_directory_is_not_found_and_its_path_stays_hidden(
+    tool, session, tmp_path, mocker
+):
+    """A directory passed the existence check, and reading it failed with its
+    absolute path, which went back to the caller."""
+    docs = tmp_path / "docs"
+    (docs / "platform").mkdir(parents=True)
+    mocker.patch(
+        "backend.copilot.tools.get_doc_page.get_docs_root",
+        return_value=docs.resolve(),
+    )
+
+    result = await tool._execute(user_id=None, session=session, path="platform")
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "not_found"
+    assert str(tmp_path) not in result.model_dump_json()
+
+
+@pytest.mark.asyncio
 async def test_traversal_is_blocked(tool, session, tmp_path, mocker):
     """Unconditional (mocked tmp docs root, no bundle needed): a ../ path
     targeting a real out-of-root file is rejected before existence leaks."""
@@ -136,19 +156,6 @@ async def test_symlink_escape_blocked_by_containment(tool, session, tmp_path, mo
     result = await tool._execute(user_id=None, session=session, path="platform/leak.md")
     assert isinstance(result, ErrorResponse)
     assert result.error == "invalid_path"
-
-
-@pytest.mark.asyncio
-async def test_directory_path_returns_read_failed(tool, session, tmp_path, mocker):
-    docs = tmp_path / "docs"
-    (docs / "platform").mkdir(parents=True)
-    mocker.patch(
-        "backend.copilot.tools.get_doc_page.get_docs_root",
-        return_value=docs.resolve(),
-    )
-    result = await tool._execute(user_id=None, session=session, path="platform")
-    assert isinstance(result, ErrorResponse)
-    assert result.error == "read_failed"
 
 
 @pytest.mark.asyncio

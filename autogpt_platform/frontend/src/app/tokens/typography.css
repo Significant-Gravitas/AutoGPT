@@ -1,0 +1,40 @@
+/*
+  The type scale: the app's only text sizes (SECRT-3152). Each step is a size
+  and the line height it bundles; `@theme` in globals.css maps every step to a
+  `text-<step>` utility, which the Text atom's variants use. Tailwind's own
+  sizes (`text-sm`, `text-2xl`, ...) are not in the theme, so they generate
+  nothing, and design-system/no-raw-text-size fails them in code.
+
+  Like the colour roles, the values live here and nowhere else: a new theme
+  or a redesign changes these lines and every text size follows.
+*/
+:root {
+  --text-tiny: 0.625rem; /* 10px */
+  --text-tiny--line-height: 0.875rem;
+  --text-caption-sm: 0.6875rem; /* 11px */
+  --text-caption-sm--line-height: 1rem;
+  --text-caption: 0.75rem; /* 12px */
+  --text-caption--line-height: 1.125rem;
+  --text-body-sm: 0.8125rem; /* 13px */
+  --text-body-sm--line-height: 1.25rem;
+  --text-body: 0.875rem; /* 14px */
+  --text-body--line-height: 1.375rem;
+  --text-body-md: 0.9375rem; /* 15px */
+  --text-body-md--line-height: 1.5rem;
+  --text-body-lg: 1rem; /* 16px */
+  --text-body-lg--line-height: 1.625rem;
+  --text-lead: 1.25rem; /* 20px */
+  --text-lead--line-height: 1.75rem;
+  --text-heading-sm: 1.375rem; /* 22px */
+  --text-heading-sm--line-height: 1.5rem;
+  --text-heading-md: 1.5rem; /* 24px */
+  --text-heading-md--line-height: 2rem;
+  --text-heading: 1.75rem; /* 28px */
+  --text-heading--line-height: 2.5rem;
+  --text-title: 2rem; /* 32px */
+  --text-title--line-height: 2.5rem;
+  --text-display: 2.75rem; /* 44px */
+  --text-display--line-height: 3.5rem;
+  --text-hero: 4rem; /* 64px */
+  --text-hero--line-height: 1;
+}

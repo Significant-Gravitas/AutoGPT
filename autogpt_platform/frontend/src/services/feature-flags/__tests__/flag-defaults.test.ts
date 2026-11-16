@@ -1,25 +1,17 @@
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// These read LaunchDarkly; `flag-backend` picks the vendor once, at load.
-vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_FEATURE_FLAG_BACKEND = "launchdarkly";
-});
 import { Flag, useGetFlag } from "../use-get-flag";
 
-// LD is enabled but has not answered for any key — the exact window
-// (init lag, outage, missing flag key) where useGetFlag falls through
+// The flag service has not answered for any key — the exact window
+// (load lag, outage, missing flag key) where useGetFlag falls through
 // to defaultFlags in production.
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useFlags: () => ({}),
+vi.mock("../flag-source", () => ({
+  useFlagSource: () => ({ value: undefined, resolved: false }),
 }));
 
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => true },
 }));
 
 const DREAM_FLAGS = [
@@ -36,7 +28,7 @@ describe("experimental dream flag defaults fail closed", () => {
   });
 
   it.each(DREAM_FLAGS)(
-    "resolves %s to false when LaunchDarkly has not answered, mirroring the backend's default=False gating",
+    "resolves %s to false when the flag service has not answered, mirroring the backend's default=False gating",
     (flag) => {
       const { result } = renderHook(() => useGetFlag(flag));
       expect(result.current).toBe(false);
@@ -48,4 +40,20 @@ describe("experimental dream flag defaults fail closed", () => {
     const { result } = renderHook(() => useGetFlag(Flag.DREAM_PASS_ENABLED));
     expect(result.current).toBe(true);
   });
+});
+
+describe("Local PC flag defaults fail closed", () => {
+  beforeEach(() => {
+    Object.keys(process.env)
+      .filter((k) => k.startsWith("NEXT_PUBLIC_FORCE_FLAG_"))
+      .forEach((k) => delete process.env[k]);
+  });
+
+  it.each([Flag.LOCAL_PC_EXECUTOR, Flag.WORKFLOW_RECORDING])(
+    "resolves %s to false when the flag service has not answered, so the picker and recording stay hidden",
+    (flag) => {
+      const { result } = renderHook(() => useGetFlag(flag));
+      expect(result.current).toBe(false);
+    },
+  );
 });

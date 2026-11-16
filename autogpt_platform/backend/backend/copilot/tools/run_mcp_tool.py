@@ -275,28 +275,35 @@ class RunMCPToolTool(BaseTool):
         # into showing the Reconnect pill, then 401 on the next real
         # tool call (see the John bug this PR also fixes).  Cheapest
         # verification is ``MCPClient.initialize`` (one round-trip, no
-        # tool listing); on 401/403 we treat the cred as stale, drop the
+        # tool listing); on 401 we treat the cred as stale, drop the
         # dead row, and surface the not-connected card so the user
-        # re-auths in one step.  Other HTTP errors (timeouts, 5xx) are
+        # re-auths in one step.  A 403 leaves the sign-in valid (see the
+        # tool-call path below), so the card stays connected and says
+        # the server refused access.  Other HTTP errors (timeouts, 5xx) are
         # treated as "unknown, optimistically connected" — the next
         # real tool call will self-correct via the same invalidate path.
         if surface_connect_card:
             connected = creds is not None
             rejection: CredentialRejection | None = None
+            refused_message: str | None = None
+            refused_detail: str | None = None
             if client is not None and creds is not None:
                 probe_client = client
                 try:
                     try:
                         await probe_client.initialize()
                     except HTTPClientError as probe_err:
-                        if probe_err.status_code in AUTH_STATUS_CODES:
+                        if probe_err.status_code in CREDENTIAL_REJECTED_STATUS_CODES:
                             connected = False
-                            if (
-                                probe_err.status_code
-                                in CREDENTIAL_REJECTED_STATUS_CODES
-                            ):
-                                rejection = _rejection(creds, probe_err)
-                                await invalidate_mcp_credential(user_id, creds.id)
+                            rejection = _rejection(creds, probe_err)
+                            await invalidate_mcp_credential(user_id, creds.id)
+                        elif probe_err.status_code in AUTH_STATUS_CODES:
+                            refused_detail = sanitize_provider_message(
+                                str(probe_err), max_chars=400
+                            )
+                            refused_message = _refused_access_message(
+                                server_url, probe_err.status_code, refused_detail
+                            )
                         # Other HTTP statuses (5xx, redirects, etc.) →
                         # leave the cred in place and report
                         # "optimistically connected" — the user can
@@ -326,14 +333,18 @@ class RunMCPToolTool(BaseTool):
                     # ``close`` is best-effort and swallows its own
                     # errors.
                     await probe_client.close()
-            return await self._build_setup_requirements(
+            response = await self._build_setup_requirements(
                 server_url,
                 session_id,
                 connected=connected,
                 rejection=rejection,
                 user_id=user_id,
                 expert_id=session.expert_id,
+                message=refused_message,
             )
+            # The quoted refusal is the server's text, so the read screen
+            # judges it like any other outside content.
+            return response.from_outside(refused_detail) if refused_detail else response
 
         if client is None:
             client = MCPClient(server_url)
@@ -500,12 +511,9 @@ class RunMCPToolTool(BaseTool):
         properties), so it must be expanded here using the tool's own schema —
         mirroring how RunBlockTool expands block inputs.
 
-        Parses the MCP content response into a plain Python value:
-        - text items: parsed as JSON when possible, kept as str otherwise
-        - image items: kept as {type, data, mimeType} dict for frontend rendering
-        - resource items: unwrapped to their resource payload dict
-        Single-item responses are unwrapped from the list; multiple items are
-        returned as a list; empty content returns None.
+        Parses the result into a plain Python value with ``parse_mcp_content``:
+        text items (as JSON when possible), image and resource items, and the
+        structured result when the tool sends no text.
         """
         input_schema: dict[str, Any] | None = None
         if _args_contain_file_ref(tool_arguments):
@@ -542,7 +550,7 @@ class RunMCPToolTool(BaseTool):
                 session_id=session_id,
             ).from_outside(error_text, listed)
 
-        result_value = parse_mcp_content(result.content)
+        result_value = parse_mcp_content(result.content, result.structured_content)
 
         return MCPToolOutputResponse(
             message=f"MCP tool '{tool_name}' executed successfully.",
@@ -727,6 +735,23 @@ def _rejection(creds: OAuth2Credentials, error: HTTPClientError) -> CredentialRe
         status_code=error.status_code,
         credential_id=creds.id,
         credential_title=creds.title,
+    )
+
+
+def _refused_access_message(server_url: str, status_code: int, detail: str) -> str:
+    """Connect-card message for a 403 over a credential that was kept.
+
+    The status alone does not say why: an account permission and a server or
+    WAF blocking the request look the same, so only the server's own words
+    (*detail*, already sanitized) name a cause.
+    """
+    return (
+        f"You're signed in to {_service_name(server_host(server_url))}, but it "
+        f'refused access (HTTP {status_code}). It said: "{detail}". '
+        "The status alone doesn't say why (the account's permissions or the "
+        "server blocking the request), so don't name a cause the response "
+        "doesn't state. Signing in again with the same credential gets the "
+        "same answer."
     )
 
 

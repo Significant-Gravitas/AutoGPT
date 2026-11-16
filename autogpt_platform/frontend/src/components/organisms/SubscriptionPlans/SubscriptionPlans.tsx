@@ -18,10 +18,19 @@ export function SubscriptionPlans({
 }) {
   const { dialog, setDialog, setDialogOpen } = useSubscriptionPlans();
   return (
-    <div className="mx-auto w-full max-w-7xl px-5 font-sans sm:px-8">
-      <section aria-label="Choose your AutoGPT plan">
+    <div
+      data-slot="subscription-plans"
+      className="mx-auto w-full max-w-7xl px-5 font-sans sm:px-8"
+    >
+      <section
+        data-slot="subscription-plans-section"
+        aria-label="Choose your AutoGPT plan"
+      >
         <PlanHeader {...props} header={header} />
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div
+          data-slot="subscription-plans-grid"
+          className="grid grid-cols-1 gap-4 lg:grid-cols-3"
+        >
           {props.plans.map((plan) => (
             <SubscriptionOffer
               key={plan.key}
@@ -32,7 +41,10 @@ export function SubscriptionPlans({
           ))}
         </div>
         {trialStatus && (
-          <div className="mx-auto mt-4 w-full max-w-3xl empty:hidden">
+          <div
+            data-slot="subscription-plans-trial-status"
+            className="mx-auto mt-4 w-full max-w-3xl empty:hidden"
+          >
             {trialStatus}
           </div>
         )}

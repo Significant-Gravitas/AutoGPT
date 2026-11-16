@@ -15,6 +15,10 @@ from graphiti_core import Graphiti
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
+from backend.copilot.chat_platform_header import (
+    attribute_chat_platform_speakers,
+    strip_chat_platform_header,
+)
 from backend.copilot.dream.ratification import _promote_if_tentative
 from backend.copilot.dream.registry import ensure_scope_scheduled
 from backend.util.background import spawn_background_task
@@ -644,6 +648,8 @@ async def enqueue_conversation_turn(
     user_msg: str,
     assistant_msg: str = "",
     expert_id: str | None = None,
+    *,
+    bridge_origin: bool = False,
 ) -> None:
     """Enqueue a conversation turn for async background ingestion.
 
@@ -672,7 +678,14 @@ async def enqueue_conversation_turn(
     # User's own words only, in graphiti's expected "Speaker: content" format.
     # Assistant response is excluded from extraction
     # (Zep Cloud approach: ignore_roles=["assistant"]).
-    episode_body_for_graphiti = f"{user_display_name}: {user_msg}"
+    # A chat-platform bot turn names its own speakers: in a linked server the
+    # executing user is the owner, not whoever sent the message.
+    episode_body_for_graphiti = attribute_chat_platform_speakers(
+        user_msg, bridge_origin=bridge_origin
+    )
+    if not episode_body_for_graphiti:
+        own_words = strip_chat_platform_header(user_msg, bridge_origin=bridge_origin)
+        episode_body_for_graphiti = f"{user_display_name}: {own_words}"
 
     source_description = f"User message in session {session_id}"
 
@@ -849,7 +862,8 @@ async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
     work onto a queue after its worker has unregistered it.
 
     Creating a group's queue also registers the scope's own dream-system
-    crons (community rebuild + nightly batch): an expert group registers the
+    crons (the flag-gated nightly ones) and claims its registry row, which
+    the hourly community sweep reads: an expert group registers the
     expert's scope, not the account's. That happens on the group's first
     write in this process and again each time its queue comes back after
     retiring (``_WORKER_IDLE_TIMEOUT`` idle). Fire-and-forget, flag-gated

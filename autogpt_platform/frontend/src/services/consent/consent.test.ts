@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe("category mapping", () => {
-  it("maps analytics and monitoring to statistics, advertising to marketing, preferences to preferences", () => {
+  it("maps analytics to statistics, advertising to marketing, preferences to preferences", () => {
     expect(
       toConsentState({
         necessary: true,
@@ -48,7 +48,6 @@ describe("category mapping", () => {
       }),
     ).toEqual({
       analytics: true,
-      monitoring: true,
       advertising: false,
       preferences: true,
     });
@@ -61,7 +60,6 @@ describe("category mapping", () => {
       }),
     ).toEqual({
       analytics: false,
-      monitoring: false,
       advertising: true,
       preferences: false,
     });
@@ -94,7 +92,6 @@ describe("with a Cookiebot domain group", () => {
 
     expect(getConsent()).toEqual({
       analytics: true,
-      monitoring: true,
       advertising: false,
       preferences: false,
     });
@@ -107,7 +104,6 @@ describe("with a Cookiebot domain group", () => {
 
     expect(getConsent()).toEqual({
       analytics: false,
-      monitoring: false,
       advertising: true,
       preferences: false,
     });
@@ -158,7 +154,6 @@ describe("with a Cookiebot domain group", () => {
     installCookiebot({ marketing: true });
     expect(getConsentAnswer()).toEqual({
       analytics: false,
-      monitoring: false,
       advertising: true,
       preferences: false,
     });
@@ -204,7 +199,6 @@ describe("with a Cookiebot domain group", () => {
 
     expect(readConsentFromCookieHeader(header)).toEqual({
       analytics: true,
-      monitoring: true,
       advertising: false,
       preferences: false,
     });
@@ -234,7 +228,6 @@ describe("with a Cookiebot domain group", () => {
 
     expect(getConsent()).toEqual({
       analytics: true,
-      monitoring: true,
       advertising: false,
       preferences: false,
     });

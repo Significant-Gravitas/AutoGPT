@@ -87,18 +87,28 @@ def test_an_optional_auth_route_answers_when_the_ban_is_unreadable(mocker):
     assert response.json() == {"user_id": None}
 
 
+# Deleting an account is its owner's right whatever the ban, so the deletion
+# routes (``get_user_id_allowing_closed``) answer a banned account too.
+BAN_EXEMPT = {
+    "['GET'] /api/account/deletion",
+    "['POST'] /api/account/deletion",
+    "['POST'] /api/account/deletion/restore",
+}
+
+
 def test_every_route_that_reads_a_token_refuses_a_banned_account():
     """A route that takes ``get_jwt_payload`` without one of the resolvers
-    above would let a banned account through."""
-    unguarded = [
+    above would let a banned account through. Only the account deletion
+    routes may."""
+    unguarded = {
         f"{sorted(route.methods)} {route.path}"
         for route in rest_app.routes
         if isinstance(route, APIRoute)
         and get_jwt_payload in (calls := _dependency_calls(route.dependant))
         and get_unbanned_jwt_payload not in calls
-    ]
+    }
 
-    assert unguarded == []
+    assert unguarded == BAN_EXEMPT
 
 
 def _client(jwt_payload: dict) -> TestClient:

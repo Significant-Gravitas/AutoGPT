@@ -21,7 +21,8 @@ from contextvars import ContextVar
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Callable
+from functools import partial
+from typing import Any, Callable, Literal
 from uuid import UUID
 
 from prisma.enums import ReviewStatus
@@ -35,15 +36,20 @@ from backend.copilot.tool_image import parse_held_image
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.copilot.trial_cost_context import capture_cost_context
 from backend.data.db_accessors import experts_db
-from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
+from backend.data.workspace_scope import is_skill_package_path
+from backend.util.feature_flag import Flag, get_flag_variant
 
-from . import active_mode, held
+from . import answered_from_chat_of_origin, held, resolve_mode
 from . import review as review_store
-from .content import Image, judge_content
+from . import shadow
+from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE
 
 logger = logging.getLogger(__name__)
+
+ScreenMode = Literal["enforce", "shadow", "off"]
+SHADOW = "shadow"
 
 # Every tool whose output is bytes AutoPilot did not author (plan A4). The
 # user's own memories are left out: a memory is content they already trust
@@ -55,6 +61,8 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
+        # Only a graph it returns that another user owns, or a copy, reaches the judge.
+        "find_library_agent",
         "get_sub_session_result",
         "read_expert_chat",
         "read_skill",
@@ -74,6 +82,33 @@ JUDGED_READS: frozenset[str] = frozenset(
         "read_tool_result",
     }
 )
+
+# Where each judged read's bytes come from, for the shadow gate's events.
+_SOURCE_KINDS = {
+    "bash_exec": "shell",
+    "browser_act": "web",
+    "browser_navigate": "web",
+    "browser_screenshot": "web",
+    "delegate_to_expert": "chat",
+    "get_sub_session_result": "chat",
+    "read_expert_chat": "chat",
+    "run_sub_session": "chat",
+    "read_skill": "skill",
+    "read_workspace_file": "file",
+    "glob": "file",
+    "grep": "file",
+    "read_file": "file",
+    "read_tool_result": "file",
+    "find_library_agent": "workflow",
+    "run_agent": "workflow",
+    "view_agent_output": "workflow",
+    "search_feature_requests": "platform",
+    "web_fetch": "web",
+    "web_search": "web",
+}
+
+# What a card calls a read no argument names, where the tool's name is not copy.
+_READ_LABELS = {"find_library_agent": "the library search"}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
@@ -147,7 +182,9 @@ async def release_held_read(
     Checked before the tool runs, so a released read is the bytes the user
     approved and not a second fetch that might differ.
     """
-    if tool_name not in JUDGED_READS or await active_mode(user_id, session) is None:
+    if tool_name not in JUDGED_READS:
+        return None
+    if await screen_mode(user_id, session) != "enforce":
         return None
     assert user_id is not None
     review_id = read_review_id(session.session_id, user_id, tool_name, args)
@@ -237,22 +274,26 @@ async def screen_read(
         return None
     source = source_of(tool_name, args)
     try:
-        mode = await active_mode(user_id, session)
-        if mode is None or mode == "unsupervised":
-            return None
-        if outside is not None:
-            # AutoGPT writes no images, so a declaration narrows only the text.
-            text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
-        # Bytes nobody can read are not instructions until something decodes
-        # them, and that later read is judged.
-        if not text.strip() and not images:
-            return None
-        verdict = await judge_content(
-            source=judged_source(tool_name, args), text=text, images=images
-        )
-        if not verdict.held:
+        screening = await screen_mode(user_id, session)
+        if screening == "off" or resolve_mode(session) == "unsupervised":
             return None
         assert user_id is not None
+        if screening == "shadow":
+            shadow.judge_later(
+                user_id,
+                session,
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                source_kind=_source_kind(tool_name, args),
+                judge=partial(
+                    _shadow_finding, tool_name, args, text, images, outside, full
+                ),
+            )
+            return None
+        judged = await _judge(tool_name, args, text, images, outside, full)
+        if judged is None or not judged[0].held:
+            return None
+        verdict, text = judged
         call = held.HeldCall(
             review_id=read_review_id(session.session_id, user_id, tool_name, args),
             tool_name=tool_name,
@@ -276,6 +317,62 @@ async def screen_read(
         return _stub(tool_name, source, _UNRECORDABLE, session)
 
 
+async def screen_mode(user_id: str | None, session: ChatSession) -> ScreenMode:
+    """``copilot-read-screen``: true or "enforce" holds a flagged read, "shadow"
+    judges and records without holding, anything else is off. It runs only
+    where a signed-in user can answer the card, as the action gate does."""
+    if not user_id or not await answered_from_chat_of_origin(user_id, session):
+        return "off"
+    value = await get_flag_variant(Flag.COPILOT_READ_SCREEN, user_id)
+    if value is True or value == "enforce":
+        return "enforce"
+    return "shadow" if value == SHADOW else "off"
+
+
+async def _judge(
+    tool_name: str,
+    args: dict[str, Any],
+    text: str,
+    images: tuple[Image, ...],
+    outside: tuple[Any, ...] | None,
+    full: str,
+) -> tuple[ContentVerdict, str] | None:
+    """The verdict and the text it was reached on; None when nothing is readable."""
+    if outside is not None:
+        # AutoGPT writes no images, so a declaration narrows only the text.
+        text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
+    # Bytes nobody can read are not instructions until something decodes
+    # them, and that later read is judged.
+    if not text.strip() and not images:
+        return None
+    verdict = await judge_content(
+        source=judged_source(tool_name, args), text=text, images=images
+    )
+    return verdict, text
+
+
+async def _shadow_finding(
+    tool_name: str,
+    args: dict[str, Any],
+    text: str,
+    images: tuple[Image, ...],
+    outside: tuple[Any, ...] | None,
+    full: str,
+) -> shadow.Finding | None:
+    judged = await _judge(tool_name, args, text, images, outside, full)
+    return shadow.read_finding(judged[0]) if judged else None
+
+
+def _source_kind(tool_name: str, args: dict[str, Any]) -> str:
+    if tool_name in ("run_capability", "resume_capability"):
+        capability = str(args.get("id") or "")
+        if capability.startswith("https://"):
+            return "mcp"
+        prefix, colon, _ = capability.partition(":")
+        return prefix if colon and prefix in ("block", "mcp") else "capability"
+    return _SOURCE_KINDS.get(tool_name, "other")
+
+
 def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
     """Whether the read is of an installed skill, which the user already
     chose to trust, marketplace installs included (Reinier, 2026-09-28)."""
@@ -295,10 +392,7 @@ def is_skill_path(path: str | None) -> bool:
     registry writes there; ``write_workspace_file`` refuses these roots."""
     if not path or posixpath.normpath(path) != path:
         return False
-    if path.startswith(SKILLS_ROOT):
-        return True
-    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
-    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
+    return is_skill_package_path(path)
 
 
 def _opened_path(output: str) -> str | None:
@@ -504,8 +598,7 @@ def read_headline(tool_name: str, args: dict[str, Any], actor: str) -> Headline:
     """``actor`` is who reads it: the chat's Expert, or Otto in a plain chat."""
     headline = named(f"Let {actor} read", _SOURCE_KEYS, args)
     if headline.object is None:
-        label = tool_name.replace("_", " ")
-        return Headline(ask=f"Let {actor} read what {label} returned")
+        return Headline(ask=f"Let {actor} read what {_label(tool_name)} returned")
     return headline
 
 
@@ -607,10 +700,10 @@ def _stub(
         reason=reason,
         review_id=review_id,
         # The chain row's words; the card asks from ``read_headline``.
-        ask=(
-            "Read"
-            if named_source
-            else f"Read what {tool_name.replace('_', ' ')} returned"
-        ),
+        ask="Read" if named_source else f"Read what {_label(tool_name)} returned",
         object=named_source or None,
     ).model_dump_json()
+
+
+def _label(tool_name: str) -> str:
+    return _READ_LABELS.get(tool_name, tool_name.replace("_", " "))

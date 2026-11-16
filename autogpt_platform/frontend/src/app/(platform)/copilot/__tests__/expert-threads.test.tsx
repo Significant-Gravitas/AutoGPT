@@ -26,7 +26,6 @@ import { ChatMessagesContainer } from "../components/ChatMessagesContainer/ChatM
 import { useChatSession } from "../useChatSession";
 import { getNewChatHref } from "@/components/layout/AppSidebar/components/RecentChats/helpers";
 import { useCopilotUIStore } from "../store";
-import { groupSessionsByExpert } from "../useSessionList";
 
 const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("posthog-js", () => ({ default: { capture } }));
@@ -78,7 +77,7 @@ vi.mock("use-stick-to-bottom", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/conversation", () => ({
+vi.mock("@/components/organisms/Conversation/Conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="conversation">{children}</div>
   ),
@@ -88,7 +87,7 @@ vi.mock("@/components/ai-elements/conversation", () => ({
   ConversationScrollButton: () => null,
 }));
 
-vi.mock("@/components/ai-elements/message", () => ({
+vi.mock("@/components/organisms/Message/Message", () => ({
   Message: ({
     children,
     from,
@@ -138,12 +137,18 @@ vi.mock(
     ThinkingIndicator: () => null,
   }),
 );
-vi.mock("../components/ChatMessagesContainer/helpers", () => ({
-  extractReviewTarget: () => null,
-  getLatestCompactionPhase: () => null,
-  getTurnMessages: () => [],
-  isChainableToolPart: () => false,
-}));
+vi.mock(
+  "../components/ChatMessagesContainer/helpers",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../components/ChatMessagesContainer/helpers")
+    >()),
+    extractReviewTargets: () => ({ chat: false, runs: [] }),
+    getLatestCompactionPhase: () => null,
+    getTurnMessages: () => [],
+    isChainableToolPart: () => false,
+  }),
+);
 vi.mock("../components/JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
 }));
@@ -656,36 +661,12 @@ describe("useChatSession — expert sessions", () => {
   });
 });
 
-describe("groupSessionsByExpert", () => {
-  it("partitions sessions by expert_id with the Otto group first", () => {
-    const groups = groupSessionsByExpert([
-      makeSession({ id: "s1" }),
-      makeSession({ id: "s2", expert_id: "expert-maria" }),
-      makeSession({ id: "s3", expert_id: "expert-juan" }),
-      makeSession({ id: "s4", expert_id: "expert-maria" }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ] as any);
-
-    expect(groups.map((group) => group.expertId)).toEqual([
-      null,
-      "expert-maria",
-      "expert-juan",
-    ]);
-    expect(
-      groups[1].sessions.map((session: { id: string }) => session.id),
-    ).toEqual(["s2", "s4"]);
-    expect(
-      groups[0].sessions.map((session: { id: string }) => session.id),
-    ).toEqual(["s1"]);
-  });
-});
-
 describe("ChatMessagesContainer — expert identity", () => {
   const assistantMessage = {
     id: "m1",
     role: "assistant",
     parts: [{ type: "text", text: "Here is your marketing plan." }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a partial mock of the generated response type
   } as any;
   const mariaIdentity = {
     id: "expert-maria",

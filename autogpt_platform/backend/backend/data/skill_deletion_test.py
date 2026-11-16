@@ -192,8 +192,8 @@ async def test_a_publication_landing_mid_deletion_wins_without_a_deadlock(
         allocate = deletion.next_version_number
         raced = {}
 
-        async def publish_meanwhile(head_id: str) -> int:
-            number = await allocate(head_id)
+        async def publish_meanwhile(head_id: str, *, client) -> int:
+            number = await allocate(head_id, client=client)
             raced["result"] = await asyncio.wait_for(
                 publication.commit_version_safe(
                     user,

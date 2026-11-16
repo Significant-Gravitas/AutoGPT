@@ -27,15 +27,18 @@ type Props = {
 
 export function LLMItem({ type }: Props) {
   return (
-    <div className="flex flex-nowrap items-center gap-2">
+    <div data-slot="llm-item" className="flex flex-nowrap items-center gap-2">
       <Image
+        data-slot="llm-item-image"
         src={llmTypeMap[type].image}
         alt={llmTypeMap[type].name}
         width={40}
         height={40}
         className="h-5 w-5 rounded-xsmall"
       />
-      <Text variant="body">{llmTypeMap[type].name}</Text>
+      <Text data-slot="llm-item-label" variant="body">
+        {llmTypeMap[type].name}
+      </Text>
     </div>
   );
 }

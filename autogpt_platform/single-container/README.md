@@ -1,8 +1,23 @@
-# AutoGPT Platform
+![AutoGPT: Your AI team. On your infrastructure. Featuring Frankie, Maria, and Max.](https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/3005885883c22758d90b48a7e7f784a314e3724f/autogpt_platform/single-container/assets/dockerhub-banner.png)
 
-Run the AutoGPT Platform in one container. The image bundles the web app, APIs,
-workers, PostgreSQL, RabbitMQ, a three-node Valkey cluster, and FalkorDB-backed
-memory while persisting runtime data under `/data`.
+# AutoGPT — your AI team, self-hosted
+
+Hire AI experts, delegate work, and review the results. AutoGPT brings Otto,
+your experts, and their workflows together on your own infrastructure.
+
+**[Quick start](https://agpt.co/docs/platform/self-hosting/single-container#quick-start)** ·
+[Self-hosting guide](https://docs.agpt.co/platform/self-hosting/single-container) ·
+[GitHub](https://github.com/Significant-Gravitas/AutoGPT) ·
+[Community](https://discord.gg/autogpt)
+
+- **Build your team.** Hire experts for the work you want to hand off.
+- **Give them context.** Share the task and connect the tools they need.
+- **Review their work.** Follow up in chat and use workflows and schedules for
+  repeatable tasks.
+
+Run the platform in one Docker container, with support for AMD64 and ARM64 and
+persistent data in a Docker volume. Bring your own model provider credentials
+and configure the integrations your team needs.
 
 > This single-node distribution is intended for local and
 > small self-hosted installations, not high-availability deployments.
@@ -45,8 +60,13 @@ Sign out and back in so your session picks up the administrator role.
 Then close registration: stop and remove the container
 (`docker stop autogpt && docker rm autogpt`) and repeat the quick-start command
 with `-e AUTH_ALLOW_NEW_ACCOUNTS=false` added. Keep the same `autogpt-data`
-volume so accounts, agents, memory, and generated application secrets survive
-container replacement.
+volume so accounts, experts, workflows, memory, and generated application
+secrets survive container replacement.
+
+## What's included
+
+The image bundles the web app, APIs, workers, PostgreSQL, RabbitMQ, a three-node
+Valkey cluster, and FalkorDB-backed memory. Runtime data persists under `/data`.
 
 ## Stopping
 
@@ -55,7 +75,7 @@ timeout. Its measured margin is narrow, and a longer Docker timeout does not
 extend Supervisor's internal five-second state-service cap. Larger or slower
 state may therefore require normal crash recovery on the next boot.
 
-Agent runs that are still executing are abandoned and may remain displayed as
+Workflow runs that are still executing are abandoned and may remain displayed as
 `RUNNING`. They are not resumed on the next boot, so start a new run.
 
 Supervisor's process names are group-qualified inside the container
@@ -80,7 +100,7 @@ front of it, and set `AUTOGPT_PUBLIC_URL` to the proxy's `https://` origin.
 Close signup before you expose the app.
 
 Configure model providers and optional integrations with environment variables.
-AutoPilot's default remote profile uses `OPEN_ROUTER_API_KEY` for chat and
+Otto's default remote profile uses `OPEN_ROUTER_API_KEY` for chat and
 memory extraction and `OPENAI_API_KEY` for embeddings; the canonical guide
 below also covers direct Anthropic and local-model profiles. The
 [environment template](https://github.com/Significant-Gravitas/AutoGPT/blob/master/autogpt_platform/single-container/.env.example)

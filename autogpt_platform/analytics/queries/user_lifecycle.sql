@@ -34,7 +34,7 @@
 --   (org-billed runs, attributed to the user who initiated them)
 --
 -- OUTPUT COLUMNS
---   Identity: user_id, email, signup_at, subscription_tier, timezone,
+--   Identity: user_id, signup_at, subscription_tier, timezone,
 --             usage_reason, onboarding_completed, onboarding_integrations_selected,
 --             integrations_connected_total, integration_providers_connected,
 --             first_integration_connected_at
@@ -85,7 +85,6 @@
 WITH users AS (
   SELECT
     u."id"                        AS user_id,
-    u."email"                     AS email,
     u."createdAt"                 AS signup_at,
     u."subscriptionTier"::text    AS subscription_tier,
     u."timezone"                  AS timezone
@@ -268,7 +267,7 @@ integrations AS (
 ),
 assembled AS (
   SELECT
-    u.user_id, u.email, u.signup_at, u.subscription_tier, u.timezone,
+    u.user_id, u.signup_at, u.subscription_tier, u.timezone,
     o.usage_reason,
     COALESCE(o.onboarding_completed, FALSE)                              AS onboarding_completed,
     COALESCE(o.onboarding_integrations_selected, 0)                      AS onboarding_integrations_selected,

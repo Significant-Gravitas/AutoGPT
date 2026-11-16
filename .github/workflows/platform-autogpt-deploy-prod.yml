@@ -10,7 +10,33 @@ permissions:
   id-token: 'write'
 
 jobs:
+  # A platform release once went out tagged v0.6.44, without the prefix. The
+  # check on `migrate` skips such a release without a word, so this job fails
+  # the run instead, where it shows. It reads only the tag: no checkout, no
+  # environment, no secrets. `v<digit>` tags are the platform's alone, so
+  # another product's releases carry their own prefix (a Local PC companion
+  # release, say, `local-executor-v1.0.0`), which passes here on purpose.
+  reject-unprefixed-platform-tag:
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
+    name: Refuse a platform release tag without its prefix
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Fail on a v<digit> tag
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ "$TAG" =~ ^v[0-9] ]]; then
+            echo "::error::Release $TAG has no autogpt-platform- prefix, so production was not deployed. Tag platform releases autogpt-platform-<version>, or run this workflow by hand."
+            exit 1
+          fi
+
   migrate:
+    # Every published release in this repository starts this workflow, and
+    # not all of them are the platform's (the rolling preview-seed-fixture,
+    # for one). Only a platform release deploys production; publish-skills
+    # and trigger need this job, so they are skipped with it.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'autogpt-platform-')
     environment: production
     name: Run migrations for AutoGPT Platform
     runs-on: ubuntu-latest
@@ -19,7 +45,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.ref_name || 'master' }}
+          ref: ${{ github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -64,7 +90,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          ref: ${{ github.ref_name || 'master' }}
+          ref: ${{ github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -112,5 +138,7 @@ jobs:
           token: ${{ secrets.DEPLOY_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
           event-type: build_deploy_prod
+          # The commit whose migrations just ran, not a branch the infra repo
+          # would resolve again later, after master may have moved.
           client-payload: |
-            {"ref": "${{ github.ref_name || 'master' }}", "repository": "${{ github.repository }}"}
+            {"ref": "${{ github.sha }}", "sha": "${{ github.sha }}", "repository": "${{ github.repository }}"}

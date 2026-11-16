@@ -23,36 +23,31 @@ export function LlmMenuItem({
   onClick,
   isActive,
 }: Props) {
-  const hasIcon = Boolean(icon);
-
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cn("w-full py-1 pl-2 pr-4 text-left hover:bg-zinc-100")}
+      className={cn("w-full py-1 pr-4 pl-2 text-left hover:bg-surface-hover")}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {icon}
-          <Text variant="body" className="text-zinc-900">
+          <Text variant="body" tone="primary">
             {title}
           </Text>
         </div>
         <div className="flex items-center gap-2">
           {isActive && (
-            <Icon icon={Tick02Icon} className="h-4 w-4 text-emerald-600" />
+            <Icon icon={Tick02Icon} tone="success" className="h-4 w-4" />
           )}
           {rightSlot}
           {showChevron && (
-            <Icon icon={ArrowRight01Icon} className="h-4 w-4 text-zinc-900" />
+            <Icon icon={ArrowRight01Icon} tone="primary" className="h-4 w-4" />
           )}
         </div>
       </div>
       {subtitle && (
-        <Text
-          variant="small"
-          className={cn("mb-1 text-zinc-500", hasIcon && "pl-0")}
-        >
+        <Text variant="small" tone="muted" className="mb-1">
           {subtitle}
         </Text>
       )}

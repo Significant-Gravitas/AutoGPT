@@ -2,13 +2,7 @@
 
 from backend.data.sharing.workspace_refs import extract_artifact_links
 
-from .text import (
-    _balance_code_fences,
-    format_batch,
-    iter_chunks,
-    resolve_mentions,
-    split_at_boundary,
-)
+from .text import _balance_code_fences, iter_chunks, resolve_mentions, split_at_boundary
 
 
 def _token(_name: str, uid: str) -> str:
@@ -153,28 +147,6 @@ class TestIterChunks:
 
     def test_blank_text_yields_nothing(self):
         assert list(iter_chunks("   ", 100)) == []
-
-
-class TestFormatBatch:
-    def test_single_message_has_header(self):
-        result = format_batch([("Bently", "123", "hello")], "discord")
-        assert result.endswith("[Message sent by Bently (Discord user ID: 123)]\nhello")
-
-    def test_multi_message_labels_each_sender(self):
-        result = format_batch(
-            [
-                ("Alice", "a1", "first"),
-                ("Bob", "b2", "second"),
-            ],
-            "discord",
-        )
-        assert "[Multiple messages" in result
-        assert "[From Alice (Discord user ID: a1)]\nfirst" in result
-        assert "[From Bob (Discord user ID: b2)]\nsecond" in result
-
-    def test_platform_name_is_capitalized(self):
-        result = format_batch([("u", "1", "x")], "telegram")
-        assert "Telegram user ID" in result
 
 
 class TestSplitAtBoundary:

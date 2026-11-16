@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef } from "react";
 
 /**
  * Lets a send wait until the chat's current turn has settled. Each waiter
@@ -7,7 +7,10 @@ import { useEffect, useRef } from "react";
  */
 export function useSettleGate(isSettled: boolean) {
   const isSettledRef = useRef(isSettled);
-  isSettledRef.current = isSettled;
+  // Every commit, before the effects below resolve any waiter.
+  useInsertionEffect(() => {
+    isSettledRef.current = isSettled;
+  });
   const waitersRef = useRef<Array<(settled: boolean) => void>>([]);
   const isMountedRef = useRef(true);
 

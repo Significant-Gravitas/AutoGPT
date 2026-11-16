@@ -137,6 +137,47 @@ export function buildSafeWorkspaceDownloadHeaders(
   };
 }
 
+// Only the backend's device-login page may render as a page; any other page
+// type downloads.
+export function hardenRelayedResponseHeaders(
+  path: string[],
+  headers: Headers,
+): void {
+  headers.set("X-Content-Type-Options", "nosniff");
+  if (
+    !isDocumentContentType(headers.get("content-type")) ||
+    isCodexDeviceLoginPage(path)
+  ) {
+    return;
+  }
+  headers.set(
+    "Content-Disposition",
+    getSafeDownloadContentDisposition(headers.get("content-disposition")),
+  );
+}
+
+const DOCUMENT_CONTENT_TYPES = new Set([
+  "text/html",
+  "text/xsl",
+  "multipart/x-mixed-replace",
+]);
+
+function isDocumentContentType(contentType: string | null): boolean {
+  const type = contentType?.split(";")[0].trim().toLowerCase() ?? "";
+  return (
+    DOCUMENT_CONTENT_TYPES.has(type) ||
+    type.endsWith("/xml") ||
+    type.endsWith("+xml")
+  );
+}
+
+function isCodexDeviceLoginPage(path: string[]): boolean {
+  return (
+    path.length === 5 &&
+    path.slice(0, 4).join("/") === "api/integrations/codex/device-login"
+  );
+}
+
 export function isRedirectStatus(status: number): boolean {
   return [301, 302, 303, 307, 308].includes(status);
 }
@@ -242,6 +283,11 @@ export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
 // phase, which this timeout deliberately excludes.
 export const RESPONSE_START_TIMEOUT_MS = 30_000;
 export const CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS = 120_000;
+// Account deletion cancels Stripe, revokes every connected app and stops the
+// user's work in one request: about 120 s when every bounded step hits its
+// cap, plus the Stripe calls. Giving up earlier shows an error for an account
+// the backend still closes.
+export const ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS = 180_000;
 
 export function getResponseStartTimeoutMs(
   path: string[],
@@ -259,6 +305,9 @@ export function getResponseStartTimeoutMs(
     isCodexCredentialControl
   ) {
     return CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS;
+  }
+  if (method === "POST" && path.join("/") === "api/account/deletion") {
+    return ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS;
   }
   return RESPONSE_START_TIMEOUT_MS;
 }
