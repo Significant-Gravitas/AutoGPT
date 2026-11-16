@@ -7,13 +7,14 @@
     "config": "tailwind.config.ts",
     "css": "src/app/globals.css",
     "baseColor": "neutral",
-    "cssVariables": false,
+    "cssVariables": true,
     "prefix": ""
   },
   "iconLibrary": "radix",
   "aliases": {
     "components": "@/components",
-    "utils": "@/lib/utils"
+    "utils": "@/lib/utils",
+    "ui": "@/components/atoms"
   },
   "registries": {
     "@aceternity": "https://ui.aceternity.com/registry/{name}.json"

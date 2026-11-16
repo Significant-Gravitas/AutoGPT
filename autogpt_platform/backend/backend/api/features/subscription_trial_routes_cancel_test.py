@@ -233,3 +233,21 @@ async def test_cancel_route_schedules_the_end(trial, live_stripe):
     assert response.status_code == 200
     live_stripe.modify.assert_awaited_once_with("sub_1", cancel_at_period_end=True)
     live_stripe.end_now.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_sends_the_picked_reason_to_stripe(trial, live_stripe):
+    started = _started(trial)
+    live_stripe.retrieve.return_value = _live(started)
+    live_stripe.modify.return_value = _live(started, cancel_at_period_end=True)
+    after = started.model_copy(update={"cancel_at_period_end": True})
+    body = routes.CancelTrialRequest(reason="missing_something", comment=" Slack ")
+    with patch.object(
+        routes, "get_subscription_trial", AsyncMock(side_effect=[started, after])
+    ):
+        await routes.cancel_trial(started.user_id, body)
+    live_stripe.modify.assert_awaited_once_with(
+        "sub_1",
+        cancel_at_period_end=True,
+        cancellation_details={"feedback": "missing_features", "comment": "Slack"},
+    )

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import stripe
 
 from backend.data import subscription_activation_return as destination
 from backend.data.subscription_activation_stripe import BillingSubscription
@@ -36,15 +37,34 @@ async def test_short_metadata_destination_needs_no_checkout_fetch(monkeypatch):
     fetch.assert_not_awaited()
 
 
+LONG = f"/chat/original?context={'a' * 700}#latest"
+TEMPLATE = (
+    "/onboarding?step=preparing&subscription=success&session_id={CHECKOUT_SESSION_ID}"
+)
+
+
 @pytest.mark.asyncio
-async def test_owned_checkout_restores_long_destination(monkeypatch):
-    return_to = f"/chat/original?context={'a' * 700}#latest"
+@pytest.mark.parametrize(
+    "metadata, success_path, return_to",
+    [
+        ({}, LONG, LONG),
+        (
+            {"pro_activation_return_to": TEMPLATE},
+            TEMPLATE,
+            TEMPLATE.replace("{CHECKOUT_SESSION_ID}", "cs_1"),
+        ),
+    ],
+    ids=["too-long-to-store", "stored-template"],
+)
+async def test_owned_checkout_restores_destination_stripe_returned_to(
+    monkeypatch, metadata, success_path, return_to
+):
     session = SimpleNamespace(
         id="cs_1",
         customer="cus_1",
         subscription="sub_1",
         mode="subscription",
-        success_url=f"https://app.test{return_to}",
+        success_url=f"https://app.test{success_path}",
     )
     monkeypatch.setattr(
         destination,
@@ -60,7 +80,22 @@ async def test_owned_checkout_restores_long_destination(monkeypatch):
             )
         ),
     )
-    assert await destination.activation_return_to(subscription()) == return_to
+    assert await destination.activation_return_to(subscription(metadata)) == return_to
+
+
+@pytest.mark.asyncio
+async def test_a_failed_checkout_lookup_falls_back_instead_of_raising(monkeypatch):
+    monkeypatch.setattr(
+        destination,
+        "stripe_call",
+        AsyncMock(side_effect=stripe.APIConnectionError("Stripe unreachable")),
+    )
+    assert (
+        await destination.activation_return_to(
+            subscription({"pro_activation_return_to": TEMPLATE})
+        )
+        == "/settings/billing"
+    )
 
 
 @pytest.mark.parametrize(

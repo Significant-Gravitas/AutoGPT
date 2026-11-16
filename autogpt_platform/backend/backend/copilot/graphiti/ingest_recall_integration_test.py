@@ -215,9 +215,6 @@ async def test_a_forget_marker_the_extraction_invents_is_never_saved(
     assert is_live(edge) and not is_forgotten(edge)
 
     patch_recall_boundaries(mocker, driver, stub_graphiti_client)
-    mocker.patch.object(
-        graphiti_forget, "is_enabled_for_user", AsyncMock(return_value=True)
-    )
     user, session = scope.owner_user_id, ChatSession.new(
         scope.owner_user_id, dry_run=False
     )

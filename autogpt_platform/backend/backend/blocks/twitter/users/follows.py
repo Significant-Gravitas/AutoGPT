@@ -42,7 +42,7 @@ class TwitterUnfollowUserBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write", "follows.write", "offline.access"]
+            ["users.read", "follows.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(
@@ -114,7 +114,7 @@ class TwitterFollowUserBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TwitterCredentialsInput = TwitterCredentialsField(
-            ["users.read", "users.write", "follows.write", "offline.access"]
+            ["users.read", "follows.write", "offline.access"]
         )
 
         target_user_id: str = SchemaField(

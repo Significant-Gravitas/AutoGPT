@@ -39,6 +39,7 @@ export function chatShareUrl(token: string): string {
 // nowhere else needs to be touched.
 
 const FILE_UUID_GROUP =
+  // oxlint-disable-next-line design-system/no-arbitrary-values -- a UUID regex, not a class list
   "([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})";
 
 function escapeRegex(value: string): string {

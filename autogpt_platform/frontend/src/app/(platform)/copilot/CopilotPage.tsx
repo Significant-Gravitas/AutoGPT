@@ -1,9 +1,8 @@
 "use client";
 
 import { LowCreditBanner } from "@/components/layout/TopUpPrompt/LowCreditBanner/LowCreditBanner";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import dynamic from "next/dynamic";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
@@ -12,7 +11,6 @@ import { ContextPanelAutoOpen } from "./components/ContextPanel/ContextPanelAuto
 import { CopilotModals } from "./components/CopilotModals/CopilotModals";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
-import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useIsMobile } from "./useIsMobile";
 
@@ -35,7 +33,7 @@ const ContextPanel = dynamic(
 export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
+
   const { isUserLoading, isLoggedIn } = useAuth();
   // Read sessionId here purely to key the chat-host subtree. The view still
   // remounts on session switch, but the underlying AI SDK Chat runtime now
@@ -45,8 +43,8 @@ export function CopilotPage() {
 
   if (isUserLoading || !isLoggedIn) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f6f7fb]">
-        <ScaleLoader className="text-neutral-400" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas">
+        <ScaleLoader className="text-foreground-subtle" />
       </div>
     );
   }
@@ -64,8 +62,7 @@ export function CopilotPage() {
       // header overlays the chat (see PlatformChrome) instead of stacking
       // above it, so the full viewport is available. `svh` keeps the input
       // visible when mobile browser chrome is shown.
-      style={{ height: "100svh" }}
-      className="min-h-0"
+      className="h-svh min-h-0"
     >
       <MainArea
         isMobile={isMobile}
@@ -75,7 +72,7 @@ export function CopilotPage() {
       />
       {isMobile && sessionId && <ContextPanel sessionId={sessionId} mobile />}
       {isMobile && <ArtifactPanel mobile />}
-      {!isBrainDumpEnabled && <NotificationDialog />}
+
       <CopilotModals />
     </SidebarProvider>
   );
@@ -96,7 +93,7 @@ function MainArea({
 }: MainAreaProps) {
   return (
     <div className="flex h-full w-full flex-row overflow-hidden">
-      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-[#f6f7fb]">
+      <div className="relative flex min-w-0 flex-1 overflow-hidden bg-canvas">
         <FileDropZone
           className="relative flex min-w-0 flex-1 flex-col overflow-hidden px-0"
           onFilesDropped={setDroppedFiles}

@@ -5,6 +5,9 @@ and GTM segments on it. PostHog gets the same values as person properties
 (SECRT-2895), so funnels, retention and experiments split the same way:
 
 - `email_type` and `signin_method`: every account, from signup;
+- `is_internal`: every account, from signup, and again at each sign-in of an
+  internal one (our team: an admin, or an @agpt.co email), so a project
+  filter can leave our own team out of every insight (PostHog only);
 - `checkout_opened_at`, `country`, `country_code`, `country_source` and
   `exclude_de_at`: every checkout opener. The open is an ISO-8601 UTC moment,
   like the lifecycle dates, where MailerLite holds the day.
@@ -30,7 +33,7 @@ fills in what the person doesn't hold yet, keeps the same rules:
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import datetime
 
 from posthog import Posthog
@@ -50,6 +53,9 @@ from backend.util.posthog_events import PostHogEvent
 logger = logging.getLogger(__name__)
 
 CHECKOUT_OPENED_AT = "checkout_opened_at"
+IS_INTERNAL = "is_internal"
+
+_INTERNAL_EMAIL_DOMAIN = "@agpt.co"
 
 # Always `$set`: the account's current values, under MailerLite's own keys.
 _ALWAYS_SET = (SubscriberField.EMAIL_TYPE, SubscriberField.SIGNIN_METHOD)
@@ -85,10 +91,10 @@ class PersonUpdate(BaseModel):
     """One `$set` event: values that replace the person's, and values that
     only fill in ones the person doesn't hold yet."""
 
-    to_set: dict[str, str] = Field(default_factory=dict)
+    to_set: dict[str, str | bool] = Field(default_factory=dict)
     to_set_once: dict[str, str] = Field(default_factory=dict)
 
-    def properties(self) -> dict[str, dict[str, str]]:
+    def properties(self) -> dict[str, Mapping[str, str | bool]]:
         return {
             key: values
             for key, values in (("$set", self.to_set), ("$set_once", self.to_set_once))
@@ -96,14 +102,34 @@ class PersonUpdate(BaseModel):
         }
 
 
-def set_account_properties(user_id: str, email: str, signup_method: str | None) -> None:
-    """A new account's email type and sign-in method. Never raises: analytics
-    must not fail a signup."""
+def is_internal(email: str, role: str | None) -> bool:
+    """Whether the account is our own team's: an admin, or an @agpt.co
+    email."""
+    return role == "admin" or email.strip().lower().endswith(_INTERNAL_EMAIL_DOMAIN)
+
+
+def set_account_properties(
+    user_id: str, email: str, signup_method: str | None, role: str | None = None
+) -> None:
+    """A new account's email type, sign-in method and whether it is our
+    team's. `role` is the token's. Never raises: analytics must not fail a
+    signup."""
     try:
         providers = [signup_method] if signup_method else []
-        send(user_id, account_update(email, providers))
+        send(user_id, account_update(email, providers, role))
     except Exception:
         logger.warning(f"Could not set the PostHog account properties of {user_id}")
+
+
+def mark_internal_on_sign_in(user_id: str, email: str, role: str | None) -> None:
+    """Set `is_internal` again when an internal account signs in, so one made
+    an admin after signup is flagged from their next sign-in. Nothing is sent
+    for anyone else. Never raises."""
+    try:
+        if is_internal(email, role):
+            send(user_id, PersonUpdate(to_set={IS_INTERNAL: True}))
+    except Exception:
+        logger.warning(f"Could not set is_internal on the PostHog person {user_id}")
 
 
 def set_checkout_properties(
@@ -117,8 +143,15 @@ def set_checkout_properties(
         logger.warning(f"Could not set the PostHog checkout properties of {user_id}")
 
 
-def account_update(email: str, signin_providers: Iterable[str]) -> PersonUpdate:
-    update = PersonUpdate(to_set={SubscriberField.EMAIL_TYPE.value: email_type(email)})
+def account_update(
+    email: str, signin_providers: Iterable[str], role: str | None = None
+) -> PersonUpdate:
+    update = PersonUpdate(
+        to_set={
+            SubscriberField.EMAIL_TYPE.value: email_type(email),
+            IS_INTERNAL: is_internal(email, role),
+        }
+    )
     if method := signin_method(signin_providers):
         update.to_set[SubscriberField.SIGNIN_METHOD.value] = method
     return update

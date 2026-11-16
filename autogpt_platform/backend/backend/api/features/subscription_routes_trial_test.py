@@ -15,7 +15,6 @@ from backend.api.features import subscription_routes_test as routes_test
 from backend.api.features.subscription_routes_test import (
     TEST_FRONTEND_ORIGIN,
     TEST_USER_ID,
-    _patch_payment_flag,
 )
 from backend.data import subscription_trial_conversion as conversion
 from backend.data.subscription_trial import TrialState
@@ -60,7 +59,9 @@ def _subscription_list(*subscriptions: dict) -> stripe.ListObject:
 
 @pytest.fixture
 def trial_conversion(
-    mocker: pytest_mock.MockFixture, cancel_pending_trial: TrialState
+    mocker: pytest_mock.MockFixture,
+    cancel_pending_trial: TrialState,
+    set_platform_payment,
 ) -> MagicMock:
     """A TRIAL-tier user whose trial is cancel-pending, with every Stripe and
     database boundary of the in-place conversion recorded in call order."""
@@ -111,7 +112,7 @@ def trial_conversion(
         new_callable=AsyncMock,
         return_value=Mock(subscription_tier=SubscriptionTier.TRIAL),
     )
-    _patch_payment_flag(mocker)
+    set_platform_payment(True)
     mocker.patch.object(
         conversion,
         "get_subscription_trial",

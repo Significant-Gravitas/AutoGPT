@@ -13,7 +13,7 @@ import re
 import sys
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -26,12 +26,11 @@ from sentry_sdk.transport import Transport
 from starlette.datastructures import URL
 from starlette.requests import Request
 from websockets.asyncio.client import connect
-from websockets.exceptions import InvalidStatus
+from websockets.exceptions import ConnectionClosedError
 
 from backend.api import rest_api, ws_api
 from backend.api.conn_manager import ConnectionManager
 from backend.api.features.integrations import router as integrations_router
-from backend.api.test_helpers import override_config
 from backend.util import logging as service_logging
 from backend.util import metrics
 from backend.util.process import AppProcess
@@ -104,7 +103,7 @@ async def test_websocket_server_logs_no_session_token(
     assert logs.count(f"WebSocket /ws?token={REDACTED}") == 2
     assert logs.count(f"WebSocket /ws?q={REDACTED}&token={REDACTED}") == 1
     # The line keeps its shape, closing quote included (escaped in JSON).
-    assert len(re.findall(r'\[REDACTED\]\\?" \[accepted\]', logs)) == 2
+    assert len(re.findall(r'\[REDACTED\]\\?" \[accepted\]', logs)) == 3
 
 
 async def test_rest_server_logs_no_credentials_from_request_urls(
@@ -283,13 +282,15 @@ async def _serve_websocket_server(
 
 async def _open_websockets(host: str) -> None:
     url = f"ws://{host}/ws?token={SESSION_TOKEN}"
-    # Not a valid JWT, so the handshake is refused, as an expired one's is...
-    with pytest.raises(InvalidStatus):
-        async with connect(url):
-            pass
-    # ...and with auth off it is accepted, as a live session's is. A raw quote
-    # or # earlier in the query must not end the masking before the token.
-    with override_config(ws_api.settings, "enable_auth", False):
+    async with connect(url) as websocket:
+        with pytest.raises(ConnectionClosedError) as closed:
+            await asyncio.wait_for(websocket.recv(), timeout=3)
+        assert closed.value.rcvd is not None
+        assert closed.value.rcvd.code == 4003
+    # Once authenticated, a raw quote or # must not end query-token masking.
+    with patch.object(
+        ws_api, "authenticate_websocket", AsyncMock(return_value="user-1")
+    ):
         async with connect(url):
             pass
         target = f"/ws?q=it's#&token={SESSION_TOKEN}"

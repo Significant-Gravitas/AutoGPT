@@ -29,6 +29,7 @@ const CLOSE_CODE_NAMES: Record<number, string> = {
   4001: "missing authentication token",
   4002: "invalid token",
   4003: "invalid token",
+  4004: "account banned",
 };
 
 const READY_STATE_NAMES: Record<number, string> = {
@@ -112,4 +113,32 @@ export function logWebSocketIssue(
 function stripQuery(url: string): string {
   const queryStart = url.indexOf("?");
   return queryStart === -1 ? url : url.slice(0, queryStart);
+}
+
+export function isAuthenticationClose(code: number): boolean {
+  return [4001, 4002, 4003, 4004].includes(code);
+}
+
+export function logWebSocketClose(
+  event: CloseEvent,
+  url: string,
+  connected: boolean,
+  intentional: boolean,
+): void {
+  const { summary, extra } = describeCloseEvent(
+    event,
+    url,
+    connected ? "connected" : "connecting",
+  );
+  if (intentional) {
+    console.debug(`[BackendAPI] WebSocket closed on purpose: ${summary}`);
+  } else if (isAuthenticationClose(event.code)) {
+    console.info(`[BackendAPI] WebSocket authentication rejected: ${summary}`);
+  } else {
+    logWebSocketIssue(
+      connected ? "warn" : "error",
+      `[BackendAPI] WebSocket ${connected ? "connection closed" : "failed to connect"}: ${summary}`,
+      extra,
+    );
+  }
 }

@@ -50,6 +50,57 @@ describe("formatInputsTitle", () => {
 });
 
 describe("toConnectorRows", () => {
+  it("keeps HTTP credentials for different hosts in separate named rows", () => {
+    function httpRequest(id: string, url: string) {
+      return connectorRequest({
+        id,
+        fields: [
+          [
+            "credentials",
+            {
+              credentials_provider: ["http"],
+              credentials_types: ["host_scoped"],
+              discriminator_values: [url],
+            },
+          ],
+        ],
+      });
+    }
+    const linear = httpRequest("linear", "https://api.linear.app/graphql");
+    const github = httpRequest("github", "https://api.github.com/repos");
+    const rows = toConnectorRows([linear, github], []);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].displayName).toBe("Linear");
+    expect(rows[1].displayName).toBe("GitHub");
+    rows[0].select({ id: "linear-key", provider: "http", type: "host_scoped" });
+    expect(linear.onChange).toHaveBeenCalledOnce();
+    expect(github.onChange).not.toHaveBeenCalled();
+  });
+
+  it("merges HTTP requests for the same host despite different paths", () => {
+    function request(url: string) {
+      return connectorRequest({
+        fields: [
+          [
+            "credentials",
+            {
+              credentials_provider: ["http"],
+              credentials_types: ["host_scoped"],
+              discriminator_values: [url],
+            },
+          ],
+        ],
+      });
+    }
+    const first = request("https://api.linear.app/graphql");
+    const second = request("https://api.linear.app/other");
+    const rows = toConnectorRows([first, second], []);
+    expect(rows).toHaveLength(1);
+    rows[0].select({ id: "key", provider: "http", type: "host_scoped" });
+    expect(first.onChange).toHaveBeenCalledOnce();
+    expect(second.onChange).toHaveBeenCalledOnce();
+  });
+
   it("merges requests asking for the same provider into one row", () => {
     const first = connectorRequest({ id: "req-1" });
     const second = connectorRequest({ id: "req-2" });

@@ -6,18 +6,14 @@ import time
 import uuid
 
 import pytest
-from ldclient import Context, LDClient
-from ldclient.evaluation import EvaluationDetail
 from posthog import Posthog
 from posthog.request import APIError, GetResponse
 from pydantic import ValidationError
 
 import backend.data.redis_client as redis_client
-import backend.util.feature_flag as ff
 import backend.util.feature_flag.definition_cache as cache
 import backend.util.feature_flag.posthog as ph
-from backend.util.feature_flag import Flag, evaluate_feature_flag
-from backend.util.settings import Config, FeatureFlagBackend, FlagDefinitionCacheBackend
+from backend.util.settings import Config, FlagDefinitionCacheBackend
 from backend.util.testing import is_tcp_port_reachable
 
 REFRESH = 30
@@ -400,41 +396,6 @@ class TestClientWiring:
         assert kwargs["enable_local_evaluation"] is False
 
 
-class TestLaunchDarklyBackendIsUntouched:
-    """`launchdarkly` reaches none of this."""
-
-    @pytest.fixture(autouse=True)
-    def launchdarkly(self, mocker):
-        mocker.patch.object(
-            ff.settings.config, "feature_flag_backend", FeatureFlagBackend.LAUNCHDARKLY
-        )
-
-    @pytest.fixture
-    def ld_client(self, mocker):
-        client = mocker.Mock(spec=LDClient)
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
-        client.is_initialized.return_value = True
-        return client
-
-    @pytest.fixture
-    def user_context(self, mocker):
-        context = Context.builder("u-1").kind("user").anonymous(False).build()
-        return mocker.patch(
-            "backend.util.feature_flag._fetch_user_context_status",
-            return_value=(context, True),
-        )
-
-    @pytest.mark.asyncio
-    async def test_a_read_builds_no_definition_cache(
-        self, mocker, ld_client, user_context
-    ):
-        build = mocker.patch.object(ph, "get_flag_definition_cache")
-        ld_client.variation_detail.return_value = served(True)
-
-        assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (True, True)
-        build.assert_not_called()
-
-
 @pytest.mark.usefixtures("posthog_events_dropped")
 class TestAgainstTheRealSDK:
     """The SDK's own poll, driven through the provider."""
@@ -686,8 +647,3 @@ class TestMetrics:
         provider(redis).get_flag_definitions()
 
         assert REGISTRY.get_sample_value(name, {"outcome": "cached"}) == before + 1
-
-
-def served(value):
-    """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
-    return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})

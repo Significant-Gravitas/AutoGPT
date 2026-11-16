@@ -6,7 +6,16 @@ import {
 
 /** Opens AutoPilot and sends the first message of a new chat. */
 export async function startChat(page: Page, message: string) {
-  await page.goto("/home");
+  const [transports] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "GET" &&
+        new URL(response.url()).pathname === "/api/proxy/api/chat/transports",
+    ),
+    page.goto("/home"),
+  ]);
+  expect(transports.status()).toBe(200);
+  await transports.finished();
   const input = page.getByRole("textbox", { name: "Chat message input" });
   await expect(input).toBeVisible();
   await input.fill(message);

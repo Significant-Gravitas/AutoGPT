@@ -356,6 +356,8 @@ class TestMakeFlexGraphitiClient:
             monkeypatch,
             ChatConfig(
                 use_openrouter=True,
+                use_claude_code_subscription=False,
+                use_local=False,
                 api_key="or-key",
                 base_url="https://openrouter.ai/api/v1",
             ),

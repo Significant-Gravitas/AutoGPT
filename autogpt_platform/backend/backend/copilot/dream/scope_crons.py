@@ -60,7 +60,8 @@ async def memory_scope_may_fire(
 
 
 async def record_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> bool:
-    """Stamp the time a cron body ran its pass without an error."""
+    """Stamp the time a cron body ran its pass without an error, or the
+    community sweep took the scope."""
     try:
         return await within_deadline(
             memory_schedule_db().record_scope_run(

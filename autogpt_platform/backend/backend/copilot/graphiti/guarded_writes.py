@@ -6,7 +6,7 @@ pass's demotions, and the ratification sweep's supersession of an unratified
 proposal. ``invalidate_entity_direct_neighbors`` demotes every live fact on one
 entity, single-hop, for the dream's entity invalidations. It has no degree
 cap: a hub is invalidated whole, behind the ``dream-pass-invalidate-entity``
-flag, as before recall stamps.
+flag.
 
 Each statement writes only over a live fact (``recall.live_fact_predicate``),
 so it can never overwrite a user's forget. Each also tests
@@ -218,6 +218,8 @@ async def _supersede_one(
 def _now_iso() -> str:
     """Now, as the ISO-8601 string written to ``expired_at``. FalkorDB has no
     no-arg ``datetime()``, so the time is bound from Python."""
+    # Keep the plain datetime spelling for expired_at; stamp_time() belongs
+    # to recall stamps and has a different precision contract.
     return datetime.now(timezone.utc).isoformat()
 
 

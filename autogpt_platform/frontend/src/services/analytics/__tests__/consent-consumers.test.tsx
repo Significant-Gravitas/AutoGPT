@@ -112,6 +112,8 @@ describe("with NEXT_PUBLIC_COOKIEBOT_CBID", () => {
         ad_storage: "denied",
         ad_user_data: "denied",
         ad_personalization: "denied",
+        functionality_storage: "denied",
+        personalization_storage: "denied",
       },
     ]);
     delete (window as unknown as { dataLayer?: unknown }).dataLayer;
@@ -232,6 +234,15 @@ describe("ConsentWithdrawalReload", () => {
     act(() => answerCookiebot({}));
 
     expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("does not reload when only preferences are taken back", () => {
+    installCookiebot({ statistics: true, preferences: true });
+    render(<ConsentWithdrawalReload />);
+
+    act(() => answerCookiebot({ statistics: true }));
+
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("does not reload when the visitor grants more, or repeats the same answer", () => {

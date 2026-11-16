@@ -25,9 +25,9 @@ forgets made since the pass read the graph (``graphiti/recall_citations.py``)
 and then records it on the dream's episode and on the facts only dream
 episodes state (``graphiti/recall_derivation.py``). A later forget of
 anything it cites retracts those facts (``graphiti/recall_cascade.py``). The
-episode's free-text ``source_description`` no longer lists what it cites:
-the marker and the records carry that, and only the derivation backfill
-reads the lists older descriptions hold
+episode's free-text ``source_description`` omits citations; the marker
+and the records carry them. The derivation backfill reads citation lists
+in older descriptions
 (``graphiti/migrations/legacy_citations.py``).
 """
 

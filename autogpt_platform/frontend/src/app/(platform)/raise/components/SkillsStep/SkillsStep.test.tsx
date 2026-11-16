@@ -12,23 +12,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { SkillsStep } from "./SkillsStep";
 
-const flags = vi.hoisted(() => ({ skillsHub: true }));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) => {
-      if (flag === "skills-hub")
-        return { enabled: flags.skillsHub, ready: true };
-      return actual.useFlagStatus(flag as never);
-    },
-  };
-});
-
 const storeAgent = {
   slug: "seo-writer",
   agent_name: "SEO Blog Writer",
@@ -89,7 +72,6 @@ function renderSkills(
 
 describe("SkillsStep", () => {
   beforeEach(() => {
-    flags.skillsHub = true;
     server.use(marketplaceSkills([]));
   });
 
@@ -183,8 +165,7 @@ describe("SkillsStep", () => {
     expect(screen.queryByText("SEO Blog Writer")).toBeNull();
   });
 
-  test("offers no marketplace skills while the hub is off", async () => {
-    flags.skillsHub = false;
+  test("offers marketplace skills without a rollout flag", async () => {
     server.use(
       getListCopilotSkillsMockHandler([
         { name: "seo-audit", description: "Audit landing pages" },
@@ -194,7 +175,7 @@ describe("SkillsStep", () => {
     renderSkills();
 
     expect(await screen.findByText("seo-audit")).toBeDefined();
-    expect(screen.queryByText("Outreach playbook")).toBeNull();
+    expect(await screen.findByText("Outreach playbook")).toBeDefined();
   });
 
   test("skip raises without extra skills", async () => {

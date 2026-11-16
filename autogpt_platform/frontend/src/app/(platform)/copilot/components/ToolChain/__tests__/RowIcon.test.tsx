@@ -21,8 +21,8 @@ describe("RowIcon", () => {
       <RowIcon row={row({ category: "web", state: "error" })} />,
     );
 
-    expect(container.querySelector("svg.text-red-500")).not.toBeNull();
-    expect(container.querySelector("svg.text-zinc-600")).toBeNull();
+    expect(container.querySelector("svg.text-error")).not.toBeNull();
+    expect(container.querySelector("svg.text-foreground-secondary")).toBeNull();
   });
 
   it.each([
@@ -60,8 +60,10 @@ describe("RowIcon", () => {
   ] as const)("renders a themed icon for the %s category", (category) => {
     const { container } = render(<RowIcon row={row({ category })} />);
 
-    expect(container.querySelector("svg.text-zinc-600")).not.toBeNull();
-    expect(container.querySelector("svg.text-red-500")).toBeNull();
+    expect(
+      container.querySelector("svg.text-foreground-secondary"),
+    ).not.toBeNull();
+    expect(container.querySelector("svg.text-error")).toBeNull();
   });
 });
 
@@ -93,6 +95,8 @@ describe("ProviderIcon", () => {
     if (image) fireEvent.error(image);
 
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector("svg.text-zinc-600")).not.toBeNull();
+    expect(
+      container.querySelector("svg.text-foreground-secondary"),
+    ).not.toBeNull();
   });
 });

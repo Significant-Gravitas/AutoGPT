@@ -8,6 +8,8 @@ Each case builds the transport's real ``ChatConfig`` and runs the real
 ``copilot/transport_routing_test.py``), so a change on either side shows up.
 """
 
+import ast
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -48,17 +50,6 @@ _ANTHROPIC_SDK_MODELS = {
 }
 
 _SCOPE = InferenceScope(user_id="u1", expert_id="e1")
-
-# What the callers' old ``dream/llm.structured_completion`` raised for an
-# install whose transport dispatches to Anthropic without an Anthropic key,
-# word for word.
-_OLD_MISSING_ANTHROPIC_KEY = (
-    "Anthropic API key not configured — set ANTHROPIC_API_KEY to "
-    "enable the dream pass under subscription / direct-Anthropic "
-    "mode. The Claude Code OAuth token cannot be used for direct "
-    "Messages API calls (see "
-    "docs/platform/copilot-local-llm.md#subscription-mode-caveat)."
-)
 
 
 def _config(**settings: Any) -> ChatConfig:
@@ -279,6 +270,23 @@ def test_the_batch_route_is_anthropic_at_the_platforms_expense():
     assert route.model == "claude-opus-5-5"
 
 
+def test_shared_inference_does_not_import_dream() -> None:
+    for path in Path(__file__).parent.glob("*.py"):
+        module = ast.parse(path.read_text(encoding="utf-8"))
+        imports = [
+            node.module for node in ast.walk(module) if isinstance(node, ast.ImportFrom)
+        ]
+        imports.extend(
+            alias.name
+            for node in ast.walk(module)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        )
+        assert not any(
+            name and name.startswith("backend.copilot.dream") for name in imports
+        ), path.name
+
+
 class TestPlatformCredentials:
     def test_returns_the_transports_key(self, monkeypatch):
         cfg = _subscription_with_key(monkeypatch)
@@ -329,7 +337,8 @@ class TestPlatformCredentials:
         job = _job("aux", kind="briefing_narrative", phase=None)
         with pytest.raises(InferenceError) as exc_info:
             resolve_route(_SCOPE, job, config=cfg)
-        assert str(exc_info.value) == _OLD_MISSING_ANTHROPIC_KEY
+        assert "dream pass" not in str(exc_info.value)
+        assert "background inference" in str(exc_info.value)
 
     def test_a_local_backend_needs_no_key(self, monkeypatch):
         cfg = _local(monkeypatch)

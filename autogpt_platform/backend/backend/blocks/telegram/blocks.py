@@ -24,6 +24,7 @@ from backend.util.type import MediaFileType
 
 from ._api import (
     TelegramMessageResult,
+    _as_message,
     call_telegram_api,
     call_telegram_api_with_file,
     download_telegram_file,
@@ -142,7 +143,7 @@ class SendTelegramMessageBlock(Block):
         if disable_notification:
             data["disable_notification"] = True
 
-        return await call_telegram_api(credentials, "sendMessage", data)
+        return _as_message(await call_telegram_api(credentials, "sendMessage", data))
 
 
 class SendTelegramPhotoBlock(Block):
@@ -269,7 +270,7 @@ class SendTelegramPhotoBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
 
-        return await call_telegram_api(credentials, "sendPhoto", data)
+        return _as_message(await call_telegram_api(credentials, "sendPhoto", data))
 
     async def _send_photo_file(
         self,
@@ -291,14 +292,16 @@ class SendTelegramPhotoBlock(Block):
             data["reply_to_message_id"] = str(reply_to_message_id)
 
         mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
-        return await call_telegram_api_with_file(
-            credentials,
-            "sendPhoto",
-            file_field="photo",
-            file_data=file_bytes,
-            filename=path.name,
-            content_type=mime_type,
-            data=data,
+        return _as_message(
+            await call_telegram_api_with_file(
+                credentials,
+                "sendPhoto",
+                file_field="photo",
+                file_data=file_bytes,
+                filename=path.name,
+                content_type=mime_type,
+                data=data,
+            )
         )
 
 
@@ -429,7 +432,7 @@ class SendTelegramVoiceBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
 
-        return await call_telegram_api(credentials, "sendVoice", data)
+        return _as_message(await call_telegram_api(credentials, "sendVoice", data))
 
     async def _send_voice_file(
         self,
@@ -451,14 +454,16 @@ class SendTelegramVoiceBlock(Block):
             data["reply_to_message_id"] = str(reply_to_message_id)
 
         mime_type = mimetypes.guess_type(path.name)[0] or "audio/ogg"
-        return await call_telegram_api_with_file(
-            credentials,
-            "sendVoice",
-            file_field="voice",
-            file_data=file_bytes,
-            filename=path.name,
-            content_type=mime_type,
-            data=data,
+        return _as_message(
+            await call_telegram_api_with_file(
+                credentials,
+                "sendVoice",
+                file_field="voice",
+                file_data=file_bytes,
+                filename=path.name,
+                content_type=mime_type,
+                data=data,
+            )
         )
 
 
@@ -539,7 +544,7 @@ class ReplyToTelegramMessageBlock(Block):
         if parse_mode and parse_mode != "none":
             data["parse_mode"] = parse_mode
 
-        return await call_telegram_api(credentials, "sendMessage", data)
+        return _as_message(await call_telegram_api(credentials, "sendMessage", data))
 
 
 class GetTelegramFileBlock(Block):
@@ -658,14 +663,16 @@ class DeleteTelegramMessageBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            await self._delete_message(
+            deleted = await self._delete_message(
                 credentials=credentials,
                 chat_id=input_data.chat_id,
                 message_id=input_data.message_id,
             )
-            yield "status", "Message deleted"
         except Exception as e:
             raise ValueError(f"Failed to delete message: {e}") from e
+        if not deleted:
+            raise ValueError("Failed to delete message: Telegram did not confirm")
+        yield "status", "Message deleted"
 
     async def _delete_message(
         self,
@@ -673,12 +680,12 @@ class DeleteTelegramMessageBlock(Block):
         chat_id: int,
         message_id: int,
     ) -> bool:
-        await call_telegram_api(
+        result = await call_telegram_api(
             credentials,
             "deleteMessage",
             {"chat_id": chat_id, "message_id": message_id},
         )
-        return True
+        return result is True
 
 
 class EditTelegramMessageBlock(Block):
@@ -759,7 +766,9 @@ class EditTelegramMessageBlock(Block):
         if parse_mode and parse_mode != "none":
             data["parse_mode"] = parse_mode
 
-        return await call_telegram_api(credentials, "editMessageText", data)
+        return _as_message(
+            await call_telegram_api(credentials, "editMessageText", data)
+        )
 
 
 class SendTelegramAudioBlock(Block):
@@ -905,7 +914,7 @@ class SendTelegramAudioBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
 
-        return await call_telegram_api(credentials, "sendAudio", data)
+        return _as_message(await call_telegram_api(credentials, "sendAudio", data))
 
     async def _send_audio_file(
         self,
@@ -933,14 +942,16 @@ class SendTelegramAudioBlock(Block):
             data["reply_to_message_id"] = str(reply_to_message_id)
 
         mime_type = mimetypes.guess_type(path.name)[0] or "audio/mpeg"
-        return await call_telegram_api_with_file(
-            credentials,
-            "sendAudio",
-            file_field="audio",
-            file_data=file_bytes,
-            filename=path.name,
-            content_type=mime_type,
-            data=data,
+        return _as_message(
+            await call_telegram_api_with_file(
+                credentials,
+                "sendAudio",
+                file_field="audio",
+                file_data=file_bytes,
+                filename=path.name,
+                content_type=mime_type,
+                data=data,
+            )
         )
 
 
@@ -1072,7 +1083,7 @@ class SendTelegramDocumentBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
 
-        return await call_telegram_api(credentials, "sendDocument", data)
+        return _as_message(await call_telegram_api(credentials, "sendDocument", data))
 
     async def _send_document_file(
         self,
@@ -1095,14 +1106,16 @@ class SendTelegramDocumentBlock(Block):
             data["reply_to_message_id"] = str(reply_to_message_id)
 
         mime_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        return await call_telegram_api_with_file(
-            credentials,
-            "sendDocument",
-            file_field="document",
-            file_data=file_bytes,
-            filename=display_filename or path.name,
-            content_type=mime_type,
-            data=data,
+        return _as_message(
+            await call_telegram_api_with_file(
+                credentials,
+                "sendDocument",
+                file_field="document",
+                file_data=file_bytes,
+                filename=display_filename or path.name,
+                content_type=mime_type,
+                data=data,
+            )
         )
 
 
@@ -1237,7 +1250,7 @@ class SendTelegramVideoBlock(Block):
         if reply_to_message_id:
             data["reply_to_message_id"] = reply_to_message_id
 
-        return await call_telegram_api(credentials, "sendVideo", data)
+        return _as_message(await call_telegram_api(credentials, "sendVideo", data))
 
     async def _send_video_file(
         self,
@@ -1262,12 +1275,14 @@ class SendTelegramVideoBlock(Block):
             data["reply_to_message_id"] = str(reply_to_message_id)
 
         mime_type = mimetypes.guess_type(path.name)[0] or "video/mp4"
-        return await call_telegram_api_with_file(
-            credentials,
-            "sendVideo",
-            file_field="video",
-            file_data=file_bytes,
-            filename=path.name,
-            content_type=mime_type,
-            data=data,
+        return _as_message(
+            await call_telegram_api_with_file(
+                credentials,
+                "sendVideo",
+                file_field="video",
+                file_data=file_bytes,
+                filename=path.name,
+                content_type=mime_type,
+                data=data,
+            )
         )

@@ -809,10 +809,14 @@ async def _get_graph_impl(
                 LIMIT $limit
                 """,
                 g=group_id,
-                limit=node_limit,
+                # One extra row tells "exactly node_limit" from "more".
+                limit=node_limit + 1,
             )
             rows = result[0] if result else []
             for r in rows:
+                if len(nodes) >= node_limit:
+                    truncated = True
+                    break
                 # Custom entity types (Person, Organization, etc.) appear
                 # alongside the base "Entity" label. Pick the first
                 # non-base label as the "type".
@@ -832,9 +836,6 @@ async def _get_graph_impl(
                         hard_deleted_at=r.get("hard_deleted_at"),
                     )
                 )
-                if len(nodes) >= node_limit:
-                    truncated = True
-                    break
             if truncated:
                 break
 
@@ -867,7 +868,7 @@ async def _get_graph_impl(
             LIMIT $limit
             """,
             g=group_id,
-            limit=edge_limit,
+            limit=edge_limit + 1,
         )
         rows = result[0] if result else []
         for r in rows:
@@ -877,6 +878,9 @@ async def _get_graph_impl(
             # the rendered graph well-formed when truncation cuts in.
             if src not in node_uuids or tgt not in node_uuids:
                 continue
+            if len(edges) >= edge_limit:
+                truncated = True
+                break
             edges.append(
                 GraphEdge(
                     uuid=str(r.get("uuid", "")),
@@ -889,9 +893,6 @@ async def _get_graph_impl(
                     scope=r.get("scope"),
                 )
             )
-            if len(edges) >= edge_limit:
-                truncated = True
-                break
     except ResponseError as exc:
         # Missing graph (new user) — return an empty payload rather than
         # 500; the frontend renders the empty state. Any other FalkorDB
@@ -1012,18 +1013,28 @@ class CommunityRebuildJobStatus(JobStatus[RebuildResult]):
     """JobStatus envelope for ``kind="rebuild"``."""
 
 
+class PublicDreamPassRecord(DreamPassRecord):
+    """Admin-visible pass record without the live lock credential."""
+
+    lease_token: str | None = Field(default=None, exclude=True)
+
+
+def _public_pass_record(record: DreamPassRecord) -> PublicDreamPassRecord:
+    return PublicDreamPassRecord.model_validate(record.model_dump())
+
+
 class DreamPassRecordResponse(BaseModel):
     """One dream pass's durable record, and the ``DreamPassResult`` read off
     it: what the eval driver scores, with usage for batch passes too."""
 
-    record: DreamPassRecord
+    record: PublicDreamPassRecord
     result: DreamPassResult
 
 
 class DreamPassListResponse(BaseModel):
     """A user's dream passes, every scope, newest first."""
 
-    passes: list[DreamPassRecord]
+    passes: list[PublicDreamPassRecord]
 
 
 # What a cancelled pass's record says when the admin gave no reason.
@@ -1142,7 +1153,7 @@ async def list_dream_pass_records(
         jwt_payload=jwt_payload,
     )
     passes = await read_user_passes(target, open_only=status == "open", limit=limit)
-    return DreamPassListResponse(passes=passes)
+    return DreamPassListResponse(passes=[_public_pass_record(row) for row in passes])
 
 
 @router.get(
@@ -1202,7 +1213,7 @@ async def get_dream_pass_record(
     if record is None:
         raise HTTPException(status_code=404, detail="dream pass not found")
     return DreamPassRecordResponse(
-        record=record, result=dream_pass_result_from_row(record)
+        record=_public_pass_record(record), result=dream_pass_result_from_row(record)
     )
 
 
@@ -1244,7 +1255,8 @@ async def cancel_dream_pass_run(
         ended = cancel.record.status.value.lower()
         raise HTTPException(status_code=409, detail=f"dream pass already {ended}")
     return DreamPassRecordResponse(
-        record=cancel.record, result=dream_pass_result_from_row(cancel.record)
+        record=_public_pass_record(cancel.record),
+        result=dream_pass_result_from_row(cancel.record),
     )
 
 

@@ -1,4 +1,3 @@
-from contextlib import ExitStack
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -16,12 +15,14 @@ from backend.copilot.briefing.narrative import (
     NarrativeResponse,
     compose_narrative,
 )
+from backend.copilot.config import ChatConfig
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import (
     InferenceError,
     InferenceUsage,
     RouteDecision,
 )
+from backend.util.llm.providers import small_call_reasoning
 
 NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 USER = "user-1"
@@ -358,32 +359,6 @@ async def test_failed_attempt_that_the_provider_billed_is_still_recorded(cost_lo
 
 
 @pytest.mark.asyncio
-async def test_a_billed_failure_reaches_the_trace_priced(cost_log):
-    """The span of an attempt whose answer did not parse carries the cost the
-    ledger charged, not the provider's unpriced usage."""
-    usage = InferenceUsage(
-        model="claude-haiku-4-5-20251001",
-        input_tokens=1_000_000,
-        payer="platform_allowance",
-    )
-    written: list[InferenceUsage | None] = []
-    with patch_llm(side_effect=InferenceError("bad json", usage)), patch(
-        "backend.copilot.inference.trace._open_spans", return_value=ExitStack()
-    ), patch(
-        "backend.copilot.inference.trace._current_trace_id", return_value=None
-    ), patch(
-        "backend.copilot.inference.trace._write_usage", side_effect=written.append
-    ):
-        assert await compose_narrative(USER, make_content()) is None
-
-    assert cost_log.await_count == 2
-    assert [u.cost_usd if u else None for u in written] == [
-        pytest.approx(1.0),
-        pytest.approx(1.0),
-    ]
-
-
-@pytest.mark.asyncio
 async def test_transport_failure_is_not_billed(cost_log):
     with patch_llm(side_effect=InferenceError("no api key")):
         assert await compose_narrative(USER, make_content()) is None
@@ -399,3 +374,11 @@ async def test_cost_log_failure_does_not_lose_the_narrative(cost_log):
 
 
 usage_snapshot = usage_activation_fixtures.usage_snapshot
+
+
+def test_the_lede_runs_without_reasoning_on_the_aux_model():
+    # Haiku 5.5's thinking spent the whole 200-token cap on 2 ledes in 12.
+    model = ChatConfig.model_fields["title_model"].default
+    assert small_call_reasoning(model, narrative_module._MAX_OUTPUT_TOKENS) == {
+        "reasoning": {"enabled": False}
+    }

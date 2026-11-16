@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import stripe
 from prisma.enums import CreditTransactionType
+from prisma.types import OrgCreditTransactionWhereInput
 from pydantic import BaseModel
 
 from backend.data.credit import (
@@ -52,6 +53,19 @@ async def _personal_org_owner(org_id: str) -> str | None:
 async def get_personal_org_owner(org_id: str) -> str | None:
     """Public accessor for the cached personal-org owner lookup."""
     return await _personal_org_owner(org_id)
+
+
+def forget_personal_org_owner(org_id: str) -> None:
+    """Drop the cached lookup, for an org that has just stopped being personal.
+
+    Best effort: until the entry expires, new runs bill the owner's own wallet.
+    """
+    try:
+        _personal_org_owner.cache_delete(org_id)
+    except Exception:
+        logger.warning(
+            f"Could not drop the cached owner of org {org_id}", exc_info=True
+        )
 
 
 async def get_org_credits(org_id: str) -> int:
@@ -104,6 +118,14 @@ async def spend_org_credits(
     # reconciliation refunds for every personal-org (i.e. ordinary) user.
     owner_id = await _personal_org_owner(org_id)
     if owner_id is not None:
+        # The owner's wallet pays for the owner's own spend and nobody else's.
+        if user_id != owner_id:
+            raise InsufficientBalanceError(
+                "A personal organization pays only for its owner's usage",
+                user_id=user_id,
+                balance=0,
+                amount=amount,
+            )
         credit_model = await get_user_credit_model(owner_id)
         return await credit_model.spend_credits(
             user_id=owner_id,
@@ -239,10 +261,21 @@ async def get_org_transaction_history(
     org_id: str,
     limit: int = 50,
     offset: int = 0,
+    time_ceiling: datetime | None = None,
+    transaction_type: str | None = None,
 ) -> list[dict]:
     """Get credit transaction history for an organization."""
+    where: OrgCreditTransactionWhereInput = {
+        "orgId": org_id,
+        "isActive": True,
+    }
+    if time_ceiling:
+        where["createdAt"] = {"lt": time_ceiling}
+    if transaction_type:
+        where["type"] = CreditTransactionType(transaction_type)
+
     transactions = await prisma.orgcredittransaction.find_many(
-        where={"orgId": org_id, "isActive": True},
+        where=where,
         order={"createdAt": "desc"},
         take=limit,
         skip=offset,

@@ -115,6 +115,12 @@ def truncate(value: Any, size_limit: int) -> Any:
     STR_MIN, STR_MAX = min(8, size_limit), size_limit
     LIST_MIN, LIST_MAX = 1, 2**12
 
+    # The search below converges on the maximal limits whenever they fit, so try them
+    # first; this still caps lists at LIST_MAX, which returning `value` would not.
+    maximal = _truncate_value(value, STR_MAX, LIST_MAX)
+    if measure(maximal) <= size_limit:
+        return maximal
+
     # Binary search for the largest str_limit and list_limit that fit
     best = None
 

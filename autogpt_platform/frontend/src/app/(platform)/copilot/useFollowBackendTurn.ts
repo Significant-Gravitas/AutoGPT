@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useInsertionEffect, useRef } from "react";
 import { hasActiveBackendStream } from "./helpers";
 
 interface Args {
@@ -25,30 +25,29 @@ export function useFollowBackendTurn({
   // Read live: the caller holds this hook's function from the render where
   // the card was clicked, and the turn may have ended during the POST.
   const isBusyRef = useRef(isBusy);
-  isBusyRef.current = isBusy;
   const isMountedRef = useRef(true);
   // One probe at a time; a second answer mid-probe restarts its budget.
   const attemptsLeftRef = useRef(0);
   const isProbingRef = useRef(false);
   const timerRef = useRef<{ id: number; wake: () => void } | null>(null);
-  const followRef = useRef(follow);
-  followRef.current = follow;
 
   async function follow() {
     pendingRef.current = false;
     attemptsLeftRef.current = FOLLOW_ATTEMPTS;
     if (isProbingRef.current) return;
     isProbingRef.current = true;
-    try {
-      while (attemptsLeftRef.current-- > 0) {
-        if (!isMountedRef.current || isBusyRef.current) return;
-        hasResumedRef.current = false;
-        const result = await refetchSession();
-        if (hasActiveBackendStream(result)) return;
-        if (attemptsLeftRef.current > 0) await wait(FOLLOW_INTERVAL_MS);
-      }
-    } finally {
+    await probe().finally(() => {
       isProbingRef.current = false;
+    });
+  }
+
+  async function probe() {
+    while (attemptsLeftRef.current-- > 0) {
+      if (!isMountedRef.current || isBusyRef.current) return;
+      hasResumedRef.current = false;
+      const result = await refetchSession();
+      if (hasActiveBackendStream(result)) return;
+      if (attemptsLeftRef.current > 0) await wait(FOLLOW_INTERVAL_MS);
     }
   }
 
@@ -57,6 +56,12 @@ export function useFollowBackendTurn({
       timerRef.current = { id: window.setTimeout(wake, ms), wake };
     });
   }
+
+  const followRef = useRef(follow);
+  useInsertionEffect(() => {
+    isBusyRef.current = isBusy;
+    followRef.current = follow;
+  });
 
   useEffect(() => {
     isMountedRef.current = true;

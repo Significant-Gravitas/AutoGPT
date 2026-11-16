@@ -2,7 +2,7 @@
 
 A real ``AsyncOpenAI`` client streams from the fake provider, and the
 baseline's own usage and cost parsing reads what it sends. Stubbed:
-persistence, transcript storage, the system prompt, flag lookups and the
+persistence, transcript storage, memory, the system prompt and the
 copilot's tools, which answer the provider's tool call with a canned result.
 """
 
@@ -59,8 +59,10 @@ class BaselineTurns:
             "clear_pending_question": AsyncMock(),
             "resolve_answered": _no_answered_cards,
             "build_turn_budget_block": AsyncMock(return_value=""),
-            "is_enabled_for_user": AsyncMock(return_value=False),
-            "is_feature_enabled": AsyncMock(return_value=False),
+            "_fetch_graphiti_context": AsyncMock(return_value=""),
+            "_enqueue_graphiti_turn": AsyncMock(),
+            "capture_chat_turn": AsyncMock(),
+            "build_expert_identity_suffix": AsyncMock(return_value=""),
         }
         for name, value in stubs.items():
             monkeypatch.setattr(baseline, name, value)

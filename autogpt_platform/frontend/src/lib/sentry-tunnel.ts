@@ -20,10 +20,11 @@ export function getSentryTunnelURL(dsn: string | undefined) {
 }
 
 // Sentry dropped these itself while the tunnel was its `tunnelRoute`. The server
-// transaction carries the request URL; the edge middleware's only its target.
+// transaction carries the request URL; the edge middleware's only its path,
+// which Sentry's spans name `url.path` and Next's own `http.target`.
 export function isSentryTunnelTransaction(event: Event) {
-  const target = event.contexts?.trace?.data?.["http.target"];
-  return [event.request?.url, target].some(
+  const data = event.contexts?.trace?.data;
+  return [event.request?.url, data?.["url.path"], data?.["http.target"]].some(
     (url) => typeof url === "string" && getPathname(url) === SENTRY_TUNNEL_PATH,
   );
 }

@@ -37,6 +37,23 @@ describe("usePlatformChrome", () => {
     expect(result.current.showAppSidebar).toBe(true);
   });
 
+  it("shows the changelog after the signed-in session is ready", () => {
+    const { result } = renderHook(() => usePlatformChrome());
+
+    expect(result.current.showChangelog).toBe(true);
+  });
+
+  it.each([
+    { isLoggedIn: false, isUserLoading: false },
+    { isLoggedIn: false, isUserLoading: true },
+    { isLoggedIn: true, isUserLoading: true },
+  ])("keeps the changelog hidden for session state %j", (auth) => {
+    setAuth(auth);
+    const { result } = renderHook(() => usePlatformChrome());
+
+    expect(result.current.showChangelog).toBe(false);
+  });
+
   it.each(["/settings", "/settings/billing", "/admin/marketplace"])(
     "keeps the app sidebar off %s, which brings its own shell",
     async (route) => {

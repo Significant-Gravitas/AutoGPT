@@ -1,3 +1,4 @@
+// The grid classes below spell these out (Tailwind needs static classes).
 const COLS = 16;
 const ROWS = 7;
 
@@ -15,18 +16,20 @@ function cellOpacity(index: number) {
 export function GlassPixelBackdrop() {
   return (
     <div
+      data-slot="glass-pixel-backdrop"
       aria-hidden
-      className="pointer-events-none absolute inset-0 grid"
-      style={{
-        gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-        gridTemplateRows: `repeat(${ROWS}, 1fr)`,
-      }}
+      className="pointer-events-none absolute inset-0 grid grid-cols-[repeat(16,1fr)] grid-rows-[repeat(7,1fr)]"
     >
       {Array.from({ length: COLS * ROWS }, (_, index) => (
         <span
           key={index}
-          className="border-[0.5px] border-white/10 bg-white"
-          style={{ opacity: cellOpacity(index) }}
+          data-slot="glass-pixel-backdrop-cell"
+          // The opacity differs per cell, so it is a custom property.
+          // oxlint-disable-next-line design-system/no-arbitrary-values -- hairline glass tile edge, no 0.5px border width on the scale
+          className="border-[0.5px] border-surface/10 bg-surface opacity-(--cell-opacity)"
+          style={
+            { "--cell-opacity": cellOpacity(index) } as React.CSSProperties
+          }
         />
       ))}
     </div>

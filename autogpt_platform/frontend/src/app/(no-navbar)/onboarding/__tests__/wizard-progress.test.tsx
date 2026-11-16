@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readLocalProgress, writeLocalProgress } from "../progress";
 import { PAYWALL_LAST_STEPS, useOnboardingWizardStore } from "../store";
 import { useWizardProgress } from "../useWizardProgress";
-import { makeProgress } from "./progress-fixture";
+import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
 const { getState, patchState } = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -19,6 +19,17 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => params,
 }));
 
+function makeProgress(overrides: Parameters<typeof makeBaseProgress>[0] = {}) {
+  const draft = makeBaseProgress(overrides);
+  return {
+    ...draft,
+    completedSteps: [
+      "team",
+      "autopilot",
+      ...draft.completedSteps,
+    ] as typeof draft.completedSteps,
+  };
+}
 function response(progress = makeProgress(), revision = 4, userID = "u1") {
   return {
     status: 200,
@@ -144,6 +155,44 @@ it("acknowledges an uncertain save already present on the server without another
   expect(readLocalProgress("u1")).toEqual({
     progress: makeProgress(),
     revision: 4,
+    pending: false,
+  });
+});
+
+it("keeps saving after a timed-out save that the server applied", async () => {
+  let server = { progress: makeProgress(), revision: 4 };
+  getState.mockImplementation(async () =>
+    response(server.progress, server.revision),
+  );
+  patchState.mockImplementation(
+    ({ wizardProgress, wizardRevision, wizardUserId }) => {
+      if (wizardRevision !== server.revision)
+        return Promise.resolve({ status: 409, data: { detail: "Conflict" } });
+      const answers = server.revision > 4;
+      server = { progress: wizardProgress, revision: server.revision + 1 };
+      if (!answers) return new Promise(() => {});
+      return Promise.resolve({
+        status: 200,
+        data: { userId: wizardUserId, wizardRevision: server.revision },
+      });
+    },
+  );
+  const { result } = mountWizard();
+  await settle();
+  act(() => useOnboardingWizardStore.getState().setRole("Founder"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10_250);
+  });
+  expect(result.current.error).toMatch(/couldn't save/i);
+  act(() => useOnboardingWizardStore.getState().setOtherRole("Solo"));
+  await settle();
+  const latest = makeProgress({ role: "Founder", otherRole: "Solo" });
+  expect(result.current.conflict).toBe(false);
+  expect(result.current.error).toBeNull();
+  expect(server).toEqual({ progress: latest, revision: 6 });
+  expect(readLocalProgress("u1")).toEqual({
+    progress: latest,
+    revision: 6,
     pending: false,
   });
 });

@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "DreamPass_createdAt_idx" ON "DreamPass"("createdAt");

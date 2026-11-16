@@ -323,39 +323,27 @@ async def test_post_unavailable_without_token():
 
 
 @pytest.mark.asyncio
-async def test_edit_requires_auth(session):
+@pytest.mark.parametrize(
+    "user_id, channel_id, ref_id, content, error",
+    [
+        (None, "42", "100", "hi", "auth_required"),
+        (_USER, "  ", "100", "hi", "missing_channel_id"),
+        (_USER, "42", "", "hi", "missing_ref_id"),
+        (_USER, "42", "100", "   ", "missing_content"),
+    ],
+)
+async def test_edit_refuses_a_missing_argument(
+    session, user_id, channel_id, ref_id, content, error
+):
     result = await EditChatPlatformMessageTool()._execute(
-        user_id=None, session=session, channel_id="42", ref_id="100", content="hi"
+        user_id=user_id,
+        session=session,
+        channel_id=channel_id,
+        ref_id=ref_id,
+        content=content,
     )
     assert isinstance(result, ErrorResponse)
-    assert result.error == "auth_required"
-
-
-@pytest.mark.asyncio
-async def test_edit_missing_channel_id(session):
-    result = await EditChatPlatformMessageTool()._execute(
-        user_id=_USER, session=session, channel_id="  ", ref_id="100", content="hi"
-    )
-    assert isinstance(result, ErrorResponse)
-    assert result.error == "missing_channel_id"
-
-
-@pytest.mark.asyncio
-async def test_edit_missing_ref_id(session):
-    result = await EditChatPlatformMessageTool()._execute(
-        user_id=_USER, session=session, channel_id="42", ref_id="", content="hi"
-    )
-    assert isinstance(result, ErrorResponse)
-    assert result.error == "missing_ref_id"
-
-
-@pytest.mark.asyncio
-async def test_edit_missing_content(session):
-    result = await EditChatPlatformMessageTool()._execute(
-        user_id=_USER, session=session, channel_id="42", ref_id="100", content="   "
-    )
-    assert isinstance(result, ErrorResponse)
-    assert result.error == "missing_content"
+    assert result.error == error
 
 
 @pytest.mark.asyncio

@@ -22,14 +22,13 @@ const queueFollowUpMessage = vi.hoisted(() => vi.fn());
 const queueMessage = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => vi.fn());
 
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: {
-    CHAT_MODE_OPTION: "chat-mode-option",
-    HIRE_EXPERTS: "hire-experts",
-    ONBOARDING_BRAIN_DUMP: "onboarding-brain-dump",
-  },
-  useGetFlag: () => false,
-}));
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return { ...actual, useGetFlag: () => false };
+});
 
 vi.mock("nuqs", () => ({
   parseAsString: {},

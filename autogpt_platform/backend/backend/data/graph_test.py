@@ -1,7 +1,8 @@
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import UUID, uuid4
 
 import fastapi.exceptions
@@ -9,17 +10,27 @@ import prisma
 import pytest
 from autogpt_libs.auth.models import RequestContext
 from prisma.enums import ResourceVisibility, SubmissionStatus
-from prisma.models import AgentGraph, AgentNode, LibraryAgent, User
+from prisma.models import (
+    AgentGraph,
+    AgentNode,
+    LibraryAgent,
+    StoreListing,
+    StoreListingVersion,
+    User,
+)
 from pytest_snapshot.plugin import Snapshot
 
 import backend.api.features.library.db as library_db
 import backend.api.features.store.model as store
 from backend.api.features.graphs import routes as graphs_routes
 from backend.api.model import CreateGraph
-from backend.blocks._base import BlockSchema, BlockSchemaInput
+from backend.blocks import _all_subclasses, load_all_blocks
+from backend.blocks._base import Block, BlockSchema
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID, AutoPilotTransport
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeBlock
+from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
 from backend.blocks.io import (
     AgentGoogleDriveFileInputBlock,
@@ -27,6 +38,8 @@ from backend.blocks.io import (
     AgentOutputBlock,
 )
 from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
+from backend.blocks.mcp.block import MCPToolBlock
+from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data.graph import (
     SUBMITTED_TO_MARKETPLACE,
     BaseGraph,
@@ -35,21 +48,35 @@ from backend.data.graph import (
     Link,
     Node,
     NodeModel,
+    clear_sub_graph_refs_owned_by,
+    copy_graph,
+)
+from backend.data.graph import create_graph as db_create_graph
+from backend.data.graph import (
     delete_graph,
+    foreign_sub_graph_refs,
     fork_graph,
+    get_copied_graph_ids,
     get_graph,
     get_graph_all_versions,
+    get_graph_at_version,
     get_graph_settings,
     get_store_listed_graphs,
     graph_in_library_filter,
+    graph_owner_id,
+    is_graph_version_owner,
     make_graph_model,
     migrate_llm_models,
     validate_graph_execution_permissions,
 )
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsFieldInfo, SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    NotFoundError,
+)
 from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
@@ -229,10 +256,6 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
         create_graph, DEFAULT_USER_ID
     )
 
-    class ExpectedInputSchema(BlockSchemaInput):
-        in_key_a: Any = SchemaField(title="Key A", default="A", advanced=True)
-        in_key_b: Any = SchemaField(title="in_key_b", advanced=False)
-
     class ExpectedOutputSchema(BlockSchema):
         # Note: Graph output schemas are dynamically generated and don't inherit
         # from BlockSchemaOutput, so we use BlockSchema as the base instead
@@ -244,7 +267,21 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
 
     input_schema = created_graph.input_schema
     input_schema["title"] = "ExpectedInputSchema"
-    assert input_schema == ExpectedInputSchema.jsonschema()
+    # Both inputs are advanced, so both are optional, with or without a default.
+    assert input_schema == {
+        "title": "ExpectedInputSchema",
+        "type": "object",
+        "properties": {
+            "in_key_a": {
+                "advanced": True,
+                "default": "A",
+                "secret": False,
+                "title": "Key A",
+            },
+            "in_key_b": {"advanced": True, "secret": False, "title": "in_key_b"},
+        },
+        "required": [],
+    }
 
     # Add snapshot testing for the schemas
     snapshot.snapshot_dir = "snapshots"
@@ -370,6 +407,28 @@ def test_stripped_for_export_drops_declared_credentials_field():
     assert "credentials" not in stripped.input_default
     assert stripped.input_default["code"] == "print('hi')"
     assert stripped.webhook_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_is_graph_version_owner(server: SpinTestServer):
+    """A graph version is owned by the user who saved it, by no one else, and a
+    missing version is owned by no one."""
+    graph = Graph(
+        name="Owned graph",
+        description="",
+        nodes=[Node(block_id=StoreValueBlock().id, input_default={})],
+        links=[],
+    )
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=graph), DEFAULT_USER_ID
+    )
+    other_user = await create_test_user(alt_user=True)
+
+    assert await is_graph_version_owner(created.id, created.version, DEFAULT_USER_ID)
+    assert not await is_graph_version_owner(created.id, created.version, other_user.id)
+    assert not await is_graph_version_owner(
+        created.id, created.version + 1, DEFAULT_USER_ID
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -758,6 +817,141 @@ def test_picked_files_of_a_removed_block_are_still_found():
     assert graph.nodes[0].input_default == {"file": None, "note": "plain"}
 
 
+def _sub_agent_node(user_id: str) -> Node:
+    return Node(
+        id="sub-agent",
+        block_id=AgentExecutorBlock().id,
+        input_default={
+            "user_id": user_id,
+            "graph_id": "child-graph",
+            "graph_version": 1,
+            "inputs": {},
+            "input_schema": {},
+            "output_schema": {},
+        },
+    )
+
+
+def test_stripped_for_export_blanks_a_sub_agent_nodes_user_id():
+    """A sub-agent node holds the id of the account that saved the graph. An
+    export blanks it, and the copy still works: saving it stamps the id of
+    whoever saves it."""
+    graph = _graph_of(_sub_agent_node("owner-user"))
+
+    exported = graph.nodes[0].stripped_for_export()
+
+    assert exported.input_default["user_id"] == ""
+    assert exported.input_default["graph_id"] == "child-graph"
+    assert graph.nodes[0].input_default["user_id"] == "owner-user"
+
+    copy = _graph_of(
+        Node(
+            id="sub-agent",
+            block_id=exported.block_id,
+            input_default=exported.input_default,
+        )
+    )
+    copy.reassign_ids(user_id="importer", reassign_graph_id=True)
+    assert copy.nodes[0].input_default["user_id"] == "importer"
+
+
+def test_shared_copy_strips_every_node_and_names_no_owner():
+    """What someone who doesn't own a graph is shown: every node, sub-graphs'
+    included, stripped as an export strips it, and no owner. The graph it was
+    copied from is untouched, and the run form built from it is the same."""
+    trigger = Node(
+        id="trigger",
+        block_id=GenericWebhookTriggerBlock().id,
+        input_default={"secret_token": "owner-token", "constants": {"k": "v"}},
+    )
+    code = Node(
+        id="code",
+        block_id=ExecuteCodeBlock().id,
+        input_default={
+            "credentials": {"id": "owner-e2b", "provider": "e2b", "type": "api_key"},
+            "code": "print('hi')",
+        },
+    )
+    sql = Node(
+        id="sql",
+        block_id=SQLQueryBlock().id,
+        input_default={"host": "db.internal", "database": "app", "query": "select 1"},
+    )
+    graph = _graph_of(
+        trigger, code, _sub_agent_node("test-user"), sub_graph_nodes=[sql]
+    )
+    graph.organization_id, graph.team_id = "owner-org", "owner-team"
+    graph.nodes[0].webhook_id = "owner-webhook"
+
+    shared = graph.shared_copy()
+
+    assert (shared.user_id, shared.organization_id, shared.team_id) == ("", None, None)
+    assert [node.webhook_id for node in shared.nodes] == [None, None, None]
+    assert shared.nodes[0].input_default == {"constants": {"k": "v"}}
+    assert shared.nodes[1].input_default == {"code": "print('hi')"}
+    assert shared.nodes[2].input_default["user_id"] == ""
+    assert shared.sub_graphs[0].nodes[0].input_default == {
+        "database": "app",
+        "query": "select 1",
+    }
+
+    assert graph.user_id == "test-user"
+    assert graph.nodes[0].webhook_id == "owner-webhook"
+    assert graph.nodes[0].input_default["secret_token"] == "owner-token"
+    assert graph.sub_graphs[0].nodes[0].input_default["host"] == "db.internal"
+
+    assert shared.input_schema == graph.input_schema
+    assert shared.credentials_input_schema == graph.credentials_input_schema
+    assert shared.trigger_setup_info == graph.trigger_setup_info
+
+
+def test_only_known_block_fields_are_marked_secret():
+    """Guard on what `stripped_for_export` strips. It finds secret inputs by
+    the `secret` flag in the block's current schema, so a value saved under a
+    field (or block) that has since been renamed or removed is no longer
+    recognised, and exports and shared copies would carry it. Before removing
+    or renaming one of these, scrub the stored values with a data migration;
+    a newly added one only needs adding here.
+
+    Every block class counts, including those this environment leaves out of
+    `load_all_blocks()` because their provider isn't configured."""
+    load_all_blocks()  # imports every block module
+    block_classes = {
+        block_cls
+        for block_cls in _all_subclasses(Block)
+        if block_cls.__module__.startswith("backend.blocks.")
+        and not block_cls.__name__.endswith("Base")
+    }
+
+    secret_fields = set()
+    construction_failures: list[str] = []
+    for block_cls in block_classes:
+        try:
+            block = block_cls()
+        except Exception as e:
+            # Never skip silently: an excluded block is one this guard did not
+            # actually check.
+            construction_failures.append(f"{block_cls.__name__}: {e!r}")
+            continue
+        properties = block.input_schema.jsonschema().get("properties", {})
+        for name, field_schema in properties.items():
+            if isinstance(field_schema, dict) and field_schema.get("secret") is True:
+                secret_fields.add((block.name, name))
+
+    assert not construction_failures, (
+        "blocks failed to construct, so they were not covered by this guard: "
+        + "; ".join(construction_failures)
+    )
+    assert secret_fields == {
+        ("AllQuietIncidentTriggerBlock", "signing_secret"),
+        ("AutoPilotBlock", "codex_credentials"),
+        ("ExaSearchMonitorTriggerBlock", "webhook_secret"),
+        ("GenericWebhookTriggerBlock", "secret_token"),
+        ("PublishToMediumBlock", "author_id"),
+        ("SQLQueryBlock", "host"),
+    }
+
+
 def _sheets_graph_row(owner_id: str) -> AgentGraph:
     return AgentGraph(
         id="g-1",
@@ -913,6 +1107,147 @@ async def test_fork_graph_clears_picked_files(
         await delete_graph(forked.id, user_id=DEFAULT_USER_ID)
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_duplicate_saved_again_in_the_builder_is_still_a_copy(
+    server: SpinTestServer,
+):
+    original = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "greeting"})),
+        DEFAULT_USER_ID,
+    )
+    entry = await library_db.get_library_agent_by_graph_id(DEFAULT_USER_ID, original.id)
+    assert entry is not None
+    duplicate = await library_db.fork_library_agent(entry.id, DEFAULT_USER_ID)
+    copy = await get_graph(duplicate.graph_id, None, DEFAULT_USER_ID)
+    assert copy is not None
+    value_node, output_node = sorted(
+        copy.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    # The builder sends the graph back without ``forked_from_id``.
+    edited = _value_to_output_graph({"name": "hello"}, value_node.id, output_node.id)
+    edited.id = copy.id
+    await graphs_routes.update_graph(
+        copy.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    latest = await get_graph(copy.id, None, DEFAULT_USER_ID)
+    assert latest is not None and latest.version > copy.version
+    assert latest.forked_from_id is None
+
+    assert await get_copied_graph_ids([original.id, copy.id]) == [copy.id]
+
+
+@pytest.mark.parametrize("copy_with", [fork_graph, copy_graph], ids=["dup", "copy"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflow_copied_with_its_workflow_is_a_copy(
+    server: SpinTestServer, copy_with: Callable[..., Awaitable[GraphModel]]
+):
+    owner = await create_test_user()
+    workflow = await _workflow_with_a_sub_workflow(owner.id)
+
+    copy = await copy_with(workflow.id, workflow.version, owner.id)
+
+    [sub_copy] = copy.sub_graphs
+    copies = await get_copied_graph_ids([copy.id, sub_copy.id])
+    assert set(copies) == {copy.id, sub_copy.id}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_sub_workflow_saved_with_another_users_workflow_is_a_copy(
+    server: SpinTestServer,
+):
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    workflow = await _workflow_with_a_sub_workflow(owner.id)
+    await _in_library_from_the_marketplace(workflow, other.id)
+    stored = await get_graph(
+        workflow.id, workflow.version, owner.id, include_subgraphs=True
+    )
+    assert stored is not None and len(stored.sub_graphs) == 1
+    unrelated = await db_create_graph(_graph("Not a sub-workflow"), owner.id)
+    sent = Graph.model_validate(stored.model_dump())
+    sent.sub_graphs += [
+        BaseGraph(
+            id=unrelated.id,
+            version=unrelated.version,
+            name="Sent along",
+            description="",
+        ),
+        BaseGraph(name="Never stored", description=""),
+    ]
+
+    copy, _ = await library_db.fork_graph_in_library(
+        sent, other.id, forked_from_version=workflow.version
+    )
+
+    [sub_copy_id] = [
+        node.input_default["graph_id"]
+        for node in copy.nodes
+        if node.block_id == AgentExecutorBlock().id
+    ]
+    copies = await get_copied_graph_ids([copy.id, sub_copy_id])
+    assert set(copies) == {copy.id, sub_copy_id}
+    assert not await AgentGraph.prisma().find_many(where={"forkedFromId": unrelated.id})
+
+
+async def _workflow_with_a_sub_workflow(user_id: str) -> GraphModel:
+    child = await db_create_graph(
+        _value_to_output_graph({"name": "greeting"}, str(uuid4()), str(uuid4())),
+        user_id,
+    )
+    return await db_create_graph(
+        Graph(
+            name=f"Calls a sub-workflow {uuid4()}",
+            description="",
+            nodes=[
+                Node(
+                    block_id=AgentExecutorBlock().id,
+                    input_default={
+                        "user_id": user_id,
+                        "graph_id": child.id,
+                        "graph_version": child.version,
+                        "inputs": {},
+                        "input_schema": child.input_schema,
+                        "output_schema": child.output_schema,
+                    },
+                )
+            ],
+        ),
+        user_id,
+    )
+
+
+async def _in_library_from_the_marketplace(graph: GraphModel, user_id: str) -> None:
+    listing = await StoreListing.prisma().create(
+        data={
+            "slug": f"sub-workflow-{uuid4()}",
+            "agentGraphId": graph.id,
+            "owningUserId": graph.user_id,
+            "hasApprovedVersion": True,
+        }
+    )
+    await StoreListingVersion.prisma().create(
+        data={
+            "storeListingId": listing.id,
+            "version": 1,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "name": graph.name,
+            "subHeading": "",
+            "description": "",
+            "imageUrls": [],
+            "categories": [],
+            "submissionStatus": SubmissionStatus.APPROVED,
+        }
+    )
+    await LibraryAgent.prisma().create(
+        data={
+            "userId": user_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+        }
+    )
+
+
 def _value_to_output_graph(
     output_input: dict[str, Any], value_id: str = "value", output_id: str = "output"
 ) -> Graph:
@@ -997,6 +1332,36 @@ async def test_an_edit_that_unnames_an_output_keeps_the_saved_version(
     }
     versions = await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
     assert [version.version for version in versions] == [created.version]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_graph_at_version_reads_the_version_asked_for(
+    server: SpinTestServer,
+):
+    created = await server.agent_server.test_create_graph(
+        CreateGraph(graph=_value_to_output_graph({"name": "first"})),
+        DEFAULT_USER_ID,
+    )
+    value_node, output_node = sorted(
+        created.nodes, key=lambda node: node.block_id != StoreValueBlock().id
+    )
+    edited = _value_to_output_graph({"name": "second"}, value_node.id, output_node.id)
+    edited.id = created.id
+    await graphs_routes.update_graph(
+        created.id, edited, DEFAULT_USER_ID, _owner_context(DEFAULT_USER_ID)
+    )
+    versions = sorted(
+        v.version
+        for v in await get_graph_all_versions(created.id, user_id=DEFAULT_USER_ID)
+    )
+    assert len(versions) == 2
+
+    read = [await get_graph_at_version(created.id, v, client=None) for v in versions]
+
+    assert [(g.version, list(g.output_schema["properties"])) for g in read if g] == [
+        (versions[0], ["first"]),
+        (versions[1], ["second"]),
+    ]
 
 
 def _owner_context(user_id: str) -> RequestContext:
@@ -1127,6 +1492,63 @@ def test_credentials_input_schema_excludes_auto_creds():
         # Should include regular credential but NOT auto_credential
         assert "github_credentials" in field_names
         assert "google_credentials" not in field_names
+
+
+class _CountedProviders(frozenset):
+    """A provider set that counts how often it is compared with another."""
+
+    comparisons = 0
+
+    def __eq__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        _CountedProviders.comparisons += 1
+        return frozenset.__ne__(self, other)
+
+    __hash__ = frozenset.__hash__
+
+
+def test_credentials_input_schema_groups_each_input_by_provider_once():
+    """Each credentials input is grouped by its provider once."""
+    count = 300
+    inputs = {
+        f"provider_{i}_credentials": (
+            CredentialsFieldInfo.model_validate(
+                {
+                    "credentials_provider": [f"provider_{i}"],
+                    "credentials_types": ["api_key"],
+                },
+                by_alias=True,
+            ).model_copy(update={"provider": _CountedProviders({f"provider_{i}"})}),
+            {(f"node-{i}", "credentials")},
+            True,
+        )
+        for i in range(count)
+    }
+    graph = GraphModel(
+        id="test-graph",
+        version=1,
+        name="Test",
+        description="Test",
+        user_id="test-user",
+        created_at=datetime.now(timezone.utc),
+        nodes=[],
+        links=[],
+    )
+    _CountedProviders.comparisons = 0
+
+    with patch.object(
+        type(graph),
+        "regular_credentials_inputs",
+        new_callable=PropertyMock,
+        return_value=inputs,
+    ):
+        schema = graph.credentials_input_schema
+
+    assert len(schema["properties"]) == count
+    assert _CountedProviders.comparisons <= count
 
 
 # ============================================================================
@@ -1988,6 +2410,12 @@ async def test_admin_can_access_pending_v2_via_get_graph_as_admin() -> None:
 # version of that graph is still in their library. Non-owners stay
 # version-specific.
 #
+# A sub-graph (is_sub_graph below: a parent run is given) named by a graph
+# someone else owns passes a third gate, for which see
+# test_sub_graph_named_by_another_users_graph below. An executor from before
+# parent runs sends `is_sub_graph` alone; see
+# test_validate_graph_execution_permissions_sub_graph_flag_without_parent_run.
+#
 # | User     | Owns? | Marketplace | Library state                | is_sub_graph | Result   | Test
 # |----------|-------|-------------|------------------------------|--------------|----------|-----
 # | regular  | no    | submitted   | exact version present        | false        | ALLOW    | test_validate_graph_execution_permissions_library_member_same_version_allowed
@@ -2353,6 +2781,7 @@ async def test_validate_graph_execution_permissions_unpublished_sub_graph_withou
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(requester_id),
         patch(
             "backend.data.graph.is_graph_published_in_marketplace",
             new_callable=AsyncMock,
@@ -2367,7 +2796,7 @@ async def test_validate_graph_execution_permissions_unpublished_sub_graph_withou
                 user_id=requester_id,
                 graph_id=graph_id,
                 graph_version=graph_version,
-                is_sub_graph=True,
+                parent_graph_exec_id="parent-exec-id",
             )
 
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
@@ -2385,6 +2814,7 @@ async def test_validate_graph_execution_permissions_marketplace_sub_graph_withou
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
         patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(requester_id),
         patch(
             "backend.data.graph.is_graph_published_in_marketplace",
             new_callable=AsyncMock,
@@ -2398,7 +2828,7 @@ async def test_validate_graph_execution_permissions_marketplace_sub_graph_withou
             user_id=requester_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            is_sub_graph=True,
+            parent_graph_exec_id="parent-exec-id",
         )
 
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
@@ -2437,6 +2867,365 @@ async def test_validate_graph_execution_permissions_library_wrong_version_denied
         "where"
     ]
     assert lib_where["agentGraphVersion"] == graph_version
+
+
+# A sub-graph runs as the user running its parent graph, with their identity,
+# credentials and credits, and its outputs go back to the parent. When someone
+# else owns the parent, that owner chose the sub-graph, so it must be one they
+# could use: their own, or a published version. Never one of the runner's own,
+# published or not.
+#
+# | Parent owner | Sub-graph owner | Published | Readable from library | Result
+# |--------------|-----------------|-----------|-----------------------|---------
+# | creator      | runner          | no        | no                    | DENY
+# | creator      | runner          | yes       | yes                   | DENY
+# | creator      | creator         | yes       | no                    | ALLOW
+# | creator      | creator         | no        | no                    | DENY acc
+# | creator      | third party     | yes       | no                    | ALLOW
+# | creator      | third party     | no        | yes                   | DENY
+# | runner       | runner          | no        | no                    | ALLOW
+# | runner       | third party     | yes       | no                    | ALLOW
+
+
+@pytest.mark.parametrize(
+    "parent_owner, sub_graph_owner, published, readable, refusal",
+    [
+        pytest.param(
+            "creator", "runner", False, False, "one of yours", id="runners-own"
+        ),
+        pytest.param(
+            "creator",
+            "runner",
+            True,
+            True,
+            "one of yours",
+            id="runners-own-published",
+        ),
+        pytest.param("creator", "creator", True, False, None, id="creators-own"),
+        pytest.param(
+            "creator",
+            "creator",
+            False,
+            False,
+            "do not have access",
+            id="creators-own-unapproved",
+        ),
+        pytest.param(
+            "creator", "third-party", True, False, None, id="published-by-another"
+        ),
+        pytest.param(
+            "creator",
+            "third-party",
+            False,
+            True,
+            "isn't published",
+            id="unpublished-in-runners-library",
+        ),
+        pytest.param("runner", "runner", False, False, None, id="runners-own-parent"),
+        pytest.param(
+            "runner",
+            "third-party",
+            True,
+            False,
+            None,
+            id="runners-own-parent-published-sub-graph",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_sub_graph_named_by_another_users_graph(
+    parent_owner: str,
+    sub_graph_owner: str,
+    published: bool,
+    readable: bool,
+    refusal: str | None,
+) -> None:
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(parent_owner),
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=published,
+        ),
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(userId=sub_graph_owner)
+        )
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            side_effect=[MagicMock() if readable else None, MagicMock()]
+        )
+
+        if refusal is None:
+            await _validate_sub_graph_run(user_id="runner")
+        else:
+            with pytest.raises(GraphNotAccessibleError, match=refusal):
+                await _validate_sub_graph_run(user_id="runner")
+
+
+@pytest.mark.asyncio
+async def test_sub_graph_needs_a_parent_run_of_the_users_own() -> None:
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        _parent_run_of_graph_owned_by(None) as mock_exec_prisma,
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(userId="runner")
+        )
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=MagicMock())
+
+        with pytest.raises(GraphNotAccessibleError, match="not found"):
+            await _validate_sub_graph_run(user_id="runner")
+
+    mock_exec_prisma.return_value.find_first.assert_awaited_once_with(
+        where={"id": "parent-exec-id", "userId": "runner"},
+        include={"AgentGraph": True},
+    )
+
+
+@pytest.mark.parametrize(
+    "published, refusal", [(True, None), (False, "do not have access")]
+)
+@pytest.mark.asyncio
+async def test_validate_graph_execution_permissions_sub_graph_flag_without_parent_run(
+    published: bool, refusal: str | None
+) -> None:
+    """An executor from before `parent_graph_exec_id` sends `is_sub_graph`
+    alone. The graph is still checked as a sub-graph, so it needn't be in the
+    user's library, and with no parent run there is none to look up."""
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
+        patch("backend.data.graph.AgentGraphExecution.prisma") as mock_exec_prisma,
+        patch(
+            "backend.data.graph.is_graph_published_in_marketplace",
+            new_callable=AsyncMock,
+            return_value=published,
+        ),
+    ):
+        mock_ag_prisma.return_value.find_unique = AsyncMock(
+            return_value=MagicMock(userId="creator")
+        )
+        mock_lib_prisma.return_value.find_first = AsyncMock(return_value=None)
+        check = validate_graph_execution_permissions(
+            user_id="runner", graph_id="graph-id", graph_version=2, is_sub_graph=True
+        )
+        if refusal is None:
+            await check
+        else:
+            with pytest.raises(GraphNotAccessibleError, match=refusal):
+                await check
+
+    mock_exec_prisma.assert_not_called()
+
+
+async def _validate_sub_graph_run(user_id: str) -> None:
+    await validate_graph_execution_permissions(
+        user_id=user_id,
+        graph_id="graph-id",
+        graph_version=2,
+        parent_graph_exec_id="parent-exec-id",
+    )
+
+
+def _parent_run_of_graph_owned_by(owner_id: str | None):
+    """Patch the parent-run lookup to find a run of a graph *owner_id* owns, or,
+    with None, no run of the user's."""
+    parent_run = MagicMock(AgentGraph=MagicMock(userId=owner_id)) if owner_id else None
+    client = MagicMock()
+    client.find_first = AsyncMock(return_value=parent_run)
+    return patch("backend.data.graph.AgentGraphExecution.prisma", return_value=client)
+
+
+# --------------- sub-graphs a shared graph runs --------------- #
+
+
+def _graph_row(
+    graph_id: str, version: int, owner_id: str, refs: list[tuple[str, int]]
+) -> MagicMock:
+    return MagicMock(
+        id=graph_id,
+        version=version,
+        userId=owner_id,
+        Nodes=[
+            MagicMock(
+                agentBlockId=AgentExecutorBlock().id,
+                constantInput={"graph_id": ref_id, "graph_version": ref_version},
+            )
+            for ref_id, ref_version in refs
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_foreign_sub_graph_refs_walks_the_owners_sub_graphs() -> None:
+    """Every version of the owner's sub-graphs is walked, so two versions of
+    one are both the owner's, and another user's unpublished version named
+    deeper down is found."""
+    root = _graph_row("root", 1, "owner", [("sub", 1), ("sub", 2)])
+    levels = [
+        [
+            _graph_row("sub", 1, "owner", []),
+            _graph_row("sub", 2, "owner", [("theirs", 3), ("root", 1)]),
+        ],
+        [],
+    ]
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(side_effect=levels)
+        mock_slv_prisma.return_value.find_many = AsyncMock(return_value=[])
+
+        assert await foreign_sub_graph_refs(root) == [("theirs", 3)]
+
+    first_level = mock_ag_prisma.return_value.find_many.await_args_list[0].kwargs
+    assert sorted(
+        (ref["id"], ref["version"], ref["userId"]) for ref in first_level["where"]["OR"]
+    ) == [("sub", 1, "owner"), ("sub", 2, "owner")]
+    published_where = mock_slv_prisma.return_value.find_many.await_args.kwargs["where"]
+    assert published_where["OR"] == [{"agentGraphId": "theirs", "agentGraphVersion": 3}]
+    assert published_where["submissionStatus"] == SubmissionStatus.APPROVED
+    assert published_where["isDeleted"] is False
+
+
+@pytest.mark.asyncio
+async def test_foreign_sub_graph_refs_allows_published_versions() -> None:
+    root = _graph_row("root", 1, "owner", [("theirs", 3)])
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(return_value=[])
+        mock_slv_prisma.return_value.find_many = AsyncMock(
+            return_value=[MagicMock(agentGraphId="theirs", agentGraphVersion=3)]
+        )
+
+        assert await foreign_sub_graph_refs(root) == []
+
+
+@pytest.mark.asyncio
+async def test_foreign_sub_graph_refs_skips_the_lookups_without_sub_graphs() -> None:
+    root = _graph_row("root", 1, "owner", [])
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.StoreListingVersion.prisma") as mock_slv_prisma,
+    ):
+        assert await foreign_sub_graph_refs(root) == []
+
+    mock_ag_prisma.assert_not_called()
+    mock_slv_prisma.assert_not_called()
+
+
+# --------------- sub-graphs a copy keeps --------------- #
+
+
+def _sub_graph_node(graph_id: Any) -> Node:
+    return Node(
+        block_id=AgentExecutorBlock().id,
+        input_default={"graph_id": graph_id, "graph_version": 1},
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_copy_blanks_its_sub_graph_nodes_naming_the_copiers_graphs() -> None:
+    """In the copy and in each sub-graph it carries, with one lookup."""
+    copiers, carried_copiers, someone_elses = (
+        _sub_graph_node("copiers"),
+        _sub_graph_node("copiers-other"),
+        _sub_graph_node("someone-elses"),
+    )
+    copy = Graph(
+        name="Copy",
+        description="",
+        nodes=[copiers, someone_elses],
+        sub_graphs=[BaseGraph(name="Carried", description="", nodes=[carried_copiers])],
+    )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.AgentNode.prisma") as mock_node_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(
+            return_value=[MagicMock(id="copiers"), MagicMock(id="copiers-other")]
+        )
+        assert await clear_sub_graph_refs_owned_by(copy, "copier") == 2
+
+    assert [
+        node.input_default["graph_id"]
+        for node in (copiers, carried_copiers, someone_elses)
+    ] == ["", "", "someone-elses"]
+    mock_ag_prisma.return_value.find_many.assert_awaited_once_with(
+        where={
+            "id": {"in": ["copiers", "copiers-other", "someone-elses"]},
+            "userId": "copier",
+        },
+        distinct=["id"],
+    )
+    mock_node_prisma.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_edited_copy_keeps_the_sub_graph_nodes_its_editor_added() -> None:
+    """Of the copier's graphs, only those some version of the original names
+    were chosen by its owner."""
+    inherited, added = _sub_graph_node("copiers"), _sub_graph_node("copiers-other")
+    copy = Graph(name="Copy", description="", nodes=[inherited, added])
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.AgentNode.prisma") as mock_node_prisma,
+    ):
+        mock_ag_prisma.return_value.find_many = AsyncMock(
+            return_value=[MagicMock(id="copiers"), MagicMock(id="copiers-other")]
+        )
+        mock_node_prisma.return_value.find_many = AsyncMock(
+            return_value=[
+                MagicMock(constantInput={"graph_id": "copiers", "graph_version": 1}),
+                MagicMock(constantInput={"graph_id": "authors", "graph_version": 3}),
+            ]
+        )
+        assert (
+            await clear_sub_graph_refs_owned_by(copy, "copier", edited_from="original")
+            == 1
+        )
+
+    assert (inherited.input_default["graph_id"], added.input_default["graph_id"]) == (
+        "",
+        "copiers-other",
+    )
+    mock_node_prisma.return_value.find_many.assert_awaited_once_with(
+        where={"agentGraphId": "original", "agentBlockId": AgentExecutorBlock().id}
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_copy_looks_up_only_the_sub_graph_nodes_it_could_blank() -> None:
+    """Nodes naming no graph need no lookup, and with none of the copier's
+    graphs named there is no original to read."""
+    unnamed = Graph(
+        name="Copy",
+        description="",
+        nodes=[_sub_graph_node(""), _sub_graph_node(None)],
+    )
+    someone_elses = Graph(
+        name="Copy", description="", nodes=[_sub_graph_node("someone-elses")]
+    )
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch("backend.data.graph.AgentNode.prisma") as mock_node_prisma,
+    ):
+        assert await clear_sub_graph_refs_owned_by(unnamed, "copier", "original") == 0
+        mock_ag_prisma.assert_not_called()
+
+        mock_ag_prisma.return_value.find_many = AsyncMock(return_value=[])
+        assert (
+            await clear_sub_graph_refs_owned_by(someone_elses, "copier", "original")
+            == 0
+        )
+
+    mock_node_prisma.assert_not_called()
+    assert someone_elses.nodes[0].input_default["graph_id"] == "someone-elses"
 
 
 # ============================================================================
@@ -2948,6 +3737,44 @@ async def test_migrate_llm_models_matches_provider_prefixed_legacy_values():
         f"rewritten to {expected_replacement!r} — prefixed forms must hit the "
         "family-aware pass, not the global fallback."
     )
+
+
+@pytest.mark.parametrize(
+    "stored_value, replacement",
+    [
+        ("claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4-1", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4.1", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-opus-4-0", LLMModel.CLAUDE_4_7_OPUS),
+        ("anthropic/claude-opus-4", LLMModel.CLAUDE_4_7_OPUS),
+        ("claude-sonnet-4-0", LLMModel.CLAUDE_4_6_SONNET),
+        ("anthropic/claude-sonnet-4", LLMModel.CLAUDE_4_6_SONNET),
+    ],
+)
+@pytest.mark.asyncio
+async def test_migrate_llm_models_maps_retired_claude_aliases_to_their_family(
+    stored_value: str, replacement: LLMModel
+):
+    """Anthropic retired these aliases with their snapshots. A stored one
+    lands on its family's successor in nodes and presets, and the enum keeps
+    refusing it, which is what keeps the copilot's registry gate from sending it."""
+    with pytest.raises(ValueError):
+        LLMModel(stored_value)
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LLMModel)))
+
+    # (is_preset_query, replacement, stored_value) for each targeted rewrite.
+    rewrites = {
+        ('"agentPresetId"' in call.args[0], call.args[2], call.args[-1])
+        for call in mock_execute.await_args_list
+        if "NOT IN" not in call.args[0]
+    }
+    assert (False, replacement.value, stored_value) in rewrites
+    assert (True, replacement.value, stored_value) in rewrites
 
 
 @pytest.mark.asyncio
@@ -3507,3 +4334,294 @@ def test_linked_llm_model_preserves_required_legacy_credential_slot():
         "aiml_api-anthropic-groq-llama_api-ollama-open_router-openai-v0_api_key_credentials"
     ]
     assert next(iter(slots.values()))[2] is True
+
+
+def _graph(name: str, graph_id: str | None = None, **kwargs) -> Graph:
+    return Graph(
+        id=graph_id or str(uuid4()),
+        name=name,
+        description="",
+        nodes=[],
+        links=[],
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_refuses_a_version_under_another_users_graph_id(
+    server: SpinTestServer,
+):
+    """A graph ID belongs to whoever created it, for the graph and its sub-graphs."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+
+    with pytest.raises(NotFoundError):
+        await db_create_graph(_graph("other's", graph_id=owned.id), other.id)
+
+    with pytest.raises(NotFoundError):
+        await db_create_graph(
+            _graph(
+                "their own graph",
+                sub_graphs=[BaseGraph(id=owned.id, name="other's", description="")],
+            ),
+            other.id,
+        )
+
+    rows = await AgentGraph.prisma().find_many(where={"id": owned.id})
+    assert [(row.version, row.userId) for row in rows] == [(1, owner.id)]
+
+    # The owner's own next save still lands, as the next version.
+    second = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
+    assert second.version == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_graph_ids_owner_is_the_owner_of_its_first_version(
+    server: SpinTestServer,
+):
+    """A graph ID stays its creator's, whoever owns a later version of it."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+    await AgentGraph.prisma().create(
+        data={
+            "id": owned.id,
+            "version": 2,
+            "name": "owned",
+            "description": "",
+            "isActive": True,
+            "userId": other.id,
+        }
+    )
+
+    assert await graph_owner_id(owned.id) == owner.id
+    saved = await db_create_graph(_graph("owned v3", graph_id=owned.id), owner.id)
+    assert (saved.version, saved.user_id) == (3, owner.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_appends_after_the_latest_version_it_finds(
+    server: SpinTestServer,
+):
+    """The stored version number is the database's, never the request's."""
+    owner = await create_test_user()
+    first = await db_create_graph(_graph("versioned"), owner.id)
+
+    requested = _graph("versioned", graph_id=first.id, version=7)
+    saved = await db_create_graph(requested, owner.id)
+
+    assert saved.version == first.version + 1
+    assert requested.version == first.version + 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_graph_in_library_forks_another_users_graph(
+    server: SpinTestServer,
+):
+    """Editing a workflow the caller does not own saves the caller's own copy."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("installed"), owner.id)
+
+    edited = _graph("installed, edited", graph_id=owned.id, version=owned.version)
+    forked, library_agent = await library_db.update_graph_in_library(edited, other.id)
+
+    assert forked.id != owned.id
+    assert forked.user_id == other.id
+    assert forked.forked_from_id == owned.id
+    assert forked.forked_from_version == owned.version
+    assert library_agent.graph_id == forked.id
+
+    rows = await AgentGraph.prisma().find_many(where={"id": owned.id})
+    assert [(row.version, row.userId) for row in rows] == [(1, owner.id)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_rejects_unsafe_pin_names(server: SpinTestServer):
+    """The store path refuses a graph whose node input-default key or link name
+    carries an unsafe dynamic object-attribute token, so one never persists.
+
+    The base of each token is a real input field, so graph validation — which
+    inspects base names, not the flattened tokens — would pass it on.
+    """
+    # Local import: the module-level name `create_graph` is taken by a
+    # CreateGraph request object throughout this file.
+    from backend.data.graph import create_graph as create_graph_db
+
+    value_block = StoreValueBlock().id
+    node_a, node_b = str(uuid4()), str(uuid4())
+
+    # Unsafe token in a node input-default key.
+    bad_input = Graph(
+        name="bad-input",
+        description="",
+        nodes=[
+            Node(
+                id=node_a,
+                block_id=value_block,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+        links=[],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_input, DEFAULT_USER_ID)
+
+    # Unsafe token in a link sink name.
+    bad_link = Graph(
+        name="bad-link",
+        description="",
+        nodes=[
+            Node(id=node_a, block_id=value_block),
+            Node(id=node_b, block_id=value_block),
+        ],
+        links=[
+            Link(
+                source_id=node_a,
+                sink_id=node_b,
+                source_name="output",
+                sink_name="input_@___class__",
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await create_graph_db(bad_link, DEFAULT_USER_ID)
+
+    # Nothing was written by either refusal.
+    for refused in (bad_input, bad_link):
+        assert (
+            await get_graph(refused.id, refused.version, user_id=DEFAULT_USER_ID)
+        ) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_create_graph_checks_pin_names_and_the_owner_before_any_write(
+    server: SpinTestServer,
+):
+    """A re-save of an existing graph ID passes both checks before anything is
+    written, sub-graphs included, and the owner's clean save still lands."""
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    owned = await db_create_graph(_graph("owned"), owner.id)
+    sub_graph = BaseGraph(
+        id=str(uuid4()),
+        name="sub",
+        description="",
+        nodes=[
+            Node(
+                id=str(uuid4()),
+                block_id=StoreValueBlock().id,
+                input_default={"input_@___class__": "x"},
+            )
+        ],
+    )
+
+    with pytest.raises(ValueError, match="unsafe object attribute"):
+        await db_create_graph(
+            _graph("owned v2", graph_id=owned.id, sub_graphs=[sub_graph]), owner.id
+        )
+    with pytest.raises(NotFoundError):
+        await db_create_graph(_graph("other's", graph_id=owned.id), other.id)
+
+    rows = await AgentGraph.prisma().find_many(
+        where={"id": {"in": [owned.id, sub_graph.id]}}
+    )
+    assert [(row.id, row.version, row.userId) for row in rows] == [
+        (owned.id, 1, owner.id)
+    ]
+    saved = await db_create_graph(_graph("owned v2", graph_id=owned.id), owner.id)
+    assert saved.version == 2
+
+
+# ============================================================================
+# A link into an MCP tool's argument
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "sink_name,argument",
+    [
+        ("query", "query"),
+        ("createRequest_#_objects", "createRequest"),
+        ("tool_arguments_#_query", "query"),
+    ],
+)
+def test_a_link_into_an_mcp_tool_argument_is_valid(sink_name: str, argument: str):
+    """The builder and AutoPilot name a link into a tool argument after the
+    argument, and validation refused that name, so the workflow could neither
+    be saved nor run. A `tool_arguments_#_` link saved, but its argument still
+    read as missing at run time. Either form now provides the argument."""
+    graph = make_graph_model(
+        _value_to_mcp_tool_graph(sink_name, required=[argument]), user_id="user-1"
+    )
+
+    graph.validate_graph(for_run=False)
+    assert graph.validate_graph_get_errors(for_run=True) == {}
+
+
+def test_a_nested_link_into_a_tool_that_declares_tool_arguments_provides_nothing():
+    """Such a tool's executor passes `tool_arguments_#_query` into its own
+    `tool_arguments` parameter, so a run must still find `query` missing."""
+    graph = _value_to_mcp_tool_graph("tool_arguments_#_query", required=["query"])
+    schema = graph.nodes[1].input_default["tool_input_schema"]
+    schema["properties"]["tool_arguments"] = {"type": "object"}
+
+    errors = make_graph_model(graph, user_id="user-1").validate_graph_get_errors(
+        for_run=True
+    )
+
+    assert errors == {"tool": {"query": "This field is required"}}
+
+
+@pytest.mark.parametrize(
+    "tool_input_schema",
+    [None, "not a schema", {"type": "object", "properties": 5}],
+)
+def test_a_link_into_an_mcp_tool_without_an_object_schema_is_refused(
+    tool_input_schema: Any,
+):
+    """A malformed schema is a 400 (`ValueError`), not an `AttributeError` 500."""
+    graph = _value_to_mcp_tool_graph("query", required=[])
+    graph.nodes[1].input_default["tool_input_schema"] = tool_input_schema
+
+    with pytest.raises(ValueError):
+        make_graph_model(graph, user_id="user-1").validate_graph(for_run=False)
+
+
+def _value_to_mcp_tool_graph(sink_name: str, required: list[str]) -> Graph:
+    return Graph(
+        name="Value to MCP tool",
+        description="",
+        nodes=[
+            Node(
+                id="value",
+                block_id=StoreValueBlock().id,
+                input_default={"input": "hi"},
+            ),
+            Node(
+                id="tool",
+                block_id=MCPToolBlock().id,
+                input_default={
+                    "server_url": "https://mcp.example.com/mcp",
+                    "selected_tool": "add_lead",
+                    "tool_input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "createRequest": {"type": "object"},
+                        },
+                        "required": required,
+                    },
+                },
+            ),
+        ],
+        links=[
+            Link(
+                source_id="value",
+                sink_id="tool",
+                source_name="output",
+                sink_name=sink_name,
+            )
+        ],
+    )

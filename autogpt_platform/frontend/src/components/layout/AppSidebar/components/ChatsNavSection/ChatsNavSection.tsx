@@ -1,5 +1,6 @@
 "use client";
 
+import { tourTarget } from "@/lib/tour-targets";
 import { motion, type Variants } from "framer-motion";
 import { Suspense } from "react";
 import { useJumpToRecentChats } from "../../useJumpToRecentChats";
@@ -21,7 +22,7 @@ export function ChatsNavSection({ itemVariants }: Props) {
 
   // One stagger slot: only one of the two is ever displayed.
   return (
-    <motion.div variants={itemVariants}>
+    <motion.div variants={itemVariants} {...tourTarget("chats")}>
       <div className="hidden group-data-[collapsible=icon]:block">
         <ChatsRailItem onClick={jumpToRecentChats} />
       </div>

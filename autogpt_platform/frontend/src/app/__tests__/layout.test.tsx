@@ -77,9 +77,11 @@ describe("RootLayout consent scripts", () => {
       strategy: "beforeInteractive",
       "data-cookieconsent": "ignore",
     });
-    expect(defaults.dangerouslySetInnerHTML?.__html).toContain(
-      "gtag('consent','default'",
-    );
+    const defaultsScript = defaults.dangerouslySetInnerHTML?.__html;
+    expect(defaultsScript).toContain("gtag('consent','default'");
+    expect(defaultsScript).toContain('"functionality_storage":"denied"');
+    expect(defaultsScript).toContain('"personalization_storage":"denied"');
+    expect(defaultsScript).toContain('"security_storage":"granted"');
     expect(cookiebot).toEqual({
       id: "Cookiebot",
       src: "https://consent.cookiebot.com/uc.js",

@@ -33,6 +33,13 @@ from backend.copilot.pending_messages import (
     release_client_message,
     stash_pending_for_persist,
 )
+from backend.copilot.tool_image import ToolImage
+from backend.data.redis_helpers import (
+    _BOUNDED_RPUSH_LUA,
+    _POP_MATCHING_PREFIX_LUA,
+    _STRING_CAS_LUA,
+    RedisListCapacityExceeded,
+)
 
 # ── Fake Redis ──────────────────────────────────────────────────────
 
@@ -115,16 +122,27 @@ class _FakeRedis:
         return self.strings.get(key)
 
     async def eval(
-        self,
-        script: str,
-        numkeys: int,
-        key: str,
-        expected: str,
-        new: str,
-        ttl_seconds: int,
-        or_missing: str,
-    ) -> int:
-        """``string_compare_and_set``, the only script these tests reach."""
+        self, script: str, numkeys: int, *values: Any
+    ) -> int | list[str | bytes]:
+        key, *args = values
+        if script == _BOUNDED_RPUSH_LUA:
+            value, max_len, ttl_seconds = args
+            if await self.llen(key) >= max_len:
+                return -2
+            length = await self.rpush(key, value)
+            self.ttls[key] = ttl_seconds
+            return length
+        if script == _POP_MATCHING_PREFIX_LUA:
+            current = self.lists.get(key, [])[: len(args)]
+            decoded = [
+                item.decode() if isinstance(item, bytes) else item for item in current
+            ]
+            if decoded != list(args):
+                return []
+            return await self.lpop(key, len(args)) or []
+        if script != _STRING_CAS_LUA:
+            raise NotImplementedError("Unsupported Redis script")
+        expected, new, ttl_seconds, or_missing = args[:4]
         current = self.strings.get(key)
         if current != expected and not (current is None and or_missing == "1"):
             return 0
@@ -192,7 +210,7 @@ class _FakePipeline:
     async def __aenter__(self) -> "_FakePipeline":
         return self
 
-    async def __aexit__(self, *a: Any) -> None:
+    async def __aexit__(self, *a: object) -> None:
         return None
 
 
@@ -294,19 +312,20 @@ async def test_drain_defaults_id_for_legacy_entries(fake_redis: _FakeRedis) -> N
 
 
 @pytest.mark.asyncio
-async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
-    # Push MAX_PENDING_MESSAGES + 3 messages
-    for i in range(MAX_PENDING_MESSAGES + 3):
+async def test_cap_rejects_new_message_without_eviction(fake_redis: _FakeRedis) -> None:
+    for i in range(MAX_PENDING_MESSAGES):
         await push_pending_message("sess3", PendingMessage(content=f"m{i}"))
+
+    with pytest.raises(RedisListCapacityExceeded):
+        await push_pending_message("sess3", PendingMessage(content="overflow"))
 
     # Buffer should be clamped to MAX
     assert await peek_pending_count("sess3") == MAX_PENDING_MESSAGES
 
     drained = await drain_pending_messages("sess3")
     assert len(drained) == MAX_PENDING_MESSAGES
-    # Oldest 3 dropped — we should only see m3..m(MAX+2)
-    assert drained[0].content == "m3"
-    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES + 2}"
+    assert drained[0].content == "m0"
+    assert drained[-1].content == f"m{MAX_PENDING_MESSAGES - 1}"
 
 
 # ── Clear ───────────────────────────────────────────────────────────
@@ -731,6 +750,81 @@ async def test_drain_and_format_for_injection_missing_session_id() -> None:
     assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
 
 
+async def test_text_hook_leaves_image_and_later_messages_in_order(fake_redis):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    for message in [
+        PendingMessage(content="before"),
+        image,
+        PendingMessage(content="after"),
+    ]:
+        await push_pending_message("images", message)
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    remaining = await drain_pending_messages("images")
+    assert [message.content for message in remaining] == ["Approved image", "after"]
+    assert remaining[0].model_image == image.model_image
+
+
+@pytest.mark.parametrize("malformed", ["not JSON", '{"model_image":"invalid"}'])
+async def test_text_hook_drops_corrupt_prefix_without_consuming_images(
+    fake_redis, malformed
+):
+    image = PendingMessage(
+        content="Approved image",
+        model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+    )
+    before = PendingMessage(content="before")
+    after = PendingMessage(content="after")
+    await fake_redis.rpush(
+        pm_module._buffer_key("images"),
+        malformed,
+        before.model_dump_json(),
+        image.model_dump_json(),
+        after.model_dump_json(),
+    )
+
+    result = await drain_and_format_for_injection("images", log_prefix="test")
+    assert "before" in result and "after" not in result
+    assert await peek_pending_count("images") == 2
+    assert await drain_pending_for_persist("images") == [before]
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert await drain_pending_messages("images") == [image, after]
+
+
+async def test_text_hook_redis_error_does_not_drop_the_queue(fake_redis, monkeypatch):
+    await push_pending_message("images", PendingMessage(content="before"))
+    monkeypatch.setattr(
+        fake_redis, "eval", AsyncMock(side_effect=ConnectionError("offline"))
+    )
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "before"
+    ]
+
+
+async def test_text_hook_does_not_pop_a_prefix_another_consumer_changed(
+    fake_redis, monkeypatch
+):
+    await push_pending_message("images", PendingMessage(content="before"))
+    original_eval = fake_redis.eval
+
+    async def concurrent_drain(script, numkeys, key, *args):
+        if script == _POP_MATCHING_PREFIX_LUA:
+            await fake_redis.lpop(key, 1)
+            await push_pending_message("images", PendingMessage(content="new"))
+        return await original_eval(script, numkeys, key, *args)
+
+    monkeypatch.setattr(fake_redis, "eval", concurrent_drain)
+    assert await drain_and_format_for_injection("images", log_prefix="test") == ""
+    assert [message.content for message in await drain_pending_messages("images")] == [
+        "new"
+    ]
+
+
 # ── Cluster-slot colocation regression ───────────────────────────────
 # The gated-rpush Lua script in `capped_rpush_if_hash_field` touches both
 # the session-meta hash (`stream_registry._get_session_meta_key`) and the
@@ -985,3 +1079,23 @@ async def test_client_message_claims_fail_open_on_redis_error(
     assert await client_message_state("sess-1", "msg-a") is None
     await accept_client_message("sess-1", "msg-a", "first")
     await release_client_message("sess-1", "msg-a", "first")
+
+
+@pytest.mark.parametrize("limit", [0, 1, 2])
+async def test_text_only_drain_respects_batch_limit_before_image(fake_redis, limit):
+    messages = [PendingMessage(content=f"text-{index}") for index in range(3)]
+    messages.append(
+        PendingMessage(
+            content="image",
+            model_image=ToolImage(mime_type="image/png", data_base64="cGl4ZWxz"),
+        )
+    )
+    messages.append(PendingMessage(content="after"))
+    for message in messages:
+        await push_pending_message("limited-images", message)
+
+    assert (
+        await drain_pending_messages("limited-images", limit=limit, text_only=True)
+        == messages[:limit]
+    )
+    assert await drain_pending_messages("limited-images") == messages[limit:]

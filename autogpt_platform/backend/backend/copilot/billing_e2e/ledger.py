@@ -83,7 +83,7 @@ class PlatformLedger:
         self.drain: PlannedDrain | None = None
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(token_tracking, "record_cost_usage", self._record_spend)
+        monkeypatch.setattr(token_tracking, "record_cost_usage", self.record_spend)
         monkeypatch.setattr(token_tracking, "charge_turn", self._charge_tree)
         monkeypatch.setattr(token_tracking, "platform_cost_db", lambda: self)
         monkeypatch.setattr(credit_billing, "credit_db", lambda: self)
@@ -140,7 +140,7 @@ class PlatformLedger:
         while pending := _deferred_tasks():
             await asyncio.gather(*pending)
 
-    async def _record_spend(
+    async def record_spend(
         self, user_id: str, cost_microdollars: int, *, skip_daily: bool = False
     ) -> None:
         self.spend.append(

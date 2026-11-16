@@ -498,7 +498,7 @@ class SDKResponseAdapter:
                 self._finish_step(responses)
                 landed = self._landed(sdk_message.subtype, wrote_checkpoint=False)
                 responses.append(
-                    StreamTurnPaused(pause=landed.as_part())
+                    StreamTurnPaused.of(landed)
                     if landed is not None
                     else StreamError(
                         errorText="The model returned an empty response.",
@@ -589,7 +589,7 @@ class SDKResponseAdapter:
                 sdk_message.subtype, wrote_checkpoint=wrote_checkpoint
             )
             if landed is not None:
-                responses.append(StreamTurnPaused(pause=landed.as_part()))
+                responses.append(StreamTurnPaused.of(landed))
                 responses.append(StreamFinish())
             elif sdk_message.subtype == "success":
                 responses.append(StreamFinish())

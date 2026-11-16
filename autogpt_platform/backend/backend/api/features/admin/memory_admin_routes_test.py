@@ -708,6 +708,75 @@ class TestGraph:
         assert "coalesce(e.name_redacted, e.name) AS name" in edge_query
         assert "coalesce(e.fact_redacted, e.fact) AS fact" in edge_query
 
+    @staticmethod
+    def _node(uuid: str) -> dict:
+        return {"uuid": uuid, "name": uuid, "summary": "", "all_labels": ["Entity"]}
+
+    @staticmethod
+    def _edge(uuid: str, source: str, target: str) -> dict:
+        return {"uuid": uuid, "label": "RELATES_TO", "source": source, "target": target}
+
+    def test_graph_exactly_at_limits_is_not_truncated(self) -> None:
+        """A graph with exactly node_limit nodes and edge_limit edges is
+        returned whole, so nothing was cut (#16733)."""
+        driver = _driver_returning(
+            [self._node("a"), self._node("b")],
+            [self._edge("e1", "a", "b")],
+        )
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get(
+                "/admin/memory/abc/graph?node_limit=2&edge_limit=1"
+                "&include_communities=false"
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [n["uuid"] for n in body["nodes"]] == ["a", "b"]
+        assert [e["uuid"] for e in body["edges"]] == ["e1"]
+        assert body["truncated"] is False
+        # One row past each limit is fetched to tell "exactly N" from "more".
+        node_call, edge_call = driver.execute_query.await_args_list
+        assert node_call.kwargs["limit"] == 3
+        assert edge_call.kwargs["limit"] == 2
+
+    def test_node_beyond_limit_truncates(self) -> None:
+        driver = _driver_returning(
+            [self._node("a"), self._node("b"), self._node("c")],
+            [],
+        )
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get(
+                "/admin/memory/abc/graph?node_limit=2&include_communities=false"
+            )
+        body = resp.json()
+        assert [n["uuid"] for n in body["nodes"]] == ["a", "b"]
+        assert body["truncated"] is True
+
+    def test_node_beyond_limit_in_a_later_label_truncates(self) -> None:
+        """Entities fill node_limit exactly; a community row is the one cut."""
+        driver = _driver_returning(
+            [self._node("a"), self._node("b")],
+            [self._node("c1")],
+            [],
+        )
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get("/admin/memory/abc/graph?node_limit=2")
+        body = resp.json()
+        assert [n["uuid"] for n in body["nodes"]] == ["a", "b"]
+        assert body["truncated"] is True
+
+    def test_edge_beyond_limit_truncates(self) -> None:
+        driver = _driver_returning(
+            [self._node("a"), self._node("b")],
+            [self._edge("e1", "a", "b"), self._edge("e2", "b", "a")],
+        )
+        with patch(f"{_MOCK_MODULE}.open_driver", return_value=driver):
+            resp = client.get(
+                "/admin/memory/abc/graph?edge_limit=1&include_communities=false"
+            )
+        body = resp.json()
+        assert [e["uuid"] for e in body["edges"]] == ["e1"]
+        assert body["truncated"] is True
+
 
 class TestRebuildCommunitiesPolling:
     """POST /communities/rebuild is now fire-and-forget.
@@ -925,6 +994,7 @@ class TestDreamPassRecord:
         read.assert_awaited_once_with("p1", user_id="abc")
         body = resp.json()
         assert body["record"]["id"] == "p1"
+        assert "lease_token" not in body["record"]
         assert body["record"]["status"] == "COMPLETE"
         assert body["record"]["trigger"] == "EVAL"
         result = body["result"]
@@ -1033,6 +1103,7 @@ class TestCancelDreamPass:
             "CANCELLED",
             1,
         )
+        assert "lease_token" not in body["record"]
         assert body["result"]["error"] == "testing"
         assert body["result"]["skipped"] is False
 
@@ -1138,6 +1209,15 @@ class TestDreamPassList:
         passes = resp.json()["passes"]
         assert [p["id"] for p in passes] == ["p2", "p1"]
         assert passes[0]["status"] == "COMPLETE"
+
+    def test_list_omits_live_lease_tokens(self) -> None:
+        row = _dream_pass_row("abc")
+        with patch(
+            f"{_MOCK_MODULE}.read_user_passes", new=AsyncMock(return_value=[row])
+        ):
+            resp = client.get("/admin/memory/abc/dream/passes")
+        assert resp.status_code == 200
+        assert "lease_token" not in resp.json()["passes"][0]
 
     def test_the_open_ones_only_and_a_limit_reach_the_read(self) -> None:
         read = AsyncMock(return_value=[])

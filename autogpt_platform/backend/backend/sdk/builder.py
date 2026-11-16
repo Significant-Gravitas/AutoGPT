@@ -19,7 +19,6 @@ from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
 from backend.sdk.registry import AutoRegistry
-from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -105,26 +104,6 @@ class ProviderBuilder:
         self._supported_auth_types.add("api_key")
         return self
 
-    def with_api_key_from_settings(
-        self, settings_attr: str, title: str
-    ) -> "ProviderBuilder":
-        """Use existing API key from settings."""
-        self._supported_auth_types.add("api_key")
-
-        # Try to get the API key from settings
-        settings = Settings()
-        api_key = getattr(settings.secrets, settings_attr, None)
-        if api_key:
-            self._default_credentials.append(
-                APIKeyCredentials(
-                    id=f"{self.name}-default",
-                    provider=self.name,
-                    api_key=api_key,
-                    title=title,
-                )
-            )
-        return self
-
     def with_user_password(
         self, username_env_var: str, password_env_var: str, title: str
     ) -> "ProviderBuilder":
@@ -160,6 +139,11 @@ class ProviderBuilder:
         cost_divisor: int = 1,
     ) -> "ProviderBuilder":
         """Set base cost for all blocks using this provider.
+
+        A non-zero cost is only charged when the run uses a credential the
+        platform provides: the ``<provider>-default`` key from ``with_api_key``
+        or ``with_user_password``, or a system credential for this provider in
+        ``credentials_store``. Runs on a user's own credential are free.
 
         ``cost_divisor`` only applies to SECOND / ITEMS. TOKENS is billed via
         the TOKEN_COST rate table (per-model pricing) and ignores the divisor.

@@ -1,18 +1,7 @@
-"""The audit prompt, its bounds and the ruling handed back — the pure half
-of ``consult_teammate``.
+"""The audit prompt, its bounds and the ruling handed back: the pure half of
+``consult_teammate``."""
 
-Separated from the tool so the experiment under ``experiments/consult_teammate``
-can exercise the exact prompt production uses, rather than a copy of it that
-drifts.
-
-The frame is deliberately not a persona. ``EXPERT_GENERATOR_FINDINGS.md`` shows
-the one reliable instrument in that corpus (97.9% self-agreement) was a
-scripted, soul-free audit, while giving an *actor* a soul swung this same
-dimension across the full 0.00-1.00 range. A reviewing teammate contributes
-their declared ``boundaries`` as policy to check against — fenced as data — and
-their name for accountability. Nothing else crosses.
-"""
-
+import html
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,6 +31,18 @@ MAX_QUOTE_CHARS = 300
 TIMEOUT_SECONDS = 20.0
 
 
+def _escaped(text: str) -> str:
+    """Text for the auditor, escaped (``&`` first) so whatever it copies back
+    decodes exactly: a written ``&lt;`` stays distinct from an escaped ``<``."""
+    return html.escape(text, quote=False)
+
+
+def _as_written(text: str) -> str:
+    """The auditor's output with ``_escaped`` undone. It reads escaped
+    material and copies from it, so its output is read as that same text."""
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
 class VerdictPayload(BaseModel):
     """What the auditing model is asked to emit."""
 
@@ -51,16 +52,10 @@ class VerdictPayload(BaseModel):
 
 
 def audit_frame(reviewer: Expert) -> str:
-    """The fixed auditor prompt, carrying the teammate's limits as policy.
-
-    Deliberately not ``build_expert_identity_suffix``: the reviewer's identity
-    and voice would make the *judge* a persona, and a persona is the variable
-    T5 showed swings this dimension end to end. Only ``boundaries`` crosses,
-    and it crosses fenced — it is the team's declared policy, not orders to
-    the auditor.
-    """
-    name = escape_prompt_xml_tags(reviewer.name)
-    policy = escape_prompt_xml_tags(reviewer.boundaries.strip())[:MAX_POLICY_CHARS]
+    """The fixed auditor prompt. The reviewer's identity and voice stay out, since a
+    persona swings this judgement; only their name and fenced ``boundaries`` cross."""
+    name = _escaped(reviewer.name)
+    policy = _escaped(reviewer.boundaries.strip()[:MAX_POLICY_CHARS])
     if policy:
         quoted = "\n".join(f"> {line}" for line in policy.splitlines())
         policy_block = (
@@ -107,11 +102,13 @@ def audit_material(work: str, authority: str, question: str) -> str:
 
     All three are authored upstream: the draft may be forwarded or scraped
     text, and the other two are written by another model. None of them gets to
-    redirect the audit.
+    redirect the audit. Each is cut to its limit and then escaped the way
+    ``verdict_response`` reads the ruling back, so escaping never pushes text
+    past the cut.
     """
-    draft = escape_prompt_xml_tags(work.strip())[:MAX_WORK_CHARS]
-    claimed = escape_prompt_xml_tags(authority.strip())[:MAX_AUTHORITY_CHARS]
-    extra = escape_prompt_xml_tags(question.strip())[:MAX_QUESTION_CHARS]
+    draft = _escaped(work.strip()[:MAX_WORK_CHARS])
+    claimed = _escaped(authority.strip()[:MAX_AUTHORITY_CHARS])
+    extra = _escaped(question.strip()[:MAX_QUESTION_CHARS])
     extra_block = f"<also_rule_on>\n{extra}\n</also_rule_on>\n\n" if extra else ""
     return (
         f"<draft>\n{draft}\n</draft>\n\n"
@@ -131,11 +128,16 @@ def verdict_response(
     The auditor's prose is model-generated text conditioned on a `boundaries`
     column that a poisoned soul-edit could have written, and it lands in the
     caller's context in a trusted position. Blockquoting it with explicit
-    provenance mirrors ``fence_voice_preferences``.
+    provenance mirrors ``fence_voice_preferences``. Its reason and quotes are
+    escaped, after truncation, wherever they appear: the whole response is
+    the tool result the caller's model reads, the structured fields as much
+    as the message. The auditor quotes from material it read escaped, so its
+    output is read as that text first; the verdict card decodes the result
+    once and shows a quoted line as the draft's author wrote it.
     """
-    reason = " ".join(verdict.reason.split())[:MAX_REASON_CHARS]
+    reason = _escaped(" ".join(_as_written(verdict.reason).split())[:MAX_REASON_CHARS])
     quotes = [
-        " ".join(q.split())[:MAX_QUOTE_CHARS]
+        _escaped(" ".join(_as_written(q).split())[:MAX_QUOTE_CHARS])
         for q in verdict.quotes[:MAX_QUOTES]
         if q.strip()
     ]

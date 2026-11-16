@@ -1,5 +1,6 @@
+# syntax=docker/dockerfile:1
 # Base stage for both dev and prod
-FROM node:24.21-alpine3.23 AS base
+FROM node:24.22.1-alpine3.23 AS base
 WORKDIR /app
 RUN corepack enable
 COPY autogpt_platform/frontend/package.json autogpt_platform/frontend/pnpm-lock.yaml ./
@@ -17,6 +18,9 @@ ARG NEXT_PUBLIC_FRONTEND_BASE_URL
 # Keep Docker builds defaulting to false to avoid the memory hit.
 ARG NEXT_PUBLIC_SOURCEMAPS="false"
 ENV NEXT_PUBLIC_SOURCEMAPS=$NEXT_PUBLIC_SOURCEMAPS
+# Optional PostHog source-map upload; the key comes in as a BuildKit secret below.
+ARG POSTHOG_SOURCEMAP_PROJECT_ID
+ENV POSTHOG_SOURCEMAP_PROJECT_ID=$POSTHOG_SOURCEMAP_PROJECT_ID
 # Allow CI's e2e build to skip Next.js's lint and type checks (CI runs them as their own jobs).
 ARG NEXT_SKIP_BUILD_CHECKS="false"
 ENV NEXT_SKIP_BUILD_CHECKS=$NEXT_SKIP_BUILD_CHECKS
@@ -35,10 +39,10 @@ RUN if [ -f .env.production ]; then \
 RUN pnpm run generate:api
 # In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
 # The cache mount keeps Next.js's webpack cache between builds (CI restores it too)
-RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=8192" pnpm build; else NODE_OPTIONS="--max-old-space-size=8192" pnpm build; fi
+RUN --mount=type=cache,target=/app/.next/cache,id=next-build-cache --mount=type=secret,id=POSTHOG_SOURCEMAP_UPLOAD_KEY,env=POSTHOG_SOURCEMAP_UPLOAD_KEY if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=8192" pnpm build; else NODE_OPTIONS="--max-old-space-size=8192" pnpm build; fi
 
 # Prod stage - based on NextJS reference Dockerfile https://github.com/vercel/next.js/blob/64271354533ed16da51be5dce85f0dbd15f17517/examples/with-docker/Dockerfile
-FROM node:24.21-alpine3.23 AS prod
+FROM node:24.22.1-alpine3.23 AS prod
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 WORKDIR /app

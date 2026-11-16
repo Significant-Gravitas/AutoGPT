@@ -21,7 +21,7 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
   return {
     ...actual,
     useFlagStatus: () => ({ enabled: true, ready: true }),
-    useGetFlag: (flag: string) => flag === actual.Flag.HIRE_EXPERTS,
+    useGetFlag: () => false,
   };
 });
 
@@ -68,7 +68,7 @@ function renderPage(page: "home" | "expert", client: QueryClient) {
       {page === "home" ? (
         <HomeRecap />
       ) : (
-        <ExpertNeedsYouSection expert={{ id: ada.id } as Expert} enabled />
+        <ExpertNeedsYouSection expert={{ id: ada.id } as Expert} />
       )}
     </QueryClientProvider>,
   );

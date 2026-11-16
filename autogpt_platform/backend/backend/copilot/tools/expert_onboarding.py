@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
+from .ask_question import parse_allow_multiple
 from .base import BaseTool
 from .models import (
     ErrorResponse,
@@ -93,10 +94,21 @@ class ExpertOnboardingTool(BaseTool):
                                 "description": (
                                     f"2-{MAX_OPTIONS} answers the user can "
                                     "tap, 1-5 words each, concrete and "
-                                    "specific to your role. Exactly one is "
-                                    "chosen. Leave out "
-                                    "'not sure', 'later' and 'skip' answers: "
-                                    "the card already offers Other and Skip."
+                                    "specific to your role. One is chosen "
+                                    "unless 'allow_multiple' is set. Leave "
+                                    "out 'not sure', 'later' and 'skip' "
+                                    "answers: the card already offers Other "
+                                    "and Skip."
+                                ),
+                            },
+                            "allow_multiple": {
+                                "type": "boolean",
+                                "description": (
+                                    "Let the user pick several of 'options'. "
+                                    "Set it when the answers combine ('which "
+                                    "services?'); leave it out for a choice "
+                                    "between alternatives. Ignored without "
+                                    "options."
                                 ),
                             },
                             "keyword": {
@@ -245,10 +257,14 @@ def _parse_one(item: Any, index: int) -> ExpertOnboardingStep | None:
         else f"step-{index}"
     )
 
+    options = _parse_options(item.get("options"))
     return ExpertOnboardingStep(
         question=question.strip()[:MAX_QUESTION_LENGTH],
         keyword=keyword,
-        options=_parse_options(item.get("options")),
+        options=options,
+        # A free-text question has nothing to multi-select, so the flag is
+        # dropped rather than sent on for the card to render a lone checkbox.
+        allow_multiple=bool(options) and parse_allow_multiple(item),
     )
 
 

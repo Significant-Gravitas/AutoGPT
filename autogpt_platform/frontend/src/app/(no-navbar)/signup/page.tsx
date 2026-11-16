@@ -1,6 +1,7 @@
 "use client";
 
-import { Form, FormField } from "@/components/__legacy__/ui/form";
+import { FormProvider } from "react-hook-form";
+import { FormField } from "@/components/molecules/Form/Form";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Link } from "@/components/atoms/Link/Link";
@@ -9,6 +10,7 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
@@ -37,6 +39,8 @@ export default function SignupPage() {
     hasInitializedAuth,
     isLoading,
     isGoogleLoading,
+    isMicrosoftLoading,
+    isMicrosoftEnabled,
     isSigningUp,
     isCloudEnv,
     showNotAllowedModal,
@@ -66,15 +70,13 @@ export default function SignupPage() {
     );
   }
 
-  const confirmPasswordError = form.formState.errors.confirmPassword?.message;
-
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-slate-950">
+        <Text variant="h3" as="h1" tone="primary">
           Create your account
         </Text>
-        <Text variant="body" className="mt-1 !text-slate-500">
+        <Text variant="body" tone="muted" className="mt-1">
           Already a member?{" "}
           <Link href={loginHref} variant="secondary">
             Log in
@@ -82,7 +84,7 @@ export default function SignupPage() {
         </Text>
       </div>
 
-      <Form {...form}>
+      <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
           <FormField
             control={form.control}
@@ -114,25 +116,10 @@ export default function SignupPage() {
               />
             )}
           />
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Confirm Password"
-                placeholder="Confirm your password"
-                type="password"
-                autoComplete="new-password"
-                error={confirmPasswordError}
-                {...field}
-              />
-            )}
-          />
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading}
+            disabled={isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -140,14 +127,25 @@ export default function SignupPage() {
           </Button>
         </form>
 
-        {isCloudEnv ? (
+        {isCloudEnv || isMicrosoftEnabled ? (
           <>
             <AuthDivider />
-            <GoogleOAuthButton
-              onClick={() => handleProviderSignup("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
-            />
+            <div className="flex w-full flex-col gap-3">
+              {isCloudEnv ? (
+                <GoogleOAuthButton
+                  onClick={() => handleProviderSignup("google")}
+                  isLoading={isGoogleLoading}
+                  disabled={isLoading || isMicrosoftLoading}
+                />
+              ) : null}
+              {isMicrosoftEnabled ? (
+                <MicrosoftOAuthButton
+                  onClick={() => handleProviderSignup("microsoft")}
+                  isLoading={isMicrosoftLoading}
+                  disabled={isLoading || isGoogleLoading}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
 
@@ -163,7 +161,7 @@ export default function SignupPage() {
           isError={!!feedback}
           behaveAs={environment.getBehaveAs()}
         />
-      </Form>
+      </FormProvider>
 
       <MobileWarningBanner />
       <EmailNotAllowedModal

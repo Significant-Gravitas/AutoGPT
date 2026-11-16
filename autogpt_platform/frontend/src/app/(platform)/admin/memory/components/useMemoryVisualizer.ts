@@ -252,7 +252,10 @@ export function useMemoryVisualizer(expertID?: string) {
       setFinishedDreamStatus(finishedStatus);
       setActiveDreamJobId(undefined);
       queryClient.invalidateQueries({
-        queryKey: getGetV2GetDreamPassStatusQueryKey(USER_ID, activeDreamJobId),
+        queryKey: getGetV2GetDreamPassStatusQueryKey(
+          USER_ID,
+          activeDreamJobId ?? "",
+        ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
     },
@@ -269,7 +272,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetNightlyBatchStatusQueryKey(
           USER_ID,
-          activeNightlyJobId,
+          activeNightlyJobId ?? "",
         ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
@@ -287,7 +290,7 @@ export function useMemoryVisualizer(expertID?: string) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetCommunityRebuildStatusQueryKey(
           USER_ID,
-          activeRebuildJobId,
+          activeRebuildJobId ?? "",
         ),
       });
       invalidateAutoPilotMemoryQueries(queryClient);
@@ -365,7 +368,6 @@ export function useMemoryVisualizer(expertID?: string) {
     });
     // ``toast`` changes identity every render; the mismatch flag is the
     // signal we react to.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeMismatch]);
 
   const dreamStatusData = dreamStatus.data?.data as AnyJobStatus | undefined;
@@ -466,7 +468,6 @@ function useTerminalEffect(
     // change on every render and would cause infinite re-runs. The
     // job_id + state transition + query error are what we want to
     // react to.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeJobId, status?.state, queryError]);
 }
 

@@ -38,6 +38,7 @@ from pydantic import BaseModel, ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.context import InferenceError
+from backend.copilot.inference.parse_output import parse_json_with_prose_fallback
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.copilot.usage_activation import UsageActivationUnavailable
 
@@ -63,7 +64,6 @@ from .cancel import end_batch_pass_if_stopped, pass_closed
 from .citations import fact_scopes
 from .clamp import clamp_pass_operations
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
-from .llm import parse_json_with_prose_fallback
 from .locks import DreamLockLostError
 from .pass_errors import pass_error
 from .provider_batch import anthropic_api_key

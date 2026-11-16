@@ -72,7 +72,7 @@ export const Flow = () => {
   );
 
   return (
-    <div className="flex h-full w-full dark:bg-slate-900">
+    <div className="flex h-full w-full">
       <div className="relative flex-1">
         <FlowCanvas
           onDragOver={onDragOver}
@@ -88,7 +88,7 @@ export const Flow = () => {
           {graph && !isReadOnly && (
             <FloatingSafeModeToggle
               graph={graph}
-              className="right-2 top-32 p-2"
+              className="top-32 right-2 p-2"
             />
           )}
           <DraftRecoveryPopup isInitialLoadComplete={isInitialLoadComplete} />

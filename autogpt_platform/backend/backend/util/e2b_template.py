@@ -74,7 +74,7 @@ class TemplateSpec(BaseModel):
 
 
 DESKTOP_IMAGE = TemplateSpec(
-    alias="agpt-desktop-1x2-004d6e73", source="desktop", cpu_count=1, memory_mb=2048
+    alias="agpt-desktop-1x2-cfc276e0", source="desktop", cpu_count=1, memory_mb=2048
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
 # Images whose boxes are replaced on their next reconnect because they lack
@@ -105,8 +105,9 @@ _EXTEND_SCRIPT = (
 # Templates this process has already confirmed ready, keyed by alias and
 # team: one round of API calls per alias per team per process lifetime.
 _ready: set[str] = set()
-# Checks in flight in this process, so concurrent first turns share one.
-_inflight: dict[str, "asyncio.Future[None]"] = {}
+# Checks in flight, so concurrent first turns share one.  Shared within an event
+# loop only: the executor runs one per worker, and another loop can't await a task.
+_inflight: dict[tuple[asyncio.AbstractEventLoop, str], "asyncio.Future[None]"] = {}
 
 
 class TemplateState(enum.Enum):
@@ -127,15 +128,16 @@ async def ensure_template(template: str, api_key: str) -> None:
     cache_key = _scoped_key(spec, api_key)
     if cache_key in _ready:
         return
-    check = _inflight.get(cache_key)
+    inflight_key = (asyncio.get_running_loop(), cache_key)
+    check = _inflight.get(inflight_key)
     if check is None:
-        check = _inflight[cache_key] = asyncio.ensure_future(
+        check = _inflight[inflight_key] = asyncio.ensure_future(
             _check_or_provision(spec, api_key, cache_key)
         )
         try:
             await asyncio.shield(check)
         finally:
-            _inflight.pop(cache_key, None)
+            _inflight.pop(inflight_key, None)
     else:
         await asyncio.shield(check)
 
@@ -260,7 +262,7 @@ _NODE_KEYRING = "/etc/apt/keyrings/nodesource.gpg"
 _NODE_REPO = f"deb [signed-by={_NODE_KEYRING}] https://deb.nodesource.com/node_24.x nodistro main"
 _VERIFY_IMAGE = [
     "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' gh)\" ge 2.100",
-    "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' nodejs)\" ge 24",
+    "dpkg --compare-versions \"$(dpkg-query -W -f='${Version}' nodejs)\" ge 24.22.1",
     "gh --version",
     "node --version",
     "npm --version",

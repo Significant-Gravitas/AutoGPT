@@ -1,10 +1,11 @@
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
-import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
+import type { GraphExecution } from "@/app/api/__generated__/models/graphExecution";
+import type { GraphExecutionWithNodes } from "@/app/api/__generated__/models/graphExecutionWithNodes";
 import { okData } from "@/app/api/helpers";
 import { getFailedStepCount, isCompletedWithErrors } from "@/lib/run-health";
 import { formatStepName, getFailedSteps, getRunError } from "./helpers";
 
-export function useRunFailures(run: GetV1GetExecutionDetails200) {
+export function useRunFailures(run: GraphExecution | GraphExecutionWithNodes) {
   const failedSteps = getFailedSteps(run);
   const blockIDs = Array.from(new Set(failedSteps.map((step) => step.blockID)));
 

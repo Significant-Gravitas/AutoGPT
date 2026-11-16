@@ -82,6 +82,7 @@ class CodexInvocationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str
+    image_urls: list[str] = Field(default_factory=list)
     instructions: str | None = None
     model: str | None = None
     effort: CodexReasoningEffort | None = None
@@ -124,6 +125,7 @@ class CodexDynamicToolResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str
+    image_urls: list[str] = Field(default_factory=list)
     success: bool = True
     # A message the user sent while the tool ran, which arrived with the
     # result without being part of it. The model reads it as a user turn after

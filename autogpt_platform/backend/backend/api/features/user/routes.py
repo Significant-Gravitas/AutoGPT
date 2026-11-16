@@ -15,6 +15,7 @@ from backend.api.model import (
     UserConsentResponse,
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.posthog_lifecycle_sync import set_tier_on_sign_in
 from backend.data.user import (
     get_or_create_user,
     get_or_create_user_with_status,
@@ -24,6 +25,7 @@ from backend.data.user import (
     update_user_timezone,
     verify_preference_token,
 )
+from backend.notifications.posthog_audience import mark_internal_on_sign_in
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
@@ -64,6 +66,11 @@ async def get_or_create_user_route(
     result = await get_or_create_user_with_status(user_data)
     response.headers[USER_CREATED_HEADER] = str(result.was_created).lower()
     user = result.user
+    if not result.was_created:
+        # A new account was just sent its properties, `is_internal` and the
+        # tier included.
+        mark_internal_on_sign_in(user.id, user.email, user_data.get("role"))
+        set_tier_on_sign_in(user.id, user.subscription_tier)
 
     # Fire-and-forget: populate business understanding from Tally form.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()

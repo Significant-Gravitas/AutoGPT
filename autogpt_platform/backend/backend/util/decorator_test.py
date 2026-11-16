@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import time
 
 import pytest
@@ -73,6 +75,19 @@ def test_async_error_decorator_swallow_false():
 
     with pytest.raises(ValueError, match="This async error should NOT be swallowed"):
         asyncio.run(run_test())
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_async_call_is_a_warning_not_an_error(caplog):
+    @async_error_logged(swallow=False)
+    async def cancelled() -> None:
+        raise asyncio.CancelledError()
+
+    with caplog.at_level(logging.WARNING), pytest.raises(asyncio.CancelledError):
+        await cancelled()
+
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]
+    assert caplog.records[0].exc_info is None
 
 
 def test_continuous_retry_basic():

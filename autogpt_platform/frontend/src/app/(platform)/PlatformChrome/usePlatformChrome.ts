@@ -54,6 +54,7 @@ export function usePlatformChrome() {
 
   return {
     showAppSidebar: !isExcludedRoute && !showTourSidebar,
+    showChangelog: isMounted && isLoggedIn && !isUserLoading,
     // On copilot the inset header floats over the chat instead of stacking
     // above it, so messages scroll to the viewport top. Kept separate from
     // `isCopilotRoute` so a future overlay-header route doesn't inherit

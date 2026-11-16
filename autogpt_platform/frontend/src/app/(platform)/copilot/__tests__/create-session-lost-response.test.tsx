@@ -84,7 +84,7 @@ vi.mock("../components/ChatInput/useVoiceRecording", () => ({
   }),
 }));
 
-vi.mock("@/components/ai-elements/prompt-input", () => ({
+vi.mock("@/components/organisms/PromptInput/PromptInput", () => ({
   PromptInputSubmit: ({ disabled }: { disabled?: boolean }) => (
     <button disabled={disabled} data-testid="submit">
       Send

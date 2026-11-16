@@ -9,247 +9,221 @@ vi.mock("@/services/environment", () => ({
 
 import { environment } from "@/services/environment";
 import {
-  ImpersonationCookie,
-  ImpersonationSession,
-  ImpersonationState,
-  getSystemHeaders,
-} from "../impersonation";
-import {
   IMPERSONATION_COOKIE_NAME,
   IMPERSONATION_HEADER_NAME,
   IMPERSONATION_STORAGE_KEY,
 } from "../constants";
+import {
+  decodeImpersonation,
+  encodeImpersonation,
+  getSystemHeaders,
+  ImpersonationCookie,
+  ImpersonationSession,
+  ImpersonationState,
+  isImpersonationUsableBy,
+  setImpersonationViewer,
+} from "../impersonation";
 
 const mockIsClientSide = vi.mocked(environment.isClientSide);
 
-// ---------- helpers ----------
+const ADMIN = { id: "admin-1", role: "admin" };
+const OTHER_ADMIN = { id: "admin-2", role: "admin" };
+const record = (target: string, owner = ADMIN.id) => ({ target, owner });
 
-function setCookieRaw(name: string, value: string) {
+function setCookiesRaw(cookies: Record<string, string>) {
   Object.defineProperty(document, "cookie", {
+    configurable: true,
     writable: true,
-    value: `${name}=${value}`,
+    value: Object.entries(cookies)
+      .map(([name, value]) => `${name}=${value}`)
+      .join("; "),
   });
 }
 
-function clearCookieRaw() {
-  Object.defineProperty(document, "cookie", {
-    writable: true,
-    value: "",
-  });
+function cookieHolding(target: string) {
+  return {
+    [IMPERSONATION_COOKIE_NAME]: encodeURIComponent(
+      encodeImpersonation(record(target)),
+    ),
+  };
 }
 
-// ---------- ImpersonationCookie ----------
+function useRealCookieJar() {
+  Reflect.deleteProperty(document, "cookie");
+  ImpersonationCookie.clear();
+}
 
-describe("ImpersonationCookie", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsClientSide.mockReturnValue(true);
-    clearCookieRaw();
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockIsClientSide.mockReturnValue(true);
+  sessionStorage.clear();
+  setCookiesRaw({});
+  setImpersonationViewer(null);
+});
+
+describe("impersonation records", () => {
+  it("round-trips a target together with its owner", () => {
+    expect(decodeImpersonation(encodeImpersonation(record("t")))).toEqual(
+      record("t"),
+    );
   });
 
-  describe("get()", () => {
-    it("returns null on server-side", () => {
-      mockIsClientSide.mockReturnValue(false);
-      expect(ImpersonationCookie.get()).toBeNull();
-    });
-
-    it("returns null when cookie is absent", () => {
-      expect(ImpersonationCookie.get()).toBeNull();
-    });
-
-    it("returns decoded user ID from cookie", () => {
-      setCookieRaw(IMPERSONATION_COOKIE_NAME, "user-123");
-      expect(ImpersonationCookie.get()).toBe("user-123");
-    });
-
-    it("decodes percent-encoded characters", () => {
-      setCookieRaw(
-        IMPERSONATION_COOKIE_NAME,
-        encodeURIComponent("user@example.com"),
-      );
-      expect(ImpersonationCookie.get()).toBe("user@example.com");
-    });
-  });
-
-  describe("set()", () => {
-    it("does nothing on server-side (sessionStorage stays empty)", () => {
-      mockIsClientSide.mockReturnValue(false);
-      ImpersonationCookie.set("user-123");
-      // We can't spy on document.cookie directly in happy-dom, so just verify
-      // ImpersonationState.get() sees nothing (no sessionStorage write and no cookie)
-      expect(ImpersonationCookie.get()).toBeNull();
-    });
-  });
-
-  describe("clear()", () => {
-    it("does nothing on server-side", () => {
-      mockIsClientSide.mockReturnValue(false);
-      // Simply verify it doesn't throw
-      expect(() => ImpersonationCookie.clear()).not.toThrow();
-    });
+  it("rejects anything that isn't a whole record", () => {
+    expect(decodeImpersonation("bare-user-id")).toBeNull();
+    expect(decodeImpersonation(JSON.stringify({ target: "t" }))).toBeNull();
+    expect(decodeImpersonation(JSON.stringify({ owner: "o" }))).toBeNull();
+    expect(decodeImpersonation(null)).toBeNull();
   });
 });
 
-// ---------- ImpersonationSession ----------
-
-describe("ImpersonationSession", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsClientSide.mockReturnValue(true);
-    sessionStorage.clear();
+describe("ImpersonationState.read()", () => {
+  it("follows the shared cookie when another tab chose a different target", () => {
+    ImpersonationSession.set(record("old-target"));
+    setCookiesRaw(cookieHolding("new-target"));
+    // The server checks requests against the cookie, so this tab must too.
+    expect(ImpersonationState.read()).toEqual(record("new-target"));
+    expect(ImpersonationSession.get()).toEqual(record("new-target"));
   });
 
-  describe("get()", () => {
-    it("returns null on server-side", () => {
-      mockIsClientSide.mockReturnValue(false);
-      expect(ImpersonationSession.get()).toBeNull();
-    });
-
-    it("returns null when key is absent", () => {
-      expect(ImpersonationSession.get()).toBeNull();
-    });
-
-    it("returns stored user ID", () => {
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "user-456");
-      expect(ImpersonationSession.get()).toBe("user-456");
-    });
-
-    it("returns null when sessionStorage throws", () => {
-      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-        throw new Error("storage unavailable");
-      });
-      expect(ImpersonationSession.get()).toBeNull();
-    });
+  it("keeps this tab's copy when the cookie holds the same record", () => {
+    ImpersonationSession.set(record("same-target"));
+    setCookiesRaw(cookieHolding("same-target"));
+    expect(ImpersonationState.read()).toEqual(record("same-target"));
   });
 
-  describe("set()", () => {
-    it("does nothing on server-side", () => {
-      mockIsClientSide.mockReturnValue(false);
-      ImpersonationSession.set("user-123");
-      expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
-    });
-
-    it("stores user ID in sessionStorage", () => {
-      ImpersonationSession.set("user-789");
-      expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBe(
-        "user-789",
-      );
-    });
+  it("falls back to the cookie and keeps a copy (cross-tab path)", () => {
+    setCookiesRaw(cookieHolding("cookie-target"));
+    expect(ImpersonationState.read()).toEqual(record("cookie-target"));
+    expect(ImpersonationSession.get()).toEqual(record("cookie-target"));
   });
 
-  describe("clear()", () => {
-    it("removes user ID from sessionStorage", () => {
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "user-789");
-      ImpersonationSession.clear();
-      expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
-    });
+  it("drops a stored value that isn't a whole record (legacy bare id)", () => {
+    sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "orphan");
+    expect(ImpersonationState.read()).toBeNull();
+    expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("never pairs this tab's target with another source's owner", () => {
+    sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "session-target");
+    setCookiesRaw(cookieHolding("cookie-target"));
+    // The cookie's record, whole; never session-target with the cookie's owner.
+    expect(ImpersonationState.read()).toEqual(record("cookie-target"));
+  });
+
+  it("drops a tab copy that no cookie backs (cleared, or from an old session)", () => {
+    ImpersonationSession.set(record("restored-target"));
+    expect(ImpersonationState.read()).toBeNull();
+    expect(ImpersonationSession.getRaw()).toBeNull();
+    expect(isImpersonationUsableBy(ADMIN)).toBe(false);
+  });
+
+  it("returns null on server-side", () => {
+    mockIsClientSide.mockReturnValue(false);
+    expect(ImpersonationState.read()).toBeNull();
   });
 });
-
-// ---------- ImpersonationState ----------
-
-describe("ImpersonationState", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsClientSide.mockReturnValue(true);
-    sessionStorage.clear();
-    clearCookieRaw();
-  });
-
-  describe("get()", () => {
-    it("returns null when neither sessionStorage nor cookie has a value", () => {
-      expect(ImpersonationState.get()).toBeNull();
-    });
-
-    it("returns sessionStorage value when present (same-tab path)", () => {
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "session-user");
-      expect(ImpersonationState.get()).toBe("session-user");
-    });
-
-    it("falls back to cookie when sessionStorage is empty (cross-tab path)", () => {
-      setCookieRaw(IMPERSONATION_COOKIE_NAME, "cookie-user");
-      expect(ImpersonationState.get()).toBe("cookie-user");
-    });
-
-    it("syncs cookie value back into sessionStorage on cookie fallback", () => {
-      setCookieRaw(IMPERSONATION_COOKIE_NAME, "cookie-user");
-      ImpersonationState.get();
-      expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBe(
-        "cookie-user",
-      );
-    });
-
-    it("prefers sessionStorage over cookie when both are present", () => {
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "session-user");
-      setCookieRaw(IMPERSONATION_COOKIE_NAME, "cookie-user");
-      expect(ImpersonationState.get()).toBe("session-user");
-    });
-
-    it("returns null on server-side", () => {
-      mockIsClientSide.mockReturnValue(false);
-      expect(ImpersonationState.get()).toBeNull();
-    });
-  });
-
-  describe("set()", () => {
-    it("stores user ID in sessionStorage", () => {
-      ImpersonationState.set("new-user");
-      expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBe(
-        "new-user",
-      );
-    });
-
-    it("also writes the impersonation cookie", () => {
-      ImpersonationState.set("new-user");
-      expect(ImpersonationCookie.get()).toBe("new-user");
-    });
-  });
-
-  describe("clear()", () => {
-    it("removes user ID from sessionStorage", () => {
-      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "user-to-clear");
-      ImpersonationState.clear();
-      expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
-    });
-
-    it("also clears the impersonation cookie", () => {
-      ImpersonationState.set("user-to-clear");
-      ImpersonationState.clear();
-      expect(ImpersonationCookie.get()).toBeNull();
-    });
-  });
-});
-
-// ---------- getSystemHeaders ----------
 
 describe("getSystemHeaders", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockIsClientSide.mockReturnValue(true);
-    sessionStorage.clear();
-    clearCookieRaw();
-  });
-
-  it("returns empty object when no impersonation is active", () => {
-    expect(getSystemHeaders()).toEqual({});
-  });
-
-  it("returns impersonation header when impersonation is active via sessionStorage", () => {
-    sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "user-abc");
+  it("sends the target only for the signed-in admin who chose it", () => {
+    setCookiesRaw(cookieHolding("user-abc"));
+    setImpersonationViewer(ADMIN);
     expect(getSystemHeaders()).toEqual({
       [IMPERSONATION_HEADER_NAME]: "user-abc",
     });
   });
 
-  it("returns impersonation header when impersonation is active via cookie (cross-tab)", () => {
-    setCookieRaw(IMPERSONATION_COOKIE_NAME, "cookie-user");
-    expect(getSystemHeaders()).toEqual({
-      [IMPERSONATION_HEADER_NAME]: "cookie-user",
-    });
+  it("sends nothing for a different admin, however the record got there", () => {
+    setCookiesRaw(cookieHolding("user-abc"));
+    setImpersonationViewer(OTHER_ADMIN);
+    expect(getSystemHeaders()).toEqual({});
   });
 
-  it("returns empty object on server-side", () => {
-    mockIsClientSide.mockReturnValue(false);
+  it("sends nothing for the owner once they're no longer an admin", () => {
+    setCookiesRaw(cookieHolding("user-abc"));
+    setImpersonationViewer({ id: ADMIN.id, role: "authenticated" });
     expect(getSystemHeaders()).toEqual({});
+  });
+
+  it("sends nothing while nobody is signed in", () => {
+    setCookiesRaw(cookieHolding("user-abc"));
+    expect(getSystemHeaders()).toEqual({});
+  });
+
+  it("sends nothing when no impersonation is active", () => {
+    setImpersonationViewer(ADMIN);
+    expect(getSystemHeaders()).toEqual({});
+  });
+});
+
+describe("writing and clearing", () => {
+  beforeEach(useRealCookieJar);
+
+  it("stores the target and owner as one value in sessionStorage and the cookie", () => {
+    ImpersonationState.set("new-user", ADMIN.id);
+    expect(ImpersonationSession.get()).toEqual(record("new-user"));
+    expect(ImpersonationCookie.get()).toEqual(record("new-user"));
+  });
+
+  it("clears both copies", () => {
+    ImpersonationState.set("user-to-clear", ADMIN.id);
+    ImpersonationState.clear();
+    expect(ImpersonationSession.getRaw()).toBeNull();
+    expect(ImpersonationCookie.getRaw()).toBeNull();
+  });
+
+  it("does nothing on server-side", () => {
+    mockIsClientSide.mockReturnValue(false);
+    ImpersonationState.set("user-123", ADMIN.id);
+    mockIsClientSide.mockReturnValue(true);
+    expect(ImpersonationState.read()).toBeNull();
+  });
+});
+
+describe("server-side reads", () => {
+  const cookieWith = (value: string | null) => async (name: string) =>
+    name === IMPERSONATION_COOKIE_NAME ? value : null;
+
+  beforeEach(() => {
+    mockIsClientSide.mockReturnValue(false);
+  });
+
+  it("returns the target when the session is the admin who chose it", async () => {
+    expect(
+      await ImpersonationState.getServerSide(
+        cookieWith(encodeImpersonation(record("user-a"))),
+        async () => ADMIN,
+      ),
+    ).toBe("user-a");
+  });
+
+  it("refuses another admin's target", async () => {
+    expect(
+      await ImpersonationState.getServerSide(
+        cookieWith(encodeImpersonation(record("user-a"))),
+        async () => OTHER_ADMIN,
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses a non-admin session and a missing session", async () => {
+    const cookie = cookieWith(encodeImpersonation(record("user-a")));
+    expect(
+      await ImpersonationState.getServerSide(cookie, async () => ({
+        id: ADMIN.id,
+        role: "authenticated",
+      })),
+    ).toBeNull();
+    expect(
+      await ImpersonationState.getServerSide(cookie, async () => null),
+    ).toBeNull();
+  });
+
+  it("refuses a cookie that isn't a whole record", async () => {
+    expect(
+      await ImpersonationState.getServerSide(
+        cookieWith("user-a"),
+        async () => ADMIN,
+      ),
+    ).toBeNull();
   });
 });

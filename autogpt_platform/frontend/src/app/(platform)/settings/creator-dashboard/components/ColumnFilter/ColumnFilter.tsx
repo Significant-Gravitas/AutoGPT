@@ -31,11 +31,11 @@ export function ColumnFilter({
           aria-label={`Filter ${label}`}
           className={cn(
             "inline-flex h-6 w-6 items-center justify-center rounded-full",
-            "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[transform,background-color,color] duration-150",
+            "transition-[transform,background-color,color] duration-150",
             "active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100",
             active
-              ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
-              : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700",
+              ? "bg-brand/10 text-accent-strong hover:bg-brand/20"
+              : "text-foreground-subtle hover:bg-surface-hover hover:text-foreground-body",
           )}
         >
           <Icon icon={FunnelIcon} size={12} />
@@ -44,14 +44,8 @@ export function ColumnFilter({
       <PopoverContent
         align={align}
         sideOffset={6}
-        className={cn(
-          "w-64 p-3 will-change-transform",
-          "origin-[var(--radix-popover-content-transform-origin)]",
-          "data-[state=closed]:duration-150 data-[state=open]:duration-200",
-          "data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)]",
-          "data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)]",
-          "motion-reduce:!animate-none motion-reduce:!duration-100",
-        )}
+        // oxlint-disable-next-line design-system/no-restyle -- the column filter is a compact popover with its own open and close timing
+        className="w-64 origin-[var(--radix-popover-content-transform-origin)] p-3 will-change-transform data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!animate-none motion-reduce:!duration-100"
         onClick={(e) => e.stopPropagation()}
       >
         {children}

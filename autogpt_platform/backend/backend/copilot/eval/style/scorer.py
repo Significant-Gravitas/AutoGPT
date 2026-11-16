@@ -11,11 +11,10 @@ from backend.copilot.inference.context import (
     InferenceScope,
 )
 from backend.copilot.inference.routing import resolve_route
-from backend.copilot.inference.trace import trace
 
 from .models import Judgement, Rubric, Usage
 
-# The eval runs outside any account; its judge traces go under this user.
+# The eval runs outside any account; its judge calls go under this user.
 EVAL_USER_ID = "expert-style-eval"
 JUDGE_TIMEOUT_SECONDS = 60.0
 # Haiku ran out of room mid-JSON writing long evidence quotes on 5 of run A's
@@ -35,15 +34,13 @@ async def judge_response(
     run_id: str,
 ) -> tuple[Judgement, Usage]:
     ctx = judge_context(expert, model=model, run_id=run_id)
-    async with trace(ctx) as call:
-        completion = await structured_complete(
-            call.ctx,
-            judge_messages(expert, rubric, kind=kind, prompt=prompt, response=response),
-            Judgement,
-            temperature=0.0,
-            max_output_tokens=JUDGE_MAX_OUTPUT_TOKENS,
-        )
-        call.usage = completion.usage
+    completion = await structured_complete(
+        ctx,
+        judge_messages(expert, rubric, kind=kind, prompt=prompt, response=response),
+        Judgement,
+        temperature=0.0,
+        max_output_tokens=JUDGE_MAX_OUTPUT_TOKENS,
+    )
     judgement = completion.value
     missing = {d.key for d in rubric.dimensions} - judgement.scores.keys()
     if missing:

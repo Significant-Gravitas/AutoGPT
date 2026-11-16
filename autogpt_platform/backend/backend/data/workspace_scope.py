@@ -7,6 +7,7 @@ own files. ``None`` scope means unrestricted: the account owner acting
 through personal Otto, REST endpoints, or system paths.
 """
 
+import asyncio
 import posixpath
 from typing import cast
 
@@ -47,6 +48,16 @@ def session_path_prefix(session_id: str) -> str:
 
 def expert_skills_folder(expert_id: str) -> str:
     return f"{EXPERTS_ROOT}{expert_id}/skills"
+
+
+def is_skill_package_path(path: str) -> bool:
+    """Whether *path* sits in a skill folder: the account's ``/skills/``, or
+    ``/experts/<id>/skills/`` for a hired expert's own. Only the skills
+    registry writes there, so every such file is part of a skill package."""
+    if path.startswith(SKILLS_ROOT):
+        return True
+    expert, _, rest = path.removeprefix(EXPERTS_ROOT).partition("/")
+    return path.startswith(EXPERTS_ROOT) and bool(expert) and rest.startswith("skills/")
 
 
 def is_user_file_path(path: str) -> bool:
@@ -122,31 +133,39 @@ async def resolve_expert_workspace_scope(
     which grants nothing beyond that one conversation). The ``visibility`` filter
     mirrors ``experts_db.get_expert``: hired experts are PRIVATE in v1, and
     a TEAM/ORG expert must not read files until sharing rules exist for it.
+
+    The three reads run together, since every expert file call waits on
+    them; the conversations count only once the expert is found.
     """
-    expert = await PrismaExpert.prisma().find_first(
-        where={
-            "id": expert_id,
-            "ownerUserId": user_id,
-            "isTemplate": False,
-            "isArchived": False,
-            "visibility": ResourceVisibility.PRIVATE,
-        }
+    expert, own_sessions, delegated_sessions = await asyncio.gather(
+        PrismaExpert.prisma().find_first(
+            where={
+                "id": expert_id,
+                "ownerUserId": user_id,
+                "isTemplate": False,
+                "isArchived": False,
+                "visibility": ResourceVisibility.PRIVATE,
+            }
+        ),
+        PrismaChatSession.prisma().find_many(
+            where={"userId": user_id, "expertId": expert_id}
+        ),
+        PrismaChatSession.prisma().find_many(
+            where={
+                "userId": user_id,
+                "metadata": cast(
+                    prisma.types.JsonFilter,
+                    {
+                        "path": ["delegated_by_expert_id"],
+                        "equals": prisma.Json(expert_id),
+                    },
+                ),
+            }
+        ),
     )
     if expert is None:
         return WorkspaceScope(expert_id=expert_id)
 
-    own_sessions = await PrismaChatSession.prisma().find_many(
-        where={"userId": user_id, "expertId": expert_id}
-    )
-    delegated_sessions = await PrismaChatSession.prisma().find_many(
-        where={
-            "userId": user_id,
-            "metadata": cast(
-                prisma.types.JsonFilter,
-                {"path": ["delegated_by_expert_id"], "equals": prisma.Json(expert_id)},
-            ),
-        }
-    )
     return WorkspaceScope(
         expert_id=expert_id,
         owns_skills_folder=True,

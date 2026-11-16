@@ -24,8 +24,9 @@ function consentUpdates() {
   );
 }
 
-function update(analytics: boolean, advertising: boolean) {
+function update(analytics: boolean, advertising: boolean, preferences = false) {
   const ads = advertising ? "granted" : "denied";
+  const prefs = preferences ? "granted" : "denied";
   return [
     "consent",
     "update",
@@ -34,6 +35,8 @@ function update(analytics: boolean, advertising: boolean) {
       ad_storage: ads,
       ad_user_data: ads,
       ad_personalization: ads,
+      functionality_storage: prefs,
+      personalization_storage: prefs,
     },
   ];
 }
@@ -45,13 +48,28 @@ function runDefaultsScript(): unknown[][] {
   );
 }
 
-const ALL_DENIED = {
+const DEFAULTS = {
   ad_storage: "denied",
   ad_user_data: "denied",
   ad_personalization: "denied",
   analytics_storage: "denied",
+  functionality_storage: "denied",
+  personalization_storage: "denied",
+  security_storage: "granted",
   wait_for_update: 500,
 };
+
+// Every Consent Mode v2 signal; Google treats one without a default as not
+// denied.
+const CONSENT_SIGNALS = [
+  "ad_storage",
+  "ad_user_data",
+  "ad_personalization",
+  "analytics_storage",
+  "functionality_storage",
+  "personalization_storage",
+  "security_storage",
+];
 
 describe("buildConsentDefaultsScript", () => {
   afterEach(() => {
@@ -59,11 +77,25 @@ describe("buildConsentDefaultsScript", () => {
     delete window.gtag;
   });
 
-  it("denies every signal for every visitor and passes click IDs through URLs", () => {
+  it("denies every signal that needs consent for every visitor and passes click IDs through URLs", () => {
     expect(runDefaultsScript()).toEqual([
-      ["consent", "default", ALL_DENIED],
+      ["consent", "default", DEFAULTS],
       ["set", "url_passthrough", true],
     ]);
+  });
+
+  it("sets a default for every Consent Mode signal, granting only security storage", () => {
+    const [[, , defaults]] = runDefaultsScript() as [
+      [string, string, Record<string, unknown>],
+    ];
+
+    expect(Object.keys(defaults)).toEqual(
+      expect.arrayContaining(CONSENT_SIGNALS),
+    );
+    const granted = CONSENT_SIGNALS.filter(
+      (name) => defaults[name] === "granted",
+    );
+    expect(granted).toEqual(["security_storage"]);
   });
 
   it("sets no region-specific default", () => {
@@ -124,7 +156,7 @@ describe("followConsentForGoogleTag", () => {
     answerCookiebot({ statistics: true, marketing: true });
 
     expect(dataLayerEntries()).toEqual([
-      ["consent", "default", ALL_DENIED],
+      ["consent", "default", DEFAULTS],
       ["set", "url_passthrough", true],
       [
         "consent",
@@ -134,9 +166,40 @@ describe("followConsentForGoogleTag", () => {
           ad_storage: "granted",
           ad_user_data: "granted",
           ad_personalization: "granted",
+          functionality_storage: "denied",
+          personalization_storage: "denied",
         },
       ],
     ]);
+    unfollow();
+  });
+
+  it("sends preferences consent as the functionality and personalization signals", () => {
+    configureCookiebot();
+    installCookiebot();
+    const unfollow = followConsentForGoogleTag();
+
+    answerCookiebot({ preferences: true });
+    answerCookiebot({ statistics: true });
+
+    expect(consentUpdates()).toEqual([
+      update(false, false, true),
+      update(true, false, false),
+    ]);
+    unfollow();
+  });
+
+  it("never updates security storage, which stays granted", () => {
+    configureCookiebot();
+    installCookiebot({ statistics: true, marketing: true, preferences: true });
+    const unfollow = followConsentForGoogleTag();
+
+    answerCookiebot({});
+
+    expect(consentUpdates()).toHaveLength(2);
+    consentUpdates().forEach(([, , signals]) =>
+      expect(signals).not.toHaveProperty("security_storage"),
+    );
     unfollow();
   });
 

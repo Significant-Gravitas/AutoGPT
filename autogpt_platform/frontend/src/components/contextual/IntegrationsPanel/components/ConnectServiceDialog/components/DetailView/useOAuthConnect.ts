@@ -29,6 +29,14 @@ interface Args {
   /** Existing account to upgrade. The backend unions its scopes with the
    *  requested ones, so a re-auth cannot narrow what the user already had. */
   credentialID?: string;
+  onError?: (error: unknown) => void;
+}
+
+/** Narrows or upgrades a single connect, for callers whose ask depends on
+ *  which button was pressed rather than on the hook's arguments. */
+interface ConnectRequest {
+  scopes?: string[];
+  credentialID?: string;
 }
 
 export function useOAuthConnect({
@@ -36,6 +44,7 @@ export function useOAuthConnect({
   onSuccess,
   scopes,
   credentialID,
+  onError,
 }: Args) {
   const queryClient = useQueryClient();
   const credentialsActions = useContext(CredentialsActionsContext);
@@ -59,7 +68,15 @@ export function useOAuthConnect({
     };
   }, []);
 
-  async function connect() {
+  function connect() {
+    return run();
+  }
+
+  function connectWith(request: ConnectRequest) {
+    return run(request);
+  }
+
+  async function run(request?: ConnectRequest) {
     // Ignore re-entry while a flow is in flight: a rapid double-click fires
     // again before the pending state re-renders the button, and a second
     // concurrent flow would overwrite preOpenedWindowRef/abortRef. State
@@ -83,8 +100,8 @@ export function useOAuthConnect({
       // a credential missing a required scope never satisfies the caller.
       const initiateResponse = await initiateLogin(
         provider,
-        scopes,
-        credentialID,
+        request?.scopes ?? scopes,
+        request?.credentialID ?? credentialID,
         // The list that produced the dead id is stale; refresh it now so a
         // cancelled popup does not make every later click pay the retry too.
         () => credentialsActions?.reload(),
@@ -107,6 +124,7 @@ export function useOAuthConnect({
           cancelUrl: cancel_url,
           preOpenedWindow,
           timeout: provider === "codex" ? 15 * 60 * 1000 : undefined,
+          sameOriginFlow: provider === "codex",
           // BroadcastChannel + localStorage listeners are the only delivery
           // path when the flow runs in a tab without window.opener (the iOS
           // fallback) — the callback page already writes to both.
@@ -162,6 +180,10 @@ export function useOAuthConnect({
         toastIfPlanRequired(error, "Connecting a service needs an active plan")
       )
         return;
+      if (onError) {
+        onError(error);
+        return;
+      }
       toast({
         title: "OAuth connection failed",
         description: getOAuthErrorMessage(error),
@@ -173,7 +195,7 @@ export function useOAuthConnect({
     }
   }
 
-  return { connect, isPending };
+  return { connect, connectWith, isPending };
 }
 
 function buildLoginParams(scopes?: string[], credentialID?: string) {

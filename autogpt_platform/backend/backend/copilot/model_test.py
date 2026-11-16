@@ -27,6 +27,9 @@ from .db import add_chat_messages_batch
 from .model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
+    LocalExecutionTargetMetadata,
+    PublicChatSessionMetadata,
     Usage,
     _get_session_from_db,
     _save_session_to_db,
@@ -64,6 +67,67 @@ messages = [
         tool_call_id="t123",
     ),
 ]
+
+
+def test_legacy_session_metadata_defaults_to_cloud_execution() -> None:
+    metadata = ChatSessionMetadata.model_validate({"dry_run": False})
+    assert metadata.execution_target.kind == "cloud"
+
+
+def test_chat_session_new_preserves_generated_id_and_local_binding() -> None:
+    binding = LocalExecutionTargetMetadata(
+        machine_id="machine-1",
+        directory_ref="directory-1",
+        allowed_root="/workspace",
+        root_fingerprint="a" * 64,
+        root_grant="grant-1",
+        revision=1,
+    )
+    session = ChatSession.new(
+        "user-1",
+        dry_run=False,
+        session_id="generated-session-id",
+        execution_target=binding,
+    )
+
+    assert session.session_id == "generated-session-id"
+    assert session.metadata.execution_target == binding
+
+
+def test_public_local_session_metadata_redacts_restore_credentials() -> None:
+    metadata = ChatSessionMetadata(
+        llm_auth_provider="codex",
+        llm_credential_id="credential-1",
+        origin="interactive",
+        delegated_by_expert_id="expert-1",
+        delegated_by_session_id="parent-session",
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+            revision=2,
+        ),
+    )
+
+    public = PublicChatSessionMetadata.from_internal(metadata).model_dump()
+
+    assert public["execution_target"] == {
+        "kind": "local",
+        "machine_id": "machine-1",
+        "allowed_root": "/workspace",
+        "revision": 2,
+    }
+    assert public["llm_auth_provider"] == "codex"
+    assert public["llm_credential_id"] == "credential-1"
+    assert public["origin"] == "interactive"
+    assert public["delegated_by_expert_id"] == "expert-1"
+    assert public["delegated_by_session_id"] == "parent-session"
+    serialized = str(public)
+    assert "root_grant" not in serialized
+    assert "root_fingerprint" not in serialized
+    assert "directory_ref" not in serialized
 
 
 @pytest.mark.asyncio
@@ -1083,19 +1147,18 @@ async def test_append_and_save_message_appends_new_message(
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("saved", [1, 2])
+@pytest.mark.parametrize("local", [True, False])
 async def test_a_follow_up_message_is_saved_without_rereading_the_session(
-    mocker: MockerFixture, saved: int
+    mocker: MockerFixture, saved: int, local: bool
 ) -> None:
-    """A chat with messages already has its row, so the follow-up's save goes
-    straight to the session update and the message insert, from its first
-    saved message on."""
+    """Existing chats keep local atomic saves and the older RPC contract."""
     session = _make_session_with_messages(
         *(
             ChatMessage(role=role, content=f"message {n}", sequence=n)
             for n, role in zip(range(saved), ["user", "assistant"])
         )
     )
-    db = _stub_save_path(mocker, session, next_sequence=saved)
+    db = _stub_save_path(mocker, session, next_sequence=saved, local=local)
 
     result = await append_and_save_message(
         session.session_id, ChatMessage(role="user", content="second message")
@@ -1104,8 +1167,15 @@ async def test_a_follow_up_message_is_saved_without_rereading_the_session(
     assert result is not None
     db.get_chat_session_metadata.assert_not_awaited()
     db.create_chat_session.assert_not_awaited()
-    db.update_chat_session.assert_awaited_once()
     [insert] = db.add_chat_messages_batch.await_args_list
+    if local:
+        db.update_chat_session.assert_not_awaited()
+        fields = insert.kwargs["session_fields"]
+        assert fields.credentials == session.credentials
+        assert fields.successful_agent_runs == session.successful_agent_runs
+    else:
+        db.update_chat_session.assert_awaited_once()
+        assert insert.kwargs["session_fields"] is None
     assert insert.kwargs["start_sequence"] == saved
     assert [m["content"] for m in insert.kwargs["messages"]] == ["second message"]
 
@@ -1203,6 +1273,7 @@ def _stub_save_path(
     *,
     next_sequence: int,
     row_exists: bool = True,
+    local: bool = True,
 ):
     """The session lock, cache and database behind ``append_and_save_message``;
     its ``_save_session_to_db`` runs for real against the returned database."""
@@ -1234,6 +1305,7 @@ def _stub_save_path(
         add_chat_messages_batch=mocker.AsyncMock(return_value=next_sequence),
     )
     mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    mocker.patch("backend.copilot.model.chat_db_is_local", return_value=local)
     return db
 
 
@@ -2436,7 +2508,6 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         routing_source="env",
         llm_auth_provider=None,
         llm_credential_id=None,
-        langfuse_trace_id=None,
         trace_id=None,
     )
     assert flushed.stamps_pending_save is False
@@ -2446,17 +2517,15 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
 async def test_save_session_to_db_persists_the_turn_trace(
     mocker: MockerFixture,
 ) -> None:
-    """The Langfuse and PostHog traces stamped at end of turn reach the DB
+    """The PostHog trace stamped at end of turn reaches the DB
     both on rows flushed mid-turn (back-fill) and on rows inserted by this
     save."""
-    trace_id = "1edf31f11b1693cc6103f358c1481694"
     flushed = ChatMessage(
         role="assistant",
         content="working on it",
         sequence=7,
         model="claude-sonnet-4-6",
         routing_source="env",
-        langfuse_trace_id=trace_id,
         trace_id="turn-1",
         stamps_pending_save=True,
     )
@@ -2465,7 +2534,6 @@ async def test_save_session_to_db_persists_the_turn_trace(
         content="done",
         model="claude-sonnet-4-6",
         routing_source="env",
-        langfuse_trace_id=trace_id,
         trace_id="turn-1",
     )
     session = _make_session_with_messages(flushed, unsaved)
@@ -2482,10 +2550,8 @@ async def test_save_session_to_db_persists_the_turn_trace(
 
     backfill = mock_db.update_chat_message_stamps.await_args
     assert backfill.kwargs["sequence"] == 7
-    assert backfill.kwargs["langfuse_trace_id"] == trace_id
     assert backfill.kwargs["trace_id"] == "turn-1"
     (inserted,) = mock_db.add_chat_messages_batch.await_args.kwargs["messages"]
-    assert inserted["langfuse_trace_id"] == trace_id
     assert inserted["trace_id"] == "turn-1"
 
 
@@ -2568,6 +2634,45 @@ async def test_get_or_create_client_chat_session_reraises_real_db_failure(
 
     with pytest.raises(DatabaseError, match="database unavailable"):
         await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_never_adopts_a_local_pc_session(
+    mocker: MockerFixture,
+) -> None:
+    """Locality is fixed at creation: a Cloud create naming a Local PC chat's
+    id is a conflict, not a way back into that machine's folder."""
+    from .model import (
+        LocalExecutionTargetMetadata,
+        SessionIdConflictError,
+        get_or_create_client_chat_session,
+    )
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        execution_target=LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session("user-a", "sid-1", dry_run=False)
+    create_session.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,6 @@ from backend.copilot.constants import (
 from backend.data import human_review
 from backend.data.execution import ExecutionStatus, update_graph_execution_stats
 from backend.data.expert_spend import SpendWindow, get_spend, window_start
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -84,10 +83,10 @@ async def spend_approval_required(
 
     Like the weekly gate, the spend read is a snapshot: concurrent starts can
     each pass before any of them meters, bounded by their own cost."""
+    if not settings.config.enable_credit:
+        return None
     threshold = approval_threshold()
     if threshold is None:
-        return None
-    if not await is_feature_enabled(Flag.EXPERT_SPEND_APPROVAL, user_id):
         return None
     window = approval_window()
     spent = await get_spend(expert_id, window)

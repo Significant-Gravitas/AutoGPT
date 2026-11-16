@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import math
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from prisma.enums import AlertCause
 
@@ -9,7 +11,7 @@ from backend.blocks import get_block
 from backend.blocks._base import Block
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.execution import ExecutionStatus, NodeExecutionEntry
+from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.expert_spend import add_weekly_spend, add_weekly_spend_sync
 from backend.data.model import NodeExecutionStats
 from backend.notifications.alert_causes import LowBalanceCause, ZeroBalanceCause
@@ -75,21 +77,27 @@ async def clear_insufficient_funds_notifications(user_id: str) -> int:
 
 
 def _block_has_paid_cost_entry(block: Block, input_data: "dict[str, Any]") -> bool:
-    """Whether any BLOCK_COSTS entry matches this input — even if pre-flight is 0.
+    """Whether any non-free BLOCK_COSTS entry matches this input — even if
+    pre-flight is 0.
 
     Used to guard dynamic-cost blocks (SECOND/ITEMS/COST_USD) whose
     pre-flight cost is 0 but whose post-flight reconciliation will debit
     a real amount. A user with non-positive balance must not be allowed
-    to start such a block.
+    to start such a block. Free entries (e.g. Ollama models, Jev's BYOK
+    price) never debit, so they don't count.
     """
     from backend.data.block_cost_config import BLOCK_COSTS
 
-    from .utils import _is_cost_filter_match
+    from .utils import _is_cost_filter_match, _with_schema_defaults
 
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
         return False
-    return any(_is_cost_filter_match(bc.cost_filter, input_data) for bc in block_costs)
+    input_data = _with_schema_defaults(block, input_data)
+    return any(
+        not bc.is_free and _is_cost_filter_match(bc.cost_filter, input_data)
+        for bc in block_costs
+    )
 
 
 def resolve_block_cost(
@@ -132,7 +140,7 @@ def charge_usage(
     if not block:
         return total_cost, 0, block_pre_flight
 
-    org_id = node_exec.execution_context.organization_id
+    org_id = billed_org_id(node_exec.execution_context)
     if cost > 0:
         block_metadata = UsageTransactionMetadata(
             graph_exec_id=node_exec.graph_exec_id,
@@ -220,6 +228,14 @@ def charge_usage(
     return total_cost, remaining_balance, block_pre_flight
 
 
+def billed_org_id(context: ExecutionContext) -> str | None:
+    """The org whose balance pays for the run, or None for its user's own wallet.
+
+    Read from the pin set when the run was queued.
+    """
+    return None if context.bills_own_wallet else context.organization_id
+
+
 def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
     """What a re-dispatched node still has billed, for its reconciliation to
     settle against. Its first dispatch was charged and this one is not (#15272).
@@ -246,10 +262,72 @@ def redispatch_reconcile_baseline(node_exec: NodeExecutionEntry) -> int | None:
     return settled
 
 
+def bills_stop_estimate(status: ExecutionStatus, stopped: bool) -> bool:
+    """Whether a node's settlement adds the estimated input tokens of LLM
+    requests it cut off mid-call (``abandoned_input_token_count``) to the
+    usage the provider reported: when a stop request ended the run
+    (``stopped``) and with it the node. This is the one case billed on an
+    estimate; every other settlement bills the reported usage alone.
+    """
+    return stopped and status == ExecutionStatus.TERMINATED
+
+
+def _with_stop_estimate(
+    block: Block,
+    input_data: "dict[str, Any]",
+    stats: NodeExecutionStats,
+    post_flight: int,
+    pre_flight: int,
+) -> int:
+    """``post_flight`` plus the stop estimate (see ``bills_stop_estimate``),
+    priced at the model's input rate. Token-priced (TOKENS) and
+    provider-cost-priced (COST_USD) LLM entries bill it; a model with no
+    input rate keeps at least its pre-flight charge."""
+    from backend.blocks._base import BlockCostType
+    from backend.data.block_cost_config import (
+        _USD_PER_1M_DIVISOR,
+        BLOCK_COSTS,
+        TOKEN_COST,
+        _lookup_llm_model,
+    )
+
+    from .utils import _is_cost_filter_match, _with_schema_defaults
+
+    tokens = stats.abandoned_input_token_count
+    if tokens <= 0:
+        return post_flight
+    input_data = _with_schema_defaults(block, input_data)
+    block_cost = next(
+        (
+            bc
+            for bc in BLOCK_COSTS.get(type(block)) or []
+            if _is_cost_filter_match(bc.cost_filter, input_data)
+        ),
+        None,
+    )
+    if block_cost is None or block_cost.cost_type not in (
+        BlockCostType.TOKENS,
+        BlockCostType.COST_USD,
+    ):
+        return post_flight
+    model = _lookup_llm_model(input_data.get("model"))
+    rate = TOKEN_COST.get(model) if model else None
+    if rate is None:
+        return max(post_flight, pre_flight)
+    if block_cost.cost_type == BlockCostType.TOKENS:
+        return post_flight + math.ceil(tokens * rate.input / 1_000_000)
+    # COST_USD bills cost_amount credits per USD; TOKEN_COST rates are
+    # credits per 1M tokens at _USD_PER_1M_DIVISOR credits per USD.
+    return post_flight + math.ceil(
+        tokens * rate.input * block_cost.cost_amount / (_USD_PER_1M_DIVISOR * 1_000_000)
+    )
+
+
 async def charge_reconciled_usage(
     node_exec: NodeExecutionEntry,
     stats: NodeExecutionStats,
     pre_flight_charge: int | None = None,
+    bill_stop_estimate: bool = False,
 ) -> tuple[int, int]:
     """Charge the dynamic portion of a block's cost from its execution stats.
 
@@ -276,6 +354,9 @@ async def charge_reconciled_usage(
     the historical-average JSON. Without this, a hot-swap of
     ``block_preflight_estimates.json`` between charge and reconciliation
     would shift the baseline and skew the delta.
+
+    ``bill_stop_estimate`` (see ``bills_stop_estimate``) adds the estimated
+    input tokens of LLM requests a stop cut off mid-call.
     """
     try:
         db_client = get_database_manager_async_client()
@@ -290,6 +371,10 @@ async def charge_reconciled_usage(
         post_flight, matching_filter = block_usage_cost(
             block=block, input_data=node_exec.inputs, stats=stats
         )
+        if bill_stop_estimate:
+            post_flight = _with_stop_estimate(
+                block, node_exec.inputs, stats, post_flight, pre_flight
+            )
         delta = post_flight - pre_flight
         if delta == 0:
             return 0, 0
@@ -318,7 +403,7 @@ async def charge_reconciled_usage(
                 f"actual={post_flight} credits, pre-flight={pre_flight}"
             ),
         )
-        org_id = node_exec.execution_context.organization_id
+        org_id = billed_org_id(node_exec.execution_context)
         if org_id:
             remaining_balance = await db_client.spend_org_credits(
                 org_id=org_id,
@@ -340,20 +425,29 @@ async def charge_reconciled_usage(
         # the USER ledger: no org context, or a personal org (which bills
         # the owner's wallet). Real-org deductions come from OrgBalance, so
         # the user's personal auto-top-up must not trigger for those.
-        user_ledger = not org_id or (
-            await db_client.get_personal_org_owner(org_id) is not None
-        )
-        if delta > 0 and user_ledger:
-            # handle_low_balance is sync + does a blocking RPC; dispatch to
-            # thread so we don't block the event loop. Rare path (threshold
-            # crossings only).
-            await asyncio.to_thread(
-                handle_low_balance,
-                get_db_client(),
-                node_exec.user_id,
-                remaining_balance,
-                delta,
-            )
+        # The delta has landed, so a failed check is logged here instead of
+        # dropping the delta via the handler below.
+        if delta > 0:
+            try:
+                user_ledger = not org_id or (
+                    await db_client.get_personal_org_owner(org_id) is not None
+                )
+                if user_ledger:
+                    # handle_low_balance is sync + does a blocking RPC;
+                    # dispatch to thread so we don't block the event loop.
+                    # Rare path (threshold crossings only).
+                    await asyncio.to_thread(
+                        handle_low_balance,
+                        get_db_client(),
+                        node_exec.user_id,
+                        remaining_balance,
+                        delta,
+                    )
+            except Exception:
+                logger.exception(
+                    f"Low-balance check failed after reconciling node "
+                    f"{node_exec.node_exec_id}"
+                )
         # Keep the expert's weekly meter honest for dynamic-cost blocks:
         # positive deltas add spend, refunds subtract.
         if node_exec.execution_context.expert_id:
@@ -381,14 +475,27 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     (``increment_execution_count``). Nested tool executions are sub-steps
     of a single block run from the user's perspective and should not push
     them into higher per-execution cost tiers.
+
+    Pins ``node_exec.pre_flight_charge`` to the block cost actually spent,
+    so the post-flight reconciliation settles against what the wallet paid
+    (as the main queue does), not against a re-derived catalogue estimate.
     """
 
     def _run():
-        total_cost, remaining, _ = charge_usage(node_exec, 0)
+        total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
+        node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
-            handle_low_balance(
-                get_db_client(), node_exec.user_id, remaining, total_cost
-            )
+            try:
+                handle_low_balance(
+                    get_db_client(), node_exec.user_id, remaining, total_cost
+                )
+            except Exception:
+                # The spend has landed: a failed alert must not report it as a
+                # failed charge, or the caller drops it from the run's cost.
+                logger.exception(
+                    f"Low-balance check failed after charging node "
+                    f"{node_exec.node_exec_id}"
+                )
         return total_cost, remaining
 
     return await asyncio.to_thread(_run)
@@ -463,22 +570,20 @@ def handle_insufficient_funds_notif(
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,
-            shortfall_display=f"{shortfall / 100:,.2f}",
+            shortfall_display=f"${shortfall / 100:,.2f}",
         ).model_dump(mode="json"),
     )
 
     # Send Discord system alert
     try:
-        user_email = db_client.get_user_email_by_id(user_id)
-
         alert_message = (
             f"❌ **Insufficient Funds Alert**\n"
-            f"User: {user_email or user_id}\n"
+            f"User: `{user_id}`\n"
             f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
             f"Current balance: ${e.balance / 100:.2f}\n"
             f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
             f"Shortfall: ${abs(shortfall) / 100:.2f}\n"
-            f"[View User Details]({base_url}/admin/spending?search={user_email})"
+            f"[View User Details]({base_url}/admin/spending?search={quote(user_id, safe='')})"
         )
 
         get_notification_manager_client().discord_system_alert(
@@ -516,14 +621,13 @@ def handle_low_balance(
         )
 
         try:
-            user_email = db_client.get_user_email_by_id(user_id)
             alert_message = (
                 f"⚠️ **Low Balance Alert**\n"
-                f"User: {user_email or user_id}\n"
+                f"User: `{user_id}`\n"
                 f"Balance dropped below ${LOW_BALANCE_THRESHOLD / 100:.2f}\n"
                 f"Current balance: ${current_balance / 100:.2f}\n"
                 f"Transaction cost: ${transaction_cost / 100:.2f}\n"
-                f"[View User Details]({base_url}/admin/spending?search={user_email})"
+                f"[View User Details]({base_url}/admin/spending?search={quote(user_id, safe='')})"
             )
             get_notification_manager_client().discord_system_alert(
                 alert_message, DiscordChannel.PRODUCT
@@ -550,7 +654,7 @@ def _low_balance_cause(
     the alert says the balance is low without naming a date.
     """
     daily_rate = db_client.get_recent_daily_spend(user_id)
-    balance_display = f"{current_balance / 100:,.2f} credits"
+    balance_display = f"${current_balance / 100:,.2f}"
     scheduled_agents = db_client.count_scheduled_agents(user_id)
 
     if daily_rate <= 0:
@@ -565,7 +669,7 @@ def _low_balance_cause(
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,
-        daily_rate_display=f"{daily_rate / 100:,.2f} credits",
+        daily_rate_display=f"${daily_rate / 100:,.2f}",
         balance_display=balance_display,
         runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
         scheduled_agents=scheduled_agents,

@@ -42,6 +42,7 @@ import {
   streamSseResponse,
 } from "@/tests/integrations/copilot-sse";
 import { getListCopilotSkillsMockHandler200 } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { getListMyExpertMemoryFactsMockHandler200 } from "@/app/api/__generated__/endpoints/memory/memory.msw";
 import {
   getGetHomeDashboardMockHandler,
   getGetHomeDashboardResponseMock200,
@@ -88,27 +89,6 @@ vi.mock("@/app/(platform)/copilot/helpers", async (importActual) => {
 vi.mock("framer-motion", async (importActual) => {
   const actual = await importActual<typeof import("framer-motion")>();
   return { ...actual, useReducedMotion: () => true };
-});
-
-const { setFlagStatusMock, skillsHubFlag } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-  skillsHubFlag: { enabled: true, ready: true },
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : flag === "skills-hub"
-          ? skillsHubFlag
-          : actual.useFlagStatus(flag as never),
-  };
 });
 
 const { notFoundMock, pushMock } = vi.hoisted(() => ({
@@ -243,6 +223,10 @@ beforeEach(() => {
       getGetHomeDashboardResponseMock200({ attention: [] }),
     ),
     getGetExpertMockHandler(maria),
+    getListMyExpertMemoryFactsMockHandler200({
+      expert_id: maria.id,
+      items: [],
+    }),
     getGetV1ListExecutionSchedulesForAUserMockHandler([mariaSchedule]),
     getListExpertRunsMockHandler([]),
     getGetExpertActivityMockHandler({
@@ -253,10 +237,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  skillsHubFlag.enabled = true;
   resetCopilotChatRegistry();
   window.localStorage.removeItem("team-workflows-view");
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
+
   pushMock.mockReset();
 });
 
@@ -776,9 +759,9 @@ describe("ExpertDetailPage", () => {
     expect(await within(attached).findByText("seo-audit")).toBeDefined();
   });
 
-  test("hides the marketplace tab when the skills hub is off", async () => {
+  test("shows the marketplace tab without a rollout flag", async () => {
     const user = userEvent.setup();
-    skillsHubFlag.enabled = false;
+
     server.use(...hubSkillHandlers([]));
     render(<ExpertDetailPage />);
 
@@ -788,11 +771,8 @@ describe("ExpertDetailPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
 
     expect(
-      within(dialog).queryByRole("tab", { name: "Marketplace" }),
-    ).toBeNull();
-    // The dialog must not promise a source it cannot show either.
-    expect(dialog.textContent).toContain("Pick one from your library.");
-    expect(dialog.textContent).not.toMatch(/marketplace/i);
+      within(dialog).getByRole("tab", { name: "Marketplace" }),
+    ).toBeDefined();
   });
 
   test("removes a skill from the expert", async () => {
@@ -1246,7 +1226,7 @@ describe("ExpertDetailPage", () => {
     expect(within(panel).getByPlaceholderText("Message Maria…")).toBeDefined();
     expect(
       within(panel)
-        .getByRole("link", { name: "Open in Copilot" })
+        .getByRole("link", { name: "Open in Chat" })
         .getAttribute("href"),
     ).toBe("/copilot?expertId=expert-maria&new=1");
     expect(listedSessions).toBe(0);

@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pydantic import (
     BaseModel,
     Field,
+    PrivateAttr,
     TypeAdapter,
     ValidationError,
     field_validator,
@@ -43,6 +44,8 @@ EXPERT_IDENTITY_MAX_LENGTH = 10_000
 _EXPERT_SOUL_TEXT_MAX_LENGTH = 4_000
 EXPERT_COLOR_MAX_LENGTH = 32
 EXPERT_AVATAR_URL_MAX_LENGTH = 2_000
+# Each repeat time of a routine is one scheduler job.
+MAX_ROUTINE_CRONS = 24
 
 # Avatars come from our own upload (an absolute https URL) or ship with a
 # roster template (a path under /public). Anything else — notably data:,
@@ -150,6 +153,10 @@ class ExpertIdentity(BaseModel):
     is_archived: bool
     # The approval mode a new web chat with this expert starts on.
     autopilot_mode: AutopilotMode | None = None
+    # When the expert joined the team: the sidebar lists a new expert before
+    # their first chat. ``None`` only where a caller builds the identity by
+    # hand without it.
+    created_at: datetime | None = None
 
     @field_validator("avatar_url")
     @classmethod
@@ -353,6 +360,22 @@ class ExpertTemplate(Expert):
     bundled_skills: list[ExpertBundledSkill] = Field(default_factory=list)
 
 
+class CheckedExpert(BaseModel):
+    """An owner's active PRIVATE expert, with the owner's personal
+    organization and team that the expert's work belongs to.
+
+    Only the expert's own columns are loaded. Roster enrichments such as
+    workflows, credential counts/providers, latest run and weekly spend
+    retain their model defaults; those values are not authoritative. Use
+    the roster's get_expert or list_experts paths when those fields are needed.
+    """
+
+    # The expert's own columns only: no workflows, latest run or spend.
+    expert: Expert
+    organization_id: str
+    team_id: str | None
+
+
 # Membership is deliberately not embedded: clients already hold the expert
 # list and each Expert carries `pod_id`, so the roster groups client-side.
 class ExpertPod(BaseModel):
@@ -413,10 +436,26 @@ class ExpertDetachPreview(BaseModel):
 
 class HireResult(BaseModel):
     expert: Expert
+    # False when the expert was already on the team and nothing changed. Kept
+    # out of the response, which stays the expert.
+    _joined: bool = PrivateAttr(default=True)
+
+    @classmethod
+    def of(cls, expert: Expert, joined: bool) -> "HireResult":
+        result = cls(expert=expert)
+        result._joined = joined
+        return result
+
+    @property
+    def joined(self) -> bool:
+        return self._joined
 
 
 # Where a hire was made, for the ``expert_hired`` analytics event.
 HireSurface = Literal["onboarding", "expert_page", "copilot"]
+# What made it, when that is more than a person picking one expert: "plan" is
+# the onboarding plan's team hired once the trial starts.
+HireVia = Literal["plan"]
 
 
 RaiseAttachmentKind = Literal["workflow", "skill"]
