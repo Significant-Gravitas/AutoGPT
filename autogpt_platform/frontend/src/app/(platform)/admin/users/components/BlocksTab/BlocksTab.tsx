@@ -53,9 +53,11 @@ export function BlocksTab() {
   if (tab.blocks.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-16 text-center">
-        <Icon icon={SecurityBlockIcon} size={32} className="text-zinc-400" />
+        <span className="flex text-foreground-subtle">
+          <Icon icon={SecurityBlockIcon} size={32} />
+        </span>
         <Text variant="large-medium">No active blocks</Text>
-        <Text variant="body" className="max-w-[420px] text-zinc-600">
+        <Text variant="body" className="max-w-[420px]" tone="secondary">
           Block an address from an account&apos;s Sign-ins, or an email domain
           from its Related accounts.
         </Text>
@@ -75,7 +77,7 @@ export function BlocksTab() {
             aria-label="Filter blocks"
           />
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-zinc-100 p-0.5">
+        <div className="flex items-center gap-1 rounded-full bg-surface-hover p-0.5">
           {KIND_CHIPS.map((chip) => (
             <ToggleChip
               key={chip.value}
@@ -90,11 +92,11 @@ export function BlocksTab() {
         </div>
       </div>
       {tab.visible.length === 0 ? (
-        <Text variant="small" className="text-zinc-500">
+        <Text variant="small" tone="muted">
           No blocks match.
         </Text>
       ) : (
-        <ul className="divide-y divide-zinc-200">
+        <ul className="divide-y divide-border-base">
           {tab.visible.map((block) => (
             <BlockRow key={block.id} block={block} />
           ))}

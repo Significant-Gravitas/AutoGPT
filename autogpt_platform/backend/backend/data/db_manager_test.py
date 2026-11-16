@@ -23,7 +23,9 @@ from backend.copilot.dream.schemas import (
     DreamPassUsage,
     PhaseUsage,
 )
+from backend.copilot.model import ChatSessionSaveFields
 from backend.util.json import to_dict
+from backend.util.service import EXPOSED_FLAG
 
 from .db_manager import DatabaseManager, DatabaseManagerAsyncClient
 from .dream_pass_models import (
@@ -42,6 +44,30 @@ def test_async_client_exposes_chat_methods() -> None:
     assert hasattr(DatabaseManagerAsyncClient, "update_chat_session_llm_route")
 
 
+def test_session_fields_are_optional_and_round_trip_through_rpc() -> None:
+    """A caller that supplies session fields gets them through unchanged.
+    Current executor calls omit them for older-manager compatibility."""
+    fields = ChatSessionSaveFields(
+        credentials={"github": {"id": "cred-1"}},
+        successful_agent_runs={"graph-1": 2},
+        successful_agent_schedules={},
+        total_prompt_tokens=120,
+        total_completion_tokens=30,
+    )
+    rows = {
+        "session_id": "s1",
+        "messages": [{"role": "assistant", "content": "hi"}],
+        "start_sequence": 3,
+    }
+    manager = DatabaseManager()
+    endpoint = manager._create_fastapi_endpoint(manager.add_chat_messages_batch)
+    body = inspect.signature(endpoint).parameters["body"].annotation
+
+    sent = body.model_validate(to_dict({**rows, "session_fields": fields}))
+    assert sent.session_fields == fields
+    assert body.model_validate(to_dict(rows)).session_fields is None
+
+
 def test_bot_analytics_methods_registered() -> None:
     for method in (
         "record_bot_event",
@@ -56,6 +82,22 @@ def test_bot_analytics_methods_registered() -> None:
 def test_add_store_agent_rpc_request_schema_is_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.add_store_agent_to_library)
+
+
+def test_every_exposed_method_has_a_constructible_rpc_schema() -> None:
+    """The service builds them all as it starts. One it can't build stops the
+    database manager, and every run and call waiting on it hangs."""
+    manager = DatabaseManager()
+    failures = []
+    for name, method in vars(DatabaseManager).items():
+        if not getattr(method, EXPOSED_FLAG, False):
+            continue
+        try:
+            manager._create_fastapi_endpoint(method)
+        except Exception as error:
+            failures.append(f"{name}: {type(error).__name__}: {error}")
+
+    assert not failures, "\n".join(failures)
 
 
 _DREAM_PASS_METHODS = (
@@ -244,3 +286,53 @@ def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
     manager._create_fastapi_endpoint(manager.claim_scope_schedule)
     manager._create_fastapi_endpoint(manager.record_scope_run)
     manager._create_fastapi_endpoint(manager.existing_user_ids)
+
+
+# While a deploy replaces executors and database managers, each may meet the
+# other release. The permission check's request model drops the arguments it
+# doesn't know, so a sub-graph must be marked in a way both releases read.
+
+
+async def _permissions_before_parent_runs(
+    user_id: str, graph_id: str, graph_version: int, is_sub_graph: bool = False
+) -> None:
+    """`validate_graph_execution_permissions` as a database manager from before
+    `parent_graph_exec_id` served it."""
+
+
+def test_a_database_manager_reads_an_older_executors_sub_graph_check() -> None:
+    """An older executor marks a sub-graph with `is_sub_graph` alone (how the
+    check then goes: graph_test.py)."""
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        DatabaseManager.validate_graph_execution_permissions
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(
+        {"user_id": "u1", "graph_id": "g1", "graph_version": 1, "is_sub_graph": True}
+    )
+    assert (sent.is_sub_graph, sent.parent_graph_exec_id) == (True, None)
+
+
+def test_an_older_database_manager_reads_an_executors_sub_graph_check() -> None:
+    """The executor sends the parent run and `is_sub_graph` both
+    (input_depth_test.py). An older database manager drops the parent run and
+    still sees a sub-graph."""
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        _permissions_before_parent_runs
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(
+        {
+            "user_id": "u1",
+            "graph_id": "g1",
+            "graph_version": 1,
+            "parent_graph_exec_id": "parent-exec",
+            "is_sub_graph": True,
+        }
+    )
+    assert sent.model_dump() == {
+        "user_id": "u1",
+        "graph_id": "g1",
+        "graph_version": 1,
+        "is_sub_graph": True,
+    }

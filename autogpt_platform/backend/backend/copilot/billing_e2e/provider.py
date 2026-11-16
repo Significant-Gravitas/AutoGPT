@@ -35,12 +35,17 @@ class FakeProvider:
         self.generation_lookups_fail = False
         self.faults: list[PlannedFault] = []
         self.faults_served: list[PlannedFault] = []
+        # The name the model calls its tool by on the Messages API. The SDK
+        # engine serves the copilot's tools over MCP, as mcp__copilot__<name>.
+        self.tool_name = wire.TOOL_NAME
         self.url = ""
         self._runner: web.AppRunner | None = None
         self._requests_per_turn: dict[int, int] = {}
 
     async def __aenter__(self) -> "FakeProvider":
-        self._runner = web.AppRunner(self._app())
+        # The test has read everything it checks by the time this server
+        # stops, so it doesn't wait out aiohttp's 60 s for open requests.
+        self._runner = web.AppRunner(self._app(), shutdown_timeout=1.0)
         await self._runner.setup()
         await web.TCPSite(self._runner, "127.0.0.1", 0).start()
         host, port = self._runner.addresses[0][:2]
@@ -95,6 +100,7 @@ class FakeProvider:
             reply=anthropic_reply(body["messages"]),
             usage=usage,
             ttl=ttl,
+            tool_name=self.tool_name,
         )
         return await _stream(request, sse)
 

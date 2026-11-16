@@ -284,7 +284,7 @@ async def test_copilot_cancel_signal_via_sharded_pubsub() -> None:
     received: list[str] = []
     try:
         await pubsub.execute_command("SSUBSCRIBE", channel)
-        # Prime the channels map so listen() doesn't early-exit (see _Subscription).
+        # Prime the channels map so listen() doesn't early-exit.
         pubsub.channels[channel] = None  # type: ignore[index]
 
         async def _pump() -> None:

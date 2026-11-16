@@ -1,9 +1,10 @@
-import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
+import { PromptInputSubmit } from "@/components/organisms/PromptInput/PromptInput";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+  TooltipPortal,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { useEffect, useState } from "react";
 
 // Stop takes Send's place under the finger that just used it; a stray second
@@ -24,7 +25,7 @@ export function StopButton({ onStop, className }: Props) {
   }, []);
 
   return (
-    <Tooltip>
+    <Tooltip inheritDelay>
       <TooltipTrigger asChild>
         <PromptInputSubmit
           status="streaming"
@@ -33,7 +34,9 @@ export function StopButton({ onStop, className }: Props) {
           className={className}
         />
       </TooltipTrigger>
-      <TooltipContent side="top">Stop</TooltipContent>
+      <TooltipPortal>
+        <TooltipContent side="top">Stop</TooltipContent>
+      </TooltipPortal>
     </Tooltip>
   );
 }

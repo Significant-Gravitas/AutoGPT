@@ -8,12 +8,13 @@ from backend.notifications import recipient
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "name,expected", [("Sam Carter", "Sam"), ("", "there"), (None, "there")]
+    "name,expected",
+    [("Sam Carter", "Sam"), ("", "there"), (None, "there"), ("Sam.Carter", "there")],
 )
 async def test_greeting_uses_only_the_first_name(monkeypatch, name, expected):
-    client = SimpleNamespace(
-        get_user_by_id=AsyncMock(return_value=SimpleNamespace(name=name))
-    )
+    # Email sign-up stores the address's local part as the name.
+    user = SimpleNamespace(name=name, email="sam.carter@example.com")
+    client = SimpleNamespace(get_user_by_id=AsyncMock(return_value=user))
     monkeypatch.setattr(
         recipient, "get_database_manager_async_client", lambda **kw: client
     )

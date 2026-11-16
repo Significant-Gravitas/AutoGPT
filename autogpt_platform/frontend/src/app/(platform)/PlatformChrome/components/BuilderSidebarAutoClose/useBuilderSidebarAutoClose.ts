@@ -1,4 +1,7 @@
-import { getPersistedSidebarOpen, useSidebar } from "@/components/ui/sidebar";
+import {
+  getPersistedSidebarOpen,
+  useSidebar,
+} from "@/components/molecules/Sidebar/Sidebar";
 import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";

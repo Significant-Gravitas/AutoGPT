@@ -2,7 +2,7 @@
 sending a rating to PostHog LLM analytics.
 
 The route tests (``backend/api/features/chat/feedback_test.py``) cover the
-Postgres and Langfuse halves.
+Postgres half.
 """
 
 from datetime import UTC, datetime
@@ -35,7 +35,6 @@ def reply(mocker: pytest_mock.MockerFixture) -> PrismaChatMessage:
         role="assistant",
         content="Here is the report.",
         sequence=7,
-        langfuseTraceId="1edf31f11b1693cc6103f358c1481694",
     )
     mocker.patch.object(
         feedback_db, "get_rateable_message", new=AsyncMock(return_value=message)
@@ -46,17 +45,6 @@ def reply(mocker: pytest_mock.MockerFixture) -> PrismaChatMessage:
         new=AsyncMock(return_value=FEEDBACK_ID),
     )
     return message
-
-
-@pytest.fixture
-def langfuse_score(mocker: pytest_mock.MockerFixture) -> AsyncMock:
-    secrets = feedback.settings.secrets
-    mocker.patch.object(secrets, "langfuse_public_key", "pk-lf-test")
-    mocker.patch.object(secrets, "langfuse_secret_key", "sk-lf-test")
-    langfuse = MagicMock()
-    langfuse.async_api.score.create = AsyncMock()
-    mocker.patch.object(feedback, "get_client", return_value=langfuse)
-    return langfuse.async_api.score.create
 
 
 async def _rate(**overrides):
@@ -75,7 +63,7 @@ async def _rate(**overrides):
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reply")
 async def test_thumbs_down_is_an_ai_metric_on_the_user_and_chat(
-    mocker: pytest_mock.MockerFixture, langfuse_score: AsyncMock
+    mocker: pytest_mock.MockerFixture,
 ) -> None:
     capture = mocker.patch.object(feedback, "capture")
 
@@ -97,12 +85,11 @@ async def test_thumbs_down_is_an_ai_metric_on_the_user_and_chat(
             "$ai_feedback_text": "It edited the wrong file",
         },
     )
-    langfuse_score.assert_awaited_once()
-    assert response.langfuse_target == "trace"
+    assert response.id == FEEDBACK_ID
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("reply", "langfuse_score")
+@pytest.mark.usefixtures("reply")
 async def test_copy_carries_no_feedback_text(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -117,7 +104,33 @@ async def test_copy_carries_no_feedback_text(
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("reply", "langfuse_score")
+@pytest.mark.usefixtures("reply")
+async def test_reason_is_a_property_on_the_metric(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    capture = mocker.patch.object(feedback, "capture")
+
+    await _rate(score_name="otto_mistake", comment=None, reason="made_up")
+
+    properties = capture.call_args.args[2]
+    assert properties["$ai_metric_name"] == "otto_mistake"
+    assert properties["reason"] == "made_up"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reply")
+async def test_no_reason_sends_no_reason_property(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    capture = mocker.patch.object(feedback, "capture")
+
+    await _rate()
+
+    assert "reason" not in capture.call_args.args[2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reply")
 async def test_impersonated_rating_is_marked(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -129,7 +142,6 @@ async def test_impersonated_rating_is_marked(
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("langfuse_score")
 async def test_a_rating_names_the_trace_of_the_turn_that_wrote_the_reply(
     mocker: pytest_mock.MockerFixture, reply: PrismaChatMessage
 ) -> None:
@@ -142,7 +154,7 @@ async def test_a_rating_names_the_trace_of_the_turn_that_wrote_the_reply(
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("reply", "langfuse_score")
+@pytest.mark.usefixtures("reply")
 async def test_a_reply_with_no_recorded_trace_sends_no_trace_id(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -156,8 +168,8 @@ async def test_a_reply_with_no_recorded_trace_sends_no_trace_id(
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reply")
-async def test_posthog_failure_keeps_the_rating_and_the_langfuse_score(
-    mocker: pytest_mock.MockerFixture, langfuse_score: AsyncMock
+async def test_posthog_failure_keeps_the_rating(
+    mocker: pytest_mock.MockerFixture,
 ) -> None:
     """The real ``capture`` runs against a client that raises."""
     client = MagicMock()
@@ -170,7 +182,6 @@ async def test_posthog_failure_keeps_the_rating_and_the_langfuse_score(
     assert client.capture.call_args.kwargs["distinct_id"] == USER_ID
     assert response is not None
     assert response.id == FEEDBACK_ID
-    langfuse_score.assert_awaited_once()
 
 
 @pytest.mark.asyncio

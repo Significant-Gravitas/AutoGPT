@@ -81,6 +81,17 @@ describe("ActivityItem", () => {
     expect(screen.queryByText(/with errors/)).toBeNull();
   });
 
+  it.each([
+    [AgentExecutionStatus.QUEUED, /^Started .* queued$/],
+    [AgentExecutionStatus.FAILED, /^Failed /],
+    [AgentExecutionStatus.TERMINATED, /^Stopped /],
+  ])("says what a %s run did", (status, line) => {
+    render(<ActivityItem execution={makeExecution({ status })} />);
+
+    expect(screen.getByText(line)).toBeDefined();
+    expect(screen.getByText("Weather Agent")).toBeDefined();
+  });
+
   it("renders a non-linked item when the execution has no library agent", () => {
     render(
       <ActivityItem

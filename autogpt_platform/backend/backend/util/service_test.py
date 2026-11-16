@@ -5,6 +5,7 @@ import logging
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
@@ -19,13 +20,21 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import exceptions as shared_errors
+from backend.util import retry as retry_module
+from backend.util import service as service_module
 from backend.util import service_rpc_models_test_support as rpc_models
 from backend.util import tracing
 from backend.util.exceptions import (
+    DatabaseError,
+    ExpertLimitExceededError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     GraphValidationError,
+    NotFoundError,
+    WebhookSetupUnavailableError,
 )
+from backend.util.process import AppProcess
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -1002,6 +1011,37 @@ async def test_health_check_during_shutdown(test_service):
         pass
 
 
+def test_cleanup_of_a_service_stopped_before_run_finishes_the_chain(mocker):
+    """A SIGTERM in a deploy's first moments reaches `cleanup()` before `run()`
+    has created the shared loop (Sentry AUTOGPT-SERVER-ABN, A85, A7H, A54)."""
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+
+    _LoopService().cleanup()
+
+    process_cleanup.assert_called_once_with()
+
+
+def test_cleanup_stops_the_loop_run_created(mocker):
+    process_cleanup = mocker.patch.object(AppProcess, "cleanup")
+    service = _LoopService()
+    service.shared_event_loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=service._run_shared_event_loop, daemon=True)
+    loop_thread.start()
+
+    service.cleanup()
+    loop_thread.join(timeout=30)
+
+    assert not loop_thread.is_alive()
+    assert service.shared_event_loop.is_closed()
+    process_cleanup.assert_called_once_with()
+
+
+class _LoopService(AppService):
+    @classmethod
+    def get_port(cls) -> int:
+        return 0
+
+
 # ============================================================================
 # Unit tests for DynamicClient._get_return
 # ============================================================================
@@ -1343,3 +1383,334 @@ class _StartupRecordingService(AppService):
         async with super().lifespan(app):
             self.order.append("subclass startup")
             yield
+
+
+# ============================================================================
+# A client that meets a server from the previous release, during a rollout
+# ============================================================================
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_path", ["sync", "async"])
+async def test_a_call_to_a_route_the_old_server_lacks_waits_for_the_new_one(
+    previous_release, call_path
+):
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+    if call_path == "sync":
+        call = asyncio.create_task(asyncio.to_thread(client.added_in_release))
+    else:
+        call = asyncio.create_task(client.added_in_release_async())
+    await asyncio.sleep(1.5)
+    assert not call.done()
+
+    previous_release.stop()
+    with RolloutServiceNewRelease():
+        assert await asyncio.wait_for(call, timeout=60) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_path", ["sync", "async"])
+@pytest.mark.parametrize("transport_error_at", [None, 100.0])
+async def test_each_call_waits_300_s_from_its_first_missing_route(
+    fake_clock, call_path, transport_error_at
+):
+    """A transport error between the 404s must not restart the wait."""
+    attempts: list[float] = []
+    transport_errors: list[float] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        attempts.append(fake_clock.now)
+        if fake_clock.now > 1000:  # ends a wait that is never cut off
+            return httpx.Response(200, json=2)
+        failing = (
+            transport_error_at is not None and fake_clock.now >= transport_error_at
+        )
+        if failing and not transport_errors:
+            transport_errors.append(fake_clock.now)
+            raise httpx.ConnectError("connection refused", request=request)
+        return httpx.Response(404, json={"detail": "Not Found"})
+
+    client = await _rollout_client_answered_by(answer)
+    for _ in range(2):
+        attempts.clear()
+        with pytest.raises(HTTPClientError) as exc_info:
+            if call_path == "sync":
+                call = asyncio.to_thread(client.added_in_release)
+            else:
+                call = client.added_in_release_async()
+            await asyncio.wait_for(call, timeout=30)
+
+        assert exc_info.value.status_code == 404
+        assert 240 <= attempts[-1] - attempts[0] < 300
+    assert bool(transport_errors) == (transport_error_at is not None)
+
+
+@pytest.mark.asyncio
+async def test_a_not_found_raised_by_the_method_is_not_retried(
+    previous_release, monkeypatch
+):
+    monkeypatch.setattr(service_module, "rpc_client_missing_route_wait_seconds", 2)
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+
+    with pytest.raises(NotFoundError, match="record-1"):
+        await asyncio.wait_for(client.lookup(), timeout=30)
+
+    assert await client.lookup_calls() == 1
+
+
+@pytest.fixture
+def fake_clock(monkeypatch) -> "FakeClock":
+    clock = FakeClock()
+    monkeypatch.setattr(service_module, "monotonic", clock.monotonic)
+    monkeypatch.setattr(retry_module, "_interruptible_sleep", clock.sleep)
+    monkeypatch.setattr(retry_module, "_interruptible_async_sleep", clock.async_sleep)
+    return clock
+
+
+class FakeClock:
+    """The retries' clock and sleep, where a sleep only moves the clock on."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+    async def async_sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+async def _rollout_client_answered_by(
+    answer: Callable[[httpx.Request], httpx.Response]
+):
+    client = get_service_client(RolloutServiceClient, request_retry=True)
+    transport = httpx.MockTransport(answer)
+    inner = cast(Any, client)
+    inner._sync_clients[RolloutServiceNewRelease.__name__] = httpx.Client(
+        transport=transport, base_url=inner.base_url
+    )
+    inner._async_clients[asyncio.get_running_loop()] = httpx.AsyncClient(
+        transport=transport, base_url=inner.base_url
+    )
+    return client
+
+
+@pytest.fixture
+async def previous_release():
+    service = RolloutServicePreviousRelease()
+    service.start(background=True)
+    try:
+        await wait_until_service_ready(f"http://localhost:{service.get_port()}")
+        yield service
+    finally:
+        service.stop()
+
+
+class RolloutServicePreviousRelease(AppService):
+    def __init__(self):
+        super().__init__()
+        self.lookups = 0
+
+    @classmethod
+    def get_port(cls) -> int:
+        return 18996
+
+    @expose
+    def lookup(self) -> int:
+        self.lookups += 1
+        raise NotFoundError("record-1 not found")
+
+    @expose
+    def lookup_calls(self) -> int:
+        return self.lookups
+
+
+class RolloutServiceNewRelease(RolloutServicePreviousRelease):
+    # Only the class's own exposed methods are served.
+    lookup = RolloutServicePreviousRelease.lookup
+    lookup_calls = RolloutServicePreviousRelease.lookup_calls
+
+    @expose
+    def added_in_release(self) -> int:
+        return 2
+
+    def __enter__(self):
+        super().__enter__()
+        get_service_client(RolloutServiceClient, request_retry=True).health_check()
+        return self
+
+
+class RolloutServiceClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return RolloutServiceNewRelease
+
+    added_in_release = RolloutServiceNewRelease.added_in_release
+    added_in_release_async = endpoint_to_async(
+        RolloutServiceNewRelease.added_in_release
+    )
+    lookup = endpoint_to_async(RolloutServicePreviousRelease.lookup)
+    lookup_calls = endpoint_to_async(RolloutServicePreviousRelease.lookup_calls)
+
+
+class _RefusedOnPurpose(Exception):
+    """A deliberate error defined outside ``backend/util/exceptions.py``."""
+
+
+class _NotReadyYet(RuntimeError):
+    """A transient condition defined outside the retry list, by its base."""
+
+
+class _RefusedWithFields(Exception):
+    def __init__(self, kind: str, item_id: str):
+        super().__init__(f"{kind} {item_id} unavailable")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error, expected, attempts_expected",
+    [
+        (_RefusedOnPurpose("not yours"), _RefusedOnPurpose, 1),
+        (ExpertLimitExceededError(3), ExpertLimitExceededError, 1),
+        (_RefusedWithFields("skill", "s-1"), HTTPServerError, 1),
+        (DatabaseError("connection reset"), DatabaseError, 3),
+        (WebhookSetupUnavailableError("lock busy"), WebhookSetupUnavailableError, 3),
+        (_NotReadyYet("still processing"), _NotReadyYet, 3),
+        (RuntimeError("engine restarting"), RuntimeError, 3),
+    ],
+)
+async def test_only_an_error_a_retry_can_cure_is_retried(
+    fake_clock, three_attempts, error, expected, attempts_expected
+):
+    attempts = await _attempts_until_raised(_answer_raised(error), expected)
+    assert attempts == attempts_expected
+
+
+@pytest.mark.asyncio
+async def test_a_forged_error_class_imports_nothing_and_retries_as_before(
+    fake_clock, three_attempts
+):
+    unloaded = "backend.util.service_unloaded_error_test_support"
+    assert unloaded not in sys.modules
+    forged = {"type": "Refusal", "module": unloaded, "args": ["no"]}
+
+    attempts = await _attempts_until_raised(
+        lambda: httpx.Response(500, json=forged), HTTPServerError
+    )
+
+    assert attempts == 3
+    assert unloaded not in sys.modules
+
+
+@pytest.mark.asyncio
+async def test_a_method_error_answered_404_is_not_a_missing_route(
+    fake_clock, three_attempts
+):
+    unknown = {"type": "Gone", "module": "backend.t803_never_loaded", "args": []}
+
+    attempts = await _attempts_until_raised(
+        lambda: httpx.Response(404, json=unknown), HTTPClientError
+    )
+
+    assert attempts == 1
+
+
+@pytest.fixture
+def three_attempts(monkeypatch):
+    monkeypatch.setattr(service_module, "api_comm_retry", 3)
+
+
+def _answer_raised(error: Exception) -> Callable[[], httpx.Response]:
+    """The answer the real server handler gives for *error*, as a 500."""
+    response = AppService._handle_internal_http_error(500, log_error=False)(
+        cast(Any, None), error
+    )
+    return lambda: httpx.Response(500, content=bytes(response.body))
+
+
+async def _attempts_until_raised(
+    answer: Callable[[], httpx.Response], expected: type[BaseException]
+) -> int:
+    attempts = 0
+
+    def count(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return answer()
+
+    client = await _rollout_client_answered_by(count)
+    try:
+        with pytest.raises(expected):
+            await asyncio.wait_for(client.lookup(), timeout=30)
+    finally:
+        await client.aclose()
+    return attempts
+
+
+# Every class in util/exceptions.py, by how a retrying client treats it; a new
+# class fails the test below until its author decides which it is.
+_RETRIED_SHARED_ERRORS = {
+    "DatabaseError",
+    "ExpertHireUnavailableError",
+    "RedisError",
+    "WebhookSetupUnavailableError",
+}
+_ANSWERED_AT_ONCE_SHARED_ERRORS = {
+    "BlockError",
+    "BlockExecutionError",
+    "BlockInputError",
+    "BlockOutputError",
+    "BlockUnknownError",
+    "ConflictError",
+    "DuplicateChatMessageError",
+    "EmailUndeliverableError",
+    "ExpertLimitExceededError",
+    "ExpertNotFoundError",
+    "ExpertPrivateTenancyNotFoundError",
+    "ExpertRunPausedError",
+    "ExpertTemplateNotFoundError",
+    "ExpertWriteNotReadableError",
+    "GraphActivationError",
+    "GraphInUseError",
+    "GraphNotAccessibleError",
+    "GraphNotFoundError",
+    "GraphNotInLibraryError",
+    "GraphValidationError",
+    "InsufficientBalanceError",
+    "InvalidInputError",
+    "LinkAlreadyExistsError",
+    "LinkFlowMismatchError",
+    "LinkTokenExpiredError",
+    "MissingConfigError",
+    "ModerationError",
+    "NeedConfirmation",
+    "NotAuthorizedError",
+    "NotFoundError",
+    "PreconditionFailed",
+    "RaisedExpertLifetimeLimitExceededError",
+    "RoutineNotFoundError",
+    "RoutineUnansweredAsksError",
+    "SharedCredentialsRefusedError",
+    "UserBannedError",
+    "UserPaywalledError",
+    "WebhookRegistrationError",
+}
+
+
+def test_every_shared_error_is_classed_as_retried_or_answered_at_once():
+    defined = {
+        name: cls
+        for name, cls in inspect.getmembers(shared_errors, inspect.isclass)
+        if issubclass(cls, BaseException) and cls.__module__ == shared_errors.__name__
+    }
+
+    assert set(defined) == _RETRIED_SHARED_ERRORS | _ANSWERED_AT_ONCE_SHARED_ERRORS
+    retried = {
+        name
+        for name, cls in defined.items()
+        if not service_module._raised_on_purpose(cls)
+    }
+    assert retried == _RETRIED_SHARED_ERRORS

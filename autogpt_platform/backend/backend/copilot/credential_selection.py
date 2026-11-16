@@ -23,10 +23,13 @@ turn it fires and they win over anything picked in the chat.
 import logging
 from collections.abc import Mapping
 from contextvars import ContextVar
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel
 
+from backend.data.model import Credentials
 from backend.data.redis_client import get_redis_async
+from backend.integrations.credentials_store import provider_matches
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +69,46 @@ def turn_credential_pins() -> Mapping[str, CredentialPin]:
 
 def _key(session_id: str) -> str:
     return f"copilot:credential-selection:{session_id}"
+
+
+def host_selection_key(provider: str, url: str) -> str:
+    try:
+        parsed = urlsplit(url if "://" in url else f"http://{url}")
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return provider
+    if not host:
+        return provider
+    if ":" in host:
+        host = f"[{host}]"
+    default_port = 443 if parsed.scheme == "https" else 80
+    if port is not None and port != default_port:
+        host = f"{host}:{port}"
+    return f"{provider}:{host.lower()}"
+
+
+def credential_matches_selection(credential: Credentials, key: str) -> bool:
+    provider, separator, host = key.partition(":")
+    if not provider_matches(credential.provider, provider):
+        return False
+    if not separator:
+        return True
+    if credential.type != "host_scoped" or not host:
+        return False
+    try:
+        parsed = urlsplit(f"//{host}")
+        if parsed.netloc != host or parsed.username is not None:
+            return False
+        port = parsed.port
+    except ValueError:
+        return False
+    urls = (
+        [f"http://{host}", f"https://{host}"]
+        if port is not None
+        else [f"http://{host}:80", f"https://{host}:443"]
+    )
+    return any(credential.matches_url(url) for url in urls)
 
 
 async def remember_selection(session_id: str, selections: dict[str, str]) -> None:

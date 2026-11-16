@@ -29,7 +29,7 @@ function LogsTable({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">
+        <span className="text-body text-foreground-tertiary">
           {pagination
             ? `${pagination.total_items.toLocaleString()} total rows`
             : ""}
@@ -37,14 +37,14 @@ function LogsTable({
         <button
           onClick={onExport}
           disabled={exporting}
-          className="rounded border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          className="rounded border px-3 py-1.5 text-body hover:bg-surface-hover disabled:opacity-50"
         >
           {exporting ? "Exporting…" : "Export CSV"}
         </button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b text-xs uppercase text-muted-foreground">
+        <table className="w-full text-left text-body">
+          <thead className="border-b text-caption text-foreground-tertiary uppercase">
             <tr>
               <th scope="col" className="px-3 py-3">
                 Time
@@ -89,44 +89,44 @@ function LogsTable({
           </thead>
           <tbody>
             {logs.map((log) => (
-              <tr key={log.id} className="border-b hover:bg-muted">
-                <td className="whitespace-nowrap px-3 py-2 text-xs">
+              <tr key={log.id} className="border-b hover:bg-surface-hover">
+                <td className="px-3 py-2 text-caption whitespace-nowrap">
                   {formatLogDate(log.created_at)}
                 </td>
-                <td className="px-3 py-2 text-xs">
+                <td className="px-3 py-2 text-caption">
                   {log.email ||
                     (log.user_id ? String(log.user_id).slice(0, 8) : "-")}
                 </td>
-                <td className="px-3 py-2 text-xs font-medium">
+                <td className="px-3 py-2 text-caption font-medium">
                   {log.block_name}
                 </td>
-                <td className="px-3 py-2 text-xs">{log.provider}</td>
-                <td className="px-3 py-2 text-xs">
+                <td className="px-3 py-2 text-caption">{log.provider}</td>
+                <td className="px-3 py-2 text-caption">
                   <ExecutionPathBadge executionPath={log.execution_path} />
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">
+                <td className="px-3 py-2 text-caption text-foreground-tertiary">
                   {log.source || "—"}
                 </td>
-                <td className="px-3 py-2 text-xs">
+                <td className="px-3 py-2 text-caption">
                   <TrackingBadge trackingType={log.tracking_type} />
                 </td>
-                <td className="px-3 py-2 text-xs">{log.model || "-"}</td>
-                <td className="px-3 py-2 text-right text-xs">
+                <td className="px-3 py-2 text-caption">{log.model || "-"}</td>
+                <td className="px-3 py-2 text-right text-caption">
                   {log.cost_microdollars != null
                     ? formatMicrodollars(Number(log.cost_microdollars))
                     : "-"}
                 </td>
-                <td className="px-3 py-2 text-right text-xs">
+                <td className="px-3 py-2 text-right text-caption">
                   {log.input_tokens != null || log.output_tokens != null
                     ? `${formatTokens(Number(log.input_tokens ?? 0))} / ${formatTokens(Number(log.output_tokens ?? 0))}`
                     : "-"}
                 </td>
-                <td className="px-3 py-2 text-right text-xs">
+                <td className="px-3 py-2 text-right text-caption">
                   {log.cache_read_tokens || log.cache_creation_tokens
                     ? `${formatTokens(Number(log.cache_read_tokens ?? 0))} / ${formatTokens(Number(log.cache_creation_tokens ?? 0))}`
                     : "-"}
                 </td>
-                <td className="px-3 py-2 text-right text-xs">
+                <td className="px-3 py-2 text-right text-caption">
                   {log.duration != null
                     ? formatDuration(Number(log.duration))
                     : "-"}
@@ -138,7 +138,7 @@ function LogsTable({
               <tr>
                 <td
                   colSpan={13}
-                  className="px-4 py-8 text-center text-muted-foreground"
+                  className="px-4 py-8 text-center text-foreground-tertiary"
                 >
                   No logs found
                 </td>
@@ -150,7 +150,7 @@ function LogsTable({
 
       {pagination && pagination.total_pages > 1 && (
         <div className="flex items-center justify-between px-4">
-          <span className="text-sm text-muted-foreground">
+          <span className="text-body text-foreground-tertiary">
             Page {pagination.current_page} of {pagination.total_pages} (
             {pagination.total_items} total)
           </span>
@@ -158,14 +158,14 @@ function LogsTable({
             <button
               disabled={pagination.current_page <= 1}
               onClick={() => onPageChange(pagination.current_page - 1)}
-              className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+              className="rounded border px-3 py-1 text-body disabled:opacity-50"
             >
               Previous
             </button>
             <button
               disabled={pagination.current_page >= pagination.total_pages}
               onClick={() => onPageChange(pagination.current_page + 1)}
-              className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+              className="rounded border px-3 py-1 text-body disabled:opacity-50"
             >
               Next
             </button>
@@ -183,7 +183,7 @@ function ExecutionCell({ log }: { log: CostLogRow }) {
   return (
     <td
       className={[
-        "px-3 py-2 text-xs text-muted-foreground",
+        "px-3 py-2 text-caption text-foreground-tertiary",
         id ? "cursor-pointer" : "",
       ].join(" ")}
       title={id ? String(id) : undefined}

@@ -7,16 +7,20 @@ import {
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { getTaskGroups } from "./helpers";
+import { useRefreshBalanceOnSpend } from "./useRefreshBalanceOnSpend";
 
 export function useWallet() {
   const { state, updateState } = useOnboarding();
   const api = useBackendAPI();
+  const identityKey = useAuthStore((store) => store.user?.id ?? null);
   const { credits, formatCredits, fetchCredits } = useCredits({
-    fetchInitialCredits: true,
+    identityKey,
+    fetchInitialCredits: identityKey !== null,
   });
 
   const groups = getTaskGroups(state);
@@ -25,9 +29,24 @@ export function useWallet() {
   const [flash, setFlash] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
+  const [explainerOpen, setExplainerOpen] = useState(false);
+  const [stateIdentityKey, setStateIdentityKey] = useState(identityKey);
 
   const walletRef = useRef<HTMLButtonElement | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (flashTimer.current !== null) {
+      clearTimeout(flashTimer.current);
+      flashTimer.current = null;
+    }
+    setStateIdentityKey(identityKey);
+    setPrevCredits(null);
+    setFlash(false);
+    setWalletOpen(false);
+    setTopUpOpen(false);
+    setExplainerOpen(false);
+  }, [identityKey]);
 
   const totalCount = groups.reduce((acc, group) => acc + group.tasks.length, 0);
 
@@ -58,6 +77,19 @@ export function useWallet() {
   function onTopUpClose() {
     setTopUpOpen(false);
     requestAnimationFrame(() => walletRef.current?.focus());
+  }
+
+  function onOpenExplainer() {
+    setWalletOpen(false);
+    setExplainerOpen(true);
+  }
+
+  // The explainer opens from a button inside the popover, which is gone by
+  // the time it closes, so focus is sent back to the wallet button the way
+  // the top-up dialog does.
+  function onExplainerOpenChange(open: boolean) {
+    setExplainerOpen(open);
+    if (!open) requestAnimationFrame(() => walletRef.current?.focus());
   }
 
   // React to onboarding notifications emitted by the provider
@@ -132,8 +164,13 @@ export function useWallet() {
     };
   }, [api]);
 
+  useRefreshBalanceOnSpend(fetchCredits);
+
   // Wallet flash on credits change
   useEffect(() => {
+    if (stateIdentityKey !== identityKey) {
+      return;
+    }
     if (credits === prevCredits) {
       return;
     }
@@ -149,7 +186,9 @@ export function useWallet() {
       flashTimer.current = null;
       setFlash(false);
     }, 300);
-  }, [credits, prevCredits]);
+  }, [credits, identityKey, prevCredits, stateIdentityKey]);
+
+  const isCurrentIdentity = stateIdentityKey === identityKey;
 
   useEffect(() => {
     return () => {
@@ -165,15 +204,18 @@ export function useWallet() {
     groups,
     credits,
     formatCredits,
-    flash,
-    walletOpen,
+    flash: isCurrentIdentity ? flash : false,
+    walletOpen: isCurrentIdentity ? walletOpen : false,
     setWalletOpen,
     onWalletOpen,
     walletRef,
     completedCount,
     totalCount,
-    topUpOpen,
+    topUpOpen: isCurrentIdentity ? topUpOpen : false,
     onAddCredits,
     onTopUpClose,
+    explainerOpen: isCurrentIdentity ? explainerOpen : false,
+    onOpenExplainer,
+    onExplainerOpenChange,
   };
 }

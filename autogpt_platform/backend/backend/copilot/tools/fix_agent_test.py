@@ -189,6 +189,33 @@ async def test_fixer_exception_returns_error(tool, session):
     assert "fix_exception" in result.error
 
 
+@pytest.mark.parametrize("external_caller", [True, False])
+@pytest.mark.asyncio
+async def test_a_fixer_failure_tells_an_external_caller_no_internals(
+    tool, session, external_caller
+):
+    session.external_caller = external_caller
+    agent_json = {
+        "nodes": [{"id": "n1", "block_id": "b1", "input_default": {}, "metadata": {}}],
+        "links": [],
+    }
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(
+        side_effect=KeyError("internal_registry_slot")
+    )
+
+    with (
+        patch("backend.copilot.tools.fix_agent.get_blocks_as_dicts", return_value=[]),
+        patch("backend.copilot.tools.fix_agent.AgentFixer", return_value=mock_fixer),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID, session=session, agent_json=agent_json
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert ("internal_registry_slot" in result.message) is not external_caller
+
+
 def _agent(nodes_extra: dict | None = None) -> dict:
     node = {
         "id": "node-1",

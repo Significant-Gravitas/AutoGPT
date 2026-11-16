@@ -78,7 +78,7 @@ export async function advanceToRoleStep(
   const role = page.getByText("What best describes you");
   const subscription = page.getByText(/choose the plan that.s right/i);
   const team = page.getByRole("heading", {
-    name: "Your own team of AI experts.",
+    name: "Your new team, ready on day one",
   });
   const autopilot = page.getByRole("heading", {
     name: "Meet Otto, your Head of AI.",
@@ -97,8 +97,14 @@ export async function advanceToRoleStep(
         .click();
       await expect(subscription).toBeHidden({ timeout: 10000 });
     } else {
-      const current = (await team.isVisible()) ? team : autopilot;
-      await page.getByRole("button", { name: "Next", exact: true }).click();
+      const onTeam = await team.isVisible();
+      const current = onTeam ? team : autopilot;
+      await page
+        .getByRole("button", {
+          name: onTeam ? "Meet Otto" : "Next",
+          exact: true,
+        })
+        .click();
       await expect(current).toBeHidden({ timeout: 10000 });
     }
   }
@@ -128,21 +134,23 @@ export async function completeOnboardingWizard(
   await skipBrainDump.click();
   await expect(skipBrainDump).toBeHidden({ timeout: 10000 });
 
-  const skipHiring = page.getByRole("button", {
-    name: "I'll add members later",
-    exact: true,
-  });
   const connect = page.getByRole("heading", {
     name: "Already paying for an AI subscription?",
   });
   const preparing = page.getByText("Preparing your workspace...", {
     exact: false,
   });
-  await expect(skipHiring).toBeVisible({
-    timeout: 10000,
+  // The plan step: Otto's plan, then Continue (e2e runs with no paywall).
+  // Wait for the plan itself so the click lands on a settled step.
+  const planPanel = page.getByTestId("plan-panel");
+  await expect(planPanel).toBeVisible({ timeout: 10000 });
+  await expect(planPanel.getByTestId("plan-panel-pending")).toHaveCount(0, {
+    timeout: 30000,
   });
-  await skipHiring.click();
-  await expect(skipHiring).toBeHidden();
+  const leavePlan = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(leavePlan).toBeVisible({ timeout: 10000 });
+  await leavePlan.click();
+  await expect(planPanel).toBeHidden({ timeout: 10000 });
   await expect(connect.or(preparing).first()).toBeVisible({ timeout: 10000 });
   if (await connect.isVisible()) {
     await page.getByRole("button", { name: "Next", exact: true }).click();

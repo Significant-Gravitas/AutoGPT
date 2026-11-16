@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 import { getCachedArtifactContent } from "./components/useArtifactContent";
 import { downloadArtifact } from "./downloadArtifact";
@@ -27,10 +27,21 @@ export function useArtifactPanel() {
     ? classifyArtifactRef(activeArtifact)
     : null;
 
-  // Reset source view when switching artifacts
+  // Reset source view when switching artifacts. A new version of the same
+  // document, after Otto overwrites it, is not a switch.
+  const artifactId = activeArtifact?.id;
+  const documentId = activeArtifact?.documentId ?? artifactId;
+  const previousRef = useRef({ artifactId, documentId });
   useEffect(() => {
-    setIsSourceView(false);
-  }, [activeArtifact?.id]);
+    const previous = previousRef.current;
+    if (
+      artifactId !== previous.artifactId &&
+      documentId !== previous.documentId
+    ) {
+      setIsSourceView(false);
+    }
+    previousRef.current = { artifactId, documentId };
+  }, [artifactId, documentId]);
 
   // Escape-to-close is owned by the vaul Drawer.Root in ArtifactPanel — its
   // onOpenChange already routes to clearArtifactPreview. A manual document

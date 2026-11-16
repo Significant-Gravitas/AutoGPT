@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { FormCreator } from "../../FormCreator";
 import { preprocessInputSchema } from "@/components/renderers/InputRenderer/utils/input-schema-pre-processor";
 import { CustomNodeData } from "../CustomNode";
@@ -18,13 +18,13 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
     }, 0);
 
     const colors = [
-      "bg-orange-200",
-      "bg-red-200",
-      "bg-yellow-200",
-      "bg-green-200",
-      "bg-blue-200",
-      "bg-purple-200",
-      "bg-pink-200",
+      "bg-[#ffc88a]",
+      "bg-[#fac5c5]",
+      "bg-[#fae28a]",
+      "bg-[#94d5ac]",
+      "bg-[#bfdbfe]",
+      "bg-[#c0a1fa]",
+      "bg-[#f6abd0]",
     ];
 
     return {
@@ -36,12 +36,13 @@ export const StickyNoteBlock = ({ data, nodeId }: StickyNoteBlockType) => {
   return (
     <div
       className={cn(
-        "relative h-76 w-76 p-4 text-black shadow-[rgba(0,0,0,0.3)_-2px_5px_5px_0px]",
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the note's lifted-paper shadow (offset left and down) has no shadow token
+        "relative h-76 w-76 rotate-[var(--note-angle)] p-4 text-foreground-base shadow-[-2px_5px_5px_0px_rgba(0,0,0,0.3)]",
         color,
       )}
-      style={{ transform: `rotate(${angle}deg)` }}
+      style={{ "--note-angle": `${angle}deg` } as CSSProperties}
     >
-      <Text variant="h3" className="tracking-tight text-slate-800">
+      <Text variant="h3-tracking-tight" tone="body">
         Notes #{nodeId.split("-")[0]}
       </Text>
       <FormCreator

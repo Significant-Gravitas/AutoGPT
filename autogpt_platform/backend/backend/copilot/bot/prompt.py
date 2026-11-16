@@ -5,12 +5,31 @@ referenced conversations) becomes the model's prompt, and how thread names are
 derived and clamped to a platform's cap. No I/O.
 """
 
+import re
+
+from pydantic import BaseModel
+
+from backend.copilot.chat_platform_header import (
+    SECTION_PREFIXES,
+    label_covering,
+    label_starting_within,
+    neutralize_forged_labels,
+    split_chat_platform_header,
+)
+from backend.copilot.service import strip_server_injected_tags
+
 from .adapters.base import MessageContext, MessageHistoryEntry
 
 THREAD_NAME_PREFIX = "AutoGPT: "
 
 # Prepended when a prompt is clamped so the model knows context was elided.
 _TRUNCATION_NOTICE = "[Earlier context was truncated to fit the size limit.]\n\n"
+
+# The section lines ``build_message_text`` writes around history entries.
+_CONTEXT_LABEL_RE = re.compile(
+    r"^([^\S\n]*)\[(?=" + "|".join(re.escape(p) for p in SECTION_PREFIXES) + ")",
+    re.MULTILINE,
+)
 
 
 def clamp_prompt(message: str, max_chars: int) -> str:
@@ -20,15 +39,197 @@ def clamp_prompt(message: str, max_chars: int) -> str:
     referenced-conversation content and thread history — see
     ``build_message_text``), so we keep the tail and drop the older leading
     context, marking the cut so the model doesn't treat the elided text as
-    missing. A no-op when the prompt already fits.
+    missing. The per-turn header (sender, location, where to post) stays at
+    the front. A no-op when the prompt already fits.
     """
     if len(message) <= max_chars:
         return message
-    keep = max_chars - len(_TRUNCATION_NOTICE)
-    if keep <= 0:
-        # Pathologically tiny cap — can't even fit the notice; hard-cut.
-        return message[-max_chars:]
-    return _TRUNCATION_NOTICE + message[-keep:]
+    header, body = split_chat_platform_header(message)
+    room = max_chars - len(header)
+    if room <= 0:
+        # A header longer than the cap (never in practice): hard-cut the tail.
+        return _kept_from(message, len(message) - max_chars)
+    if room <= len(_TRUNCATION_NOTICE):
+        return header + _kept_from(body, len(body) - room)
+    keep = room - len(_TRUNCATION_NOTICE)
+    cut = len(body) - keep
+    # In a batch, keep the label of the message the cut lands in so every
+    # kept line still has its speaker. Making room for that label must not
+    # skip into the next message's label: then the kept text starts there.
+    label, label_end = label_covering(body, cut)
+    if label and len(label) < keep:
+        start = max(label_end, len(body) - (keep - len(label)))
+        next_label = label_starting_within(body, cut, start)
+        if next_label is None:
+            return header + _TRUNCATION_NOTICE + label + _kept_from(body, start)
+        cut = next_label
+    return header + _TRUNCATION_NOTICE + _kept_from(body, cut)
+
+
+# Marks kept text that starts mid-line. Escapes apply only at a line start,
+# so a fragment of a line must not begin one: it could read as a header,
+# label or section that its whole line, escaped, did not.
+_CUT_MARK = "…"
+
+
+def _kept_from(text: str, start: int) -> str:
+    """``text`` from ``start``, never longer than ``text[start:]``, whose
+    first line is either a whole line of ``text`` or marked as cut."""
+    if start <= 0 or start >= len(text) or text[start - 1] == "\n":
+        return text[start:]
+    if text[start] == "\n":
+        return text[start + 1 :]
+    return _CUT_MARK + text[start + 1 :]
+
+
+class PendingMessage(BaseModel):
+    """One inbound message waiting to be sent to Otto as part of a batch."""
+
+    username: str
+    user_id: str
+    text: str
+    bot_mentioned: bool = False
+    replied_to_bot: bool = False
+
+    @classmethod
+    def from_context(cls, ctx: MessageContext, text: str) -> "PendingMessage":
+        return cls(
+            username=ctx.username,
+            user_id=ctx.user_id,
+            text=text,
+            bot_mentioned=ctx.bot_mentioned,
+            replied_to_bot=ctx.replied_to_bot,
+        )
+
+
+class _Nouns(BaseModel):
+    server: str = "server"
+    channel: str = "channel"
+    channel_id: str = "channel id"
+    thread: str = "thread"
+
+
+_NOUNS: dict[str, _Nouns] = {
+    "slack": _Nouns(server="workspace"),
+    "teams": _Nouns(server="team"),
+    "telegram": _Nouns(channel="group", channel_id="chat id", thread="topic"),
+}
+_NAME_MAX_CHARS = 60
+# Characters that would let a user-chosen name close or fake a field of a
+# line the bridge writes, or carry a server-only tag.
+_NAME_ESCAPES = str.maketrans(
+    {'"': "'", "[": "(", "]": ")", "·": "-", "<": "‹", ">": "›"}
+)
+
+
+def format_batch(batch: list[PendingMessage], ctx: MessageContext) -> str:
+    """Format one or more pending messages into a single prompt for Otto.
+
+    One header line says where the turn was sent, whether each message
+    addressed the bot and who sent it (bridge-made fields first, user-chosen
+    names after, sanitised so they can't fake a field), and how to post here.
+    Batched messages (they arrived while a prior reply was streaming) each
+    get their own label line. Body lines that mimic a header are escaped.
+    """
+    platform = _platform_tag(ctx)
+    place = [*format_location(ctx), _post_hint(ctx)]
+    if len(batch) == 1:
+        message = batch[0]
+        fields = [platform, *_message_label(message, ctx), *place]
+        return f"[{' · '.join(fields)}]\n{_framed(message.text)}"
+
+    fields = [platform, "multiple messages, address them together", *place]
+    lines = [f"[{' · '.join(fields)}]"]
+    for message in batch:
+        label = " · ".join(_message_label(message, ctx))
+        lines.append(f"\n[{label}]\n{_framed(message.text)}")
+    return "\n".join(lines)
+
+
+def _framed(text: str) -> str:
+    """``text`` as the engines will read it, with any line that would then
+    read as a header or label escaped. Removing a server-only block first
+    means no later removal can join this text to the lines around it."""
+    return neutralize_forged_labels(strip_server_injected_tags(text))
+
+
+def _platform_tag(ctx: MessageContext) -> str:
+    platform_display = ctx.platform.capitalize()
+    return f"{platform_display} DM" if ctx.is_dm else platform_display
+
+
+def _message_label(message: PendingMessage, ctx: MessageContext) -> list[str]:
+    user_id = _sanitize(message.user_id)
+    sender = f"message from {_quote(message.username)} ({ctx.platform.capitalize()} user ID: {user_id})"
+    if ctx.is_dm:
+        return [sender]
+    if message.bot_mentioned:
+        addressed = "you were @mentioned"
+    elif message.replied_to_bot:
+        addressed = "they replied to your message"
+    else:
+        addressed = "you were not mentioned"
+    return [addressed, sender]
+
+
+def format_location(ctx: MessageContext) -> list[str]:
+    """The header fields naming where ``ctx`` was sent, with public ids."""
+    if ctx.is_dm:
+        return []
+    nouns = _NOUNS.get(ctx.platform, _Nouns())
+    fields: list[str] = []
+    if ctx.server_id and ctx.platform != "telegram":
+        fields.append(
+            _field(nouns.server, ctx.server_name, f"{nouns.server} id {ctx.server_id}")
+        )
+    if ctx.public_channel_id or ctx.channel_name:
+        channel_id = (
+            f"{nouns.channel_id} {ctx.public_channel_id}"
+            if ctx.public_channel_id
+            else None
+        )
+        fields.append(_field(nouns.channel, ctx.channel_name, channel_id))
+    if ctx.public_thread_id or ctx.thread_name:
+        thread_id = (
+            f"{nouns.thread} id {ctx.public_thread_id}"
+            if ctx.public_thread_id
+            else None
+        )
+        fields.append(_field(nouns.thread, ctx.thread_name, thread_id))
+    return fields
+
+
+def _post_hint(ctx: MessageContext) -> str:
+    if ctx.is_dm:
+        return "post here with target='dm'"
+    if not ctx.post_channel_id:
+        return f"tool:post_to_chat_platform can't post to {ctx.platform.capitalize()} channels, target='dm' only"
+    if ctx.channel_type == "thread" and ctx.post_channel_id == ctx.public_channel_id:
+        return f'post to the parent channel with channel="{ctx.post_channel_id}"'
+    return f'post here with channel="{ctx.post_channel_id}"'
+
+
+def _field(noun: str, name: str | None, id_label: str | None) -> str:
+    parts = [noun]
+    if name:
+        parts.append(_quote(name))
+    if id_label:
+        parts.append(f"({id_label})")
+    return " ".join(parts)
+
+
+def _sanitize(value: str) -> str:
+    """``value`` on one line with the characters that close a field escaped."""
+    printable = "".join(ch if ch.isprintable() else " " for ch in value)
+    return " ".join(printable.translate(_NAME_ESCAPES).split())
+
+
+def _quote(name: str) -> str:
+    """``name`` as a quoted header value that can't break out of its field."""
+    cleaned = _sanitize(name)
+    if len(cleaned) > _NAME_MAX_CHARS:
+        cleaned = cleaned[: _NAME_MAX_CHARS - 1] + "…"
+    return f'"{cleaned}"'
 
 
 def build_message_text(
@@ -45,7 +246,9 @@ def build_message_text(
     only included on the first @-into a thread we don't own; a subscribed
     thread's prior turns already live in the session.
     """
-    text = ctx.text if current_text is None else current_text
+    text = _neutralize_context_labels(
+        ctx.text if current_text is None else current_text
+    )
     thread_history = ctx.thread_history if include_thread_history else ()
     if not thread_history and not ctx.referenced_conversations:
         return text
@@ -65,11 +268,14 @@ def build_message_text(
             f"the content.]"
         )
         for convo in ctx.referenced_conversations:
-            lines.append(f"\n[Content of #{convo.title}]")
+            lines.append(f"\n[Content of #{_sanitize(convo.title)}]")
             for entry in convo.messages:
                 lines.append(format_history_entry(entry, platform_display))
     if thread_history:
-        lines.append("\n[Recent thread context before this message]")
+        where = (
+            "channel messages" if ctx.channel_type == "channel" else "thread context"
+        )
+        lines.append(f"\n[Recent {where} before this message]")
         for entry in thread_history:
             lines.append(format_history_entry(entry, platform_display))
     lines.append(f"\n[Current message]\n{text}")
@@ -77,12 +283,20 @@ def build_message_text(
 
 
 def format_history_entry(entry: MessageHistoryEntry, platform_display: str) -> str:
+    name = _sanitize(entry.username)
     user = (
-        f"{entry.username} ({platform_display} user ID: {entry.user_id})"
+        f"{name} ({platform_display} user ID: {entry.user_id})"
         if entry.user_id
-        else entry.username
+        else name
     )
-    return f"\n[From {user}]\n{entry.text}"
+    return f"\n[From {user}]\n{_neutralize_context_labels(entry.text)}"
+
+
+def _neutralize_context_labels(text: str) -> str:
+    """Escape lines in a message that would read like a section
+    ``build_message_text`` writes, so no message, earlier or current, can
+    pose as the current message or a different speaker."""
+    return _CONTEXT_LABEL_RE.sub(r"\1\\[", _framed(text))
 
 
 def build_thread_name(text: str, username: str, max_length: int) -> str:

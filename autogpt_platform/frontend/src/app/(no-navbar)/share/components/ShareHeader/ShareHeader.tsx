@@ -26,7 +26,7 @@ export function ShareHeader({ title, subtitle, actions }: Props) {
     <header
       className={
         "grid shrink-0 grid-cols-[1fr_auto] grid-rows-[auto_auto] gap-x-4 " +
-        "gap-y-2 border-b border-border bg-background px-4 py-3 " +
+        "gap-y-2 border-b border-border-base bg-canvas px-4 py-3 " +
         "[grid-template-areas:'logo_logo'_'title_actions'] " +
         "sm:grid-cols-[1fr_auto_1fr] sm:grid-rows-1 " +
         "sm:items-center sm:[grid-template-areas:'title_logo_actions']"
@@ -34,12 +34,14 @@ export function ShareHeader({ title, subtitle, actions }: Props) {
     >
       <div className="min-w-0 [grid-area:title]">
         {title && (
-          <h1 className="truncate text-sm font-semibold text-zinc-900">
+          <h1 className="truncate text-body font-semibold text-foreground-strong">
             {title}
           </h1>
         )}
         {subtitle && (
-          <p className="truncate text-xs text-zinc-500">{subtitle}</p>
+          <p className="truncate text-caption text-foreground-tertiary">
+            {subtitle}
+          </p>
         )}
       </div>
       <div className="flex justify-center [grid-area:logo]">
@@ -60,14 +62,14 @@ function Logo() {
         alt="AutoGPT"
         width={120}
         height={54}
-        className="hidden h-7 w-auto dark:block"
+        className="hidden h-7 w-auto"
       />
       <Image
         src="/autogpt-logo-light-bg.png"
         alt="AutoGPT"
         width={120}
         height={54}
-        className="block h-7 w-auto dark:hidden"
+        className="block h-7 w-auto"
         priority
       />
     </Link>

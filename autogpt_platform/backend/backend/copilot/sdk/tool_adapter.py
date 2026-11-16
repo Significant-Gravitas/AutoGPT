@@ -10,8 +10,9 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from contextvars import ContextVar
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -28,6 +29,7 @@ from backend.copilot.context import (
     _current_session,
     _current_user_id,
     _encode_cwd_for_cli,
+    bash_command_as_written,
     get_execution_context,
     is_sdk_tool_path,
     reset_consult_budget,
@@ -35,15 +37,19 @@ from backend.copilot.context import (
 from backend.copilot.gate.mcp_seam import (
     gate_non_registry_tool,
     release_non_registry_read,
+    running_under,
     screen_non_registry_read,
 )
 from backend.copilot.gate.reads import model_view
+from backend.copilot.gate.subject import Subject
 from backend.copilot.google_data_redaction import remember_cut_google_output
+from backend.copilot.host_fs import open_no_follow
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
     read_file_bytes,
+    text_outside_file_refs,
 )
 from backend.copilot.tool_image import truncate_mcp_result
 from backend.copilot.tools import (
@@ -543,6 +549,17 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
     # cross-session reads.  sdk_cwd files (workspace outputs) are NOT allowed
     # here — they are served by the e2b_file_tools Read handler instead.
     if not is_sdk_tool_path(file_path):
+        # A truncation notice's workspace_path ("tool-outputs/<id>.json")
+        # names a workspace file, not a host one; point the model at the
+        # tool that can read it instead of a bare rejection.
+        workspace_path = file_path.lstrip("/")
+        if workspace_path.startswith("tool-outputs/"):
+            return _mcp_err(
+                f"{workspace_path} is a workspace file, not an SDK tool-result "
+                f"file. Read it with read_workspace_file("
+                f'path="{workspace_path}", offset={char_offset or 0}, '
+                f"length={char_limit or 50000})."
+            )
         return _mcp_err(f"Path not allowed: {os.path.basename(file_path)}")
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
@@ -552,7 +569,9 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         # line-based offset/limit applied to the raw bytes is useless.
         # _navigable_tool_result_text() unwraps the envelope and pretty-
         # prints inner JSON so line offsets actually slice the payload.
-        with open(resolved, encoding="utf-8", errors="replace") as f:
+        with open(
+            resolved, encoding="utf-8", errors="replace", opener=open_no_follow
+        ) as f:
             raw = f.read()
         navigable = _navigable_tool_result_text(raw)
         if char_offset is not None or char_limit is not None:
@@ -570,28 +589,18 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         #
         # When E2B is active, also copy the file into the sandbox so
         # bash_exec can process it (the model often uses Read then bash).
-        # CAVEAT: only bridge when the on-disk bytes and what the model
-        # just read are the same — i.e. when ``_navigable_tool_result_text``
-        # did *not* transform the content. If we pretty-printed an MCP
-        # envelope, the model sees a pretty-printed slice while the
-        # bridged sandbox file would hold the raw envelope; bash commands
-        # operating on the bridged copy would then see different content
-        # than the model just read, leading to silent format-mismatch
-        # bugs. Same constraint applies to char-mode slices. The new
-        # bash_exec SDK-path redirect (added in this PR) covers the
-        # alternative workflow when the bridge is skipped — the model
-        # can use ``read_tool_result`` again with offsets, or pipe a
+        # The copy holds ``navigable``, the unwrapped text the model's line
+        # offsets point into, not the raw MCP envelope on disk, so bash
+        # sees the same lines the model just read. Char-mode slices skip
+        # the bridge: the model can read again with offsets, or pipe a
         # slice via ``@@agptfile:<path>[<start>-<end>]``.
         sandbox = _current_sandbox.get(None)
-        if (
-            sandbox is not None
-            and navigable == raw
-            and char_offset is None
-            and char_limit is None
-        ):
-            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+        if sandbox is not None and char_offset is None and char_limit is None:
+            annotation = await bridge_and_annotate(
+                sandbox, resolved, offset, limit, navigable
+            )
             if annotation:
-                text += annotation
+                text = f"{annotation.lstrip()}\n{text}"
         return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
@@ -645,14 +654,13 @@ def _extract_single_text_block(envelope: object) -> str | None:
 _READ_TOOL_NAME = "read_tool_result"
 _READ_TOOL_DESCRIPTION = (
     "Read an SDK-internal tool-result file or a workspace:// URI. "
-    "Use this tool only for paths under ~/.claude/projects/.../tool-results/ "
-    "or tool-outputs/, and for workspace:// URIs returned by other tools. "
+    "Use this tool only for host paths under ~/.claude/projects/.../tool-results/ or .../tool-outputs/, and for workspace:// URIs returned by other tools. "
+    "Workspace tool-outputs/<id>.json: use read_workspace_file. "
     "For files in the working directory use read_file instead. "
-    "MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, "
-    "so offset/limit (line-based) slice into the actual payload, not the "
-    "envelope wrapper. For piping a slice into another tool's command, "
-    "use `@@agptfile:<absolute-path>[<start>-<end>]` in that tool's "
-    "argument instead — it works in bash_exec and avoids a round-trip."
+    "In SDK result files, MCP envelopes are auto-unwrapped and JSON payloads pretty-printed, so offset/limit (line-based) slice into the actual payload, not the envelope wrapper. "
+    "workspace:// URIs return raw lines; for character ranges use read_workspace_file. "
+    "To pipe a slice into another tool, use `@@agptfile:<absolute-path>[<start>-<end>]` in its argument (works in bash_exec). "
+    "Ranges are 1-indexed, inclusive raw file lines, which can differ from the lines shown here."
 )
 _READ_TOOL_SCHEMA = {
     "type": "object",
@@ -756,12 +764,21 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
     return {**result, "content": new_content}
 
 
+# What a call of an MCP tool outside ``TOOL_REGISTRY`` acts on, where its name
+# alone does not say: the ``gate_subject`` of a registry tool.
+GateSubject = Callable[[dict[str, Any]], Awaitable[Subject | None]]
+# The Local PC tools that act on the user's machine, which the CLI serialises.
+_LOCAL_PC_MUTATING_TOOLS = frozenset({"local_pc_computer", "dry_run_skill"})
+McpHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
 def _make_truncating_wrapper(
     fn,
     tool_name: str,
     input_schema: dict[str, Any] | None = None,
     required_args: list[str] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    gate_subject: GateSubject | None = None,
 ):
     """Return a wrapper around *fn* that truncates output, stashes it for the
     frontend SSE stream, and strips LLM-revealing fields before returning.
@@ -850,9 +867,21 @@ def _make_truncating_wrapper(
 
         # Second gate seam. The file handlers from ``e2b_file_tools`` are
         # registered straight onto the MCP server, so they are not BaseTool
-        # subclasses and never reach the seam in ``BaseTool.execute``.
+        # subclasses and never reach the seam in ``BaseTool.execute``. The
+        # handler runs under the gate's verdict on its call.
+        verdict = None
         if session is not None and name not in TOOL_REGISTRY:
-            refusal = await gate_non_registry_tool(name, args, user_id, session)
+            refusal, verdict = await gate_non_registry_tool(
+                name,
+                args,
+                user_id,
+                session,
+                subject_of=(
+                    partial(gate_subject, args)
+                    if gate_subject is not None and name == tool_name
+                    else None
+                ),
+            )
             if refusal is not None:
                 return refusal
             released = await release_non_registry_read(
@@ -864,7 +893,12 @@ def _make_truncating_wrapper(
                     _clear_tool_failures(name)
                 return released
 
-        result = await run(args)
+        command = original_args.get("command") if name == "bash_exec" else None
+        as_written = (
+            text_outside_file_refs(command) if isinstance(command, str) else None
+        )
+        with bash_command_as_written(as_written), running_under(verdict):
+            result = await run(args)
         truncated = truncate_mcp_result(result, _MCP_MAX_CHARS)
         remember_cut_google_output(
             _text_from_mcp_result(result), _text_from_mcp_result(truncated)
@@ -922,25 +956,120 @@ def _make_truncating_wrapper(
     return wrapper
 
 
+def held_call_handlers(
+    *,
+    use_local_pc_computer: bool,
+    use_recording: bool,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    hidden_tool_names: Iterable[str] = (),
+) -> dict[str, McpHandler]:
+    """The MCP tools outside ``TOOL_REGISTRY`` that the gate can hold and this
+    turn offers, wrapped as :func:`create_copilot_mcp_server` registers them,
+    so an approved held call replays through the same seam, which spends its
+    approval. A call of a tool the turn doesn't offer (computer use turned off
+    since, a permission taken away) has no handler here, so it doesn't run.
+    Each handler also re-checks its Local PC executor, capability and consent."""
+    return {
+        name: _make_truncating_wrapper(handler, name, gate_subject=subject)
+        for name, _desc, _schema, handler, subject in _offered_local_pc_tools(
+            hidden=frozenset(hidden_tool_names),
+            use_local_pc_computer=use_local_pc_computer,
+            local_pc_computer_tool_names=local_pc_computer_tool_names,
+            use_recording=use_recording,
+        )
+    }
+
+
+def _offered_local_pc_tools(
+    *,
+    hidden: frozenset[str],
+    use_local_pc_computer: bool,
+    local_pc_computer_tool_names: Iterable[str] | None,
+    use_recording: bool,
+) -> list[tuple[str, str, dict[str, Any], McpHandler, GateSubject | None]]:
+    """The Local PC computer-use and workflow-recording tools a turn offers,
+    each with its gate subject: the one list the turn registers and replays
+    held calls from, so the two can't disagree."""
+    from .computer_use_tools import LOCAL_PC_COMPUTER_SUBJECTS, LOCAL_PC_COMPUTER_TOOLS
+    from .recording_tools import RECORDING_TOOLS
+
+    consented = (
+        frozenset(local_pc_computer_tool_names)
+        if local_pc_computer_tool_names is not None
+        else None
+    )
+    offered: list[tuple[str, str, dict[str, Any], McpHandler, GateSubject | None]] = []
+    if use_local_pc_computer:
+        offered += [
+            (name, desc, schema, handler, LOCAL_PC_COMPUTER_SUBJECTS.get(name))
+            for name, desc, schema, handler in LOCAL_PC_COMPUTER_TOOLS
+            if name not in hidden and (consented is None or name in consented)
+        ]
+    if use_recording:
+        offered += [
+            (name, desc, schema, handler, None)
+            for name, desc, schema, handler in RECORDING_TOOLS
+            if name not in hidden
+        ]
+    return offered
+
+
+_SDK_FILE_TOOL_ALIASES = ("Read", "Write", "Edit", "Glob", "Grep")
+
+
+def _normalize_hidden_tool_names(
+    hidden_tool_names: Iterable[str], *, use_e2b: bool
+) -> frozenset[str]:
+    hidden = set(hidden_tool_names)
+    if use_e2b:
+        mapped_names = E2B_FILE_TOOL_NAMES
+        aliases = _SDK_FILE_TOOL_ALIASES
+    else:
+        mapped_names = [READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME]
+        aliases = _SDK_FILE_TOOL_ALIASES[:3]
+    hidden.update(
+        mapped
+        for alias, mapped in zip(aliases, mapped_names, strict=True)
+        if alias in hidden
+    )
+    return frozenset(hidden)
+
+
 def create_copilot_mcp_server(
     *,
     use_e2b: bool = False,
     hidden_tool_names: Iterable[str] = (),
+    use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    use_recording: bool = False,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
 ):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
-    dispatches concurrent tool calls in parallel rather than sequentially.
-    This is a deliberate override: even side-effect tools use the hint
-    because the MCP tools are already individually sandboxed and the
-    pre-launch duplicate-execution bug (SECRT-2204) is worse than
-    sequential dispatch.
+    Tools are annotated with ``readOnlyHint=True`` so the SDK CLI runs the
+    calls in one message in parallel, even tools with side effects.  The
+    exception is a tool that ``writes_files``: the CLI runs a call without
+    the hint on its own, after the calls written before it and before the
+    ones after, so a copy of a file never starts while the command that
+    builds it is still running (SECRT-3178).
 
     When *use_e2b* is True, five additional MCP file tools are registered
-    that route directly to the E2B sandbox filesystem, and the caller should
-    disable the corresponding SDK built-in tools via
-    :func:`get_sdk_disallowed_tools`.
+    that route directly to the E2B sandbox filesystem; the SDK built-ins they
+    stand in for are disabled in both modes by :func:`get_sdk_disallowed_tools`.
+
+    When *use_local_pc_computer* is True, the two ``local_pc_computer*`` MCP
+    tools over the shim's cua-driver are registered. The caller should set this only
+    when the active executor is a connected ``LocalPCShim`` AND that
+    shim advertised the ``computer_use`` capability in HELLO — gating
+    happens at the handler level too so a misconfigured caller still
+    fails closed.
+
+    When *use_recording* is True, reviewed-workflow MCP tools
+    (``list_recordings``, ``generate_skill_from_recording``, and
+    ``dry_run_skill``) are registered. Recording and review are UI-owned.
+    Set this only when the active executor is a connected ``LocalPCShim``
+    AND that shim advertised the ``recording`` capability in HELLO — same
+    fail-closed handler-level gating as the computer-use tools.
 
     Short tool names in *hidden_tool_names* are not registered at all — the
     model never sees them.  ``allowed_tools``/``disallowed_tools`` alone are
@@ -950,7 +1079,7 @@ def create_copilot_mcp_server(
     in copilot).  Hiding the tool removes the temptation entirely.
     """
 
-    hidden = frozenset(hidden_tool_names)
+    hidden = _normalize_hidden_tool_names(hidden_tool_names, use_e2b=use_e2b)
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
@@ -973,15 +1102,13 @@ def create_copilot_mcp_server(
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
         required = list(base_tool.parameters.get("required", []))
-        # All tools annotated readOnlyHint=True to enable parallel dispatch.
-        # The SDK CLI uses this hint to dispatch concurrent tool calls in
-        # parallel rather than sequentially.  Side-effect safety is ensured
-        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
-            annotations=_PARALLEL_ANNOTATION,
+            annotations=(
+                _MUTATING_ANNOTATION if base_tool.writes_files else _PARALLEL_ANNOTATION
+            ),
         )(
             _make_truncating_wrapper(
                 handler,
@@ -1014,6 +1141,29 @@ def create_copilot_mcp_server(
                 annotations=ann,
             )(_make_truncating_wrapper(handler, name, required_args=["path"]))
             sdk_tools.append(decorated)
+
+    # LocalPC computer-use tools, only when the connected shim advertised the
+    # ``computer_use`` capability, and workflow-recording tools, only when it
+    # advertised ``recording``. ``local_pc_computer`` usually acts (clicks,
+    # types, launches) and ``dry_run_skill`` drives replay on the user's
+    # machine, so they carry ``readOnlyHint=False`` and the CLI serialises
+    # them: two actions on one screen must not race. Reading the tool list,
+    # list_recordings and generate_skill_from_recording stay parallel.
+    for name, desc, schema, handler, subject in _offered_local_pc_tools(
+        hidden=hidden,
+        use_local_pc_computer=use_local_pc_computer,
+        local_pc_computer_tool_names=local_pc_computer_tool_names,
+        use_recording=use_recording,
+    ):
+        ann = (
+            _MUTATING_ANNOTATION
+            if name in _LOCAL_PC_MUTATING_TOOLS
+            else _PARALLEL_ANNOTATION
+        )
+        decorated = tool(name, desc, schema, annotations=ann)(
+            _make_truncating_wrapper(handler, name, gate_subject=subject)
+        )
+        sdk_tools.append(decorated)
 
     # Unified Write/Read/Edit tools — replace the CLI's built-in versions
     # which have no defence against output-token truncation.
@@ -1101,8 +1251,8 @@ def create_copilot_mcp_server(
 #   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
-# In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
-# access.  read_file also handles local tool-results and ephemeral reads.
+# The five file tools are disabled in both modes; the MCP file tools and bash_exec
+# replace them.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
 # WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
 # ``mcp__copilot__web_search`` so cost tracking is unified across paths.
@@ -1151,6 +1301,7 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # security_hooks and fails cli_builtin_tools_test.py.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
+    "PowerShell",  # the CLI's Windows shell; same reason as Bash
     "WebFetch",
     "WebSearch",
     "AskUserQuestion",
@@ -1220,7 +1371,7 @@ COPILOT_TOOL_NAMES = [
     f"{MCP_TOOL_PREFIX}{READ_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{EDIT_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-    *_SDK_BUILTIN_TOOLS,
+    *_SDK_BUILTIN_ALWAYS,
 ]
 
 
@@ -1228,6 +1379,10 @@ def get_copilot_tool_names(
     *,
     use_e2b: bool = False,
     disabled_groups: Iterable[ToolGroup] = (),
+    hidden_tool_names: Iterable[str] = (),
+    use_local_pc_computer: bool = False,
+    local_pc_computer_tool_names: Iterable[str] | None = None,
+    use_recording: bool = False,
 ) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
 
@@ -1235,14 +1390,55 @@ def get_copilot_tool_names(
     equivalents that route to the E2B sandbox.  Tools belonging to any of
     *disabled_groups* are filtered out — see ``ToolGroup`` / ``TOOL_GROUPS``
     in ``backend.copilot.tools`` for the full list.
+
+    When *use_local_pc_computer* is True the ``local_pc_*`` MCP tool names
+    are appended so the CLI's ``allowed_tools`` whitelist includes them —
+    otherwise the CLI silently rejects tool calls registered in the MCP
+    server but missing from the allow-list. Caller must pass the same
+    boolean to :func:`create_copilot_mcp_server`.
+
+    When *use_recording* is True the workflow-recording MCP tool names
+    (``list_recordings`` etc.) are appended under the same allow-list
+    contract — pass the same boolean to :func:`create_copilot_mcp_server`.
     """
-    hidden_short_names = tool_names_in_groups(disabled_groups)
+    hidden_short_names = _normalize_hidden_tool_names(
+        tool_names_in_groups(disabled_groups) | frozenset(hidden_tool_names),
+        use_e2b=use_e2b,
+    )
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
+    local_pc_names: list[str] = []
+    if use_local_pc_computer:
+        from .computer_use_tools import LOCAL_PC_COMPUTER_TOOL_NAMES
+
+        advertised_computer_tools = (
+            frozenset(local_pc_computer_tool_names)
+            if local_pc_computer_tool_names is not None
+            else frozenset(LOCAL_PC_COMPUTER_TOOL_NAMES)
+        )
+        local_pc_names = [
+            f"{MCP_TOOL_PREFIX}{name}"
+            for name in LOCAL_PC_COMPUTER_TOOL_NAMES
+            if name not in hidden_short_names and name in advertised_computer_tools
+        ]
+
+    recording_names: list[str] = []
+    if use_recording:
+        from .recording_tools import RECORDING_TOOL_NAMES
+
+        recording_names = [
+            f"{MCP_TOOL_PREFIX}{name}"
+            for name in RECORDING_TOOL_NAMES
+            if name not in hidden_short_names
+        ]
+
     if not use_e2b:
-        if not hidden_mcp_names:
-            return list(COPILOT_TOOL_NAMES)
-        return [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
+        base = (
+            list(COPILOT_TOOL_NAMES)
+            if not hidden_mcp_names
+            else [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
+        )
+        return [*base, *local_pc_names, *recording_names]
 
     # In E2B mode, Write/Edit are NOT registered (E2B uses write_file/edit_file
     # from E2B_FILE_TOOLS instead), so don't include them here.
@@ -1250,20 +1446,20 @@ def get_copilot_tool_names(
     return [
         *_registry_mcp_tools(hidden=hidden_short_names),
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
-        *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
+        *[
+            f"{MCP_TOOL_PREFIX}{name}"
+            for name in E2B_FILE_TOOL_NAMES
+            if name not in hidden_short_names
+        ],
+        *local_pc_names,
+        *recording_names,
         *_SDK_BUILTIN_ALWAYS,
     ]
 
 
-def get_sdk_disallowed_tools(*, use_e2b: bool = False) -> list[str]:
-    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`.
-
-    When *use_e2b* is True the SDK built-in file tools are also disabled
-    because MCP equivalents provide direct sandbox access.
-    """
-    if not use_e2b:
-        return list(SDK_DISALLOWED_TOOLS)
-    return [*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]
+def get_sdk_disallowed_tools() -> list[str]:
+    """Build the ``disallowed_tools`` list for :class:`ClaudeAgentOptions`."""
+    return list(dict.fromkeys([*SDK_DISALLOWED_TOOLS, *_SDK_BUILTIN_FILE_TOOLS]))
 
 
 def get_sdk_builtin_tools() -> list[str]:

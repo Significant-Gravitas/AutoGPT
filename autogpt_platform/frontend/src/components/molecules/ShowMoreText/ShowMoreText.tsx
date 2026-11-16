@@ -32,7 +32,11 @@ export function ShowMoreText({
 
   if (!shouldTruncate) {
     return (
-      <Text variant={variant} className={cn(className)}>
+      <Text
+        variant={variant}
+        data-slot="show-more-text"
+        className={cn(className)}
+      >
         {children}
       </Text>
     );
@@ -41,19 +45,16 @@ export function ShowMoreText({
   return (
     <Text
       variant={variant}
-      className={cn(
-        isExpanded
-          ? "flex-end flex flex-wrap items-center"
-          : "flex-start flex flex-wrap items-center",
-        className,
-      )}
+      data-slot="show-more-text"
+      className={cn("flex flex-wrap items-center", className)}
     >
       {displayText}
       {!isExpanded && "..."}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        data-slot="show-more-text-toggle"
         className={cn(
-          "mt-2 flex h-[1rem] w-[1.75rem] items-center justify-center rounded-full bg-zinc-100 pb-2 font-medium text-black",
+          "mt-2 flex h-[1rem] w-[1.75rem] items-center justify-center rounded-full bg-surface-hover pb-2 font-medium text-foreground-base",
           toggleClassName,
         )}
         type="button"

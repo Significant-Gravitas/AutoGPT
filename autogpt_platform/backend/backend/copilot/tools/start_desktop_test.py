@@ -6,6 +6,8 @@ import pytest
 
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH, DesktopStream
 from backend.blocks.desktop._common import expert_volume_name, user_volume_name
+from backend.copilot.model import LocalExecutionTargetMetadata
+from backend.util.sandbox_limits import SandboxLimitError
 
 from ._test_data import make_session
 from .models import DesktopStreamToolResponse, ErrorResponse
@@ -84,7 +86,7 @@ async def _run(tool, box: _Box, *, user_id, session):
     with redis_p, get_p, cls_p, computer_cfg as ccfg, tool_cfg as tcfg:
         tcfg.active_e2b_api_key = "e2b_test_key"
         ccfg.e2b_sandbox_timeout = 420
-        ccfg.e2b_sandbox_template = "agpt-desktop-1x2-004d6e73"
+        ccfg.e2b_sandbox_template = "agpt-desktop-1x2-cfc276e0"
         ccfg.e2b_sandbox_on_timeout = "pause"
         return await tool._execute(user_id=user_id, session=session)
 
@@ -110,6 +112,25 @@ class TestStartDesktop:
         assert result.error == "e2b_unconfigured"
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_local_pc_chat_never_starts_a_cloud_box(self):
+        tool = StartDesktopTool()
+        session = make_session(user_id=_USER)
+        session.metadata.execution_target = LocalExecutionTargetMetadata(
+            machine_id="machine-1",
+            directory_ref="directory-1",
+            allowed_root="/workspace",
+            root_fingerprint="a" * 64,
+            root_grant="grant-1",
+        )
+        box = _Box()
+
+        result = await _run(tool, box, user_id=_USER, session=session)
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "local_pc_session"
+        box.get_box.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_turns_the_screen_on_in_the_sessions_box(self):
         tool = StartDesktopTool()
         session = make_session(user_id=_USER)
@@ -126,7 +147,7 @@ class TestStartDesktop:
             f"copilot:e2b:sandbox:{session.session_id}"
         )
         assert kwargs["volume_mounts"] == {WORKSPACE_PATH: user_volume_name(_USER)}
-        assert kwargs["template"] == "agpt-desktop-1x2-004d6e73"
+        assert kwargs["template"] == "agpt-desktop-1x2-cfc276e0"
         assert kwargs["count_turn"] is False
         # The turn's own ceiling (none here), never KEEP: a box this creates
         # must not get every provider in a restricted turn.
@@ -219,6 +240,19 @@ class TestStartDesktop:
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "desktop_start_failed"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_start_refused_under_a_sandbox_limit_says_so(self):
+        tool = StartDesktopTool()
+        session = make_session(user_id=_USER)
+        box = _Box()
+        box.get_box.side_effect = SandboxLimitError("Too many sandboxes are running.")
+
+        result = await _run(tool, box, user_id=_USER, session=session)
+
+        assert isinstance(result, ErrorResponse)
+        assert result.error == "sandbox_limit_reached"
+        assert result.message == "Too many sandboxes are running."
 
 
 class TestExpertDesktop:

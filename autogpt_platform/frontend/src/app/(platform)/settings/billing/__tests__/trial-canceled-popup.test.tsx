@@ -18,6 +18,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import {
+  findCancelConfirmation,
   deferredTrialResponse,
   setTrialUser,
   trialOffer,
@@ -44,7 +45,6 @@ vi.mock("next/navigation", () => ({
 const posthog = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock("@posthog/react", () => ({
   usePostHog: () => posthog,
-  useFeatureFlagVariantKey: () => undefined,
 }));
 
 const HOUR = 60 * 60 * 1000;
@@ -78,9 +78,7 @@ function SubscriptionStatusObserver() {
 
 async function cancelThroughConfirmation() {
   fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
-  const confirm = await screen.findByRole("dialog", {
-    name: "Cancel your trial?",
-  });
+  const confirm = await findCancelConfirmation();
   fireEvent.click(
     within(confirm).getByRole("button", { name: "Cancel trial" }),
   );
@@ -188,9 +186,9 @@ describe("post-cancel popup", () => {
       await screen.findByRole("button", { name: "Cancel trial" }),
     );
     fireEvent.click(
-      within(
-        await screen.findByRole("dialog", { name: "Cancel your trial?" }),
-      ).getByRole("button", { name: "Cancel trial" }),
+      within(await findCancelConfirmation()).getByRole("button", {
+        name: "Cancel trial",
+      }),
     );
     await screen.findByText("Your trial has ended");
     expect(screen.queryByRole("dialog")).toBeNull();

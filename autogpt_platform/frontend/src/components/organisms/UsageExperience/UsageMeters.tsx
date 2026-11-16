@@ -25,7 +25,10 @@ export function UsageMeters({ daily, weekly, trialPercent, className }: Props) {
         ];
   if (meters.length === 0) return null;
   return (
-    <div className={cn("grid gap-x-6 gap-y-3 sm:grid-cols-2", className)}>
+    <div
+      data-slot="usage-meters"
+      className={cn("grid gap-x-6 gap-y-3 sm:grid-cols-2", className)}
+    >
       {meters.map((meter) => (
         <UsageMeter
           key={meter.label}

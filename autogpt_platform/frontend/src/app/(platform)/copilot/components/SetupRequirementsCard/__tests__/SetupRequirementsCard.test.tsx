@@ -765,7 +765,7 @@ describe("SetupRequirementsCard (rejected credential)", () => {
       render(
         <ChainActionsContext.Provider
           value={{
-            register: (entry) => entries.push(entry),
+            register: (_owner, entry) => entries.push(entry),
             unregister: vi.fn(),
           }}
         >

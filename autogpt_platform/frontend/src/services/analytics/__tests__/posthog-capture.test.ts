@@ -10,7 +10,10 @@ const { posthog } = vi.hoisted(() => ({
   posthog: {
     __loaded: false,
     capturing: false,
-    capture: vi.fn(),
+    // posthog-js returns the event it takes, and nothing when it drops one.
+    capture: vi.fn((event: string): { event: string } | undefined => ({
+      event,
+    })),
     is_capturing() {
       return this.capturing;
     },
@@ -131,12 +134,49 @@ describe("capturePostHogEvent", () => {
     vi.advanceTimersByTime(20_000);
 
     expect(posthog.capture).not.toHaveBeenCalled();
-    // Deliberately dropped: the tab does not try again.
+    // The guard is an analytics marker: nothing is stored without consent.
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+  });
+
+  it("drops a declined visitor's event again on the next mount, still writing nothing", () => {
+    storeConsentCookie(false);
+    startCapturing();
+    posthog.capturing = false;
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    vi.advanceTimersByTime(20_000);
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it("sends a consented visitor's once-per-tab event only once", () => {
+    storeConsentCookie(true);
+    startCapturing();
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith("tour_started", {});
+    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+  });
+
+  it("sends a dropped event on a later call once the visitor has consented in that tab", () => {
+    installCookiebot();
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    answerCookiebot({ statistics: true });
+    startCapturing();
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith("tour_started", {});
     expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
   });
 
   it("drops held events when the visitor declines on load", () => {
-    capturePostHogEvent("tour_started");
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
     installCookiebot();
     answerCookiebot({ statistics: false });
 
@@ -144,6 +184,7 @@ describe("capturePostHogEvent", () => {
     vi.advanceTimersByTime(1_000);
 
     expect(posthog.capture).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
   });
 
   // Consent given on the banner covers what happens after it, never what
@@ -153,7 +194,7 @@ describe("capturePostHogEvent", () => {
     installCookiebot();
     fire("CookiebotOnDialogInit");
 
-    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
     answerCookiebot({ statistics: true });
     startCapturing();
     vi.advanceTimersByTime(1_000);
@@ -182,7 +223,7 @@ describe("capturePostHogEvent", () => {
     vi.advanceTimersByTime(1_000);
 
     expect(posthog.capture).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
   });
 
   it("drops events when there is no consent manager to ask", () => {
@@ -206,6 +247,18 @@ describe("capturePostHogEvent", () => {
     vi.advanceTimersByTime(1_000);
 
     expect(posthog.capture).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+  });
+
+  it("sends a timed-out event on a later call once PostHog captures", () => {
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    vi.advanceTimersByTime(60_000);
+
+    storeConsentCookie(true);
+    startCapturing();
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledExactlyOnceWith("tour_started", {});
     expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
   });
 
@@ -221,6 +274,58 @@ describe("capturePostHogEvent", () => {
     capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
 
     expect(posthog.capture).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the guard unset when posthog-js fails to send a held event", () => {
+    storeConsentCookie(true);
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    posthog.capture.mockImplementation(() => {
+      throw new Error("blocked");
+    });
+
+    startCapturing();
+    vi.advanceTimersByTime(250);
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+  });
+
+  it("leaves the guard unset when posthog-js fails to send straight away, so a later call sends", () => {
+    startCapturing();
+    posthog.capture.mockImplementationOnce(() => {
+      throw new Error("blocked");
+    });
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    expect(posthog.capture).toHaveBeenCalledTimes(2);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBe("1");
+  });
+
+  // PostHog may still capture for a moment after consent is withdrawn; its
+  // before_send hook then drops the event and capture returns nothing.
+  it("leaves the guard unset when posthog-js drops the event itself", () => {
+    startCapturing();
+    posthog.capture.mockReturnValue(undefined);
+
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
+  });
+
+  it("leaves the guard unset when posthog-js drops a held event itself", () => {
+    storeConsentCookie(true);
+    capturePostHogEvent("tour_started", {}, { oncePerTabKey: ONCE_KEY });
+    posthog.capture.mockReturnValue(undefined);
+
+    startCapturing();
+    vi.advanceTimersByTime(250);
+
+    expect(posthog.capture).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(ONCE_KEY)).toBeNull();
   });
 
   it("never throws when posthog-js does", () => {

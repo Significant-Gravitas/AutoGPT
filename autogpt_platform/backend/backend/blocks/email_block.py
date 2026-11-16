@@ -1,6 +1,8 @@
+import asyncio
 import smtplib
 import socket
 import ssl
+from collections.abc import Sequence
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Literal
@@ -15,6 +17,14 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.helpers.host_bound_login import login_may_go_to
+from backend.blocks.helpers.smtp import (
+    PinnedSMTP,
+    SMTPDeadline,
+    SMTPDeadlinePassed,
+    verified_tls_context,
+)
+from backend.data.credential_scope import ServerTarget
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
@@ -29,6 +39,7 @@ TEST_CREDENTIALS = UserPasswordCredentials(
     provider="smtp",
     username=SecretStr("mock-smtp-username"),
     password=SecretStr("mock-smtp-password"),
+    scope="smtp://smtp.gmail.com",
     title="Mock SMTP credentials",
 )
 
@@ -103,6 +114,8 @@ class SendEmailBlock(Block):
         )
 
     ALLOWED_SMTP_PORTS = {25, 465, 587, 2525}
+    SMTP_TIMEOUT_SECONDS = 30  # one connection attempt, read or write
+    SMTP_DEADLINE_SECONDS = 120  # the whole conversation
 
     @staticmethod
     def send_email(
@@ -111,7 +124,12 @@ class SendEmailBlock(Block):
         subject: str,
         body: str,
         credentials: SMTPCredentials,
+        *,
+        addresses: Sequence[str],
+        deadline: SMTPDeadline,
     ) -> str:
+        """Send through ``config.smtp_server``, connecting only to ``addresses``,
+        the IP addresses its name was checked to resolve to. Blocks until done."""
         smtp_server = config.smtp_server
         smtp_port = config.smtp_port
         smtp_username = credentials.username.get_secret_value()
@@ -123,15 +141,31 @@ class SendEmailBlock(Block):
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
-            server.starttls()
-            server.login(smtp_username, smtp_password)
-            server.sendmail(smtp_username, to_email, msg.as_string())
+        try:
+            with PinnedSMTP(
+                smtp_server,
+                smtp_port,
+                addresses,
+                timeout=SendEmailBlock.SMTP_TIMEOUT_SECONDS,
+                deadline=deadline,
+            ) as server:
+                server.starttls(context=verified_tls_context())
+                server.login(smtp_username, smtp_password)
+                server.sendmail(smtp_username, to_email, msg.as_string())
+        finally:
+            deadline.release()
 
         return "Email sent successfully"
 
     async def run(
-        self, input_data: Input, *, credentials: SMTPCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: SMTPCredentials,
+        user_id: str | None = None,
+        graph_id: str | None = None,
+        graph_version: int | None = None,
+        **kwargs,
     ) -> BlockOutput:
         try:
             # --- SSRF Protection ---
@@ -143,16 +177,32 @@ class SendEmailBlock(Block):
                 )
                 return
 
-            await resolve_and_check_blocked(input_data.config.smtp_server)
+            # A saved login is only sent to the server its scope names.
+            if not await login_may_go_to(
+                credentials,
+                ServerTarget(
+                    scheme="smtp", host=input_data.config.smtp_server, port=smtp_port
+                ),
+                user_id=user_id,
+                graph_id=graph_id,
+                graph_version=graph_version,
+            ):
+                yield "error", _refusal(
+                    credentials,
+                    f"'{input_data.config.smtp_server}' on port {smtp_port}",
+                )
+                return
 
-            status = self.send_email(
-                config=input_data.config,
-                to_email=input_data.to_email,
-                subject=input_data.subject,
-                body=input_data.body,
-                credentials=credentials,
-            )
+            addresses = await resolve_and_check_blocked(input_data.config.smtp_server)
+
+            status = await self._send_in_thread(input_data, credentials, addresses)
             yield "status", status
+        except SMTPDeadlinePassed:
+            yield "error", (
+                f"SMTP server '{input_data.config.smtp_server}' on port "
+                f"{input_data.config.smtp_port} did not finish within "
+                f"{self.SMTP_DEADLINE_SECONDS} seconds."
+            )
         except socket.gaierror:
             yield "error", (
                 f"Cannot connect to SMTP server '{input_data.config.smtp_server}'. "
@@ -175,6 +225,13 @@ class SendEmailBlock(Block):
             yield "error", (
                 f"STARTTLS not supported by server '{input_data.config.smtp_server}'. "
                 "Try using port 465 for SSL or port 25 for unencrypted connection."
+            )
+        except ssl.SSLCertVerificationError as e:
+            yield "error", (
+                "The TLS certificate of SMTP server "
+                f"'{input_data.config.smtp_server}' could not be verified: "
+                f"{e.verify_message.rstrip('.')}. The server must present a "
+                "valid certificate for that name."
             )
         except ssl.SSLError as e:
             yield "error", (
@@ -208,7 +265,63 @@ class SendEmailBlock(Block):
             )
         except smtplib.SMTPDataError as e:
             yield "error", f"Email data rejected by server: {str(e)}"
+        except smtplib.SMTPResponseException:
+            yield "error", (
+                f"SMTP server '{input_data.config.smtp_server}' rejected the "
+                "request. Please verify the server address and port."
+            )
         except ValueError as e:
             yield "error", str(e)
         except Exception as e:
             raise e
+
+    async def _send_in_thread(
+        self,
+        input_data: Input,
+        credentials: SMTPCredentials,
+        addresses: list[str],
+    ) -> str:
+        """Run ``send_email`` in a worker thread, within ``SMTP_DEADLINE_SECONDS``.
+
+        On the event loop it would hold every other node running there until the
+        server finished. Stopping the run ends the conversation too.
+        """
+        deadline = SMTPDeadline(self.SMTP_DEADLINE_SECONDS)
+        timer = asyncio.get_running_loop().call_later(
+            self.SMTP_DEADLINE_SECONDS, deadline.expire
+        )
+        try:
+            return await asyncio.to_thread(
+                self.send_email,
+                config=input_data.config,
+                to_email=input_data.to_email,
+                subject=input_data.subject,
+                body=input_data.body,
+                credentials=credentials,
+                addresses=addresses,
+                deadline=deadline,
+            )
+        except asyncio.CancelledError:
+            deadline.expire()
+            raise
+        except Exception as e:
+            if deadline.expired:
+                raise SMTPDeadlinePassed() from e
+            raise
+        finally:
+            timer.cancel()
+
+
+def _refusal(credentials: SMTPCredentials, server: str) -> str:
+    if credentials.scope is None:
+        why = (
+            "were saved without a server, so they can only be used in workflows "
+            "you saved yourself"
+        )
+    else:
+        why = f"are saved for a different server than this workflow's ({server})"
+    return (
+        f"The selected SMTP credentials {why}, so they were not sent. Each saved "
+        "login is only sent to the server it was saved for; check which server "
+        "your saved SMTP logins are for."
+    )

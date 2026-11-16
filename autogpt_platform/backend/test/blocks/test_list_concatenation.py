@@ -258,7 +258,7 @@ class TestMakeHashable:
 
     def test_list_returns_tuple(self):
         result = _make_hashable([1, 2, 3])
-        assert result == (1, 2, 3)
+        assert result == ("list", (1, 2, 3))
 
     def test_same_dict_same_hash(self):
         assert _make_hashable({"a": 1, "b": 2}) == _make_hashable({"a": 1, "b": 2})
@@ -274,12 +274,11 @@ class TestMakeHashable:
 
     def test_tuple_hashable(self):
         result = _make_hashable((1, 2, 3))
-        assert result == (1, 2, 3)
+        assert result == ("list", (1, 2, 3))
         hash(result)
 
     def test_boolean(self):
-        result = _make_hashable(True)
-        assert result is True
+        assert _make_hashable(True) == ("bool", True)
 
     def test_float(self):
         result = _make_hashable(3.14)
@@ -393,6 +392,47 @@ class TestMakeHashableMixedKeys:
         d1 = {1: "a", "b": 2}
         d2 = {1: "a", "b": 2}
         assert _make_hashable(d1) == _make_hashable(d2)
+
+
+class TestMakeHashableDistinctTypes:
+    """_make_hashable must not map JSON-distinct values onto the same key."""
+
+    def test_bool_distinct_from_int(self):
+        assert _make_hashable(True) != _make_hashable(1)
+        assert _make_hashable(False) != _make_hashable(0)
+
+    def test_empty_list_distinct_from_empty_dict(self):
+        assert _make_hashable([]) != _make_hashable({})
+
+    def test_dict_distinct_from_list_of_pairs(self):
+        assert _make_hashable({"a": 1}) != _make_hashable([["a", 1]])
+
+    def test_dict_and_bool_distinct_from_lists_spelling_their_tag(self):
+        assert _make_hashable({}) != _make_hashable(["dict", []])
+        assert _make_hashable(True) != _make_hashable(["bool", 1])
+        assert _make_hashable(False) != _make_hashable(["bool", 0])
+
+    def test_dedupe_keeps_distinct_values(self):
+        items = [[], {}, 1, True, {"a": 1}, [["a", 1]], 0, False]
+        assert _deduplicate_list(items) == items
+
+    def test_dedupe_keeps_lists_spelling_a_tag(self):
+        items = [{}, ["dict", []], True, ["bool", 1], {"a": True}, {"a": ["bool", 1]}]
+        assert _deduplicate_list(items) == items
+
+    def test_dedupe_still_merges_equal_values(self):
+        assert _deduplicate_list([True, True, {"a": [1]}, {"a": [1]}]) == [
+            True,
+            {"a": [1]},
+        ]
+
+    def test_difference_does_not_match_distinct_values(self):
+        block = ListDifferenceBlock()
+        assert block._compute_difference([1, 0, {}], [True, False, []]) == [1, 0, {}]
+
+    def test_intersection_does_not_match_distinct_values(self):
+        block = ListIntersectionBlock()
+        assert block._compute_intersection([1, 0, {}], [True, False, []]) == []
 
 
 class TestZipListsNoneHandling:
@@ -579,6 +619,20 @@ class TestConcatenateListsBlockManual:
         ):
             results[name] = value
         assert results["concatenated_list"] == [3, 1, 2, 4]
+
+    @pytest.mark.asyncio
+    async def test_deduplication_keeps_values_of_different_kinds(self):
+        """[] and {}, 1 and True, a dict and its pairs all stay; 1.0 merges into 1."""
+        results = {}
+        async for name, value in self.block.run(
+            ConcatenateListsBlock.Input(
+                lists=[[[], {}], [1, True, 1.0], [{"a": 1}, [["a", 1]]]],
+                deduplicate=True,
+            )
+        ):
+            results[name] = value
+        assert results["concatenated_list"] == [[], {}, 1, True, {"a": 1}, [["a", 1]]]
+        assert results["length"] == 6
 
     @pytest.mark.asyncio
     async def test_remove_none_enabled(self):

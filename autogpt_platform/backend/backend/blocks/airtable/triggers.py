@@ -13,7 +13,7 @@ from backend.sdk import (
 )
 
 from ._api import WebhookPayload
-from ._config import airtable
+from ._config import airtable, base_id_field
 
 
 class AirtableEventSelector(BaseModel):
@@ -37,7 +37,7 @@ class AirtableWebhookTriggerBlock(Block):
         credentials: CredentialsMetaInput = airtable.credentials_field(
             description="Airtable API credentials"
         )
-        base_id: str = SchemaField(description="Airtable base ID")
+        base_id: str = base_id_field(access="create")
         table_id_or_name: str = SchemaField(description="Airtable table ID or name")
         payload: dict = SchemaField(hidden=True, default_factory=dict)
         events: AirtableEventSelector = SchemaField(

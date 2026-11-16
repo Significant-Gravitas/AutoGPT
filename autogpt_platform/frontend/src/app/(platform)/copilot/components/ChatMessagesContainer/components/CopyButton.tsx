@@ -1,7 +1,7 @@
 "use client";
 
 import { credentialMentionDisplayText } from "../../CredentialMention/helpers";
-import { MessageAction } from "@/components/ai-elements/message";
+import { MessageAction } from "@/components/organisms/Message/Message";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
 import { Copy02Icon, Tick02Icon } from "@hugeicons/core-free-icons";

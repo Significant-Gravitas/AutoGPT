@@ -15,9 +15,8 @@ dataforseo = (
     )
     # DataForSEO reports USD cost per task (e.g. $0.001/keyword returned).
     # DataForSeoClient stashes it on last_cost_usd; each block emits it via
-    # merge_stats so the COST_USD resolver bills against real spend.
-    # 1000 platform credits per USD → 1 credit per $0.001 (≈ 1 credit/
-    # returned keyword on the standard tier).
-    .with_base_cost(1000, BlockCostType.COST_USD)
+    # merge_stats so the COST_USD resolver bills against real spend, at the
+    # platform's standard 150 credits per USD (1.5x what DataForSEO charges).
+    .with_base_cost(150, BlockCostType.COST_USD)
     .build()
 )

@@ -162,8 +162,7 @@ def _with_encryption_flag(data: bytes) -> bytes:
 
 
 def test_a_bomb_is_refused_without_a_member_being_read(monkeypatch):
-    """The declared sizes are the whole check: 22 MiB of zeros compresses to a
-    few KB, so reading first is how a bomb lands in memory."""
+    """22 MiB of zeros compresses to a few KB, so it is refused unread."""
     member = b"\0" * MAX_PACKAGE_FILE_BYTES
     data = _zip({"SKILL.md": SKILL_MD, **{f"f{i}.bin": member for i in range(11)}})
     assert len(data) < MAX_PACKAGE_BYTES
@@ -175,6 +174,28 @@ def test_a_bomb_is_refused_without_a_member_being_read(monkeypatch):
         package_from_zip(data)
     assert exc.value.over_limit
     opened.assert_not_called()
+
+
+def test_reading_stops_once_the_real_bytes_pass_the_total(monkeypatch):
+    """The declared sizes are small, so the check before reading passes; the
+    bytes the reader returns are what the package total is held against, and
+    the rest of the members are never decompressed."""
+    count = 30
+    data = _zip({"SKILL.md": SKILL_MD, **{f"f{i}.bin": b"x" for i in range(count)}})
+    produced = b"\0" * MAX_PACKAGE_FILE_BYTES
+    reads: list[str] = []
+
+    def read_member(archive, info, *, max_bytes):
+        reads.append(info.filename)
+        return produced
+
+    monkeypatch.setattr("backend.api.features.skill_zip.read_member", read_member)
+
+    with pytest.raises(SkillPackageError) as exc:
+        package_from_zip(data)
+    assert exc.value.over_limit
+    assert str(MAX_PACKAGE_BYTES) in str(exc.value)
+    assert len(reads) == MAX_PACKAGE_BYTES // MAX_PACKAGE_FILE_BYTES + 1
 
 
 def test_a_file_over_the_per_file_cap_is_refused_unread(monkeypatch):
@@ -292,6 +313,39 @@ def _with_a_corrupt_member(data: bytes) -> bytes:
     name_len, extra_len = struct.unpack_from("<HH", out, header + 26)
     out[header + 30 + name_len + extra_len + 2] ^= 0xFF
     return bytes(out)
+
+
+@pytest.mark.parametrize("method", [zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA])
+def test_a_bzip2_or_lzma_member_is_refused(method: int, monkeypatch):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("SKILL.md", SKILL_MD, zipfile.ZIP_DEFLATED)
+        archive.writestr("a.bin", b"x", method)
+
+    decompressor = zipfile._get_decompressor
+
+    def deflate_only(compress_type: int):
+        assert compress_type == zipfile.ZIP_DEFLATED, "a.bin was decompressed"
+        return decompressor(compress_type)
+
+    monkeypatch.setattr(zipfile, "_get_decompressor", deflate_only)
+
+    with pytest.raises(SkillPackageError, match="unsupported compression method"):
+        package_from_zip(buffer.getvalue())
+
+
+def test_a_stored_package_is_read():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr("SKILL.md", SKILL_MD)
+        archive.writestr("references/API.md", "# API\n")
+
+    package = package_from_zip(buffer.getvalue())
+
+    assert package.skill_md == SKILL_MD
+    assert [(f.relative_path, f.content) for f in package.files] == [
+        ("references/API.md", b"# API\n")
+    ]
 
 
 def test_something_that_is_not_a_zip_is_refused():

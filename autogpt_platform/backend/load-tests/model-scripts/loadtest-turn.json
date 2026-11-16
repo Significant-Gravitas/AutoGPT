@@ -1,0 +1,33 @@
+{
+  "description": "One load-test turn on the SDK engine: a short answer and one cheap command in the session's sandbox, then a short final answer once the command's output is back. tests/workload.js sends it from its scripted accounts (copilot_turn_scripted), each turn on a new session, and its setup probe checks the final text (lib/copilot.js).",
+  "title": "Load test turn",
+  "turns": [
+    {
+      "text": "Let me check the sandbox first.",
+      "tool_calls": [
+        {
+          "name": "bash_exec",
+          "input": { "command": "echo load-test" }
+        }
+      ],
+      "usage": {
+        "input_tokens": 300,
+        "output_tokens": 20,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      },
+      "stream": { "chunk_words": 3, "delay_ms": 30 }
+    },
+    {
+      "expect_tool_results": [{ "tool": "bash_exec", "contains": "load-test" }],
+      "text": "Load-test turn finished: one command in the sandbox, one answer.",
+      "usage": {
+        "input_tokens": 400,
+        "output_tokens": 15,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0
+      },
+      "stream": { "chunk_words": 3, "delay_ms": 30 }
+    }
+  ]
+}

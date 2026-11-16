@@ -1,5 +1,5 @@
 import { withPostHogConfig } from "@posthog/nextjs-config";
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 // Allow Docker builds to skip source-map generation (halves memory usage).
 // Defaults to true so Vercel/local builds are unaffected.
@@ -8,6 +8,14 @@ const enableSourceMaps = process.env.NEXT_PUBLIC_SOURCEMAPS !== "false";
 // CI's e2e image build skips lint and type checks; CI runs `pnpm lint` and
 // `pnpm types` as their own jobs.
 const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
+
+// Read by the React Compiler coverage test too, so both cover the same files.
+export const reactCompilerSources = [
+  "/src/app/(platform)/copilot/",
+  "/src/components/organisms/Conversation/",
+  "/src/components/organisms/Message/",
+  "/src/components/organisms/PromptInput/",
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -43,6 +51,21 @@ const nextConfig = {
       },
     ];
   },
+  // These /profile pages have no page left for the layout's redirect to run on.
+  async redirects() {
+    return [
+      {
+        source: "/profile",
+        destination: "/settings/profile",
+        permanent: false,
+      },
+      {
+        source: "/profile/integrations",
+        destination: "/settings/integrations",
+        permanent: false,
+      },
+    ];
+  },
   productionBrowserSourceMaps: enableSourceMaps,
   eslint: { ignoreDuringBuilds: skipBuildChecks },
   typescript: { ignoreBuildErrors: skipBuildChecks },
@@ -60,6 +83,14 @@ const nextConfig = {
     middlewareClientMaxBodySize: "256mb",
     // Limit parallel webpack workers to reduce peak memory during builds.
     cpus: 2,
+    // The React Compiler memoises components and hooks it can prove follow
+    // React's rules. Copilot only for now; every other folder builds exactly
+    // as before. Plain strings, since Turbopack only takes serialisable
+    // loader options; the compiler matches them against each file's path.
+    reactCompiler: {
+      compilationMode: "infer",
+      sources: reactCompilerSources,
+    },
   },
   // Work around cssnano "Invalid array length" bug in Next.js's bundled
   // cssnano-simple comment parser when processing very large CSS chunks.
@@ -209,7 +240,7 @@ const configWithSentry = skipSentryPlugin
       // Upload a larger set of source maps for prettier stack traces (increases build time)
       widenClientFileUpload: true,
 
-      // Automatically annotate React components to show their full name in breadcrumbs and session replay
+      // Automatically annotate React components to show their full name in breadcrumbs
       reactComponentAnnotation: {
         enabled: true,
       },
@@ -228,14 +259,16 @@ const configWithSentry = skipSentryPlugin
         deleteSourcemapsAfterUpload: false, // Source is public anyway :)
       },
 
-      // Automatically tree-shake Sentry logger statements to reduce bundle size
-      disableLogger: true,
+      webpack: {
+        // Automatically tree-shake Sentry logger statements to reduce bundle size
+        treeshake: { removeDebugLogging: true },
 
-      // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
-      // See the following for more information:
-      // https://docs.sentry.io/product/crons/
-      // https://vercel.com/docs/cron-jobs
-      automaticVercelMonitors: true,
+        // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
+        // See the following for more information:
+        // https://docs.sentry.io/product/crons/
+        // https://vercel.com/docs/cron-jobs
+        automaticVercelMonitors: true,
+      },
     });
 
 // Build-only credentials, never NEXT_PUBLIC_ and never in `env` above, so they

@@ -31,6 +31,7 @@ from backend.copilot.constants import (
 from backend.copilot.credit_billing import credits_can_pay_block_turns
 from backend.copilot.permissions import (
     DISABLED_LEGACY_TOOL_NAMES,
+    MAX_BLOCK_IDENTIFIERS,
     CopilotPermissions,
     ToolName,
     all_known_tool_names,
@@ -257,6 +258,7 @@ class AutoPilotBlock(Block):
             ),
             default=[],
             advanced=True,
+            max_length=MAX_BLOCK_IDENTIFIERS,
         )
 
         blocks_exclude: bool = SchemaField(
@@ -411,6 +413,7 @@ class AutoPilotBlock(Block):
         team_id: str | None = None,
         llm_auth_provider: Literal["platform", "codex"] = "platform",
         llm_credential_id: str | None = None,
+        expert_id: str | None = None,
     ) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
@@ -424,8 +427,12 @@ class AutoPilotBlock(Block):
             # untrusted upstream data, so this session must not reach the
             # tools that restaff the user's team.
             origin="automation",
+            # The block outputs only the final text.
+            text_only_result=True,
             llm_auth_provider=llm_auth_provider,
             llm_credential_id=llm_credential_id,
+            # The run's expert scope: its grants and tools follow the session.
+            expert_id=expert_id,
         )
         return session.session_id
 
@@ -462,6 +469,9 @@ class AutoPilotBlock(Block):
         from backend.copilot.sdk.session_waiter import (
             run_copilot_turn_via_queue,  # avoid circular import
         )
+        from backend.copilot.tools.render_ui import (
+            without_render_ui,  # avoid circular import
+        )
 
         tokens = _check_recursion(max_recursion_depth)
         perm_token = None
@@ -482,7 +492,10 @@ class AutoPilotBlock(Block):
                 # SDK enforces its own idle-based timeout inside the
                 # stream_registry pipeline.
                 timeout=_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS,
-                permissions=effective_permissions,
+                # The block outputs only the final text, so no turn it runs
+                # may put the answer in cards, a resumed session included.
+                # The ceiling nested runs inherit stays as the graph set it.
+                permissions=without_render_ui(effective_permissions),
                 tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
                 tool_name=_AUTOPILOT_TOOL_NAME,
                 # Never ride an in-flight turn: the prompt would execute under
@@ -639,6 +652,7 @@ class AutoPilotBlock(Block):
                 team_id=execution_context.team_id,
                 llm_auth_provider=("codex" if use_codex else "platform"),
                 llm_credential_id=(codex_connection.id if use_codex else None),
+                expert_id=execution_context.expert_id,
             )
         else:
             # Validate on every resume, not just codex ones. Gating this on
@@ -676,6 +690,14 @@ class AutoPilotBlock(Block):
                 yield "error", (
                     "That AutoPilot session was started by a person, not by an "
                     "automation. Start a new session for this graph run."
+                )
+                return
+
+            if existing_session.expert_id != execution_context.expert_id:
+                yield "session_id", sid
+                yield "error", (
+                    "That AutoPilot session belongs to a different assistant "
+                    "than this graph run. Start a new session for this graph run."
                 )
                 return
 
@@ -850,6 +872,11 @@ async def _build_and_validate_permissions(
     # Tool names are validated by Pydantic via the ToolName Literal type
     # at model construction time — no runtime check needed here.
     # Validate block identifiers against live block registry.
+    if len(input_data.blocks) > MAX_BLOCK_IDENTIFIERS:
+        return (
+            f"'blocks' can list at most {MAX_BLOCK_IDENTIFIERS} block "
+            f"identifiers, got {len(input_data.blocks)}."
+        )
     if input_data.blocks:
         invalid_blocks = await validate_block_identifiers(input_data.blocks)
         if invalid_blocks:

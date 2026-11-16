@@ -20,7 +20,11 @@ def block_provider_names() -> list[str]:
 @pytest.mark.parametrize("provider", block_provider_names())
 def test_every_block_provider_has_a_logo(provider: str):
     # Match the display aliases in toConnectableProviders and integrationIconSrc.
-    aliases = {"codex": "openai.png", "microsoft_365_copilot": "microsoft.webp"}
+    aliases = {
+        "codex": "openai.png",
+        "microsoft": "microsoft.webp",
+        "microsoft_365_copilot": "microsoft.webp",
+    }
     assert_logo_image(aliases.get(provider, f"{provider}.png"))
 
 

@@ -16,7 +16,11 @@ interface Props {
 }
 
 export function IdentityAvatar({ identity, className, imageSize }: Props) {
-  const avatarClassName = cn("rounded-full border border-[#e3e3e3]", className);
+  const avatarClassName = cn(
+    // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar and AutopilotAvatar have no bordered variant (src/components is P9's)
+    "rounded-full border border-border-base",
+    className,
+  );
   if (identity.isAutopilot)
     return <AutopilotAvatar size={imageSize} className={avatarClassName} />;
   return (

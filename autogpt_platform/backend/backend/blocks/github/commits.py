@@ -15,7 +15,11 @@ from backend.blocks._base import (
 )
 from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
-from backend.util.file import parse_data_uri, resolve_media_content
+from backend.util.file import (
+    check_total_file_size,
+    parse_data_uri,
+    resolve_media_content,
+)
 from backend.util.type import MediaFileType
 
 from ._api import get_api, get_paginated
@@ -429,6 +433,7 @@ class GithubMultiFileCommitBlock(Block):
             # Resolve media references (workspace://, data:, URLs) to data
             # URIs so _make_blob can send binary content correctly.
             resolved_files: list[FileOperationInput] = []
+            total_size = 0
             for file_op in input_data.files:
                 content = file_op.get("content", "")
                 operation = FileOperation(file_op.get("operation", "upsert"))
@@ -438,6 +443,8 @@ class GithubMultiFileCommitBlock(Block):
                         execution_context,
                         return_format="for_external_api",
                     )
+                    total_size += len(content)
+                    check_total_file_size(total_size)
                 resolved_files.append(
                     FileOperationInput(
                         path=file_op["path"],

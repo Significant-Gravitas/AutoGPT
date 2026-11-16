@@ -28,7 +28,9 @@ def test_tool_display_roundtrips_redis_and_sse():
 
 
 @pytest.fixture(autouse=True)
-def _clear_listener_sessions():
+def _clear_listener_sessions(mocker):
+    mocker.patch("backend.copilot.gate.held.wake", new=AsyncMock())
+    mocker.patch.object(stream_registry._notification_bus, "publish", new=AsyncMock())
     stream_registry._listener_sessions.clear()
     yield
     stream_registry._listener_sessions.clear()

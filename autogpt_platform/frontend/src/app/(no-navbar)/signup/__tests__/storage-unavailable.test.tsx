@@ -66,7 +66,7 @@ describe("/signup when localStorage is unavailable", () => {
 
     // /signup server-renders its loading shell until auth initialises in an
     // effect (#14281); the marketing panel is in both states.
-    expect(html).toContain("Run in minutes");
+    expect(html).toContain("A specialist for every job");
     expect(captureException).not.toHaveBeenCalled();
   }, 20_000);
 

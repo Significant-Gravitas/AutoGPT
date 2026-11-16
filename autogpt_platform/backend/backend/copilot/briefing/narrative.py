@@ -43,7 +43,6 @@ from backend.copilot.inference.context import (
 )
 from backend.copilot.inference.record import record
 from backend.copilot.inference.routing import resolve_route
-from backend.copilot.inference.trace import trace
 from backend.copilot.trial_cost_context import attributed_usage
 
 from .models import BriefingContent, BriefingRunItem
@@ -104,7 +103,7 @@ async def compose_narrative(user_id: str, content: BriefingContent) -> str | Non
         {"role": "system", "content": _system_prompt()},
         {"role": "user", "content": _facts_block(content)},
     ]
-    # Both attempts at one briefing share a correlation id (their trace session).
+    # Both attempts at one briefing share a correlation id.
     correlation_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
     deadline = loop.time() + _TOTAL_BUDGET_SECONDS
@@ -147,26 +146,24 @@ async def _attempt(
 async def _complete(
     user_id: str, job: InferenceJob, messages: list[dict[str, str]]
 ) -> StructuredCompletion[NarrativeResponse]:
-    """The call, traced, on Otto's own scope: the briefing is never an
-    expert's. Its spend is recorded whether or not the answer parsed."""
+    """The call, on Otto's own scope: the briefing is never an expert's. Its
+    spend is recorded whether or not the answer parsed."""
     scope = InferenceScope(user_id=user_id)
     ctx = InferenceContext(
         scope=scope, job=job, route=resolve_route(scope, job, config=config)
     )
-    async with trace(ctx) as call:
-        try:
-            completion = await structured_complete(
-                call.ctx,
-                messages,
-                NarrativeResponse,
-                max_output_tokens=_MAX_OUTPUT_TOKENS,
-            )
-        except InferenceError as e:
-            # A response that arrived but didn't parse was still billed; the
-            # trace reports it as priced, like a call that parsed.
-            call.usage = await _record_spend(call.ctx, e.usage)
-            raise
-        call.usage = await _record_spend(call.ctx, completion.usage)
+    try:
+        completion = await structured_complete(
+            ctx,
+            messages,
+            NarrativeResponse,
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
+        )
+    except InferenceError as e:
+        # A response that arrived but didn't parse was still billed.
+        await _record_spend(ctx, e.usage)
+        raise
+    await _record_spend(ctx, completion.usage)
     return completion
 
 

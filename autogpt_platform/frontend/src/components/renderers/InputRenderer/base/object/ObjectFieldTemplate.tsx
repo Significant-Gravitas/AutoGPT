@@ -119,6 +119,7 @@ export default function ObjectFieldTemplate(props: ObjectFieldTemplateProps) {
                 id={buttonId(fieldPathId, "add")}
                 onClick={onAddProperty}
                 disabled={disabled || readonly}
+                // oxlint-disable-next-line design-system/no-unknown-classes -- RJSF marker class, kept for the upstream template hook
                 className="rjsf-object-property-expand"
                 uiSchema={updatedUiSchema}
                 registry={registry}

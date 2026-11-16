@@ -78,19 +78,17 @@ export default function AutopilotPage() {
         Built in, always on your team.
       </Text>
 
-      <TabsLine
-        data-profile-tabs
-        variant="compact"
-        value={activeTab}
-        onValueChange={onTabChange}
-      >
+      <TabsLine variant="compact" value={activeTab} onValueChange={onTabChange}>
         <TabsLineList
           flush={false}
+          // oxlint-disable-next-line design-system/require-static-classes -- shared segmented-tab look from team/helpers.ts; TabsLine has no segmented variant (src/components is P9's)
           className={PROFILE_TABS_LIST_CLASS}
+          // oxlint-disable-next-line design-system/require-static-classes -- shared segmented-tab look from team/helpers.ts; TabsLine has no segmented variant (src/components is P9's)
           indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
         >
           {TABS.map((tab) => (
             <TabsLineTrigger
+              // oxlint-disable-next-line design-system/require-static-classes -- shared segmented-tab look from team/helpers.ts; TabsLine has no segmented variant (src/components is P9's)
               className={PROFILE_TABS_TRIGGER_CLASS}
               key={tab.value}
               value={tab.value}

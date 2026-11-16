@@ -23,6 +23,8 @@ interface Props {
   description?: string;
   onConnected?: (credential: CredentialsMetaResponse) => void;
   initialProviderId?: string | null;
+  /** Opens with the service search already filled in. */
+  initialQuery?: string;
   preferMcp?: boolean;
 }
 
@@ -55,12 +57,14 @@ export function ConnectServiceDialog({
   description = DEFAULT_DESCRIPTION,
   onConnected,
   initialProviderId,
+  initialQuery,
   preferMcp,
 }: Props) {
   const {
     query,
     setQuery,
     providers,
+    popular,
     isLoading,
     isError,
     error,
@@ -76,6 +80,7 @@ export function ConnectServiceDialog({
     onOpenChange,
     onConnected,
     initialProviderId,
+    initialQuery,
   });
 
   const reduceMotion = useReducedMotion();
@@ -126,6 +131,7 @@ export function ConnectServiceDialog({
                         query={query}
                         setQuery={setQuery}
                         providers={providers}
+                        popular={popular}
                         onSelect={handleSelect}
                         description={description}
                       />

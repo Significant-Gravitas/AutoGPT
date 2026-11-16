@@ -27,7 +27,7 @@ export function ToolStatusBadge({ state, label, children }: Props) {
             hiding is immediate. */}
         <m.span
           aria-hidden="true"
-          className="absolute -inset-[3px] rounded-full border border-zinc-200"
+          className="absolute -inset-[3px] rounded-full border border-border-base"
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}
           transition={{
@@ -38,9 +38,8 @@ export function ToolStatusBadge({ state, label, children }: Props) {
         <m.span
           aria-hidden="true"
           className={cn(
-            "absolute -inset-[3px] rounded-full border border-transparent border-t-zinc-500",
-            running &&
-              "animate-[spin_0.9s_linear_infinite] motion-reduce:animate-none",
+            "absolute -inset-[3px] rounded-full border border-transparent border-t-foreground-tertiary",
+            running && "animate-spin motion-reduce:animate-none",
           )}
           initial={{ opacity: 0 }}
           animate={{ opacity: running ? 1 : 0 }}

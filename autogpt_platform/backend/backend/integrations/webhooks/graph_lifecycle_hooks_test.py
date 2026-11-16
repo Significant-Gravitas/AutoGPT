@@ -73,6 +73,30 @@ async def test_before_graph_activate_oauth_refresh_failure_raises_clear_error():
 
 
 @pytest.mark.asyncio
+async def test_an_infrastructure_failure_keeps_its_text_in_the_log():
+    """The message reaches External API callers; a Redis or database client's
+    text can name a host, a port or a pool, and isn't about the credential."""
+    node = _make_node()
+    graph = MagicMock(nodes=[node])
+
+    async def failing_getter(_creds_id):
+        raise ConnectionError("Error connecting to redis-master.internal:6379")
+
+    with patch(
+        "backend.integrations.webhooks.graph_lifecycle_hooks.credentials_manager"
+    ) as mgr:
+        mgr.cached_getter.return_value = failing_getter
+        with pytest.raises(GraphActivationError) as excinfo:
+            await _before_graph_activate(graph, "user-1")
+
+    msg = str(excinfo.value)
+    assert "redis" not in msg.lower()
+    assert "My GitHub key" in msg
+    assert "could not be loaded just now" in msg
+    assert "no longer exists" not in msg
+
+
+@pytest.mark.asyncio
 async def test_before_graph_activate_clears_optional_unloadable_credentials():
     """An optional credential whose refresh fails should be cleared, not raise."""
     node = _make_node(required=False, optional_marker=True)

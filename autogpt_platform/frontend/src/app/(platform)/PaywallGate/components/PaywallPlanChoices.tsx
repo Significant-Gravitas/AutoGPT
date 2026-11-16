@@ -33,23 +33,21 @@ export function PaywallPlanChoices({
         <div
           role="group"
           aria-label="Billing period"
-          className="inline-flex rounded-full border border-zinc-200 bg-zinc-100 p-1"
+          className="inline-flex rounded-full border border-border-base bg-surface-hover p-1"
         >
           {(["monthly", "yearly"] as const).map((value) => (
             <Button
               key={value}
-              variant="ghost"
+              variant={cycle === value ? "ghost" : "ghost-muted"}
               size="small"
               aria-pressed={cycle === value}
               onClick={() => onCycle(value)}
               disabled={pending}
-              className={
-                cycle === value ? "bg-white shadow-sm" : "text-zinc-500"
-              }
+              className={cycle === value ? "bg-surface shadow-sm" : undefined}
             >
               {value === "monthly" ? "Monthly" : "Yearly"}
               {value === "yearly" && (
-                <span className="text-xs text-emerald-600">
+                <span className="text-caption text-success">
                   Save {Math.round((1 - YEARLY_PRICE_FACTOR) * 100)}%
                 </span>
               )}
@@ -72,7 +70,7 @@ export function PaywallPlanChoices({
           ))}
       </div>
       {team && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-base px-4 py-3">
           <div>
             <Text variant="small-medium">Team</Text>
             <Text variant="small" tone="secondary">
@@ -88,7 +86,7 @@ export function PaywallPlanChoices({
           </Button>
         </div>
       )}
-      <Text variant="small" tone="secondary" className="text-center text-xs">
+      <Text variant="small-tight" tone="secondary" className="text-center">
         Your conversations and workflows stay saved. Cancel anytime.
       </Text>
     </section>
@@ -126,13 +124,13 @@ function PlanChoice({
   return (
     <section
       aria-label={`${plan.name} plan`}
-      className={`flex flex-col rounded-2xl border p-5 sm:p-6 ${isPro ? "border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50" : "border-zinc-200 bg-white"}`}
+      className={`flex flex-col rounded-2xl border p-5 sm:p-6 ${isPro ? "border-brand/30 bg-gradient-to-br from-accent-surface via-surface to-info-surface" : "border-border-base bg-surface"}`}
     >
       <div className="mb-4 flex items-center gap-2">
         <Icon
           icon={SparklesIcon}
           size={18}
-          className={isPro ? "text-purple-600" : "text-zinc-600"}
+          tone={isPro ? "brand-strong" : "secondary"}
         />
         <Text variant="large-semibold" as="h2">
           {plan.name}
@@ -144,7 +142,7 @@ function PlanChoice({
           : "For bigger ideas and heavier work."}
       </Text>
       <div className="mb-5">
-        <Text variant="h3" as="span" className="tracking-tight">
+        <Text variant="h3-tracking-tight" as="span">
           {formatted ?? "Unavailable"}
         </Text>
         {formatted && (
@@ -160,9 +158,10 @@ function PlanChoice({
             <Icon
               icon={Tick02Icon}
               size={15}
-              className="mt-0.5 shrink-0 text-purple-600"
+              tone="brand-strong"
+              className="mt-0.5 shrink-0"
             />
-            <Text variant="small" className="text-zinc-700">
+            <Text variant="small" tone="body">
               {feature}
             </Text>
           </li>

@@ -44,13 +44,13 @@ export function createFileDragImage(label: string): HTMLElement {
     "gap:8px",
     "padding:8px 12px",
     "border-radius:12px",
-    "border:1px solid #e4e4e7",
-    "background:#ffffff",
-    "color:#71717a",
+    "border:1px solid rgb(var(--color-border-base))",
+    "background:rgb(var(--color-surface))",
+    "color:rgb(var(--color-foreground-tertiary))",
     "font:500 13px ui-sans-serif,system-ui,sans-serif",
     "box-shadow:0 4px 12px rgba(0,0,0,0.08)",
   ].join(";");
-  el.innerHTML = `${FILE_GLYPH}<span style="color:#18181b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">${escapeHtml(
+  el.innerHTML = `${FILE_GLYPH}<span style="color:rgb(var(--color-foreground-strong));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;">${escapeHtml(
     label,
   )}</span>`;
   return el;

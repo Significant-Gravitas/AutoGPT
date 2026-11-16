@@ -2,6 +2,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { HomeDashboardResponse } from "@/app/api/__generated__/models/homeDashboardResponse";
 import { makeDashboard } from "@/app/(platform)/home/__tests__/heldItems";
+import { getGetBrainDumpIntroMockHandler200 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { Expert } from "@/app/api/__generated__/models/expert";
 import { server } from "@/mocks/mock-server";
@@ -309,6 +310,29 @@ it.each([
         name: "Sending to Otto — change recipient",
       }),
     ).toBeDefined();
+  },
+);
+
+it.each([
+  ["answers the brain dump", "A", /^What should Otto take on first\?$/],
+  ["asks for one", "B", /^What's your role/],
+])(
+  "asks a fitting question under the onboarding greeting that %s",
+  async (_label, path, placeholder) => {
+    server.use(
+      getGetBrainDumpIntroMockHandler200({
+        path,
+        greeting: "You have an invoicing problem and a sales problem.",
+        prompts: [],
+        greeting_done: false,
+        greeting_pending: false,
+        team: null,
+        team_pending: false,
+      }),
+    );
+    renderEmptySession("");
+    await screen.findByTestId("onboarding-intro-card");
+    expect(screen.getByPlaceholderText(placeholder)).toBeDefined();
   },
 );
 

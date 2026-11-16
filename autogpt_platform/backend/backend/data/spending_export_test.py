@@ -26,7 +26,6 @@ def _make_tx(
     amount: int = 100,
     running_balance: int = 1000,
     metadata: dict | None = None,
-    user_email: str | None = "u1@example.com",
     tx_type: CreditTransactionType = CreditTransactionType.GRANT,
     created_at: datetime | None = None,
 ) -> MagicMock:
@@ -38,13 +37,36 @@ def _make_tx(
     tx.runningBalance = running_balance
     tx.userId = user_id
     tx.metadata = metadata or {}
-    user = MagicMock()
-    user.email = user_email
-    tx.User = user if user_email is not None else None
     return tx
 
 
+@pytest.fixture(autouse=True)
+def emails(monkeypatch):
+    """The ledger has no relation to `User` (rows outlive the account), so
+    emails come from one lookup by user ID."""
+    lookup = AsyncMock(return_value={"u1": "u1@example.com"})
+    monkeypatch.setattr("backend.data.credit.user_emails", lookup)
+    return lookup
+
+
 class TestAdminExportUserHistory:
+    @pytest.mark.asyncio
+    async def test_a_deleted_accounts_rows_export_without_an_email(self, emails):
+        rows = [_make_tx(user_id="u1"), _make_tx(user_id="deleted")]
+        with patch("backend.data.credit.CreditTransaction") as ct, patch(
+            "backend.data.credit.get_user_email_by_id",
+            new_callable=AsyncMock,
+        ):
+            ct.prisma.return_value.find_many = AsyncMock(return_value=rows)
+            result = await admin_export_user_history(
+                start=datetime(2026, 4, 1, tzinfo=timezone.utc),
+                end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            )
+        assert [r.user_email for r in result] == ["u1@example.com", None]
+        emails.assert_awaited_once()
+        assert set(emails.await_args.args[0]) == {"u1", "deleted"}
+        assert "include" not in ct.prisma.return_value.find_many.await_args.kwargs
+
     @pytest.mark.asyncio
     async def test_rejects_inverted_window(self):
         with pytest.raises(ValueError, match="end must be >= start"):

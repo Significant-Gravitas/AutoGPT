@@ -76,13 +76,15 @@ describe("Dialog rendered as a drawer", () => {
     expect(set).not.toHaveBeenCalled();
   });
 
-  test("closes on a pointer-down outside it", async () => {
+  test("closes on a click outside it", async () => {
     const set = vi.fn();
     renderDrawer({ set });
     // Radix attaches its outside-pointer listener one tick after mount.
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 
+    // Radix waits for the click that ends the press before dismissing.
     fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
 
     expect(set).toHaveBeenCalledWith(false);
   });

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from backend.api.features.experts import onboarding
 
 EXPERT_ID = "expert-kepler"
+SESSION_ID = "session-kickoff"
 
 
 def test_route_requires_authentication():
@@ -29,12 +30,13 @@ def test_route_returns_saved_questions_for_authenticated_owner(mocker):
     )
     response = TestClient(app).get(f"/{EXPERT_ID}/onboarding")
     assert response.status_code == 200
-    assert response.json()["steps"][0]["question"] == "What topic?"
+    assert response.json() == {"session_id": SESSION_ID}
     expert.assert_awaited_once_with("user-1", EXPERT_ID)
 
 
-def card(**overrides) -> onboarding.OnboardingMessage:
+def card(session_id: str = SESSION_ID, **overrides) -> onboarding.OnboardingMessage:
     return onboarding.OnboardingMessage(
+        session_id=session_id,
         role="tool",
         content=json.dumps(
             {
@@ -52,8 +54,14 @@ def card(**overrides) -> onboarding.OnboardingMessage:
     )
 
 
+def reply(content: str, session_id: str = SESSION_ID) -> onboarding.OnboardingMessage:
+    return onboarding.OnboardingMessage(
+        session_id=session_id, role="user", content=content
+    )
+
+
 @pytest.mark.parametrize(
-    "reply, pending",
+    "reply_text, pending",
     [
         ("", True),
         ("Research this company", True),
@@ -74,23 +82,44 @@ def card(**overrides) -> onboarding.OnboardingMessage:
         ),
     ],
 )
-def test_only_complete_answers_or_skip_settle_setup(reply, pending):
-    messages = [card(), onboarding.OnboardingMessage(role="user", content=reply)]
+def test_complete_answers_or_skip_from_another_chat_settle_setup(reply_text, pending):
+    messages = [card(), reply(reply_text, session_id="session-other")]
     assert (onboarding.pending_onboarding(messages, EXPERT_ID) is not None) == pending
+
+
+def test_points_at_the_chat_holding_the_card():
+    messages = [reply("Kick off"), card(), reply("Hello", session_id="session-other")]
+    assert onboarding.pending_onboarding(messages, EXPERT_ID) == SESSION_ID
+
+
+def test_any_reply_in_the_cards_chat_settles_it():
+    messages = [card(), reply("Research this company")]
+    assert onboarding.pending_onboarding(messages, EXPERT_ID) is None
+
+
+def test_a_card_still_waiting_in_an_older_chat_is_found():
+    messages = [
+        card(session_id="session-old"),
+        card(),
+        reply("Research this company"),
+    ]
+    assert onboarding.pending_onboarding(messages, EXPERT_ID) == "session-old"
 
 
 def test_completion_applies_across_chats_and_later_cards():
     messages = [
         card(),
-        onboarding.OnboardingMessage(role="user", content=onboarding.SKIP_MESSAGE),
-        card(),
+        reply(onboarding.SKIP_MESSAGE),
+        card(session_id="session-other"),
     ]
     assert onboarding.pending_onboarding(messages, EXPERT_ID) is None
 
 
 def test_ignores_invalid_cards_and_other_experts():
     messages = [
-        onboarding.OnboardingMessage(role="tool", content="invalid json"),
+        onboarding.OnboardingMessage(
+            session_id=SESSION_ID, role="tool", content="invalid json"
+        ),
         card(expert_id="another-expert"),
         card(steps=[]),
         card(type="error"),
@@ -111,6 +140,7 @@ async def test_history_query_scopes_user_and_expert(mocker):
     assert query.call_args.args[1:] == ("user-1", EXPERT_ID, onboarding.SKIP_MESSAGE)
     assert query.call_args.kwargs["model"] is onboarding.OnboardingMessage
     assert 's."userId" = $1 AND s."expertId" = $2' in query.call_args.args[0]
+    assert "OR m.role = 'user'" in query.call_args.args[0]
 
 
 @pytest.mark.asyncio

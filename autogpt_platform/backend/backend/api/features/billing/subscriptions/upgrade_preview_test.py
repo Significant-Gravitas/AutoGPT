@@ -40,7 +40,7 @@ def graph_cleanup():
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, set_platform_payment):
     app = fastapi.FastAPI()
     app.include_router(routes.router)
     app.dependency_overrides[routes.enforce_subscription_status_rate_limit] = (
@@ -51,9 +51,7 @@ def client(monkeypatch):
         "role": "user",
         "email": "test@example.com",
     }
-    monkeypatch.setattr(
-        routes, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
-    )
+    set_platform_payment(True)
     monkeypatch.setattr(
         routes,
         "get_user_by_id",
@@ -97,6 +95,15 @@ def test_preview_uses_authenticated_user_and_requested_cycle(client, monkeypatch
     assert response.json()["amount_due"] == 25258
     assert preview.await_args.args[0] == USER_ID
     assert preview.await_args.args[1].billing_cycle == "yearly"
+
+
+def test_preview_is_refused_with_payment_off(client, monkeypatch, set_platform_payment):
+    preview = AsyncMock(return_value=PREVIEW)
+    monkeypatch.setattr(routes, "preview_subscription_upgrade", preview)
+    set_platform_payment(False)
+    response = client.post("/credits/subscription/preview", json={"tier": "MAX"})
+    assert response.status_code == 422
+    preview.assert_not_awaited()
 
 
 def test_failed_preview_does_not_mutate_subscription(client, monkeypatch):

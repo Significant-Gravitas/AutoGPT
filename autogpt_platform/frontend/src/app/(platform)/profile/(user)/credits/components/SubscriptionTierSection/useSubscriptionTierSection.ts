@@ -8,7 +8,7 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { getTierLabel } from "./helpers";
 import {
   getSubscriptionValue,
@@ -20,7 +20,7 @@ export type SubscriptionStatus = SubscriptionStatusResponse;
 const TIER_ORDER = ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function useSubscriptionTierSection() {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
   const searchParams = useSearchParams();
   const subscriptionStatus = searchParams.get("subscription");
   const router = useRouter();
@@ -72,9 +72,9 @@ export function useSubscriptionTierSection() {
     ) {
       router.replace(pathname);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch and toast
-    // are new references each render but are stable in practice; the effect must
-    // only re-run when subscriptionStatus/pathname changes.
+    // refetch and toast are new references each render but are stable in
+    // practice; the effect must only re-run when subscriptionStatus/pathname
+    // changes.
   }, [subscriptionStatus, refetch, toast, router, pathname]);
 
   async function changeTier(tier: string) {
