@@ -27,12 +27,8 @@ def is_advisory(check_run: Dict) -> bool:
     return str(check_run.get("name")) in ADVISORY_CHECK_RUNS
 
 
-# Codecov's app finishes each of its check runs within a second of starting
-# it, but now and then it leaves one "in_progress" for good: it left 2 or 3 of
-# 14 that way on #16657 (2026-11-11), #16679 and #16688 (2026-11-12), with no
-# flag or path in common. Waiting on them held this check until its 6-hour
-# timeout. One still running this long after it started will never post a
-# verdict, so there is nothing to wait for; a finished one still counts.
+# Codecov finishes its runs within seconds but now and then abandons one
+# in_progress for good; one this old will never post a verdict.
 ABANDONED_CODECOV_RUN_AFTER = timedelta(minutes=10)
 
 
