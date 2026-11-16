@@ -12,6 +12,7 @@ from backend.data.subscription_trial_invoice import (
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
 PAYMENT_URL = "https://invoice.stripe.com/i/acct_1/test_inv_1"
+EXPANDABLE = frozenset({"default_payment_method", "latest_invoice"})
 
 
 @pytest.fixture
@@ -26,6 +27,11 @@ def subscription(past_due: TrialState) -> dict:
         "customer": past_due.customer_id,
         "status": "past_due",
         "metadata": {"user_id": past_due.user_id, "trial_enrollment_id": past_due.id},
+        "default_payment_method": {
+            "id": "pm_test_1",
+            "type": "card",
+            "card": {"exp_month": 12, "exp_year": 2030, "fingerprint": "fp_test"},
+        },
         "latest_invoice": {
             "id": "in_1",
             "created": 1_760_270_400,
@@ -40,8 +46,19 @@ def subscription(past_due: TrialState) -> dict:
 
 @pytest.fixture
 def retrieve(subscription: dict):
+    async def stripe_retrieve(
+        subscription_id: str, expand: list[str] | None = None
+    ) -> dict:
+        # Stripe returns an object it was not asked to expand as its id.
+        collapsed = {
+            key: subscription[key]["id"]
+            for key in EXPANDABLE - set(expand or ())
+            if subscription.get(key) is not None
+        }
+        return subscription | collapsed
+
     with patch.object(
-        stripe.Subscription, "retrieve_async", AsyncMock(return_value=subscription)
+        stripe.Subscription, "retrieve_async", AsyncMock(side_effect=stripe_retrieve)
     ) as lookup:
         yield lookup
 
@@ -52,7 +69,9 @@ async def test_past_due_trial_gets_its_open_invoice(past_due, retrieve):
     assert due == TrialPaymentDue(
         amount_due=5413, currency="usd", payment_url=PAYMENT_URL
     )
-    retrieve.assert_awaited_once_with("sub_1", expand=["latest_invoice"])
+    retrieve.assert_awaited_once_with(
+        "sub_1", expand=["default_payment_method", "latest_invoice"]
+    )
 
 
 @pytest.mark.asyncio
