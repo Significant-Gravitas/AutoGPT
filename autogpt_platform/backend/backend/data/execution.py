@@ -1107,6 +1107,25 @@ def check_node_input_counts(
             )
 
 
+# Correlated on purpose: Prisma's `"Input": {"none": ...}` filter becomes an uncorrelated
+# NOT IN over every input row with that pin name, on every graph run, and times out.
+WAITING_NODE_EXEC_QUERY = """
+SELECT e.id
+FROM {schema_prefix}"AgentNodeExecution" e
+WHERE e."agentGraphExecutionId" = $1
+  AND e."agentNodeId" = $2
+  AND e."executionStatus" = 'INCOMPLETE'
+  AND ($4::text IS NULL OR e.id = $4::text)
+  AND NOT EXISTS (
+    SELECT 1
+    FROM {schema_prefix}"AgentNodeExecutionInputOutput" i
+    WHERE i."referencedByInputExecId" = e.id AND i.name = $3
+  )
+ORDER BY e."addedTime" ASC
+LIMIT 1
+"""
+
+
 async def upsert_execution_input(
     node_id: str,
     graph_exec_id: str,
@@ -1129,19 +1148,20 @@ async def upsert_execution_input(
         str: The id of the created or existing AgentNodeExecution.
         dict[str, Any]: Node input data; key is the input name, value is the input data.
     """
-    existing_exec_query_filter: AgentNodeExecutionWhereInput = {
-        "agentGraphExecutionId": graph_exec_id,
-        "agentNodeId": node_id,
-        "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {"none": {"name": input_name}},
-    }
-    if node_exec_id:
-        existing_exec_query_filter["id"] = node_exec_id
-
-    existing_execution = await AgentNodeExecution.prisma().find_first(
-        where=existing_exec_query_filter,
-        order={"addedTime": "asc"},
-        include={"Input": True, "GraphExecution": True},
+    waiting = await query_raw_with_schema(
+        WAITING_NODE_EXEC_QUERY,
+        graph_exec_id,
+        node_id,
+        input_name,
+        node_exec_id or None,
+    )
+    existing_execution = (
+        await AgentNodeExecution.prisma().find_unique(
+            where={"id": waiting[0]["id"]},
+            include={"Input": True, "GraphExecution": True},
+        )
+        if waiting
+        else None
     )
     json_input_data = SafeJson(input_data)
 
