@@ -507,6 +507,9 @@ class CallRecord(BaseModel):
     # The latest upload of the person's audio, until its transcript is made.
     audio_path: str | None = None
     turns: list[TurnMark] = []
+    # The call as heard live, written as it ends: Otto's turns and the
+    # person's captions, each ``{"who": "otto" | "user", "text": ...}``.
+    transcript: list[dict[str, str]] = []
     # The person's words from the call, one turn per line.
     transcript_of_record: str | None = None
     # What the person said, read from the transcript of record for the
@@ -561,6 +564,7 @@ class CallRecord(BaseModel):
 _JSON_FIELDS = frozenset(
     {
         "turns",
+        "transcript",
         "details",
         "hand_off",
         "end_tool",

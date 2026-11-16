@@ -50,6 +50,7 @@ from backend.voice_relay.config import (
 from backend.voice_relay.details import GeminiDetailsReader
 from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.metering import warn_if_prices_out_of_date, watch_prices
+from backend.voice_relay.names import GeminiNamesReader
 from backend.voice_relay.postcall import GeminiTranscriber, PostCall
 from backend.voice_relay.record import CloudRecordings
 from backend.voice_relay.room_reaper import RoomReaper
@@ -161,6 +162,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             transcriber=GeminiTranscriber(client),
             first_name=_first_name,
             details_reader=GeminiDetailsReader(client),
+            names_reader=GeminiNamesReader(client),
             live_model=model,
             pod=holder,
             running_window_s=CAPS.max_call_s + drain_s + LIVE_CALL_STALE_S,

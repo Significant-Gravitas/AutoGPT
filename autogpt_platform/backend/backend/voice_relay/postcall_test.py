@@ -30,6 +30,7 @@ from backend.voice_relay.config import (
 from backend.voice_relay.conftest import MemoryRecordings, ScriptedTranscriber
 from backend.voice_relay.locks import DuplexStats, TurnMark
 from backend.voice_relay.metering import POSTCALLS, Row
+from backend.voice_relay.names import NamesRead
 from backend.voice_relay.postcall import (
     GeminiTranscriber,
     PostCall,
@@ -86,6 +87,7 @@ class Rig:
         first_name: str | None = "Dana",
         max_jobs: int = 4,
         details_reader=None,
+        names_reader=None,
     ) -> PostCall:
         async def get_redis():
             return self.redis
@@ -102,6 +104,7 @@ class Rig:
             transcriber=transcriber,
             first_name=name,
             details_reader=details_reader,
+            names_reader=names_reader,
             live_model=LIVE,
             pod=pod,
             cost_sink=sink,
@@ -120,6 +123,7 @@ class Rig:
         started: float | None = None,
         echo_spans: list[tuple[int, int]] | None = None,
         ending: str | None = None,
+        captions: list[dict[str, str]] | None = None,
     ) -> str:
         """A call as the relay leaves it on its record: pending, its recording
         uploaded. It started an hour ago unless *started* says otherwise.
@@ -132,6 +136,7 @@ class Rig:
             "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
             "ending": ending,
+            "transcript": captions,
             "turns": [
                 TurnMark(index=index, at=at).model_dump()
                 for index, at in enumerate(marks)
@@ -401,6 +406,69 @@ async def test_a_details_read_that_fails_never_holds_the_transcript_back(rig: Ri
 
     assert record.status == locks.TRANSCRIBED
     assert record.details is None
+
+
+class PutsNamesRight:
+    def __init__(self, *, fails: bool = False) -> None:
+        self.fails = fails
+        self.seen: list[tuple[str, str, str]] = []
+
+    async def __call__(
+        self, transcript: str, *, user_captions: str, otto_captions: str
+    ) -> NamesRead:
+        self.seen.append((transcript, user_captions, otto_captions))
+        if self.fails:
+            raise RuntimeError("vendor down")
+        fixed = transcript.replace(SAID[0], "Fernbrook")
+        return NamesRead(
+            transcript=fixed,
+            replaced=[(SAID[0], "Fernbrook")],
+            tokens_in=300,
+            tokens_out=20,
+            latency_s=0.2,
+        )
+
+
+CAPTIONS = [
+    {"who": "otto", "text": "What do you do?"},
+    {"who": "user", "text": "I run Fernbrook."},
+]
+
+
+async def test_names_misheard_in_the_transcript_are_put_right_from_the_captions(
+    rig: Rig,
+):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, captions=CAPTIONS)
+    reader = PutsNamesRight()
+
+    record = await rig.run(
+        rig.postcall(ScriptedTranscriber(SAID[:1]), names_reader=reader),
+        call_id,
+        pcm=pcm,
+    )
+
+    assert reader.seen == [(SAID[0], "I run Fernbrook.", "What do you do?")]
+    assert record.transcript_of_record == "Fernbrook"
+    assert any(row.model == DETAILS_MODEL for row in rig.rows)
+
+
+@pytest.mark.parametrize("captions,fails", [(None, False), (CAPTIONS, True)])
+async def test_the_transcript_stands_without_captions_or_when_the_read_fails(
+    rig: Rig, captions, fails
+):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, captions=captions)
+
+    record = await rig.run(
+        rig.postcall(
+            ScriptedTranscriber(SAID[:1]), names_reader=PutsNamesRight(fails=fails)
+        ),
+        call_id,
+        pcm=pcm,
+    )
+
+    assert record.transcript_of_record == SAID[0]
 
 
 async def test_the_claim_is_given_up_before_the_recording_is_deleted(

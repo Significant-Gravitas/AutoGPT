@@ -85,6 +85,7 @@ from backend.voice_relay.metering import (
     CallMeter,
     CostSink,
 )
+from backend.voice_relay.names import NamesReader
 from backend.voice_relay.record import (
     CallRecording,
     RecordingStore,
@@ -334,6 +335,7 @@ class PostCall:
         transcriber: Transcriber,
         first_name: Callable[[str], Awaitable[str | None]],
         details_reader: DetailsReader | None = None,
+        names_reader: NamesReader | None = None,
         live_model: str,
         pod: str,
         cost_sink: CostSink | None = None,
@@ -348,6 +350,7 @@ class PostCall:
         self.recordings = recordings
         self.transcriber = transcriber
         self.details_reader = details_reader
+        self.names_reader = names_reader
         self._first_name = first_name
         self.live_model = live_model
         self.pod = pod
@@ -579,6 +582,7 @@ class PostCall:
         transcript = await self._transcribe(
             redis, record, pcm=pcm or b"", first_name=first_name
         )
+        transcript = await self._put_names_right(redis, record, transcript)
         await self._read_details(redis, record, transcript)
         await self._hold(redis, record.call_id)
         stored = await locks.store_transcript(
@@ -599,6 +603,51 @@ class PostCall:
                 ),
             }
         )
+
+    async def _put_names_right(
+        self, redis: AsyncRedisClient, record: CallRecord, transcript: str
+    ) -> str:
+        """The transcript with misheard names put right from the call's
+        captions (``names``); as it was when the call kept no captions or
+        the read fails."""
+        reader = self.names_reader
+        user = " ".join(
+            line.get("text", "")
+            for line in record.transcript
+            if line.get("who") == "user"
+        )
+        otto = " ".join(
+            line.get("text", "")
+            for line in record.transcript
+            if line.get("who") == "otto"
+        )
+        if reader is None or not transcript.strip() or not user or not otto:
+            return transcript
+        try:
+            read = await bounded(
+                reader(transcript, user_captions=user, otto_captions=otto),
+                timeout=POSTCALL_DETAILS_TIMEOUT_S,
+            )
+        except Exception:
+            logger.warning(
+                f"Voice call {record.call_id}: names not reconciled", exc_info=True
+            )
+            return transcript
+        meter = CallMeter(
+            user_id=record.uid,
+            call_id=record.call_id,
+            model=self.live_model,
+            redis=redis,
+            sink=self.cost_sink,
+        )
+        await meter.details_usage(tokens_in=read.tokens_in, tokens_out=read.tokens_out)
+        await meter.flush()
+        if read.replaced:
+            logger.info(
+                f"Voice call {record.call_id}: {len(read.replaced)} name(s) "
+                f"put right from the captions"
+            )
+        return read.transcript
 
     async def _read_details(
         self, redis: AsyncRedisClient, record: CallRecord, transcript: str
