@@ -21,9 +21,9 @@ export function WizardPlaceholder({
       <div className="absolute top-0 left-0 h-0.5 w-full bg-surface-hover" />
       <div className="flex w-full min-w-0 flex-1 items-center justify-center pt-16 pb-8">
         <div className="flex w-full max-w-md flex-col items-center gap-4 px-4">
-          <Skeleton className="h-8 w-3/4" aria-hidden />
-          <Skeleton className="h-4 w-full" aria-hidden />
-          <Skeleton className="h-4 w-5/6" aria-hidden />
+          <Skeleton variant="translucent" className="h-8 w-3/4" aria-hidden />
+          <Skeleton variant="translucent" className="h-4 w-full" aria-hidden />
+          <Skeleton variant="translucent" className="h-4 w-5/6" aria-hidden />
           <Text
             variant="body"
             role="status"
@@ -31,12 +31,20 @@ export function WizardPlaceholder({
           >
             {message}
           </Text>
-          <Skeleton className="mt-4 h-10 w-40 rounded-full" aria-hidden />
+          <Skeleton
+            variant="translucent"
+            className="mt-4 h-10 w-40 rounded-full"
+            aria-hidden
+          />
         </div>
       </div>
       <div className="flex items-center gap-2 pb-8" aria-hidden>
         {Array.from({ length: totalSteps }, (_, i) => (
-          <Skeleton key={i} className="h-1.5 w-1.5 rounded-full" />
+          <Skeleton
+            key={i}
+            variant="translucent"
+            className="h-1.5 w-1.5 rounded-full"
+          />
         ))}
       </div>
     </div>
