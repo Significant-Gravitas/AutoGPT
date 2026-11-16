@@ -67,6 +67,9 @@ const TICKET = "resume-ticket";
 const INTRO_PATH_KEY = "autogpt:onboarding-intro-path";
 const TICKET_KEY = `autogpt:onboarding-voice-call:${USER_ID}`;
 const GREETING = "Hi, I'm Otto, an AI. What do you do?";
+// Any stage of the wait after a call.
+const FINISHING_LINE =
+  /^(Saving what you said|Reading it back|Building your plan)$/;
 const VOICE = "/api/proxy/api/onboarding/brain-dump/interview/voice";
 // What a call's `interview_ended` says of Otto's speech when no stats of it
 // were read.
@@ -1606,7 +1609,11 @@ describe("onboarding interview by voice: the call", () => {
 
     endCall(socket, "finished");
 
-    expect(await screen.findByText("Wrapping up…")).toBeDefined();
+    expect(
+      await screen.findByText("That's everything Otto needed."),
+    ).toBeDefined();
+    expect(await screen.findByText("Reading it back")).toBeDefined();
+    expect(screen.getByTestId("call-aura").dataset.working).toBe("true");
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
   });
 
@@ -1806,7 +1813,7 @@ describe("onboarding interview by voice: how a call ends", () => {
 
     endCall(socket, "finished");
 
-    expect(await screen.findByText("Wrapping up…")).toBeDefined();
+    expect(await screen.findByText("Reading it back")).toBeDefined();
     const meet = await screen.findByRole("button", { name: "Meet your team" });
     expect(screen.getByText("That's everything Otto needed.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Skip for now" })).toBeNull();
@@ -2316,7 +2323,7 @@ describe("onboarding interview by voice: how a call ends", () => {
     expect(sessionStorage.getItem(INTRO_PATH_KEY)).toBeNull();
   });
 
-  it("keeps Saving what you said while a call's finish waits on a later call, then moves on", async () => {
+  it("keeps the finishing state while a call's finish waits on a later call, then moves on", async () => {
     callStates[CALL_ID] = [callRecord({ end_reason: "vendor_error" })];
     let laterCallSettled = false;
     server.use(
@@ -2340,7 +2347,7 @@ describe("onboarding interview by voice: how a call ends", () => {
       .setup()
       .click(await screen.findByRole("button", { name: "Meet your team" }));
 
-    expect(await screen.findByText("Saving what you said…")).toBeDefined();
+    expect(await screen.findByText(FINISHING_LINE)).toBeDefined();
     await waitFor(() => expect(finishes.length).toBeGreaterThanOrEqual(3));
     expect(screen.queryByText("That didn't go through. Try again.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
@@ -2373,7 +2380,7 @@ describe("onboarding interview by voice: how a call ends", () => {
     await user.click(
       await screen.findByRole("button", { name: "Meet your team" }),
     );
-    expect(await screen.findByText("Saving what you said…")).toBeDefined();
+    expect(await screen.findByText(FINISHING_LINE)).toBeDefined();
     await passTime(ENDING_WINDOW_MS);
     await user.click(
       await screen.findByRole("button", { name: "Type instead" }),
@@ -2429,9 +2436,7 @@ describe("onboarding interview by voice: how a call ends", () => {
     // The relay holds no call for the ticket any more.
     act(() => again.drop(4404));
 
-    expect(
-      await screen.findByText("We lost the call. Saving what you said…"),
-    ).toBeDefined();
+    expect(await screen.findByText("We lost the call.")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Type instead" })).toBeNull();
 
     expect(await screen.findByText("The connection dropped.")).toBeDefined();
@@ -2456,9 +2461,7 @@ describe("onboarding interview by voice: how a call ends", () => {
     act(() => socket.drop(1006));
     const again = await relaySocketAfter(socket);
     act(() => again.drop(4404));
-    expect(
-      await screen.findByText("We lost the call. Saving what you said…"),
-    ).toBeDefined();
+    expect(await screen.findByText("We lost the call.")).toBeDefined();
     await passTime(ENDING_WINDOW_MS);
     await userEvent
       .setup()
@@ -2520,7 +2523,7 @@ describe("onboarding interview by voice: how a call ends", () => {
   });
 
   it.each(["transcribing", "handing_off"] as const)(
-    "keeps Wrapping up beside Type instead past the wait while the call is %s, and stops reading the call once the person types",
+    "keeps the finishing stage beside Type instead past the wait while the call is %s, and stops reading the call once the person types",
     async (status) => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       callStates[CALL_ID] = [callRecord({ status, hand_off: null })];
@@ -2532,7 +2535,11 @@ describe("onboarding interview by voice: how a call ends", () => {
       const typeInstead = await screen.findByRole("button", {
         name: "Type instead",
       });
-      expect(screen.getByText("Wrapping up…")).toBeDefined();
+      expect(
+        screen.getByText(
+          status === "transcribing" ? "Reading it back" : "Building your plan",
+        ),
+      ).toBeDefined();
 
       await userEvent.setup().click(typeInstead);
       expect(await screen.findByText(GREETING)).toBeDefined();
@@ -3054,7 +3061,7 @@ describe("onboarding interview by voice: the call's room", () => {
       expect(fakes.room()?.isLeft).toBe(true);
       // Never the ending of a call that ran, nor a wait for its words.
       expect(screen.queryByText(DIDNT_HEAR_YOU)).toBeNull();
-      expect(screen.queryByText("Wrapping up…")).toBeNull();
+      expect(screen.queryByText("Saving what you said")).toBeNull();
       expect(statusReads).toEqual([]);
       expect(tracked("voice_interview_start_failed")).toEqual([
         { stage: "relay", why: reason },
@@ -3162,9 +3169,7 @@ describe("onboarding interview by voice: the call's room", () => {
 
     act(() => room.lose());
 
-    expect(
-      await screen.findByText("We lost the call. Saving what you said…"),
-    ).toBeDefined();
+    expect(await screen.findByText("We lost the call.")).toBeDefined();
     expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
     expect(await screen.findByText("The connection dropped.")).toBeDefined();
     expect(statusReads).toContain(CALL_ID);
@@ -3205,9 +3210,7 @@ describe("onboarding interview by voice: the call's room", () => {
         await screen.findByRole("button", { name: "Meet your team" }),
       ).toBeDefined();
       expect(room.isLeft).toBe(true);
-      expect(
-        screen.queryByText("We lost the call. Saving what you said…"),
-      ).toBeNull();
+      expect(screen.queryByText("We lost the call.")).toBeNull();
     },
   );
 
@@ -3227,9 +3230,7 @@ describe("onboarding interview by voice: the call's room", () => {
       expect(screen.getByText("You're on the call with Otto")).toBeDefined();
       expect(socket.readyState).toBe(FakeWebSocket.OPEN);
       expect(screen.queryByRole("button", { name: "Rejoin" })).toBeNull();
-      expect(
-        screen.queryByText("We lost the call. Saving what you said…"),
-      ).toBeNull();
+      expect(screen.queryByText("We lost the call.")).toBeNull();
       expect(statusReads).toEqual([]);
 
       endCall(socket, "finished");

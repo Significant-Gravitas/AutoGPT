@@ -1,10 +1,12 @@
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
 import { describe, expect, it } from "vitest";
 import {
   answerOf,
   callStartFailureCopy,
   callStartFailureOf,
   callStatusCopy,
+  finishingOf,
   ENDING_POLL_MS,
   ENDING_WINDOW_MS,
   endedCopy,
@@ -398,27 +400,58 @@ describe("the call's copy", () => {
   });
 
   it("never mentions typing while a lost call's words are being saved", () => {
-    const saving = callStatusCopy({
+    const saving = finishingOf({
       phase: "saving",
-      isWrappingUp: false,
-      wasResumed: false,
-      isHangingUp: false,
-      isAudioReconnecting: false,
+      callStatus: null,
+      endReason: null,
+      isLeaving: false,
     });
-    expect(saving).toBe("We lost the call. Saving what you said…");
-    expect(saving).not.toMatch(/typ/i);
+    expect(saving).toEqual({
+      headline: "We lost the call.",
+      line: "Saving what you said",
+      stage: 0,
+    });
+    expect(JSON.stringify(saving)).not.toMatch(/typ/i);
   });
 
-  it("says the words are being saved, not that anything failed, while a finish waits", () => {
+  it("says the call is over at once after Otto's goodbye, then stages the wait by the call's status", () => {
+    const after = (callStatus: VoiceCallStatusResponseStatus | null) =>
+      finishingOf({
+        phase: "wrapping_up",
+        callStatus,
+        endReason: "finished",
+        isLeaving: false,
+      });
+    expect(after(null)?.headline).toBe("That's everything Otto needed.");
+    expect(after(null)?.line).toBe("Saving what you said");
+    expect(after("ended")?.line).toBe("Saving what you said");
+    expect(after("transcribing")?.line).toBe("Reading it back");
+    expect(after("handing_off")?.line).toBe("Building your plan");
+    expect(after("transcribed")?.line).toBe("Building your plan");
+  });
+
+  it("shows the first stage, not a failure, while a finish waits on a status it does not know", () => {
     expect(
-      callStatusCopy({
+      finishingOf({
         phase: "finishing",
-        isWrappingUp: false,
-        wasResumed: false,
-        isHangingUp: false,
-        isAudioReconnecting: false,
+        callStatus: null,
+        endReason: "vendor_error",
+        isLeaving: false,
       }),
-    ).toBe("Saving what you said…");
+    ).toEqual({ headline: null, line: "Saving what you said", stage: 0 });
+  });
+
+  it("shows the plan being built while the person leaves a call's ending, and nothing otherwise", () => {
+    const base = { callStatus: null, endReason: "finished" };
+    expect(
+      finishingOf({ ...base, phase: "ended", isLeaving: true })?.line,
+    ).toBe("Building your plan");
+    expect(finishingOf({ ...base, phase: "ended", isLeaving: false })).toBe(
+      null,
+    );
+    expect(finishingOf({ ...base, phase: "live", isLeaving: false })).toBe(
+      null,
+    );
   });
 
   it("puts the live call's state in one line", () => {

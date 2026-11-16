@@ -8,8 +8,9 @@ import { CallAura } from "./components/CallAura";
 import { CallCaptions } from "./components/CallCaptions";
 import { CallChoice } from "./components/CallChoice";
 import { CallEnded } from "./components/CallEnded";
+import { CallFinishing } from "./components/CallFinishing";
 import { CallInProgress } from "./components/CallInProgress";
-import { callStatusCopy, turnsLeftCopy } from "./helpers";
+import { callStatusCopy, finishingOf, turnsLeftCopy } from "./helpers";
 import type { VoiceCallState } from "./useVoiceCall";
 
 interface Props {
@@ -50,10 +51,19 @@ export function VoiceCall({ call }: Props) {
     call.phase === "live" ||
     call.phase === "reconnecting";
   const status = callStatusCopy(call);
+  const finishing = finishingOf(call);
 
   return (
     <div className="flex w-full flex-col items-center gap-5">
-      <CallAura levels={call.levels} isActive={call.phase === "live"} />
+      <CallAura
+        levels={call.levels}
+        isActive={call.phase === "live"}
+        isWorking={finishing !== null}
+      />
+
+      {finishing && call.phase !== "ended" && (
+        <CallFinishing headline={finishing.headline} stage={finishing.stage} />
+      )}
 
       {status && (
         <Text variant="body" tone="muted" role="status" align="center">
@@ -93,6 +103,10 @@ export function VoiceCall({ call }: Props) {
           onTypeInstead={() => void call.typeInstead()}
           onSkip={() => void call.skip()}
         />
+      )}
+
+      {finishing && call.phase === "ended" && (
+        <CallFinishing headline={null} stage={finishing.stage} />
       )}
 
       <CallCaptions lines={call.captions} isLive={isOnCall} />

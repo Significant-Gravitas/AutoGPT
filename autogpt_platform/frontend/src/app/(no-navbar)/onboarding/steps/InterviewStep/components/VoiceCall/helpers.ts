@@ -251,17 +251,62 @@ export function callStatusCopy({
       return "You're on the call with Otto";
     case "reconnecting":
       return "Reconnecting…";
-    case "wrapping_up":
-      return "Wrapping up…";
-    case "saving":
-      return "We lost the call. Saving what you said…";
-    case "finishing":
-      return "Saving what you said…";
     case "ending_call":
       return "Ending the call…";
     default:
       return null;
   }
+}
+
+// --- Finishing a call -------------------------------------------------------
+
+export const FINISHING_LINES = [
+  "Saving what you said",
+  "Reading it back",
+  "Building your plan",
+] as const;
+
+const FINISHING_STAGE: Partial<Record<VoiceCallStatusResponseStatus, number>> =
+  {
+    transcribing: 1,
+    transcribed: 2,
+    handing_off: 2,
+    handed_off: 2,
+  };
+
+const FINISHING_PHASES = new Set<CallPhase>([
+  "wrapping_up",
+  "saving",
+  "finishing",
+]);
+
+interface Finishing {
+  phase: CallPhase;
+  callStatus: VoiceCallStatusResponseStatus | null;
+  endReason: string | null;
+  isLeaving: boolean;
+}
+
+// What the screen says while a call's words are saved and handed off, staged
+// by the status the server last reported for the call; null when nothing is
+// being finished. A call that ran to its close says so at once, above the
+// stage.
+export function finishingOf({
+  phase,
+  callStatus,
+  endReason,
+  isLeaving,
+}: Finishing) {
+  const isLeavingEnded = phase === "ended" && isLeaving;
+  if (!FINISHING_PHASES.has(phase) && !isLeavingEnded) return null;
+  const stage = isLeavingEnded
+    ? FINISHING_LINES.length - 1
+    : ((callStatus && FINISHING_STAGE[callStatus]) ?? 0);
+  let headline: string | null = null;
+  if (phase === "saving") headline = "We lost the call.";
+  else if (phase === "wrapping_up" && ranToClose(endReason))
+    headline = endedCopy(endReason);
+  return { headline, line: FINISHING_LINES[stage], stage };
 }
 
 // --- How a call ended -----------------------------------------------------

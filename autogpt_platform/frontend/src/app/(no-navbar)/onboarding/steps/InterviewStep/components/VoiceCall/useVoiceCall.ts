@@ -7,6 +7,7 @@ import {
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
+import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
 import {
   type CallRoomPass,
   type CallTicket,
@@ -160,6 +161,10 @@ export function useVoiceCall(args: Args) {
   );
   const [ending, setEnding] = useState<CallEnding | null>(null);
   const [endReason, setEndReason] = useState<string | null>(null);
+  // The call's status as the server last reported it while its words are
+  // finished: the stage the finishing screen shows.
+  const [callStatus, setCallStatus] =
+    useState<VoiceCallStatusResponseStatus | null>(null);
   const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
   const [held, setHeld] = useState<HeldCall | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -809,6 +814,7 @@ export function useVoiceCall(args: Args) {
       }
       // What ended a lost call, for its report should the person type
       // before its words have an answer.
+      if (call) setCallStatus(call.status);
       if (call?.end_reason && conn.lostCall) {
         conn.lostCall.reason = call.end_reason;
       }
@@ -1296,6 +1302,7 @@ export function useVoiceCall(args: Args) {
     setStartFailure(null);
     setEnding(null);
     setEndReason(null);
+    setCallStatus(null);
     setFinishFailure(null);
     setLevels(null);
   }
@@ -1364,6 +1371,7 @@ export function useVoiceCall(args: Args) {
     startFailure,
     ending,
     endReason,
+    callStatus,
     finishFailure,
     isLeaving,
     held,
