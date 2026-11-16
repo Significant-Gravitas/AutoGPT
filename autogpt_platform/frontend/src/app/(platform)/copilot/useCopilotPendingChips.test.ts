@@ -948,9 +948,35 @@ describe("useCopilotPendingChips", () => {
       expect(reasons).toEqual([]);
     });
 
+    it.each([
+      [
+        "the proxy cannot reach the backend",
+        new ApiError("fetch failed", 502, { detail: "fetch failed" }),
+      ],
+      ["the backend errors", new ApiError("Internal Server Error", 500, {})],
+      ["the network drops", new TypeError("Failed to fetch")],
+    ])("ends the peek quietly when %s", async (_case, transientError) => {
+      mockGetPending.mockRejectedValue(transientError);
+
+      const { rendered, reasons } = await unhandledRejectionsDuring(() =>
+        renderHook(() =>
+          useCopilotPendingChips({
+            sessionId: "s1",
+            status: "ready",
+            messages: [],
+            setMessages: vi.fn(),
+          }),
+        ),
+      );
+
+      expect(mockGetPending).toHaveBeenCalledWith("s1");
+      expect(rendered.result.current.queuedMessages).toEqual([]);
+      expect(reasons).toEqual([]);
+    });
+
     it("still surfaces a peek that fails for any other reason", async () => {
-      const serverError = new ApiError("Internal Server Error", 500, {});
-      mockGetPending.mockRejectedValue(serverError);
+      const badRequest = new ApiError("Bad Request", 400, {});
+      mockGetPending.mockRejectedValue(badRequest);
 
       const { reasons } = await unhandledRejectionsDuring(() =>
         renderHook(() =>
@@ -963,7 +989,7 @@ describe("useCopilotPendingChips", () => {
         ),
       );
 
-      expect(reasons).toEqual([serverError]);
+      expect(reasons).toEqual([badRequest]);
     });
   });
 });

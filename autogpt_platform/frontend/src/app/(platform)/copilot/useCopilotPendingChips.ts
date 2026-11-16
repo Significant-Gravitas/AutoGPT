@@ -1,5 +1,6 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { isTransientRequestError } from "@/lib/transient-errors";
 import type { UIMessage } from "ai";
 import { useEffect, useInsertionEffect, useRef, useState } from "react";
 
@@ -250,10 +251,13 @@ function usePeekOnBoundary({
   }, [sessionId, status, queueRef, setQueue]);
 }
 
-// A deleted chat, or another account's, answers 404: nothing is pending. Any
-// other failure is rethrown, so it still reaches Sentry as before.
+// A deleted chat, or another account's, answers 404: nothing is pending. A
+// backend outage or a dropped connection ends the peek too: the next boundary
+// peeks again, and the mutator already reports each 5xx to Sentry by route.
+// Any other failure is rethrown, so it still reaches Sentry as before.
 function ignoreMissingSession(error: unknown) {
   if (error instanceof ApiError && error.status === 404) return;
+  if (isTransientRequestError(error)) return;
   throw error;
 }
 
