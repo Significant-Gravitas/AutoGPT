@@ -26,6 +26,7 @@ from backend.data.redis_client import AsyncRedisClient
 from backend.voice_relay.config import (
     AUDIO_TOKENS_PER_S,
     CLASSIFIER_MODEL,
+    DETAILS_MODEL,
     IN_RATE,
     OUT_RATE,
     PRICES_VALID_UNTIL,
@@ -170,7 +171,11 @@ POSTCALLS = Counter(
 )
 
 # The Prometheus role of each model a call pays for besides the live one.
-_ROLES = {CLASSIFIER_MODEL: "classifier", TRANSCRIBE_MODEL: "transcribe"}
+_ROLES = {
+    CLASSIFIER_MODEL: "classifier",
+    DETAILS_MODEL: "details",
+    TRANSCRIBE_MODEL: "transcribe",
+}
 
 
 class Row(BaseModel):
@@ -308,6 +313,12 @@ class CallMeter:
     async def classifier_usage(self, *, tokens_in: int, tokens_out: int) -> None:
         await self._model_usage(
             CLASSIFIER_MODEL, (("text_in", tokens_in), ("text_out", tokens_out))
+        )
+
+    async def details_usage(self, *, tokens_in: int, tokens_out: int) -> None:
+        """Meter one read of what the person has said, for the ending screens."""
+        await self._model_usage(
+            DETAILS_MODEL, (("text_in", tokens_in), ("text_out", tokens_out))
         )
 
     async def transcription_usage(self, *, tokens_in: int, tokens_out: int) -> None:

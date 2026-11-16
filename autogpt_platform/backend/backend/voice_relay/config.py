@@ -141,6 +141,12 @@ SPEND_CAP_USD = 0.50
 # Otto is still answering it.
 CLASSIFIER_MODEL = "gemini-3.8-flash"
 
+# The model that reads what the person has said so far for the ending
+# screens (``onboarding_interview_details``): a lite model with the least
+# thinking, which answers within about a second where the classifier's model
+# takes several.
+DETAILS_MODEL = "gemini-3.5-flash-lite"
+
 # The transcript of record's model, and how many of a call's turns it
 # transcribes at once. A turn is tried this many times on an error that may
 # pass, each attempt given a few times the turn's length, and never less than
@@ -227,6 +233,9 @@ class Timing(BaseModel):
     # before their turn is labelled.
     scope_settle_s: float = 0.4
     scope_timeout_s: float = 8.0
+    # A read of the person's details for the ending screen is dropped past
+    # this; the next turn reads them again.
+    details_timeout_s: float = 4.0
     vendor_connect_timeout_s: float = 15.0
     # A call not ready this long after its start, with the person's
     # microphone in its room and Otto's track taken, ends unpaid for; under
@@ -290,6 +299,14 @@ PRICES: dict[str, tuple[Price, ...]] = {
             effective_from=date(2027, 1, 1),
             text_in=1.50,
             text_out=7.50,
+        ),
+    ),
+    DETAILS_MODEL: (
+        Price(
+            source="aistudio.google.com/docs/pricing, read 2026-11-16",
+            text_in=0.30,
+            # Thinking tokens bill as text out.
+            text_out=2.50,
         ),
     ),
     # Its prompt is a clip of audio and one short line of text, all priced as

@@ -118,11 +118,11 @@ def _interview(user_id: str, stage: str | None) -> ChatSession:
     return session
 
 
-async def start():
+async def start(body: dict | None = None):
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as client:
-        return await client.post(URL)
+        return await client.post(URL, json=body)
 
 
 async def test_a_starts_checks_read_side_by_side(voice_on, mocker: MockerFixture):
@@ -164,6 +164,7 @@ async def test_a_start_is_a_span_with_one_for_each_read_and_step(
             "calls",
             "flag",
             "interview",
+            "pick",
             "register",
             "replace",
             "starts",
@@ -1075,7 +1076,6 @@ async def test_a_start_reads_the_persons_ending_arm_and_its_token_carries_it(
 @pytest.mark.parametrize(
     "arm",
     [
-        interview_endings.InterviewEnding.SUMMARY_CHIPS.value,
         interview_endings.InterviewEnding.COVERAGE_RING.value,
         "99-an-arm-from-a-later-release",
     ],
@@ -1090,6 +1090,60 @@ async def test_a_start_carries_no_arm_the_voice_mode_does_not_offer(voice_on, ar
     assert tokens.verify_start(body["token"]).ending is None
     voice_on.ending.assert_awaited_once()
     assert voice_on.ending.await_args.args[1] == "voice"
+
+
+# ---------- a tester's pick of the ending ----------
+
+
+def _picker(mocker: MockerFixture, enabled: bool) -> AsyncMock:
+    return mocker.patch.object(
+        interview_endings,
+        "evaluate_feature_flag",
+        AsyncMock(return_value=(enabled, True)),
+    )
+
+
+async def test_a_testers_pick_beats_the_experiments_arm(voice_on, mocker):
+    _picker(mocker, True)
+    voice_on.ending.return_value = "04-team-reveal"
+
+    body = (await start({"ending_pick": "08-transcript-highlights"})).json()
+
+    assert tokens.verify_start(body["token"]).ending == "08-transcript-highlights"
+    # The experiment is not read under a pick, so nobody is enrolled by it.
+    voice_on.ending.assert_not_awaited()
+
+
+async def test_a_pick_is_ignored_while_the_picker_is_off(voice_on, mocker):
+    _picker(mocker, False)
+    voice_on.ending.return_value = "04-team-reveal"
+
+    body = (await start({"ending_pick": "09-first-task"})).json()
+
+    assert tokens.verify_start(body["token"]).ending == "04-team-reveal"
+    voice_on.ending.assert_awaited_once()
+
+
+async def test_a_pick_that_does_not_fit_a_call_is_ignored(voice_on, mocker):
+    picker = _picker(mocker, True)
+
+    body = (await start({"ending_pick": "06-coverage-ring"})).json()
+
+    assert tokens.verify_start(body["token"]).ending is None
+    voice_on.ending.assert_awaited_once()
+    picker.assert_not_awaited()
+
+
+async def test_a_testers_pick_writes_no_assignment(
+    mocker: MockerFixture, voice_ending_flag: dict
+):
+    mocker.patch.object(voice, "assigned_ending", new=interview_endings.assigned_ending)
+    _picker(mocker, True)
+
+    body = (await start({"ending_pick": "09-first-task"})).json()
+
+    assert tokens.verify_start(body["token"]).ending == "09-first-task"
+    assert voice_ending_flag == {}
 
 
 # ---------- a call that no longer runs ----------

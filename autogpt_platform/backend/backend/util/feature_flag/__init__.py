@@ -117,6 +117,11 @@ class Flag(str, Enum):
     # under way can still be read, ended and finished. Fail-closed.
     ONBOARDING_INTERVIEW_VOICE = "onboarding-interview-voice"
 
+    # Testers pick the onboarding interview's ending themselves: the step
+    # shows a picker, and a start honours the arm picked in place of the
+    # ending experiment's, without enrolling anyone. Fail-closed.
+    ONBOARDING_INTERVIEW_ENDING_PICKER = "onboarding-interview-ending-picker"
+
     # Offers Otto the render_ui tool. The chat draws stored cards either way,
     # so turning this off never breaks an old conversation.
     COPILOT_VISUAL_ANSWERS = "copilot-visual-answers"

@@ -57,6 +57,7 @@ from backend.api.features.onboarding_dump.models import (
     VoiceCallStatus,
 )
 from backend.api.features.onboarding_dump.rate_limit import count_voice_call
+from backend.copilot.onboarding_interview_details import InterviewDetails
 from backend.data.redis_client import AsyncRedisClient
 from backend.data.redis_helpers import (
     SlotAdmission,
@@ -508,6 +509,10 @@ class CallRecord(BaseModel):
     turns: list[TurnMark] = []
     # The person's words from the call, one turn per line.
     transcript_of_record: str | None = None
+    # What the person said, read from the transcript of record for the
+    # ending screens that review the call; None for the other arms, and when
+    # it could not be read.
+    details: InterviewDetails | None = None
     # When the transcript was stored, in seconds since the epoch.
     transcribed_at: float | None = None
     # Whether the transcript was made from the call's last upload, which a
@@ -556,6 +561,7 @@ class CallRecord(BaseModel):
 _JSON_FIELDS = frozenset(
     {
         "turns",
+        "details",
         "hand_off",
         "end_tool",
         "duplex",

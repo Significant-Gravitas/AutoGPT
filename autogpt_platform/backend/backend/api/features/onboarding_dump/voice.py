@@ -71,6 +71,7 @@ from backend.api.features.onboarding_dump.interview import (
 from backend.api.features.onboarding_dump.interview_endings import (
     MODE_ENDINGS,
     assigned_ending,
+    honoured_pick,
 )
 from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
@@ -136,19 +137,28 @@ ABANDONED_STARTS = Counter(
 )
 
 
-async def start_voice_call(user_id: str) -> VoiceCallStartResponse:
+async def start_voice_call(
+    user_id: str, ending_pick: str | None = None
+) -> VoiceCallStartResponse:
     """Start a voice call for *user_id*'s onboarding interview.
+
+    *ending_pick* is a tester's pick of the call's ending, honoured in place
+    of the ending experiment's arm only while the picker is on for them and
+    the arm fits a call (``interview_endings.honoured_pick``).
 
     Raises:
         HTTPException: 404, 409, 429 or 503, as the module describes.
     """
     with sentry_sdk.start_span(op="voice.call.start", name="Start a voice call"):
-        return await _start_voice_call(user_id)
+        return await _start_voice_call(user_id, ending_pick)
 
 
-async def _start_voice_call(user_id: str) -> VoiceCallStartResponse:
+async def _start_voice_call(
+    user_id: str, ending_pick: str | None
+) -> VoiceCallStartResponse:
     # Read side by side; refused in the module's order.
-    enabled, *refusals = await asyncio.gather(
+    picked, enabled, *refusals = await asyncio.gather(
+        _timed("pick", honoured_pick(user_id, "voice", ending_pick)),
         _timed("flag", _voice_enabled(user_id)),
         _timed("interview", _refusal(_refuse_if_interview_over(user_id))),
         _timed("calls", _refusal(_refuse_on_calls(user_id))),
@@ -170,11 +180,12 @@ async def _start_voice_call(user_id: str) -> VoiceCallStartResponse:
     redis = await _bounded(get_redis_async())
     call_id = tokens.new_call_id()
     # The arm is read only for a start that is going ahead, since reading it
-    # enrols the person. The room is registered before its token is minted,
-    # so every room a token can open is closed in the end, and this start
-    # replaces the person's earlier one whose call never began.
+    # enrols the person, and never under a tester's pick, which is no
+    # enrolment. The room is registered before its token is minted, so every
+    # room a token can open is closed in the end, and this start replaces the
+    # person's earlier one whose call never began.
     arm, *_ = await asyncio.gather(
-        _timed("arm", assigned_ending(user_id, "voice")),
+        _timed("arm", _arm(user_id, picked)),
         _timed(
             "register",
             _bounded(locks.register_room(redis, call_id, user_id, time.time())),
@@ -211,6 +222,10 @@ async def voice_available(user_id: str) -> bool:
     if not voice_configured() or not settings.secrets.gemini_api_key:
         return False
     return await _voice_enabled(user_id)
+
+
+async def _arm(user_id: str, picked: str | None) -> str | None:
+    return picked if picked is not None else await assigned_ending(user_id, "voice")
 
 
 def _voice_arm(ending: str | None) -> str | None:
@@ -582,6 +597,9 @@ def _status_of(record: CallRecord) -> VoiceCallStatusResponse:
         status=status,
         interview=record.interview,
         end_reason=record.end_reason,
+        ending=record.ending,
+        first_task=record.first_task,
+        details=record.details,
         relay_url=relay_socket_url() if running else None,
         livekit_url=livekit_url() if running else None,
         hand_off=record.hand_off,

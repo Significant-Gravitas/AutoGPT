@@ -62,6 +62,7 @@ from backend.api.features.onboarding_dump.interview_endings import (
     InterviewMode,
     assigned_ending,
     hands_off_on_close,
+    text_pick,
 )
 from backend.api.features.onboarding_dump.models import (
     INTERVIEW_RECORDING_PREFIX,
@@ -1393,8 +1394,11 @@ async def _stamp_ending(
     user_id: str, session_id: str, mode: InterviewMode
 ) -> str | None:
     """Read the person's arm and stamp it onto the interview; an arm that
-    cannot be stamped still decides the hand-off."""
-    ending = await assigned_ending(user_id, mode)
+    cannot be stamped still decides the hand-off. A tester's pick, kept from
+    the interview's start, is stamped in place of the experiment's arm, and
+    the experiment is then not read, so the pick enrols nobody."""
+    picked = await text_pick(user_id) if mode == "text" else None
+    ending = picked if picked is not None else await assigned_ending(user_id, mode)
     if ending is None:
         return None
     try:

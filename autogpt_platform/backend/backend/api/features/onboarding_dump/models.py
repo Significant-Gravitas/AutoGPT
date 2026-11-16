@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pydantic import AfterValidator, BaseModel, Field, StringConstraints
 
+from backend.copilot.onboarding_interview_details import InterviewDetails
+
 # ``recording_id`` is concatenated into a cloud-storage object key and a
 # Redis key, so anything with a path or namespace separator in it would
 # let a caller reach outside their own prefix. The client sends a
@@ -457,6 +459,15 @@ class VoiceCallStatusResponse(BaseModel):
     ``spend_cap``, ``user_hangup``, ``superseded``, ``client_gone``,
     ``vendor_error``, ``room_error``, ``server_restart``), or ``crashed`` when
     the server running it stopped."""
+    ending: str | None = None
+    """The call's ending arm: the ending experiment's, or a tester's pick;
+    None for anyone not enrolled."""
+    first_task: str | None = None
+    """The first thing the team starts on, as Otto put it when he ended the
+    call; None when he did not say."""
+    details: InterviewDetails | None = None
+    """What the person said, read from the transcript of record for an
+    ending screen that reviews the call; None otherwise."""
     relay_url: str | None = None
     """The relay's call socket, which a tab holding the call's resume ticket
     rejoins it on; set only while the call is live."""
@@ -467,6 +478,38 @@ class VoiceCallStatusResponse(BaseModel):
     """What the onboarding pipeline answered the call's hand-off, read the
     way the typed interview's finish answer is read; None until it has
     answered."""
+
+
+class InterviewDetailsResponse(BaseModel):
+    """What the person's typed interview has heard so far."""
+
+    details: InterviewDetails | None = None
+    """None before they have said anything, and while it cannot be read: the
+    ending screen then falls back to the plain ending."""
+
+
+class VoiceCallStartRequest(BaseModel):
+    """A voice call's start."""
+
+    ending_pick: str | None = Field(default=None, max_length=64)
+    """A tester's pick of the call's ending, honoured only while the picker
+    is on for them and the arm fits a call; ignored otherwise."""
+
+
+class InterviewStartRequest(BaseModel):
+    """The typed interview's start."""
+
+    ending_pick: str | None = Field(default=None, max_length=64)
+    """A tester's pick of the interview's ending, honoured only while the
+    picker is on for them; ignored otherwise."""
+
+
+class InterviewFinishRequest(BaseModel):
+    """The person's confirm of their typed interview."""
+
+    corrections: str | None = Field(default=None, max_length=MAX_CORRECTION_CHARS)
+    """What they changed on the ending screen, handed off as their own words
+    after the interview's."""
 
 
 class VoiceCallFinishRequest(BaseModel):

@@ -29,6 +29,11 @@ _VOICE_INTERVIEW_BOUNDS = (
 )
 
 _PLATFORM_KEY_MODEL_CALLS = {
+    "api/features/onboarding_dump/interview_details.py _read": (
+        "the typed interview's details for its ending screen, read at most "
+        "once per turn of the person's and kept, within the interview's "
+        "turn cap"
+    ),
     "api/features/onboarding_dump/intro.py generate_intro": _OUTSIDE_TURNS,
     "api/features/onboarding_dump/quality.py _semantic_verdict": _OUTSIDE_TURNS,
     "api/features/onboarding_dump/recommend.py generate_recommendations": (

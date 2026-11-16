@@ -48,7 +48,9 @@ Browser to relay, after ``start``: JSON ``hangup`` and ``ping {id}``; a
 binary frame is counted and dropped, and after ``MAX_UNREADABLE_TEXT`` text
 frames the call cannot read the socket is closed (1008). Relay to browser: JSON ``ready``,
 ``user_text``, ``agent_text``, ``interrupted``, ``turn_complete``,
-``wrap_up``, ``duplex {mode, by}``, ``resumed``, ``ended`` and ``pong``. The
+``wrap_up``, ``duplex {mode, by}``, ``details {details}`` (what the person
+has said, for an ending whose card fills in as they talk), ``resumed``,
+``ended`` and ``pong``. The
 browser has no way to put text into the conversation: the server's notes are
 the server's alone.
 """
@@ -83,6 +85,7 @@ from backend.voice_relay.config import (
     RoomCloseWhy,
     Timing,
 )
+from backend.voice_relay.details import LIVE_DETAILS_ENDINGS, DetailsReader
 from backend.voice_relay.echo import (
     ECHO_NOTE,
     Duplex,
@@ -328,6 +331,8 @@ class Session:
         meter: CallMeter,
         classifier: ScopeClassifier | None,
         edge: RoomEdge,
+        details_reader: DetailsReader | None = None,
+        ending: str | None = None,
         first_name: str | None = None,
         read_first_name: Callable[[], Awaitable[str | None]] | None = None,
         caps: Caps = CAPS,
@@ -355,6 +360,11 @@ class Session:
         self.store = store
         self.meter = meter
         self.classifier = classifier
+        # The call's ending arm; one whose card fills in as the person talks
+        # has their details read after each of their turns.
+        self.details_reader = details_reader if ending in LIVE_DETAILS_ENDINGS else None
+        self._details_task: asyncio.Task | None = None
+        self._details_again = False
         # The person's first name, or how to read it: the read runs beside
         # the call's opening.
         self.first_name = first_name
@@ -1543,6 +1553,7 @@ class Session:
         self.user_buf = ""
         if heard:
             self.user_turns.append(UserTurn(after=turn.index - 1, text=heard))
+            self._read_details_soon()
         self.turn_marks.append(
             TurnMark(index=turn.index, at=self.received, text=turn.text)
         )
@@ -1707,6 +1718,50 @@ class Session:
                 and not self.ended.is_set()
             ):
                 await self.wrap_up("scope")
+
+    def _read_details_soon(self) -> None:
+        """Read the person's details beside the call, never in its way: one
+        read at a time, the latest turn's next, and any that fails dropped."""
+        if self.details_reader is None or self.ended.is_set():
+            return
+        if self._details_task is not None and not self._details_task.done():
+            self._details_again = True
+            return
+        self._details_task = self.spawn(
+            self._read_details(self.details_reader), "details"
+        )
+
+    def conversation(self) -> list[tuple[str, str]]:
+        """The call so far from its captions, Otto's turns and the person's
+        in order."""
+        return [(line["who"], line["text"]) for line in self.transcript()]
+
+    async def _read_details(self, reader: DetailsReader) -> None:
+        while True:
+            self._details_again = False
+            try:
+                read = await bounded(
+                    reader(self.conversation(), live=True),
+                    timeout=self.timing.details_timeout_s,
+                )
+            except Exception:
+                logger.info(
+                    f"Voice call {self.call_id}: details not read", exc_info=True
+                )
+                read = None
+            if read is not None:
+                await self.meter.details_usage(
+                    tokens_in=read.tokens_in, tokens_out=read.tokens_out
+                )
+                if self.meter.over_cap:
+                    self.end("spend_cap")
+                    return
+                if read.details is not None and not self.ended.is_set():
+                    await self.send_json(
+                        {"type": "details", "details": read.details.model_dump()}
+                    )
+            if not self._details_again or self.ended.is_set():
+                return
 
     async def wrap_up(self, reason: EndReason) -> None:
         """Have Otto say goodbye, then end the call with *reason*."""

@@ -14,6 +14,8 @@ from pydantic import AfterValidator
 from backend.api.features.onboarding_dump import (
     db,
     interview,
+    interview_details,
+    interview_endings,
     plan_hire,
     plan_service,
     service,
@@ -31,6 +33,9 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeRequest,
     FinalizeResponse,
     GreetingDoneResponse,
+    InterviewDetailsResponse,
+    InterviewFinishRequest,
+    InterviewStartRequest,
     InterviewStartResponse,
     InterviewStateResponse,
     IntroCardResponse,
@@ -40,6 +45,7 @@ from backend.api.features.onboarding_dump.models import (
     SuggestedTasksUpdate,
     UploadPartResponse,
     VoiceCallFinishRequest,
+    VoiceCallStartRequest,
     VoiceCallStartResponse,
     VoiceCallStatusResponse,
     clients_recording_id,
@@ -215,6 +221,7 @@ async def _interview_enabled(user_id: Annotated[str, Security(get_user_id)]) -> 
 )
 async def start_onboarding_interview(
     user_id: Annotated[str, Security(get_user_id)],
+    request: InterviewStartRequest | None = None,
 ) -> InterviewStartResponse:
     """Open the person's onboarding interview, with Otto speaking first.
 
@@ -237,7 +244,13 @@ async def start_onboarding_interview(
     503 carries its wait in the body (``retry_after_seconds``) as well as in
     ``Retry-After``: the browser's API client keeps a refusal's body, not its
     headers.
+
+    ``ending_pick`` is a tester's pick of the ending, kept for the interview's
+    close while the ending picker is on for them, and ignored otherwise.
     """
+    await interview_endings.keep_text_pick(
+        user_id, request.ending_pick if request is not None else None
+    )
     try:
         started = await interview.start_onboarding_interview(user_id)
     except fastapi.HTTPException as e:
@@ -296,6 +309,28 @@ async def get_onboarding_interview(
     )
 
 
+@router.get(
+    "/interview/details",
+    operation_id="get_onboarding_interview_details",
+    dependencies=[fastapi.Depends(_interview_enabled)],
+)
+async def get_onboarding_interview_details(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> InterviewDetailsResponse:
+    """What the person's typed interview has heard so far, for its ending
+    screen: their business, team, where their week goes, their tools, facts
+    in their own words, the topics covered and the first task. Read once per
+    turn of theirs and kept; ``details`` is null before they have said
+    anything and while it cannot be read. 404 when they have no interview.
+    """
+    opened = await find_onboarding_interview_session(user_id)
+    if opened is None:
+        raise fastapi.HTTPException(status_code=404, detail="No onboarding interview")
+    return InterviewDetailsResponse(
+        details=await interview_details.read_interview_details(opened)
+    )
+
+
 def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
     """*refusal* with its message and its ``Retry-After`` wait in the body."""
     retry_after = (refusal.headers or {}).get("Retry-After", "")
@@ -312,6 +347,7 @@ def _with_wait_in_body(refusal: fastapi.HTTPException) -> fastapi.HTTPException:
 @router.post("/interview/voice", operation_id="start_onboarding_voice_call")
 async def start_onboarding_voice_call(
     user_id: Annotated[str, Security(get_user_id)],
+    request: VoiceCallStartRequest | None = None,
 ) -> VoiceCallStartResponse:
     """Start a voice call for the person's onboarding interview.
 
@@ -329,9 +365,15 @@ async def start_onboarding_voice_call(
     it); 429 past their call allowance; 503 past the platform's voice budget
     or live-call ceiling, or while voice cannot be served. A 429 or 503 carries its wait
     in the body (``retry_after_seconds``) as well as in ``Retry-After``.
+
+    ``ending_pick`` is a tester's pick of the call's ending, honoured while
+    the ending picker is on for them and the arm fits a call, and ignored
+    otherwise.
     """
     try:
-        return await voice.start_voice_call(user_id)
+        return await voice.start_voice_call(
+            user_id, request.ending_pick if request is not None else None
+        )
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):
             raise _with_wait_in_body(e) from e
@@ -437,6 +479,7 @@ async def end_onboarding_voice_call(
 async def finish_onboarding_interview(
     user_id: Annotated[str, Security(get_user_id)],
     background_tasks: fastapi.BackgroundTasks,
+    request: InterviewFinishRequest | None = None,
 ) -> FinalizeResponse:
     """The person ends the interview on screen: close it if it is still
     open, and hand what they said to the onboarding pipeline.
@@ -450,14 +493,19 @@ async def finish_onboarding_interview(
     while a voice call of theirs is live and 409
     ``onboarding_interview_closed`` once a call took the interview, each
     naming the call (``call_id``). A 429 carries its wait in the body
-    (``retry_after_seconds``), as the start route's does.
+    (``retry_after_seconds``), as the start route's does. Any
+    ``corrections`` the person made on the ending screen are handed off after
+    the interview's words, as their own.
     """
     opened = await find_onboarding_interview_session(user_id)
     if opened is None:
         raise fastapi.HTTPException(status_code=404, detail="No onboarding interview")
     try:
         return await interview.finalize_onboarding_interview(
-            user_id, opened.session_id, background_tasks
+            user_id,
+            opened.session_id,
+            background_tasks,
+            corrections=request.corrections if request is not None else None,
         )
     except NotFoundError as e:
         raise fastapi.HTTPException(

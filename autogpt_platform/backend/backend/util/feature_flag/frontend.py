@@ -64,6 +64,8 @@ class FrontendFlag(str, Enum):
     # The interview offers a voice call with Otto. Needs ONBOARDING_INTERVIEW:
     # the typed interview is where a call's endings point.
     ONBOARDING_INTERVIEW_VOICE = Flag.ONBOARDING_INTERVIEW_VOICE.value
+    # The interview's step shows testers a picker for its ending.
+    ONBOARDING_INTERVIEW_ENDING_PICKER = Flag.ONBOARDING_INTERVIEW_ENDING_PICKER.value
     # The onboarding steps in the order an experiment wants them: the named
     # steps lead and the rest keep their default order (frontend `resolveStepOrder`).
     ONBOARDING_STEP_ORDER = "onboarding-step-order"

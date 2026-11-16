@@ -42,7 +42,9 @@ def test_each_mode_offers_exactly_the_arms_that_fit_it() -> None:
         },
         "voice": {
             "02-profile-card",
+            "03-summary-chips",
             "04-team-reveal",
+            "08-transcript-highlights",
             "09-first-task",
         },
     }
@@ -127,3 +129,87 @@ async def test_an_arm_that_cannot_be_read_never_holds_up_the_interview(
     )
 
     assert await assigned_ending("user-1", "text") is None
+
+
+# ---------- a tester's pick ----------
+
+
+@pytest.fixture
+def picker(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch.object(
+        interview_endings,
+        "evaluate_feature_flag",
+        new=AsyncMock(return_value=(True, True)),
+    )
+
+
+@pytest.fixture
+def pick_store(mocker: MockerFixture):
+    from fakeredis.aioredis import FakeRedis
+
+    redis = FakeRedis(decode_responses=True)
+    mocker.patch.object(
+        interview_endings, "get_redis_async", new=AsyncMock(return_value=redis)
+    )
+    return redis
+
+
+@pytest.mark.asyncio
+async def test_a_testers_typed_pick_is_kept_until_the_close(picker, pick_store):
+    await interview_endings.keep_text_pick("user-1", "06-coverage-ring")
+
+    assert await interview_endings.text_pick("user-1") == "06-coverage-ring"
+
+
+@pytest.mark.asyncio
+async def test_default_in_the_picker_forgets_the_pick(picker, pick_store):
+    await interview_endings.keep_text_pick("user-1", "06-coverage-ring")
+    await interview_endings.keep_text_pick("user-1", None)
+
+    assert await interview_endings.text_pick("user-1") is None
+
+
+@pytest.mark.asyncio
+async def test_a_pick_is_ignored_while_the_picker_is_off(picker, pick_store):
+    picker.return_value = (False, True)
+
+    await interview_endings.keep_text_pick("user-1", "06-coverage-ring")
+
+    assert await pick_store.keys("*") == []
+    assert await interview_endings.text_pick("user-1") is None
+
+
+@pytest.mark.asyncio
+async def test_a_pick_kept_while_the_picker_was_on_lapses_once_it_is_off(
+    picker, pick_store
+):
+    await interview_endings.keep_text_pick("user-1", "03-summary-chips")
+    picker.return_value = (False, True)
+
+    assert await interview_endings.text_pick("user-1") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "pick", "honoured"),
+    [
+        ("voice", "09-first-task", True),
+        ("voice", "06-coverage-ring", False),
+        ("text", "06-coverage-ring", True),
+        ("text", "99-an-arm-from-a-later-release", False),
+        ("voice", None, False),
+    ],
+)
+async def test_only_an_arm_that_fits_the_mode_is_honoured(picker, mode, pick, honoured):
+    expected = pick if honoured else None
+    assert await interview_endings.honoured_pick("user-1", mode, pick) == expected
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_picker_flag_honours_no_pick(picker):
+    picker.side_effect = RuntimeError("flag vendor down")
+
+    assert (
+        await interview_endings.honoured_pick("user-1", "voice", "09-first-task")
+        is None
+    )

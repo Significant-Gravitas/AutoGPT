@@ -47,6 +47,7 @@ from backend.voice_relay.config import (
     WS_MAX_MESSAGE_BYTES,
     price_of,
 )
+from backend.voice_relay.details import GeminiDetailsReader
 from backend.voice_relay.edge import LiveKitEdge
 from backend.voice_relay.metering import warn_if_prices_out_of_date, watch_prices
 from backend.voice_relay.postcall import GeminiTranscriber, PostCall
@@ -148,6 +149,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             tool_parameters=VOICE_INTERVIEW_END_TOOL_PARAMETERS,
         ),
         classifier=GeminiScopeClassifier(client),
+        details_reader=GeminiDetailsReader(client),
         redis=redis_client.get_redis_async,
         account_name=_account_name,
         record_call=record_onboarding_voice_call,
@@ -158,6 +160,7 @@ async def production_deps() -> AsyncIterator[RelayDeps]:
             recordings=CloudRecordings(),
             transcriber=GeminiTranscriber(client),
             first_name=_first_name,
+            details_reader=GeminiDetailsReader(client),
             live_model=model,
             pod=holder,
             running_window_s=CAPS.max_call_s + drain_s + LIVE_CALL_STALE_S,

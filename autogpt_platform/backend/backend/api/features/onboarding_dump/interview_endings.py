@@ -20,6 +20,8 @@ from typing import Literal
 
 from backend.data import experiments
 from backend.data.experiments import Experiment
+from backend.data.redis_client import get_redis_async
+from backend.util.feature_flag import Flag, evaluate_feature_flag
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,9 @@ MODE_ENDINGS: dict[InterviewMode, frozenset[InterviewEnding]] = {
     "voice": frozenset(
         {
             InterviewEnding.PROFILE_CARD,
+            InterviewEnding.SUMMARY_CHIPS,
             InterviewEnding.TEAM_REVEAL,
+            InterviewEnding.TRANSCRIPT_HIGHLIGHTS,
             InterviewEnding.FIRST_TASK,
         }
     ),
@@ -107,3 +111,76 @@ async def assigned_ending(user_id: str, mode: InterviewMode) -> str | None:
             f"the {mode} mode"
         )
     return assignment.variant
+
+
+# --- A tester's pick ---------------------------------------------------------
+#
+# With the picker flag on, a tester picks the ending on the step, and the
+# start request carries the pick. A pick that fits the mode wins over the
+# experiment's arm, and is never an enrolment: the experiment is not read, so
+# no assignment is stored and no exposure is sent.
+
+# The typed interview's arm is stamped when it closes, so its pick is kept
+# until then, one key per person.
+_TEXT_PICK_KEY = "onboarding:interview:ending_pick:{user_id}"
+_TEXT_PICK_TTL_S = 7 * 24 * 3600
+
+
+async def picker_enabled(user_id: str) -> bool:
+    """Whether *user_id* may pick their interview's ending; False when the
+    flag cannot be read."""
+    try:
+        enabled, _ = await evaluate_feature_flag(
+            Flag.ONBOARDING_INTERVIEW_ENDING_PICKER, user_id, default=False
+        )
+    except Exception:
+        logger.warning("Ending picker flag could not be read", exc_info=True)
+        return False
+    return bool(enabled)
+
+
+def fits_mode(pick: str | None, mode: InterviewMode) -> bool:
+    return pick in {ending.value for ending in MODE_ENDINGS[mode]}
+
+
+async def honoured_pick(
+    user_id: str, mode: InterviewMode, pick: str | None
+) -> str | None:
+    """*pick*, when the picker is on for *user_id* and the arm fits *mode*;
+    None otherwise, and the pick is ignored."""
+    if pick is None or not fits_mode(pick, mode):
+        return None
+    return pick if await picker_enabled(user_id) else None
+
+
+async def keep_text_pick(user_id: str, pick: str | None) -> None:
+    """Keep a tester's pick for their typed interview until it closes. A
+    start without one, from a tester, forgets any pick kept before ("Default"
+    in the picker); anyone else's start leaves nothing behind."""
+    if not await picker_enabled(user_id):
+        return
+    key = _TEXT_PICK_KEY.format(user_id=user_id)
+    try:
+        redis = await get_redis_async()
+        if fits_mode(pick, "text"):
+            await redis.set(key, pick, ex=_TEXT_PICK_TTL_S)
+        else:
+            await redis.delete(key)
+    except Exception:
+        logger.warning("Ending pick not kept", exc_info=True)
+
+
+async def text_pick(user_id: str) -> str | None:
+    """The pick a tester's typed interview closes on, while the picker is
+    still on for them; None otherwise, or when it cannot be read."""
+    try:
+        redis = await get_redis_async()
+        pick = await redis.get(_TEXT_PICK_KEY.format(user_id=user_id))
+    except Exception:
+        logger.warning("Ending pick unreadable", exc_info=True)
+        return None
+    if isinstance(pick, bytes):
+        pick = pick.decode()
+    if not fits_mode(pick, "text"):
+        return None
+    return pick if await picker_enabled(user_id) else None

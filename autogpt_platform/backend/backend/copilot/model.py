@@ -293,6 +293,10 @@ class PublicChatSessionMetadata(BaseModel):
     # The interview step reads it to tell an open interview from one that
     # closed or handed off.
     onboarding_interview_stage: str | None = None
+    # And these for the screen a closed interview ends on: its ending arm and
+    # the first task Otto named, the owner's own.
+    onboarding_interview_ending: str | None = None
+    onboarding_interview_first_task: str | None = None
 
     @classmethod
     def from_internal(cls, metadata: ChatSessionMetadata) -> Self:
@@ -325,6 +329,8 @@ class PublicChatSessionMetadata(BaseModel):
             purpose=metadata.purpose,
             pending_question=metadata.pending_question,
             onboarding_interview_stage=metadata.onboarding_interview_stage,
+            onboarding_interview_ending=metadata.onboarding_interview_ending,
+            onboarding_interview_first_task=metadata.onboarding_interview_first_task,
         )
 
 

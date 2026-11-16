@@ -15,9 +15,11 @@ from google.genai import types
 from prisma.enums import BrainDumpInputMode
 from pytest_mock import MockerFixture
 
+from backend.copilot.onboarding_interview_details import DetailsRead, InterviewDetails
 from backend.voice_relay import locks, postcall, tokens, vad
 from backend.voice_relay.config import (
     CAPS,
+    DETAILS_MODEL,
     IN_RATE,
     POSTCALL_CLAIM_TTL_S,
     POSTCALL_JOB_TIMEOUT_S,
@@ -83,6 +85,7 @@ class Rig:
         attempts: int = 3,
         first_name: str | None = "Dana",
         max_jobs: int = 4,
+        details_reader=None,
     ) -> PostCall:
         async def get_redis():
             return self.redis
@@ -98,6 +101,7 @@ class Rig:
             recordings=self.recordings,
             transcriber=transcriber,
             first_name=name,
+            details_reader=details_reader,
             live_model=LIVE,
             pod=pod,
             cost_sink=sink,
@@ -115,6 +119,7 @@ class Rig:
         uploaded: bool = True,
         started: float | None = None,
         echo_spans: list[tuple[int, int]] | None = None,
+        ending: str | None = None,
     ) -> str:
         """A call as the relay leaves it on its record: pending, its recording
         uploaded. It started an hour ago unless *started* says otherwise.
@@ -126,6 +131,7 @@ class Rig:
             "uid": USER,
             "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
+            "ending": ending,
             "turns": [
                 TurnMark(index=index, at=at).model_dump()
                 for index, at in enumerate(marks)
@@ -326,6 +332,75 @@ async def test_the_job_stores_the_transcript_and_leaves_the_call_for_its_hand_of
     # The claim is given up, and the call is the REST API's to hand off.
     assert await rig.redis.get(locks.postcall_claim_key(call_id)) is None
     assert await locks.postcall_pending(rig.redis) == [call_id]
+
+
+class ReadsDetails:
+    def __init__(self, *, fails: bool = False) -> None:
+        self.fails = fails
+        self.seen: list[list[tuple[str, str]]] = []
+
+    async def __call__(self, lines, *, live: bool) -> DetailsRead:
+        assert not live
+        self.seen.append(list(lines))
+        if self.fails:
+            raise RuntimeError("vendor down")
+        return DetailsRead(
+            details=InterviewDetails(business="Bakery", words=[t for _, t in lines]),
+            tokens_in=700,
+            tokens_out=80,
+            latency_s=0.4,
+        )
+
+
+async def test_a_call_whose_ending_reviews_it_keeps_the_details_of_its_transcript(
+    rig: Rig,
+):
+    pcm, marks = recording_of(answer(), answer())
+    call_id = await rig.call(pcm, marks, ending="03-summary-chips")
+    reader = ReadsDetails()
+
+    record = await rig.run(
+        rig.postcall(ScriptedTranscriber(SAID), details_reader=reader),
+        call_id,
+        pcm=pcm,
+    )
+
+    assert record.status == locks.TRANSCRIBED
+    assert reader.seen == [[("user", line) for line in SAID]]
+    assert record.details is not None
+    assert record.details.business == "Bakery"
+    assert any(row.model == DETAILS_MODEL for row in rig.rows)
+
+
+async def test_a_call_on_another_arm_reads_no_details(rig: Rig):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, ending="09-first-task")
+    reader = ReadsDetails()
+
+    record = await rig.run(
+        rig.postcall(ScriptedTranscriber(SAID[:1]), details_reader=reader),
+        call_id,
+        pcm=pcm,
+    )
+
+    assert reader.seen == []
+    assert record.details is None
+
+
+async def test_a_details_read_that_fails_never_holds_the_transcript_back(rig: Rig):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks, ending="02-profile-card")
+
+    record = await rig.run(
+        rig.postcall(
+            ScriptedTranscriber(SAID[:1]), details_reader=ReadsDetails(fails=True)
+        ),
+        call_id,
+        pcm=pcm,
+    )
+
+    assert record.status == locks.TRANSCRIBED
+    assert record.details is None
 
 
 async def test_the_claim_is_given_up_before_the_recording_is_deleted(

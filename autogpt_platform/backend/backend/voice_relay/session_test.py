@@ -12,9 +12,10 @@ from websockets.datastructures import Headers
 from websockets.exceptions import InvalidStatus
 from websockets.http11 import Response
 
+from backend.copilot.onboarding_interview_details import DetailsRead, InterviewDetails
 from backend.copilot.onboarding_interview_scope import ScopeLabel
 from backend.voice_relay import locks, tokens
-from backend.voice_relay.config import IN_RATE, Caps, Timing
+from backend.voice_relay.config import DETAILS_MODEL, IN_RATE, Caps, Timing
 from backend.voice_relay.conftest import (
     FakeMedia,
     FakeSocket,
@@ -126,6 +127,8 @@ def _session(
     caps: Caps = CAPS,
     timing: Timing = FAST,
     classifier=None,
+    details_reader=None,
+    ending: str | None = None,
     first_name: str | None = None,
     on_end=None,
     edge=None,
@@ -155,6 +158,8 @@ def _session(
             sink=sink,
         ),
         classifier=classifier,
+        details_reader=details_reader,
+        ending=ending,
         edge=edge or livekit_edge(FakeMedia()),
         first_name=first_name,
         read_first_name=read_first_name,
@@ -381,6 +386,84 @@ async def test_speech_keeps_a_quiet_call_open(redis):
     clock.advance(1.0)
 
     assert (await call.ended())["reason"] == "idle"
+
+
+class ScriptedDetails:
+    """Reads the person's details from the call so far; fails when told."""
+
+    def __init__(self, *, fails: bool = False) -> None:
+        self.fails = fails
+        self.seen: list[list[tuple[str, str]]] = []
+
+    async def __call__(self, lines, *, live: bool) -> DetailsRead:
+        assert live
+        self.seen.append(list(lines))
+        if self.fails:
+            raise RuntimeError("vendor down")
+        said = " ".join(text for who, text in lines if who == "user")
+        return DetailsRead(
+            details=InterviewDetails(business=said),
+            tokens_in=500,
+            tokens_out=60,
+            latency_s=0.0,
+        )
+
+
+def _two_turn_vendor() -> FakeVendor:
+    return FakeVendor(
+        [
+            Reply(text="Hi, what do you do?"),
+            Reply(text="Nice. Who's on your team?", heard="I run a bakery"),
+            Reply(text="Got it.", heard="Just me and Sam"),
+        ]
+    )
+
+
+async def test_a_profile_card_call_sends_the_persons_details_after_their_turns(redis):
+    reader = ScriptedDetails()
+    vendor = _two_turn_vendor()
+    call = await open_call(
+        redis, vendor, details_reader=reader, ending="02-profile-card"
+    )
+    await call.ws.wait_for("turn_complete", count=1)
+    await call.answer(speech(0.2))
+
+    sent = await call.ws.wait_for("details")
+
+    assert sent["details"]["business"] == "I run a bakery"
+    assert reader.seen[0][:2] == [
+        ("otto", "Hi, what do you do?"),
+        ("user", "I run a bakery"),
+    ]
+    # On the call's bill, under its spend cap.
+    assert any(row.model == DETAILS_MODEL for row in call.rows)
+
+
+async def test_a_call_on_another_arm_reads_no_details(redis):
+    reader = ScriptedDetails()
+    call = await open_call(
+        redis, _two_turn_vendor(), details_reader=reader, ending="09-first-task"
+    )
+    await call.ws.wait_for("turn_complete", count=1)
+    await call.answer(speech(0.2))
+    await call.ws.wait_for("turn_complete", count=2)
+
+    assert reader.seen == []
+    assert not [m for m in call.ws.sent if m.get("type") == "details"]
+
+
+async def test_a_details_read_that_fails_is_dropped_and_the_call_goes_on(redis):
+    reader = ScriptedDetails(fails=True)
+    call = await open_call(
+        redis, _two_turn_vendor(), details_reader=reader, ending="02-profile-card"
+    )
+    await call.ws.wait_for("turn_complete", count=1)
+    await call.answer(speech(0.2))
+    await call.ws.wait_for("turn_complete", count=2)
+
+    await until(lambda: bool(reader.seen))
+    assert not [m for m in call.ws.sent if m.get("type") == "details"]
+    assert call.session.error is None
 
 
 async def test_three_side_task_requests_end_the_call_on_scope_after_a_goodbye(redis):

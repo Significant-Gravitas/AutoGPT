@@ -184,6 +184,13 @@ def ending(mocker: MockerFixture) -> AsyncMock:
 
 
 @pytest.fixture(autouse=True)
+def tester_pick(mocker: MockerFixture) -> AsyncMock:
+    """A tester's pick of the ending kept from the start: none unless a test
+    says otherwise."""
+    return mocker.patch.object(interview, "text_pick", new=AsyncMock(return_value=None))
+
+
+@pytest.fixture(autouse=True)
 def jobs(mocker: MockerFixture) -> dict[str, AsyncMock]:
     """The three background jobs' model calls, and the reads around them."""
     module = "backend.api.features.onboarding_dump"
@@ -1302,6 +1309,23 @@ async def test_a_confirm_arm_closes_and_waits_for_the_confirm(
     assert stored.stages == [INTERVIEW_STAGE_CLOSED]
     assert stored.endings == [arm.value]
     assert dumps.row is None
+
+
+@pytest.mark.asyncio
+async def test_a_testers_pick_is_stamped_in_place_of_the_experiments_arm(
+    stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, tester_pick
+):
+    tester_pick.return_value = InterviewEnding.FIRST_TASK.value
+    ending.return_value = InterviewEnding.TEAM_REVEAL.value
+
+    closure = await _close(stored.session.session_id)
+
+    assert closure.ending == InterviewEnding.FIRST_TASK.value
+    assert stored.endings == [InterviewEnding.FIRST_TASK.value]
+    # A pick is no enrolment: the experiment is never read under it.
+    ending.assert_not_awaited()
+    # And it ends as its arm does: on the person's confirm.
+    assert closure.hand_off is None
 
 
 @pytest.mark.asyncio

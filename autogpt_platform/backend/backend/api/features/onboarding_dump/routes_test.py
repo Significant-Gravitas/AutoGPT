@@ -2579,6 +2579,65 @@ def test_reading_an_interview_under_way_answers_it_open(
     background_hand_off[1].assert_not_called()
 
 
+def test_the_details_of_the_persons_own_interview_are_read_for_its_ending(
+    find_interview: AsyncMock, mocker: MockerFixture, test_user_id: str
+):
+    from backend.copilot.onboarding_interview_details import InterviewDetails
+
+    read = mocker.patch.object(
+        routes.interview_details,
+        "read_interview_details",
+        new=AsyncMock(return_value=InterviewDetails(business="Bakery")),
+    )
+
+    response = client.get(f"{INTERVIEW_URL}/details")
+
+    assert response.status_code == 200
+    assert response.json()["details"]["business"] == "Bakery"
+    find_interview.assert_awaited_once_with(test_user_id)
+    assert read.await_args.args[0].session_id == INTERVIEW_SESSION_ID
+
+
+def test_the_details_of_no_interview_are_a_404(find_interview: AsyncMock):
+    find_interview.return_value = None
+
+    assert client.get(f"{INTERVIEW_URL}/details").status_code == 404
+
+
+def test_finishing_hands_off_the_corrections_made_on_the_ending_screen(
+    finalize_interview: AsyncMock, find_interview: AsyncMock
+):
+    finalize_interview.return_value = FinalizeResponse(
+        status=BrainDumpStatus.transcribed, input_mode=BrainDumpInputMode.typed
+    )
+
+    response = client.post(
+        INTERVIEW_FINISH_URL,
+        json={"corrections": "My first task should be: chase unpaid invoices"},
+    )
+
+    assert response.status_code == 200
+    assert finalize_interview.await_args.kwargs["corrections"] == (
+        "My first task should be: chase unpaid invoices"
+    )
+
+
+def test_starting_the_interview_keeps_a_testers_pick_for_its_close(
+    start_interview: AsyncMock, mocker: MockerFixture, test_user_id: str
+):
+    start_interview.return_value = interview.StartedInterview(
+        session=_interview(test_user_id), turn_id="turn-1"
+    )
+    keep = mocker.patch.object(
+        routes.interview_endings, "keep_text_pick", new=AsyncMock()
+    )
+
+    response = client.post(INTERVIEW_URL, json={"ending_pick": "06-coverage-ring"})
+
+    assert response.status_code == 200
+    keep.assert_awaited_once_with(test_user_id, "06-coverage-ring")
+
+
 def test_finishing_hands_the_interview_off_and_answers_its_take(
     finalize_interview: AsyncMock, find_interview: AsyncMock, test_user_id: str
 ):

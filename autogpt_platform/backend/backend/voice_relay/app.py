@@ -50,6 +50,7 @@ from backend.voice_relay.config import (
     Caps,
     Timing,
 )
+from backend.voice_relay.details import DetailsReader
 from backend.voice_relay.metering import LIVE_CALLS, CallMeter, CostSink
 from backend.voice_relay.postcall import PostCall
 from backend.voice_relay.record import (
@@ -89,6 +90,8 @@ class RelayDeps(BaseModel):
 
     vendor: VendorConnector
     classifier: ScopeClassifier | None
+    # Reads what the person has said for the ending screens; None reads none.
+    details_reader: DetailsReader | None = None
     redis: Callable[[], Awaitable[AsyncRedisClient]]
     # The display name on a user's account, or None.
     account_name: Callable[[str], Awaitable[str | None]]
@@ -421,6 +424,8 @@ async def _start_call(
                 sink=deps.cost_sink,
             ),
             classifier=deps.classifier,
+            details_reader=deps.details_reader,
+            ending=claims.ending,
             edge=deps.edge,
             # Read beside the call's opening, not before it.
             read_first_name=lambda: _first_name(deps, claims.user_id),
