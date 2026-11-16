@@ -145,12 +145,14 @@ def _env(
     db.get_expert = AsyncMock(return_value=_hired_otto())
     db.update_soul_if_current = AsyncMock(return_value=_created("Otto", "exp-2"))
     db.list_experts = AsyncMock(return_value=[])
+    db.start_expert_kickoff = AsyncMock(return_value=True)
     shared_redis = AsyncMock(return_value=redis or _FakeRedis())
     with (
         patch(f"{_HIRE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_RAISE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_UPDATE_MODULE}.experts_db", MagicMock(return_value=db)),
         patch(f"{_PROPOSAL_MODULE}.experts_db", MagicMock(return_value=db)),
+        patch(f"{_CONFIRM_MODULE}.expert_kickoff_db", MagicMock(return_value=db)),
         patch(f"{_PARK_MODULE}.get_redis_async", shared_redis),
         patch(f"{_UPDATE_MODULE}.get_redis_async", shared_redis),
         patch(f"{_CONFIRM_MODULE}.get_redis_async", shared_redis),
@@ -545,6 +547,9 @@ class TestConfirm:
             )
         assert isinstance(resp, ExpertChangeAppliedResponse)
         assert resp.kind == "raise"
+        # A created expert introduces itself from the card's "Chat with"
+        # kickoff link (#16689), so the server sends no second greeting.
+        db.start_expert_kickoff.assert_not_awaited()
         assert resp.expert.name == "Otto"
         assert resp.expert.tagline == _created().tagline
         assert resp.expert.about == _created().identity

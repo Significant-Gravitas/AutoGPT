@@ -286,3 +286,53 @@ def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
     manager._create_fastapi_endpoint(manager.claim_scope_schedule)
     manager._create_fastapi_endpoint(manager.record_scope_run)
     manager._create_fastapi_endpoint(manager.existing_user_ids)
+
+
+# While a deploy replaces executors and database managers, each may meet the
+# other release. The permission check's request model drops the arguments it
+# doesn't know, so a sub-graph must be marked in a way both releases read.
+
+
+async def _permissions_before_parent_runs(
+    user_id: str, graph_id: str, graph_version: int, is_sub_graph: bool = False
+) -> None:
+    """`validate_graph_execution_permissions` as a database manager from before
+    `parent_graph_exec_id` served it."""
+
+
+def test_a_database_manager_reads_an_older_executors_sub_graph_check() -> None:
+    """An older executor marks a sub-graph with `is_sub_graph` alone (how the
+    check then goes: graph_test.py)."""
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        DatabaseManager.validate_graph_execution_permissions
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(
+        {"user_id": "u1", "graph_id": "g1", "graph_version": 1, "is_sub_graph": True}
+    )
+    assert (sent.is_sub_graph, sent.parent_graph_exec_id) == (True, None)
+
+
+def test_an_older_database_manager_reads_an_executors_sub_graph_check() -> None:
+    """The executor sends the parent run and `is_sub_graph` both
+    (input_depth_test.py). An older database manager drops the parent run and
+    still sees a sub-graph."""
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        _permissions_before_parent_runs
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(
+        {
+            "user_id": "u1",
+            "graph_id": "g1",
+            "graph_version": 1,
+            "parent_graph_exec_id": "parent-exec",
+            "is_sub_graph": True,
+        }
+    )
+    assert sent.model_dump() == {
+        "user_id": "u1",
+        "graph_id": "g1",
+        "graph_version": 1,
+        "is_sub_graph": True,
+    }

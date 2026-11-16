@@ -41,7 +41,6 @@ test.describe("a new account goes to onboarding first", () => {
     const user = newJourneyUser();
     await page.getByLabel("Email").fill(user.email);
     await page.getByLabel("Password", { exact: true }).fill(user.password);
-    await page.getByLabel("Confirm Password").fill(user.password);
     seen.startCounting();
     await page.getByRole("button", { name: "Sign up" }).click();
 
