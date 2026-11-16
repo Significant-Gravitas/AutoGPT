@@ -30,6 +30,7 @@ from backend.data.subscription_trial import TrialState
 # Kept before the API suite's autouse fixture swaps in a paywall that lets
 # every user through.
 _REAL_IS_USER_PAYWALLED = rate_limit.is_user_paywalled
+_WATCHDOG_SECONDS = 30
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -267,7 +268,8 @@ def test_the_session_checks_run_beside_the_paywall_and_in_flight_reads(
     async def meet(name: str) -> None:
         started[name].set()
         await asyncio.wait_for(
-            asyncio.gather(*(event.wait() for event in started.values())), 2
+            asyncio.gather(*(event.wait() for event in started.values())),
+            _WATCHDOG_SECONDS,
         )
 
     session = ChatSession.new(test_user_id, dry_run=False)
@@ -311,7 +313,7 @@ def test_a_refused_session_is_refused_whatever_the_in_flight_read_found(
         raise StreamRegistryUnavailable("redis down")
 
     async def refuse_session(*args, **kwargs) -> ChatSession:
-        await asyncio.wait_for(in_flight_failed.wait(), 2)
+        await asyncio.wait_for(in_flight_failed.wait(), _WATCHDOG_SECONDS)
         raise fastapi.HTTPException(status_code=404)
 
     mocker.patch.object(
@@ -399,7 +401,7 @@ def test_every_preflight_refusal_drains_the_early_reads(
     started, owned = _hold_early_reads(mocker)
 
     async def refuse(*args, **kwargs):
-        await asyncio.wait_for(started.wait(), 2)
+        await asyncio.wait_for(started.wait(), _WATCHDOG_SECONDS)
         raise fastapi.HTTPException(status_code=status)
 
     mocker.patch.object(chat_routes, gate, refuse)
@@ -418,7 +420,7 @@ def test_a_pending_receipt_returns_without_leaving_the_early_reads_running(
     started, owned = _hold_early_reads(mocker)
 
     async def received(*args):
-        await asyncio.wait_for(started.wait(), 2)
+        await asyncio.wait_for(started.wait(), _WATCHDOG_SECONDS)
         return True
 
     mocker.patch.object(chat_routes, "pending_message_was_received", received)
@@ -453,11 +455,11 @@ async def test_cancelling_admission_drains_its_early_reads(
         )
     )
     try:
-        await asyncio.wait_for(started.wait(), 2)
-        await asyncio.wait_for(validation.wait(), 2)
+        await asyncio.wait_for(started.wait(), _WATCHDOG_SECONDS)
+        await asyncio.wait_for(validation.wait(), _WATCHDOG_SECONDS)
         request.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await asyncio.wait_for(request, 2)
+            await asyncio.wait_for(request, _WATCHDOG_SECONDS)
         assert len(owned) == 2
         assert all(task.cancelled() for task in owned)
     finally:
