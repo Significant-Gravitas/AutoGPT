@@ -6,6 +6,8 @@ import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { finishFailureCopy, type StartFailure } from "../helpers";
+import { type EndingData, InterviewEnding } from "./Endings/InterviewEnding";
+import type { EndingArm } from "./Endings/helpers";
 
 type ChatProps = React.ComponentProps<typeof ChatMessagesContainer>;
 
@@ -22,9 +24,14 @@ interface Props {
   canFinishEarly: boolean;
   isLeaving: boolean;
   finishFailure: StartFailure | null;
+  ending: {
+    arm: EndingArm | null;
+    data: EndingData;
+    isTesterPick: boolean;
+  };
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
-  onFinish: () => Promise<void>;
+  onFinish: (corrections?: string | null) => Promise<void>;
 }
 
 export function InterviewChat({
@@ -40,6 +47,7 @@ export function InterviewChat({
   canFinishEarly,
   isLeaving,
   finishFailure,
+  ending,
   onSend,
   onStop,
   onFinish,
@@ -69,15 +77,24 @@ export function InterviewChat({
         <div className="flex shrink-0 flex-col gap-2 border-t border-separator px-3 py-3">
           {isOver ? (
             <div className="flex justify-center">
-              <Button
-                variant="primary"
-                size="large"
-                loading={isLeaving}
-                disabled={isLeaving}
-                onClick={() => void onFinish()}
-              >
-                Meet your team
-              </Button>
+              <InterviewEnding
+                arm={ending.arm}
+                data={ending.data}
+                isLeaving={isLeaving}
+                isTesterPick={ending.isTesterPick}
+                onConfirm={(corrections) => void onFinish(corrections)}
+                fallback={
+                  <Button
+                    variant="primary"
+                    size="large"
+                    loading={isLeaving}
+                    disabled={isLeaving}
+                    onClick={() => void onFinish()}
+                  >
+                    Meet your team
+                  </Button>
+                }
+              />
             </div>
           ) : (
             <div className="flex items-end gap-2">

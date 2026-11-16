@@ -37,6 +37,7 @@ const defaultFlags = {
   [Flag.COPILOT_STREAM_RUNTIME]: false,
   [Flag.ONBOARDING_INTERVIEW]: false,
   [Flag.ONBOARDING_INTERVIEW_VOICE]: false,
+  [Flag.ONBOARDING_INTERVIEW_ENDING_PICKER]: false,
   // Empty keeps the default onboarding order (`resolveStepOrder`).
   [Flag.ONBOARDING_STEP_ORDER]: [] as string[],
 } satisfies Record<Flag, unknown>;
@@ -96,6 +97,9 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW;
     case Flag.ONBOARDING_INTERVIEW_VOICE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW_VOICE;
+    case Flag.ONBOARDING_INTERVIEW_ENDING_PICKER:
+      return process.env
+        .NEXT_PUBLIC_FORCE_FLAG_ONBOARDING_INTERVIEW_ENDING_PICKER;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
     case Flag.ONBOARDING_STEP_ORDER:

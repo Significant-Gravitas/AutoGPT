@@ -3,6 +3,11 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { finishFailureCopy, type StartFailure } from "../../../helpers";
+import {
+  type EndingData,
+  InterviewEnding,
+} from "../../Endings/InterviewEnding";
+import type { EndingArm } from "../../Endings/helpers";
 import { savedBeforeCopy } from "../earlierTake";
 import { type CallEnding, endedCopy } from "../helpers";
 import { CallInsufficient } from "./CallInsufficient";
@@ -12,6 +17,12 @@ interface Props {
   endReason: string | null;
   isLeaving: boolean;
   finishFailure: StartFailure | null;
+  // The call's arm of the ending experiment, which decides the screen a call
+  // that took the interview ends on.
+  arm: EndingArm | null;
+  endingData: EndingData;
+  isTesterPick: boolean;
+  onConfirm: (corrections: string | null) => void;
   onMeetTeam: () => void;
   onRetry: () => void;
   onCallAgain: () => void;
@@ -26,6 +37,10 @@ export function CallEnded({
   endReason,
   isLeaving,
   finishFailure,
+  arm,
+  endingData,
+  isTesterPick,
+  onConfirm,
   onMeetTeam,
   onRetry,
   onCallAgain,
@@ -78,6 +93,18 @@ export function CallEnded({
     </>
   );
 
+  const meetButton = (
+    <Button
+      variant="primary"
+      size="large"
+      loading={isLeaving}
+      disabled={isLeaving}
+      onClick={onMeetTeam}
+    >
+      Meet your team
+    </Button>
+  );
+
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-4">
       {/* Read out when the call ends, without the ways on below it. */}
@@ -122,16 +149,16 @@ export function CallEnded({
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        {meetsTeam && (
-          <Button
-            variant="primary"
-            size="large"
-            loading={isLeaving}
-            disabled={isLeaving}
-            onClick={onMeetTeam}
-          >
-            Meet your team
-          </Button>
+        {meetsTeam && ending.kind !== "team" && meetButton}
+        {ending.kind === "team" && (
+          <InterviewEnding
+            arm={arm}
+            data={endingData}
+            isLeaving={isLeaving}
+            isTesterPick={isTesterPick}
+            onConfirm={onConfirm}
+            fallback={meetButton}
+          />
         )}
         {ending.kind === "retry" && (
           <Button

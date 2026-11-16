@@ -10,6 +10,9 @@ import { CallChoice } from "./components/CallChoice";
 import { CallEnded } from "./components/CallEnded";
 import { CallFinishing } from "./components/CallFinishing";
 import { CallInProgress } from "./components/CallInProgress";
+import { EndingPicker } from "../Endings/components/EndingPicker";
+import { ProfileCardEnding } from "../Endings/components/ProfileCardEnding";
+import { endingArmOf, profileRowsOf, readEndingPick } from "../Endings/helpers";
 import { callStatusCopy, finishingOf, turnsLeftCopy } from "./helpers";
 import type { VoiceCallState } from "./useVoiceCall";
 
@@ -30,6 +33,9 @@ export function VoiceCall({ call }: Props) {
   if (call.phase === "idle") {
     return (
       <CallChoice
+        endingPicker={
+          call.isEndingPickerOn ? <EndingPicker mode="voice" /> : null
+        }
         failure={call.startFailure}
         onTalk={call.talk}
         onTypeInstead={() => void call.typeInstead()}
@@ -52,6 +58,8 @@ export function VoiceCall({ call }: Props) {
     call.phase === "reconnecting";
   const status = callStatusCopy(call);
   const finishing = finishingOf(call);
+  const arm = endingArmOf(call.arm);
+  const liveRows = profileRowsOf(call.details);
 
   return (
     <div className="flex w-full flex-col items-center gap-5">
@@ -97,6 +105,12 @@ export function VoiceCall({ call }: Props) {
           endReason={call.endReason}
           isLeaving={call.isLeaving}
           finishFailure={call.finishFailure}
+          arm={arm}
+          endingData={{ firstTask: call.firstTask, details: call.details }}
+          isTesterPick={
+            call.isEndingPickerOn && !!arm && readEndingPick("voice") === arm
+          }
+          onConfirm={(corrections) => void call.meetTeam(corrections)}
           onMeetTeam={() => void call.meetTeam()}
           onRetry={() => void call.retryFinish()}
           onCallAgain={call.callAgain}
@@ -107,6 +121,10 @@ export function VoiceCall({ call }: Props) {
 
       {finishing && call.phase === "ended" && (
         <CallFinishing headline={null} stage={finishing.stage} />
+      )}
+
+      {isOnCall && liveRows.length > 0 && (
+        <ProfileCardEnding rows={liveRows} isLive />
       )}
 
       <CallCaptions lines={call.captions} isLive={isOnCall} />

@@ -3,17 +3,25 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Call02Icon, KeyboardIcon } from "@hugeicons/core-free-icons";
+import type { ReactNode } from "react";
 import { PrivacyNote } from "../../../../BrainDumpStep/components/PrivacyNote";
 import { type CallStartFailure, callStartFailureCopy } from "../helpers";
 import { CallAura } from "./CallAura";
 
 interface Props {
+  // Testers' pick of how the call ends, when they may pick one.
+  endingPicker?: ReactNode;
   failure: CallStartFailure | null;
   onTalk: () => void;
   onTypeInstead: () => void;
 }
 
-export function CallChoice({ failure, onTalk, onTypeInstead }: Props) {
+export function CallChoice({
+  endingPicker,
+  failure,
+  onTalk,
+  onTypeInstead,
+}: Props) {
   return (
     <div className="flex w-full flex-col items-center gap-5">
       <CallAura levels={null} isActive={false} />
@@ -38,6 +46,7 @@ export function CallChoice({ failure, onTalk, onTypeInstead }: Props) {
           Type instead
         </Button>
       </div>
+      {endingPicker}
       {failure && (
         <Text
           variant="small"

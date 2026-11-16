@@ -1,3 +1,4 @@
+import type { InterviewDetails } from "@/app/api/__generated__/models/interviewDetails";
 import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps";
 
 // The voice relay's control socket (backend/voice_relay/session.py). The
@@ -22,6 +23,9 @@ export type RelayMessage =
   | { type: "interrupted" }
   | { type: "turn_complete"; turn: number; turns_left: number }
   | { type: "wrap_up"; reason: string }
+  // What the person has said so far, for an ending whose card fills in as
+  // they talk.
+  | { type: "details"; details: InterviewDetails }
   // The relay found Otto's voice coming back through the person's
   // microphone: it stops listening while he is audible.
   | { type: "duplex"; mode: "half"; by: "probe" | "captions" }

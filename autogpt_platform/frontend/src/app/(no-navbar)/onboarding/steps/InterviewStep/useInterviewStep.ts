@@ -29,6 +29,15 @@ import {
 import { prepareCallRoom } from "./components/VoiceCall/callRoom";
 import { useVoiceCall } from "./components/VoiceCall/useVoiceCall";
 import {
+  answeredTurns,
+  useInterviewDetails,
+} from "./components/Endings/useInterviewDetails";
+import {
+  endingArmOf,
+  endingPickBody,
+  readEndingPick,
+} from "./components/Endings/helpers";
+import {
   finishFailureOf,
   finishPathOf,
   forgetTyping,
@@ -59,6 +68,8 @@ export function useInterviewStep() {
   const setStepBusy = useOnboardingWizardStore((s) => s.setStepBusy);
   const userID = useOnboardingWizardStore((s) => s.userID);
   const voiceFlag = useFlagStatus(Flag.ONBOARDING_INTERVIEW_VOICE);
+  const pickerFlag = useFlagStatus(Flag.ONBOARDING_INTERVIEW_ENDING_PICKER);
+  const isEndingPickerOn = pickerFlag.ready && pickerFlag.enabled;
   const microphone = useMicrophonePermission();
 
   // What the person, or a server's answer, put on the step: the typed chat
@@ -71,6 +82,9 @@ export function useInterviewStep() {
   const [startFailure, setStartFailure] = useState<StartFailure | null>(null);
   const [startedStage, setStartedStage] = useState<string | null>(null);
   const [readStage, setReadStage] = useState<string | null>(null);
+  // The closed interview's arm and first task, read with its stage: the arm
+  // is stamped just after the stage closes.
+  const [readEnding, setReadEnding] = useState<StageRead | null>(null);
   const [hasAskedToFinish, setHasAskedToFinish] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
   const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
@@ -99,6 +113,7 @@ export function useInterviewStep() {
     onCallStarted: () => forgetTyping(userID),
     onMicrophoneRefused: refuseMicrophone,
     onNoCall: openWithoutCall,
+    isEndingPickerOn,
   });
 
   const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
@@ -150,6 +165,15 @@ export function useInterviewStep() {
   });
 
   const isTurnRunning = status === "streaming" || status === "submitted";
+  const detailsQuery = useInterviewDetails({
+    sessionId,
+    arm:
+      endingArmOf(session?.metadata?.onboarding_interview_ending) ??
+      readEnding?.ending ??
+      (isEndingPickerOn ? readEndingPick("text") : null),
+    turns: answeredTurns(withoutKickoff(messages)),
+    isTurnRunning,
+  });
   // A typed turn refused because a call holds the interview: shown as that
   // call, never as an error on the chat.
   const turnRefusal = turnRefusalOf(error);
@@ -194,11 +218,13 @@ export function useInterviewStep() {
     async function readUntilOver(id: string) {
       const deadline = Date.now() + STAGE_READ_WINDOW_MS;
       while (!cancelled && Date.now() < deadline) {
-        const stage = await fetchStage(id);
+        const read = await fetchStage(id);
         if (cancelled) return;
-        if (isEndedStage(stage)) {
-          setReadStage(stage);
-          return;
+        if (isEndedStage(read?.stage)) {
+          setReadStage(read?.stage ?? null);
+          setReadEnding(read);
+          // Read on until the arm is stamped, for anyone enrolled.
+          if (read?.ending) return;
         }
         await pause(STAGE_READ_INTERVAL_MS);
       }
@@ -219,7 +245,9 @@ export function useInterviewStep() {
   async function openInterview() {
     const attempt = ++startAttemptRef.current;
     try {
-      const response = await startOnboardingInterview();
+      const response = await startOnboardingInterview(
+        endingPickBody(isEndingPickerOn, "text"),
+      );
       if (attempt !== startAttemptRef.current) return;
       if (response.status !== 200) {
         setStartFailure({ kind: "failed" });
@@ -312,7 +340,7 @@ export function useInterviewStep() {
     await microphone.refresh();
   }
 
-  async function finish() {
+  async function finish(corrections: string | null = null) {
     if (isLeavingRef.current) return;
     isLeavingRef.current = true;
     setIsLeaving(true);
@@ -321,7 +349,9 @@ export function useInterviewStep() {
     let path: "A" | "B" | null = null;
     let failure: StartFailure | null = null;
     try {
-      const response = await finishOnboardingInterview();
+      const response = await finishOnboardingInterview(
+        corrections ? { corrections } : undefined,
+      );
       path = response.status === 200 ? finishPathOf(response.data) : null;
     } catch (finishError) {
       // Refused because a voice call holds the interview: the call shows,
@@ -419,9 +449,41 @@ export function useInterviewStep() {
     sendMessage({ text: trimmed });
   }
 
+  // A tester's new pick reaches the server through the start, which adopts
+  // the same interview.
+  function repickEnding() {
+    void startOnboardingInterview(
+      endingPickBody(isEndingPickerOn, "text"),
+    ).catch(() => undefined);
+  }
+
+  const typedArm = endingArmOf(
+    session?.metadata?.onboarding_interview_ending ?? readEnding?.ending,
+  );
+  // The arm is stamped when the interview closes; a tester's pick is known
+  // from the start, so its card or ring can fill in while they type.
+  const knownArm =
+    typedArm ?? (isEndingPickerOn ? readEndingPick("text") : null);
+  const details = detailsQuery.data;
+
   return {
     mode,
     voice,
+    isEndingPickerOn,
+    repickEnding,
+    typedEnding: {
+      arm: typedArm,
+      data: {
+        firstTask:
+          session?.metadata?.onboarding_interview_first_task ??
+          readEnding?.firstTask ??
+          null,
+        details,
+      },
+      isTesterPick:
+        isEndingPickerOn && !!typedArm && readEndingPick("text") === typedArm,
+    },
+    liveEnding: { arm: knownArm, details },
     isMicBlocked:
       voiceFlag.enabled &&
       !isVoiceUnavailable &&
@@ -478,12 +540,22 @@ async function readTypedInterview() {
   }
 }
 
-async function fetchStage(sessionId: string) {
+interface StageRead {
+  stage: string | null;
+  ending: string | null;
+  firstTask: string | null;
+}
+
+async function fetchStage(sessionId: string): Promise<StageRead | null> {
   try {
     const response = await getV2GetSession(sessionId, { limit: 1 });
-    return response.status === 200
-      ? (response.data.metadata?.onboarding_interview_stage ?? null)
-      : null;
+    if (response.status !== 200) return null;
+    const metadata = response.data.metadata;
+    return {
+      stage: metadata?.onboarding_interview_stage ?? null,
+      ending: metadata?.onboarding_interview_ending ?? null,
+      firstTask: metadata?.onboarding_interview_first_task ?? null,
+    };
   } catch {
     return null;
   }

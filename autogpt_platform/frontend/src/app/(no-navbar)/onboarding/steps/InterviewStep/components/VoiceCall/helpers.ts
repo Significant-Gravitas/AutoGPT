@@ -1,4 +1,5 @@
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
+import type { InterviewDetails } from "@/app/api/__generated__/models/interviewDetails";
 import type { VoiceCallRoom } from "@/app/api/__generated__/models/voiceCallRoom";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
@@ -130,6 +131,10 @@ export function parseRelayMessage(data: string): RelayMessage | null {
       return typeof message.reason === "string"
         ? { type: "wrap_up", reason: message.reason }
         : null;
+    case "details":
+      return isDetails(message.details)
+        ? { type: "details", details: message.details }
+        : null;
     case "duplex":
       return message.mode === "half" &&
         (message.by === "probe" || message.by === "captions")
@@ -167,6 +172,32 @@ export function parseRelayMessage(data: string): RelayMessage | null {
     default:
       return null;
   }
+}
+
+function isStrings(value: unknown) {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every((item) => typeof item === "string"))
+  );
+}
+
+function isText(value: unknown) {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+// The details as the relay sends them, read field by field.
+export function isDetails(value: unknown): value is InterviewDetails {
+  if (!value || typeof value !== "object") return false;
+  const details = value as Record<string, unknown>;
+  return (
+    isText(details.business) &&
+    isText(details.role) &&
+    isText(details.team) &&
+    isText(details.first_task) &&
+    isStrings(details.time_sinks) &&
+    isStrings(details.tools) &&
+    isStrings(details.topics)
+  );
 }
 
 function isCount(value: unknown): value is number {

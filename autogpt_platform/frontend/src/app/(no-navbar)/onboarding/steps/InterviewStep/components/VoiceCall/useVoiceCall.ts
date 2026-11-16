@@ -8,6 +8,7 @@ import type { VoiceCallCaps } from "@/app/api/__generated__/models/voiceCallCaps
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
 import type { VoiceCallStatusResponse } from "@/app/api/__generated__/models/voiceCallStatusResponse";
 import type { VoiceCallStatusResponseStatus } from "@/app/api/__generated__/models/voiceCallStatusResponseStatus";
+import type { InterviewDetails } from "@/app/api/__generated__/models/interviewDetails";
 import {
   type CallRoomPass,
   type CallTicket,
@@ -91,6 +92,7 @@ import {
   type RelayMessage,
 } from "./protocol";
 import { useCallRoom } from "./useCallRoom";
+import { endingPickBody } from "../Endings/helpers";
 
 type EndingAction =
   | "confirm"
@@ -111,6 +113,8 @@ interface Args {
   onMicrophoneRefused: (refusal: MicrophoneRefusal) => void;
   // The person has no call to pick up: the step decides what opens.
   onNoCall: () => Promise<void>;
+  // Testers may pick the call's ending; the start carries their pick.
+  isEndingPickerOn: boolean;
 }
 
 const SETTLED_PHASES = new Set<CallPhase>(["idle", "ended"]);
@@ -165,6 +169,16 @@ export function useVoiceCall(args: Args) {
   // finished: the stage the finishing screen shows.
   const [callStatus, setCallStatus] =
     useState<VoiceCallStatusResponseStatus | null>(null);
+  // The shown call's arm of the ending experiment, and the first task Otto
+  // named as he ended it.
+  const [arm, setArm] = useState<string | null>(null);
+  const [firstTask, setFirstTask] = useState<string | null>(null);
+  // What the person has said: live from the relay while the call runs, for
+  // an ending whose card fills in as they talk, then read from the call's
+  // transcript of record.
+  const [details, setDetails] = useState<InterviewDetails | null>(null);
+  // What the person changed on the ending screen, kept for a retry.
+  const correctionsRef = useRef<string | null>(null);
   const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
   const [held, setHeld] = useState<HeldCall | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -381,7 +395,9 @@ export function useVoiceCall(args: Args) {
   async function mintCall(attempt: number) {
     const conn = connRef.current;
     try {
-      const response = await startOnboardingVoiceCall();
+      const response = await startOnboardingVoiceCall(
+        endingPickBody(argsRef.current.isEndingPickerOn, "voice"),
+      );
       const named = response.status === 200 ? response.data : null;
       const room = named ? roomPassOf(named.room) : null;
       if (
@@ -537,6 +553,9 @@ export function useVoiceCall(args: Args) {
         return;
       case "wrap_up":
         setIsWrappingUp(true);
+        return;
+      case "details":
+        setDetails(message.details);
         return;
       case "duplex":
         trackInterview("voice_interview_echo", { by: message.by });
@@ -889,6 +908,11 @@ export function useVoiceCall(args: Args) {
       reportLostCall(call.end_reason);
       setEndReason(call.end_reason);
     }
+    if (call) {
+      setArm(call.ending ?? null);
+      setFirstTask(call.first_task ?? null);
+      if (call.details) setDetails(call.details);
+    }
     setEnding(next);
     setFinishFailure(null);
     setPhase("ended");
@@ -974,9 +998,10 @@ export function useVoiceCall(args: Args) {
     await argsRef.current.onSkip();
   }
 
-  async function meetTeam() {
+  async function meetTeam(corrections: string | null = null) {
     const conn = connRef.current;
     if (conn.isLeaving || !ending) return;
+    correctionsRef.current = corrections;
     trackEndingAction("confirm");
     if (ending.kind === "team" && ending.path) {
       conn.isLeaving = true;
@@ -1010,7 +1035,11 @@ export function useVoiceCall(args: Args) {
     let outcome: ReturnType<typeof voiceFinishOutcome> = null;
     for (;;) {
       try {
-        const response = await finishOnboardingVoiceCall(callId);
+        const corrections = correctionsRef.current;
+        const response = await finishOnboardingVoiceCall(
+          callId,
+          corrections ? { corrections } : undefined,
+        );
         outcome =
           response.status === 200 ? voiceFinishOutcome(response.data) : null;
         break;
@@ -1303,6 +1332,10 @@ export function useVoiceCall(args: Args) {
     setEnding(null);
     setEndReason(null);
     setCallStatus(null);
+    setArm(null);
+    setFirstTask(null);
+    setDetails(null);
+    correctionsRef.current = null;
     setFinishFailure(null);
     setLevels(null);
   }
@@ -1372,8 +1405,12 @@ export function useVoiceCall(args: Args) {
     ending,
     endReason,
     callStatus,
+    arm,
+    firstTask,
+    details,
     finishFailure,
     isLeaving,
+    isEndingPickerOn: args.isEndingPickerOn,
     held,
     levels,
     // A call is under way or its words have no answer yet: the step keeps

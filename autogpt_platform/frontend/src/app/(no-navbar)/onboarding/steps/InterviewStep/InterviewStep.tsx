@@ -5,6 +5,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { MicBlockedNotice } from "../BrainDumpStep/components/MicBlockedNotice";
 import { SkipButton } from "../BrainDumpStep/components/SkipButton";
 import { InterviewChat } from "./components/InterviewChat";
+import { EndingPicker } from "./components/Endings/components/EndingPicker";
+import { LiveEnding } from "./components/Endings/components/LiveEnding";
 import { VoiceCall } from "./components/VoiceCall/VoiceCall";
 import { startFailureCopy } from "./helpers";
 import { useInterviewStep } from "./useInterviewStep";
@@ -34,6 +36,18 @@ export function InterviewStep() {
           <VoiceCall call={interview.voice} />
         ) : (
           <>
+            {interview.isEndingPickerOn && !interview.isOver && (
+              <EndingPicker mode="text" onPick={interview.repickEnding} />
+            )}
+            {!interview.isOver && interview.sessionId && (
+              <LiveEnding
+                arm={interview.liveEnding.arm}
+                details={interview.liveEnding.details}
+                canFinish={interview.canFinishEarly}
+                isLeaving={interview.isLeaving}
+                onFinish={() => void interview.finish()}
+              />
+            )}
             <MicBlockedNotice
               isBlocked={interview.isMicBlocked}
               isUnavailable={interview.isMicUnavailable}
@@ -70,6 +84,7 @@ export function InterviewStep() {
                 canFinishEarly={interview.canFinishEarly}
                 isLeaving={interview.isLeaving}
                 finishFailure={interview.finishFailure}
+                ending={interview.typedEnding}
                 onSend={interview.onSend}
                 onStop={interview.stop}
                 onFinish={interview.finish}

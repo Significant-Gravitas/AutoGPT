@@ -178,6 +178,11 @@ const OTHER_SURFACES: Surface[] = [
           isTurnSettling={false}
           isTurnRunning={false}
           isOver={false}
+          ending={{
+            arm: null,
+            data: { firstTask: null },
+            isTesterPick: false,
+          }}
           canFinishEarly={false}
           isLeaving={false}
           finishFailure={null}

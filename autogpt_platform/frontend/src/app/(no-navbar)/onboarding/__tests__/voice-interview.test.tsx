@@ -4,6 +4,7 @@ import {
   getEndOnboardingVoiceCallMockHandler202,
   getFinalizeBrainDumpMockHandler200,
   getFinishOnboardingVoiceCallMockHandler200,
+  getGetBrainDumpPlanMockHandler200,
   getGetOnboardingInterviewMockHandler200,
   getStartOnboardingInterviewMockHandler200,
   getStartOnboardingVoiceCallMockHandler200,
@@ -13,6 +14,7 @@ import {
   getGetV2GetSessionMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import type { FinalizeResponse } from "@/app/api/__generated__/models/finalizeResponse";
+import type { InterviewDetails } from "@/app/api/__generated__/models/interviewDetails";
 import { FrontendFlag } from "@/app/api/__generated__/models/frontendFlag";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import type { VoiceCallStartResponse } from "@/app/api/__generated__/models/voiceCallStartResponse";
@@ -430,6 +432,7 @@ let mintBodies: unknown[];
 let latestReads: number;
 let statusReads: string[];
 let finishes: string[];
+let finishBodies: string[];
 let ends: string[];
 let typedStartCount: number;
 let typedReads: number;
@@ -488,8 +491,9 @@ function handlers() {
       }
       return HttpResponse.json(next);
     }),
-    getFinishOnboardingVoiceCallMockHandler200(({ params }) => {
+    getFinishOnboardingVoiceCallMockHandler200(async ({ params, request }) => {
       finishes.push(String(params.callId));
+      finishBodies.push(await request.text());
       return ACCEPTED;
     }),
     getEndOnboardingVoiceCallMockHandler202(
@@ -733,6 +737,7 @@ beforeEach(() => {
   latestReads = 0;
   statusReads = [];
   finishes = [];
+  finishBodies = [];
   ends = [];
   typedStartCount = 0;
   typedReads = 0;
@@ -3416,5 +3421,285 @@ describe("onboarding interview by voice: the call's room", () => {
     unmount();
 
     expect(room.isLeft).toBe(true);
+  });
+});
+
+describe("onboarding interview by voice: the ending screens", () => {
+  const FIRST_TASK = "Sort the order emails each morning";
+  const PICK_KEY = "autogpt:onboarding-ending-pick:voice";
+
+  function firstTaskCall(overrides: Partial<CallRecord> = {}) {
+    return callRecord({
+      status: "transcribed",
+      hand_off: null,
+      ending: "09-first-task",
+      first_task: FIRST_TASK,
+      ...overrides,
+    });
+  }
+
+  it("ends a first-task call on its task, and hands off the person's change to it as their own words", async () => {
+    callStates[CALL_ID] = [firstTaskCall()];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+
+    expect(await screen.findByText(FIRST_TASK)).toBeDefined();
+    expect(screen.getByText("That's everything Otto needed.")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change it" }));
+    const task = screen.getByRole("textbox", { name: "Your first task" });
+    await user.clear(task);
+    await user.type(task, "Chase unpaid invoices");
+    await user.click(screen.getByRole("button", { name: "Start this" }));
+
+    await expectPlanStep();
+    expect(finishes).toEqual([CALL_ID]);
+    expect(JSON.parse(finishBodies[0])).toEqual({
+      corrections: "My first task should be: Chase unpaid invoices",
+    });
+  });
+
+  it("starts the first task as Otto put it with no corrections", async () => {
+    callStates[CALL_ID] = [firstTaskCall()];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Start this" }));
+
+    await expectPlanStep();
+    expect(finishBodies).toEqual([""]);
+  });
+
+  it("keeps Meet your team for a first-task call whose task did not come", async () => {
+    callStates[CALL_ID] = [firstTaskCall({ first_task: null })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Start this" })).toBeNull();
+  });
+
+  it("keeps Meet your team for a call with no arm", async () => {
+    callStates[CALL_ID] = [callRecord({ first_task: FIRST_TASK })];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(screen.queryByText(FIRST_TASK)).toBeNull();
+  });
+
+  const DETAILS: InterviewDetails = {
+    business: "Fernbrook Gardens",
+    role: "owner",
+    team: "a crew of six",
+    time_sinks: ["quotes", "chasing invoices"],
+    tools: ["QuickBooks"],
+    facts: [{ label: "Six-person crew", quote: "a crew of six" }],
+    topics: ["work", "team"],
+    words: ["I own Fernbrook Gardens with a crew of six."],
+  };
+
+  function reviewCall(ending: string, overrides: Partial<CallRecord> = {}) {
+    return callRecord({
+      status: "transcribed",
+      hand_off: null,
+      ending,
+      details: DETAILS,
+      ...overrides,
+    });
+  }
+
+  it("fills in the profile card while the person talks, then confirms it with their change", async () => {
+    callStates[CALL_ID] = [reviewCall("02-profile-card")];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    act(() =>
+      socket.relay({
+        type: "details",
+        details: { business: "Fernbrook Gardens" },
+      }),
+    );
+
+    expect(await screen.findByText("What Otto has heard so far")).toBeDefined();
+    expect(screen.getByText("Fernbrook Gardens")).toBeDefined();
+
+    endCall(socket, "finished");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Edit your team" }),
+    );
+    const team = screen.getByRole("textbox", { name: "Your team" });
+    await user.clear(team);
+    await user.type(team, "just me");
+    await user.click(screen.getByRole("button", { name: "That's me" }));
+
+    await expectPlanStep();
+    expect(JSON.parse(finishBodies[0])).toEqual({
+      corrections:
+        "Not right: Your team: a crew of six\nAlso: Your team: just me",
+    });
+  });
+
+  it("ignores a details message of another shape", async () => {
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    act(() =>
+      socket.relay({ type: "details", details: { tools: "QuickBooks" } }),
+    );
+
+    act(() => socket.relay({ type: "agent_text", text: "Tell me more." }));
+    expect(await screen.findByText("Tell me more.")).toBeDefined();
+    expect(screen.queryByText("What Otto has heard so far")).toBeNull();
+  });
+
+  it("reviews a call as chips: struck ones and anything added go with the confirm", async () => {
+    callStates[CALL_ID] = [reviewCall("03-summary-chips")];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+
+    expect(await screen.findByText("Here's what I heard")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "QuickBooks" }));
+    expect(
+      screen
+        .getByRole("button", { name: "QuickBooks" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await user.type(
+      screen.getByRole("textbox", { name: "Add something" }),
+      "We also do snow removal",
+    );
+    await user.click(screen.getByRole("button", { name: "Build my team" }));
+
+    await expectPlanStep();
+    expect(JSON.parse(finishBodies[0])).toEqual({
+      corrections: "Not right: QuickBooks\nAlso: We also do snow removal",
+    });
+  });
+
+  it("shows the person's words with what Otto took from them underlined, and strikes a tapped one", async () => {
+    callStates[CALL_ID] = [reviewCall("08-transcript-highlights")];
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+    const user = userEvent.setup();
+
+    endCall(socket, "finished");
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Six-person crew: a crew of six",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Looks right" }));
+
+    await expectPlanStep();
+    expect(JSON.parse(finishBodies[0])).toEqual({
+      corrections: "Not right: Six-person crew",
+    });
+  });
+
+  it.each(["03-summary-chips", "08-transcript-highlights", "02-profile-card"])(
+    "keeps Meet your team for a %s call whose details did not come",
+    async (ending) => {
+      callStates[CALL_ID] = [reviewCall(ending, { details: null })];
+      render(<OnboardingPage />);
+      const socket = await liveCall();
+
+      endCall(socket, "finished");
+
+      expect(
+        await screen.findByRole("button", { name: "Meet your team" }),
+      ).toBeDefined();
+    },
+  );
+
+  it("reveals the proposed team once the hand-off lands, and meets it", async () => {
+    callStates[CALL_ID] = [callRecord({ ending: "04-team-reveal" })];
+    server.use(
+      getGetBrainDumpPlanMockHandler200({
+        ready: true,
+        source: "llm",
+        skipped_dump: false,
+        team: [
+          {
+            template_id: "t-1",
+            name: "Quinn",
+            role: "Bookkeeper",
+            avatar_url: null,
+          },
+        ],
+        tasks: [],
+      }),
+    );
+    render(<OnboardingPage />);
+    const socket = await liveCall();
+
+    endCall(socket, "finished");
+
+    expect(await screen.findByText("Here's your team")).toBeDefined();
+    expect(screen.getByText("Bookkeeper")).toBeDefined();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Meet your team" }));
+
+    await expectPlanStep();
+  });
+
+  it("offers testers the ending picker, sends their pick with the call's start, and names it on the ending", async () => {
+    flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
+    localStorage.setItem(PICK_KEY, "09-first-task");
+    callStates[CALL_ID] = [firstTaskCall()];
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("Ending (testers)")).toBeDefined();
+    const socket = await liveCall();
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({
+      ending_pick: "09-first-task",
+    });
+
+    endCall(socket, "finished");
+
+    expect(
+      await screen.findByText("Ending: First task (tester pick)"),
+    ).toBeDefined();
+  });
+
+  it("shows no picker and sends no pick while the picker is off", async () => {
+    localStorage.setItem(PICK_KEY, "09-first-task");
+    render(<OnboardingPage />);
+
+    await liveCall();
+
+    expect(screen.queryByText("Ending (testers)")).toBeNull();
+    expect(mintBodies).toEqual([""]);
+  });
+
+  it("sends no pick for Default", async () => {
+    flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("Ending (testers)")).toBeDefined();
+    await liveCall();
+
+    expect(mintBodies).toEqual([""]);
   });
 });

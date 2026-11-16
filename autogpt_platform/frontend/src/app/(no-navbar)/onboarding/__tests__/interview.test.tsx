@@ -2,6 +2,7 @@ import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRe
 import { useCopilotStreamStore } from "@/app/(platform)/copilot/copilotStreamStore";
 import {
   getFinalizeBrainDumpMockHandler200,
+  getGetOnboardingInterviewDetailsMockHandler200,
   getStartOnboardingInterviewMockHandler200,
 } from "@/app/api/__generated__/endpoints/brain-dump/brain-dump.msw";
 import {
@@ -234,6 +235,8 @@ interface ServerInterview {
   messages: SessionMessages;
   stage: string | null;
   activeTurn: string | null;
+  ending?: string | null;
+  firstTask?: string | null;
 }
 
 /** What one call to the finish route answers. */
@@ -252,6 +255,7 @@ let serverInterview: ServerInterview;
 let streamBodies: string[];
 let pendingBodies: string[];
 let finishCalls: number;
+let finishBodies: string[];
 let finishAnswers: FinishAnswer[];
 let skipBodies: unknown[];
 let stageReads: number;
@@ -279,6 +283,8 @@ function session(): SessionDetailResponse {
       builder_graph_id: null,
       kind: "onboarding_interview",
       onboarding_interview_stage: serverInterview.stage,
+      onboarding_interview_ending: serverInterview.ending ?? null,
+      onboarding_interview_first_task: serverInterview.firstTask ?? null,
     },
     expert_id: null,
     background_pending: false,
@@ -350,13 +356,17 @@ function interviewHandlers({
         });
       },
     ),
-    http.post("/api/proxy/api/onboarding/brain-dump/interview/finish", () => {
-      finishCalls += 1;
-      const answer = finishAnswers.shift() ?? HANDED_OFF;
-      if (answer.networkError) return HttpResponse.error();
-      if (answer.status === 200) serverInterview.stage = "handed_off";
-      return HttpResponse.json(answer.body ?? {}, { status: answer.status });
-    }),
+    http.post(
+      "/api/proxy/api/onboarding/brain-dump/interview/finish",
+      async ({ request }) => {
+        finishCalls += 1;
+        finishBodies.push(await request.text());
+        const answer = finishAnswers.shift() ?? HANDED_OFF;
+        if (answer.networkError) return HttpResponse.error();
+        if (answer.status === 200) serverInterview.stage = "handed_off";
+        return HttpResponse.json(answer.body ?? {}, { status: answer.status });
+      },
+    ),
     getFinalizeBrainDumpMockHandler200(async (info) => {
       skipBodies.push(await info.request.json());
       return { status: "completed", input_mode: "skipped" };
@@ -425,6 +435,7 @@ beforeEach(() => {
   };
   streamBodies = [];
   pendingBodies = [];
+  finishBodies = [];
   finishCalls = 0;
   finishAnswers = [];
   skipBodies = [];
@@ -1008,5 +1019,146 @@ describe("onboarding interview, with a slow flag service", () => {
       "painPoints",
     );
     act(() => answer());
+  });
+});
+
+describe("onboarding interview: the ending screens", () => {
+  const FIRST_TASK = "Sort the order emails each morning";
+  const PICK_KEY = "autogpt:onboarding-ending-pick:text";
+
+  function closedOnArm(ending: string | null, firstTask: string | null) {
+    returnsClosed();
+    serverInterview = { ...serverInterview, ending, firstTask };
+  }
+
+  it("ends a first-task interview on its task, and hands off the person's change to it", async () => {
+    closedOnArm("09-first-task", FIRST_TASK);
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText(FIRST_TASK)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Change it" }));
+    const task = screen.getByRole("textbox", { name: "Your first task" });
+    await user.clear(task);
+    await user.type(task, "Chase unpaid invoices");
+    await user.click(screen.getByRole("button", { name: "Start this" }));
+
+    await expectPlanStep();
+    expect(JSON.parse(finishBodies[0])).toEqual({
+      corrections: "My first task should be: Chase unpaid invoices",
+    });
+  });
+
+  it("keeps Meet your team when the first task did not come", async () => {
+    closedOnArm("09-first-task", null);
+
+    render(<OnboardingPage />);
+
+    await clickMeetYourTeam();
+    await expectPlanStep();
+    expect(finishBodies).toEqual([""]);
+  });
+
+  it("sends a tester's pick with the start and names it on the ending", async () => {
+    flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
+    localStorage.setItem(PICK_KEY, "09-first-task");
+    closedOnArm("09-first-task", FIRST_TASK);
+    const startBodies: string[] = [];
+    server.use(
+      http.post(
+        "/api/proxy/api/onboarding/brain-dump/interview",
+        async ({ request }) => {
+          startBodies.push(await request.text());
+          return HttpResponse.json({
+            session_id: SESSION_ID,
+            turn_id: null,
+            stage: "closed",
+          });
+        },
+      ),
+    );
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByText("Ending: First task (tester pick)"),
+    ).toBeDefined();
+    expect(JSON.parse(startBodies[0])).toEqual({
+      ending_pick: "09-first-task",
+    });
+  });
+
+  it("ticks off the topics while a tester types, with Done there once they have answered", async () => {
+    flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
+    localStorage.setItem(PICK_KEY, "06-coverage-ring");
+    serverInterview = {
+      messages: [KICKOFF_ROW, GREETING_ROW],
+      stage: null,
+      activeTurn: null,
+    };
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(
+      ...interviewHandlers(),
+      getGetOnboardingInterviewDetailsMockHandler200({
+        details: { topics: ["work", "team"] },
+      }),
+    );
+
+    render(<OnboardingPage />);
+
+    const done = await screen.findByRole("button", {
+      name: "Done, build my team",
+    });
+    expect(done).toHaveProperty("disabled", true);
+    await sendAnswer("I run a bakery with five staff.");
+
+    expect(
+      await screen.findByRole("group", { name: "2 of 5 topics covered" }),
+    ).toBeDefined();
+    await waitFor(() => expect(done).toHaveProperty("disabled", false));
+    await userEvent.setup().click(done);
+    await expectPlanStep();
+    expect(finishCalls).toBe(1);
+  });
+
+  it("ends a profile-card interview on the card read from it", async () => {
+    closedOnArm("02-profile-card", null);
+    server.use(
+      getGetOnboardingInterviewDetailsMockHandler200({
+        details: { business: "Fernbrook Gardens", tools: ["QuickBooks"] },
+      }),
+    );
+
+    render(<OnboardingPage />);
+
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "That's me" }));
+    await expectPlanStep();
+    expect(finishBodies).toEqual([""]);
+  });
+
+  it("offers the picker on an open interview only to testers", async () => {
+    flags[FrontendFlag.ONBOARDING_INTERVIEW_ENDING_PICKER] = true;
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText("Ending (testers)")).toBeDefined();
+  });
+
+  it("shows no picker while it is off", async () => {
+    serverInterview = {
+      messages: [KICKOFF_ROW, GREETING_ROW],
+      stage: null,
+      activeTurn: null,
+    };
+    startsWith({ session_id: SESSION_ID, turn_id: null, stage: null });
+    server.use(...interviewHandlers());
+
+    render(<OnboardingPage />);
+
+    expect(await screen.findByText(GREETING)).toBeDefined();
+    expect(screen.queryByText("Ending (testers)")).toBeNull();
   });
 });
