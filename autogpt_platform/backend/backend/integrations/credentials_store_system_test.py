@@ -5,7 +5,6 @@ its providers' platform keys as ``"{provider}-default"``. Code asking "is this
 ours?" must get the same answer for both (SECRT-3207).
 """
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from pydantic import SecretStr
@@ -18,6 +17,7 @@ from backend.integrations.credentials_store import (
     is_system_provider,
     system_providers,
 )
+from backend.util.settings import Secrets, Settings
 
 
 def _sdk_default(provider: str) -> APIKeyCredentials:
@@ -60,22 +60,23 @@ def test_providers_with_a_runnable_sdk_key_count_as_supplied():
     assert "linear" not in providers
 
 
-class _Secrets:
-    """Settings secrets with only the given keys set, or every key if ``all_set``."""
+def _secrets(all_set: bool = False, **keys: str) -> Secrets:
+    """Real ``Secrets`` with every key explicitly empty (or ``"configured"`` if
+    ``all_set``) apart from the given ones, built without reading the env."""
+    fill = "configured" if all_set else ""
+    values = {
+        name: fill
+        for name, field in Secrets.model_fields.items()
+        if field.annotation is str
+    }
+    return Secrets.model_construct(**(values | keys))
 
-    def __init__(self, all_set: bool = False, **keys: str) -> None:
-        self._all_set = all_set
-        self._keys = keys
 
-    def __getattr__(self, name: str) -> str:
-        return "configured" if self._all_set else self._keys.get(name, "")
-
-
-def _system_providers_with(secrets: _Secrets) -> set[str]:
+def _system_providers_with(secrets: Secrets) -> set[str]:
     with (
         patch(
             "backend.integrations.credentials_store.settings",
-            SimpleNamespace(secrets=secrets),
+            Settings.model_construct(secrets=secrets),
         ),
         patch(
             "backend.sdk.registry.AutoRegistry.get_all_credentials",
@@ -88,17 +89,17 @@ def _system_providers_with(secrets: _Secrets) -> set[str]:
 def test_a_built_in_provider_without_a_platform_key_is_not_supplied():
     """A keyless install supplies only the always-available Ollama credential,
     the same set ``get_all_creds`` hands out (#16772)."""
-    assert _system_providers_with(_Secrets()) == {"ollama"}
+    assert _system_providers_with(_secrets()) == {"ollama"}
 
 
 def test_a_built_in_provider_with_a_platform_key_is_supplied():
-    assert _system_providers_with(_Secrets(openai_api_key="sk-test")) == {
+    assert _system_providers_with(_secrets(openai_api_key="sk-test")) == {
         "ollama",
         "openai",
     }
 
 
 def test_every_built_in_provider_is_supplied_once_its_key_is_set():
-    assert _system_providers_with(_Secrets(all_set=True)) == {
+    assert _system_providers_with(_secrets(all_set=True)) == {
         cred.provider for cred in DEFAULT_CREDENTIALS
     }
