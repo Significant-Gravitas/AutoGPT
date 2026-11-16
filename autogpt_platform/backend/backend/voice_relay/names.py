@@ -7,16 +7,21 @@ transcript is made, a cheap model proposes replacements for misheard names,
 each one a span of the transcript and the name as the captions wrote it.
 Code then takes a replacement only when all of these hold:
 
-- the old span is in the transcript and the new one is in the captions, word
-  for word, both on the person's side and on Otto's;
-- each is a name of at most four words, the new one capitalised, and a name
-  replaces a name: no word is added or dropped around it, and they share no
-  word;
+- the old span stands as a whole word in the transcript and nowhere in the
+  captions: where the captions wrote it too, it was not misheard;
+- the new one stands as a whole word, case and all, in both the person's
+  captions and Otto's;
+- each is a capitalised name of at most four words, with no markup in it,
+  and a name replaces a name: no word is added or dropped around it, and
+  they share no word;
 - the two are close in spelling, or in sound once vowels and doubled letters
-  are set aside.
+  are set aside;
+- a call takes at most ``MAX_REPLACEMENTS``.
 
 Everything else in the transcript is left as it is: the person's words stay
-the record, and no sentence is ever added.
+the record, and no sentence is ever added. The new name is written as it
+stands, never read as a pattern, and the server's tags are taken out of the
+transcript again afterwards (``postcall``).
 """
 
 import difflib
@@ -34,6 +39,10 @@ from backend.voice_relay.config import DETAILS_MODEL
 logger = logging.getLogger(__name__)
 
 MAX_NAME_WORDS = 4
+# The most replacements one call's transcript takes.
+MAX_REPLACEMENTS = 3
+# Never part of a name: a replacement holding one is refused.
+_MARKUP = ("<", ">", "\\")
 MAX_CAPTION_CHARS = 6_000
 
 PROMPT = """\
@@ -105,11 +114,27 @@ def sounds_close(old: str, new: str) -> bool:
     return difflib.SequenceMatcher(None, _sound_key(a), _sound_key(b)).ratio() >= 0.75
 
 
+def _whole_word(span: str, flags: int = 0) -> re.Pattern[str]:
+    return re.compile(rf"(?<!\w){re.escape(span)}(?!\w)", flags)
+
+
 def accepted(old: str, new: str, *, transcript: str, user: str, otto: str) -> bool:
     """Whether code takes the replacement of *old* by *new* (module rules)."""
-    if not old or not new or old == new or old not in transcript:
+    if not old or not new or old == new:
         return False
-    if new.lower() not in user.lower() or new.lower() not in otto.lower():
+    if any(mark in old + new for mark in _MARKUP):
+        return False
+    if not old[0].isupper() or not new[0].isupper():
+        return False
+    if not _whole_word(old).search(transcript):
+        return False
+    # The new name is written, case and all, as a whole word on both sides of
+    # the call.
+    if not (_whole_word(new).search(user) and _whole_word(new).search(otto)):
+        return False
+    # The captions wrote the old span too: the record and the captions agree
+    # on it, so it was not misheard.
+    if _whole_word(old, re.IGNORECASE).search(f"{user}\n{otto}"):
         return False
     old_words, new_words = _words(old), _words(new)
     if not new_words or len(old_words) != len(new_words) or old_words & new_words:
@@ -131,14 +156,15 @@ def apply_replacements(
     if not isinstance(proposals, list):
         return out, made
     for proposal in proposals:
+        if len(made) >= MAX_REPLACEMENTS:
+            break
         if not isinstance(proposal, dict):
             continue
         old = str(proposal.get("from", "")).strip()
         new = str(proposal.get("to", "")).strip()
         if not accepted(old, new, transcript=out, user=user, otto=otto):
             continue
-        pattern = re.compile(rf"(?<!\w){re.escape(old)}(?!\w)")
-        replaced = pattern.sub(new, out)
+        replaced = _whole_word(old).sub(lambda _: new, out)
         if replaced != out:
             out = replaced
             made.append((old, new))

@@ -628,9 +628,10 @@ class PostCall:
                 reader(transcript, user_captions=user, otto_captions=otto),
                 timeout=POSTCALL_DETAILS_TIMEOUT_S,
             )
-        except Exception:
+        except Exception as error:
             logger.warning(
-                f"Voice call {record.call_id}: names not reconciled", exc_info=True
+                f"Voice call {record.call_id}: names not reconciled: "
+                f"{failure_of(error)}"
             )
             return transcript
         meter = CallMeter(
@@ -647,7 +648,8 @@ class PostCall:
                 f"Voice call {record.call_id}: {len(read.replaced)} name(s) "
                 f"put right from the captions"
             )
-        return read.transcript
+        # Whatever the pass wrote goes through the transcript's own tag strip.
+        return transcript_of_record(read.transcript.splitlines())
 
     async def _read_details(
         self, redis: AsyncRedisClient, record: CallRecord, transcript: str
@@ -668,9 +670,9 @@ class PostCall:
             read = await bounded(
                 reader(lines, live=False), timeout=POSTCALL_DETAILS_TIMEOUT_S
             )
-        except Exception:
+        except Exception as error:
             logger.warning(
-                f"Voice call {record.call_id}: details not read", exc_info=True
+                f"Voice call {record.call_id}: details not read: {failure_of(error)}"
             )
             return
         meter = CallMeter(
@@ -683,6 +685,7 @@ class PostCall:
         await meter.details_usage(tokens_in=read.tokens_in, tokens_out=read.tokens_out)
         await meter.flush()
         if read.details is not None:
+            await self._hold(redis, record.call_id)
             await locks.write_call_record(
                 redis,
                 record.call_id,
