@@ -11,11 +11,13 @@ import sys
 SHARDS = {
     "data": ["backend/data"],
     "copilot": ["backend/copilot"],
+    # In the order they ran inside "copilot": a graphiti test fails on what
+    # the sdk tests leave for the garbage collector.
     "copilot-sdk": [
-        "backend/copilot/sdk",
         "backend/copilot/billing_e2e",
-        "backend/copilot/graphiti",
         "backend/copilot/dream",
+        "backend/copilot/graphiti",
+        "backend/copilot/sdk",
     ],
     "util-executor": ["backend/util", "backend/executor"],
 }

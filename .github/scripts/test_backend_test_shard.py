@@ -85,6 +85,8 @@ class BackendShardTests(unittest.TestCase):
             shard_args("copilot-sdk"),
             ["-c", "pyproject.toml", *SHARDS["copilot-sdk"]],
         )
+        # The order the copilot shard ran them in, which a graphiti test needs.
+        self.assertEqual(SHARDS["copilot-sdk"], sorted(SHARDS["copilot-sdk"]))
 
     def test_unknown_shard_is_rejected(self):
         with self.assertRaises(ValueError):
