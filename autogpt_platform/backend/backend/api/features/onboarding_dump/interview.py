@@ -1396,9 +1396,13 @@ async def _stamp_ending(
     """Read the person's arm and stamp it onto the interview; an arm that
     cannot be stamped still decides the hand-off. A tester's pick, kept from
     the interview's start, is stamped in place of the experiment's arm, and
-    the experiment is then not read, so the pick enrols nobody."""
-    picked = await text_pick(user_id) if mode == "text" else None
-    ending = picked if picked is not None else await assigned_ending(user_id, mode)
+    the experiment is then not read, so the pick enrols nobody; a tester's
+    pick that cannot be read stamps no arm, and enrols nobody either."""
+    pick = await text_pick(user_id) if mode == "text" else None
+    if pick is not None and pick.governs:
+        ending = pick.arm
+    else:
+        ending = await assigned_ending(user_id, mode)
     if ending is None:
         return None
     try:

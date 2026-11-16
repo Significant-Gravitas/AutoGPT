@@ -18,6 +18,8 @@ import logging
 from enum import Enum
 from typing import Literal
 
+from pydantic import BaseModel, ConfigDict
+
 from backend.data import experiments
 from backend.data.experiments import Experiment
 from backend.data.redis_client import get_redis_async
@@ -170,17 +172,34 @@ async def keep_text_pick(user_id: str, pick: str | None) -> None:
         logger.warning("Ending pick not kept", exc_info=True)
 
 
-async def text_pick(user_id: str) -> str | None:
-    """The pick a tester's typed interview closes on, while the picker is
-    still on for them; None otherwise, or when it cannot be read."""
+class TextPick(BaseModel):
+    """What a tester's pick says of how their typed interview closes.
+
+    ``governs`` is True when a pick decides the arm rather than the
+    experiment: a pick kept from the start, or a tester's pick that cannot
+    be read. ``arm`` is the pick to stamp, or None to stamp none: a pick
+    that cannot be read, or one kept while the picker has since been turned
+    off. The experiment is read only when no pick governs.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    arm: str | None = None
+    governs: bool = False
+
+
+async def text_pick(user_id: str) -> TextPick:
+    """The tester's pick their typed interview closes on (:class:`TextPick`)."""
     try:
         redis = await get_redis_async()
         pick = await redis.get(_TEXT_PICK_KEY.format(user_id=user_id))
-    except Exception:
-        logger.warning("Ending pick unreadable", exc_info=True)
-        return None
+    except Exception as exc:
+        logger.warning(f"Ending pick unreadable: {type(exc).__name__}")
+        return TextPick(governs=await picker_enabled(user_id))
     if isinstance(pick, bytes):
         pick = pick.decode()
-    if not fits_mode(pick, "text"):
-        return None
-    return pick if await picker_enabled(user_id) else None
+    if pick is None:
+        return TextPick()
+    if not fits_mode(pick, "text") or not await picker_enabled(user_id):
+        return TextPick(governs=True)
+    return TextPick(arm=pick, governs=True)

@@ -14,6 +14,7 @@ from backend.api.features.onboarding_dump.interview_endings import (
     ENDING_EXPERIMENTS,
     MODE_ENDINGS,
     InterviewEnding,
+    TextPick,
     assigned_ending,
     hands_off_on_close,
 )
@@ -158,7 +159,9 @@ def pick_store(mocker: MockerFixture):
 async def test_a_testers_typed_pick_is_kept_until_the_close(picker, pick_store):
     await interview_endings.keep_text_pick("user-1", "06-coverage-ring")
 
-    assert await interview_endings.text_pick("user-1") == "06-coverage-ring"
+    assert await interview_endings.text_pick("user-1") == TextPick(
+        arm="06-coverage-ring", governs=True
+    )
 
 
 @pytest.mark.asyncio
@@ -166,7 +169,8 @@ async def test_default_in_the_picker_forgets_the_pick(picker, pick_store):
     await interview_endings.keep_text_pick("user-1", "06-coverage-ring")
     await interview_endings.keep_text_pick("user-1", None)
 
-    assert await interview_endings.text_pick("user-1") is None
+    # No pick governs: the experiment decides.
+    assert await interview_endings.text_pick("user-1") == TextPick()
 
 
 @pytest.mark.asyncio
@@ -176,7 +180,7 @@ async def test_a_pick_is_ignored_while_the_picker_is_off(picker, pick_store):
     await interview_endings.keep_text_pick("user-1", "06-coverage-ring")
 
     assert await pick_store.keys("*") == []
-    assert await interview_endings.text_pick("user-1") is None
+    assert await interview_endings.text_pick("user-1") == TextPick()
 
 
 @pytest.mark.asyncio
@@ -186,7 +190,24 @@ async def test_a_pick_kept_while_the_picker_was_on_lapses_once_it_is_off(
     await interview_endings.keep_text_pick("user-1", "03-summary-chips")
     picker.return_value = (False, True)
 
-    assert await interview_endings.text_pick("user-1") is None
+    # The kept pick still governs, so the close stamps no arm and enrols
+    # nobody.
+    assert await interview_endings.text_pick("user-1") == TextPick(governs=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("picker_on", [True, False])
+async def test_a_pick_that_cannot_be_read_governs_only_for_a_tester(
+    picker, mocker: MockerFixture, picker_on: bool
+):
+    picker.return_value = (picker_on, True)
+    mocker.patch.object(
+        interview_endings,
+        "get_redis_async",
+        new=AsyncMock(side_effect=ConnectionError("redis down")),
+    )
+
+    assert await interview_endings.text_pick("user-1") == TextPick(governs=picker_on)
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,10 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump import interview, quality, service
-from backend.api.features.onboarding_dump.interview_endings import InterviewEnding
+from backend.api.features.onboarding_dump.interview_endings import (
+    InterviewEnding,
+    TextPick,
+)
 from backend.api.features.onboarding_dump.models import (
     MAX_TYPED_CHARS,
     ExpertRecommendations,
@@ -187,7 +190,9 @@ def ending(mocker: MockerFixture) -> AsyncMock:
 def tester_pick(mocker: MockerFixture) -> AsyncMock:
     """A tester's pick of the ending kept from the start: none unless a test
     says otherwise."""
-    return mocker.patch.object(interview, "text_pick", new=AsyncMock(return_value=None))
+    return mocker.patch.object(
+        interview, "text_pick", new=AsyncMock(return_value=TextPick())
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -1315,7 +1320,9 @@ async def test_a_confirm_arm_closes_and_waits_for_the_confirm(
 async def test_a_testers_pick_is_stamped_in_place_of_the_experiments_arm(
     stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, tester_pick
 ):
-    tester_pick.return_value = InterviewEnding.FIRST_TASK.value
+    tester_pick.return_value = TextPick(
+        arm=InterviewEnding.FIRST_TASK.value, governs=True
+    )
     ending.return_value = InterviewEnding.TEAM_REVEAL.value
 
     closure = await _close(stored.session.session_id)
@@ -1326,6 +1333,22 @@ async def test_a_testers_pick_is_stamped_in_place_of_the_experiments_arm(
     ending.assert_not_awaited()
     # And it ends as its arm does: on the person's confirm.
     assert closure.hand_off is None
+
+
+@pytest.mark.asyncio
+async def test_a_testers_pick_that_cannot_be_read_stamps_no_arm_and_enrols_nobody(
+    stored: StoredInterview, dumps: DumpStore, ending: AsyncMock, tester_pick
+):
+    tester_pick.return_value = TextPick(governs=True)
+    ending.return_value = InterviewEnding.TEAM_REVEAL.value
+
+    closure = await _close(stored.session.session_id)
+
+    assert closure.ending is None
+    assert stored.endings == []
+    ending.assert_not_awaited()
+    # It closes as an unenrolled interview does: handed off now.
+    assert closure.hand_off is not None
 
 
 @pytest.mark.asyncio
