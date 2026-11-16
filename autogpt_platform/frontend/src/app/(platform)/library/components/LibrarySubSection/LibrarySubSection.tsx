@@ -67,11 +67,12 @@ export function LibrarySubSection({
               key={tab.id}
               value={tab.id}
               ref={tab.id === "favorites" ? favoritesRef : undefined}
-              className="inline-flex items-center gap-1.5"
               disabled={tab.id === "favorites" && favoritesCount === 0}
             >
-              <Icon icon={tab.icon} size={16} />
-              {getTabLabel(tab)}
+              <span className="inline-flex items-center gap-1.5">
+                <Icon icon={tab.icon} size={16} />
+                {getTabLabel(tab)}
+              </span>
             </TabsLineTrigger>
           ))}
         </TabsLineList>

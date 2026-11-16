@@ -22,9 +22,10 @@ limits.  Requires bubblewrap to be installed (Linux only).
 """
 
 import asyncio
+import contextlib
 import logging
 import shlex
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from e2b import AsyncSandbox, CommandExitException
 from e2b.exceptions import NotFoundException, TimeoutException
@@ -33,7 +34,11 @@ from pydantic import BaseModel
 from backend.copilot.constants import HUNG_TOOL_CAP_SECONDS
 from backend.copilot.context import (
     E2B_WORKDIR,
+    get_bash_command_as_written,
+    get_current_permissions,
     get_current_sandbox,
+    get_workdir,
+    is_local_pc_executor,
     looks_like_sdk_tool_result_path,
     sdk_tool_result_redirect_hint,
 )
@@ -43,6 +48,7 @@ from backend.copilot.gate.policy import Effect
 from backend.copilot.gate.shell_write import workspace_write_target
 from backend.copilot.gate.subject import Subject
 from backend.copilot.integration_creds import (
+    expert_allowed_ids,
     get_github_user_git_identity,
     get_integration_env_vars,
     grant_to_box,
@@ -50,6 +56,7 @@ from backend.copilot.integration_creds import (
     placeholder_grants,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import allowed_providers
 from backend.copilot.sdk.env import config as chat_config
 from backend.util.e2b_network import proxy_address, reattach_command
 from backend.util.sandbox_login import (
@@ -62,8 +69,12 @@ from backend.util.sandbox_login import (
 from .base import BaseTool
 from .connect_integration import requested_scopes
 from .e2b_sandbox import SandboxOwner, keep_sandbox_running
+from .local_pc_shim import COMMAND_TIMEOUT_SECONDS
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
-from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
+from .sandbox import MAX_OUTPUT_SIZE, get_workspace_dir, has_full_sandbox, run_sandboxed
+
+if TYPE_CHECKING:
+    from .local_pc_shim import LocalPCShim
 
 logger = logging.getLogger(__name__)
 
@@ -82,98 +93,12 @@ _KILL_TIMEOUT_SECONDS = 10
 # stream setup. Capping this far below it lets the tool's own timeout land first.
 _HUNG_CAP_MARGIN_SECONDS = 120
 
-# envd's kill reaches only the shell it started, so the children of a compound
-# command (`npm install && npm run build`) would keep running. This stops the
-# shell first, so it cannot start the next step once a child dies, then stops
-# and kills every process under it. The shell itself is left for envd's kill.
-# Exits non-zero if any of them is still alive afterwards (e.g. one run as root).
-# /proc is read through cat because awk aborts on an input file that vanished
-# after the glob expanded, which any process exiting meanwhile causes, and the
-# listing would then come back empty. A child can fork between a listing and
-# its STOP, so the stopping repeats until the listing holds still; if it never
-# does, whatever forked after the last listing may survive, so that exits 1 too.
-_KILL_TREE_SCRIPT = r"""
-p=__PID__
-kill -STOP "$p" 2>/dev/null || exit 0
-under() {
-  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
-    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
-      parent[pid] = f[2]; state[pid] = f[1] }
-    END { q[1] = root; n = 1
-          while (n) { r = q[n--]
-                      for (k in parent) if (parent[k] == r) {
-                        q[++n] = k; if (state[k] != "Z") print k } } }
-  ' | sort -n
-}
-kids= settled=
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
-  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
-done
-[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
-[ -n "$settled" ] || exit 1
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  [ -z "$(under)" ] && exit 0
-  sleep 0.1
-done
-exit 1
-"""
-
-
-class _E2BRun(BaseModel):
-    """How a command on the box ended, with all the output we received."""
-
-    stdout: str
-    stderr: str
-    elapsed: float
-    exit_code: int | None = None
-    timed_out: bool = False
-    # Kill sent after a timeout: True done, False not found, None unknown.
-    killed: bool | None = None
-    # The processes the command started were killed along with it.
-    children_killed: bool = False
-    # Why we stopped following a command that had not ended: the stream
-    # error's type name.
-    lost: str | None = None
-    # The command ended while we were not attached: no exit code.
-    ended_unseen: bool = False
-    reconnects: int = 0
-
-
-def _build_completion_response(
-    stdout: str | None,
-    stderr: str | None,
-    exit_code: int,
-    secret_values: list[str],
-    session_id: str | None,
-) -> BashExecResponse:
-    """The command's result, with any injected token replaced by [REDACTED].
-
-    Not a security control: a literal match on one command's output, beaten by
-    base64, ``rev`` or a newline, blind to files read back and to anything sent
-    over the network.  It only keeps an accidental ``env`` from printing a
-    token into the chat.  Behind the swap proxy there is no token in the box
-    and nothing to redact.
-    """
-    out = stdout or ""
-    err = stderr or ""
-    for secret in secret_values:
-        out = out.replace(secret, "[REDACTED]")
-        err = err.replace(secret, "[REDACTED]")
-    return BashExecResponse(
-        message=f"Command executed with status code {exit_code}",
-        stdout=out,
-        stderr=err,
-        exit_code=exit_code,
-        timed_out=False,
-        session_id=session_id,
-    ).from_outside(out, err)
-
 
 class BashExecTool(BaseTool):
     """Execute Bash commands on E2B or in a bubblewrap sandbox."""
 
     has_gate_subject = True
+    writes_files = True
 
     @property
     def name(self) -> str:
@@ -181,28 +106,55 @@ class BashExecTool(BaseTool):
 
     @property
     def description(self) -> str:
+        sandbox = get_current_sandbox()
+        if is_local_pc_executor(sandbox):
+            shell = (
+                "the Windows command shell"
+                if sandbox.platform.lower() == "windows"
+                else "the machine's POSIX shell"
+            )
+            return (
+                f"Execute a command with {shell} on the user's Local PC. "
+                "This is explicitly enabled, full user-level command execution; "
+                "the file API workspace jail does not confine shell commands. "
+                f"Killed after `timeout` seconds, at most {COMMAND_TIMEOUT_SECONDS}."
+            )
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
             "Killed after `timeout` seconds. Anything that should persist belongs "
-            "in ~/workspace (a durable volume); other paths are scratch. The "
+            "in ~/workspace (a durable folder; the user's uploads are not in it, "
+            "see list_workspace_files); other paths are scratch. The "
             "desktop (start_desktop) is this same machine, all paths included. "
             "Expert sessions: ~/workspace is the expert's own machine, ~/shared "
-            "is the user's workspace."
+            "is the user's folder."
         )
 
     @property
     def parameters(self) -> dict[str, Any]:
+        sandbox = get_current_sandbox()
+        command_description = "Bash command or script."
+        timeout_description = "Timeout in seconds; raise for long-running commands."
+        if is_local_pc_executor(sandbox):
+            command_description = (
+                "Windows command-shell input."
+                if sandbox.platform.lower() == "windows"
+                else "POSIX-shell command or script."
+            )
+            # The companion stops every command at its own cap.
+            timeout_description = (
+                f"Timeout in seconds, at most {COMMAND_TIMEOUT_SECONDS}."
+            )
         return {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Bash command or script.",
+                    "description": command_description,
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds; raise for long-running commands.",
+                    "description": timeout_description,
                     "default": 120,
                     "title": "Time limit",
                     "format": "seconds",
@@ -235,7 +187,13 @@ class BashExecTool(BaseTool):
         since the sandbox was made; None where one could not be read or told."""
         command = args.get("command")
         sandbox = get_current_sandbox()
-        if not isinstance(command, str) or sandbox is None:
+        # The probes below run commands on the box; on a Local PC that box is
+        # the user's own machine, so they are not run there.
+        if (
+            not isinstance(command, str)
+            or sandbox is None
+            or is_local_pc_executor(sandbox)
+        ):
             return None
         targets = run_targets(command)
         reads = await asyncio.gather(
@@ -250,6 +208,17 @@ class BashExecTool(BaseTool):
                 scripts[path] = judged_text(raw)
         # `bash -l` runs these before the command itself.
         return {**await changed_login_files(sandbox), **scripts}
+
+    @property
+    def is_available(self) -> bool:
+        # A Local PC chat runs commands on the user's computer, which needs
+        # neither E2B nor this server's sandbox; it hides bash itself when the
+        # companion offers no shell.
+        return (
+            bool(chat_config.active_e2b_api_key)
+            or has_full_sandbox()
+            or is_local_pc_executor(get_current_sandbox())
+        )
 
     async def _execute(
         self,
@@ -282,14 +251,25 @@ class BashExecTool(BaseTool):
         # Pre-flight redirect: bash sandbox can't reach host-side SDK
         # tool-result paths. Without this the model burns turns retrying
         # `cat /root/.claude/projects/...` after `Permission denied`.
-        if looks_like_sdk_tool_result_path(command):
+        # Checks the command as written, minus its ``@@agptfile:`` refs, so
+        # neither a ref nor the file content it expands to trips the check.
+        # A command that is only refs is unset, and its expanded script is
+        # checked instead.
+        as_written = get_bash_command_as_written()
+        if as_written is None:
+            as_written = command
+        if looks_like_sdk_tool_result_path(as_written):
             return ErrorResponse(
-                message=sdk_tool_result_redirect_hint(command),
+                message=sdk_tool_result_redirect_hint(as_written),
                 error="sdk_tool_result_path_in_bash_command",
                 session_id=session_id,
             ).from_outside()
 
         sandbox = get_current_sandbox()
+        if is_local_pc_executor(sandbox):
+            return await self._execute_on_local_pc(
+                sandbox, command, timeout, session_id
+            )
         if sandbox is not None:
             return await self._execute_on_e2b(
                 sandbox,
@@ -334,6 +314,55 @@ class BashExecTool(BaseTool):
             session_id=session_id,
         ).from_outside(stdout, stderr)
 
+    async def _execute_on_local_pc(
+        self,
+        sandbox: "LocalPCShim",
+        command: str,
+        timeout: int,
+        session_id: str | None,
+    ) -> ToolResponseBase:
+        """Run *command* on the user's Local PC through its companion.
+
+        No connected-account tokens or git identity are handed to the user's
+        machine, and no shell is assumed: ``shell="auto"`` picks the POSIX
+        shell or cmd.exe, and the companion answers SHELL_NOT_AVAILABLE when
+        neither exists.
+
+        Each stream keeps at most ``MAX_OUTPUT_SIZE``, as on E2B. The command
+        answers once, after it ends, so it cannot be stopped at that limit;
+        the companion sends at most a bounded prefix of its output.
+        """
+        try:
+            result = await sandbox.commands.run(
+                command,
+                shell="auto",
+                cwd=get_workdir(sandbox),
+                timeout=timeout,
+                envs={},
+            )
+        except Exception as exc:
+            logger.error("[LocalPC] bash_exec failed: %s", exc, exc_info=True)
+            return ErrorResponse(
+                message=f"Local PC execution failed: {exc}",
+                error="local_pc_execution_error",
+                session_id=session_id,
+            ).from_outside(str(exc))
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        return _build_completion_response(
+            stdout[:MAX_OUTPUT_SIZE],
+            stderr[:MAX_OUTPUT_SIZE],
+            result.exit_code,
+            [],
+            session_id,
+            timed_out=result.timed_out,
+            output_truncated=(
+                result.output_truncated
+                or len(stdout) > MAX_OUTPUT_SIZE
+                or len(stderr) > MAX_OUTPUT_SIZE
+            ),
+        )
+
     async def _execute_on_e2b(
         self,
         sandbox: AsyncSandbox,
@@ -362,8 +391,24 @@ class BashExecTool(BaseTool):
         secret_values: list[str] = []
         if user_id is not None:
             selected = await selected_credentials(session_id)
+            # An expert's box gets only what the expert was granted.
+            allowed_ids = await expert_allowed_ids(
+                user_id, owner.id if owner is not None and owner.is_expert else None
+            )
+            # The run's ceiling on connected accounts.  Without the proxy,
+            # leaving a provider's token out is what keeps it from the box.
+            # Behind it, a provider outside the ceiling gets no grant (and so
+            # empty variables); the ceiling recorded when the box's egress was
+            # pinned, enforced by the swap service, is what holds.
+            providers = allowed_providers(get_current_permissions())
             if proxy_address() is not None:
-                grants = await placeholder_grants(user_id, required_scopes, selected)
+                grants = await placeholder_grants(
+                    user_id,
+                    required_scopes,
+                    selected,
+                    providers,
+                    allowed_ids=allowed_ids,
+                )
                 try:
                     # Before the command runs: its placeholders resolve only
                     # for credentials granted to this box.
@@ -379,18 +424,24 @@ class BashExecTool(BaseTool):
                 envs.update(placeholder_env(grants))
             else:
                 integration_env = await get_integration_env_vars(
-                    user_id, required_scopes, selected
+                    user_id,
+                    required_scopes,
+                    selected,
+                    providers,
+                    allowed_ids=allowed_ids,
                 )
                 secret_values = [v for v in integration_env.values() if v]
                 envs.update(integration_env)
 
             # Set git author/committer identity from the user's GitHub profile
-            # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(
-                user_id, selected.get("github")
-            )
-            if git_identity:
-                envs.update(git_identity)
+            # so commits made in the sandbox are attributed correctly; not for
+            # a run whose ceiling leaves GitHub out, which may not use it.
+            if providers is None or "github" in providers:
+                git_identity = await get_github_user_git_identity(
+                    user_id, selected.get("github"), allowed_ids=allowed_ids
+                )
+                if git_identity:
+                    envs.update(git_identity)
 
         # The box's running-time limit was armed when this turn connected;
         # E2B pauses the box at it, breaking the command's stream mid-run.
@@ -424,6 +475,29 @@ class BashExecTool(BaseTool):
         return _run_response(run, timeout, secret_values, session_id)
 
 
+class _E2BRun(BaseModel):
+    """How a command on the box ended, with all the output we received."""
+
+    stdout: str
+    stderr: str
+    elapsed: float
+    exit_code: int | None = None
+    timed_out: bool = False
+    # It printed more than MAX_OUTPUT_SIZE on one stream; the rest is not kept.
+    output_exceeded: bool = False
+    # Kill sent after either: True done, False not found, None unknown.
+    killed: bool | None = None
+    # Nothing the command started is left: every process in its session or
+    # under its shell was killed, or had ended.
+    children_killed: bool = False
+    # Why we stopped following a command that had not ended: the stream
+    # error's type name.
+    lost: str | None = None
+    # The command ended while we were not attached: no exit code.
+    ended_unseen: bool = False
+    reconnects: int = 0
+
+
 async def _follow_command(
     sandbox: AsyncSandbox, command: str, timeout: int, envs: dict[str, str]
 ) -> _E2BRun:
@@ -438,12 +512,14 @@ async def _follow_command(
     replayed by E2B.  Raises only when the command could not be started.
     """
     loop = asyncio.get_running_loop()
-    stdout: list[str] = []
-    stderr: list[str] = []
+    stdout = _CappedOutput()
+    stderr = _CappedOutput()
     started = loop.time()
     deadline = started + timeout
     handle = await sandbox.commands.run(
-        f"bash -c {shlex.quote(command)}",
+        # A session of its own, by which _KILL_TREE_SCRIPT finds what the command
+        # started once its shell is gone; -w keeps the exit code if setsid forks.
+        f"exec setsid -w bash -c {shlex.quote(command)}",
         background=True,
         cwd=E2B_WORKDIR,
         timeout=timeout,
@@ -456,8 +532,8 @@ async def _follow_command(
 
     def outcome(**kwargs: Any) -> _E2BRun:
         return _E2BRun(
-            stdout="".join(stdout),
-            stderr="".join(stderr),
+            stdout="".join(stdout.chunks),
+            stderr="".join(stderr.chunks),
             elapsed=loop.time() - started,
             reconnects=reconnects,
             **kwargs,
@@ -470,6 +546,12 @@ async def _follow_command(
         except CommandExitException as exc:
             return outcome(exit_code=exc.exit_code)
         except Exception as exc:
+            if stdout.exceeded or stderr.exceeded:
+                # The handle keeps its own copy of every chunk while followed;
+                # the kill still runs if detaching fails.
+                with contextlib.suppress(Exception):
+                    await handle.disconnect()
+                return outcome(output_exceeded=True, **await _kill(sandbox, pid))
             remaining = deadline - loop.time()
             if remaining <= _DEADLINE_SLACK_SECONDS:
                 return outcome(timed_out=True, **await _kill(sandbox, pid))
@@ -506,6 +588,28 @@ async def _follow_command(
                 return outcome(lost=type(exc).__name__)
 
 
+class _CappedOutput:
+    """One output stream of a command, kept up to ``MAX_OUTPUT_SIZE``."""
+
+    def __init__(self) -> None:
+        self.chunks: list[str] = []
+        self.exceeded = False
+        self._room = MAX_OUTPUT_SIZE
+
+    def append(self, chunk: str) -> None:
+        # Raising stops the SDK reading the stream, and handle.wait() re-raises it.
+        kept = chunk[: self._room]
+        self.chunks.append(kept)
+        self._room -= len(kept)
+        if len(kept) < len(chunk):
+            self.exceeded = True
+            raise _OutputExceeded
+
+
+class _OutputExceeded(Exception):
+    """A command printed more than ``MAX_OUTPUT_SIZE`` on one stream."""
+
+
 async def _kill(sandbox: AsyncSandbox, pid: int) -> dict[str, Any]:
     children_killed = await _kill_children(sandbox, pid)
     try:
@@ -513,7 +617,7 @@ async def _kill(sandbox: AsyncSandbox, pid: int) -> dict[str, Any]:
             sandbox.commands.kill(pid), timeout=_KILL_TIMEOUT_SECONDS
         )
     except Exception as exc:
-        logger.warning("[E2B] Could not kill timed-out pid %s: %s", pid, exc)
+        logger.warning(f"[E2B] Could not kill pid {pid}: {exc}")
         killed = None
     return {"killed": killed, "children_killed": children_killed}
 
@@ -531,6 +635,49 @@ async def _kill_children(sandbox: AsyncSandbox, pid: int) -> bool:
     return result.exit_code == 0
 
 
+# envd's kill reaches only the shell it started, and at a timeout envd has
+# already killed and reaped that shell itself, leaving what it started (`npm
+# install && npm run build`) running under new parents. Those are found by the
+# session the command runs in (`_follow_command`) as well as under the shell.
+# This stops the shell if it is still there, so it cannot start the next step
+# once a child dies, then stops and kills the rest. The shell itself is left for
+# envd's kill. Exits non-zero if any of them is still alive afterwards (e.g. one
+# run as root).
+# /proc is read through cat because awk aborts on an input file that vanished
+# after the glob expanded, which any process exiting meanwhile causes, and the
+# listing would then come back empty. A child can fork between a listing and
+# its STOP, so the stopping repeats until the listing holds still; if it never
+# does, whatever forked after the last listing may survive, so that exits 1 too.
+_KILL_TREE_SCRIPT = r"""
+p=__PID__
+kill -STOP "$p" 2>/dev/null
+under() {
+  cat /proc/[0-9]*/stat 2>/dev/null | awk -v root="$p" '
+    { pid = $1; s = $0; sub(/.*\) /, "", s); split(s, f, " ")
+      parent[pid] = f[2]; state[pid] = f[1]
+      if (f[4] == root && pid != root) { mine[pid] = 1; q[++n] = pid } }
+    END { q[++n] = root
+          while (n) { r = q[n--]
+                      for (k in parent) if (parent[k] == r && !(k in mine)) {
+                        mine[k] = 1; q[++n] = k } }
+          for (k in mine) if (state[k] != "Z") print k }
+  ' | sort -n
+}
+kids= settled=
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  now=$(under); [ "$now" = "$kids" ] && settled=1 && break
+  kids=$now; [ -n "$kids" ] && kill -STOP $kids 2>/dev/null
+done
+[ -n "$kids" ] && kill -KILL $kids 2>/dev/null
+[ -n "$settled" ] || exit 1
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [ -z "$(under)" ] && exit 0
+  sleep 0.1
+done
+exit 1
+"""
+
+
 def _run_response(
     run: _E2BRun, timeout: int, secret_values: list[str], session_id: str | None
 ) -> BashExecResponse:
@@ -538,6 +685,9 @@ def _run_response(
         response = _build_completion_response(
             run.stdout, run.stderr, run.exit_code, secret_values, session_id
         )
+        # envd reports Go's ExitCode(), which is -1 for a process a signal ended.
+        if run.exit_code == -1:
+            response.message = _SHELL_KILLED_MESSAGE
         if run.reconnects:
             response.message += (
                 f" (the connection to the sandbox dropped {run.reconnects} "
@@ -547,19 +697,25 @@ def _run_response(
         return response
 
     elapsed = f"{run.elapsed:.1f}s"
-    if run.timed_out:
-        if run.killed is True and run.children_killed:
+    if run.timed_out or run.output_exceeded:
+        # killed is False at a timeout: envd kills and reaps the shell at its
+        # own deadline, before ours lands.
+        if run.killed is None:
+            fate = "it could not be killed and may still be running."
+        elif run.children_killed:
             fate = "it was killed, with every process it started."
-        elif run.killed is True:
+        else:
             fate = (
                 "the shell was killed, but processes it started may still be "
                 "running."
             )
-        elif run.killed is False:
-            fate = "it had already ended."
+        if run.timed_out:
+            note = f"Timed out after {timeout}s"
         else:
-            fate = "it could not be killed and may still be running."
-        note = f"Timed out after {timeout}s"
+            note = (
+                f"Printed more than {MAX_OUTPUT_SIZE:,} characters; redirect "
+                "output to a file and read parts of it"
+            )
         message = f"{note}; {fate}"
     elif run.ended_unseen:
         note = (
@@ -591,12 +747,71 @@ def _run_response(
     return response
 
 
+def _build_completion_response(
+    stdout: str | None,
+    stderr: str | None,
+    exit_code: int,
+    secret_values: list[str],
+    session_id: str | None,
+    *,
+    timed_out: bool = False,
+    output_truncated: bool = False,
+) -> BashExecResponse:
+    """The command's result, with any injected token replaced by [REDACTED].
+
+    Not a security control: a literal match on one command's output, beaten by
+    base64, ``rev`` or a newline, blind to files read back and to anything sent
+    over the network.  It only keeps an accidental ``env`` from printing a
+    token into the chat.  Behind the swap proxy there is no token in the box
+    and nothing to redact.
+    """
+    out = stdout or ""
+    err = stderr or ""
+    for secret in secret_values:
+        out = out.replace(secret, "[REDACTED]")
+        err = err.replace(secret, "[REDACTED]")
+    return BashExecResponse(
+        message=(
+            "Execution timed out and output was truncated by the Local PC executor limit."
+            if timed_out and output_truncated
+            else (
+                "Execution timed out"
+                if timed_out
+                else (
+                    f"Command executed with status code {exit_code}. Output was truncated "
+                    "by the Local PC executor limit."
+                    if output_truncated
+                    else f"Command executed with status code {exit_code}"
+                )
+            )
+        ),
+        stdout=out,
+        stderr=err,
+        exit_code=exit_code,
+        timed_out=timed_out,
+        output_truncated=output_truncated,
+        session_id=session_id,
+    ).from_outside(out, err)
+
+
+# `bash -c '<command>'` carries the whole command in its own argv, which is
+# what a `pkill -f` pattern taken from that command then matches.
+_SHELL_KILLED_MESSAGE = (
+    "The command's shell was killed by a signal before it finished, so later "
+    "steps in the command did not run. The signal can come from a `pkill -f` "
+    "whose pattern matches this command's own text, from running out of "
+    "memory, or from another process. If the command runs `pkill -f`, use "
+    "`pkill -x <name>` instead, or `pkill -f '[p]attern'` if the command does "
+    "not also contain `pattern`."
+)
+
+
 async def _lands_on(path: str) -> bool:
     """A shell write to ``path`` lands there: no symlink on it, and no changed login
     file, which runs first and can redirect it (``CDPATH``, an exported ``cat``).
     Same accepted race as ``_check_sandbox_symlink_escape``."""
     sandbox = get_current_sandbox()
-    if sandbox is None:
+    if sandbox is None or is_local_pc_executor(sandbox):
         return False
     try:
         if await changed_login_files(sandbox):

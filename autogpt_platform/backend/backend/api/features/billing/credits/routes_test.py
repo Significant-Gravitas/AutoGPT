@@ -2,12 +2,13 @@
 
 import json
 from datetime import datetime, timezone
-from unittest.mock import ANY, AsyncMock, Mock
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock
 
 import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+import stripe
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi.routing import APIRoute
@@ -15,8 +16,13 @@ from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.billing.credits.routes import get_credit_history, router
 from backend.api.rest_api import app as real_app
-from backend.api.rest_api import handle_internal_http_error
-from backend.data.credit import AutoTopUpConfig, UserCreditBase
+from backend.api.utils.exceptions import add_exception_handlers
+from backend.data.credit import (
+    MAX_TOP_UP_AMOUNT,
+    AutoTopUpConfig,
+    UserCredit,
+    UserCreditBase,
+)
 from backend.data.model import TransactionHistory
 
 app = fastapi.FastAPI()
@@ -57,6 +63,15 @@ def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
     """Keep analytics off the network and let tests assert the event."""
     return mocker.patch(
         "backend.api.features.billing.credits.routes.track_checkout_started",
+        new_callable=AsyncMock,
+    )
+
+
+@pytest.fixture(autouse=True)
+def account_open(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The auto top-up route asks the database whether the account is closed."""
+    return mocker.patch(
+        "backend.api.features.billing.credits.routes.refuse_closed_account",
         new_callable=AsyncMock,
     )
 
@@ -327,6 +342,55 @@ def test_configure_auto_top_up(
     assert response.json() == "Auto top-up settings updated"
 
 
+def test_a_closed_account_cannot_set_auto_top_up(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """Closing switched it off; for a few seconds after the close another
+    worker's cache can still let an old token through."""
+    account_open.side_effect = fastapi.HTTPException(
+        status_code=401, detail="This account is closed."
+    )
+    saved = mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 401
+    model.top_up_credits.assert_not_called()
+    saved.assert_not_called()
+
+
+def test_auto_top_up_set_as_the_account_closed_is_switched_off(
+    mocker: pytest_mock.MockFixture, account_open: AsyncMock
+) -> None:
+    """The account closed while the request ran: closing's sweep may have
+    switched auto top-up off already, so the write is undone here."""
+    account_open.side_effect = [
+        None,
+        fastapi.HTTPException(status_code=401, detail="This account is closed."),
+    ]
+    saved = mocker.patch("backend.api.features.billing.credits.routes.set_auto_top_up")
+    model = mocker.AsyncMock()
+    model.get_credits.return_value = 5000
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 401
+    assert saved.await_args_list[-1].args[1] == AutoTopUpConfig(threshold=0, amount=0)
+
+
 def test_configure_auto_top_up_refuses_when_model_has_no_payment_path(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -384,6 +448,61 @@ def test_configure_auto_top_up_validation_errors(
     # Test amount = 0 (should be allowed)
     response = client.post("/credits/auto-top-up", json={"threshold": 100, "amount": 0})
     assert response.status_code == 200  # Should succeed
+
+
+def test_configure_auto_top_up_at_stripes_ceiling_is_saved(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    credit_model.get_credits.return_value = 0
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post(
+        "/credits/auto-top-up",
+        json={"threshold": MAX_TOP_UP_AMOUNT, "amount": MAX_TOP_UP_AMOUNT},
+    )
+
+    assert response.status_code == 200
+    assert credit_model.top_up_credits.await_args.args[1] == MAX_TOP_UP_AMOUNT
+    set_auto_top_up.assert_called_once_with(
+        test_user_id,
+        AutoTopUpConfig(threshold=MAX_TOP_UP_AMOUNT, amount=MAX_TOP_UP_AMOUNT),
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"threshold": 1000, "amount": MAX_TOP_UP_AMOUNT + 100},
+        {"threshold": 2_147_483_700, "amount": 0},
+        {"threshold": MAX_TOP_UP_AMOUNT + 1, "amount": 0},
+    ],
+)
+def test_configure_auto_top_up_beyond_stripes_ceiling_is_refused(
+    mocker: pytest_mock.MockFixture, config: dict[str, int]
+) -> None:
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = mocker.AsyncMock()
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=credit_model,
+    )
+
+    response = client.post("/credits/auto-top-up", json=config)
+
+    assert response.status_code == 422
+    assert "at most $999,999" in response.json()["detail"]
+    credit_model.top_up_credits.assert_not_called()
+    set_auto_top_up.assert_not_called()
 
 
 def test_list_invoices_returns_mapped_payload(
@@ -534,6 +653,170 @@ def test_configure_auto_top_up_maps_an_unavailable_backend_to_501(
     assert response.status_code == 501
 
 
+@pytest.mark.parametrize("balance,threshold", [(0, 1000), (5000, 1000)])
+def test_configure_auto_top_up_with_a_declined_card_says_why(
+    mocker: pytest_mock.MockFixture, balance: int, threshold: int
+) -> None:
+    """A decline is the card's answer, not a server fault: 402 with Stripe's
+    reason, nothing saved, whether it was a charge or the card check."""
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = UserCredit()
+    mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=balance))
+    mocker.patch.object(
+        credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
+    )
+    enable = mocker.patch.object(credit_model, "_enable_transaction", AsyncMock())
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    card = Mock()
+    card.id = "pm_1"
+    mocker.patch(
+        "backend.data.credit.stripe.PaymentMethod.list_async",
+        AsyncMock(return_value=[card]),
+    )
+    declined = stripe.CardError(
+        "Your card has insufficient funds.",
+        None,
+        "card_declined",
+        http_status=402,
+        headers={"request-id": "req_secret123"},
+    )
+    mocker.patch(
+        "backend.data.credit.stripe.PaymentIntent.create_async",
+        AsyncMock(side_effect=declined),
+    )
+    mocker.patch(
+        "backend.data.credit.stripe.SetupIntent.create_async",
+        AsyncMock(side_effect=declined),
+    )
+    lenient_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+    response = lenient_client.post(
+        "/credits/auto-top-up", json={"threshold": threshold, "amount": 1000}
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"]
+    assert detail.startswith("Your card has insufficient funds.")
+    assert "update your payment method" in detail
+    assert "req_" not in detail
+    set_auto_top_up.assert_not_called()
+    enable.assert_not_called()
+
+
+def test_configure_auto_top_up_with_a_card_wanting_bank_approval_says_why(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A card check on a 3D Secure card comes back as requires_action instead of
+    raising. That is still the card's answer: 402, nothing saved."""
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = UserCredit()
+    mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=5000))
+    mocker.patch.object(
+        credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
+    )
+    enable = mocker.patch.object(credit_model, "_enable_transaction", AsyncMock())
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    card = Mock()
+    card.id = "pm_1"
+    mocker.patch(
+        "backend.data.credit.stripe.PaymentMethod.list_async",
+        AsyncMock(return_value=[card]),
+    )
+    setup_intent = Mock()
+    setup_intent.status = "requires_action"
+    mocker.patch(
+        "backend.data.credit.stripe.SetupIntent.create_async",
+        AsyncMock(return_value=setup_intent),
+    )
+    lenient_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+    response = lenient_client.post(
+        "/credits/auto-top-up", json={"threshold": 1000, "amount": 1000}
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"]
+    assert detail.startswith("Your card was declined.")
+    assert "Your bank wants to approve each charge" in detail
+    set_auto_top_up.assert_not_called()
+    enable.assert_not_called()
+
+
+@pytest.mark.parametrize("balance", [5000, -100])
+def test_turning_auto_top_up_off_checks_no_card(
+    mocker: pytest_mock.MockFixture, test_user_id: str, balance: int
+) -> None:
+    """The billing page turns auto top-up off with {amount: 0, threshold: 0}.
+    There is nothing to charge, so no card is checked, and a card that would
+    decline cannot keep auto top-up on."""
+    set_auto_top_up = mocker.patch(
+        "backend.api.features.billing.credits.routes.set_auto_top_up"
+    )
+    credit_model = UserCredit()
+    mocker.patch.object(credit_model, "get_credits", AsyncMock(return_value=balance))
+    add_transaction = mocker.patch.object(
+        credit_model, "_add_transaction", AsyncMock(return_value=(0, "tx_pending"))
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    card = Mock()
+    card.id = "pm_1"
+    list_cards = mocker.patch(
+        "backend.data.credit.stripe.PaymentMethod.list_async",
+        AsyncMock(return_value=[card]),
+    )
+    declined = stripe.CardError(
+        "Your card has expired.", None, "expired_card", http_status=402
+    )
+    charge = mocker.patch(
+        "backend.data.credit.stripe.PaymentIntent.create_async",
+        AsyncMock(side_effect=declined),
+    )
+    card_check = mocker.patch(
+        "backend.data.credit.stripe.SetupIntent.create_async",
+        AsyncMock(side_effect=declined),
+    )
+    lenient_client = fastapi.testclient.TestClient(app, raise_server_exceptions=False)
+
+    response = lenient_client.post(
+        "/credits/auto-top-up", json={"threshold": 0, "amount": 0}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == "Auto top-up settings updated"
+    set_auto_top_up.assert_awaited_once_with(
+        test_user_id, AutoTopUpConfig(threshold=0, amount=0)
+    )
+    add_transaction.assert_not_called()
+    list_cards.assert_not_called()
+    charge.assert_not_called()
+    card_check.assert_not_called()
+
+
 def test_request_top_up_rejects_a_missing_amount() -> None:
     """Moved with its route from v1_test's invalid-request section."""
     response = client.post("/credits", json={})
@@ -541,9 +824,8 @@ def test_request_top_up_rejects_a_missing_amount() -> None:
     assert response.status_code == 422
 
 
-# The credit-history route is exercised against its own app: it needs the
-# ValueError -> 400 handler the real app installs, which the module-level
-# client above does not carry.
+# Routes that answer through the ValueError -> 400 handler the real app installs
+# run against their own app; the module-level client above does not carry it.
 HISTORY_CONTEXT = RequestContext(
     user_id="user",
     org_id="org",
@@ -558,10 +840,10 @@ HISTORY_CONTEXT = RequestContext(
 
 
 @pytest.fixture
-def history_client():
+def handled_client():
     history_app = fastapi.FastAPI()
     history_app.include_router(router)
-    history_app.add_exception_handler(ValueError, handle_internal_http_error(400))
+    add_exception_handlers(history_app)
     history_app.dependency_overrides[requires_user] = lambda: None
     history_app.dependency_overrides[get_user_id] = lambda: "user"
     history_app.dependency_overrides[get_request_context] = lambda: HISTORY_CONTEXT
@@ -569,8 +851,8 @@ def history_client():
 
 
 @pytest.mark.parametrize("limit", [0, -1, 1001])
-def test_invalid_history_limit_returns_400(history_client, limit):
-    response = history_client.get(
+def test_invalid_history_limit_returns_400(handled_client, limit):
+    response = handled_client.get(
         "/credits/transactions", params={"transaction_count_limit": limit}
     )
     assert response.status_code == 400
@@ -578,7 +860,7 @@ def test_invalid_history_limit_returns_400(history_client, limit):
     assert response.json()["message"] == "Failed to process GET /credits/transactions"
 
 
-def test_invalid_cursor_returns_400(history_client, monkeypatch):
+def test_invalid_cursor_returns_400(handled_client, monkeypatch):
     model = AsyncMock(spec=UserCreditBase)
     model.get_transaction_history.side_effect = ValueError(
         "Invalid credit history cursor"
@@ -587,10 +869,107 @@ def test_invalid_cursor_returns_400(history_client, monkeypatch):
         "backend.api.features.billing.credits.routes.get_credit_model",
         AsyncMock(return_value=model),
     )
-    response = history_client.get("/credits/transactions", params={"cursor": "invalid"})
+    response = handled_client.get("/credits/transactions", params={"cursor": "invalid"})
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid credit history cursor"
     assert response.json()["message"] == "Failed to process GET /credits/transactions"
+
+
+def test_top_up_at_stripes_ceiling_reaches_stripe(handled_client, mocker):
+    stripe_create, _ = _real_top_up_path(mocker)
+
+    response = handled_client.post(
+        "/credits", json={"credit_amount": MAX_TOP_UP_AMOUNT}
+    )
+
+    assert response.status_code == 200
+    line_item = stripe_create.call_args.kwargs["line_items"][0]
+    assert line_item["price_data"]["unit_amount"] == MAX_TOP_UP_AMOUNT
+
+
+def test_a_closed_account_gets_no_top_up_checkout(handled_client, mocker):
+    """Asked of the database first: for a few seconds after the close,
+    another worker's cache can still let an old token through."""
+    stripe_create, add_transaction = _real_top_up_path(mocker)
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=True),
+    )
+
+    response = handled_client.post("/credits", json={"credit_amount": 500})
+
+    assert (response.status_code, response.json()) == (
+        401,
+        {"detail": "This account is closed."},
+    )
+    stripe_create.assert_not_called()
+    add_transaction.assert_not_called()
+
+
+def test_a_top_up_checkout_made_as_the_account_closed_is_expired(
+    handled_client, mocker
+):
+    """The account closed while Stripe made the Checkout: closing's sweep may
+    have run already, so the Checkout is expired here and never recorded."""
+    _, add_transaction = _real_top_up_path(mocker)
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(side_effect=[False, True]),
+    )
+    expire = mocker.patch(
+        "backend.data.subscription_checkout.stripe.checkout.Session.expire_async",
+        AsyncMock(),
+    )
+
+    response = handled_client.post("/credits", json={"credit_amount": 500})
+
+    assert response.status_code == 401
+    expire.assert_awaited_once_with("cs_test_topup")
+    add_transaction.assert_not_called()
+
+
+@pytest.mark.parametrize("amount", [MAX_TOP_UP_AMOUNT + 100, 2_147_483_700])
+def test_top_up_beyond_stripes_ceiling_is_refused_before_stripe(
+    handled_client, mocker, amount
+):
+    stripe_create, add_transaction = _real_top_up_path(mocker)
+
+    response = handled_client.post("/credits", json={"credit_amount": amount})
+
+    assert response.status_code == 400
+    assert "at most $999,999" in response.json()["detail"]
+    stripe_create.assert_not_called()
+    add_transaction.assert_not_called()
+
+
+def _real_top_up_path(mocker: pytest_mock.MockFixture) -> tuple[AsyncMock, AsyncMock]:
+    """Run the real UserCredit.top_up_intent with Stripe and the ledger mocked."""
+    credit_model = UserCredit()
+    add_transaction = mocker.patch.object(
+        credit_model, "_add_transaction", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        AsyncMock(return_value=credit_model),
+    )
+    mocker.patch("backend.api.features.billing.credits.routes.schedule_checkout_opened")
+    mocker.patch(
+        "backend.data.credit.get_stripe_customer_id",
+        AsyncMock(return_value="cus_123"),
+    )
+    mocker.patch(
+        "backend.data.credit.get_feature_flag_value", AsyncMock(return_value=None)
+    )
+    mocker.patch(
+        "backend.data.account_deletion.is_account_closed",
+        AsyncMock(return_value=False),
+    )
+    session = MagicMock(id="cs_test_topup", url="https://checkout.stripe.com/c/cs")
+    stripe_create = mocker.patch(
+        "backend.data.credit.stripe.checkout.Session.create_async",
+        AsyncMock(return_value=session),
+    )
+    return stripe_create, add_transaction
 
 
 @pytest.mark.asyncio

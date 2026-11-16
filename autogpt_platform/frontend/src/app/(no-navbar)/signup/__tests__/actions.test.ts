@@ -66,12 +66,7 @@ describe("email signup account creation tracking", () => {
       headers: new Headers({ "X-AutoGPT-User-Created": "true" }),
     });
 
-    const result = await signup(
-      "new@example.com",
-      "ValidPassword123!",
-      "ValidPassword123!",
-      false,
-    );
+    const result = await signup("new@example.com", "ValidPassword123!", false);
 
     expect(result.success).toBe(true);
     expect(mocks.scheduleAccountCreatedGoal).toHaveBeenCalledOnce();
@@ -95,7 +90,6 @@ describe("email signup account creation tracking", () => {
     const result = await signup(
       "existing@example.com",
       "ValidPassword123!",
-      "ValidPassword123!",
       false,
     );
 
@@ -111,12 +105,7 @@ describe("email signup account creation tracking", () => {
     // does both once the link is clicked.
     mocks.signUpEmail.mockResolvedValue({ token: null });
 
-    const result = await signup(
-      "new@example.com",
-      "ValidPassword123!",
-      "ValidPassword123!",
-      true,
-    );
+    const result = await signup("new@example.com", "ValidPassword123!", true);
 
     expect(result).toEqual({
       success: true,
@@ -133,12 +122,7 @@ describe("email signup account creation tracking", () => {
     // the action catches to roll back the session and surface the failure.
     mocks.postV1GetOrCreateUser.mockRejectedValue({ status: 500 });
 
-    const result = await signup(
-      "new@example.com",
-      "ValidPassword123!",
-      "ValidPassword123!",
-      false,
-    );
+    const result = await signup("new@example.com", "ValidPassword123!", false);
 
     expect(result.success).toBe(false);
     expect(mocks.captureException).toHaveBeenCalledOnce();
@@ -176,12 +160,7 @@ describe("email signup consent", () => {
   }
 
   function signupWith(marketingOptOut: boolean) {
-    return signup(
-      "new@example.com",
-      "ValidPassword123!",
-      "ValidPassword123!",
-      marketingOptOut,
-    );
+    return signup("new@example.com", "ValidPassword123!", marketingOptOut);
   }
 
   it.each([true, false])(

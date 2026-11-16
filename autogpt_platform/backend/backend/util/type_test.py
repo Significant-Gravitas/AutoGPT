@@ -1,8 +1,43 @@
 from typing import Any, List, Literal, Optional
 
+import pytest
 from pydantic import BaseModel
 
 from backend.util.type import _value_satisfies_type, coerce_inputs_to_schema, convert
+
+
+@pytest.mark.parametrize(
+    "value", ["9007199254740993", "-9007199254740993", "9223372036854775807"]
+)
+def test_integer_string_conversion_preserves_precision(value: str):
+    assert convert(value, int) == int(value)
+    assert convert({"id": value}, dict[str, int]) == {"id": int(value)}
+
+
+BIG_INT = 9007199254740993  # 2**53 + 1, not representable as a float
+
+
+def test_integer_string_conversion_preserves_precision_in_wrappers():
+    assert convert(f" {BIG_INT} ", int) == BIG_INT
+    assert convert([str(BIG_INT)], list[int]) == [BIG_INT]
+    assert convert(f'["{BIG_INT}"]', list[int]) == [BIG_INT]
+    assert convert(str(BIG_INT), Optional[int]) == BIG_INT
+
+
+def test_coerce_inputs_to_schema_preserves_big_integer_strings():
+    class Inputs(BaseModel):
+        record_id: int
+
+    data: dict[str, Any] = {"record_id": str(BIG_INT)}
+    coerce_inputs_to_schema(data, Inputs)
+    assert data["record_id"] == BIG_INT
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [("3.7", 3), ("-3.7", -3), ("1e3", 1000)]
+)
+def test_non_integer_numeric_strings_keep_float_conversion(value: str, expected: int):
+    assert convert(value, int) == expected
 
 
 def test_type_conversion():

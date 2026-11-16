@@ -1,14 +1,29 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as UITooltip from "@/components/ui/tooltip";
+import type { ComponentProps } from "react";
 import * as AtomTooltip from "../BaseTooltip";
+
+// What the deleted components/ui/tooltip rendered: the atom's content in a
+// portal, with the provider's delay.
+const PortalTooltip = {
+  ...AtomTooltip,
+  TooltipContent: function PortalTooltipContent(
+    props: ComponentProps<typeof AtomTooltip.TooltipContent>,
+  ) {
+    return (
+      <AtomTooltip.TooltipPortal>
+        <AtomTooltip.TooltipContent {...props} />
+      </AtomTooltip.TooltipPortal>
+    );
+  },
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe.each([
-  ["UI", UITooltip],
+  ["atom (portal)", PortalTooltip],
   ["atom", AtomTooltip],
 ] as const)("%s tooltip pointer transit", (_, components) => {
   it("shows the next button's tooltip when moving beneath the previous tooltip", async () => {
@@ -74,5 +89,105 @@ describe.each([
     expect(
       screen.queryByRole("tooltip", { name: "First description" }),
     ).toBeNull();
+  });
+});
+
+describe("atom tooltip trigger slot", () => {
+  it("names the button it renders", () => {
+    const { TooltipProvider, Tooltip, TooltipTrigger } = AtomTooltip;
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>Trigger</TooltipTrigger>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Trigger" }).getAttribute("data-slot"),
+    ).toBe("tooltip-trigger");
+  });
+
+  it("leaves an asChild child's slot alone", () => {
+    const { TooltipProvider, Tooltip, TooltipTrigger } = AtomTooltip;
+    render(
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button data-slot="toggle-chip">Chip</button>
+          </TooltipTrigger>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: "Chip" }).getAttribute("data-slot"),
+    ).toBe("toggle-chip");
+  });
+});
+
+// `inheritDelay` is what the deleted components/ui/tooltip did: the delay
+// comes from the nearest provider (700ms at the app root, 0 in the sidebar)
+// instead of the atom's own 10ms default.
+describe("atom tooltip delay", () => {
+  function renderTooltip({
+    providerDelay,
+    inheritDelay,
+  }: {
+    providerDelay?: number;
+    inheritDelay?: boolean;
+  }) {
+    const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } =
+      AtomTooltip;
+    render(
+      <TooltipProvider delayDuration={providerDelay}>
+        <Tooltip inheritDelay={inheritDelay}>
+          <TooltipTrigger asChild>
+            <button>Action</button>
+          </TooltipTrigger>
+          <TooltipContent>Description</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    fireEvent.pointerMove(screen.getByRole("button", { name: "Action" }), {
+      pointerType: "mouse",
+    });
+  }
+
+  function isOpen() {
+    return screen.queryByRole("tooltip") !== null;
+  }
+
+  it("takes the provider's default 700ms delay with inheritDelay", () => {
+    vi.useFakeTimers();
+    try {
+      renderTooltip({ inheritDelay: true });
+      act(() => vi.advanceTimersByTime(300));
+      expect(isOpen()).toBe(false);
+      act(() => vi.advanceTimersByTime(450));
+      expect(isOpen()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("takes a provider's 0ms delay with inheritDelay, as in the sidebar", () => {
+    vi.useFakeTimers();
+    try {
+      renderTooltip({ providerDelay: 0, inheritDelay: true });
+      act(() => vi.advanceTimersByTime(1));
+      expect(isOpen()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the atom's own 10ms delay without inheritDelay", () => {
+    vi.useFakeTimers();
+    try {
+      renderTooltip({});
+      act(() => vi.advanceTimersByTime(50));
+      expect(isOpen()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

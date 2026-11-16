@@ -157,7 +157,7 @@ async def test_redis_failure_rolls_back_database_and_recovers_without_erasing_us
             f"autogpt:initial-pro:{case.user_id}:{case.subscription['id']}:{case.invoice['id']}",
         )
     )
-    daily, weekly = usage_keys(case.user_id, generation, datetime.now(UTC))
+    daily, weekly = usage_keys(case.user_id, generation, case.usage_now)
     await case.redis.lpush(daily, "invalid-counter")
     await case.redis.set(weekly, 41)
     with pytest.raises(ResponseError, match="WRONGTYPE"):

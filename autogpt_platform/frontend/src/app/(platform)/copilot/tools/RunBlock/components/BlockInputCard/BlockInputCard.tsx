@@ -26,17 +26,17 @@ export function BlockInputCard({ inputData }: Props) {
   return (
     <div>
       <button
-        className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+        className="text-caption text-foreground-tertiary transition-colors hover:text-foreground-base"
         onClick={() => setExpanded((prev) => !prev)}
       >
         {expanded ? "Hide inputs" : `Show inputs (${entries.length})`}
       </button>
       {expanded && (
-        <ContentGrid className="mb-2 mt-2">
+        <ContentGrid className="mt-2 mb-2">
           {entries.map(([key, value]) => (
             <ContentCard key={key}>
-              <ContentCardTitle className="text-xs">{key}</ContentCardTitle>
-              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs text-muted-foreground">
+              <ContentCardTitle size="small">{key}</ContentCardTitle>
+              <pre className="mt-1 max-h-48 overflow-auto text-caption break-words whitespace-pre-wrap text-foreground-tertiary">
                 {renderValue(value)}
               </pre>
             </ContentCard>

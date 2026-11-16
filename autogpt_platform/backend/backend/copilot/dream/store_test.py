@@ -1,0 +1,707 @@
+"""The dream store: each transition the two routes write, the read side, and
+that a failed write never reaches the pass."""
+
+import asyncio
+import logging
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from prisma.enums import (
+    DreamPassPhase,
+    DreamPassRoute,
+    DreamPassStatus,
+    DreamPassTrigger,
+)
+
+from backend.copilot.graphiti.scope import MemoryScope
+from backend.data.dream_pass_models import (
+    CLOSED_ROW_CLEARS,
+    MARKED_ROW_CLEARS,
+    DreamPassApplied,
+    DreamPassDraft,
+    DreamPassOperations,
+    DreamPassRecord,
+    DreamPassUpdate,
+    DreamPhaseOutputs,
+)
+
+from . import store
+from .fetch import DreamInput
+from .locks import DEFAULT_LOCK_TTL_SECONDS
+from .pass_record import dream_pass_result_from_row
+from .pass_run import DreamPassRun
+from .schemas import (
+    ConsolidationOutput,
+    DreamOperations,
+    DreamOperationsSnapshot,
+    DreamPassResult,
+    DreamPassUsage,
+    IngestionDrainStatus,
+    PhaseUsage,
+    RecombinationOutput,
+    WriteSummary,
+)
+
+_STARTED = datetime(2026, 9, 26, 3, 0, tzinfo=timezone.utc)
+_FINISHED = _STARTED + timedelta(minutes=7)
+
+
+@pytest.fixture
+def db(mocker) -> MagicMock:
+    """The accessor's target, with every write succeeding."""
+    database = MagicMock()
+    database.create_dream_pass = AsyncMock()
+    database.update_dream_pass = AsyncMock(return_value=True)
+    database.get_dream_pass_for_user = AsyncMock()
+    mocker.patch.object(store, "dream_db", return_value=database)
+    return database
+
+
+def _run(route) -> DreamPassRun:
+    """Pass p1 as the sync entry point starts it, its lease token ``tok``."""
+    return DreamPassRun(
+        user_id="u1",
+        pass_id="p1",
+        started_at=_STARTED,
+        monotonic_start=0.0,
+        execution_path=route,
+        lease_token="tok",
+    )
+
+
+def _update(db: MagicMock) -> tuple[str, DreamPassUpdate]:
+    db.update_dream_pass.assert_awaited_once()
+    pass_id, update = db.update_dream_pass.await_args.args
+    return pass_id, update
+
+
+def _usage(cost: float | None = 0.03) -> DreamPassUsage:
+    return DreamPassUsage(
+        phases=[
+            PhaseUsage(
+                phase="consolidate",
+                model="claude-sonnet-5",
+                input_tokens=100,
+                output_tokens=40,
+                cost_usd=cost,
+            )
+        ],
+        total_input_tokens=100,
+        total_output_tokens=40,
+        total_cost_usd=cost,
+        discount_applied=0.5,
+    )
+
+
+def _bundle() -> DreamInput:
+    return DreamInput(
+        user_id="u1",
+        group_id="user_u1",
+        window_start=_STARTED - timedelta(days=14),
+        window_end=_STARTED,
+    )
+
+
+def _complete_result(**overrides) -> DreamPassResult:
+    fields = {
+        "user_id": "u1",
+        "pass_id": "p1",
+        "started_at": _STARTED,
+        "completed_at": _FINISHED,
+        "elapsed_seconds": 420.0,
+        "consolidated_count": 3,
+        "proposal_count": 1,
+        "demotion_count": 2,
+        "entity_invalidation_count": 0,
+        "summary_for_user": "Tidied what you told me this week.",
+        "dream_session_id": "session-1",
+        "ingestion_drain_status": IngestionDrainStatus.drained,
+        "operations": DreamOperationsSnapshot(
+            writes=[WriteSummary(content="Nick ships on Fridays")]
+        ),
+        "usage": _usage(),
+    }
+    return DreamPassResult(**{**fields, **overrides})
+
+
+class TestWrites:
+    @pytest.mark.parametrize(
+        "route, trigger, expected_route, expected_trigger",
+        [
+            ("sync_baseline", "cron", DreamPassRoute.SYNC, DreamPassTrigger.CRON),
+            (
+                "anthropic_batch",
+                "admin",
+                DreamPassRoute.ANTHROPIC_BATCH,
+                DreamPassTrigger.ADMIN,
+            ),
+            ("sync_baseline", "eval", DreamPassRoute.SYNC, DreamPassTrigger.EVAL),
+        ],
+    )
+    async def test_start_inserts_a_running_row_gathering(
+        self, db, route, trigger, expected_route, expected_trigger
+    ):
+        scope = MemoryScope.for_expert("u1", "expert-1")
+
+        assert await store.start_pass(_run(route), scope, trigger=trigger)
+
+        db.create_dream_pass.assert_awaited_once_with(
+            DreamPassDraft(
+                id="p1",
+                user_id="u1",
+                expert_id="expert-1",
+                scope_key=scope.scope_key,
+                route=expected_route,
+                trigger=expected_trigger,
+                status=DreamPassStatus.RUNNING,
+                phase=DreamPassPhase.GATHER,
+                started_at=_STARTED,
+                lease_token="tok",
+                lease_expires_at=_STARTED + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+            )
+        )
+
+    async def test_gathered_records_the_window_and_what_was_read(self, db):
+        """Every fact and episode the bundle holds, sorted: a hard forget
+        marks the pass by them once it has closed."""
+        bundle = _bundle().model_copy(
+            update={
+                "known_fact_uuids": {"f2", "f1"},
+                "known_episode_uuids": {"e1"},
+            }
+        )
+
+        assert await store.record_gathered("p1", bundle)
+
+        assert _update(db) == (
+            "p1",
+            DreamPassUpdate(
+                phase=DreamPassPhase.CONSOLIDATE,
+                window_start=bundle.window_start,
+                window_end=bundle.window_end,
+                read_uuids=["e1", "f1", "f2"],
+            ),
+        )
+
+    @pytest.mark.parametrize("written, said", [(False, False), (None, None)])
+    async def test_gathered_says_whether_it_landed(self, db, written, said):
+        if written is None:
+            db.update_dream_pass.side_effect = ConnectionError("db down")
+        else:
+            db.update_dream_pass.return_value = written
+
+        assert await store.record_gathered("p1", _bundle()) is said
+
+    @pytest.mark.parametrize(
+        "phase, output, next_step",
+        [
+            ("consolidate", ConsolidationOutput(), DreamPassPhase.RECOMBINE),
+            ("recombine", RecombinationOutput(), DreamPassPhase.SANITIZE),
+            ("sanitize", DreamOperations(summary_for_user="ok"), DreamPassPhase.APPLY),
+        ],
+    )
+    async def test_phase_output_is_kept_and_the_pass_moves_on(
+        self, db, phase, output, next_step
+    ):
+        await store.record_phase_output("p1", phase, output)
+
+        _, update = _update(db)
+        assert update.phase is next_step
+        assert update.status is None
+        assert update.phase_outputs == DreamPhaseOutputs.model_validate({phase: output})
+
+    async def test_applying_keeps_the_clamped_operations(self, db):
+        ops = DreamOperations(summary_for_user="clamped")
+
+        await store.record_applying("p1", ops)
+
+        assert _update(db) == (
+            "p1",
+            DreamPassUpdate(
+                status=DreamPassStatus.APPLYING,
+                phase=DreamPassPhase.APPLY,
+                operations=DreamPassOperations(planned=ops),
+            ),
+        )
+
+    async def test_submitted_records_the_batch_the_bundle_and_the_lease(self, db):
+        bundle = _bundle()
+        before = datetime.now(timezone.utc)
+
+        await store.record_submitted(
+            "p1",
+            input_bundle=bundle,
+            provider_batch_id="msgbatch_1",
+            lease_token="tok",
+            lease_ttl_seconds=3600,
+        )
+
+        _, update = _update(db)
+        assert update.status is DreamPassStatus.SUBMITTED
+        assert update.phase is DreamPassPhase.CONSOLIDATE
+        assert update.provider_batch_id == "msgbatch_1"
+        assert update.input_bundle == bundle
+        assert update.lease_token == "tok"
+        assert update.submitted_at is not None and update.submitted_at >= before
+        assert update.lease_expires_at == update.submitted_at + timedelta(hours=1)
+
+    async def test_next_batch_names_the_phase_it_runs(self, db):
+        await store.record_next_batch("p1", "recombine", "msgbatch_2")
+
+        assert _update(db) == (
+            "p1",
+            DreamPassUpdate(
+                phase=DreamPassPhase.RECOMBINE, provider_batch_id="msgbatch_2"
+            ),
+        )
+
+    async def test_a_completed_sync_pass_records_what_apply_reported(self, db):
+        result = _complete_result()
+
+        await store.record_sync_outcome(result)
+
+        _, update = _update(db)
+        assert update.status is DreamPassStatus.COMPLETE
+        assert update.phase is DreamPassPhase.DONE
+        assert update.usage == result.usage
+        assert update.applied_at == update.completed_at == _FINISHED
+        assert update.operations == DreamPassOperations(
+            applied=DreamPassApplied(
+                consolidated_count=3,
+                proposal_count=1,
+                demotion_count=2,
+                summary_for_user="Tidied what you told me this week.",
+                dream_session_id="session-1",
+                ingestion_drain_status=IngestionDrainStatus.drained,
+                snapshot=result.operations,
+            )
+        )
+
+    async def test_a_skipped_pass_records_its_reason(self, db):
+        result = DreamPassResult(
+            user_id="u1",
+            pass_id="p1",
+            completed_at=_FINISHED,
+            skipped=True,
+            skip_reason="no_new_activity",
+        )
+
+        await store.record_sync_outcome(result)
+
+        assert _update(db) == (
+            "p1",
+            DreamPassUpdate(
+                status=DreamPassStatus.SKIPPED,
+                skip_reason="no_new_activity",
+                completed_at=_FINISHED,
+                clear=CLOSED_ROW_CLEARS,
+            ),
+        )
+
+    async def test_a_failed_pass_keeps_its_partial_usage_and_a_capped_error(self, db):
+        result = DreamPassResult(
+            user_id="u1",
+            pass_id="p1",
+            completed_at=_FINISHED,
+            error="recombine: " + "x" * 5000,
+            usage=_usage(),
+        )
+
+        await store.record_sync_outcome(result)
+
+        _, update = _update(db)
+        assert update.status is DreamPassStatus.ERRORED
+        assert update.error == result.error[:2000]
+        assert update.usage == result.usage
+        assert update.completed_at == _FINISHED
+        assert update.phase is None
+
+    async def test_a_pass_handed_to_the_batch_route_stays_open(self, db):
+        await store.record_sync_outcome(
+            DreamPassResult(
+                user_id="u1", pass_id="p1", execution_path="anthropic_batch"
+            )
+        )
+
+        db.update_dream_pass.assert_not_awaited()
+
+    async def test_a_batch_route_pass_that_failed_before_submit_is_closed(self, db):
+        await store.record_sync_outcome(
+            DreamPassResult(
+                user_id="u1",
+                pass_id="p1",
+                execution_path="anthropic_batch",
+                error="anthropic_batch: phase 1 submit failed: boom",
+            )
+        )
+
+        _, update = _update(db)
+        assert update.status is DreamPassStatus.ERRORED
+
+    async def test_a_completed_batch_pass_records_the_usage_it_is_given(self, db):
+        usage = _usage(cost=0.011)
+        result = _complete_result(execution_path="anthropic_batch", usage=None)
+
+        await store.record_batch_complete(result, usage)
+
+        _, update = _update(db)
+        assert update.status is DreamPassStatus.COMPLETE
+        assert update.usage == usage
+        # Marked for the cleanup after the pass, its lease kept for it.
+        assert update.cleanup_pending_at is not None
+        assert update.clear == MARKED_ROW_CLEARS
+
+    async def test_a_failed_batch_pass_records_the_error_and_usage(self, db):
+        usage = _usage()
+
+        await store.record_batch_failed("p1", "recombine: provider down", usage)
+
+        _, update = _update(db)
+        assert update.status is DreamPassStatus.ERRORED
+        assert update.error == "recombine: provider down"
+        assert update.usage == usage
+        assert update.completed_at is not None
+        assert update.cleanup_pending_at == update.completed_at
+        assert update.clear == MARKED_ROW_CLEARS
+
+
+class TestAFailedWriteNeverFailsThePass:
+    @pytest.mark.parametrize(
+        "write",
+        [
+            lambda: store.record_gathered("p1", _bundle()),
+            lambda: store.record_phase_output(
+                "p1", "consolidate", ConsolidationOutput()
+            ),
+            lambda: store.record_applying("p1", DreamOperations()),
+            lambda: store.record_submitted(
+                "p1",
+                input_bundle=_bundle(),
+                provider_batch_id="b",
+                lease_token="t",
+                lease_ttl_seconds=60,
+            ),
+            lambda: store.record_next_batch("p1", "sanitize", "b"),
+            lambda: store.record_sync_outcome(_complete_result()),
+            lambda: store.record_batch_complete(_complete_result(), None),
+            lambda: store.record_batch_failed("p1", "boom", None),
+        ],
+    )
+    async def test_an_update_that_raises_is_logged_at_warning(self, db, caplog, write):
+        db.update_dream_pass.side_effect = ConnectionError("db down")
+
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            await write()
+
+        assert any(
+            r.levelno == logging.WARNING and "p1" in r.getMessage()
+            for r in caplog.records
+        )
+
+    async def test_an_insert_that_raises_is_unconfirmed_and_logged(self, db, caplog):
+        db.create_dream_pass.side_effect = ConnectionError("db down")
+
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            confirmed = await store.start_pass(
+                _run("sync_baseline"), MemoryScope.for_user("u1"), trigger="cron"
+            )
+
+        assert confirmed is False
+        assert "could not insert its record; the pass stops" in caplog.text
+
+    async def test_an_unreachable_accessor_is_logged_at_warning(self, mocker, caplog):
+        mocker.patch.object(store, "dream_db", side_effect=RuntimeError("no rpc"))
+
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            await store.record_next_batch("p1", "sanitize", "b")
+
+        assert "could not record the next batch" in caplog.text
+
+    async def test_an_output_that_is_not_the_phase_is_dropped_not_raised(
+        self, db, caplog
+    ):
+        with caplog.at_level(logging.WARNING, logger=store.logger.name):
+            await store.record_phase_output("p1", "consolidate", RecombinationOutput())
+
+        db.update_dream_pass.assert_not_awaited()
+        assert "could not record the consolidate output" in caplog.text
+
+    async def test_a_row_that_is_missing_or_closed_is_logged_at_debug(self, db, caplog):
+        """A closed row refusing a late or repeated write is expected, so a
+        normal duplicate delivery raises no warning."""
+        db.update_dream_pass.return_value = False
+
+        with caplog.at_level(logging.DEBUG, logger=store.logger.name):
+            await store.record_batch_failed("p1", "boom", None)
+
+        [record] = [r for r in caplog.records if "no open record" in r.getMessage()]
+        assert record.levelno == logging.DEBUG
+
+
+class TestTheLeaseAndTheSweeps:
+    async def test_a_renewal_writes_the_token_and_its_new_expiry(self, db):
+        before = datetime.now(timezone.utc)
+
+        assert await store.record_lease("p1", "tok", 1800) is True
+
+        pass_id, update = _update(db)
+        assert (pass_id, update.lease_token, update.status) == ("p1", "tok", None)
+        assert update.lease_expires_at is not None
+        assert update.lease_expires_at >= before + timedelta(seconds=1800)
+        assert update.clear == frozenset()
+
+    async def test_a_delivery_closes_its_row_expired_and_marked(self, db):
+        await store.record_expired("p1", "apply: never finished")
+
+        _, update = _update(db)
+        assert (update.status, update.error) == (
+            DreamPassStatus.EXPIRED,
+            "apply: never finished",
+        )
+        assert update.bump_cancel_generation is True
+        assert update.cleanup_pending_at is not None
+        assert update.clear == MARKED_ROW_CLEARS
+
+    async def test_the_sweeps_and_the_admin_list_reach_the_table(self, db):
+        cutoff = _STARTED - timedelta(minutes=30)
+        db.list_expired_dream_passes = AsyncMock(return_value=[_row()])
+        db.list_dream_pass_cleanups = AsyncMock(return_value=[])
+        db.list_dream_passes = AsyncMock(return_value=[])
+        db.delete_old_dream_passes = AsyncMock(return_value=3)
+
+        assert await store.read_expired_passes(cutoff, limit=100) == [_row()]
+        assert await store.read_pending_cleanups(due_before=cutoff, limit=100) == []
+        assert await store.read_user_passes("u1", open_only=True, limit=5) == []
+        assert await store.delete_old_passes(cutoff, limit=1000, timeout=60) == 3
+
+        db.list_expired_dream_passes.assert_awaited_once_with(cutoff, limit=100)
+        cursor = (cutoff - timedelta(hours=1), "p0")
+        assert await store.read_expired_passes(cutoff, limit=5, after=cursor) == [
+            _row()
+        ]
+        db.list_expired_dream_passes.assert_awaited_with(
+            cutoff, limit=5, after_lapse=cursor[0], after_id="p0"
+        )
+        db.list_dream_pass_cleanups.assert_awaited_once_with(cutoff, limit=100)
+        assert (
+            await store.read_pending_cleanups(
+                due_before=cutoff, limit=5, marked_through=cutoff, after=cursor
+            )
+            == []
+        )
+        db.list_dream_pass_cleanups.assert_awaited_with(
+            cutoff,
+            limit=5,
+            marked_through=cutoff,
+            after_mark=cursor[0],
+            after_id="p0",
+        )
+        db.list_dream_passes.assert_awaited_once_with("u1", limit=5, open_only=True)
+        db.delete_old_dream_passes.assert_awaited_once_with(cutoff, limit=1000)
+
+    async def test_a_finished_cleanup_clears_the_mark_on_the_closed_row(self, db):
+        assert await store.record_cleanup_finished("p1") is True
+
+        pass_id, update = _update(db)
+        assert (pass_id, update.closed_row) == ("p1", True)
+        assert update.clear == frozenset(
+            {"cleanup_pending_at", "lease_token", "lease_expires_at"}
+        )
+
+    async def test_a_sweep_that_stalls_raises_at_its_deadline(self, db, monkeypatch):
+        async def hang(*_args, **_kwargs) -> None:
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(store, "RECORD_WRITE_TIMEOUT_SECONDS", 0.05)
+        db.list_expired_dream_passes = AsyncMock(side_effect=hang)
+        db.list_dream_pass_cleanups = AsyncMock(side_effect=hang)
+        db.delete_old_dream_passes = AsyncMock(side_effect=hang)
+        db.update_dream_pass = AsyncMock(side_effect=hang)
+
+        with pytest.raises(TimeoutError):
+            await store.read_expired_passes(_STARTED, limit=1)
+        with pytest.raises(TimeoutError):
+            await store.read_pending_cleanups(due_before=_STARTED, limit=1)
+        with pytest.raises(TimeoutError):
+            await store.record_cleanup_finished("p1")
+        with pytest.raises(TimeoutError):
+            await store.delete_old_passes(_STARTED, limit=1, timeout=0.05)
+
+
+class TestReadSide:
+    async def test_read_is_owner_scoped(self, db):
+        row = _row()
+        db.get_dream_pass_for_user.return_value = row
+
+        assert await store.read_dream_pass("p1", user_id="u1") is row
+        db.get_dream_pass_for_user.assert_awaited_once_with("p1", "u1")
+
+    async def test_a_failed_read_raises(self, db):
+        db.get_dream_pass_for_user.side_effect = ConnectionError("db down")
+
+        with pytest.raises(ConnectionError):
+            await store.read_dream_pass("p1", user_id="u1")
+
+    def test_a_completed_batch_row_reads_back_with_usage_and_timings(self):
+        usage = _usage(cost=0.011)
+        snapshot = DreamOperationsSnapshot(writes=[WriteSummary(content="fact")])
+        row = _row(
+            route=DreamPassRoute.ANTHROPIC_BATCH,
+            status=DreamPassStatus.COMPLETE,
+            phase=DreamPassPhase.DONE,
+            completed_at=_FINISHED,
+            usage=usage,
+            operations=DreamPassOperations(
+                applied=DreamPassApplied(
+                    consolidated_count=1,
+                    proposal_count=2,
+                    summary_for_user="ok",
+                    dream_session_id="s1",
+                    ingestion_drain_status=IngestionDrainStatus.skipped,
+                    snapshot=snapshot,
+                )
+            ),
+        )
+
+        result = dream_pass_result_from_row(row)
+
+        assert result == DreamPassResult(
+            user_id="u1",
+            pass_id="p1",
+            started_at=_STARTED,
+            completed_at=_FINISHED,
+            elapsed_seconds=420.0,
+            execution_path="anthropic_batch",
+            consolidated_count=1,
+            proposal_count=2,
+            summary_for_user="ok",
+            dream_session_id="s1",
+            ingestion_drain_status=IngestionDrainStatus.skipped,
+            operations=snapshot,
+            usage=usage,
+        )
+
+    def test_a_skipped_row_reads_as_skipped(self):
+        row = _row(
+            status=DreamPassStatus.SKIPPED,
+            skip_reason="lock_held",
+            completed_at=_FINISHED,
+        )
+
+        result = dream_pass_result_from_row(row)
+
+        assert result.skipped is True
+        assert result.skip_reason == "lock_held"
+        assert result.operations is None
+        assert result.usage is None
+
+    def test_an_errored_row_reads_with_its_error_and_usage(self):
+        usage = _usage()
+        row = _row(
+            status=DreamPassStatus.ERRORED,
+            error="sanitize: bad json",
+            usage=usage,
+            completed_at=_FINISHED,
+        )
+
+        result = dream_pass_result_from_row(row)
+
+        assert (result.error, result.usage, result.skipped) == (
+            "sanitize: bad json",
+            usage,
+            False,
+        )
+
+    def test_a_pass_without_apply_did_not_drain(self):
+        for status in (
+            DreamPassStatus.SUBMITTED,
+            DreamPassStatus.SKIPPED,
+            DreamPassStatus.ERRORED,
+        ):
+            row = _row(status=status, operations=DreamPassOperations())
+            result = dream_pass_result_from_row(row)
+            assert result.ingestion_drain_status.value == "not_applied"
+
+    def test_a_pass_that_began_applying_without_an_outcome_is_unknown(self):
+        """Cancelled after its last check, or failed mid-apply: its writes may
+        have been enqueued, so neither "drained" nor "not applied" is true."""
+        planned = DreamPassOperations(planned=DreamOperations(summary_for_user="x"))
+        for status in (
+            DreamPassStatus.APPLYING,
+            DreamPassStatus.CANCELLED,
+            DreamPassStatus.ERRORED,
+        ):
+            row = _row(status=status, operations=planned)
+            result = dream_pass_result_from_row(row)
+            assert result.ingestion_drain_status.value == "unknown"
+
+    def test_a_pass_in_flight_has_no_end_yet(self):
+        row = _row(
+            route=DreamPassRoute.ANTHROPIC_BATCH,
+            status=DreamPassStatus.SUBMITTED,
+            phase=DreamPassPhase.RECOMBINE,
+        )
+
+        result = dream_pass_result_from_row(row)
+
+        assert result.completed_at is None
+        assert result.elapsed_seconds is None
+        assert result.usage is None
+        assert result.error is None and result.skipped is False
+
+    async def test_a_sync_outcome_reads_back_as_the_result_it_recorded(self, db):
+        """What the orchestrator returned is what the eval driver reads."""
+        result = _complete_result(
+            dropped_forgotten=2,
+            pending_writes=3,
+            failed_writes=4,
+            uncited_writes_dropped=2,
+            cross_scope_citations_dropped=3,
+            provenance_pending=5,
+        )
+        await store.record_sync_outcome(result)
+        _, update = _update(db)
+        assert update.operations is not None
+
+        row = _row(
+            status=update.status,
+            phase=update.phase,
+            operations=update.operations,
+            usage=update.usage,
+            completed_at=update.completed_at,
+        )
+
+        assert dream_pass_result_from_row(row) == result
+
+
+def _row(**overrides) -> DreamPassRecord:
+    fields = {
+        "id": "p1",
+        "user_id": "u1",
+        "expert_id": None,
+        "scope_key": "u1",
+        "route": DreamPassRoute.SYNC,
+        "trigger": DreamPassTrigger.CRON,
+        "phase": DreamPassPhase.GATHER,
+        "status": DreamPassStatus.RUNNING,
+        "skip_reason": None,
+        "cancel_generation": 0,
+        "provider_batch_id": None,
+        "lease_token": None,
+        "lease_expires_at": None,
+        "input_bundle": None,
+        "phase_outputs": DreamPhaseOutputs(),
+        "operations": DreamPassOperations(),
+        "usage": None,
+        "window_start": None,
+        "window_end": None,
+        "error": None,
+        "created_at": _STARTED,
+        "started_at": _STARTED,
+        "submitted_at": None,
+        "applied_at": None,
+        "completed_at": None,
+        "updated_at": _STARTED,
+    }
+    return DreamPassRecord(**{**fields, **overrides})

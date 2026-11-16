@@ -36,10 +36,9 @@ import prisma
 import prisma.enums
 import prisma.models
 import prisma.types
-from apscheduler.triggers.cron import CronTrigger
 from pydantic import ValidationError
 
-from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.experts.models import MAX_ROUTINE_CRONS, ExpertRoutine
 from backend.api.features.experts.routine_jobs import (
     create_routine_schedules,
     delete_routine_schedules,
@@ -49,6 +48,8 @@ from backend.copilot.credential_selection import CredentialPin, CredentialPins
 from backend.copilot.scheduled_chats.forget import forget_routine
 from backend.data.user import get_user_by_id
 from backend.util.clients import get_scheduler_client
+from backend.util.cron import validate_cron
+from backend.util.exceptions import RoutineNotFoundError, RoutineUnansweredAsksError
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 logger = logging.getLogger(__name__)
@@ -120,19 +121,6 @@ async def get_routine(routine_id: str) -> ExpertRoutine | None:
         where={"id": routine_id}
     )
     return to_model(row) if row is not None else None
-
-
-class RoutineNotFoundError(Exception):
-    """No such routine on this owner."""
-
-
-class RoutineUnansweredAsksError(Exception):
-    """The routine still has questions nobody answered.
-
-    A seeded proposal names what it needs to know — which repo, which inbox,
-    what hour. Scheduling it before those are answered would run it against
-    guesses on somebody's account, every day, unattended.
-    """
 
 
 async def install_routines(
@@ -244,17 +232,22 @@ async def enable_routine(
     # Resolved on every path, so an ``H`` that reaches here from the template
     # or straight back from the model never gets as far as APScheduler, which
     # has no idea what it means.
-    resolved_crons = [
-        spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
-        for index, cron in enumerate(source_crons)
-    ]
+    _check_cron_count(source_crons)
+    # Each distinct cron is one scheduler job; a repeated one adds a job, not a run.
+    # Repeats collapse before ``H`` resolves, which picks a minute per position.
+    resolved_crons = list(
+        dict.fromkeys(
+            spread_cron(cron, seed=f"{user_id}:{row.key or row.id}:{index}")
+            for index, cron in enumerate(dict.fromkeys(source_crons))
+        )
+    )
     if bool(resolved_crons) == (resolved_run_at is not None):
         raise ValueError(
             "A routine runs either on a cadence or once at a time, not both "
             "and not neither."
         )
     for cron in resolved_crons:
-        CronTrigger.from_crontab(cron, timezone=user_timezone)
+        validate_cron(cron, user_timezone)
     # A spent one-shot switched on again needs a new time: re-arming it at the
     # old one would either fire immediately or never, and neither is a thing
     # the owner asked for.
@@ -274,6 +267,15 @@ async def enable_routine(
         # without this the row would say PINNED and behave like FRESH. The tool
         # always supplies one; this closes the RPC path, which does not.
         raise ValueError("A PINNED routine needs the chat it should fire into.")
+    # A THREAD routine that stays one keeps the thread its first fire minted,
+    # through a new cadence or prompt: its jobs name no chat, since each fire
+    # reads the row's, so the row is what has to keep it.
+    thread = (
+        row.sessionId
+        if mode == prisma.enums.ExpertRoutineSession.THREAD
+        and row.sessionMode == prisma.enums.ExpertRoutineSession.THREAD
+        else None
+    )
     schedule_ids = await create_routine_schedules(
         user_id=user_id,
         expert_id=expert_id,
@@ -283,6 +285,7 @@ async def enable_routine(
         run_at=resolved_run_at,
         session_id=pinned,
         user_timezone=user_timezone,
+        replaces=list(row.scheduleIds),
     )
     now = datetime.now(timezone.utc)
     data: prisma.types.ExpertRoutineUpdateInput = {
@@ -291,7 +294,7 @@ async def enable_routine(
         "runAt": resolved_run_at,
         "scheduleIds": schedule_ids,
         "sessionMode": mode,
-        "sessionId": pinned,
+        "sessionId": pinned or thread,
         "enabledAt": now,
         # Re-arming a spent one-shot makes it pending again; leaving the old
         # stamp would enable a row that still reads as already run.
@@ -385,6 +388,7 @@ async def create_routine(
         )
     if run_at is not None and run_at <= datetime.now(timezone.utc):
         raise ValueError("That time has already passed; give a future one.")
+    _check_cron_count(crons or [])
     mode = _session_mode(session_mode or "THREAD")
     data: prisma.types.ExpertRoutineCreateInput = {
         "title": title.strip(),
@@ -512,3 +516,10 @@ async def _owned_routine(
     if row is None:
         raise RoutineNotFoundError(routine_id)
     return row
+
+
+def _check_cron_count(crons: list[str]) -> None:
+    if len(crons) > MAX_ROUTINE_CRONS:
+        raise ValueError(
+            f"A routine can have at most {MAX_ROUTINE_CRONS} repeat times."
+        )

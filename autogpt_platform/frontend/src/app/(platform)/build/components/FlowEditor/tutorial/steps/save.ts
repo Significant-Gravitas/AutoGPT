@@ -13,8 +13,8 @@ export const createSaveSteps = (): StepOptions[] => [
     id: "open-save",
     title: "Save Your Workflow",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Before running, we need to <strong>save</strong> your workflow.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Before running, we need to <strong>save</strong> your workflow.</p>
         ${banner(ICONS.ClickIcon, "Click the Save button", "action")}
       </div>
     `,
@@ -43,10 +43,10 @@ export const createSaveSteps = (): StepOptions[] => [
     id: "save-details",
     title: "Name Your Workflow",
     text: `
-      <div class="text-sm leading-[1.375rem] text-zinc-800">
-        <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0">Give your workflow a <strong>name</strong> and optional description.</p>
+      <div class="text-body text-foreground-emphasis">
+        <p class="text-body font-normal text-foreground-emphasis m-0">Give your workflow a <strong>name</strong> and optional description.</p>
         ${banner(ICONS.ClickIcon, 'Enter a name and click "Save Workflow"', "action")}
-        <p class="text-xs font-normal leading-[1.125rem] text-zinc-500 m-0" style="margin-top: 0.5rem;">Example: "My Calculator Workflow"</p>
+        <p class="text-caption font-normal text-foreground-tertiary m-0" style="margin-top: 0.5rem;">Example: "My Calculator Workflow"</p>
       </div>
     `,
     attachTo: {

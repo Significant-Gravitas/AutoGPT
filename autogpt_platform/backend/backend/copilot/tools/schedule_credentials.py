@@ -21,6 +21,7 @@ from backend.copilot.context import is_unattended_turn
 from backend.copilot.credential_selection import (
     CredentialPin,
     CredentialPins,
+    credential_matches_selection,
     selected_credentials,
 )
 from backend.copilot.model import ChatSession
@@ -30,7 +31,11 @@ from backend.integrations.providers import ProviderName
 
 from .expert_scope import provider_slug
 from .models import SetupInfo, SetupRequirementsResponse, UserReadiness
-from .utils import build_missing_credentials_from_field_info, get_user_credentials
+from .utils import (
+    build_missing_credentials_from_field_info,
+    get_user_credentials,
+    is_per_target_credential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +87,7 @@ async def pin_schedule_credentials(
 
     for provider, credential_id in picked.items():
         cred = by_id.get(credential_id)
-        if cred is not None and provider_slug(cred.provider) == provider:
+        if cred is not None and credential_matches_selection(cred, provider):
             pins[provider] = CredentialPin(id=cred.id, title=cred.title or "")
 
     choices: dict[str, list[Credentials]] = {}
@@ -90,7 +95,11 @@ async def pin_schedule_credentials(
         pin = pins.get(provider)
         if pin is not None and pin.id in by_id:
             continue
-        fits = [c for c in own if provider_slug(c.provider) == provider]
+        fits = [
+            c
+            for c in own
+            if provider_slug(c.provider) == provider and not is_per_target_credential(c)
+        ]
         if len(fits) > 1:
             choices[provider] = fits
         else:

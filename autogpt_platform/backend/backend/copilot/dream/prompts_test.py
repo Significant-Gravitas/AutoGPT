@@ -87,6 +87,27 @@ def test_consolidate_prompt_has_system_and_user_messages():
     assert "[scope=project:x]" in user_body
 
 
+def test_the_scope_rule_binds_the_fact_citations_only():
+    """Facts are listed by scope and one citing a fact of another scope is
+    dropped; a chat turn can hold facts of any scope, so episodes carry no
+    scope and are cited from any."""
+    bundle = _build_bundle()
+
+    system, user = build_consolidate_prompt(bundle)
+    recombine = build_recombine_prompt(bundle, "{}")[0]["content"]
+
+    assert "- uuid=ep-1 valid_at=2026-05-10" in user["content"]
+    assert "a fact citing an active fact of another scope is dropped" in (
+        system["content"]
+    )
+    assert "Recent episodes can be cited whatever the fact's scope" in (
+        system["content"]
+    )
+    assert "across scopes" not in recombine
+    assert "a finding stays in the scope of the facts it cites" in recombine
+    assert "Recent episodes can be cited whatever the finding's scope" in recombine
+
+
 def test_consolidate_prompt_instructs_merge_and_no_restate():
     """#13387: the consolidate prompt must tell the model to merge
     paraphrases into one statement and not re-emit existing active facts."""

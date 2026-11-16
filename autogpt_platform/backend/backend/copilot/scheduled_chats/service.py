@@ -13,18 +13,19 @@ from datetime import datetime, timezone
 from prisma.errors import UniqueViolationError
 from prisma.models import ExpertRoutine, ScheduledChatStreak
 from prisma.types import (
-    ExpertRoutineWhereInput,
     ScheduledChatStreakWhereInput,
     ScheduledChatStreakWhereUniqueInput,
 )
 from pydantic import BaseModel, ValidationError
 
+from backend.copilot.scheduled_chats import alerts
 from backend.copilot.scheduled_chats.failure_notices import (
     failing_notice,
     pause_summary,
     paused_notice,
     resumed_notice,
 )
+from backend.copilot.scheduled_chats.forget import owned_routines, resolve_alert
 from backend.copilot.scheduled_chats.jobs import (
     jobs_paused,
     pause_jobs,
@@ -74,14 +75,21 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
     where = _key(run.user_id, run.schedule_key)
     row = await ScheduledChatStreak.prisma().find_unique(where=where)
     current = _streak_of(row)
-    if current is not None and current.paused and await _still_paused(run):
+    saw_pause = current is not None and current.paused
+    if saw_pause and await _still_paused(run):
         # It fired before the pause and finished after it, so it changes
         # nothing. One that fired after was resumed some other way.
         return
     step = advance(current, run.outcome)
+    # A pause raised the alert whether or not its card got through, so the
+    # pause ending withdraws it, as the end of a streak the owner was told of.
+    withdraw = step.ended_notified or saw_pause
     if step.streak is None:
-        if row is not None:
-            await _drop(row, saw_pause=current is not None and current.paused)
+        # Withdrawn only with the streak: a pause this run didn't see stands,
+        # and so does its alert.
+        dropped = row is not None and await _drop(row, saw_pause=saw_pause)
+        if dropped and withdraw:
+            await resolve_alert(run.user_id, run.schedule_key)
         return
     if step.streak == current:
         return
@@ -104,7 +112,7 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
             title,
             restarted=row is None or streak.failures == 1,
             told=told,
-            replaces_pause=current is not None and current.paused,
+            replaces_pause=saw_pause,
         )
     except Exception:
         # A pause with no row behind it is never listed or resumed: the chat
@@ -116,6 +124,12 @@ async def record_scheduled_run(run: ScheduledRun) -> None:
         # Another run of this chat paused it after this one read the streak,
         # and told the owner. That pause stands.
         return
+    if withdraw:
+        # A new failure replaced the streak the owner was told about, or the
+        # pause. Before any pause it raises: both are this chat's one alert.
+        await resolve_alert(run.user_id, run.schedule_key)
+    if paused:
+        await _raise_paused(run, row, streak, title)
     notice = _notice(step, streak, paused=paused, told=told, title=title, row=row)
     if notice is not None:
         await _tell(run, row, notice, told=told)
@@ -135,6 +149,7 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
         return False
     await resume_jobs(user_id, row.scheduleIds)
     await ScheduledChatStreak.prisma().delete(where={"id": row.id})
+    await resolve_alert(user_id, schedule_key)
     if row.sessionId is not None:
         try:
             await post_notice(
@@ -154,29 +169,19 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
     return True
 
 
-async def forget_scheduled_chat(user_id: str, schedule_key: str) -> None:
-    """Drop the streak of a follow-up its owner deleted. Kept, a paused one
-    would stay listed as paused, with a Resume that says it runs again.
-
-    A routine's streak is left alone: its paused jobs outlive any one
-    schedule id, and a streak dropped from under them would stop the routine
-    without a word."""
-    if await ExpertRoutine.prisma().find_first(
-        where={"id": schedule_key, **_owned_by(user_id)}
-    ):
-        return
-    await ScheduledChatStreak.prisma().delete_many(
-        where={"userId": user_id, "scheduleKey": schedule_key}
-    )
-
-
 async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]:
     rows = await ScheduledChatStreak.prisma().find_many(
         where={"userId": user_id, "NOT": [{"pausedAt": None}]},
         order={"pausedAt": "desc"},
     )
+    if not rows:
+        # Home asks on every load; most have nothing paused.
+        return []
     routines = await ExpertRoutine.prisma().find_many(
-        where={"id": {"in": [row.scheduleKey for row in rows]}, **_owned_by(user_id)}
+        where={
+            "id": {"in": [row.scheduleKey for row in rows]},
+            **owned_routines(user_id),
+        }
     )
     routine_ids = {routine.id for routine in routines}
     paused: list[PausedScheduledChat] = []
@@ -334,6 +339,39 @@ async def _save(
         return None
 
 
+async def _raise_paused(
+    run: ScheduledRun, row: ScheduledChatStreak, streak: Streak, title: str
+) -> None:
+    """Raise the chat's pause alert. A resume can land between the pause's row
+    and this, its own withdrawal before the alert existed, so the alert stays
+    only if the row is still paused once it is raised."""
+    await alerts.raise_paused(
+        run.user_id,
+        run.schedule_key,
+        alerts.paused_cause(
+            streak.failure,
+            title=title,
+            failures=streak.failures,
+            session_id=run.session_id,
+        ),
+    )
+    try:
+        still_paused = await ScheduledChatStreak.prisma().count(
+            where={"id": row.id, "NOT": [{"pausedAt": None}]}
+        )
+    except Exception:
+        # Only a guard, and the pause most likely stands: keep the alert, and
+        # let the chat still be told.
+        logger.warning(
+            "Could not check scheduled chat %s is still paused",
+            run.schedule_key,
+            exc_info=True,
+        )
+        return
+    if not still_paused:
+        await resolve_alert(run.user_id, run.schedule_key)
+
+
 async def _drop(row: ScheduledChatStreak, *, saw_pause: bool) -> bool:
     """End the streak a run read, and say whether it did. As in ``_save``, a
     view from before a pause never ends that pause: its jobs are paused, and
@@ -372,9 +410,3 @@ def _streak_of(row: ScheduledChatStreak | None) -> Streak | None:
 
 def _key(user_id: str, schedule_key: str) -> ScheduledChatStreakWhereUniqueInput:
     return {"userId_scheduleKey": {"userId": user_id, "scheduleKey": schedule_key}}
-
-
-def _owned_by(user_id: str) -> ExpertRoutineWhereInput:
-    """The account's own routines and its experts'. A streak's key is the
-    owner's routine only if it names one of these."""
-    return {"OR": [{"userId": user_id}, {"Expert": {"is": {"ownerUserId": user_id}}}]}

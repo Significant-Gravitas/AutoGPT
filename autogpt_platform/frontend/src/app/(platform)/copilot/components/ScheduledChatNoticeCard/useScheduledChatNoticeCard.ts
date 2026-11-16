@@ -1,4 +1,5 @@
 import { getGetV2GetSessionQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
+import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getListPausedScheduledChatsQueryKey,
   useResumeScheduledChat,
@@ -19,6 +20,7 @@ export function useScheduledChatNoticeCard({ scheduleKey, sessionID }: Args) {
   const queryClient = useQueryClient();
   const [connectProvider, setConnectProvider] = useState<string | null>(null);
   const [resumed, setResumed] = useState(false);
+  const [lessOftenOpen, setLessOftenOpen] = useState(false);
   // A resume that follows a reconnect is quiet when there was nothing to
   // resume: a chat that was only warned, never paused, answers 404.
   const quietRef = useRef(false);
@@ -27,6 +29,8 @@ export function useScheduledChatNoticeCard({ scheduleKey, sessionID }: Args) {
     queryClient.invalidateQueries({
       queryKey: getListPausedScheduledChatsQueryKey(),
     });
+    // Home lists each paused chat under Needs you.
+    queryClient.invalidateQueries({ queryKey: getGetHomeDashboardQueryKey() });
     void invalidateAllScheduleQueries(queryClient);
     if (sessionID) {
       queryClient.invalidateQueries({
@@ -82,5 +86,7 @@ export function useScheduledChatNoticeCard({ scheduleKey, sessionID }: Args) {
     resume: () => resume(),
     isResuming: isPending,
     resumed,
+    lessOftenOpen,
+    setLessOftenOpen,
   };
 }

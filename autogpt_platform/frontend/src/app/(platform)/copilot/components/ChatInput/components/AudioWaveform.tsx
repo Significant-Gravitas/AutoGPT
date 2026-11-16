@@ -17,7 +17,7 @@ export function AudioWaveform({
   barCount = 24,
   barWidth = 3,
   barGap = 2,
-  barColor = "#ef4444", // red-500
+  barColor = "rgb(var(--color-error))",
   minBarHeight = 4,
   maxBarHeight = 32,
 }: Props) {

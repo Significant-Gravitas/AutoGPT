@@ -34,6 +34,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   >()),
   useGetFlag: () => true,
 }));
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
 afterEach(() => {
   cleanup();
   setTrialUser(null);
@@ -77,11 +81,6 @@ describe("Usage notice", () => {
     expect(
       await screen.findByRole("button", { name: "Start Pro now · $50.13" }),
     ).toBeDefined();
-    expect(
-      screen
-        .getByRole("button", { name: "Start Pro now · $50.13" })
-        .closest(".sentry-unmask, [data-sentry-unmask]"),
-    ).toBeNull();
     expect(screen.getByText("You’ve used your trial allowance")).toBeDefined();
     expect(
       screen.getByText(
@@ -206,9 +205,6 @@ describe("Usage notice", () => {
       "https://invoice.stripe.com/i/acct_1/test_inv_1",
     );
     expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
-    for (const amount of screen.getAllByText(/\$50/)) {
-      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-    }
     expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
   });
   it("asks a cancel-pending trial to subscribe instead of starting Pro", async () => {

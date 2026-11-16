@@ -26,10 +26,6 @@ from ._auth import (
 logger = logging.getLogger(__name__)
 
 
-def is_github_url(url: str) -> bool:
-    return urlparse(url).netloc == "github.com"
-
-
 # --8<-- [start:GithubCommentBlockExample]
 class GithubCommentBlock(Block):
     class Input(BlockSchemaInput):

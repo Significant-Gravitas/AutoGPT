@@ -13,7 +13,12 @@ from discord import app_commands
 
 from backend.copilot.bot import sessions, threads
 from backend.copilot.bot.bot_backend import BotBackend, ChatSummary
-from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
+from backend.copilot.bot.command_core import (
+    AdminCheck,
+    CommandReply,
+    setup_reply,
+    unlink_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +104,12 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         )
         return
 
-    if not interaction.permissions.manage_guild:
+    admin_check = (
+        AdminCheck.ADMIN
+        if interaction.permissions.manage_guild
+        else AdminCheck.NOT_ADMIN
+    )
+    if admin_check is not AdminCheck.ADMIN:
         await interaction.response.send_message(
             "Only members with the Manage Server permission can link this "
             "server to an AutoGPT account.",
@@ -112,6 +122,8 @@ async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> No
         api,
         platform="discord",
         server_noun="server",
+        admin_check=admin_check,
+        admin_role="member with the Manage Server permission",
         platform_server_id=str(interaction.guild.id),
         platform_user_id=str(interaction.user.id),
         platform_username=interaction.user.display_name,
@@ -130,11 +142,17 @@ async def _handle_help(interaction: discord.Interaction) -> None:
         "**AutoGPT Bot**\n\n"
         "Mention me in a server or DM me directly to chat.\n\n"
         "**Commands:**\n"
+        "- `/autogpt` — Ask a question, optionally picking an expert "
+        "(DMs only) and a mode\n"
         "- `/setup` — Link this server to your AutoGPT account\n"
         "- `/new` — Start a fresh conversation (DMs & threads)\n"
         "- `/resume` — Resume a past conversation (DMs only)\n"
         "- `/help` — Show this message\n"
         "- `/unlink` — Manage linked accounts\n\n"
+        "**Options:** start a message with `expert=<name>` to ask one of "
+        "your experts (DMs only; quote names with spaces, e.g. "
+        '`expert="Bolt the Builder"`), and/or `mode=fast` or `mode=smart`. '
+        "Use `/new` to go back to Otto.\n\n"
         "**How it works:**\n"
         "- In a server: the person who runs `/setup` pays for usage\n"
         "- In DMs: you link and pay for your own usage\n",

@@ -24,12 +24,16 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import MemoryScopeSchedule
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import is_feature_enabled
+from backend.util.feature_flag import evaluate_feature_flag
 
 from .deadline import within_deadline
 from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, jobs_for
 
 logger = logging.getLogger(__name__)
+
+# The result entry of the scope's own row when it could not be read or
+# claimed: without a row the community sweep never rebuilds the scope.
+REGISTRY_ROW = "registry_row"
 
 
 async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSystemJob]]:
@@ -38,13 +42,19 @@ async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSyste
     results: dict[str, Any] = {}
     enabled: list[DreamSystemJob] = []
     for job in jobs_for(scope):
+        if job.flag is None:
+            enabled.append(job)
+            continue
         try:
-            on = await within_deadline(
-                is_feature_enabled(job.flag, scope.owner_user_id)
+            on, authoritative = await within_deadline(
+                evaluate_feature_flag(job.flag, scope.owner_user_id)
             )
         except Exception:
             logger.warning(f"Flag check failed for {job.name}", exc_info=True)
-            results[job.job_id_prefix] = skipped("registration_failed")
+            results[job.job_id_prefix] = skipped("flag_unavailable")
+            continue
+        if not authoritative:
+            results[job.job_id_prefix] = skipped("flag_unavailable")
             continue
         if on:
             enabled.append(job)
@@ -59,6 +69,7 @@ async def register_scope_jobs(
     row: MemoryScopeSchedule | None,
     user_timezone: str,
     force_refresh: bool,
+    skipped_jobs: dict[str, Any],
 ) -> dict[str, Any]:
     """Claim the scope's row if it has none, register every enabled cron
     that is missing or was registered in another timezone, and record the
@@ -66,7 +77,7 @@ async def register_scope_jobs(
     if row is None:
         row = await _claim(scope, user_timezone)
         if row is None:
-            return skip_all(enabled, "registry_unavailable")
+            return not_claimed(enabled, "registry_unavailable")
         if row.state != MemoryScopeScheduleState.ACTIVE:
             return skip_all(enabled, state_reason(row))
     stale = force_refresh or row.timezone != user_timezone
@@ -74,7 +85,7 @@ async def register_scope_jobs(
         failure = await _record_timezone(scope, row, user_timezone)
         if failure is not None:
             return skip_all(enabled, failure)
-    outcomes: dict[str, Any] = {}
+    outcomes: dict[str, Any] = dict(skipped_jobs)
     for job in enabled:
         if not stale and recorded_job_id(row, job) is not None:
             outcomes[job.job_id_prefix] = None
@@ -94,7 +105,6 @@ async def _record_timezone(
                 scope.owner_user_id,
                 scope.scope_key,
                 user_timezone=user_timezone,
-                community_job_id=row.community_job_id,
                 nightly_job_id=row.nightly_job_id,
                 learning_job_id=row.learning_job_id,
             )
@@ -128,6 +138,12 @@ def skipped(reason: str) -> dict[str, Any]:
 
 def skip_all(jobs: Iterable[DreamSystemJob], reason: str) -> dict[str, Any]:
     return {job.job_id_prefix: skipped(reason) for job in jobs}
+
+
+def not_claimed(jobs: Iterable[DreamSystemJob], reason: str) -> dict[str, Any]:
+    """``skip_all`` plus the row's own entry, so a failure shows with every
+    cron's flag off too."""
+    return {REGISTRY_ROW: skipped(reason)} | skip_all(jobs, reason)
 
 
 def state_reason(row: MemoryScopeSchedule) -> str:
@@ -206,7 +222,6 @@ async def _record(
                 scope.owner_user_id,
                 scope.scope_key,
                 user_timezone=user_timezone,
-                community_job_id=ids["community_job_id"],
                 nightly_job_id=ids["nightly_job_id"],
                 learning_job_id=ids["learning_job_id"],
             )
@@ -244,7 +259,10 @@ def _next_job_id(
     """Keep failed registration intent so reconciliation can retry it."""
     if _registered(outcome):
         return outcome["id"]
-    if outcome and outcome.get("reason") == "registration_failed":
+    if outcome and outcome.get("reason") in (
+        "registration_failed",
+        "flag_unavailable",
+    ):
         return recorded_job_id(row, job)
     return None if stale else recorded_job_id(row, job)
 
@@ -252,8 +270,6 @@ def _next_job_id(
 def recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
     """The job id ``row`` records for ``job``, None when it records none."""
     match job.row_field:
-        case "community_job_id":
-            return row.community_job_id
         case "nightly_job_id":
             return row.nightly_job_id
         case "learning_job_id":

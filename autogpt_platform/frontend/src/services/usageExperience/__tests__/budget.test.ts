@@ -23,7 +23,7 @@ function usage(over: Record<string, unknown> = {}) {
   } as Parameters<typeof getUsageBudget>[0];
 }
 
-describe("the AutoPilot budget verdict", () => {
+describe("the budget verdict", () => {
   it("waits for the window the server says decides", () => {
     const budget = getUsageBudget(
       usage({
@@ -121,12 +121,8 @@ describe("the AutoPilot budget verdict", () => {
 
 describe("budget copy", () => {
   it("titles the window that is used up", () => {
-    expect(budgetOutTitle("weekly")).toBe(
-      "You’re out of AutoPilot budget for this week",
-    );
-    expect(budgetOutTitle("daily")).toBe(
-      "You’re out of AutoPilot budget for today",
-    );
+    expect(budgetOutTitle("weekly")).toBe("You’re out of budget for this week");
+    expect(budgetOutTitle("daily")).toBe("You’re out of budget for today");
   });
 
   it("says when a weekly budget resets, by day", () => {

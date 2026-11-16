@@ -8,6 +8,7 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
+import brotli
 import pytest
 from mitmproxy import http
 from mitmproxy.options import Options
@@ -25,9 +26,11 @@ from swap_proxy.addon import (
     ClosingLayer,
     SwapProxyAddon,
     known_size,
+    refuse_brotli,
 )
 from swap_proxy.egress import EgressGuard
 from swap_proxy.owners import Owner, OwnerDirectory
+from swap_proxy.quota import QuotaVerdict
 from swap_proxy.source import SourceUnavailable
 from swap_proxy.swap import Credential
 
@@ -71,10 +74,13 @@ def addon_for(
     swaps: bool = True,
     source: Source | None = None,
     anywhere: bool = False,
+    quota: Any = None,
 ) -> SwapProxyAddon:
     source = source or Source()
     source.anywhere = anywhere
-    addon = SwapProxyAddon(OwnerDirectory(NoRedis()), source, EgressGuard())
+    addon = SwapProxyAddon(
+        OwnerDirectory(NoRedis()), source, EgressGuard(), quota=quota
+    )
     addon._owners[flow.client_conn] = Owner(
         "session:s-a", "user-a", "sb-1", swaps, box="box-0123456789abcdef"
     )
@@ -753,6 +759,144 @@ async def test_a_request_body_is_not_held_back_by_default():
     assert isinstance(flow.request.stream, BufferedBody)
 
 
+# ------------------------------------------------------------ Brotli
+
+
+@pytest.mark.parametrize(
+    "offered, sent",
+    [
+        ("gzip, deflate, br, zstd", "gzip, deflate, zstd, br;q=0"),
+        ("br;q=1.0, gzip;q=0.8", "gzip;q=0.8, br;q=0"),
+        ("BR", "br;q=0"),
+        ("*", "*, br;q=0"),
+        ("gzip", "gzip, br;q=0"),
+    ],
+)
+def test_brotli_is_taken_out_of_the_codings_a_request_offers(offered, sent):
+    headers = http.Headers(accept_encoding=offered)
+    refuse_brotli(headers)
+    assert headers.get_all("accept-encoding") == [sent]
+
+
+def test_codings_offered_on_several_lines_become_one():
+    headers = http.Headers([(b"accept-encoding", b"gzip"), (b"accept-encoding", b"br")])
+    refuse_brotli(headers)
+    assert headers.get_all("accept-encoding") == ["gzip, br;q=0"]
+
+
+@pytest.fixture
+def no_brotli_decoder(monkeypatch):
+    """Ours or mitmproxy's: both look the decoder up when they decode."""
+
+    def decoder(*args, **kwargs):
+        raise AssertionError("a Brotli decoder ran")
+
+    monkeypatch.setattr(brotli, "Decompressor", decoder)
+    monkeypatch.setattr(brotli, "decompress", decoder)
+
+
+def test_a_request_that_offers_no_codings_is_asked_for_no_brotli():
+    """No header means any coding; ``br;q=0`` alone leaves only identity."""
+    headers = http.Headers()
+    refuse_brotli(headers)
+    assert headers.get_all("accept-encoding") == ["br;q=0"]
+
+
+@pytest.mark.parametrize("swaps, sent", [(True, "gzip, br;q=0"), (False, "gzip, br")])
+async def test_only_a_box_that_gets_swaps_asks_for_no_brotli(swaps, sent):
+    flow = tflow.tflow()
+    addon = addon_for(flow, swaps=swaps)
+    flow.request.headers["accept-encoding"] = "gzip, br"
+    await addon.requestheaders(flow)
+    assert flow.request.headers["accept-encoding"] == sent
+
+
+@pytest.mark.parametrize(
+    "bindings_down, sent", [(False, "br, identity;q=0"), (True, "identity;q=0, br;q=0")]
+)
+async def test_a_host_with_nothing_bound_gets_the_codings_the_box_offered(
+    bindings_down, sent
+):
+    """Its response is never scrubbed, so nothing is refused for being
+    Brotli.  While the bindings cannot be read the scrub refuses, so the
+    header is rewritten then."""
+    source = Source()
+    source.bindings_down = bindings_down
+    flow = tflow.tflow()
+    addon = addon_for(flow, source=source)
+    flow.request.host = flow.request.headers["host"] = "example.com"
+    flow.server_conn.sni = "example.com"
+    flow.request.headers["accept-encoding"] = "br, identity;q=0"
+    await addon.requestheaders(flow)
+    assert flow.request.headers["accept-encoding"] == sent
+
+
+async def test_a_bound_sni_is_enough_to_ask_for_no_brotli():
+    flow = tflow.tflow()
+    addon = addon_for(flow)
+    flow.request.host = flow.request.headers["host"] = "example.com"
+    flow.request.headers["accept-encoding"] = "gzip, br"
+    await addon.requestheaders(flow)
+    assert flow.request.headers["accept-encoding"] == "gzip, br;q=0"
+
+
+async def test_a_brotli_request_body_goes_out_as_it_is(caplog, no_brotli_decoder):
+    """Not decoded, so not swapped; the head still is."""
+    body = brotli.compress(b'{"token": "hsurr:github"}')
+    flow = tflow.tflow()
+    addon = addon_for(flow, anywhere=True)
+    flow.request.method = "POST"
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    flow.request.headers["content-type"] = "application/json"
+    flow.request.headers["content-encoding"] = "br"
+    flow.request.raw_content = body
+    flow.request.headers["content-length"] = str(len(body))
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    assert flow.error is None and flow.request.raw_content == body
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert audit(caplog) == [
+        ("body-not-swapped", "undecodable-encoding"),
+        ("swapped", "hsurr:github"),
+    ]
+
+
+BROTLI_ECHO = brotli.compress(b'{"a": "%s"}' % TOKEN.encode())
+
+
+async def test_a_brotli_response_from_a_scrubbed_host_is_refused(
+    caplog, no_brotli_decoder
+):
+    flow = text_response(BROTLI_ECHO)
+    assert flow.response is not None
+    flow.response.headers["content-encoding"] = "br"
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        assert flow.response.stream is False  # held whole
+        await addon.response(flow)
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "undecodable-encoding")]
+
+
+async def test_a_streamed_brotli_response_from_a_scrubbed_host_is_refused(
+    caplog, no_brotli_decoder
+):
+    flow = text_response(b"", chunked=True)
+    assert flow.response is not None
+    flow.response.headers["content-encoding"] = "br"
+    addon = addon_for(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.responseheaders(flow)
+        stream = flow.response.stream
+        assert isinstance(stream, BufferedBody)
+        sent = [*stream(BROTLI_ECHO[:10]), *stream(BROTLI_ECHO[10:]), *stream(b"")]
+    assert b"".join(sent) == b""
+    assert flow.error is not None
+    assert audit(caplog) == [("refused-response", "undecodable-encoding")]
+
+
 # ------------------------------------------------------------ bodies that do not decode
 
 
@@ -891,3 +1035,181 @@ async def test_a_websocket_upgrade_is_not_refused():
     flow.live = True
     await addon_for(flow).response(flow)
     assert flow.error is None
+
+
+# ------------------------------------------------------------ content hosts
+
+CONTENT_HOST = "objects.githubusercontent.com"
+
+
+class ContentHostSource(Source):
+    """The backend's table with a content host: opened and scrubbed like a
+    bound host, while the credential it returns may go only to *HOST*."""
+
+    async def bound_names(self, host):
+        return {"github"} if host in (HOST, CONTENT_HOST) else set()
+
+
+async def test_a_content_host_is_scrubbed_and_never_sent_the_value(caplog):
+    flow = tflow.tflow(resp=True)
+    assert flow.response is not None
+    addon = addon_for(flow, source=ContentHostSource())
+    flow.request.host = flow.server_conn.sni = CONTENT_HOST
+    flow.request.headers["host"] = CONTENT_HOST
+    flow.request.headers["authorization"] = "token hsurr:github"
+    flow.response.headers["content-type"] = "text/plain"
+    flow.response.text = f"stored earlier: {TOKEN}"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+        await addon.responseheaders(flow)
+        await addon.response(flow)
+    assert flow.request.headers["authorization"] == "token hsurr:github"
+    assert flow.response.text == "stored earlier: hsurr:github"
+    assert audit(caplog) == [("refused", "hsurr:github"), ("scrubbed", None)]
+
+
+# ------------------------------------------------------------ quotas
+
+
+class Quota:
+    """Answers every count with *verdict* and remembers who was counted."""
+
+    def __init__(self, verdict: QuotaVerdict):
+        self.verdict = verdict
+        self.taken: list[tuple[str, str | None]] = []
+
+    async def take(self, owner_label, user_id):
+        self.taken.append((owner_label, user_id))
+        return self.verdict
+
+
+OVER = QuotaVerdict(
+    reason="quota-exceeded", scope="box", limit=1000, window=3600, retry_after=42
+)
+
+
+async def test_a_credentialed_request_within_quota_is_counted_and_sent(caplog):
+    flow = tflow.tflow()
+    quota = Quota(QuotaVerdict())
+    addon = addon_for(flow, quota=quota)
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert flow.response is None
+    assert quota.taken == [("session:s-a", "user-a")]
+    assert audit(caplog) == [("swapped", "hsurr:github")]
+
+
+async def test_a_request_with_nothing_swapped_is_not_counted():
+    flow = tflow.tflow()
+    quota = Quota(OVER)
+    addon = addon_for(flow, quota=quota)
+    await addon.requestheaders(flow)
+    await addon.request(flow)
+    assert quota.taken == [] and flow.response is None
+
+
+@pytest.mark.parametrize(
+    "verdict, status",
+    [(OVER, 429), (QuotaVerdict(reason="quota-unavailable"), 503)],
+    ids=["exceeded", "unavailable"],
+)
+async def test_past_the_quota_the_box_is_answered_and_nothing_is_sent(
+    caplog, verdict, status
+):
+    flow = tflow.tflow()
+    addon = addon_for(flow, quota=Quota(verdict))
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+    # An answer set in ``request`` is what mitmproxy sends instead of the
+    # request itself.
+    assert flow.response is not None
+    assert flow.response.status_code == status
+    assert "request not sent" in (flow.response.text or "")
+    if status == 429:
+        assert flow.response.headers["retry-after"] == "42"
+    # Audited once, as refused, and never as swapped.
+    assert audit(caplog) == [("refused-request", verdict.reason)]
+    assert TOKEN not in caplog.text
+
+
+@pytest.mark.parametrize("which", ["down", "bindings_down"])
+async def test_the_quota_answer_reaches_the_box_when_the_backend_is_down(caplog, which):
+    """The answer is the proxy's own text and carries no value, so a backend
+    that cannot vouch for a scrub must not turn it into a dropped connection."""
+    source = Source()
+    flow = tflow.tflow()
+    addon = addon_for(flow, source=source, quota=Quota(OVER))
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        await addon.request(flow)
+        setattr(source, which, True)
+        # mitmproxy fires both hooks for an answer the addon set itself.
+        await addon.responseheaders(flow)
+        await addon.response(flow)
+    assert flow.error is None
+    assert flow.response is not None and flow.response.status_code == 429
+    assert audit(caplog) == [("refused-request", "quota-exceeded")]
+
+
+def h2_get(flow: http.HTTPFlow) -> None:
+    """An HTTP/2 GET as ``gh`` or curl sends it: no length, no body."""
+    flow.request.http_version = "HTTP/2.0"
+    flow.request.headers.pop("content-length", None)
+    flow.request.headers["authorization"] = "Bearer hsurr:github"
+    flow.request.raw_content = None
+
+
+async def test_past_the_quota_an_http2_get_is_answered_not_reset(caplog):
+    """No length, so ``requestheaders`` swaps its head; it has no body to
+    stream, so ``request`` still fires and answers it with the 429."""
+    flow = tflow.tflow()
+    flow.live = True
+    quota = Quota(OVER)
+    addon = addon_for(flow, quota=quota)
+    h2_get(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+        # Nothing with a value in it, whatever happens next.
+        assert flow.request.headers["authorization"] == "Bearer hsurr:github"
+        flow.request.raw_content = b""  # the end of the (empty) body
+        await addon.request(flow)
+    assert flow.error is None
+    assert flow.response is not None and flow.response.status_code == 429
+    assert flow.response.headers["retry-after"] == "42"
+    assert "Do not retry in a loop" in (flow.response.text or "")
+    assert quota.taken == [("session:s-a", "user-a")]  # counted once
+    assert audit(caplog) == [("refused-request", "quota-exceeded")]
+
+
+async def test_past_the_quota_a_streaming_body_goes_out_with_no_value(caplog):
+    """A body that does stream cannot be answered; its head goes out with the
+    placeholder it came with, and the provider refuses it."""
+    flow = tflow.tflow()
+    addon = addon_for(flow, quota=Quota(OVER))
+    h2_get(flow)
+    with caplog.at_level(logging.INFO, logger="swap_proxy.audit"):
+        await addon.requestheaders(flow)
+    flow.request.stream = True  # mitmproxy found the body too large to hold
+    await addon.request(flow)
+    assert flow.request.headers["authorization"] == "Bearer hsurr:github"
+    assert flow.response is None and flow.error is None
+    assert audit(caplog) == [("refused-request", "quota-exceeded")]
+
+
+async def test_a_request_counted_in_requestheaders_is_not_counted_again():
+    flow = tflow.tflow()
+    quota = Quota(QuotaVerdict())
+    addon = addon_for(flow, quota=quota)
+    h2_get(flow)
+    await addon.requestheaders(flow)
+    flow.request.raw_content = b""
+    await addon.request(flow)
+    assert flow.request.headers["authorization"] == f"Bearer {TOKEN}"
+    assert quota.taken == [("session:s-a", "user-a")]

@@ -2,14 +2,21 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_NAME_LENGTH,
+)
 
 
 class CreateTransferRequest(BaseModel):
-    resource_type: str  # "AgentGraph", "StoreListing"
-    resource_id: str
-    target_organization_id: str
-    reason: str | None = None
+    # "AgentGraph", "StoreListing"
+    resource_type: str = Field(..., max_length=MAX_NAME_LENGTH)
+    resource_id: str = Field(..., max_length=MAX_ID_LENGTH)
+    target_organization_id: str = Field(..., max_length=MAX_ID_LENGTH)
+    reason: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
 
 
 class TransferResponse(BaseModel):

@@ -225,7 +225,11 @@ export class MarketplacePage extends BasePage {
     agentSlug: string;
   }> {
     await this.page.goto("/marketplace");
-    await this.page.getByRole("button", { name: "Become a Creator" }).click();
+    await this.page
+      .getByRole("button", {
+        name: "Publish your workflows",
+      })
+      .click();
 
     const publishAgentModal = this.page.getByTestId("publish-agent-modal");
     await expect(publishAgentModal).toBeVisible();

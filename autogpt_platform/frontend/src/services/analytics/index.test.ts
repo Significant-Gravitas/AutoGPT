@@ -82,6 +82,24 @@ describe("sendDatafastEvent", () => {
     expect(datafast).toHaveBeenCalledTimes(1);
   });
 
+  it.each([false, true])(
+    "discards queued events after consent withdrawal (script loaded: %s)",
+    (loaded) => {
+      analytics.sendDatafastEvent("tour_start", {});
+      vi.mocked(hasConsentFor).mockReturnValue(false);
+      const datafast = vi.fn();
+      if (loaded) window.datafast = datafast;
+
+      flushDatafastQueue();
+      expect(datafast).not.toHaveBeenCalled();
+
+      vi.mocked(hasConsentFor).mockReturnValue(true);
+      window.datafast = datafast;
+      flushDatafastQueue();
+      expect(datafast).not.toHaveBeenCalled();
+    },
+  );
+
   it("flushes the backlog before sending when the script loads without onLoad", () => {
     analytics.sendDatafastEvent("tour_start", {});
 
@@ -95,10 +113,20 @@ describe("sendDatafastEvent", () => {
     ]);
   });
 
-  it("does not queue pre-consent events outside the tour", () => {
+  it("reports whether the event was sent, queued or dropped", () => {
+    expect(analytics.sendDatafastEvent("tour_start", {})).toBe(true);
+
+    window.datafast = vi.fn();
+    expect(analytics.sendDatafastEvent("tour_start", {})).toBe(true);
+
+    vi.mocked(hasConsentFor).mockReturnValue(false);
+    expect(analytics.sendDatafastEvent("tour_start", {})).toBe(false);
+  });
+
+  it("does not queue pre-consent events", () => {
     vi.mocked(hasConsentFor).mockReturnValue(false);
 
-    analytics.sendDatafastEvent("run_agent", { agent_name: "x" });
+    analytics.sendDatafastEvent("tour_cta_click", { label: "signup" });
 
     const datafast = vi.fn();
     window.datafast = datafast;
@@ -108,71 +136,35 @@ describe("sendDatafastEvent", () => {
   });
 
   it("does not send without consent once the script has loaded", () => {
-    // DataFast loaded under the tour exemption stays on window after the
-    // visitor navigates away from /tour.
+    // The script stays on window after the visitor takes consent back.
     vi.mocked(hasConsentFor).mockReturnValue(false);
     configureCookiebot();
     window.history.pushState({}, "", "/marketplace");
     const datafast = vi.fn();
     window.datafast = datafast;
 
-    analytics.sendDatafastEvent("run_agent", { agent_name: "x" });
+    analytics.sendDatafastEvent("tour_cta_click", { label: "signup" });
 
     expect(datafast).not.toHaveBeenCalled();
   });
 
-  it("queues pre-consent events on the consent-exempt tour pages", () => {
-    vi.mocked(hasConsentFor).mockReturnValue(false);
-    configureCookiebot();
-    window.history.pushState({}, "", "/tour/chat");
+  it.each(["/tour", "/tour/chat"])(
+    "waits for consent on the public tour (%s) like everywhere else",
+    (path) => {
+      vi.mocked(hasConsentFor).mockReturnValue(false);
+      configureCookiebot();
+      window.history.pushState({}, "", path);
 
-    analytics.sendDatafastEvent("tour_start", {});
+      analytics.sendDatafastEvent("tour_start", {});
 
-    const datafast = vi.fn();
-    window.datafast = datafast;
-    flushDatafastQueue();
+      const datafast = vi.fn();
+      window.datafast = datafast;
+      flushDatafastQueue();
+      analytics.sendDatafastEvent("tour_scenario_start", { scenario: "x" });
 
-    expect(datafast).toHaveBeenCalledWith("tour_start", {});
-  });
-
-  it("sends tour events without consent once the script has loaded", () => {
-    vi.mocked(hasConsentFor).mockReturnValue(false);
-    configureCookiebot();
-    window.history.pushState({}, "", "/tour");
-    const datafast = vi.fn();
-    window.datafast = datafast;
-
-    analytics.sendDatafastEvent("tour_start", {});
-
-    expect(datafast).toHaveBeenCalledWith("tour_start", {});
-  });
-
-  it("does not exempt the tour without a consent banner", () => {
-    vi.mocked(hasConsentFor).mockReturnValue(false);
-    vi.stubEnv("NEXT_PUBLIC_COOKIEBOT_CBID", "");
-    window.history.pushState({}, "", "/tour/chat");
-
-    analytics.sendDatafastEvent("tour_start", {});
-
-    const datafast = vi.fn();
-    window.datafast = datafast;
-    flushDatafastQueue();
-
-    expect(datafast).not.toHaveBeenCalled();
-  });
-
-  it("does not treat /tourism as a consent-exempt tour page", () => {
-    vi.mocked(hasConsentFor).mockReturnValue(false);
-    window.history.pushState({}, "", "/tourism");
-
-    analytics.sendDatafastEvent("tour_start", {});
-
-    const datafast = vi.fn();
-    window.datafast = datafast;
-    flushDatafastQueue();
-
-    expect(datafast).not.toHaveBeenCalled();
-  });
+      expect(datafast).not.toHaveBeenCalled();
+    },
+  );
 
   it("warns again when the queue overflows after a successful flush", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

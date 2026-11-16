@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from backend.util.file import store_media_file
+from backend.util.sandbox_output import read_sandbox_file, run_sandbox_command
 from backend.util.settings import Config
 from backend.util.type import MediaFileType
 
@@ -119,6 +120,8 @@ BINARY_EXTENSIONS = {
 # Maximum file size for binary extraction (50MB)
 # Prevents OOM from accidentally extracting huge files
 MAX_BINARY_FILE_SIZE = 50 * 1024 * 1024
+# All files of one extraction together, held in memory at once.
+MAX_TOTAL_EXTRACTED_SIZE = Config().max_total_file_size_mb * 1024 * 1024
 
 
 class SandboxFileOutput(BaseModel):
@@ -171,6 +174,7 @@ async def extract_sandbox_files(
         List of ExtractedFile objects with path, content, and metadata
     """
     files: list[ExtractedFile] = []
+    total_size = 0
 
     try:
         # Build find command
@@ -179,12 +183,13 @@ async def extract_sandbox_files(
         if since_timestamp:
             timestamp_filter = f"-newermt {shlex.quote(since_timestamp)} "
 
-        find_result = await sandbox.commands.run(
+        find_result = await run_sandbox_command(
+            sandbox,
             f"find {safe_working_dir} -type f "
             f"{timestamp_filter}"
             f"-not -path '*/node_modules/*' "
             f"-not -path '*/.git/*' "
-            f"2>/dev/null"
+            f"2>/dev/null",
         )
 
         if not find_result.stdout:
@@ -213,8 +218,8 @@ async def extract_sandbox_files(
 
             try:
                 # Check file size before reading to prevent OOM
-                stat_result = await sandbox.commands.run(
-                    f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
+                stat_result = await run_sandbox_command(
+                    sandbox, f"stat -c %s {shlex.quote(file_path)} 2>/dev/null"
                 )
                 if stat_result.exit_code != 0 or not stat_result.stdout:
                     logger.debug(f"Skipping {file_path}: could not determine file size")
@@ -229,18 +234,20 @@ async def extract_sandbox_files(
                     )
                     continue
 
-                if file_size > MAX_BINARY_FILE_SIZE:
+                limit = min(MAX_BINARY_FILE_SIZE, MAX_TOTAL_EXTRACTED_SIZE - total_size)
+                if file_size > limit:
                     logger.info(
                         f"Skipping {file_path}: size {file_size} bytes "
-                        f"exceeds limit {MAX_BINARY_FILE_SIZE}"
+                        f"exceeds limit {limit}"
                     )
                     continue
 
-                content = await sandbox.files.read(file_path, format="bytes")
-                if isinstance(content, str):
-                    content = content.encode("utf-8")
-                elif isinstance(content, bytearray):
-                    content = bytes(content)
+                # The read is bounded by the same limit.
+                content = await read_sandbox_file(sandbox, file_path, limit)
+                if len(content) > limit:
+                    logger.info(f"Skipping {file_path}: larger than {limit} bytes")
+                    continue
+                total_size += len(content)
 
                 # Extract filename from path
                 file_name = file_path.split("/")[-1]

@@ -1,6 +1,5 @@
 import { useGraphStore } from "@/app/(platform)/build/stores/graphStore";
 import { usePostV1ExecuteGraphAgent } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { trackAgentRunGoal } from "@/services/analytics/activation-goals";
 
 import {
   ApiError,
@@ -45,11 +44,10 @@ export const useRunInputDialog = ({
     usePostV1ExecuteGraphAgent({
       mutation: {
         onSuccess: (response) => {
-          const { id, graph_id } = response.data as GraphExecutionMeta;
+          const { id } = response.data as GraphExecutionMeta;
           setQueryStates({
             flowExecutionID: id,
           });
-          trackAgentRunGoal({ id: graph_id }, "builder");
         },
         onError: (error) => {
           if (error instanceof ApiError && error.isGraphValidationError()) {

@@ -20,13 +20,7 @@ export interface SubscriptionPlansProps {
   selectedPlan?: string | null;
   isStartingTrial: boolean;
   trialError: string | null;
-  // Names the surface for DataFast, so a shared goal never mixes clicks from
-  // the onboarding paywall and the platform's upgrade modal. SubscriptionPlans
-  // fills in the default before passing props down.
-  goalSurface?: string;
 }
-
-export const DEFAULT_GOAL_SURFACE = "onboarding_paywall";
 
 export type PlanDialog = "compare" | "trial" | null;
 

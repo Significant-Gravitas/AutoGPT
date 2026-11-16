@@ -60,7 +60,7 @@ function HeaderButton({
           type="button"
           onClick={onClick}
           aria-label={title}
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground-tertiary transition-colors hover:bg-surface-hover hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-focus focus-visible:outline-none"
         >
           {children}
         </button>
@@ -95,14 +95,14 @@ export function ArtifactPanelHeader({
     (showModeSwitch && onModeChange) || (!isComputer && hasSourceToggle);
 
   return (
-    <header className="shrink-0 border-b border-border bg-card">
+    <header className="shrink-0 border-b border-border-base bg-surface">
       <div className="flex h-12 items-center gap-2 px-3 sm:px-4">
         {!isComputer && canGoBack && (
           <HeaderButton onClick={onBack} title="Back">
             <Icon icon={ArrowLeft02Icon} size={18} />
           </HeaderButton>
         )}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-muted-foreground">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-body text-foreground-tertiary">
           {isComputer ? (
             <>
               <Icon icon={ComputerIcon} size={18} className="shrink-0" />

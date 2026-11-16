@@ -1,9 +1,12 @@
-import { APIError, getIp } from "better-auth/api";
+import { APIError, getIP } from "better-auth/api";
 import type { BetterAuthOptions } from "better-auth";
 import { type AuthEmailContext, claimIPEmailSlot } from "./auth-email-cooldown";
 
 // Each of these can email an address that has no session yet.
-const IP_CAPPED_PATHS = new Set(["/sign-up/email", "/send-verification-email"]);
+export const IP_CAPPED_PATHS = new Set([
+  "/sign-up/email",
+  "/send-verification-email",
+]);
 
 interface Args {
   path: string | undefined;
@@ -20,7 +23,7 @@ interface Args {
  */
 export async function capAuthEmailsPerIP({ path, headers, context }: Args) {
   if (!path || !IP_CAPPED_PATHS.has(path) || !headers) return;
-  const ip = getIp(headers, context.options);
+  const ip = getIP(headers, context.options);
   if (!ip) return;
   const claimed = await claimIPEmailSlot(context, ip).catch(
     (error: unknown) => {

@@ -5,15 +5,18 @@ from datetime import UTC, datetime
 import pytest
 from claude_agent_sdk import AssistantMessage, StreamEvent, TextBlock
 
+from backend.copilot.limit_tracking import LimitReading
 from backend.copilot.turn_budget import TurnBudget
 from backend.copilot.turn_pause import TurnPause
 
 from .governor import STEP_BACKSTOP_MARGIN, TurnGovernor
 from .security_hooks import create_security_hooks
+from .transient_retry_test import _SVC, _reply, _Turn
 from .usage_meter import UsageMeter, cli_price_ratio
 
 RESETS = datetime(2026, 10, 15, tzinfo=UTC)
 KIMI = "moonshotai/kimi-k2.6"
+ALLOWED = {"mcp__copilot__run_block", "Agent"}
 
 
 class _Meter(UsageMeter):
@@ -121,6 +124,15 @@ def test_a_landed_turn_pauses_with_its_window_and_reset():
     assert governor.paused is True
 
 
+def test_a_landed_turn_carries_its_tier_for_analytics():
+    budget = TurnBudget(usd=1.0, limiting="daily", resets_at=RESETS, tier="PRO")
+    governor = _governor(budget, meter=_Meter(spent=1.0))
+    governor.refusal()
+    pause = governor.pause("success", wrote_checkpoint=True)
+    assert pause is not None and pause.reading == LimitReading(tier="PRO")
+    assert "reading" not in pause.as_part()
+
+
 @pytest.mark.parametrize("subtype", ["error", "error_during_execution"])
 def test_a_genuine_error_while_landing_stays_an_error(subtype):
     governor = _governor(meter=_Meter(spent=1.0))
@@ -212,7 +224,9 @@ def _deny_reason(result: dict) -> str | None:
 @pytest.mark.asyncio
 async def test_pre_tool_hook_refuses_every_tool_once_landing():
     governor = _governor(meter=_Meter(spent=1.0))
-    hooks = create_security_hooks(user_id="u1", sdk_cwd="/tmp/w", governor=governor)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd="/tmp/w", governor=governor, allowed_tools=ALLOWED
+    )
     pre = hooks["PreToolUse"][0].hooks[0]
     for tool in ("mcp__copilot__run_block", "Agent", "WebSearch"):
         result = await pre(
@@ -227,7 +241,9 @@ async def test_pre_tool_hook_refuses_every_tool_once_landing():
 @pytest.mark.asyncio
 async def test_pre_tool_hook_lets_tools_run_below_the_limits():
     governor = _governor(meter=_Meter(spent=0.1, last=0.01))
-    hooks = create_security_hooks(user_id="u1", sdk_cwd="/tmp/w", governor=governor)
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd="/tmp/w", governor=governor, allowed_tools=ALLOWED
+    )
     pre = hooks["PreToolUse"][0].hooks[0]
     result = await pre(
         {"tool_name": "mcp__copilot__run_block", "tool_input": {}},
@@ -235,6 +251,28 @@ async def test_pre_tool_hook_lets_tools_run_below_the_limits():
         context={},
     )
     assert _deny_reason(dict(result)) is None
+    unlisted = await pre(
+        {"tool_name": "TaskCreate", "tool_input": {}}, tool_use_id="tu-2", context={}
+    )
+    assert "not available in this session" in (_deny_reason(dict(unlisted)) or "")
+
+
+@pytest.mark.asyncio
+async def test_the_turns_hook_carries_its_governor_and_allowed_tools(
+    tmp_path, monkeypatch
+):
+    # Every other turn-level test mocks create_security_hooks, so a call site
+    # that drops either argument stays green there.
+    turn = _Turn(tmp_path, monkeypatch)
+    await turn.run([_reply("gen-ok")])
+
+    kwargs = turn._mocks[f"{_SVC}.create_security_hooks"].call_args.kwargs
+    assert isinstance(kwargs["governor"], TurnGovernor)
+    assert kwargs["allowed_tools"] == turn._mocks[f"{_SVC}.get_copilot_tool_names"]()
+    assert (
+        kwargs["builtin_tool_spans"]
+        == turn._mocks[f"{_SVC}.config"].posthog_builtin_tool_spans
+    )
 
 
 def test_a_trial_limited_by_the_task_cap_gets_no_headroom():

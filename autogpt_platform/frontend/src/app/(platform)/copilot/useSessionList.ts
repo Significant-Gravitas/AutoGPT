@@ -1,5 +1,4 @@
 import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import {
   type InfiniteData,
   type QueryClient,
@@ -8,7 +7,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { shareSessionListData } from "./sessionListSharing";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
@@ -57,11 +55,7 @@ export function useSessionList({ enabled = true }: Args = {}) {
         offset: pageParam,
       }),
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.status !== 200) return undefined;
-      const loaded = countLoadedSessions(allPages);
-      return loaded < lastPage.data.total ? loaded : undefined;
-    },
+    getNextPageParam: getNextSessionListOffset,
     structuralSharing: shareSessionListData,
     refetchInterval: (listQuery) =>
       hasOlderPages(listQuery.state.data)
@@ -94,29 +88,33 @@ export function useSessionList({ enabled = true }: Args = {}) {
     // Nothing reads this cache entry; the poll only patches the list.
     notifyOnChangeProps: [],
   });
-  const deletingIds = useMutationState({
-    filters: { mutationKey: SESSION_DELETE_MUTATION_KEY, status: "pending" },
-    select: (mutation) =>
-      (mutation.state.variables as { sessionId: string }).sessionId,
-  });
-  // `query.data` and `deletingIds` keep their identity while nothing in them
-  // changes (structural sharing), so a refetch that returns the same sessions
-  // hands the lists the same array and every memoised row skips its render.
-  const sessions = useMemo(
-    () =>
-      flattenSessions(query.data).filter(
-        (session) => !deletingIds.includes(session.id),
-      ),
-    [query.data, deletingIds],
+  const deletingIds = useDeletingSessionIds();
+  const sessions = flattenSessions(query.data).filter(
+    (session) => !deletingIds.includes(session.id),
   );
 
   return {
     sessions,
     isLoading: query.isLoading,
+    /** The list came back; an empty `sessions` is then really empty. */
+    isListLoaded: query.isSuccess && query.data.pages[0]?.status === 200,
+    /** When the list last came back, so a caller can tell stale data apart. */
+    dataUpdatedAt: query.dataUpdatedAt,
     hasMore: !!query.hasNextPage,
     isLoadingMore: query.isFetchingNextPage,
     loadMore: query.fetchNextPage,
   };
+}
+
+/** `getNextPageParam` for a paged session list: the next offset, or none
+ *  once every session the server counts is loaded. */
+export function getNextSessionListOffset(
+  lastPage: SessionListPage,
+  allPages: SessionListPage[],
+) {
+  if (lastPage.status !== 200) return undefined;
+  const loaded = countLoadedSessions(allPages);
+  return loaded < lastPage.data.total ? loaded : undefined;
 }
 
 export function flattenSessions(data: SessionListInfiniteData | undefined) {
@@ -174,68 +172,14 @@ export function removeSessionFromList(
   };
 }
 
-export interface SessionGroup {
-  expertId: string | null;
-  sessions: SessionSummaryResponse[];
-}
-
-export interface SidebarSessions {
-  /** Rendered flat above the groups so the backend's pinned-first ordering
-   *  survives grouping. Empty unless headers are shown. */
-  pinned: SessionSummaryResponse[];
-  groups: SessionGroup[];
-  /** Headers only earn their space once there is an expert group to
-   *  distinguish from Otto. */
-  showHeaders: boolean;
-}
-
-export function groupSessionsByExpert(
-  sessions: SessionSummaryResponse[],
-): SessionGroup[] {
-  const byExpert = new Map<string | null, SessionSummaryResponse[]>();
-  for (const session of sessions) {
-    const key = session.expert_id ?? null;
-    const bucket = byExpert.get(key);
-    if (bucket) {
-      bucket.push(session);
-    } else {
-      byExpert.set(key, [session]);
-    }
-  }
-  return [...byExpert.entries()]
-    .map(([expertId, grouped]) => ({ expertId, sessions: grouped }))
-    .sort((a, b) => {
-      if (a.expertId === b.expertId) return 0;
-      if (a.expertId === null) return -1;
-      if (b.expertId === null) return 1;
-      return 0;
-    });
-}
-
-export function groupSessionsForSidebar({
-  sessions,
-  floatPinned,
-}: {
-  sessions: SessionSummaryResponse[];
-  floatPinned: boolean;
-}): SidebarSessions {
-  const groups = groupSessionsByExpert(sessions);
-  // With a single group the list reads exactly as the API returned it, so
-  // adding headers (and lifting pinned chats out) would only be noise.
-  if (groups.length <= 1) return { pinned: [], groups, showHeaders: false };
-
-  const pinned = floatPinned
-    ? sessions.filter((session) => !!session.is_pinned)
-    : [];
-  if (pinned.length === 0) return { pinned, groups, showHeaders: true };
-
-  return {
-    pinned,
-    groups: groupSessionsByExpert(
-      sessions.filter((session) => !session.is_pinned),
-    ),
-    showHeaders: true,
-  };
+/** Ids of the chats with a delete in flight, which every list leaves out
+ *  whatever a refetch returns before the server has removed them. */
+export function useDeletingSessionIds() {
+  return useMutationState({
+    filters: { mutationKey: SESSION_DELETE_MUTATION_KEY, status: "pending" },
+    select: (mutation) =>
+      (mutation.state.variables as { sessionId: string }).sessionId,
+  });
 }
 
 function hasOlderPages(data: SessionListInfiniteData | undefined) {

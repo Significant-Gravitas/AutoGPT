@@ -109,18 +109,30 @@ describe("client request failures in Sentry", () => {
     fail(504, "/api/credits/trial/cancel", "POST");
     await Sentry.flush(2000);
 
-    const [first, second, other] = sent.map((event) => event.fingerprint);
-    expect(first).toEqual([
+    // Sentry may hand the events over in any order.
+    const sessions = [
       "client-request-failure",
       "GET /api/chat/sessions/{id}",
       "5xx",
-    ]);
-    expect(second).toEqual(first);
-    expect(other).toEqual([
+    ];
+    const trialCancel = [
       "client-request-failure",
       "POST /api/credits/trial/cancel",
       "5xx",
-    ]);
+    ];
+    expect(sent).toHaveLength(3);
+    expect(
+      Object.fromEntries(
+        sent.map((event) => [
+          event.contexts?.request_failure?.path,
+          event.fingerprint,
+        ]),
+      ),
+    ).toEqual({
+      [`/api/chat/sessions/${SESSION_A}`]: sessions,
+      [`/api/chat/sessions/${SESSION_B}`]: sessions,
+      "/api/credits/trial/cancel": trialCancel,
+    });
   });
 
   it("reports a request the app got wrong as a warning in its own 4xx issue", async () => {

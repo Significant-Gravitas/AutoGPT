@@ -20,8 +20,8 @@ export function TimePicker({ value, onChange }: Props) {
   };
 
   return (
-    <div className="flex items-center space-x-3">
-      <div className="flex flex-col items-center">
+    <div data-slot="time-picker" className="flex items-center space-x-3">
+      <div data-slot="time-picker-field" className="flex flex-col items-center">
         <Select
           id={`time-hour`}
           label="Hour"
@@ -38,11 +38,19 @@ export function TimePicker({ value, onChange }: Props) {
         />
       </div>
 
-      <div className="mb-6 flex flex-col items-center">
-        <span className="m-auto text-xl font-bold">:</span>
+      <div
+        data-slot="time-picker-separator"
+        className="mb-6 flex flex-col items-center"
+      >
+        <span
+          data-slot="time-picker-separator-text"
+          className="m-auto text-lead font-bold"
+        >
+          :
+        </span>
       </div>
 
-      <div className="flex flex-col items-center">
+      <div data-slot="time-picker-field" className="flex flex-col items-center">
         <Select
           id={`time-minute`}
           label="Minute"
@@ -57,7 +65,7 @@ export function TimePicker({ value, onChange }: Props) {
         />
       </div>
 
-      <div className="flex flex-col items-center">
+      <div data-slot="time-picker-field" className="flex flex-col items-center">
         <Select
           id={`time-meridiem`}
           label="AM/PM"

@@ -142,7 +142,14 @@ async def run(options: RunOptions) -> StyleEvalResult | None:
     by_name = {e.name: e for e in experts}
     if options.cross_spec:
         rows += wrong_spec_rows(rows, experts)
-    await judge_all(rows, by_name, rubric, judge_model=judge_model, options=options)
+    await judge_all(
+        rows,
+        by_name,
+        rubric,
+        judge_model=judge_model,
+        options=options,
+        run_id=str(uuid.uuid4()),
+    )
 
     result = summarize(
         rows,
@@ -308,6 +315,7 @@ async def judge_all(
     *,
     judge_model: str,
     options: RunOptions,
+    run_id: str,
 ) -> None:
     semaphore = asyncio.Semaphore(options.concurrency)
     prompts = {p.id: p for f in load_fixtures(list(experts)) for p in f.prompts}
@@ -326,6 +334,7 @@ async def judge_all(
                         prompt=prompt_text,
                         response=row.response,
                         model=judge_model,
+                        run_id=run_id,
                     )
                 )
                 row.judgement, row.judging = judgement, usage

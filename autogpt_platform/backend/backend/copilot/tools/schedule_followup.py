@@ -34,14 +34,14 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from apscheduler.triggers.cron import CronTrigger
-
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.tools.session_context import is_followups_feature_enabled
 from backend.copilot.tracking import track_chat_outcome
 from backend.data.db_accessors import user_db
+from backend.executor.scheduler import CopilotTurnJobInfo
 from backend.util.clients import get_scheduler_client
+from backend.util.cron import validate_cron
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .base import BaseTool
@@ -52,6 +52,7 @@ from .models import (
     ToolResponseBase,
 )
 from .schedule_credentials import INTEGRATIONS_PARAM, pin_schedule_credentials
+from .schedule_duplicates import find_duplicate_followup
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,8 @@ class ScheduleCreatedResponse(ToolResponseBase):
     schedule_id: str
     next_run_time: str
     is_recurring: bool
+    # True when an identical follow-up was already set and nothing was added.
+    already_scheduled: bool = False
 
 
 class ScheduleFollowupTool(BaseTool):
@@ -186,7 +189,7 @@ class ScheduleFollowupTool(BaseTool):
                 message=(
                     "Scheduled followups are currently disabled for this "
                     "user. Re-enable the ``copilot-scheduled-followups`` "
-                    "LaunchDarkly flag to use ``schedule_followup``."
+                    "feature flag to use ``schedule_followup``."
                 ),
                 error="feature_disabled",
                 session_id=current_session_id,
@@ -255,13 +258,11 @@ class ScheduleFollowupTool(BaseTool):
             )
             user_timezone = get_user_timezone_or_utc(None)
 
-        # Pre-validate cron locally — CronTrigger.from_crontab raises ValueError
-        # on the scheduler service, which crosses the RPC boundary as a generic
-        # RemoteError and won't match `except ValueError` below. Validating
-        # here gives the model a clean, actionable error message.
+        # Pre-validate cron locally: the scheduler's ValueError crosses the RPC
+        # boundary as a generic RemoteError and won't match `except ValueError`.
         if cron is not None:
             try:
-                CronTrigger.from_crontab(cron, timezone=user_timezone)
+                validate_cron(cron, user_timezone)
             except ValueError as e:
                 return ErrorResponse(
                     message=f"Invalid cron expression: {e}",
@@ -277,8 +278,24 @@ class ScheduleFollowupTool(BaseTool):
         if isinstance(pins, SetupRequirementsResponse):
             return pins
 
+        # After the accounts: the same work on another account is new work.
+        scheduler = get_scheduler_client()
+        existing = await find_duplicate_followup(
+            scheduler,
+            user_id,
+            session,
+            message=message,
+            target_session_id=target_session_id,
+            cron=cron,
+            run_at=run_at,
+            timezone=user_timezone,
+            credential_pins=pins,
+        )
+        if existing is not None:
+            return _already_scheduled(existing, current_session_id)
+
         try:
-            info = await get_scheduler_client().add_copilot_turn_schedule(
+            info = await scheduler.add_copilot_turn_schedule(
                 user_id=user_id,
                 session_id=target_session_id,
                 message=message,
@@ -329,6 +346,28 @@ class ScheduleFollowupTool(BaseTool):
             is_recurring=is_recurring,
             session_id=current_session_id,
         )
+
+
+def _already_scheduled(
+    existing: CopilotTurnJobInfo, current_session_id: str
+) -> ScheduleCreatedResponse:
+    when_str = (
+        f"every '{existing.cron}' ({existing.timezone})"
+        if existing.cron
+        else f"once at {existing.next_run_time}"
+    )
+    return ScheduleCreatedResponse(
+        message=(
+            f"Already scheduled: follow-up {existing.id} sends this message "
+            f"{when_str}, so no second one was added. To change it, delete it "
+            "with tool:delete_schedule and schedule the new one."
+        ),
+        schedule_id=existing.id,
+        next_run_time=existing.next_run_time,
+        is_recurring=existing.cron is not None,
+        already_scheduled=True,
+        session_id=current_session_id,
+    )
 
 
 def _pins_note(pins: CredentialPins) -> str:

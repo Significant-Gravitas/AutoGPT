@@ -32,6 +32,8 @@ class OttoService:
             )
             if not graph:
                 return None
+            if graph.user_id != user_id:
+                graph = graph.shared_copy()
 
             nodes_data = []
             for node in graph.nodes:

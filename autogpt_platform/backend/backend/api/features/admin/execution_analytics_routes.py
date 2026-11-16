@@ -373,7 +373,6 @@ async def _process_batch(
                 user_id=execution.user_id,
                 execution_status=execution.status,
                 model_name=request.model_name,
-                skip_feature_flag=True,  # Admin endpoint bypasses feature flags
                 system_prompt=request.system_prompt or DEFAULT_SYSTEM_PROMPT,
                 user_prompt=request.user_prompt or DEFAULT_USER_PROMPT,
                 skip_existing=request.skip_existing,

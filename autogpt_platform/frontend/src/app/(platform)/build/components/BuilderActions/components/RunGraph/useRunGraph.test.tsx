@@ -28,11 +28,6 @@ vi.mock("@/app/(platform)/build/hooks/useSaveGraph", () => ({
 
 const mockExecuteGraph = vi.fn();
 const mockStopGraph = vi.fn();
-const mockSendDatafastEvent = vi.hoisted(() => vi.fn());
-vi.mock("@/services/analytics", () => ({
-  analytics: { sendDatafastEvent: mockSendDatafastEvent },
-}));
-
 interface ExecutionVariables {
   data: { dry_run?: boolean };
 }
@@ -157,22 +152,7 @@ describe("useRunGraph", () => {
     expect(graphState.setIsGraphRunning).not.toHaveBeenCalled();
   });
 
-  it("records a successful real run with its builder surface", async () => {
-    mockSaveGraph.mockResolvedValue({ id: "graph-1", version: 1 });
-    const { result } = renderHook(() => useRunGraph());
-
-    await act(async () => {
-      await result.current.handleRunGraph();
-    });
-
-    expect(mockSendDatafastEvent).toHaveBeenCalledExactlyOnceWith("run_agent", {
-      id: "graph-1",
-      name: "",
-      surface: "builder",
-    });
-  });
-
-  it("does not count a simulation as an activation", async () => {
+  it("sends a simulation as a dry run", async () => {
     mockSaveGraph.mockResolvedValue({ id: "graph-1", version: 1 });
     const { result } = renderHook(() => useRunGraph());
 
@@ -185,6 +165,5 @@ describe("useRunGraph", () => {
         data: expect.objectContaining({ dry_run: true }),
       }),
     );
-    expect(mockSendDatafastEvent).not.toHaveBeenCalled();
   });
 });

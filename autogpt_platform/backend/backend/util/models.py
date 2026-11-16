@@ -4,6 +4,11 @@ Shared models and types used across the backend to avoid circular imports.
 
 import pydantic
 
+# Keeps `(page - 1) * page_size` far inside the 64-bit offset a query can carry.
+MAX_PAGE = 1_000_000
+# Above the largest page our frontend asks for: 1,000 store agents, on the marketplace home.
+MAX_PAGE_SIZE = 1_000
+
 
 class Pagination(pydantic.BaseModel):
     total_items: int = pydantic.Field(

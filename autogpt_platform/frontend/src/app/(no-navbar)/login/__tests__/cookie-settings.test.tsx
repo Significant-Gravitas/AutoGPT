@@ -5,7 +5,12 @@ import {
   installCookiebot,
   removeCookiebot,
 } from "@/tests/integrations/cookiebot";
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import LoginPage from "../page";
 
 const mockUseAuth = vi.hoisted(() => vi.fn());
@@ -43,6 +48,32 @@ describe("LoginPage cookie settings", () => {
 
     render(<LoginPage />);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Cookie settings" }),
+    );
+
+    expect(renew).toHaveBeenCalledOnce();
+  });
+
+  test("shows the link once Cookiebot asks a visitor with no answer yet", async () => {
+    // uc.js loads after hydration, and can arrive after the page finished
+    // loading; a visitor with no answer gets no consent event, only the
+    // dialog's.
+    configureCookiebot();
+    vi.spyOn(document, "readyState", "get").mockReturnValue("complete");
+
+    render(<LoginPage />);
+    expect(
+      await screen.findByText("Log in to your account to continue"),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Cookie settings" }),
+    ).toBeNull();
+
+    const { renew } = installCookiebot();
+    act(() => {
+      window.dispatchEvent(new Event("CookiebotOnDialogInit"));
+    });
     fireEvent.click(
       await screen.findByRole("button", { name: "Cookie settings" }),
     );

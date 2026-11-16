@@ -1,3 +1,4 @@
+import { useStableCallback } from "@/hooks/useStableCallback";
 import {
   getListExpertCredentialsQueryKey,
   useListExpertCredentials,
@@ -9,7 +10,7 @@ import { findSavedUserCredentialByProviderAndType } from "@/components/contextua
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
 import type { CredentialsProvidersContextType } from "@/providers/agent-credentials/credentials-provider";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { ConnectorRow } from "./helpers";
 
 export function useExpertCredentialSelection(
@@ -86,26 +87,28 @@ export function useExpertCredentialSelection(
   // empty, and the run that field belongs to is blocked on a credential the
   // expert already holds.
   const { hasUnansweredTarget } = row;
-  const rowRef = useRef(row);
-  rowRef.current = row;
 
-  useEffect(() => {
+  const writeSelection = useStableCallback(() => {
     if (!hasGrant || !grants.data || !providers || grants.isFetching) return;
     const settled = keepsSelection || selectedID === hydrated?.id;
     if (settled && !hasUnansweredTarget) return;
-    const current = rowRef.current;
     // A kept selection is written as-is: `hydrated` is undefined precisely
     // when the current one stays, so writing that would clear the row.
     const value = keepsSelection
-      ? current.selected
+      ? row.selected
       : hydrated && {
           id: hydrated.id,
-          provider: current.provider,
+          provider: row.provider,
           type: hydrated.type as CredentialsMetaInput["type"],
           title: hydrated.title ?? undefined,
         };
-    current.select(value ?? undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the row is read through rowRef; these are the values that decide whether to write
+    row.select(value ?? undefined);
+  });
+
+  // The row itself is rebuilt every render; these are the values that decide
+  // whether to write.
+  useEffect(() => {
+    writeSelection();
   }, [
     hasGrant,
     selectedID,

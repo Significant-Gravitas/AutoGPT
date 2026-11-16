@@ -64,10 +64,13 @@ poetry run pytest path/to/test.py --snapshot-update
 - **Absolute imports** — use `from backend.module import ...` for cross-package imports. Single-dot relative (`from .sibling import ...`) is acceptable for sibling modules within the same package (e.g., blocks). Avoid double-dot relative imports (`from ..parent import ...`) — use the absolute path instead
 - **No duck typing** — no `hasattr`/`getattr`/`isinstance` for type dispatch; use typed interfaces/unions/protocols
 - **Pydantic models** over dataclass/namedtuple/dict for structured data
+- **Field descriptions** — one or two lines; anything longer belongs in a doc, not a schema
 - **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code
 - **List comprehensions** over manual loop-and-append
 - **Early return** — guard clauses first, avoid deep nesting
+- **No functions that exist only to hold a block** — a helper whose only job is wrapping one statement (e.g. a `try` inside a `with`) adds a signature and a call site without removing complexity; inline it
 - **f-strings vs printf syntax in log statements** — Use `%s` for deferred interpolation in `debug` statements, f-strings elsewhere for readability: `logger.debug("Processing %s items", count)`, `logger.info(f"Processing {count} items")`
+- **Verify the alert path for new logs/metrics** — a log line or metric only alerts someone if something is listening; check the receiving integration's configured level rather than assuming, and for a metric, know which alert rule watches it or accept that nothing does
 - **Sanitize error paths** — `os.path.basename()` in error messages to avoid leaking directory structure
 - **TOCTOU awareness** — avoid check-then-act patterns for file access and credit charging
 - **`Security()` vs `Depends()`** — use `Security()` for auth deps to get proper OpenAPI security spec
@@ -77,6 +80,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **File length** — keep files under ~300 lines; if a file grows beyond this, split by responsibility (e.g. extract helpers, models, or a sub-module into a new file). Never keep appending to a long file.
 - **Function length** — keep functions under ~40 lines; extract named helpers when a function grows longer. Long functions are a sign of mixed concerns, not complexity.
 - **Top-down ordering** — define the main/public function or class first, then the helpers it uses below. A reader should encounter high-level logic before implementation details.
+- **Rate limits are documented** — a PR that adds, removes or changes a rate limit or usage cap updates `docs/platform/rate-limits.md`, and one that changes how a caller's IP address is found updates `docs/platform/client-ip.md`, in the same PR
 
 ## Testing Approach
 
@@ -85,6 +89,17 @@ poetry run pytest path/to/test.py --snapshot-update
 - Mock at boundaries — mock where the symbol is **used**, not where it's **defined**
 - After refactoring, update mock targets to match new module paths
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
+- Parametrize near-identical tests — five tests asserting the same fact with different inputs are one `@pytest.mark.parametrize` test; a copy-pasted stack of near-identical tests is a fixture
+- An absence test must be able to fail — before keeping a test that asserts something does *not* happen, make the mutation it's meant to catch and confirm the test goes red first; a test that can't fail has no power to catch a regression
+- Run `backend/util/architecture*_test.py` and `backend/blocks/test/test_block.py` for every backend change, whatever you touched — each architecture file sweeps whole packages and `test_block.py` is parametrized over every block, so no diff points at them. `architecture_test.py` rejects a new file outside a `lib`/`libs` directory that imports from `dataclasses` (this repo requires pydantic for structured data); `test_block.py` is the only suite that runs every block's `test_mock` lambdas (bar those in `SKIP_BLOCK_TESTS`), which live in the block definitions rather than in test files
+
+### Tests That Don't Flake
+
+- **No tight bounds on elapsed time** — assert the outcome, and bound real time only with ~10× margin or through a clock the test advances, because a full garbage collection on a CI runner can take seconds.
+- **Pin the clock for code keyed to a time window** (a rate-limit minute, a daily counter), set mid-window, because a run that crosses the boundary splits the test's calls across two windows.
+- **Never patch `time.sleep`, `asyncio.sleep`, `time.time` or `time.monotonic` on the shared module**, including through `backend.x.y.asyncio.sleep` when `y` does `import asyncio`; patch a name the module bound itself (`from asyncio import sleep`) or inject the clock, because the stub reaches every coroutine in the event loop. `backend/util/architecture_test.py` refuses new ones.
+- **Close what a test opens, and never call `asyncio.run` in a test** — it unsets the thread's event loop, and a client left bound to a closed loop fails a later test with `Event loop is closed`.
+- **Test a race by forcing the bad order** — to prove two concurrent calls can't both pass a check-then-act (both read "unclaimed", then both claim), patch the call the check makes so each task then waits on a shared `asyncio.Barrier(2)` before acting, with a timeout, since correct code blocks the second task. `asyncio.gather` alone switches tasks only where they await, so one task can check and act before the other checks, and the test passes with the bug still there.
 
 ### Test-Driven Development (TDD)
 

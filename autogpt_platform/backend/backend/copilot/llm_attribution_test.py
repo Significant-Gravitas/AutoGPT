@@ -11,6 +11,7 @@ from backend.copilot.llm_attribution import (
     is_turn_impersonated,
     openrouter_attribution,
     set_turn_impersonated,
+    set_turn_origin,
     set_turn_trace_id,
     turn_trace_id,
 )
@@ -21,9 +22,11 @@ from backend.util.settings import AppEnvironment
 def _outside_a_turn():
     set_turn_impersonated(False)
     set_turn_trace_id(None)
+    set_turn_origin(None)
     yield
     set_turn_impersonated(False)
     set_turn_trace_id(None)
+    set_turn_origin(None)
 
 
 def test_attribution_names_the_user_chat_and_environment(mocker):
@@ -106,6 +109,41 @@ def test_attribution_groups_a_turns_calls_under_its_trace():
     )
 
     assert body["trace"]["trace_id"] == "turn-1"
+
+
+@pytest.mark.parametrize("origin", ["chat", "scheduled", "spawned", "system"])
+def test_attribution_says_what_started_the_turn(origin: str):
+    set_turn_origin(origin)
+
+    body = openrouter_attribution(
+        user_id="user-1", session_id="sess-1", generation_name="copilot-sdk"
+    )
+
+    assert body["trace"]["turn_origin"] == origin
+
+
+def test_attribution_outside_a_turn_sends_no_turn_origin():
+    body = openrouter_attribution(
+        user_id="user-1", session_id="sess-1", generation_name="copilot-title"
+    )
+
+    assert "turn_origin" not in body["trace"]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_turns_each_send_their_own_origin():
+    async def turn(origin: str) -> str | None:
+        set_turn_origin(origin)
+        await asyncio.sleep(0)
+        return openrouter_attribution(
+            user_id="user-1", session_id="sess-1", generation_name="copilot-sdk"
+        )["trace"].get("turn_origin")
+
+    person, schedule = await asyncio.gather(
+        asyncio.create_task(turn("chat")), asyncio.create_task(turn("scheduled"))
+    )
+
+    assert (person, schedule) == ("chat", "scheduled")
 
 
 def test_attribution_outside_a_turn_sends_no_trace_id():

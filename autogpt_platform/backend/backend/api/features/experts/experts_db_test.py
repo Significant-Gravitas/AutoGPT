@@ -3,6 +3,7 @@ import functools
 import itertools
 import re
 import uuid
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,16 +20,13 @@ import prisma.models
 import pydantic
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 
 import backend.api.features.store.model as store_model
-from backend.api.features.experts import (
-    experts_db,
-    raise_attachments,
-    routine_jobs,
-    routines,
-    scheduling,
-    seed,
-)
+from backend.api.features.experts import experts_db, raise_attachments
+from backend.api.features.experts import reset as expert_reset
+from backend.api.features.experts import routine_jobs, routines, scheduling, seed
+from backend.api.features.experts import setup as expert_setup
 from backend.api.features.experts.models import (
     EXPERT_DAY_ONE_MAX_ITEMS,
     ExpertBundledSkill,
@@ -41,6 +39,8 @@ from backend.api.features.experts.models import (
     encode_voice_preferences,
 )
 from backend.api.features.experts.roster import RosterError, load_roster
+from backend.api.features.graph_executions.review.model import ReviewItem
+from backend.api.features.graph_executions.review.service import process_reviews
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store.categories import StoreCategory
@@ -48,139 +48,75 @@ from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
 from backend.api.model import CreateGraph
 from backend.blocks.io import AgentInputBlock
+from backend.copilot import db as copilot_db
+from backend.copilot import model as copilot_model
 from backend.copilot.credential_selection import CredentialPin
-from backend.copilot.model import create_chat_session
+from backend.copilot.model import ChatSession, create_chat_session
+from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.routines import ScheduleRoutineTool
 from backend.copilot.tools.skills import _NAME_RE, read_user_skill_with_body
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.db import prisma as db_client
 from backend.data.graph import Graph, GraphSettings, Node
+from backend.data.human_review import get_pending_reviews_for_user
+from backend.data.onboarding import get_user_onboarding
+from backend.data.onboarding_steps import OnboardingStep
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
+from backend.util.background import _background_tasks
+from backend.util.clients import get_database_manager_async_client
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
 from backend.util.json import SafeJson
 from backend.util.posthog_events import PostHogEvent
 from backend.util.test import SpinTestServer
 
-EXPECTED_ROSTER_PRELOAD_SLUGS = {
-    "ai-shortform-video-generator-create-viral-ready-content",
-    "ai-webpage-copy-improver",
-    "ai-youtube-to-blog-converter",
-    "automated-blog-writer",
-    "automated-support-ai",
-    "business-ownerceo-finder",
-    "email-address-finder",
-    "lead-finder-local-businesses",
-    "linkedin-post-generator",
-    "personalized-morning-coffee-newsletter",
-    "smart-meeting-brief",
-    "youtube-to-linkedin-post-converter",
-    "youtube-transcription-scraper",
-}
-# Personas that ship no workflows, so the 2-4 preload bound below stays a real
-# check on everyone else. Three different reasons, and only the middle one is a
-# design choice: Remy's workflow listings are unavailable; dev's specialists are
-# skills-only by design; and Alex, Daniel, James and Sofia carry skills and
-# routines but no preloads because the marketplace has no listing in their
-# domains at all -- every one of the 17 store listings is sales, marketing or
-# content, so there is nothing for recruiting, finance, product or ops to
-# preload. That last group should leave this set once such listings exist.
-# Clip joined the roster from an expert raised on the platform, which had one
-# skill and no workflows, and ships the same way.
-# Note this set now exempts 24 of the 33 roster entries, so the bound below is
-# only really checking the remaining nine.
-PERSONAS_WITHOUT_WORKFLOWS = {
-    "Alex",
-    "Casey",
-    "Clip",
-    "Daniel",
-    "Devon",
-    "Ellis",
-    "Harper",
-    "Ines",
-    "James",
-    "Jordan",
-    "Kai",
-    "Lena",
-    "Marco",
-    "Mina",
-    "Noor",
-    "Omar",
-    "Priya",
-    "Quinn",
-    "Remy",
-    "Riley",
-    "Sasha",
-    "Sofia",
-    "Theo",
-    "Vera",
-}
-# Which skills an expert bundles, and in what order, is catalog content
-# (experts/<key>.yml in Significant-Gravitas/skills-catalog): pinning the
-# lists here broke this suite on every catalog kit change. The tests below
-# pin shape only; the catalog's own check validates every assignment.
-SKILLS_ONLY_ROSTER = {
-    "Devon": ("Dependency & Security Hygiene", ["development"]),
-    "Riley": ("Customer Success & Retention", ["support"]),
-    "Jordan": ("Deal Desk & Proposal Support", ["sales"]),
-}
+# Everything below that names a catalog expert or reads its content checks a
+# rule the catalog must always meet, never the catalog's current copy: the
+# roster lives in Significant-Gravitas/skills-catalog, CI reads its main as
+# prod does, and pinning exact titles, timings, roles or lists here broke this
+# suite on every catalog edit. The catalog's own check validates the content.
+SKILLS_ONLY_ROSTER = ("Devon", "Riley", "Jordan")
 OPERATIONS_EXPERTS = ("Harper", "Vera", "Ellis")
 FINANCE_AND_ANALYTICS_EXPERTS = ("Mina", "Theo", "Quinn")
 
-# Every cron the roster ships, as (expert, slug, cron). A cadence fires
-# unattended from the day of hire, so PreloadSeed.cron limits which workflows
-# may carry one; pinning the whole set here makes adding a cron a deliberate
-# edit to this test rather than a silent roster change.
-EXPECTED_ROSTER_SCHEDULES = {
-    ("Frankie", "personalized-morning-coffee-newsletter", "40 7 * * *"),
-    ("Nadia", "personalized-morning-coffee-newsletter", "0 8 * * 1"),
+# A preload cadence fires unattended on every new hire, so it may only go on a
+# workflow that acts on nothing outside the platform (PreloadSeed.cron), at a
+# cadence we have reviewed: a typo such as "* * * * *" burns users' credits, and
+# the catalog's own check only requires a string. Scheduling a new workflow, or
+# a new cron on one listed here, is a deliberate edit to this map.
+UNATTENDED_SAFE_PRELOADS = {
+    "personalized-morning-coffee-newsletter": {"40 7 * * *", "0 8 * * 1"},
 }
-EXPECTED_WAVE_THREE = {
-    "Sasha": {
-        "role": "Support & Help Desk",
-        "categories": ["support"],
-        "timings": ["after queue access", "on request"],
-    },
-    "Priya": {
-        "role": "Product Management",
-        "categories": ["research", "operations"],
-        "timings": ["after feedback input", "on request"],
-    },
-    "Marco": {
-        "role": "Paid Ads & Performance",
-        "categories": ["marketing"],
-        "timings": ["after account export", "on request"],
-    },
-    "Noor": {
-        "role": "PR & Communications",
-        "categories": ["marketing", "content"],
-        "timings": ["day 1", "on request"],
-    },
-    "Casey": {
-        "role": "Code Review & QA",
-        "categories": ["development"],
-        "timings": ["after access", "on request"],
-    },
-    "Ines": {
-        "role": "People Ops & HR (Non-Advisory)",
-        "categories": ["operations"],
-        "timings": ["day 1", "on request"],
-    },
-    "Omar": {
-        "role": "RevOps & CRM Hygiene",
-        "categories": ["sales", "operations"],
-        "timings": ["after CRM export", "on request"],
-    },
-    "Lena": {
-        "role": "Privacy & Compliance (Non-Advisory)",
-        "categories": ["operations"],
-        "timings": ["day 1", "on request"],
-    },
-    "Kai": {
-        "role": "Executive Assistant",
-        "categories": ["support", "operations"],
-        "timings": ["after inbox access", "on request"],
-    },
-}
+_WEEKDAYS = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+# A day-one title or timing that reads as a recurring cadence or a time of
+# day ("weekly", "every Monday", "twice a week", "9am", "at 09:00"): "day 1",
+# "on request", "after CRM export", "once your numbers are connected" and
+# "with every ad" pass.
+_CLOCK_PERIODS = (
+    "days?|weeks?|months?|quarters?|years?|hours?|mornings?|evenings?|nights?"
+    rf"|weekdays?|business days?|{_WEEKDAYS}"
+)
+_CLOCK_COPY = re.compile(
+    r"\b(?:daily|weekly|bi-?weekly|fortnightly|monthly|quarterly|nightly|hourly"
+    r"|annually|yearly|weekdays|business days?"
+    rf"|(?:every|each) (?:\w+ )?(?:{_CLOCK_PERIODS})"
+    r"|(?:once|twice|\w+ times) (?:a|per) (?:day|week|month|quarter|year)"
+    rf"|(?:{_WEEKDAYS})s)\b"
+    r"|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b"
+    r"|\b(?:[01]?\d|2[0-3]):[0-5]\d\b",
+    re.IGNORECASE,
+)
+EXPECTED_WAVE_THREE = (
+    "Sasha",
+    "Priya",
+    "Marco",
+    "Noor",
+    "Casey",
+    "Ines",
+    "Omar",
+    "Lena",
+    "Kai",
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -208,8 +144,8 @@ def hire_waits_for_setup(monkeypatch):
     """Most tests assert on what a hire installs, so let them read it back
     once the background setup has finished."""
 
-    async def hire_and_finish_setup(user_id, template_id, name, surface=None):
-        result = await _hire_without_waiting(user_id, template_id, name, surface)
+    async def hire_and_finish_setup(user_id, template_id, name, surface=None, via=None):
+        result = await _hire_without_waiting(user_id, template_id, name, surface, via)
         await _finish_hire_setup()
         row = await prisma.models.Expert.prisma().find_unique(
             where={"id": result.expert.id}, include=experts_db._WORKFLOW_INCLUDE
@@ -640,7 +576,7 @@ async def _load_roster_store_assets() -> dict[str, str]:
     metadata = await store_assets.load_csv_metadata()
     by_slug = {m["slug"]: m for m in metadata.values() if m["is_available"]}
     expected: dict[str, str] = {}
-    for slug in EXPECTED_ROSTER_PRELOAD_SLUGS:
+    for slug in sorted(_store_asset_slugs()):
         assert slug in by_slug, f"Expected roster slug '{slug}' has no store asset"
         meta = by_slug[slug]
         version_id = meta["store_listing_version_id"]
@@ -655,6 +591,19 @@ async def _load_roster_store_assets() -> dict[str, str]:
         )
         expected[slug] = version_id
     return expected
+
+
+def _roster_preload_slugs(roster: Iterable[seed.RosterEntry]) -> set[str]:
+    return {preload["slug"] for entry in roster for preload in entry["preloads"]}
+
+
+def _store_asset_slugs() -> set[str]:
+    """The store assets the roster tests load: every preload the shipped roster
+    names, plus the listings the cadence-migration tests seed hires with."""
+    loaded = _load_catalog_roster()
+    roster = () if isinstance(loaded, str) else loaded[1]
+    removed = {slug for slug, _ in seed.REMOVED_TEMPLATE_CADENCES}
+    return _roster_preload_slugs(roster) | removed
 
 
 async def _hire_roster_and_assert_preloads(
@@ -773,14 +722,9 @@ async def hub_listing(make_hub_listing):
     return await make_hub_listing()
 
 
-@pytest.fixture
-def skills_hub_on(monkeypatch):
-    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=True))
-
-
 @pytest.mark.asyncio(loop_scope="session")
 async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
-    server: SpinTestServer, hub_listing, make_hub_listing, skills_hub_on
+    server: SpinTestServer, hub_listing, make_hub_listing
 ):
     first = await make_hub_listing()
     bundling = await _seed_template(
@@ -810,7 +754,7 @@ async def test_templates_resolve_bundled_skills_by_listing_id_in_roster_order(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_installs_the_hub_skills_the_template_bundles(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on
+    server: SpinTestServer, test_user, hub_listing
 ):
     template = await _seed_template(
         name="Maria", preload_listings=[], bundled=[hub_listing.id]
@@ -829,7 +773,7 @@ async def test_hire_installs_the_hub_skills_the_template_bundles(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     install = AsyncMock(side_effect=RuntimeError("storage down"))
     _patch_install(monkeypatch, install)
@@ -843,22 +787,6 @@ async def test_a_failed_bundled_skill_install_does_not_fail_the_hire(
     assert hired.expert.skills == []
     assert hired.expert.setup_status == "failed"
     assert len(hired.expert.setup_failures) == 1
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_hire_installs_nothing_while_the_hub_is_off(
-    server: SpinTestServer, test_user, hub_listing, monkeypatch
-):
-    monkeypatch.setattr(experts_db, "is_feature_enabled", AsyncMock(return_value=False))
-    install = AsyncMock()
-    _patch_install(monkeypatch, install)
-    template = await _seed_template(
-        name="Maria", preload_listings=[], bundled=[hub_listing.id]
-    )
-
-    await experts_db.hire_expert(test_user.id, template.id, None)
-
-    install.assert_not_awaited()
 
 
 def _patch_install(monkeypatch, install: AsyncMock) -> None:
@@ -905,7 +833,7 @@ async def _template_with_setup(server, hub_listing) -> prisma.models.Expert:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_returns_before_any_skill_is_installed(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     release = asyncio.Event()
     record = _recording_install()
@@ -940,7 +868,7 @@ async def test_hire_returns_before_any_skill_is_installed(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     install = _recording_install()
     _patch_install(monkeypatch, install)
@@ -969,7 +897,7 @@ async def test_hire_setup_installs_everything_once_and_reruns_as_a_no_op(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_rehire_retries_a_failed_setup(
-    server: SpinTestServer, test_user, hub_listing, skills_hub_on, monkeypatch
+    server: SpinTestServer, test_user, hub_listing, monkeypatch
 ):
     _patch_install(monkeypatch, AsyncMock(side_effect=RuntimeError("storage down")))
     template = await _seed_template(
@@ -1932,6 +1860,10 @@ async def test_list_expert_identities_is_lightweight_and_includes_archived(
         item for item in identities if item.id == active_hired.expert.id
     )
     assert active_identity.is_archived is False
+    # The sidebar lists an expert added in the last week before their first
+    # chat, so the join time has to come back, as an aware UTC time.
+    assert active_identity.created_at is not None
+    assert active_identity.created_at.utcoffset() is not None
     assert template.id not in identity_ids
     assert active_template.id not in identity_ids
     assert other_hired.expert.id not in identity_ids
@@ -2041,6 +1973,7 @@ def test_expert_identity_projection_columns_exist_in_schema():
         "jobTitle",
         "isArchived",
         "autopilotMode",
+        "createdAt",
     } <= fields
     assert {"ownerUserId", "isTemplate"} <= fields
 
@@ -2585,16 +2518,20 @@ async def test_check_private_expert_reads_the_hire_and_its_owners_scope(
         check.organization_id,
         check.team_id,
     ) == await experts_db.resolve_private_expert_tenancy(test_user.id, hired.expert.id)
-    for user_id, expert_id in (
-        (other_user.id, hired.expert.id),
-        (test_user.id, template.id),
-    ):
+    refused = [(other_user.id, hired.expert.id), (test_user.id, template.id)]
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    refused.append((test_user.id, hired.expert.id))
+    for user_id, expert_id in refused:
         with pytest.raises(experts_db.ExpertNotFoundError):
             await experts_db.check_private_expert(user_id, expert_id)
-
-    await experts_db.archive_expert(test_user.id, hired.expert.id)
-    with pytest.raises(experts_db.ExpertNotFoundError):
-        await experts_db.check_private_expert(test_user.id, hired.expert.id)
+        # A database manager from before check_private_expert is asked with
+        # these two reads instead, and they refuse the same experts.
+        assert (
+            await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+            is None
+        )
+        with pytest.raises(experts_db.ExpertNotFoundError):
+            await experts_db.resolve_private_expert_tenancy(user_id, expert_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -2915,6 +2852,71 @@ async def test_remove_workflow_detaches_it_from_the_expert(
         where={"id": library_agent_id}
     )
     assert library_agent is not None and not library_agent.isDeleted
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_workflow_whose_library_agent_was_deleted_is_not_offered(
+    server: SpinTestServer, test_user
+):
+    library_agent_id, _ = await _seed_own_library_agent(server, test_user.id)
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.install_workflow(
+        test_user.id, hired.expert.id, library_agent_id=library_agent_id
+    )
+    # A cadence with no schedule is the "needs setup" state, which links too.
+    await prisma.models.ExpertWorkflow.prisma().update(
+        where={"id": installed.id}, data={"scheduleCron": "0 9 * * 1"}
+    )
+    assert await _setup_links(test_user.id, hired.expert.id) == {library_agent_id}
+
+    await library_db.delete_library_agent(library_agent_id, test_user.id)
+
+    with pytest.raises(NotFoundError):
+        await library_db.get_library_agent(library_agent_id, test_user.id)
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.library_agent_id for w in expert.workflows] == []
+    assert await _setup_links(test_user.id, hired.expert.id) == set()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reinstalling_a_marketplace_workflow_restores_its_deleted_library_copy(
+    server: SpinTestServer, test_user
+):
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(
+        name="Maria", preload_listings=[slv_id], preload_crons={slv_id: "0 9 * * 1"}
+    )
+    sched = AsyncMock()
+    sched.add_execution_schedule = AsyncMock(return_value=SimpleNamespace(id="sched-1"))
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    first = hired.expert.workflows[0]
+    assert first.library_agent_id is not None
+    await library_db.delete_library_agent(first.library_agent_id, test_user.id)
+
+    with patch.object(scheduling, "get_scheduler_client", return_value=sched):
+        again = await experts_db.install_workflow(
+            test_user.id, hired.expert.id, store_listing_version_id=slv_id
+        )
+
+    assert again.library_agent_id is not None
+    await library_db.get_library_agent(again.library_agent_id, test_user.id)
+    expert = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert expert is not None
+    assert [w.id for w in expert.workflows] == [again.id]
+    # The stale row's job is deleted with it, even if library cleanup missed it.
+    sched.delete_schedule.assert_awaited_once_with("sched-1", user_id=test_user.id)
+    rows = await prisma.models.ExpertWorkflow.prisma().find_many(
+        where={"expertId": hired.expert.id}
+    )
+    assert [(r.id, r.scheduleId) for r in rows] == [(again.id, None)]
+
+
+async def _setup_links(user_id: str, expert_id: str) -> set[str | None]:
+    items = await expert_setup.list_setup_items(user_id)
+    return {item.library_agent_id for item in items if item.expert_id == expert_id}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -3815,34 +3817,29 @@ async def test_seed_roster_rejects_missing_preloads_before_template_mutation(
     with pytest.raises(RuntimeError, match="Load marketplace store assets"):
         await seed.seed_roster(real_roster)
 
-    assert resolve.await_count == len(EXPECTED_ROSTER_PRELOAD_SLUGS)
+    assert resolve.await_count == len(_roster_preload_slugs(real_roster))
     upsert.assert_not_awaited()
 
 
-def test_roster_preload_counts_and_scheduled_cadences(
+@pytest.mark.asyncio(loop_scope="session")
+async def test_roster_preload_counts_and_scheduled_cadences(
     real_roster: list[seed.RosterEntry],
 ):
-    """Launch invariant, checked without a DB: every persona ships 2-4 preloads
-    unless it is one we deliberately ship without workflows, and every
-    scheduled cadence on the roster is one we declared — so a cron added to a
-    persona that acts outside the platform fails here rather than firing
-    unattended on someone's account."""
+    """Launch invariant, checked without a DB: a persona ships either no
+    workflows or two to four, every preload is a listing the checked-in store
+    assets carry, and a cadence goes only on a workflow that is safe to run
+    unattended, so a cron added to one that acts outside the platform fails
+    here rather than firing on someone's account."""
+    metadata = await store_assets.load_csv_metadata()
+    available = {meta["slug"] for meta in metadata.values() if meta["is_available"]}
     for entry in real_roster:
-        if entry["name"] in PERSONAS_WITHOUT_WORKFLOWS:
-            assert entry["preloads"] == [], entry["name"]
-        else:
-            assert 2 <= len(entry["preloads"]) <= 4, entry["name"]
-
-    assert {
-        preload["slug"] for entry in real_roster for preload in entry["preloads"]
-    } == EXPECTED_ROSTER_PRELOAD_SLUGS
-    scheduled = {
-        (entry["name"], preload["slug"], preload["cron"])
-        for entry in real_roster
-        for preload in entry["preloads"]
-        if preload["cron"] is not None
-    }
-    assert scheduled == EXPECTED_ROSTER_SCHEDULES
+        name, preloads = entry["name"], entry["preloads"]
+        assert preloads == [] or 2 <= len(preloads) <= 4, name
+        for preload in preloads:
+            assert preload["slug"] in available, (name, preload["slug"])
+            if preload["cron"] is not None:
+                reviewed = UNATTENDED_SAFE_PRELOADS.get(preload["slug"], set())
+                assert preload["cron"] in reviewed, (name, preload)
 
 
 def _catalog_package_slugs(root: Path) -> set[str]:
@@ -3883,25 +3880,22 @@ def test_operations_experts_bundle_skills_and_no_preloads(
 def test_skills_only_roster_bundles_skills_and_no_preloads(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    for name, (role, categories) in SKILLS_ONLY_ROSTER.items():
+    for name in SKILLS_ONLY_ROSTER:
         entry = roster_by_name[name]
         assert entry["bundled_skills"]
         assert entry["preloads"] == []
-        assert (entry["role"], entry["categories"]) == (role, categories)
 
 
 def test_wave_three_experts_are_skills_only_with_ordered_packs(
     roster_by_name: dict[str, seed.RosterEntry],
 ):
-    roster = roster_by_name
-    for name, expected in EXPECTED_WAVE_THREE.items():
-        entry = roster[name]
-        assert entry["role"] == expected["role"]
-        assert entry["categories"] == expected["categories"]
+    for name in EXPECTED_WAVE_THREE:
+        entry = roster_by_name[name]
         assert entry["bundled_skills"]
         assert entry["preloads"] == []
         assert entry["routines"] == []
-        assert [item.timing for item in entry["day_one"]] == expected["timings"]
+        assert entry["day_one"], name
+        assert all(item.timing for item in entry["day_one"]), name
         assert len(entry["voice_samples"]) == 2
 
 
@@ -3919,18 +3913,22 @@ def test_wave_three_covers_exactly_the_nine_new_experts():
     }
 
 
-def test_the_roster_is_the_expected_size_with_unique_names(
+def test_the_roster_carries_the_named_experts_with_unique_names(
     real_roster: list[seed.RosterEntry],
 ):
-    """Kept out of the wave-three test above so that adding an expert on either
-    side edits the test about the roster rather than the one about dev's nine.
-    Names must be unique: two entries sharing one is what forced the rename of
-    this branch's Casey, Priya and Sasha when dev's wave three landed."""
-    # 24 from dev's waves, the eight generalists added on top, and Clip; the
-    # senior sales package was folded into Max rather than shipped as its own entry.
-    assert len(real_roster) == 33
+    """The experts these tests name are on the roster, however many others the
+    catalog adds. Names must be unique: two entries sharing one is what forced
+    the rename of this branch's Casey, Priya and Sasha when dev's wave three
+    landed."""
     names = [entry["name"] for entry in real_roster]
     assert len(names) == len(set(names))
+    named = {
+        *SKILLS_ONLY_ROSTER,
+        *OPERATIONS_EXPERTS,
+        *FINANCE_AND_ANALYTICS_EXPERTS,
+        *EXPECTED_WAVE_THREE,
+    }
+    assert named <= set(names), named - set(names)
 
 
 def test_retired_templates_are_off_the_roster(real_roster: list[seed.RosterEntry]):
@@ -3987,61 +3985,66 @@ async def test_seed_roster_rejects_unknown_bundled_skills_before_template_mutati
 def test_roster_day_one_promises_match_work_the_expert_can_do_on_request(
     real_roster: list[seed.RosterEntry],
 ):
-    """Day-one copy may describe draft work, but not an unattended cadence."""
+    """Day-one copy may describe draft work, but not an unattended cadence.
+
+    The cards themselves are catalog content: pinning their titles and timings
+    here broke this suite on every catalog soul edit, so this checks that no
+    card's title or timing puts a clock on the work. Descriptions are left
+    alone, since advice can name a cadence ("what to set aside each month").
+    """
     day_one = {entry["name"]: entry["day_one"] for entry in real_roster}
 
-    assert [(item.title, item.timing) for item in day_one["Maria"]] == [
-        ("A brief before the draft", "day 1"),
-        ("Your money pages, audited", "day 1"),
-    ]
-    assert [item.timing for item in day_one["Mina"]] == [
+    for name, items in day_one.items():
+        assert len(items) <= EXPERT_DAY_ONE_MAX_ITEMS, name
+        for item in items:
+            assert item.title and item.timing, (name, item.title)
+            for copy in (item.title, item.timing):
+                assert not _CLOCK_COPY.search(copy), (name, copy)
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
+        "weekly",
+        "Every Monday",
+        "Fridays",
+        "9am",
+        "8:30 pm",
+        "at 09:00",
+        "17:45",
+        "once a week",
+        "twice a week",
+        "twice per week",
+        "three times per month",
+        "every two weeks",
+        "biweekly",
+        "weekdays",
+        "each business day",
+        "every hour",
+        "every quarter",
+        "annually",
+    ],
+)
+def test_clock_copy_catches_cadences_and_times_of_day(copy: str):
+    assert _CLOCK_COPY.search(copy)
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
         "day 1",
-        "day 1",
+        "week 1",
         "on request",
-    ]
-    assert [item.timing for item in day_one["Theo"]] == [
-        "day 1",
-        "day 1",
-        "on request",
-    ]
-    assert [item.timing for item in day_one["Quinn"]] == [
-        "day 1",
-        "day 1",
-        "on request",
-    ]
-    assert [(item.title, item.timing) for item in day_one["Harper"]] == [
-        ("A hiring plan grounded in the role", "day 1"),
-        ("A fair scorecard before screening", "day 1"),
-    ]
-    assert [(item.title, item.timing) for item in day_one["Vera"]] == [
-        ("Your next vendor choice, compared", "day 1"),
-        ("Renewals and spend risks surfaced", "on request"),
-    ]
-    assert [(item.title, item.timing) for item in day_one["Ellis"]] == [
-        ("Key terms in one clear record", "day 1"),
-        ("Playbook gaps ready for counsel", "on request"),
-    ]
-    for name in ("Jules", "Nadia", "Remy", "Frankie"):
-        assert day_one[name] == [], name
-    # Max carries the senior sales package: two day-one reads and one that
-    # waits on a numbers source, none of them a clock.
-    assert [item.timing for item in day_one["Max"]] == [
-        "day 1",
-        "day 1",
+        "after CRM export",
         "once your numbers are connected",
-    ]
-    assert [item.timing for item in day_one["Devon"]] == [
-        "after access",
-        "on request",
-    ]
-    assert [item.timing for item in day_one["Riley"]] == [
-        "after data access",
-        "on request",
-    ]
-    assert [item.timing for item in day_one["Jordan"]] == [
-        "after deal input",
-        "on request",
-    ]
+        "with every ad",
+        "Your week, protected",
+        "Pricing from £3.50",
+        "once a deal closes",
+    ],
+)
+def test_clock_copy_passes_draft_work_timings(copy: str):
+    assert not _CLOCK_COPY.search(copy)
 
 
 def test_finance_and_analytics_roster_pack_is_skills_only(
@@ -4066,8 +4069,9 @@ async def test_upsert_template_refuses_a_fourth_day_one_row_before_writing(
     # One past the cap, however many rows the roster currently gives her —
     # deriving the list from len(maria["day_one"]) + 1 made this test pass
     # silently (and then fail on a MagicMock await) the moment her row count
-    # dropped below the cap.
-    too_many["day_one"] = [maria["day_one"][0]] * (EXPERT_DAY_ONE_MAX_ITEMS + 1)
+    # dropped below the cap. The row is our own, not her catalog copy.
+    row = ExpertDayOneItem(title="A brief before the draft", timing="day 1")
+    too_many["day_one"] = [row] * (EXPERT_DAY_ONE_MAX_ITEMS + 1)
 
     with (
         patch.object(prisma.models.Expert, "prisma") as expert_client,
@@ -4111,12 +4115,14 @@ async def test_roster_preloads_resolve_and_hire_installs_cleanly(
         fixture_roster, templates, expected
     )
 
-    frankie_crons = [
-        w.schedule_cron for w in results["Frankie"].expert.workflows if w.schedule_cron
-    ]
-    assert frankie_crons == ["40 7 * * *"]
-    for name in ("Maria", "Max"):
-        assert all(w.schedule_cron is None for w in results[name].expert.workflows)
+    # Each hire schedules exactly the cadences its template declares.
+    for persona, entry in fixture_roster.items():
+        installed = {
+            w.store_listing_version_id: w.schedule_cron
+            for w in results[persona].expert.workflows
+        }
+        declared = {expected[p["slug"]]: p["cron"] for p in entry["preloads"]}
+        assert installed == declared, persona
     assert all(result.expert.day_one == [] for result in results.values())
 
 
@@ -4473,6 +4479,46 @@ async def test_list_experts_includes_last_run(server: SpinTestServer, test_user)
     fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
     assert fetched is not None
     assert fetched.last_run_status == "COMPLETED"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_last_run_with_a_failed_step_reports_failed(
+    server: SpinTestServer, test_user
+):
+    """A step that fails without a typed reason (a bad credential) leaves the
+    run COMPLETED with node_error_count > 0. The expert must report it as
+    failed: the expert page and Home read last_run_status, and a failed run
+    can never show done."""
+    slv_id = await _seed_store_listing(server)
+    template = await _seed_template(name="Maria", preload_listings=[slv_id])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    wf = hired.expert.workflows[0]
+    assert wf.library_agent_id is not None
+    library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+        where={"id": wf.library_agent_id}
+    )
+    assert library_agent is not None
+    await prisma.models.AgentGraphExecution.prisma().create(
+        data={
+            "agentGraphId": library_agent.agentGraphId,
+            "agentGraphVersion": library_agent.agentGraphVersion,
+            "userId": test_user.id,
+            "executionStatus": prisma.enums.AgentExecutionStatus.COMPLETED,
+            "expertId": hired.expert.id,
+            "stats": SafeJson({"node_count": 1, "node_error_count": 1}),
+        }
+    )
+
+    experts = await experts_db.list_experts(test_user.id)
+    me = next(e for e in experts if e.id == hired.expert.id)
+    assert me.last_run_status == "FAILED"
+
+    fetched = await experts_db.get_expert(test_user.id, hired.expert.id)
+    assert fetched is not None
+    assert fetched.last_run_status == "FAILED"
+
+    runs = await experts_db.list_expert_runs(test_user.id, hired.expert.id)
+    assert [run.status for run in runs] == ["failed"]
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -5176,6 +5222,7 @@ def _run_execution(**overrides) -> SimpleNamespace:
         "executionStatus": "COMPLETED",
         "startedAt": None,
         "endedAt": None,
+        "stats": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -5256,6 +5303,17 @@ def test_to_expert_run_never_reports_a_failed_run_as_completed(execution_status)
         needs_review=False,
     )
     assert run.status == execution_status.value.lower()
+
+
+def test_to_expert_run_reports_a_completed_run_with_a_failed_step_as_failed():
+    run = experts_db._to_expert_run(
+        _run_execution(stats={"node_count": 3, "node_error_count": 1}),
+        _run_workflow(),
+        "unknown",
+        None,
+        needs_review=False,
+    )
+    assert run.status == "failed"
 
 
 def test_to_expert_run_names_a_library_only_workflow():
@@ -6066,6 +6124,23 @@ async def _template(name: str, **fields) -> prisma.models.Expert:
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_get_template_reads_one_live_template_and_nothing_else(
+    server: SpinTestServer, test_user
+):
+    """The gate names a held hire's template inside a 1 s budget, so it reads
+    that one row; a retired template or a hired expert is not a template."""
+    suffix = uuid.uuid4().hex[:8]
+    live = await _template(f"Ada {suffix}")
+    retired = await _template(f"Old {suffix}", isArchived=True)
+    hired = await experts_db.hire_expert(test_user.id, live.id, None)
+
+    found = await experts_db.get_template(live.id)
+    assert found is not None and found.name == live.name and found.is_template
+    assert await experts_db.get_template(retired.id) is None
+    assert await experts_db.get_template(hired.expert.id) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_list_templates_filters_by_category(server: SpinTestServer):
     """A category chip narrows the roster, and never widens it: an expert
     filed under another category must not surface under an unrelated chip."""
@@ -6242,6 +6317,58 @@ async def test_expert_hired_carries_the_hiring_surface(
         test_user.id,
         "expert_hired",
         _expert_hired(result, template.id, surface="onboarding"),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_says_the_plan_made_a_fresh_or_a_revived_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        hired = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding", via="plan"
+        )
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(hired, template.id, surface="onboarding", via="plan"),
+    )
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        revived = await experts_db.hire_expert(
+            test_user.id, template.id, None, "onboarding", via="plan"
+        )
+
+    assert revived.expert.id == hired.expert.id
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(revived, template.id, surface="onboarding", via="plan"),
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_expert_hired_names_no_via_when_a_person_rehires_a_plan_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(
+        test_user.id, template.id, None, "onboarding", via="plan"
+    )
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+
+    with patch.object(experts_db, "emit_funnel_event") as emit:
+        revived = await experts_db.hire_expert(
+            test_user.id, template.id, None, "expert_page"
+        )
+
+    assert revived.expert.id == hired.expert.id
+    emit.assert_called_once_with(
+        test_user.id,
+        "expert_hired",
+        _expert_hired(revived, template.id, surface="expert_page"),
     )
 
 
@@ -6758,6 +6885,59 @@ async def test_a_routine_with_unanswered_asks_refuses_to_be_scheduled(
     )
     assert rows[0].enabledAt is None
     assert rows[0].scheduleIds == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_routine_refusals_cross_the_database_manager_rpc_at_once(
+    server: SpinTestServer, test_user
+):
+    """The copilot tool reaches these over RPC, where an unmapped type was a 500
+    retried for ~48 minutes and then raised as one the tool never catches."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    client = get_database_manager_async_client()
+    # Untimed: the server may still be starting, and that is not what is measured.
+    await client.health_check_async()
+
+    # An expert's routine named from the account's own scope: prod's shape.
+    with pytest.raises(routines.RoutineNotFoundError):
+        await asyncio.wait_for(
+            client.enable_routine(test_user.id, None, installed[0].id), timeout=10
+        )
+    with pytest.raises(routines.RoutineUnansweredAsksError):
+        await asyncio.wait_for(
+            client.enable_routine(test_user.id, hired.expert.id, installed[0].id),
+            timeout=10,
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_schedule_routine_answers_another_scopes_routine_at_once_over_rpc(
+    server: SpinTestServer, test_user
+):
+    """Naming an integration sends the tool through the account-pin step first,
+    which reads the routine and passes pins over RPC before the refusal."""
+    template = await _template_with_routine()
+    hired = await experts_db.hire_expert(test_user.id, template.id, None)
+    installed = await experts_db.list_routines(test_user.id, hired.expert.id)
+    client = get_database_manager_async_client()
+    await client.health_check_async()
+
+    with patch("backend.copilot.tools.routines.experts_db", return_value=client):
+        result = await asyncio.wait_for(
+            ScheduleRoutineTool()._execute(
+                test_user.id,
+                ChatSession.new(test_user.id, dry_run=False),
+                routine_id=installed[0].id,
+                enabled=True,
+                integrations=["github"],
+            ),
+            timeout=10,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "routine_not_found"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -7412,3 +7592,383 @@ async def test_hiring_copies_no_autopilot_mode_and_junk_reads_as_default(
     identities = await experts_db.list_expert_identities(test_user.id)
     identity = next(item for item in identities if item.id == hired.expert.id)
     assert identity.autopilot_mode is None
+
+
+# =============================================================================
+# Wallet checklist: the marketplace step
+# =============================================================================
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "surface, ticks",
+    [("expert_page", True), ("copilot", True), ("onboarding", False), (None, False)],
+)
+async def test_only_a_hire_the_user_made_ticks_the_marketplace_step(
+    server: SpinTestServer, test_user, surface, ticks
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+
+    await experts_db.hire_expert(test_user.id, template.id, None, surface)
+
+    assert await _marketplace_step_state(test_user.id) == (ticks, ticks)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_onboarding_hire_ticks_the_step_only_once_rehired_after_firing(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    hired = await experts_db.hire_expert(test_user.id, template.id, None, "onboarding")
+
+    await experts_db.hire_expert(test_user.id, template.id, None, "expert_page")
+    assert await _marketplace_step_state(test_user.id) == (False, False)
+
+    await experts_db.archive_expert(test_user.id, hired.expert.id)
+    await experts_db.hire_expert(test_user.id, template.id, None, "expert_page")
+    assert await _marketplace_step_state(test_user.id) == (True, True)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_to_record_the_step_never_fails_the_hire(
+    server: SpinTestServer, test_user
+):
+    template = await _seed_template(name="Maria", preload_listings=[])
+    failing = AsyncMock(side_effect=RuntimeError("redis is down"))
+
+    with patch.object(experts_db, "complete_onboarding_step", failing):
+        hired = await experts_db.hire_expert(
+            test_user.id, template.id, None, "expert_page"
+        )
+
+    assert hired.expert.source_template_id == template.id
+    await _record_marketplace_step()
+    failing.assert_awaited_once_with(test_user.id, OnboardingStep.MARKETPLACE_ADD_AGENT)
+
+
+async def _marketplace_step_state(user_id: str) -> tuple[bool, bool]:
+    """(completed, rewarded) for the step, once the hire's recording has run."""
+    await _record_marketplace_step()
+    onboarding = await get_user_onboarding(user_id)
+    step = OnboardingStep.MARKETPLACE_ADD_AGENT
+    return step in onboarding.completedSteps, step in onboarding.rewardedFor
+
+
+async def _record_marketplace_step() -> None:
+    await asyncio.gather(
+        *(
+            task
+            for task in _background_tasks
+            if task.get_name().startswith("marketplace-step-")
+        ),
+        return_exceptions=True,
+    )
+
+
+# ─── Reset ────────────────────────────────────────────────────────────
+
+
+async def _hire_with_history(user_id: str) -> tuple[str, prisma.models.Expert, str]:
+    """A hire the owner has lived with: an edited soul, a routine of their
+    own beside the template's, and a first thread. Returns the expert id,
+    its template and the id of that thread."""
+    template = await _seed_template(name="Maria", preload_listings=[])
+    template = await prisma.models.Expert.prisma().update(
+        where={"id": template.id},
+        data={"boundaries": "Never invent statistics."},
+    )
+    assert template is not None
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": template.id,
+            "key": "weekly-digest",
+            "title": "Weekly digest",
+            "prompt": "Summarise the week.",
+            "crons": ["0 9 * * 1"],
+        }
+    )
+    hired = await experts_db.hire_expert(user_id, template.id, None)
+    expert_id = hired.expert.id
+    await prisma.models.Expert.prisma().update(
+        where={"id": expert_id},
+        data={
+            "name": "My Maria",
+            "identity": "Remember the codeword HERON.",
+            "boundaries": "Edited by the owner.",
+        },
+    )
+    await prisma.models.ExpertRoutine.prisma().create(
+        data={
+            "expertId": expert_id,
+            "key": "owner-routine",
+            "title": "Owner routine",
+            "prompt": "Check the inbox.",
+            "crons": ["0 8 * * *"],
+            "source": prisma.enums.ExpertRoutineSource.OWNER,
+        }
+    )
+    kickoff = await copilot_model.get_or_create_expert_kickoff_session(
+        user_id, expert_id, dry_run=False
+    )
+    return expert_id, template, kickoff.session_id
+
+
+@pytest.fixture
+def reset_externals():
+    """The memory graph and the E2B volume live outside the test database;
+    PostHog too."""
+    with (
+        patch.object(
+            expert_reset, "erase_scope", new=AsyncMock(return_value=12)
+        ) as erase,
+        patch.object(
+            expert_reset, "_erase_computer", new=AsyncMock(return_value=True)
+        ) as computer,
+        patch.object(expert_reset, "emit_funnel_event") as track,
+    ):
+        yield SimpleNamespace(erase=erase, computer=computer, track=track)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_puts_a_hire_back_to_how_it_arrived(
+    server: SpinTestServer, test_user, reset_externals
+):
+    expert_id, template, _ = await _hire_with_history(test_user.id)
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.model_dump() == {
+        # Erased first, and once more after the chats are archived.
+        "memory_nodes_erased": 24,
+        "computer_erased": True,
+        "soul_reset": True,
+        "routines_reset": 1,
+        "chats_archived": 1,
+        "approvals_cleared": 0,
+    }
+    assert reset_externals.erase.await_count == 2
+    # One event per reset, with ids and counts only: no name, no chat text.
+    reset_externals.track.assert_called_once_with(
+        test_user.id,
+        PostHogEvent.EXPERT_RESET,
+        {"expert_id": expert_id, "template_id": template.id, **result.model_dump()},
+    )
+    scope = reset_externals.erase.await_args.args[0]
+    assert (scope.owner_user_id, scope.expert_id) == (test_user.id, expert_id)
+    reset_externals.computer.assert_awaited_once_with(expert_id)
+
+    row = await prisma.models.Expert.prisma().find_unique(where={"id": expert_id})
+    assert row is not None
+    assert row.identity == template.identity
+    assert row.boundaries == "Never invent statistics."
+    # The user named it; the reset keeps the name.
+    assert row.name == "My Maria"
+
+    routines = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": expert_id}
+    )
+    assert [(r.key, r.enabledAt) for r in routines] == [("weekly-digest", None)]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_archives_the_chats_and_the_next_kickoff_starts_fresh(
+    server: SpinTestServer, test_user, reset_externals
+):
+    expert_id, _, old_thread = await _hire_with_history(test_user.id)
+
+    await expert_reset.reset_expert(test_user.id, expert_id)
+
+    old = await prisma.models.ChatSession.prisma().find_unique(where={"id": old_thread})
+    assert old is not None and old.archivedAt is not None
+    listed = await copilot_db.get_user_chat_sessions(test_user.id, expert_id=expert_id)
+    assert listed == []
+    assert (
+        await copilot_db.get_user_session_count(test_user.id, expert_id=expert_id) == 0
+    )
+    # The expert has no open thread, so it introduces itself again, in a new
+    # thread rather than the archived one its kickoff id used to name.
+    fresh = await copilot_model.get_or_create_expert_kickoff_session(
+        test_user.id, expert_id, dry_run=False
+    )
+    assert fresh.session_id != old_thread
+    assert fresh.archived_at is None
+    again = await copilot_model.get_or_create_expert_kickoff_session(
+        test_user.id, expert_id, dry_run=False
+    )
+    assert again.session_id == fresh.session_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_refuses_someone_elses_expert(
+    server: SpinTestServer, test_user, other_user, reset_externals
+):
+    expert_id, _, _ = await _hire_with_history(test_user.id)
+
+    with pytest.raises(NotFoundError):
+        await expert_reset.reset_expert(other_user.id, expert_id)
+
+    reset_externals.erase.assert_not_awaited()
+    reset_externals.computer.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_stops_when_a_routine_job_cannot_be_deleted(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """Unlike switching a routine off, a reset deletes the row, so a job left
+    behind would fire with nothing to stop it: the reset fails instead and
+    the routine stays until a retry succeeds."""
+    expert_id, _, _ = await _hire_with_history(test_user.id)
+    await prisma.models.ExpertRoutine.prisma().update_many(
+        where={"expertId": expert_id, "key": "owner-routine"},
+        data={"scheduleIds": ["sched-live"], "enabledAt": datetime.now(timezone.utc)},
+    )
+    scheduler = MagicMock()
+    scheduler.delete_schedule = AsyncMock(side_effect=RuntimeError("scheduler down"))
+
+    with (
+        patch.object(expert_reset, "get_scheduler_client", return_value=scheduler),
+        pytest.raises(RuntimeError),
+    ):
+        await expert_reset.reset_expert(test_user.id, expert_id)
+
+    kept = await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": expert_id, "key": "owner-routine"}
+    )
+    assert [r.scheduleIds for r in kept] == [["sched-live"]]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_waits_for_a_turn_in_flight(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A turn ending mid-reset would hand its conversation to memory
+    ingestion after the erase, so a busy expert is not reset."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={"chatStatus": prisma.enums.ChatSessionStatus.running},
+    )
+
+    with pytest.raises(expert_reset.ExpertBusyError):
+        await expert_reset.reset_expert(test_user.id, expert_id)
+
+    reset_externals.erase.assert_not_awaited()
+    reset_externals.computer.assert_not_awaited()
+    still_open = await prisma.models.ChatSession.prisma().find_unique(
+        where={"id": thread}
+    )
+    assert still_open is not None and still_open.archivedAt is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_stops_sharing_the_chats_it_archives(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A shared chat's link stops serving once archived; the reset also runs
+    the owner's stop-sharing cascade so runs shared through it close too."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={
+            "isShared": True,
+            "shareToken": str(uuid.uuid4()),
+            "sharedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    await expert_reset.reset_expert(test_user.id, expert_id)
+
+    row = await prisma.models.ChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None
+    assert row.archivedAt is not None
+    assert row.isShared is False
+    assert row.shareToken is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_retried_reset_unshares_a_chat_an_earlier_one_archived(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A reset interrupted between archiving and unsharing must not leave a
+    chat archived but still shared: the retry picks it up."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    await prisma.models.ChatSession.prisma().update(
+        where={"id": thread},
+        data={
+            "archivedAt": datetime.now(timezone.utc),
+            "isShared": True,
+            "shareToken": str(uuid.uuid4()),
+            "sharedAt": datetime.now(timezone.utc),
+        },
+    )
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.chats_archived == 0
+    row = await prisma.models.ChatSession.prisma().find_unique(where={"id": thread})
+    assert row is not None
+    assert row.isShared is False
+    assert row.shareToken is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_reset_declines_an_approval_waiting_in_needs_you(
+    server: SpinTestServer, test_user, reset_externals
+):
+    """A held call waiting in the expert's chat shows in Needs you. Approving
+    it after the reset would wake a turn in a chat that is gone, so the reset
+    declines it, and answering it anyway says the chat was removed."""
+    expert_id, _, thread = await _hire_with_history(test_user.id)
+    card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
+    await prisma.models.PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": card,
+            "userId": test_user.id,
+            "chatSessionId": thread,
+            "payload": SafeJson({"tool": "create_routine"}),
+        }
+    )
+    elsewhere = await create_chat_session(test_user.id, dry_run=False)
+    other_card = f"copilot-node-gate-create_routine:{uuid.uuid4()}"
+    await prisma.models.PendingHumanReview.prisma().create(
+        data={
+            "nodeExecId": other_card,
+            "userId": test_user.id,
+            "chatSessionId": elsewhere.session_id,
+            "payload": SafeJson({"tool": "create_routine"}),
+        }
+    )
+
+    result = await expert_reset.reset_expert(test_user.id, expert_id)
+
+    assert result.approvals_cleared == 1
+    declined = await prisma.models.PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": card}
+    )
+    assert declined is not None
+    assert (declined.status, declined.processed) == (
+        prisma.enums.ReviewStatus.REJECTED,
+        True,
+    )
+    # Needs you lists waiting reviews: the card is gone from it.
+    waiting = await get_pending_reviews_for_user(test_user.id, page_size=100)
+    assert card not in {review.node_exec_id for review in waiting}
+    untouched = await prisma.models.PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": other_card}
+    )
+    assert untouched is not None
+    assert untouched.status == prisma.enums.ReviewStatus.WAITING
+
+    with pytest.raises(HTTPException) as answered:
+        await process_reviews(
+            test_user.id, [ReviewItem(node_exec_id=card, approved=True)]
+        )
+    assert answered.value.status_code == 410
+    assert answered.value.detail == {
+        "type": "chat_removed",
+        # Still on the team, so the page can offer a chat with them.
+        "expert_id": expert_id,
+        "expert_name": "My Maria",
+        "message": "This chat was removed when My Maria was reset.",
+    }

@@ -55,7 +55,7 @@ async def log_node_integration_activity(
                 draft=ActivityEventDraft(
                     category="INTEGRATION",
                     event_type="integration.action",
-                    title=block.name,
+                    title=block.display_name,
                     provider=provider,
                     graph_exec_id=node_exec.graph_exec_id,
                     node_exec_id=node_exec.node_exec_id,

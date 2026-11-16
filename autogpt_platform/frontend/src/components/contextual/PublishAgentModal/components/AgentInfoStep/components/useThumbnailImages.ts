@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { postV2GenerateSubmissionImage } from "@/app/api/__generated__/endpoints/store/store";
 import { resolveResponse } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   isFileTooLarge,
   SUBMISSION_MEDIA_MAX_SIZE_MB,
@@ -153,6 +154,15 @@ export function useThumbnailImages({
         toastIfPlanRequired(error, "Generating an image needs an active plan")
       )
         return;
+      if (error instanceof ApiError && error.status === 429) {
+        toast({
+          title: "Daily image limit reached",
+          description:
+            "You can generate more within 24 hours. Until then, upload an image instead.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Generation failed",
         description: "Failed to generate image. Please try again.",

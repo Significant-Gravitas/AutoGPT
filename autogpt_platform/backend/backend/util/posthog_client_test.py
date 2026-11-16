@@ -131,6 +131,7 @@ def test_capture_adds_the_base_properties_last(monkeypatch: pytest.MonkeyPatch) 
             "source": "chat_copilot",
         },
         uuid=None,
+        timestamp=None,
     )
 
 
@@ -382,3 +383,157 @@ def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
     assert kwargs["uuid"] == str(
         uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
     )
+
+
+def test_capture_anonymous_sends_a_random_id_and_no_person(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture_anonymous(
+        PostHogEvent.ACCOUNT_DELETION_FEEDBACK,
+        {"reason": "cost", "plan_state": "pro"},
+    )
+
+    kwargs = client.capture.call_args.kwargs
+    assert uuid.UUID(kwargs["distinct_id"]).version == 4
+    assert kwargs["event"] == "account_deletion_feedback"
+    assert kwargs["properties"] == {
+        "reason": "cost",
+        "plan_state": "pro",
+        "$process_person_profile": False,
+        "environment": "prod",
+        "source": "platform",
+    }
+
+
+def test_capture_anonymous_uses_a_new_id_for_every_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+    posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+
+    first, second = (c.kwargs["distinct_id"] for c in client.capture.call_args_list)
+    assert first != second
+
+
+def test_capture_anonymous_base_properties_win_over_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+
+    posthog_client.capture_anonymous(
+        PostHogEvent.ACCOUNT_DELETION_ALTERNATIVE_CLICKED,
+        {
+            "alternative": "billing",
+            "$process_person_profile": True,
+            "environment": "caller",
+            "source": "caller",
+        },
+        source="web_relay",
+    )
+
+    assert client.capture.call_args.kwargs["properties"] == {
+        "alternative": "billing",
+        "$process_person_profile": False,
+        "environment": "prod",
+        "source": "web_relay",
+    }
+
+
+def test_capture_anonymous_is_a_noop_when_analytics_is_off(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: None)
+
+    with caplog.at_level("WARNING", logger=posthog_client.__name__):
+        posthog_client.capture_anonymous(PostHogEvent.ACCOUNT_DELETION_COMPLETED)
+
+    assert not caplog.records
+
+
+def test_capture_anonymous_swallows_a_client_error_and_logs_no_properties(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    client = Mock()
+    client.capture.side_effect = RuntimeError("rejected: I am leaving because of X")
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    with caplog.at_level("WARNING", logger=posthog_client.__name__):
+        posthog_client.capture_anonymous(
+            PostHogEvent.ACCOUNT_DELETION_FEEDBACK,
+            {"reason": "other", "text": "I am leaving because of X"},
+        )
+
+    assert "account_deletion_feedback" in caplog.text
+    assert "leaving because of X" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+@pytest.fixture
+def shared_client(monkeypatch: pytest.MonkeyPatch) -> Mock:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+    monkeypatch.setattr(posthog_client, "_environment", lambda: "prod")
+    return client
+
+
+def test_an_event_an_admin_caused_as_the_user_is_marked(shared_client: Mock) -> None:
+    token = posthog_client.set_impersonated(True)
+    try:
+        posthog_client.capture(
+            "user-1", PostHogEvent.AGENT_RUN_STARTED, {"impersonated": False}
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert shared_client.capture.call_args.kwargs["properties"]["impersonated"] is True
+
+
+def test_an_event_the_user_caused_carries_no_mark(shared_client: Mock) -> None:
+    posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+
+    assert "impersonated" not in shared_client.capture.call_args.kwargs["properties"]
+
+
+def test_an_admin_acting_as_the_user_never_sets_their_person(
+    shared_client: Mock,
+) -> None:
+    token = posthog_client.set_impersonated(True)
+    try:
+        queued = posthog_client.capture(
+            "user-1",
+            PostHogEvent.SET_PERSON_PROPERTIES,
+            {"$set": {"onboarding_role": "Other"}},
+        )
+    finally:
+        posthog_client.reset_impersonated(token)
+
+    assert queued is False
+    shared_client.capture.assert_not_called()
+
+
+def test_an_event_joins_the_browser_session_of_its_request(
+    shared_client: Mock,
+) -> None:
+    token = posthog_client.set_session_id("0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f")
+    try:
+        posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+        posthog_client.capture(
+            "user-1", PostHogEvent.AGENT_RUN_STARTED, {"$session_id": "own"}
+        )
+    finally:
+        posthog_client.reset_session_id(token)
+    posthog_client.capture("user-1", PostHogEvent.AGENT_RUN_STARTED)
+
+    sent = [c.kwargs["properties"] for c in shared_client.capture.call_args_list]
+    assert sent[0]["$session_id"] == "0192f0c4-5f4e-7b4c-9d6e-1a2b3c4d5e6f"
+    assert sent[1]["$session_id"] == "own"
+    assert "$session_id" not in sent[2]

@@ -51,11 +51,22 @@ class _RawResponse:
     def parse(self):
         # Match LegacyAPIResponse.parse, which synchronously returns the
         # AsyncStream for an SSE response.
-        async def stream():
-            for event in self._events:
-                yield event
+        return _Stream(self._events)
 
-        return stream()
+
+class _Stream:
+    def __init__(self, events: list[_Event]) -> None:
+        self._events = events
+
+    async def __aiter__(self):
+        for event in self._events:
+            yield event
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc) -> None:
+        pass
 
 
 class _FakeResponses:

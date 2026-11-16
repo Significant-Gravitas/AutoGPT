@@ -137,6 +137,40 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       },
     );
 
+    // SECRT-3135: the question row is drawn running, then its output lands and
+    // the chain lifts the row into the card below it. The row on its way out
+    // registered the same card and, unmounting, took the card with it.
+    it(
+      "a question card stays up when its output lands after the row was drawn",
+      { timeout: 60_000 },
+      async () => {
+        const turn = loadRecordedTurn("sdk-question-turn");
+        const sim = createBackendSim([{ turn }]);
+        renderAgainst(sim);
+        await sendPrompt(sim, turn);
+        sim.publish(QUESTION_ASKED);
+        await waitForStableTranscript(500);
+        sim.publish(QUESTION_ANSWERED - QUESTION_ASKED);
+        await waitFor(() => expect(questionCard()).not.toBeNull(), {
+          timeout: 10_000,
+        });
+        // Past the leaving row's exit animation, with the turn still running.
+        await waitForStableTranscript(1000);
+        expect(questionCard()).not.toBeNull();
+
+        sim.publish();
+        await waitFor(
+          () =>
+            expect(
+              screen.getByText("Two quick choices for you above."),
+            ).toBeDefined(),
+          { timeout: 10_000 },
+        );
+        await waitForStableTranscript(1000);
+        expect(questionCard()).not.toBeNull();
+      },
+    );
+
     it(
       "a reload into a running turn resumes it once",
       { timeout: 60_000 },
@@ -168,6 +202,17 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     );
   });
 });
+
+// Frame 11 is ask_question's input, 12 its output and 13 the step's close.
+const QUESTION_ASKED = 12;
+const QUESTION_ANSWERED = 14;
+
+function questionCard() {
+  return (
+    screen.queryByText("Answer a few questions") &&
+    screen.queryByText("How should I spot new designs in your Drive folder?")
+  );
+}
 
 function messageElements() {
   return Array.from(document.querySelectorAll("[data-message-id]"));

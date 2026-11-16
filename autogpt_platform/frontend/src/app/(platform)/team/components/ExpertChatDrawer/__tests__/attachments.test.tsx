@@ -195,17 +195,55 @@ function photo() {
   return new File(["x".repeat(2048)], "photo.png", { type: "image/png" });
 }
 
-async function openAttachMenu() {
-  const plus = screen.getByRole("button", {
+// Role queries here run inside the composer, the open menu or the picker,
+// never across the whole drawer: after each DOM change a page-wide role query
+// makes happy-dom recompute every element's style, which under load can
+// outlast findBy's default 1 s and starve the reply the test is waiting for.
+function composer() {
+  const form = screen.getByPlaceholderText("Message Zara…").closest("form");
+  if (!form) throw new Error("The composer has no form");
+  return form;
+}
+
+function findStopButton() {
+  return waitFor(() =>
+    within(composer()).getByRole("button", { name: /Stop/ }),
+  );
+}
+
+// Once a reply ends, the chat waits 500 ms (FINISH_REFETCH_SETTLE_MS in
+// useCopilotStream) and re-reads the session before a held message may go,
+// so the next turn never starts within waitFor's default 1 s on a busy runner.
+function waitForSecondTurn(recorder: Recorder) {
+  return waitFor(() => expect(recorder.streamBodies.length).toBe(2), {
+    timeout: 3_000,
+  });
+}
+
+function clickQueueMessage() {
+  fireEvent.click(
+    within(composer()).getByRole("button", { name: "Queue message" }),
+  );
+}
+
+function openAttachMenu() {
+  const plus = within(composer()).getByRole("button", {
     name: "Add files and more",
   }) as HTMLButtonElement;
   expect(plus.disabled).toBe(false);
   fireEvent.pointerDown(plus, { button: 0 });
+  const menu = document.getElementById(
+    plus.getAttribute("aria-controls") ?? "",
+  );
+  if (!menu) throw new Error("The attach menu did not open");
+  return menu;
 }
 
 async function attachLocalFile(user: ReturnType<typeof userEvent.setup>) {
-  await openAttachMenu();
-  fireEvent.click(await screen.findByRole("menuitem", { name: /Attach file/ }));
+  const menu = openAttachMenu();
+  fireEvent.click(
+    await within(menu).findByRole("menuitem", { name: /Attach file/ }),
+  );
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error("The composer has no file input");
   await user.upload(input, photo());
@@ -213,12 +251,19 @@ async function attachLocalFile(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function pickWorkspaceFile() {
-  await openAttachMenu();
+  const menu = openAttachMenu();
   fireEvent.click(
-    await screen.findByRole("menuitem", { name: /Use File from Workspace/ }),
+    await within(menu).findByRole("menuitem", {
+      name: /Use File from Workspace/,
+    }),
   );
-  fireEvent.click(await screen.findByRole("button", { name: /brief\.pdf/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Add 1 file" }));
+  const picker = screen.getByRole("dialog", {
+    name: "Use a file from your workspace",
+  });
+  fireEvent.click(
+    await within(picker).findByRole("button", { name: /brief\.pdf/ }),
+  );
+  fireEvent.click(within(picker).getByRole("button", { name: "Add 1 file" }));
   await screen.findByText("brief.pdf");
 }
 
@@ -302,7 +347,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("what is this")).toBeDefined();
-    expect(within(bubble).getByText("photo.png")).toBeDefined();
+    expect(
+      within(bubble).getByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
     expect(screen.queryByText("What can I do for you?")).toBeNull();
     expect(recorder.uploadSessionIds).toEqual([]);
 
@@ -357,15 +404,17 @@ describe("ExpertChatDrawer attachments", () => {
     const input = await enabledComposer();
     await user.type(input, "hello{Enter}");
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
-    await screen.findByRole("button", { name: /Stop/ });
+    await findStopButton();
 
     await attachLocalFile(user);
     await user.type(input, "and this");
-    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    clickQueueMessage();
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("and this")).toBeDefined();
-    expect(within(bubble).getByText("photo.png")).toBeDefined();
+    expect(
+      within(bubble).getByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
     await waitFor(() =>
       expect(recorder.uploadSessionIds).toEqual([SESSION_ID]),
     );
@@ -373,7 +422,7 @@ describe("ExpertChatDrawer attachments", () => {
 
     firstReply.release();
 
-    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    await waitForSecondTurn(recorder);
     expect(recorder.pendingPosts).toBe(0);
     expect(recorder.streamBodies[1]).toMatchObject({
       message: "and this",
@@ -398,18 +447,18 @@ describe("ExpertChatDrawer attachments", () => {
     const input = await enabledComposer();
     await user.type(input, "summarize this{Enter}");
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
-    await screen.findByRole("button", { name: /Stop/ });
+    await findStopButton();
 
     await attachLocalFile(user);
     await user.type(input, "summarize this");
-    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    clickQueueMessage();
     await waitFor(() =>
       expect(recorder.uploadSessionIds).toEqual([SAME_CAPTION_SESSION_ID]),
     );
 
     firstReply.release();
 
-    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    await waitForSecondTurn(recorder);
     expect(recorder.streamBodies[1]).toMatchObject({
       message: "summarize this",
       file_ids: [UPLOADED_FILE_ID],
@@ -440,12 +489,12 @@ describe("ExpertChatDrawer attachments", () => {
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
     await attachLocalFile(user);
     await user.type(input, "and this");
-    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    clickQueueMessage();
     await waitFor(() =>
       expect(recorder.uploadSessionIds).toEqual([STOP_SESSION_ID]),
     );
 
-    const stop = await screen.findByRole("button", { name: /Stop/ });
+    const stop = await findStopButton();
     await waitFor(
       () => expect((stop as HTMLButtonElement).disabled).toBe(false),
       {
@@ -543,11 +592,13 @@ describe("ExpertChatDrawer attachments", () => {
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
     expect(recorder.streamBodies[0].expert_kickoff).toBe(true);
-    expect(within(pendingBubble()).getByText("photo.png")).toBeDefined();
+    expect(
+      within(pendingBubble()).getByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
 
     kickoffReply.release();
 
-    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    await waitForSecondTurn(recorder);
     expect(recorder.uploadSessionIds).toEqual([KICKOFF_SESSION_ID]);
     expect(recorder.streamBodies[1]).toMatchObject({
       expert_kickoff: false,
@@ -571,7 +622,7 @@ describe("ExpertChatDrawer attachments", () => {
 
     const input = await enabledComposer();
     await user.type(input, "hello{Enter}");
-    await screen.findByRole("button", { name: /Stop/ });
+    await findStopButton();
 
     await pickWorkspaceFile();
     await user.type(input, "and this one{Enter}");
@@ -582,7 +633,7 @@ describe("ExpertChatDrawer attachments", () => {
 
     firstReply.release();
 
-    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    await waitForSecondTurn(recorder);
     expect(recorder.pendingPosts).toBe(0);
     expect(recorder.streamBodies[1]).toMatchObject({
       message: "and this one",
@@ -722,7 +773,7 @@ describe("ExpertChatDrawer attachments", () => {
 
       const input = await enabledComposer();
       await user.type(input, "hello{Enter}");
-      await screen.findByRole("button", { name: /Stop/ });
+      await findStopButton();
       await attachLocalFile(user);
       await user.type(input, "attachment after reply{Enter}");
       await screen.findByTestId("pending-upload-message");
@@ -814,13 +865,15 @@ describe("ExpertChatDrawer attachments", () => {
 
       const input = await enabledComposer();
       await user.type(input, "hello{Enter}");
-      await screen.findByRole("button", { name: /Stop/ });
+      await findStopButton();
       await attachLocalFile(user);
       await user.type(input, "sent while reconnecting");
 
       disconnect.resolve();
       await waitFor(() =>
-        expect(screen.queryByRole("button", { name: /Stop/ })).toBeNull(),
+        expect(
+          within(composer()).queryByRole("button", { name: /Stop/ }),
+        ).toBeNull(),
       );
       await user.type(input, "{Enter}");
 
@@ -891,7 +944,7 @@ describe("ExpertChatDrawer attachments", () => {
         const input = await enabledComposer();
         if (replying) {
           await user.type(input, "hello{Enter}");
-          await screen.findByRole("button", { name: /Stop/ });
+          await findStopButton();
         }
         await attachLocalFile(user);
         await user.type(input, "held while the upload runs{Enter}");

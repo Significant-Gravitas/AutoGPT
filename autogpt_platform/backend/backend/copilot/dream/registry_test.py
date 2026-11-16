@@ -15,7 +15,7 @@ import pytest
 
 from backend.util.feature_flag import Flag
 
-from . import registry, scope_crons, scope_jobs
+from . import registry, registry_backfill, scope_crons, scope_jobs
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -36,18 +36,80 @@ def env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
 
 
 @pytest.mark.asyncio
-async def test_ensure_registers_both_crons_under_the_legacy_account_ids(env):
+async def test_the_row_is_claimed_without_a_flag_provider(env, monkeypatch):
+    """The community sweep rebuilds every ACTIVE row's scope, so ensure
+    claims the row even when no cron's flag can be read."""
+    flag = AsyncMock(return_value=(False, False))
+    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flag)
+    env.flags = {}
+
+    result = await registry.ensure_scope_scheduled(ACCOUNT)
+
+    row = env.db.rows[USER]
+    assert (row.state, row.timezone, row.expert_id) == (ACTIVE, PARIS, None)
+    assert row.nightly_job_id is None
+    assert row.learning_job_id is None
+    assert env.adds() == 0
+    assert result == {
+        "dream_nightly_batch": {"skipped": True, "reason": "flag_unavailable"},
+        "skill_learning_nightly": {"skipped": True, "reason": "flag_unavailable"},
+    }
+    assert registry_backfill._classify(result) == "skipped"
+    assert [call.args[0] for call in flag.await_args_list] == [
+        Flag.DREAM_PASS_ENABLED,
+        Flag.DREAM_SKILL_LEARNING_ENABLED,
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_raises", [False, True])
+async def test_a_refresh_preserves_unknown_dream_and_learning_intent(
+    env, monkeypatch, provider_raises
+):
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    for job_id in (f"dream_nightly_batch_{USER}", f"skill_learning_nightly_{USER}"):
+        del env.scheduler.jobs[job_id]
+        del env.scheduler.scopes[job_id]
+    await env.reconcile()
+    assert len(env.scheduler.tagged) == 2
+    env.timezone = TOKYO
+    monkeypatch.setattr(
+        scope_jobs,
+        "evaluate_feature_flag",
+        AsyncMock(
+            return_value=(False, False),
+            side_effect=(
+                RuntimeError("provider unavailable") if provider_raises else None
+            ),
+        ),
+    )
+    env.flags = {}
+
+    result = await registry.ensure_scope_scheduled(ACCOUNT, force_refresh=True)
+
+    row = env.db.rows[USER]
+    assert result["dream_nightly_batch"]["reason"] == "flag_unavailable"
+    assert result["skill_learning_nightly"]["reason"] == "flag_unavailable"
+    assert row.nightly_job_id == f"dream_nightly_batch_{USER}"
+    assert row.learning_job_id == f"skill_learning_nightly_{USER}"
+    report = await env.reconcile()
+    assert report.dropped == []
+    assert set(env.scheduler.jobs.values()) == {TOKYO}
+
+
+@pytest.mark.asyncio
+async def test_ensure_registers_the_nightly_cron_under_the_legacy_account_id(env):
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
     # The account's scope key is its user id: job ids did not move.
-    assert result["community_rebuild"]["id"] == f"community_rebuild_{USER}"
     assert result["dream_nightly_batch"]["id"] == f"dream_nightly_batch_{USER}"
     env.scheduler.add_scope_nightly_batch_schedule.assert_awaited_once_with(
         scope=ACCOUNT, user_timezone=PARIS
     )
     row = env.db.rows[USER]
     assert (row.state, row.timezone, row.expert_id) == (ACTIVE, PARIS, None)
-    assert {row.community_job_id, row.nightly_job_id} == job_ids(ACCOUNT)
+    assert {row.nightly_job_id} == job_ids(ACCOUNT)
 
 
 @pytest.mark.asyncio
@@ -56,14 +118,13 @@ async def test_ensure_is_idempotent(env):
     again = await registry.ensure_scope_scheduled(ACCOUNT)
 
     assert again == {
-        "community_rebuild": None,
         "dream_nightly_batch": None,
         "skill_learning_nightly": {
             "skipped": True,
             "reason": "skill_learning_disabled",
         },
     }
-    assert env.adds() == 2
+    assert env.adds() == 1
 
 
 @pytest.mark.asyncio
@@ -75,7 +136,7 @@ async def test_exactly_one_row_per_scope(env):
     assert sorted(env.db.rows) == sorted([ACCOUNT.scope_key, EXPERT.scope_key])
     assert env.db.rows[EXPERT.scope_key].expert_id == "expert-1"
     assert set(env.scheduler.jobs) == job_ids(ACCOUNT) | job_ids(EXPERT)
-    assert env.adds() == 4
+    assert env.adds() == 2
 
 
 @pytest.mark.asyncio
@@ -88,35 +149,44 @@ async def test_an_expert_write_registers_the_expert_not_the_account(env):
 
 
 @pytest.mark.asyncio
-async def test_flags_off_cost_no_read_and_no_rpc(env):
+async def test_every_flag_off_still_reads_the_registry_to_claim_the_row(env):
+    """With no cron enabled, ensure still goes to the registry for the row
+    the community sweep reads; an unreadable registry claims nothing, and
+    says so, so the backfill lists the scope as failed."""
     env.flags = {}
     env.db.fail = True  # any read would raise
 
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
     assert result == {
-        "community_rebuild": {
-            "skipped": True,
-            "reason": "graphiti_communities_disabled",
-        },
+        "registry_row": {"skipped": True, "reason": "registry_unavailable"},
         "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
         "skill_learning_nightly": {
             "skipped": True,
             "reason": "skill_learning_disabled",
         },
     }
+    assert registry_backfill._classify(result) == "failed"
+    assert env.db.rows == {}
+    assert env.adds() == 0
+
+    env.db.fail = False
+    await registry.ensure_scope_scheduled(ACCOUNT)
+
+    assert env.db.rows[USER].state == ACTIVE
     assert env.adds() == 0
 
 
 @pytest.mark.asyncio
 async def test_one_flag_off_still_registers_the_other(env):
-    env.flags[Flag.GRAPHITI_COMMUNITIES_ENABLED] = False
+    env.flags[Flag.DREAM_PASS_ENABLED] = False
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
 
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert result["community_rebuild"]["reason"] == "graphiti_communities_disabled"
-    assert env.db.rows[USER].nightly_job_id == f"dream_nightly_batch_{USER}"
-    assert env.db.rows[USER].community_job_id is None
+    assert result["dream_nightly_batch"]["reason"] == "dream_pass_disabled"
+    assert env.db.rows[USER].learning_job_id == f"skill_learning_nightly_{USER}"
+    assert env.db.rows[USER].nightly_job_id is None
 
 
 @pytest.mark.asyncio
@@ -138,7 +208,7 @@ async def test_timezone_change_re_registers_in_the_new_zone(env):
 
     await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert env.adds() == 4
+    assert env.adds() == 2
     assert env.db.rows[USER].timezone == TOKYO
     assert set(env.scheduler.jobs.values()) == {TOKYO}
 
@@ -147,8 +217,6 @@ async def test_timezone_change_re_registers_in_the_new_zone(env):
 @pytest.mark.parametrize(
     "scope,prefix",
     [
-        (ACCOUNT, "community_rebuild"),
-        (EXPERT, "community_rebuild"),
         (ACCOUNT, "dream_nightly_batch"),
         (EXPERT, "dream_nightly_batch"),
         (ACCOUNT, "skill_learning_nightly"),
@@ -158,7 +226,6 @@ async def test_failed_timezone_refresh_keeps_the_cron_repairable(env, scope, pre
     env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
     await registry.ensure_scope_scheduled(scope)
     add = {
-        "community_rebuild": env.scheduler.add_scope_community_rebuild_schedule,
         "dream_nightly_batch": env.scheduler.add_scope_nightly_batch_schedule,
         "skill_learning_nightly": env.scheduler.add_scope_skill_learning_schedule,
     }[prefix]
@@ -212,24 +279,26 @@ async def test_registry_read_failure_skips_the_cycle(env):
 
 @pytest.mark.asyncio
 async def test_a_failed_registration_is_not_recorded_and_is_retried(env):
-    add = env.scheduler.add_scope_community_rebuild_schedule
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
+    add = env.scheduler.add_scope_nightly_batch_schedule
     adder = add.side_effect
     add.side_effect = RuntimeError("scheduler down")
 
     first = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert first["community_rebuild"] == {
+    assert first["dream_nightly_batch"] == {
         "skipped": True,
         "reason": "registration_failed",
     }
-    assert first["dream_nightly_batch"]["id"] == f"dream_nightly_batch_{USER}"
-    assert env.db.rows[USER].community_job_id is None
+    learning = f"skill_learning_nightly_{USER}"
+    assert first["skill_learning_nightly"]["id"] == learning
+    assert env.db.rows[USER].nightly_job_id is None
 
     add.side_effect = adder
     second = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert second["community_rebuild"]["id"] == f"community_rebuild_{USER}"
-    assert second["dream_nightly_batch"] is None
+    assert second["dream_nightly_batch"]["id"] == f"dream_nightly_batch_{USER}"
+    assert second["skill_learning_nightly"] is None
 
 
 @pytest.mark.asyncio
@@ -323,21 +392,19 @@ async def test_timezone_is_durable_before_scheduler_replacement(env, monkeypatch
     result = await registry.ensure_scope_scheduled(ACCOUNT)
     assert calls == 2
     assert env.db.rows[USER].timezone == TOKYO
-    assert result["community_rebuild"]["reason"] == "record_failed"
-    assert env.db.rows[USER].community_job_id == f"community_rebuild_{USER}"
+    assert result["dream_nightly_batch"]["reason"] == "record_failed"
+    assert env.db.rows[USER].nightly_job_id == f"dream_nightly_batch_{USER}"
 
 
 @pytest.mark.asyncio
 async def test_failed_timezone_intent_does_not_replace_crons(env, monkeypatch):
     await registry.ensure_scope_scheduled(ACCOUNT)
     env.timezone = TOKYO
-    env.scheduler.add_scope_community_rebuild_schedule.reset_mock()
     env.scheduler.add_scope_nightly_batch_schedule.reset_mock()
     monkeypatch.setattr(
         env.db, "record_scope_jobs", AsyncMock(side_effect=ConnectionError("db down"))
     )
     result = await registry.ensure_scope_scheduled(ACCOUNT)
-    assert result["community_rebuild"]["reason"] == "record_failed"
+    assert result["dream_nightly_batch"]["reason"] == "record_failed"
     assert env.db.rows[USER].timezone == PARIS
-    env.scheduler.add_scope_community_rebuild_schedule.assert_not_awaited()
     env.scheduler.add_scope_nightly_batch_schedule.assert_not_awaited()

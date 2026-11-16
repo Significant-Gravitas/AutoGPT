@@ -1,6 +1,6 @@
 import { SESSION_LIST_REFETCH_INTERVAL_MS } from "@/app/(platform)/copilot/useSessionList";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
 import {
   act,
@@ -13,14 +13,21 @@ import { http, HttpResponse } from "msw";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecentChats } from "../RecentChats";
+import {
+  type SidebarChat,
+  type SidebarRequest,
+  sidebarBackend,
+} from "./sidebarBackend";
 
 const itemRenders = vi.fn();
 
 // Each chat row renders one `SidebarMenuItem`, so counting those counts the
 // rows that re-rendered.
-vi.mock("@/components/ui/sidebar", async (importOriginal) => {
+vi.mock("@/components/molecules/Sidebar/Sidebar", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/components/ui/sidebar")>();
+    await importOriginal<
+      typeof import("@/components/molecules/Sidebar/Sidebar")
+    >();
   function CountedSidebarMenuItem(
     props: ComponentProps<typeof actual.SidebarMenuItem>,
   ) {
@@ -41,29 +48,15 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   };
 });
 
-interface SessionSeed {
-  id: string;
-  title: string;
-  is_pinned?: boolean;
-}
+let listed: SidebarChat[] = [];
+let requests: SidebarRequest[] = [];
 
-let listed: SessionSeed[] = [];
-let listRequests = 0;
-
-function toSummary(seed: SessionSeed) {
-  return {
-    id: seed.id,
-    title: seed.title,
-    is_processing: false,
-    is_pinned: seed.is_pinned ?? false,
-    // `Z`-suffixed, so the API client turns them into `Date`s as in the app.
-    created_at: "2026-06-30T10:00:00Z",
-    updated_at: "2026-06-30T10:00:00Z",
-  };
+function groupedReads() {
+  return requests.filter((request) => request.path === "session-groups").length;
 }
 
 function renderRecentChats() {
-  return render(
+  render(
     <SidebarProvider>
       <RecentChats />
     </SidebarProvider>,
@@ -85,24 +78,16 @@ beforeEach(() => {
     { id: "s2", title: "Second chat" },
     { id: "s3", title: "Third chat" },
   ];
-  listRequests = 0;
+  requests = [];
   itemRenders.mockClear();
   server.use(
-    http.get("*/api/chat/sessions", () => {
-      listRequests += 1;
-      return HttpResponse.json({
-        sessions: listed.map(toSummary),
-        total: listed.length,
-      });
-    }),
+    ...sidebarBackend(() => listed, requests),
+    // Pinning leaves a chat's place in time alone: the grouped read orders by
+    // activity, and pinned chats leave their group for the Pinned section.
     http.patch("*/api/chat/sessions/:id/pinned", ({ params }) => {
-      const pinned = listed.find((s) => s.id === params.id);
-      if (pinned) {
-        listed = [
-          { ...pinned, is_pinned: true },
-          ...listed.filter((s) => s.id !== params.id),
-        ];
-      }
+      listed = listed.map((s) =>
+        s.id === params.id ? { ...s, is_pinned: true } : s,
+      );
       return HttpResponse.json({ status: "ok" });
     }),
   );
@@ -119,12 +104,12 @@ describe("RecentChats — chat rows", () => {
     await screen.findByText("Third chat");
     await settle();
     itemRenders.mockClear();
-    const requestsBefore = listRequests;
+    const readsBefore = groupedReads();
 
     await act(async () => {
       vi.advanceTimersByTime(SESSION_LIST_REFETCH_INTERVAL_MS);
     });
-    await waitFor(() => expect(listRequests).toBeGreaterThan(requestsBefore));
+    await waitFor(() => expect(groupedReads()).toBeGreaterThan(readsBefore));
     await settle();
 
     expect(itemRenders).not.toHaveBeenCalled();

@@ -3,11 +3,17 @@
 Before an expert's turn runs, the executor checks the expert with
 ``check_private_expert``: that it is still the owner's own active PRIVATE
 expert, which personal organization and team its work belongs to, how far a
-fresh hire's setup got, and the columns its identity prompt is built from.
+fresh hire's setup got, and the columns its identity prompt is built from. A
+database manager from before that route, met mid-rollout, is asked the same
+through the separate reads its release makes (``read_private_expert``).
 Inside :func:`sharing_expert_checks` the turn remembers that check, and the
 hire-setup wait and the identity prompt use it instead of reading the expert
 again. Each turn opens its own share, so no turn sees another's check, and a
-lookup made outside a turn always reads.
+lookup made outside a turn always reads. The turn reads its expert again
+(:func:`forget_expert_checks`) once time has passed since its check: after
+it waited for a fresh hire's setup, and before an auto-continue or a
+building-mode relaunch, which run after the turn's own work, by when the
+expert may have been archived.
 """
 
 from collections.abc import Iterator
@@ -43,3 +49,10 @@ def checked_expert(user_id: str, expert_id: str) -> CheckedExpert | None:
     hasn't checked (or isn't a turn)."""
     checked = _checked.get()
     return None if checked is None else checked.get((user_id, expert_id))
+
+
+def forget_expert_checks() -> None:
+    """Make the turn's next look at any expert read it again."""
+    checked = _checked.get()
+    if checked is not None:
+        checked.clear()

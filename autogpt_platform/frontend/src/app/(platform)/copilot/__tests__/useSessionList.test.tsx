@@ -269,3 +269,22 @@ describe("useSessionList — older pages", () => {
     expect(listRequests).toEqual([]);
   });
 });
+
+describe("useSessionList — whether the list loaded", () => {
+  it("tells an empty list apart from one that failed to load", async () => {
+    listed = [];
+    const { result: empty } = renderSessionList(makeClient());
+    await waitFor(() => expect(empty.current.isListLoaded).toBe(true));
+    expect(empty.current.sessions).toEqual([]);
+
+    server.use(
+      http.get("*/api/chat/sessions", () =>
+        HttpResponse.json({ detail: "boom" }, { status: 500 }),
+      ),
+    );
+    const { result: failed } = renderSessionList(makeClient());
+    await settle();
+    expect(failed.current.sessions).toEqual([]);
+    expect(failed.current.isListLoaded).toBe(false);
+  });
+});

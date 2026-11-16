@@ -11,7 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from backend.copilot.baseline import service
-from backend.copilot.baseline.service_cancellation_test import baseline_io
+from backend.copilot.baseline.service_cancellation_test import (
+    _no_answered_cards,
+    baseline_io,
+)
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import ChatMessage, ChatSession
 
@@ -70,9 +73,9 @@ async def _sent_messages(
     stream.close = AsyncMock()
     provider = AsyncMock(return_value=stream)
     monkeypatch.setattr(service, "call_provider_stream", provider)
-    monkeypatch.setattr(service, "resolve_answered", AsyncMock(return_value=[]))
+    monkeypatch.setattr(service, "resolve_answered", _no_answered_cards)
 
-    async with asyncio.timeout(5):
+    async def consume() -> None:
         async for _ in service.stream_chat_completion_baseline(
             session.session_id,
             message,
@@ -81,6 +84,8 @@ async def _sent_messages(
             session=session,
         ):
             pass
+
+    await asyncio.wait_for(consume(), timeout=5)
 
     assert provider.await_args is not None
     return provider.await_args.kwargs["messages"]

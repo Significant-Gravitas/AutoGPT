@@ -28,8 +28,9 @@ def _sandbox(
     sizes = file_sizes or {}
     contents = file_contents or {}
     sandbox = MagicMock()
+    sandbox.streams = {}
 
-    async def run(command: str):
+    async def run(command: str, **kwargs):
         result = MagicMock()
         if command.startswith("find "):
             result.exit_code = 0
@@ -44,12 +45,34 @@ def _sandbox(
         result.stdout = "4"
         return result
 
-    async def read(path: str, format: str = "bytes"):
-        return contents.get(path, b"data")
+    async def read(path: str, format: str):
+        assert format == "stream"
+        sandbox.streams[path] = _Stream(contents.get(path, b"data"))
+        return sandbox.streams[path]
 
     sandbox.commands.run = AsyncMock(side_effect=run)
     sandbox.files.read = AsyncMock(side_effect=read)
     return sandbox
+
+
+class _Stream:
+    """``files.read(format="stream")``: the file in 64 KiB chunks."""
+
+    def __init__(self, data: bytes):
+        self._data = data
+        self.sent = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def __aiter__(self):
+        for start in range(0, len(self._data), 65536):
+            chunk = self._data[start : start + 65536]
+            self.sent += len(chunk)
+            yield chunk
 
 
 def _ctx() -> MagicMock:
@@ -139,12 +162,40 @@ async def test_read_failure_skips_file_but_not_others():
     bad, good = f"{_WORKDIR}/bad.png", f"{_WORKDIR}/good.png"
     sandbox = _sandbox([bad, good], file_contents={good: b"ok"})
     sandbox.files.read = AsyncMock(
-        side_effect=lambda path, format="bytes": (
-            (_ for _ in ()).throw(OSError("io")) if path == bad else b"ok"
+        side_effect=lambda path, format: (
+            (_ for _ in ()).throw(OSError("io")) if path == bad else _Stream(b"ok")
         )
     )
     files = await extract_sandbox_files(sandbox, _WORKDIR, text_only=False)
     assert [f.name for f in files] == ["good.png"]
+
+
+@pytest.mark.asyncio
+async def test_a_file_is_read_only_up_to_the_limit():
+    big, small = f"{_WORKDIR}/big.log", f"{_WORKDIR}/small.log"
+    sandbox = _sandbox(
+        [big, small],
+        file_contents={big: b"x" * (MAX_BINARY_FILE_SIZE + 2**20), small: b"ok"},
+    )
+    files = await extract_sandbox_files(sandbox, _WORKDIR)
+    assert [f.name for f in files] == ["small.log"]
+    assert sandbox.streams[big].sent <= MAX_BINARY_FILE_SIZE + 65536
+
+
+@pytest.mark.asyncio
+async def test_files_past_the_total_budget_are_skipped():
+    names = [f"{_WORKDIR}/part{i}.log" for i in range(3)]
+    sandbox = _sandbox(
+        names,
+        file_sizes={name: "100" for name in names},
+        file_contents={name: b"x" * 100 for name in names},
+    )
+    with (
+        patch("backend.util.sandbox_files.MAX_BINARY_FILE_SIZE", 100),
+        patch("backend.util.sandbox_files.MAX_TOTAL_EXTRACTED_SIZE", 250),
+    ):
+        files = await extract_sandbox_files(sandbox, _WORKDIR)
+    assert [f.name for f in files] == ["part0.log", "part1.log"]
 
 
 @pytest.mark.asyncio

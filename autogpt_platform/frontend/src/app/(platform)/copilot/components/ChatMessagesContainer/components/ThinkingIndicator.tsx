@@ -1,11 +1,9 @@
 import { useNowSecond } from "@/hooks/useNowSecond";
+import { SHOW_TIME_AFTER_SECONDS } from "../../JobStatsBar/constants";
 import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { getElapsedSeconds } from "../../JobStatsBar/useElapsedTimer";
-import { PixelGridLoader } from "../../PixelGridLoader/PixelGridLoader";
+import { StoneStackLoader } from "../../StoneStackLoader/StoneStackLoader";
 import { SwapText } from "../../ToolChain/SwapText";
-
-/** Only show elapsed time after this many seconds. */
-const SHOW_TIME_AFTER_SECONDS = 20;
 
 interface Props {
   active: boolean;
@@ -24,6 +22,12 @@ interface Props {
    * here: they describe plumbing, not anything the user needs to know.
    */
   statusMessage?: string | null;
+  /**
+   * The material colour of whoever is thinking (Otto's lavender, an expert's
+   * own). Leave it out for a wait nobody is thinking through, such as an
+   * upload or a reconnect: the loader then stays the grey of the label.
+   */
+  color?: string | null;
 }
 
 export function ThinkingIndicator({
@@ -31,6 +35,7 @@ export function ThinkingIndicator({
   startedAtMs,
   elapsedSeconds = 0,
   statusMessage,
+  color,
 }: Props) {
   const hasClock = startedAtMs !== null && startedAtMs !== undefined;
   const nowMs = useNowSecond(active && hasClock);
@@ -41,18 +46,18 @@ export function ThinkingIndicator({
 
   return (
     <span
+      className="inline-flex w-fit items-center gap-2.5 text-body text-foreground-secondary"
       role="status"
       aria-live="polite"
-      className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
     >
-      <PixelGridLoader className="text-zinc-600" />
+      <StoneStackLoader size={16} color={color} />
       <SwapText
         text={statusMessage ?? "Thinking…"}
         shimmer
-        className="text-sm"
+        className="text-body"
       />
       {showTime && (
-        <span className="font-mono text-xs tabular-nums text-zinc-400">
+        <span className="font-mono text-caption text-foreground-subtle tabular-nums">
           {formatElapsed(seconds)}
         </span>
       )}

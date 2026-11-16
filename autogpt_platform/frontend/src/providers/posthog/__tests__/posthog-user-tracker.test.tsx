@@ -10,7 +10,6 @@ const posthog = vi.hoisted(() => ({
   identify: vi.fn(),
   setPersonPropertiesForFlags: vi.fn(),
 }));
-const flags = vi.hoisted(() => ({ usesPostHog: false }));
 
 vi.mock("posthog-js", () => ({ default: posthog }));
 
@@ -34,10 +33,6 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-vi.mock("@/services/feature-flags/flag-backend", () => ({
-  usesPostHog: () => flags.usesPostHog,
-}));
-
 describe("PostHogUserTracker", () => {
   beforeEach(() => {
     posthog.identify.mockClear();
@@ -49,46 +44,21 @@ describe("PostHogUserTracker", () => {
     removeCookiebot();
   });
 
-  it.each([false, true])(
-    "identifies with the analytics properties only (PostHog flags: %s)",
-    async (usesPostHog) => {
-      flags.usesPostHog = usesPostHog;
-      const { PostHogUserTracker } = await import("../posthog-provider");
-
-      render(<PostHogUserTracker />);
-
-      expect(posthog.identify).toHaveBeenCalledWith("user-1", {
-        email: "user@example.com",
-        name: "Ada",
-      });
-    },
-  );
-
-  it("hands the targeting attributes to flag evaluation alone", async () => {
-    flags.usesPostHog = true;
+  it("identifies with the analytics properties only", async () => {
     const { PostHogUserTracker } = await import("../posthog-provider");
 
     render(<PostHogUserTracker />);
 
-    expect(posthog.setPersonPropertiesForFlags).toHaveBeenCalledWith({
+    expect(posthog.identify).toHaveBeenCalledWith("user-1", {
       email: "user@example.com",
-      email_domain: "example.com",
-      role: "authenticated",
-      created_at: "2026-05-08T12:00:00Z",
+      name: "Ada",
     });
-  });
-
-  it("leaves flag properties alone while LaunchDarkly answers flags", async () => {
-    flags.usesPostHog = false;
-    const { PostHogUserTracker } = await import("../posthog-provider");
-
-    render(<PostHogUserTracker />);
-
+    // Flags are read on the server, so the browser hands PostHog no
+    // targeting attributes.
     expect(posthog.setPersonPropertiesForFlags).not.toHaveBeenCalled();
   });
 
   it("hands PostHog neither identity nor flag properties without analytics consent", async () => {
-    flags.usesPostHog = true;
     removeCookiebot();
     installCookiebot({ statistics: false });
     const { PostHogUserTracker } = await import("../posthog-provider");

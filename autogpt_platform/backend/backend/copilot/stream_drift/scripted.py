@@ -4,7 +4,7 @@ import contextlib
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -152,6 +152,7 @@ async def sdk_service_turn(
     *,
     queued_after_first: list[PendingMessage],
     held_results: list[PendingMessage] | None = None,
+    lock_factory: Callable[..., MagicMock] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The whole SDK engine over a scripted CLI, one list of messages per
     query, with ``queued_after_first`` arriving while the first one runs:
@@ -172,6 +173,17 @@ async def sdk_service_turn(
         connection.__aenter__.return_value = client
         return connection
 
+    async def answered_cards(
+        _user_id: str,
+        _session: ChatSession,
+        deliver: Callable[[PendingMessage], None],
+        **__: Any,
+    ) -> AsyncGenerator[StreamBaseResponse, None]:
+        for result in held_results or []:
+            deliver(result)
+        return
+        yield
+
     def lock(*_: Any, owner_id: str = "", **__: Any) -> MagicMock:
         return MagicMock(
             try_acquire=AsyncMock(return_value=owner_id),
@@ -181,9 +193,9 @@ async def sdk_service_turn(
 
     stubs: dict[str, Any] = {
         "ClaudeSDKClient": MagicMock(side_effect=cli),
-        "AsyncClusterLock": MagicMock(side_effect=lock),
+        "require_verbatim_prompts_cli": MagicMock(return_value="claude"),
+        "AsyncClusterLock": MagicMock(side_effect=lock_factory or lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
-        "propagate_attributes": MagicMock(),
         "_build_system_prompt": AsyncMock(return_value=("System prompt", None)),
         "download_transcript": AsyncMock(return_value=None),
         "upload_transcript": AsyncMock(),
@@ -194,7 +206,6 @@ async def sdk_service_turn(
         "build_sdk_env": MagicMock(return_value={}),
         "_resolve_sdk_model": MagicMock(return_value=None),
         "set_execution_context": MagicMock(),
-        "get_user_tier": AsyncMock(return_value=None),
         "resolve_turn_budget": AsyncMock(
             return_value=TurnBudget(usd=100.0, limiting="task")
         ),
@@ -202,7 +213,7 @@ async def sdk_service_turn(
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),
-        "resolve_answered": AsyncMock(return_value=held_results or []),
+        "resolve_answered": answered_cards,
         "build_session_context": AsyncMock(return_value=""),
         "build_skills_context": AsyncMock(return_value=""),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),

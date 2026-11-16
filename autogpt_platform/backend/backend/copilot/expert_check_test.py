@@ -11,6 +11,7 @@ from backend.api.features.experts.models import (
 )
 from backend.copilot.expert_check import (
     checked_expert,
+    forget_expert_checks,
     remember_expert_check,
     sharing_expert_checks,
 )
@@ -54,9 +55,33 @@ def test_the_next_turn_checks_again():
         assert checked_expert("user-1", "expert-1") is None
 
 
+def test_a_forgotten_check_is_read_again():
+    with sharing_expert_checks():
+        remember_expert_check("user-1", "expert-1", CHECK)
+        forget_expert_checks()
+
+        assert checked_expert("user-1", "expert-1") is None
+
+
 def test_nothing_is_remembered_outside_a_turn():
     remember_expert_check("user-1", "expert-1", CHECK)
 
+    assert checked_expert("user-1", "expert-1") is None
+
+
+@pytest.mark.asyncio
+async def test_overlapping_turns_keep_their_own_expert_check():
+    entered = [asyncio.Event(), asyncio.Event()]
+    checks = [CHECK, CHECK.model_copy(update={"organization_id": "other-org"})]
+
+    async def turn(index: int) -> None:
+        with sharing_expert_checks():
+            remember_expert_check("user-1", "expert-1", checks[index])
+            entered[index].set()
+            await asyncio.wait_for(entered[1 - index].wait(), 2)
+            assert checked_expert("user-1", "expert-1") is checks[index]
+
+    await asyncio.gather(turn(0), turn(1))
     assert checked_expert("user-1", "expert-1") is None
 
 

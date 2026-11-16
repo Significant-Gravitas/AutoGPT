@@ -196,6 +196,82 @@ test("an AutoPilot action's card neither calls it a workflow nor offers an edit"
   expect(screen.queryByText(/Node #/)).toBeNull();
 });
 
+function chatBlockReview(overrides: Partial<PendingHumanReviewModel> = {}) {
+  return makeReview({
+    node_exec_id: "copilot-node-gmail:ab12",
+    node_id: "copilot-node-gmail",
+    graph_exec_id: null,
+    graph_id: null,
+    graph_version: null,
+    session_id: "chat-1",
+    agent_name: null,
+    instructions: "GmailSendBlock",
+    action: "Gmail Send",
+    ...overrides,
+  });
+}
+
+const WORKFLOW_LINE =
+  "This workflow is paused until you approve the step below. Check what it will do, and edit it if needed.";
+
+test.each([
+  ["the expert whose chat raised it", "Issa", "Issa"],
+  ["Otto in a chat without an expert", null, "Otto"],
+])(
+  "a block review raised in a chat names %s, not a workflow",
+  (_, expertName, waitingOn) => {
+    render(
+      <PendingReviewsList
+        reviews={[chatBlockReview({ expert_name: expertName })]}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        `${waitingOn} is waiting for your approval before the action below.`,
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(WORKFLOW_LINE)).toBeNull();
+    expect(screen.queryByText(/workflow/i)).toBeNull();
+  },
+);
+
+test.each([
+  ["two experts", "Maria"],
+  ["an expert and Otto", null],
+])("reviews raised by %s wait on the team, not on Otto", (_, otherExpert) => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        chatBlockReview({ expert_name: "Issa" }),
+        chatBlockReview({
+          node_exec_id: "copilot-node-slack:cd34",
+          node_id: "copilot-node-slack",
+          action: "Slack Post",
+          expert_name: otherExpert,
+        }),
+      ]}
+    />,
+  );
+
+  expect(
+    screen.getByText(
+      "Your team is waiting for your approval before the action below.",
+    ),
+  ).toBeDefined();
+});
+
+test("a workflow run's review still says the workflow is paused", () => {
+  render(
+    <PendingReviewsList
+      reviews={[makeReview({ expert_name: "Issa", session_id: null })]}
+    />,
+  );
+
+  expect(screen.getByText(WORKFLOW_LINE)).toBeDefined();
+  expect(screen.queryByText(/is waiting for your approval/)).toBeNull();
+});
+
 // The JSON editor keeps a half-typed draft on screen. Approving must not send
 // the last valid JSON in its place: with a trailing comma left behind,
 // "b@x.com" would still go out while the reviewer sees it deleted.
@@ -256,4 +332,82 @@ test("rejecting goes through while the JSON draft doesn't parse", async () => {
     approved: false,
     reviewed_data: payload,
   });
+});
+
+function spendReview(overrides: Partial<PendingHumanReviewModel> = {}) {
+  return makeReview({
+    node_exec_id: "expert-spend:e-1:run-1",
+    node_id: "expert-spend:e-1",
+    payload: {
+      expert: "Maria",
+      spent_credits: 300,
+      threshold_credits: 250,
+      window: "week",
+    },
+    instructions:
+      "Maria has used 300 of 250 credits this week and needs your approval to keep spending",
+    action: undefined,
+    agent_name: undefined,
+    editable: false,
+    ...overrides,
+  });
+}
+
+test("an expert's spend approval is one compact card, beside the other reviews", () => {
+  render(<PendingReviewsList reviews={[spendReview(), makeReview()]} />);
+
+  expect(
+    screen.getByText("Maria has done 300 credits of work this week"),
+  ).toBeDefined();
+  expect(
+    screen.getByText("That's past your 250 check-in. Keep going?"),
+  ).toBeDefined();
+  expect(screen.getByRole("img", { name: "300 of 250 credits" })).toBeDefined();
+  expect(screen.queryByText(/needs your approval to keep spending/)).toBeNull();
+  // The block review keeps its own card.
+  expect(screen.getByText("Send Email")).toBeDefined();
+});
+
+test.each([
+  ["Keep going", true],
+  ["Cancel", false],
+])(
+  "%s on a spend card decides only that expert's runs",
+  async (button, approved) => {
+    const captured = captureReviewAction();
+    render(<PendingReviewsList reviews={[spendReview(), makeReview()]} />);
+
+    await userEvent.click(screen.getByRole("button", { name: button }));
+
+    await waitFor(() => expect(captured.body).toBeDefined());
+    expect(captured.body?.reviews).toEqual([
+      expect.objectContaining({
+        node_exec_id: "expert-spend:e-1:run-1",
+        approved,
+      }),
+    ]);
+    expect(captured.body?.reviews[0].auto_approve_future).not.toBe(true);
+  },
+);
+
+test("an unreadable spend payload keeps the standard approval controls", () => {
+  render(
+    <PendingReviewsList
+      reviews={[
+        spendReview({
+          payload: {
+            expert: "Maria",
+            spent_credits: 300,
+            threshold_credits: "unknown",
+            window: "week",
+          },
+        }),
+      ]}
+    />,
+  );
+
+  expect(screen.getByText("Your review is needed")).toBeDefined();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Reject" })).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Keep going" })).toBeNull();
 });

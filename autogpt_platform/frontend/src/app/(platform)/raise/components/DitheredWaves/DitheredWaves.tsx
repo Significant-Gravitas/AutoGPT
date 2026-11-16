@@ -16,7 +16,7 @@ export function DitheredWaves({ colors = DITHER_COLORS, className }: Props) {
     <canvas
       ref={canvasRef}
       aria-hidden
-      className={cn("block h-full w-full bg-muted", className)}
+      className={cn("block h-full w-full bg-surface-hover", className)}
     />
   );
 }

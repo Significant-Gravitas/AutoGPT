@@ -145,6 +145,41 @@ class TestBotChatRequest:
                 message="hi",
             )
 
+    def test_expert_and_model_default_to_none(self):
+        req = BotChatRequest(
+            platform=Platform.DISCORD, platform_user_id="u", message="hi"
+        )
+        assert req.expert_id is None
+        assert req.model is None
+
+    def test_expert_and_model_round_trip(self):
+        req = BotChatRequest(
+            platform=Platform.TELEGRAM,
+            platform_user_id="u",
+            message="hi",
+            expert_id="expert-1",
+            model="advanced",
+        )
+        assert BotChatRequest.model_validate(to_dict(req)) == req
+
+    def test_unknown_model_tier_rejected(self):
+        with pytest.raises(ValidationError):
+            BotChatRequest(
+                platform=Platform.DISCORD,
+                platform_user_id="u",
+                message="hi",
+                model="smart",
+            )
+
+    def test_empty_expert_id_rejected(self):
+        with pytest.raises(ValidationError):
+            BotChatRequest(
+                platform=Platform.DISCORD,
+                platform_user_id="u",
+                message="hi",
+                expert_id="",
+            )
+
 
 class TestResponseModels:
     def test_link_token_status_pending(self):

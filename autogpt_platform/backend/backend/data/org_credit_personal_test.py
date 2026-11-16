@@ -18,6 +18,7 @@ from backend.data.org_credit import (
     spend_org_credits,
     top_up_org_credits,
 )
+from backend.util.exceptions import InsufficientBalanceError
 
 ORG_PERSONAL = "org-personal"
 ORG_TEAM = "org-team"
@@ -81,6 +82,36 @@ async def test_personal_org_spend_debits_owner_wallet(mock_prisma, mock_user_cre
     # OrgBalance untouched
     mock_prisma.query_raw.assert_not_called()
     mock_prisma.orgcredittransaction.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_insufficient_credits", [True, False])
+async def test_a_personal_org_pays_for_its_owner_only(
+    mock_prisma, mock_user_credit, fail_insufficient_credits
+):
+    """A personal org's wallet pays only for its owner's usage."""
+    with pytest.raises(InsufficientBalanceError):
+        await spend_org_credits(
+            ORG_PERSONAL,
+            "another-user",
+            50,
+            fail_insufficient_credits=fail_insufficient_credits,
+        )
+
+    mock_user_credit.spend_credits.assert_not_awaited()
+    mock_prisma.query_raw.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_forgotten_owner_is_read_again_from_the_database(mock_prisma):
+    assert await org_credit.get_personal_org_owner(ORG_PERSONAL) == OWNER
+    mock_prisma.organization.find_unique.side_effect = None
+    mock_prisma.organization.find_unique.return_value = MagicMock(isPersonal=False)
+    assert await org_credit.get_personal_org_owner(ORG_PERSONAL) == OWNER  # cached
+
+    org_credit.forget_personal_org_owner(ORG_PERSONAL)
+
+    assert await org_credit.get_personal_org_owner(ORG_PERSONAL) is None
 
 
 @pytest.mark.asyncio

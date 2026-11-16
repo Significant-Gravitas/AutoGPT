@@ -2,7 +2,7 @@ import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
-  extractReviewTarget,
+  extractReviewTargets,
   extractWorkspaceArtifacts,
   filePartToArtifactRef,
   getLatestCompactionPhase,
@@ -10,6 +10,7 @@ import {
   getMessageArtifacts,
   getMostRecentArtifact,
   resolveWorkspaceUrls,
+  workspaceLinkFileID,
 } from "../helpers";
 import type { MessagePart } from "../helpers";
 import type { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
@@ -203,12 +204,11 @@ describe("resolveWorkspaceUrls with custom fileUrlBuilder", () => {
     expect(out).toBe(`![pic](/share/files/${FILE_ID}.png)`);
   });
 
-  it("rewrites link syntax to absolute URL with origin prefix", () => {
-    const text = `Open [the file](workspace://${FILE_ID}) here.`;
-    const builder = (id: string) => `/share/files/${id}.dl`;
-    const out = resolveWorkspaceUrls(text, builder);
-    // jsdom's window.location.origin is "http://localhost:3000".
-    expect(out).toContain(`(http://localhost:3000/share/files/${FILE_ID}.dl)`);
+  it("rewrites a link to a token that names its file and keeps the label", () => {
+    const text = `Open [the file](workspace://${FILE_ID}#text/plain) here.`;
+    const match = resolveWorkspaceUrls(text).match(/!\[the file\]\((\S+)\)/);
+
+    expect(workspaceLinkFileID(match?.[1] ?? "")).toBe(FILE_ID);
   });
 
   it("default builder rewrites workspace:// to the workspace endpoint", () => {
@@ -471,7 +471,7 @@ describe("getLatestCompactionStats", () => {
   });
 });
 
-describe("extractReviewTarget", () => {
+describe("extractReviewTargets", () => {
   function toolOutput(output: unknown) {
     return {
       id: `m-${Math.random()}`,
@@ -490,7 +490,7 @@ describe("extractReviewTarget", () => {
 
   it("returns a run still in flight with its graph, so a later pause shows in the chat", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({
           execution_id: "exec-running",
           graph_id: "graph-1",
@@ -498,48 +498,151 @@ describe("extractReviewTarget", () => {
         }),
       ]),
     ).toEqual({
-      kind: "graph",
-      graphExecId: "exec-running",
-      graphId: "graph-1",
+      chat: false,
+      runs: [{ graphExecId: "exec-running", graphId: "graph-1" }],
     });
   });
 
   it("returns the chat for an action the gate parked, and not for a refusal", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ type: "approval_required", review_id: "gate-1" }),
       ]),
-    ).toEqual({ kind: "chat" });
+    ).toEqual({ chat: true, runs: [] });
     expect(
-      extractReviewTarget([toolOutput({ type: "approval_required" })]),
-    ).toBeNull();
+      extractReviewTargets([toolOutput({ type: "approval_required" })]),
+    ).toEqual({ chat: false, runs: [] });
   });
 
   it("ignores a run that already finished", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ execution_id: "exec-done", status: "COMPLETED" }),
       ]),
-    ).toBeNull();
+    ).toEqual({ chat: false, runs: [] });
   });
 
-  it("prefers a newer in-flight run over an earlier run that paused", () => {
+  it("keeps every run that paused, beside a newer one in flight", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ execution_id: "exec-a", status: "REVIEW" }),
+        toolOutput({ execution_id: "exec-b", status: "REVIEW" }),
         toolOutput(
-          JSON.stringify({ execution_id: "exec-b", status: "QUEUED" }),
+          JSON.stringify({ execution_id: "exec-c", status: "QUEUED" }),
         ),
+      ]).runs.map((run) => run.graphExecId),
+    ).toEqual(["exec-c", "exec-b", "exec-a"]);
+  });
+
+  it("watches only the newest run in flight, and a paused run behind a chat review", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput({ execution_id: "exec-a", status: "RUNNING" }),
+        toolOutput({ execution_id: "exec-b", status: "REVIEW" }),
+        toolOutput({ execution_id: "exec-c", status: "RUNNING" }),
+        toolOutput({ type: "review_required", review_id: "r1" }),
       ]),
-    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
+    ).toEqual({ chat: true, runs: [{ graphExecId: "exec-b" }] });
   });
 
   it("prefers a newer in-flight run over an earlier block review", () => {
     expect(
-      extractReviewTarget([
+      extractReviewTargets([
         toolOutput({ type: "review_required", review_id: "r1" }),
         toolOutput({ execution_id: "exec-b", status: "QUEUED" }),
       ]),
-    ).toMatchObject({ kind: "graph", graphExecId: "exec-b" });
+    ).toEqual({ chat: false, runs: [{ graphExecId: "exec-b" }] });
+  });
+
+  // What the backend streamed for a Gmail send with an HTML body before
+  // review outputs were exempt from its digest (SECRT-3418).
+  const digestedReview = [
+    `<tool-output-truncated total_chars=10200 workspace_path="tool-outputs/call-9.json" format="outline">`,
+    `$: {type="review_required", message="Block 'Gmail Send' requires human review. After the user approves, call resume_capability with review_id='copilot-node-gmail:ab12' to execute.", session_id="chat-1", block_id="gmail-send", block_name="Gmail Send", review_id="copilot-node-gmail:ab12", input_data={…4 keys @304+7650}}`,
+    `$.input_data: {to=[…1 items @310+19], subject="Launch notes", body="<p>Hello. Hello.…", content_type="text/html"}`,
+    `$.input_data.to: [0="ada@example.com"]`,
+    ``,
+    `The preview above is a structural outline of the 10,200-char output, not a literal prefix of it.`,
+    `</tool-output-truncated>`,
+  ].join("\n");
+
+  function digested(head: string) {
+    return [
+      `<tool-output-truncated total_chars=12000 workspace_path="tool-outputs/c.json" format="outline">`,
+      head,
+      ``,
+      `The preview above is a structural outline of the 12,000-char output, not a literal prefix of it.`,
+      `</tool-output-truncated>`,
+    ].join("\n");
+  }
+
+  it("finds the chat's review in an output the backend digested", () => {
+    expect(extractReviewTargets([toolOutput(digestedReview)])).toEqual({
+      chat: true,
+      runs: [],
+    });
+  });
+
+  it("finds the chat's review in an output cut in the middle", () => {
+    const head = JSON.stringify({
+      type: "review_required",
+      message: "Block 'Gmail Send' requires human review.",
+      review_id: "copilot-node-gmail:ab12",
+      input_data: { body: "x".repeat(200) },
+    }).slice(0, 180);
+    const preview = [
+      `<tool-output-truncated total_chars=60000 workspace_path="tool-outputs/c.json">`,
+      `${head}… (truncated) …"}}`,
+      `Full output (60,000 chars) saved to workspace.`,
+      `</tool-output-truncated>`,
+    ].join("\n");
+
+    expect(extractReviewTargets([toolOutput(preview)]).chat).toBe(true);
+  });
+
+  it("finds a digested held call only when it has a review id", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput(
+          digested(
+            `$: {type="approval_required", message="Held.", tool_name="send_email", reason="r", review_id="gate-1"}`,
+          ),
+        ),
+      ]).chat,
+    ).toBe(true);
+    expect(
+      extractReviewTargets([
+        toolOutput(
+          digested(
+            `$: {type="approval_required", message="Held.", tool_name="send_email", reason="r"}`,
+          ),
+        ),
+      ]).chat,
+    ).toBe(false);
+  });
+
+  it("finds no review in a digested block output", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput(
+          digested(
+            `$: {type="block_output", message="review_required means wait", block_id="b", review_id="nope", outputs={…1 keys @90+11000}}`,
+          ),
+        ),
+      ]),
+    ).toEqual({ chat: false, runs: [] });
+  });
+
+  it("still finds the chat's review behind the turn's later tool outputs", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput(digestedReview),
+        toolOutput({ type: "bash_exec", stdout: "ok", exit_code: 0 }),
+        toolOutput({ type: "memory_store", memory_name: "launch" }),
+        toolOutput({ type: "todo_write", todos: [{ status: "completed" }] }),
+        toolOutput("plain text the tool returned"),
+        toolOutput(digested(`$: {type="web_fetch", url="https://x.dev"}`)),
+      ]),
+    ).toEqual({ chat: true, runs: [] });
   });
 });

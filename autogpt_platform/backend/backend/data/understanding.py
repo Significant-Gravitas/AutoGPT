@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 # Cache configuration
 CACHE_KEY_PREFIX = "understanding"
 CACHE_TTL_SECONDS = 48 * 60 * 60  # 48 hours
+# Left in the cache by a forget, so a read that fetched the row before it cannot cache it again.
+FORGOTTEN_MARKER = "forgotten"
 
 
 def _cache_key(user_id: str) -> str:
@@ -217,7 +219,7 @@ async def _get_from_cache(user_id: str) -> Optional[BusinessUnderstanding]:
     try:
         redis = await get_redis_async()
         cached_data = await redis.get(_cache_key(user_id))
-        if cached_data:
+        if cached_data and cached_data != FORGOTTEN_MARKER:
             return BusinessUnderstanding.model_validate_json(cached_data)
     except Exception as e:
         logger.warning(f"Failed to get understanding from cache: {e}")
@@ -237,13 +239,18 @@ async def _set_cache(user_id: str, understanding: BusinessUnderstanding) -> None
         logger.warning(f"Failed to set understanding in cache: {e}")
 
 
-async def _delete_cache(user_id: str) -> None:
-    """Delete business understanding from Redis cache."""
+async def _fill_cache(user_id: str, understanding: BusinessUnderstanding) -> None:
+    """Cache a database read unless the key holds a newer write or a forget's marker."""
     try:
         redis = await get_redis_async()
-        await redis.delete(_cache_key(user_id))
+        await redis.set(
+            _cache_key(user_id),
+            understanding.model_dump_json(),
+            ex=CACHE_TTL_SECONDS,
+            nx=True,
+        )
     except Exception as e:
-        logger.warning(f"Failed to delete understanding from cache: {e}")
+        logger.warning(f"Failed to set understanding in cache: {e}")
 
 
 async def get_business_understanding(
@@ -268,8 +275,7 @@ async def get_business_understanding(
 
     understanding = BusinessUnderstanding.from_db(record)
 
-    # Store in cache for next time
-    await _set_cache(user_id, understanding)
+    await _fill_cache(user_id, understanding)
 
     return understanding
 
@@ -381,16 +387,14 @@ async def upsert_business_understanding(
 
 
 async def clear_business_understanding(user_id: str) -> bool:
-    """Clear/delete business understanding for a user from both DB and cache."""
-    # Delete from cache first
-    await _delete_cache(user_id)
+    """Delete the user's business understanding; True when there was one.
 
-    try:
-        await CoPilotUnderstanding.prisma().delete(where={"userId": user_id})
-        return True
-    except Exception:
-        # Record might not exist
-        return False
+    Raises when the cached copy could not be replaced, since it would be served for the TTL.
+    """
+    deleted = await CoPilotUnderstanding.prisma().delete_many(where={"userId": user_id})
+    redis = await get_redis_async()
+    await redis.set(_cache_key(user_id), FORGOTTEN_MARKER, ex=CACHE_TTL_SECONDS)
+    return deleted > 0
 
 
 def format_understanding_for_prompt(understanding: BusinessUnderstanding) -> str:
