@@ -1,4 +1,5 @@
 import itertools
+import json
 import logging
 import math
 import re
@@ -104,6 +105,23 @@ T = TypeVar("T")
 # Sentinel value to detect when fallback is not provided
 _NO_FALLBACK = object()
 
+# orjson keeps integers in the closed range [-(2**63), 2**64 - 1] and returns
+# a float for anything outside it. 19 digits is the shortest literal that can
+# fall outside that range (-(2**63) - 1).
+_I64_MIN = -9223372036854775808
+_U64_MAX = 18446744073709551615
+_LONG_INTEGER = re.compile(r"(?<![\d.eE+\-])-?(?:0|[1-9]\d{18,})(?![\d.eE])")
+
+
+def _source_has_int_outside_orjson_range(data: str | bytes) -> bool:
+    """Whether `data` contains an integer literal orjson would round to a float."""
+    text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data
+    for match in _LONG_INTEGER.finditer(text):
+        value = int(match.group())
+        if value > _U64_MAX or value < _I64_MIN:
+            return True
+    return False
+
 
 @overload
 def loads(
@@ -153,6 +171,13 @@ def loads(
         if fallback is not _NO_FALLBACK:
             return fallback
         raise
+
+    # orjson only keeps integers that fit in i64/u64. A larger literal comes
+    # back as a float, so 1234567890123456789012 becomes 1.234...e+21 and the
+    # low digits are gone. Reparse with the stdlib, which keeps the exact int.
+    # Ordinary documents stay on the orjson result.
+    if _source_has_int_outside_orjson_range(data):
+        parsed = json.loads(data)
 
     if target_type:
         return type_match(parsed, target_type)
