@@ -365,22 +365,29 @@ describe("Continue with Microsoft", () => {
     expect(db.UserAuthSession).toEqual([]);
   });
 
-  it("keeps an AutoGPT team address to Google sign-up", async () => {
+  it("keeps an AutoGPT team address to Google sign-up, and answers an unconfirmed one as any other", async () => {
     const { handler, db } = await createAuthHandler();
-
-    // Only the team's own tenant can confirm an @agpt.co address.
-    const landing = await continueWithMicrosoft(handler, {
+    const teamAddress = {
       sub: "pairwise",
       oid: "work-id",
       tid: "agpt-tenant",
       email: "someone@agpt.co",
+    };
+
+    // Only the team's own tenant can confirm an @agpt.co address.
+    const confirmed = await continueWithMicrosoft(handler, {
+      ...teamAddress,
       xms_edov: true,
     });
+    // Unconfirmed, it gets every provider's answer for an unverified address,
+    // the same as when an account uses it.
+    const unconfirmed = await continueWithMicrosoft(handler, teamAddress);
 
-    expect(refusal(landing)).toEqual({
+    expect(refusal(confirmed)).toEqual({
       path: "/login",
       error: "team_email_requires_google",
     });
+    expect(unconfirmed).toBe("/login?error=account_not_linked");
     expect(db.UserAuthIdentity).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
   });

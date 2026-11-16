@@ -101,6 +101,11 @@ async function loadAuthOptions(): Promise<CapturedAuthOptions> {
 }
 
 const PROVIDER_ENV_KEYS = [
+  "AUTH_APPLE_APP_BUNDLE_IDENTIFIER",
+  "AUTH_APPLE_CLIENT_ID",
+  "AUTH_APPLE_TEAM_ID",
+  "AUTH_APPLE_KEY_ID",
+  "AUTH_APPLE_PRIVATE_KEY",
   "AUTH_GOOGLE_CLIENT_ID",
   "AUTH_GOOGLE_CLIENT_SECRET",
   "AUTH_GITHUB_CLIENT_ID",
@@ -346,7 +351,7 @@ describe("email verification", () => {
 
 describe("team email sign-up", () => {
   type CreateUserHook = (
-    user: { email: string },
+    user: { email: string; emailVerified?: boolean },
     ctx: { path?: string } | null,
   ) => Promise<void>;
 
@@ -372,7 +377,10 @@ describe("team email sign-up", () => {
     const createUser = await loadCreateUserHook();
 
     await expect(
-      createUser({ email: "someone@agpt.co" }, { path: "/callback/google" }),
+      createUser(
+        { email: "someone@agpt.co", emailVerified: true },
+        { path: "/callback/google" },
+      ),
     ).resolves.toBeUndefined();
   });
 

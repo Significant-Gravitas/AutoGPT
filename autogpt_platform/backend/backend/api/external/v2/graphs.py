@@ -41,8 +41,9 @@ from .tenancy import (
     TenantContext,
     in_tenant,
     owned_by_caller,
-    require_paid_permission,
+    require_paid_resource_permission,
     require_permission,
+    require_resource_permission,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,9 @@ graphs_router = APIRouter(tags=["graphs"])
 )
 async def list_graphs(
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
+    ),
 ) -> Page[GraphMeta]:
     """List all graphs owned by the authenticated user."""
     graphs, pagination_info = await graph_db.list_graphs_paginated(
@@ -84,7 +87,9 @@ async def get_graph(
         default=None,
         description="Specific version to retrieve (default: active version)",
     ),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
+    ),
 ) -> Graph:
     """
     Get detailed information about a specific graph.
@@ -112,7 +117,7 @@ async def get_graph(
 async def create_graph(
     create_graph: GraphCreateRequest,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_GRAPH)
+        require_paid_resource_permission(APIKeyPermission.WRITE_GRAPH)
     ),
 ) -> Graph:
     """Create a new agent graph."""
@@ -155,7 +160,7 @@ async def update_graph(
     graph_id: str,
     update_graph: GraphCreateRequest,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_GRAPH)
+        require_paid_resource_permission(APIKeyPermission.WRITE_GRAPH)
     ),
 ) -> Graph:
     """
@@ -268,7 +273,9 @@ async def update_graph(
 async def list_graph_versions(
     graph_id: str,
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
+    ),
 ) -> Page[Graph]:
     """Get all versions of a specific graph."""
     # Paged in the query: each version's sub-graphs cost their own round trips.
@@ -306,7 +313,7 @@ async def set_active_version(
     graph_id: str,
     request_body: GraphSetActiveVersionRequest,
     auth: TenantContext = Security(
-        require_paid_permission(APIKeyPermission.WRITE_GRAPH)
+        require_paid_resource_permission(APIKeyPermission.WRITE_GRAPH)
     ),
 ) -> None:
     """
@@ -372,7 +379,9 @@ async def set_active_version(
 async def update_graph_settings(
     graph_id: str,
     settings: GraphSettings,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.WRITE_GRAPH)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.WRITE_GRAPH)
+    ),
 ) -> GraphSettings:
     """Update settings for a graph."""
     from backend.api.features.library import db as library_db
@@ -403,7 +412,9 @@ async def update_graph_settings(
 )
 async def get_library_agent_by_graph(
     graph_id: str,
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_LIBRARY)
+    ),
 ) -> LibraryAgent:
     """Get the library agent associated with a specific graph."""
     agent = in_tenant(
@@ -425,7 +436,9 @@ async def get_library_agent_by_graph(
 async def list_graph_blocks(
     graph_id: str,
     page: PageRequest = Depends(page_request),
-    auth: TenantContext = Security(require_permission(APIKeyPermission.READ_GRAPH)),
+    auth: TenantContext = Security(
+        require_resource_permission(APIKeyPermission.READ_GRAPH)
+    ),
 ) -> Page[BlockInfo]:
     """List the unique blocks used by a graph."""
     from backend.blocks import get_block
@@ -463,7 +476,7 @@ async def list_graph_credential_requirements(
     graph_id: str,
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(
-        require_permission(APIKeyPermission.READ_INTEGRATIONS)
+        require_resource_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
 ) -> Page[CredentialRequirement]:
     """List credential requirements for a graph and matching user credentials."""

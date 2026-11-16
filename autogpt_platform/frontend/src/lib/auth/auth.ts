@@ -8,6 +8,13 @@ import {
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { nativeSessionBearer } from "./native-session-bearer";
+import { appleOAuth } from "./apple-oauth";
+import {
+  assertAppleSignInRequest,
+  appleTrustedOrigins,
+  getAppleProvider,
+  type AppleAccountUser,
+} from "./apple-provider";
 import { compare, hash } from "bcryptjs";
 import { PostgresDialect } from "kysely";
 import { assertSignInAllowed, assertSignUpAllowed } from "./access-blocks";
@@ -37,6 +44,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
   type ResetLinkContext,
@@ -62,8 +70,7 @@ const baseURL =
   "http://localhost:3000";
 
 function getSocialProviders() {
-  const providers: Record<string, { clientId: string; clientSecret: string }> =
-    {};
+  const providers: NonNullable<BetterAuthOptions["socialProviders"]> = {};
 
   for (const provider of ["google", "github", "discord"] as const) {
     const prefix = `AUTH_${provider.toUpperCase()}`;
@@ -74,8 +81,22 @@ function getSocialProviders() {
     }
   }
 
+  const apple = getAppleProvider(findAppleAccountUser);
+  if (apple) providers.apple = apple;
+
   const microsoft = getMicrosoftLoginProvider();
   return microsoft ? { ...providers, microsoft } : providers;
+}
+
+async function findAppleAccountUser(
+  subject: string,
+): Promise<AppleAccountUser | null> {
+  const context = await auth.$context;
+  const owner = await context.internalAdapter.findAccountOwnerByKey({
+    providerId: "apple",
+    accountId: subject,
+  });
+  return owner?.kind === "owned" ? owner.user : null;
 }
 
 const requireEmailVerification =
@@ -115,6 +136,7 @@ function getRequestIP(ctx: HookContext) {
 export const auth = betterAuth({
   baseURL,
   secret: authSecret,
+  trustedOrigins: appleTrustedOrigins,
   // Without database transactions, as before Better Auth 1.7, which turns
   // them on for a bare pg Pool. A sign-up would then hold one of the pool's
   // connections throughout while the session hook (access blocks, IP log)
@@ -129,6 +151,7 @@ export const auth = betterAuth({
   disabledPaths: DISABLED_AUTH_PATHS,
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      assertAppleSignInRequest(ctx.path, ctx.body);
       // Sign-in and reset emails are limited per IP and address (attempt-limits.ts).
       await limitAuthAttempts({
         path: ctx.path,
@@ -211,7 +234,10 @@ export const auth = betterAuth({
           user: { email: string; emailVerified?: boolean | null },
           ctx: HookContext,
         ) => {
-          // Microsoft's first: its refusals carry codes /login explains.
+          // First, so an unverified address is answered the same whether or
+          // not an account uses it, before any later check tells them apart.
+          assertProviderVerifiedEmail(user, ctx);
+          // Microsoft's next: its refusals carry codes /login explains.
           assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.
@@ -459,6 +485,7 @@ export const auth = betterAuth({
   socialProviders: getSocialProviders(),
   plugins: [
     admin(),
+    ...appleOAuth(),
     nativeSessionBearer(),
     jwt({
       schema: {

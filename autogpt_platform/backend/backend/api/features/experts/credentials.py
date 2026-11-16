@@ -22,7 +22,10 @@ from backend.api.features.experts import scheduling
 from backend.api.features.experts.models import ExpertCredentialRef
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import is_system_credential
-from backend.integrations.service_identity import service_for_credential
+from backend.integrations.service_identity import (
+    credential_display_name,
+    service_for_credential,
+)
 from backend.util.exceptions import ExpertNotFoundError
 
 if TYPE_CHECKING:
@@ -209,7 +212,7 @@ def _to_refs(
             ExpertCredentialRef(
                 credential_id=credential.id,
                 provider=str(credential.provider),
-                title=credential.title or str(credential.provider),
+                title=credential_display_name(credential),
                 type=str(credential.type),
                 service=identity.service,
                 service_name=identity.name,

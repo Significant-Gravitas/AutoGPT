@@ -13,6 +13,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.models import RequestContext
+from prisma.enums import APIKeyStatus
 
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 
@@ -521,6 +522,7 @@ class TestOrgDbMembers:
         self.prisma = MagicMock()
         self.prisma.execute_raw = AsyncMock()
         self.prisma.orgmember.count = AsyncMock(return_value=0)
+        self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
         mocker.patch(
             "backend.api.features.orgs.db.transaction",
@@ -616,6 +618,15 @@ class TestOrgDbMembers:
 
         # Org membership deleted
         self.prisma.orgmember.delete.assert_called_once()
+
+        # The keys the member made in this org go with it, and only those.
+        revoked = self.prisma.apikey.update_many.await_args.kwargs
+        assert revoked["where"] == {
+            "userId": OTHER_USER_ID,
+            "organizationId": ORG_ID,
+            "status": {"not": APIKeyStatus.REVOKED},
+        }
+        assert revoked["data"]["status"] == APIKeyStatus.REVOKED
 
     @pytest.mark.asyncio
     async def test_remove_owner_raises_value_error(self):
@@ -923,6 +934,7 @@ class TestWorkspaceDbJoinLeave:
         self.prisma = MagicMock()
         self.prisma.execute_raw = AsyncMock()
         self.prisma.teammember.find_unique = AsyncMock(return_value=None)
+        self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
         mocker.patch(
             "backend.api.features.orgs.team_db.transaction",
@@ -1007,12 +1019,19 @@ class TestWorkspaceDbJoinLeave:
         await leave_team(WS_ID, USER_ID)
 
         self.prisma.teammember.delete_many.assert_called_once()
+        revoked = self.prisma.apikey.update_many.await_args.kwargs
+        assert revoked["where"] == {
+            "userId": USER_ID,
+            "teamIdRestriction": WS_ID,
+            "status": {"not": APIKeyStatus.REVOKED},
+        }
 
 
 class TestWorkspaceDbDelete:
     @pytest.fixture(autouse=True)
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -1036,6 +1055,11 @@ class TestWorkspaceDbDelete:
         await delete_team(WS_ID)
 
         self.prisma.team.delete.assert_called_once_with(where={"id": WS_ID})
+        revoked = self.prisma.apikey.update_many.await_args.kwargs
+        assert revoked["where"] == {
+            "teamIdRestriction": WS_ID,
+            "status": {"not": APIKeyStatus.REVOKED},
+        }
 
     @pytest.mark.asyncio
     async def test_delete_team_not_found_raises(self):
@@ -2402,6 +2426,7 @@ class TestSelfRemovalPrevention:
     @pytest.fixture(autouse=True)
     def setup(self, mocker):
         self.prisma = MagicMock()
+        self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -2512,6 +2537,7 @@ class TestLastAdminGuard:
     def setup(self, mocker):
         self.prisma = MagicMock()
         self.prisma.execute_raw = AsyncMock()
+        self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
         mocker.patch(
             "backend.api.features.orgs.team_db.transaction",
@@ -2555,6 +2581,12 @@ class TestLastAdminGuard:
         self.prisma.teammember.delete.assert_called_once()
         # Should NOT have checked admin count
         self.prisma.teammember.count.assert_not_called()
+        revoked = self.prisma.apikey.update_many.await_args.kwargs
+        assert revoked["where"] == {
+            "userId": "regular-1",
+            "teamIdRestriction": WS_ID,
+            "status": {"not": APIKeyStatus.REVOKED},
+        }
 
 
 class TestInvitationIdempotency:
@@ -3278,6 +3310,7 @@ class TestTeamManagementByTeamId:
     def _mock_prisma(self, mocker):
         self.prisma = MagicMock()
         self.prisma.execute_raw = AsyncMock()
+        self.prisma.apikey.update_many = AsyncMock(return_value=0)
         mocker.patch("backend.api.features.orgs.team_db.prisma", self.prisma)
         mocker.patch(
             "backend.api.features.orgs.team_db.transaction",

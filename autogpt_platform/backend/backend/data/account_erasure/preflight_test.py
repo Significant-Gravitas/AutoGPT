@@ -233,16 +233,16 @@ async def test_the_placeholder_account_is_never_deleted(no_orgs):
 
 
 @pytest.mark.asyncio
-async def test_stripe_customers_of_its_sole_orgs_but_not_its_own(monkeypatch):
-    """Closing the account cancelled its own customer's subscriptions; the
-    erasure covers only the sole orgs' other customers."""
+async def test_stripe_customers_of_the_account_and_its_sole_orgs(monkeypatch):
+    """Its own first: closing cancelled that one's subscriptions, but a
+    Checkout started in the seconds after the close can still be paid."""
     subscriptions = _table(
         AsyncMock(return_value=[SimpleNamespace(stripeCustomerId="cus_org_sub")])
     )
     monkeypatch.setattr(preflight, "OrganizationSubscription", subscriptions)
     user = SimpleNamespace(stripeCustomerId="cus_user")
 
-    customers = await preflight._org_stripe_customers(
+    customers = await preflight._stripe_customers(
         user,
         [
             _org("a", customer="cus_user"),
@@ -251,7 +251,24 @@ async def test_stripe_customers_of_its_sole_orgs_but_not_its_own(monkeypatch):
         ],
     )
 
-    assert customers == ["cus_org", "cus_org_sub"]
+    assert customers == ["cus_user", "cus_org", "cus_org_sub"]
+
+
+@pytest.mark.asyncio
+async def test_an_account_with_no_org_still_has_its_own_customer(monkeypatch):
+    monkeypatch.setattr(
+        preflight, "OrganizationSubscription", _table(AsyncMock(return_value=[]))
+    )
+
+    with_customer = await preflight._stripe_customers(
+        SimpleNamespace(stripeCustomerId="cus_user"), []
+    )
+    without = await preflight._stripe_customers(
+        SimpleNamespace(stripeCustomerId=None), []
+    )
+    erased_already = await preflight._stripe_customers(None, [])
+
+    assert (with_customer, without, erased_already) == (["cus_user"], [], [])
 
 
 @pytest.mark.parametrize(

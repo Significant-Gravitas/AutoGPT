@@ -43,6 +43,10 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import SystemPromptPreset
 from pydantic import BaseModel
 
+from backend.api.features.local_executor.consent import is_computer_use_approved
+from backend.api.features.local_executor.gating import is_computer_use_enabled
+from backend.copilot.local_executor import build_local_pc_env_context
+from backend.copilot.sdk.computer_use_policy import guard_scope, local_pc_tool_names
 from backend.blocks.desktop._common import workspace_volume_mounts
 from backend.copilot.graphiti import context_refresh
 from backend.copilot.model_router import (
@@ -98,6 +102,7 @@ from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.exceptions import NotFoundError
 from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
@@ -138,6 +143,7 @@ from ..moonshot import (
 from ..model import (
     ChatMessage,
     ChatSession,
+    LocalExecutionTargetMetadata,
     clear_pending_question,
     get_chat_session,
     maybe_append_user_message,
@@ -165,11 +171,12 @@ from ..permissions import (
 from ..prompting import (
     approval_mode_supplement,
     get_chat_platform_supplement,
+    get_graphiti_supplement,
+    get_local_pc_sdk_supplement,
     get_provider_ceiling_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
     get_team_building_supplement,
-    get_graphiti_supplement,
     get_sdk_supplement,
 )
 from ..response_model import (
@@ -224,11 +231,19 @@ from ..tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
+from ..tools.render_ui import render_ui_disabled_tools
 from ..tools.e2b_sandbox import (
     forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
+from ..tools.local_pc_machine import (
+    MachineSessionBinding,
+    detach_machine_session,
+    get_machine_presence,
+    restore_machine_session,
+)
+from ..tools.local_pc_shim import LocalPCShim, get_shim_manager
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
@@ -275,6 +290,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    held_call_handlers,
     reset_pending_tool_outputs,
     reset_stash_event,
     reset_tool_failure_counters,
@@ -1074,6 +1090,17 @@ def _hidden_short_names_for_permissions(
     list entirely so it never reaches for the blocked name.
     """
     return denied_tool_names(permissions)
+
+
+def _hidden_short_names_for_local_pc(shim: LocalPCShim) -> frozenset[str]:
+    # start_desktop would start a cloud box, which is not the user's computer
+    # that every other tool in a Local PC chat works on.
+    hidden: set[str] = {"start_desktop"}
+    if "shell" not in shim.capability_set:
+        hidden.update({"bash_exec", "grep"})
+    elif shim.platform.lower() == "windows":
+        hidden.add("grep")
+    return frozenset(hidden)
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
@@ -1890,6 +1917,20 @@ class _InterruptedAttempt:
         return events
 
 
+def _executor_supplement(
+    session: "ChatSession", *, use_e2b: bool, provider_supplement: str
+) -> str:
+    """Tool notes for the box this turn runs on. The first launch and a
+    building-mode restart build the prompt the same way, so the cached prefix
+    holds across the restart."""
+    if session.metadata.execution_target.kind == "local":
+        return get_local_pc_sdk_supplement()
+    return (
+        get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
+        + provider_supplement
+    )
+
+
 async def _apply_building_mode_restart(
     *,
     session: "ChatSession",
@@ -1947,8 +1988,9 @@ async def _apply_building_mode_restart(
     # of the turn.
     system_prompt = (
         base_system_prompt
-        + get_sdk_supplement(use_e2b=use_e2b, expert_session=bool(session.expert_id))
-        + provider_supplement
+        + _executor_supplement(
+            session, use_e2b=use_e2b, provider_supplement=provider_supplement
+        )
         + delegation_supplement
         + oversight_supplement
         + team_building_supplement
@@ -4796,6 +4838,178 @@ async def _maybe_prepend_builder_context(
     return block + query_message if block else query_message
 
 
+async def _setup_local_pc_executor(
+    session_id: str,
+    user_id: str | None,
+    chat_config: ChatConfig,
+    execution_target: LocalExecutionTargetMetadata,
+) -> LocalPCShim | None:
+    """Connect the turn to the Local PC this chat is bound to, or None.
+
+    Never falls back to the cloud: a Local PC chat whose machine is not
+    connected (or does not match its binding) gets no executor at all, and
+    the caller fails the turn.
+    """
+    if not user_id:
+        return None
+    local_pc_enabled = await is_feature_enabled(
+        Flag.LOCAL_PC_EXECUTOR,
+        user_id or "anonymous",
+        default=False,
+    )
+    if local_pc_enabled:
+        # Where RESTORE_SESSION asked the computer to attach this chat: a setup
+        # that fails after that detaches it again, as the end of a turn does.
+        restored_on = None
+        try:
+            manager = get_shim_manager()
+            hello = await manager.get_hello_async(session_id)
+            if hello is not None and (
+                hello.machine_id != execution_target.machine_id
+                or hello.allowed_root != execution_target.allowed_root
+            ):
+                mismatched = await manager.get_or_create_shim_for_session(
+                    session_id, timeout=1.0
+                )
+                await mismatched.kill()
+                hello = None
+            if hello is None:
+                presence = await get_machine_presence(
+                    user_id,
+                    chat_config.local_pc_executor_oauth_client_id,
+                    execution_target.machine_id,
+                )
+                binding = MachineSessionBinding(
+                    session_id=session_id,
+                    allowed_root=execution_target.allowed_root,
+                    fingerprint=execution_target.root_fingerprint,
+                    revision=execution_target.revision,
+                    root_grant=execution_target.root_grant,
+                )
+                restored_on = presence
+                restored = await restore_machine_session(presence, binding)
+                if restored != binding:
+                    raise ConnectionError(
+                        "The Local PC executor restored a different binding"
+                    )
+            shim = await LocalPCShim.for_session(
+                session_id,
+                manager=manager,
+                connect_timeout=30.0,
+            )
+            if (
+                shim.machine_id != execution_target.machine_id
+                or shim.allowed_root != execution_target.allowed_root
+            ):
+                await shim.kill()
+                raise ConnectionError(
+                    "The Local PC executor data channel does not match the session binding"
+                )
+        except Exception as shim_err:
+            logger.error(
+                "[LocalPC] [%s] Shim connection failed: %s",
+                session_id[:12],
+                shim_err,
+            )
+            if restored_on is not None:
+                try:
+                    await detach_machine_session(restored_on, session_id)
+                except Exception:
+                    logger.warning(
+                        "[LocalPC] [%s] Failed to detach the session after a failed setup",
+                        session_id[:12],
+                        exc_info=True,
+                    )
+            return None
+        logger.info(
+            "[LocalPC] [%s] routed to shim (platform=%s arch=%s)",
+            session_id[:12],
+            shim.platform or "?",
+            shim.arch or "?",
+        )
+        return shim
+    logger.debug(
+        "[LocalPC] [%s] session is local but the flag is off for user %s",
+        session_id[:12],
+        (user_id or "anonymous")[:12],
+    )
+    return None
+
+
+async def _detach_turn_local_executor(
+    shim: LocalPCShim,
+    session: ChatSession,
+    user_id: str | None,
+    chat_config: ChatConfig,
+) -> None:
+    cleanup_task = asyncio.create_task(
+        _detach_turn_local_executor_unshielded(
+            shim,
+            session,
+            user_id,
+            chat_config,
+        )
+    )
+    try:
+        await asyncio.shield(cleanup_task)
+    except asyncio.CancelledError:
+        await cleanup_task
+        raise
+
+
+async def _detach_turn_local_executor_unshielded(
+    shim: LocalPCShim,
+    session: ChatSession,
+    user_id: str | None,
+    chat_config: ChatConfig,
+) -> None:
+    target = session.metadata.execution_target
+    if not user_id or target.kind != "local":
+        await shim.kill()
+        return
+    try:
+        presence = await get_machine_presence(
+            user_id,
+            chat_config.local_pc_executor_oauth_client_id,
+            target.machine_id,
+        )
+        await detach_machine_session(presence, session.session_id)
+    except Exception:
+        logger.warning(
+            "[LocalPC] [%s] Failed to detach idle session",
+            session.session_id[:12],
+            exc_info=True,
+        )
+    finally:
+        await shim.kill()
+
+
+async def _is_local_pc_computer_approved(
+    sandbox: Any | None,
+    session_id: str,
+    user_id: str | None,
+) -> bool:
+    if not (
+        user_id
+        and isinstance(sandbox, LocalPCShim)
+        and "computer_use" in sandbox.capability_set
+        and await is_computer_use_enabled(user_id)
+    ):
+        return False
+    guard = sandbox.capture_connection_guard()
+    scope = guard_scope(guard, sandbox.capability_set)
+    if scope is None:
+        return False
+    approved = await is_computer_use_approved(
+        session_id,
+        user_id,
+        machine_id=scope.machine_id,
+        driver=scope.driver,
+        tools=scope.tools,
+    )
+    return approved and sandbox.connection_guard_matches(guard)
+
+
 async def _maybe_prepend_skills_update(
     session: ChatSession,
     user_id: str | None,
@@ -5316,11 +5530,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Captured outside the closure: `session` is narrowed to ChatSession
         # here, but that narrowing does not carry into nested functions.
         owner_expert_id = session.expert_id
+        execution_target = session.metadata.execution_target
         e2b_refusal: SandboxLimitError | None = None
 
         async def _setup_e2b():
-            """Set up E2B sandbox if configured, return sandbox or None."""
+            """Set up the turn's executor: the bound Local PC for a Local PC
+            chat, otherwise the E2B sandbox if configured. Returns it or None."""
             nonlocal e2b_sandbox, e2b_refusal
+            if execution_target.kind == "local":
+                e2b_sandbox = await _setup_local_pc_executor(
+                    session_id, user_id, config, execution_target
+                )
+                return e2b_sandbox
             if not (e2b_api_key := config.active_e2b_api_key):
                 if config.use_e2b_sandbox:
                     logger.warning(
@@ -5427,6 +5648,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             yield StreamError(errorText=str(e2b_refusal), code=e2b_refusal.code)
             return
 
+        if execution_target.kind == "local" and e2b_sandbox is None:
+            yield StreamError(
+                errorText=(
+                    "Your Local PC executor is not connected. Start it for this "
+                    "chat session and try again."
+                ),
+                code="local_pc_executor_unavailable",
+            )
+            return
+
+        is_local_pc = isinstance(e2b_sandbox, LocalPCShim)
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
 
@@ -5465,10 +5697,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         provider_supplement = get_provider_ceiling_supplement(permissions)
         system_prompt = (
             base_system_prompt
-            + get_sdk_supplement(
-                use_e2b=use_e2b, expert_session=bool(session.expert_id)
+            + _executor_supplement(
+                session, use_e2b=use_e2b, provider_supplement=provider_supplement
             )
-            + provider_supplement
             + delegation_supplement
             + oversight_supplement
             + team_building_supplement
@@ -5512,6 +5743,43 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 "Claude Code CLI subscription (requires `claude login`)."
             )
 
+        # Compute the computer-use gate once — reused for both the MCP-tool
+        # registration (below) and the CLI beta env var (further down).
+        # Conditions: the computer-use flag + per-session allow + the active
+        # executor is a LocalPCShim that advertised the ``computer_use``
+        # capability in HELLO. If any check fails, the LLM still sees no local_pc_*
+        # tools registered, and the CLI subprocess gets the OpenRouter-safe
+        # default env (CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1).
+        use_local_pc_computer = await _is_local_pc_computer_approved(
+            e2b_sandbox,
+            session_id,
+            user_id,
+        )
+        local_pc_computer_tool_names: frozenset[str] | None = None
+        if use_local_pc_computer and isinstance(e2b_sandbox, LocalPCShim):
+            local_pc_computer_tool_names = local_pc_tool_names(
+                guard_scope(
+                    e2b_sandbox.capture_connection_guard(),
+                    e2b_sandbox.capability_set,
+                )
+            )
+
+        # Workflow-recording gate — same shape as the computer-use gate, but
+        # behind the WORKFLOW_RECORDING flag (default off, per-user rollout).
+        # Requires the Local PC shim and its `recording` capability (the shim
+        # connects only for users the LOCAL_PC_EXECUTOR flag lets in).
+        # Handler-level gating in recording_tools fails closed if this is wrong.
+        use_recording = bool(
+            isinstance(e2b_sandbox, LocalPCShim)
+            and "recording" in (e2b_sandbox.capabilities or [])
+        )
+        if use_recording:
+            use_recording = await is_feature_enabled(
+                Flag.WORKFLOW_RECORDING,
+                user_id or "anonymous",
+                default=False,
+            )
+
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:
             disabled_tool_groups.append("graphiti")
@@ -5552,6 +5820,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             | {"get_agent_building_guide"}
             | kickoff_hidden
             | origin_disabled_tools(session.metadata.origin)
+            | (
+                _hidden_short_names_for_local_pc(e2b_sandbox)
+                if isinstance(e2b_sandbox, LocalPCShim)
+                else frozenset()
+            )
+            | await render_ui_disabled_tools(session)
         )
         # run_capability reaches deferred tools by id; the same hidden set
         # must bound it, so it travels with the turn's execution context.
@@ -5567,6 +5841,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         mcp_server = create_copilot_mcp_server(
             use_e2b=use_e2b,
             hidden_tool_names=hidden_tools,
+            use_local_pc_computer=use_local_pc_computer,
+            local_pc_computer_tool_names=local_pc_computer_tool_names,
+            use_recording=use_recording,
             tool_display_bridge=tool_display_bridge,
         )
 
@@ -5594,12 +5871,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             fallback_model = _resolve_fallback_model()
 
+        # Opt the CLI subprocess into the Anthropic ``computer-use-2025-11-24``
+        # beta (via ANTHROPIC_BETAS) under the same gate that exposes the
+        # local_pc_* MCP tools. build_sdk_env applies the final
+        # OpenRouter-compatibility guard internally — OpenRouter rejects
+        # Anthropic beta headers, so OpenRouter mode keeps the strip flag
+        # regardless of what we pass here.
+        if use_local_pc_computer:
+            logger.info(
+                "[LocalPC] [%s] computer-use beta enabled for CLI subprocess",
+                session_id[:12],
+            )
+
         # sdk_cwd also names the CLI's temp dir, beside it (see build_sdk_env).
         sdk_env = build_sdk_env(
             session_id=session_id,
             user_id=user_id,
             sdk_cwd=sdk_cwd,
             model=_resolve_env_model(sdk_model, fallback_model),
+            enable_computer_use_beta=use_local_pc_computer,
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
             stand_in_model_url=stand_in_model_url,
@@ -5627,11 +5917,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         if permissions is not None:
             allowed, disallowed = apply_tool_permissions(
-                permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+                permissions,
+                use_e2b=use_e2b,
+                disabled_groups=disabled_tool_groups,
+                hidden_tool_names=hidden_tools,
+                use_local_pc_computer=use_local_pc_computer,
+                local_pc_computer_tool_names=local_pc_computer_tool_names,
+                use_recording=use_recording,
             )
         else:
             allowed = get_copilot_tool_names(
-                use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+                use_e2b=use_e2b,
+                disabled_groups=disabled_tool_groups,
+                hidden_tool_names=hidden_tools,
+                use_local_pc_computer=use_local_pc_computer,
+                local_pc_computer_tool_names=local_pc_computer_tool_names,
+                use_recording=use_recording,
             )
             disallowed = get_sdk_disallowed_tools()
 
@@ -5826,7 +6127,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # Answered cards first: their results ride the same fold as pending.
         async for held_status in resolve_answered(
-            user_id, session, unsaved_held.append, cap=cap_late_tool_result
+            user_id,
+            session,
+            unsaved_held.append,
+            cap=cap_late_tool_result,
+            mcp_handlers=held_call_handlers(
+                use_local_pc_computer=use_local_pc_computer,
+                use_recording=use_recording,
+                local_pc_computer_tool_names=local_pc_computer_tool_names,
+                hidden_tool_names=hidden_tools,
+            ),
         ):
             yield held_status
         if not current_message.strip():
@@ -5888,7 +6198,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # sanitize_user_supplied_context runs — preventing the trusted
                 # <env_context> block from being stripped by the sanitizer.
                 env_ctx_content = ""
-                if not use_e2b and sdk_cwd:
+                if is_local_pc:
+                    env_ctx_content = build_local_pc_env_context(
+                        platform=e2b_sandbox.platform,
+                        arch=e2b_sandbox.arch,
+                        allowed_root=e2b_sandbox.allowed_root,
+                    )
+                elif not use_e2b and sdk_cwd:
                     env_ctx_content = f"working_dir: {sdk_cwd}"
                 # The session block lands in the per-turn user message (after
                 # the last cache breakpoint) so it does NOT bust the
@@ -6029,7 +6345,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # per turn.
         budget_status = await build_turn_budget_block(envelope, user_id)
         # Same rule: true of this turn only, so never in ``current_message``.
-        if use_e2b:
+        if use_e2b and not is_local_pc:
             budget_status += await build_sandbox_replaced_notice(session_id)
 
         matched_skills_notice = (
@@ -6939,7 +7255,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # _background_tasks to prevent garbage collection.
         # Use pause_sandbox_direct to skip the Redis lookup and reconnect
         # round-trip — e2b_sandbox is the live object from this turn.
-        if e2b_sandbox is not None:
+        if e2b_sandbox is not None and not isinstance(e2b_sandbox, LocalPCShim):
             task = asyncio.create_task(
                 pause_sandbox_direct(
                     e2b_sandbox,
@@ -6949,6 +7265,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(task)
             task.add_done_callback(_background_tasks.discard)
+        elif isinstance(e2b_sandbox, LocalPCShim) and session is not None:
+            await _detach_turn_local_executor(e2b_sandbox, session, user_id, config)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if _graphiti_ingest_allowed(
