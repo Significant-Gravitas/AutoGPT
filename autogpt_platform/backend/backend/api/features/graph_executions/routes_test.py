@@ -469,7 +469,7 @@ def test_enable_sharing_clears_stale_allowlist_before_issuing_a_token(
     calls: list[str] = []
     mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
-        AsyncMock(return_value=Mock(outputs={})),
+        AsyncMock(return_value=Mock(graph_id="graph-1", outputs={})),
     )
     mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db"
@@ -501,7 +501,7 @@ def test_enable_sharing_maps_a_lost_execution_to_404(
     pre-check must surface as 404 rather than a silent no-op."""
     mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
-        AsyncMock(return_value=Mock(outputs={})),
+        AsyncMock(return_value=Mock(graph_id="graph-1", outputs={})),
     )
     mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db"
@@ -539,7 +539,7 @@ def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
     reachable to anyone who kept the old link."""
     mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
-        AsyncMock(return_value=Mock()),
+        AsyncMock(return_value=Mock(graph_id="graph-1")),
     )
     delete_files = mocker.patch(
         "backend.api.features.graph_executions.routes.execution_db"
@@ -557,6 +557,36 @@ def test_disable_sharing_revokes_the_token_and_the_file_allowlist(
     assert response.status_code == 204
     delete_files.assert_awaited_once()
     assert update.await_args.kwargs["is_shared"] is False
+
+
+@pytest.mark.parametrize("method", ["post", "delete"])
+def test_sharing_a_run_is_refused_for_a_graph_id_it_does_not_belong_to(
+    mocker: pytest_mock.MockFixture, method: str
+) -> None:
+    """Both ids come from the path but the run is loaded by its id alone, so a
+    stale graph id would rotate or revoke a live link. Reading the run on the
+    same path already answers 404 for the mismatch."""
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db.get_graph_execution",
+        AsyncMock(return_value=Mock(graph_id="graph-2", outputs={})),
+    )
+    writes = [
+        mocker.patch(
+            "backend.api.features.graph_executions.routes.execution_db." + name,
+            AsyncMock(),
+        )
+        for name in (
+            "delete_shared_execution_files",
+            "update_graph_execution_share_status",
+            "create_shared_execution_files",
+        )
+    ]
+
+    response = getattr(client, method)("/graphs/graph-1/executions/exec-1/share")
+
+    assert response.status_code == 404
+    for write in writes:
+        write.assert_not_awaited()
 
 
 def _billing_manager_context(team_id: str | None):
@@ -620,7 +650,9 @@ def test_withdrawing_a_share_stays_open_to_the_runs_owner(
     """It only takes exposure away."""
     _as_billing_manager("team-1")
     mocker.patch.object(
-        execution_db, "get_graph_execution", AsyncMock(return_value=Mock(outputs={}))
+        execution_db,
+        "get_graph_execution",
+        AsyncMock(return_value=Mock(graph_id="graph-1", outputs={})),
     )
     mocker.patch.object(execution_db, "delete_shared_execution_files", AsyncMock())
     unshare = mocker.patch.object(
@@ -644,7 +676,12 @@ def test_sharing_a_run_checks_the_role_where_the_run_lives(
         execution_db,
         "get_graph_execution",
         AsyncMock(
-            return_value=Mock(outputs={}, organization_id="org-1", team_id="team-1")
+            return_value=Mock(
+                graph_id="graph-1",
+                outputs={},
+                organization_id="org-1",
+                team_id="team-1",
+            )
         ),
     )
     role_where_the_run_lives.side_effect = NotAuthorizedError("no")
