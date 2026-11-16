@@ -16,6 +16,8 @@ from backend.copilot.expert_check import (
     sharing_expert_checks,
 )
 
+_WATCHDOG_SECONDS = 30
+
 CHECK = CheckedExpert(
     expert=Expert(
         id="expert-1",
@@ -78,7 +80,7 @@ async def test_overlapping_turns_keep_their_own_expert_check():
         with sharing_expert_checks():
             remember_expert_check("user-1", "expert-1", checks[index])
             entered[index].set()
-            await asyncio.wait_for(entered[1 - index].wait(), 2)
+            await asyncio.wait_for(entered[1 - index].wait(), _WATCHDOG_SECONDS)
             assert checked_expert("user-1", "expert-1") is checks[index]
 
     await asyncio.gather(turn(0), turn(1))

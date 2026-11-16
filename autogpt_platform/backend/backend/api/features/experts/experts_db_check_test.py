@@ -10,13 +10,17 @@ import pytest
 
 from backend.api.features.experts import experts_db
 
+_WATCHDOG_SECONDS = 30
+
 
 def _reading_once_both_started(started: dict[str, asyncio.Event], own: str, result):
     """A read that returns *result* only once the other read has started too."""
 
     async def read(*args, **kwargs):
         started[own].set()
-        await asyncio.wait_for(asyncio.gather(*(e.wait() for e in started.values())), 2)
+        await asyncio.wait_for(
+            asyncio.gather(*(e.wait() for e in started.values())), _WATCHDOG_SECONDS
+        )
         return result
 
     return read
@@ -57,7 +61,7 @@ async def test_a_missing_hire_is_the_error_when_its_owner_has_no_scope_either():
     expert_lookup = asyncio.Event()
 
     async def no_row(*args, **kwargs):
-        await asyncio.wait_for(expert_lookup.wait(), 2)
+        await asyncio.wait_for(expert_lookup.wait(), _WATCHDOG_SECONDS)
 
     async def no_scope(user_id: str):
         expert_lookup.set()
@@ -84,13 +88,18 @@ async def test_a_missing_hire_leaves_its_owners_scope_read_finished():
     midway or leaving it running after the check has answered."""
     finished: list[bool] = []
     scope_started = asyncio.Event()
+    scope_release = asyncio.Event()
+    row_finished = asyncio.Event()
 
     async def no_row(*args, **kwargs):
-        await asyncio.wait_for(scope_started.wait(), 2)
+        row_task = asyncio.current_task()
+        assert row_task is not None
+        row_task.add_done_callback(lambda _: row_finished.set())
+        await asyncio.wait_for(scope_started.wait(), _WATCHDOG_SECONDS)
 
     async def bootstrapping_scope(user_id: str):
         scope_started.set()
-        await asyncio.sleep(0.05)
+        await scope_release.wait()
         finished.append(True)
         return "personal-org", "personal-team"
 
@@ -105,16 +114,26 @@ async def test_a_missing_hire_leaves_its_owners_scope_read_finished():
             "get_user_default_team",
             new=AsyncMock(side_effect=bootstrapping_scope),
         ),
-        pytest.raises(experts_db.ExpertNotFoundError),
     ):
-        await experts_db.check_private_expert("owner-1", "expert-1")
+        check = asyncio.create_task(
+            experts_db.check_private_expert("owner-1", "expert-1")
+        )
+        try:
+            await asyncio.wait_for(row_finished.wait(), _WATCHDOG_SECONDS)
+            assert not check.done()
+            assert finished == []
+            scope_release.set()
+            with pytest.raises(experts_db.ExpertNotFoundError):
+                await asyncio.wait_for(check, _WATCHDOG_SECONDS)
+        finally:
+            await _clean_up_check(check, scope_release)
 
     assert finished == [True]
 
 
 async def _clean_up_check(task: asyncio.Task, release: asyncio.Event) -> None:
     release.set()
-    done, _ = await asyncio.wait({task}, timeout=2)
+    done, _ = await asyncio.wait({task}, timeout=_WATCHDOG_SECONDS)
     if task not in done:
         task.cancel()
     await asyncio.gather(task, return_exceptions=True)
@@ -130,7 +149,7 @@ async def test_cancellation_after_the_row_finishes_still_finishes_the_scope_read
     scope_tasks: list[asyncio.Task] = []
 
     async def read_row(user_id: str, expert_id: str):
-        await asyncio.wait_for(scope_started.wait(), 2)
+        await asyncio.wait_for(scope_started.wait(), _WATCHDOG_SECONDS)
         row_finished.set()
         return row
 
@@ -153,14 +172,14 @@ async def test_cancellation_after_the_row_finishes_still_finishes_the_scope_read
             experts_db.check_private_expert("owner-1", "expert-1")
         )
         try:
-            await asyncio.wait_for(row_finished.wait(), 2)
+            await asyncio.wait_for(row_finished.wait(), _WATCHDOG_SECONDS)
             await asyncio.sleep(0)
             check.cancel("after-row")
             await asyncio.sleep(0)
 
             assert not check.done()
             scope_release.set()
-            done, _ = await asyncio.wait({check}, timeout=2)
+            done, _ = await asyncio.wait({check}, timeout=_WATCHDOG_SECONDS)
             assert done == {check}
             with pytest.raises(asyncio.CancelledError) as cancelled:
                 await check
@@ -183,7 +202,7 @@ async def test_repeated_cancellation_during_row_failure_cleanup_drains_scope():
     scope_tasks: list[asyncio.Task] = []
 
     async def read_row(user_id: str, expert_id: str):
-        await asyncio.wait_for(scope_started.wait(), 2)
+        await asyncio.wait_for(scope_started.wait(), _WATCHDOG_SECONDS)
         row_failed.set()
         raise experts_db.ExpertNotFoundError(expert_id)
 
@@ -204,7 +223,7 @@ async def test_repeated_cancellation_during_row_failure_cleanup_drains_scope():
             experts_db.check_private_expert("owner-1", "expert-1")
         )
         try:
-            await asyncio.wait_for(row_failed.wait(), 2)
+            await asyncio.wait_for(row_failed.wait(), _WATCHDOG_SECONDS)
             await asyncio.sleep(0)
             check.cancel("first-cancellation")
             await asyncio.sleep(0)
@@ -215,7 +234,7 @@ async def test_repeated_cancellation_during_row_failure_cleanup_drains_scope():
             assert not check.done()
 
             scope_release.set()
-            done, _ = await asyncio.wait({check}, timeout=2)
+            done, _ = await asyncio.wait({check}, timeout=_WATCHDOG_SECONDS)
             assert done == {check}
             with pytest.raises(asyncio.CancelledError) as cancelled:
                 await check
@@ -236,7 +255,7 @@ async def test_a_directly_cancelled_scope_task_is_observed_without_pending_work(
     scope_tasks: list[asyncio.Task] = []
 
     async def read_row(user_id: str, expert_id: str):
-        await asyncio.wait_for(scope_started.wait(), 2)
+        await asyncio.wait_for(scope_started.wait(), _WATCHDOG_SECONDS)
         return row
 
     async def cancel_scope(user_id: str, expert_id: str):
