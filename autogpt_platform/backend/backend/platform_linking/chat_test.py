@@ -143,12 +143,12 @@ class TestStartChatTurn:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("cause", ["at-cap", "lost-slot-race"])
     async def test_a_turn_over_the_inflight_cap_is_refused_without_dispatch(
-        self, turn_slot, cause
+        self, turn_slot, cause, chat_blocked_events
     ):
         if cause == "at-cap":
             turn_slot.count.return_value = 3
         else:
-            turn_slot.acquire.side_effect = ConcurrentTurnLimitError()
+            turn_slot.acquire.side_effect = ConcurrentTurnLimitError(cap=3, used=3)
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         mock_append = AsyncMock(return_value=MagicMock())
@@ -180,6 +180,14 @@ class TestStartChatTurn:
         assert handle.turn_id == ""
         mock_append.assert_not_awaited()
         mock_dispatch.assert_not_awaited()
+        (event,) = chat_blocked_events
+        assert event["distinct_id"] == "owner-1"
+        assert (event["limit"], event["outcome"], event["surface"]) == (
+            "concurrency",
+            "refused",
+            "chat_bot",
+        )
+        assert (event["used"], event["cap"]) == (3, 3)
 
     @pytest.mark.asyncio
     async def test_no_user_link_raises_not_found(self):
@@ -634,6 +642,74 @@ class TestStartChatTurn:
         assert mock_enqueue.await_args.kwargs["team_id"] == "personal-team"
 
 
+class TestClosedAccountOwner:
+    """A closed account's chat links count as unlinked, even when the unlink
+    at deletion failed: nobody in its server or DMs may run turns as it. The
+    link-owner query drops a closed owner (``open_only``) in the same
+    DB-manager call, so this costs the bot no extra round trip."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "server_id,message",
+        [
+            ("guild-1", "This server is not linked to an AutoGPT account."),
+            (None, "Your DMs are not linked to an AutoGPT account."),
+        ],
+    )
+    async def test_no_turn_runs_as_a_closed_owner(
+        self, server_id: str | None, message: str
+    ):
+        db_mock = MagicMock()
+        db_mock.find_server_link_owner = AsyncMock(return_value=None)
+        db_mock.find_user_link_owner = AsyncMock(return_value=None)
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.dispatch_turn",
+                new=AsyncMock(),
+            ) as mock_enqueue,
+        ):
+            with pytest.raises(NotFoundError, match=message):
+                await start_chat_turn(_request(platform_server_id=server_id))
+
+        if server_id:
+            db_mock.find_server_link_owner.assert_awaited_once_with(
+                "DISCORD", server_id, open_only=True
+            )
+        else:
+            db_mock.find_user_link_owner.assert_awaited_once_with(
+                "DISCORD", "pu1", open_only=True
+            )
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_closed_owners_chats_are_not_listed(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value=None)
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_user_sessions",
+                new=AsyncMock(return_value=([], 0)),
+            ) as mock_get_sessions,
+        ):
+            with pytest.raises(NotFoundError):
+                await list_user_chats(Platform.DISCORD, "pu1")
+
+        db_mock.find_user_link_owner.assert_awaited_once_with(
+            "DISCORD", "pu1", open_only=True
+        )
+        mock_get_sessions.assert_not_awaited()
+
+
 class TestListUserChats:
     @pytest.mark.asyncio
     async def test_unlinked_dm_raises_not_found(self):
@@ -670,7 +746,9 @@ class TestListUserChats:
         ):
             result = await list_user_chats(Platform.DISCORD, "pu1")
 
-        db_mock.find_user_link_owner.assert_awaited_once_with("DISCORD", "pu1")
+        db_mock.find_user_link_owner.assert_awaited_once_with(
+            "DISCORD", "pu1", open_only=True
+        )
         get_sessions_call = mock_get_sessions.await_args
         assert get_sessions_call is not None
         assert get_sessions_call.args[0] == "owner-1"
@@ -1111,7 +1189,9 @@ class TestEvaluateTurnGate:
         assert denial.button_label == "Subscribe"
 
     @pytest.mark.asyncio
-    async def test_rate_limited_returns_window_and_reset_message(self):
+    async def test_rate_limited_returns_window_and_reset_message(
+        self, chat_blocked_events
+    ):
         from datetime import timedelta, timezone
 
         resets_at = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
@@ -1132,6 +1212,12 @@ class TestEvaluateTurnGate:
         assert denial.reason == "rate_limited"
         assert "daily usage limit" in denial.message
         assert "Resets in" in denial.message
+        (event,) = chat_blocked_events
+        assert (event["limit"], event["surface"], event["resets_at"]) == (
+            "daily",
+            "chat_bot",
+            resets_at.isoformat(),
+        )
 
     @pytest.mark.asyncio
     async def test_rate_unavailable_returns_transient_message_no_button(self):

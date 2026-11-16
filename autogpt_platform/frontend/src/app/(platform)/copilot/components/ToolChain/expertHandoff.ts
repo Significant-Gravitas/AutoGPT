@@ -1,3 +1,4 @@
+import type { ToolUIPart } from "ai";
 import { asObject, str } from "./resultHelpers";
 
 export interface HandoffTask {
@@ -85,6 +86,19 @@ export function handoffStateOf(
   return outcome.status === "queued" ? "waiting" : "working";
 }
 
+/** A hire off the roster, or a new expert created from a charter. */
+export type NewExpertKind = "hire" | "raise";
+
+/** The words the cards use for each kind: a created expert is never
+ *  "hired", so the question, the button and every line after say create. */
+export const NEW_EXPERT_COPY = {
+  hire: { verb: "hire", Verb: "Hire", done: "hired" },
+  raise: { verb: "create", Verb: "Create", done: "created" },
+} as const satisfies Record<
+  NewExpertKind,
+  { verb: string; Verb: string; done: string }
+>;
+
 /** Subject of the decision line for "hire and start". It reads as one
  *  phrase after the verb, so the gate's regex and the decision note both
  *  keep working: "hire James to take on the Printify order pipeline". */
@@ -94,4 +108,15 @@ export function handoffSubject(name: string, task: HandoffTask): string {
 
 export function possessive(name: string): string {
   return `${name}'s`;
+}
+
+/** The calls among *parts* that put a new expert on the team (a hire or a
+ *  created expert, not an update). */
+export function appliedNewExpertCalls(parts: ToolUIPart[]): string[] {
+  return parts.flatMap((part) => {
+    const output = asObject(part.output);
+    if (!output || output.applied !== true) return [];
+    const kind = str(output, "kind");
+    return kind === "hire" || kind === "raise" ? [part.toolCallId] : [];
+  });
 }

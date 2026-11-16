@@ -9,12 +9,16 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi.routing import APIRoute
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
 from backend.api.utils.exceptions import add_exception_handlers
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
@@ -23,9 +27,13 @@ from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
-from backend.data.graph import GraphModel, NodeModel
+from backend.data.graph import SUB_WORKFLOW_RUNS_ITSELF, GraphModel, NodeModel
 from backend.data.onboarding import OnboardingStep
-from backend.util.exceptions import GraphInUseError, GraphValidationError
+from backend.util.exceptions import (
+    GraphInUseError,
+    GraphValidationError,
+    NotAuthorizedError,
+)
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -72,6 +80,20 @@ def caller_owns_every_graph_id(mocker: pytest_mock.MockFixture, test_user_id):
     mocker.patch(
         "backend.api.features.graphs.routes.graph_db.graph_owner_id",
         new=AsyncMock(return_value=test_user_id),
+    )
+
+
+@pytest.fixture(autouse=True)
+def role_where_versions_live(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """The role check against a workflow's own org and team reads membership
+    rows; it allows everything unless a test makes it refuse."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.owned_graph_scopes",
+        new=AsyncMock(return_value={("test-org", None)}),
+    )
+    return mocker.patch(
+        "backend.api.features.graphs.routes.require_role_where_resource_lives",
+        new=AsyncMock(),
     )
 
 
@@ -681,6 +703,54 @@ def test_update_graph_returns_400_and_persists_nothing_on_activation_error(
     activate_mock.assert_awaited_once()
     create_graph_mock.assert_not_awaited()
     update_lib_agent_mock.assert_not_awaited()
+
+
+def test_create_new_graph_refuses_a_workflow_that_runs_itself(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Its sub-workflow node names the id the workflow was sent with, which
+    saving rewrites to the new workflow's own id. The builder gets the node
+    marked under the id it sent, and nothing is saved."""
+    activate_mock = mocker.patch(
+        "backend.api.features.graphs.routes.before_graph_activate", new=AsyncMock()
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    runs_itself = {
+        "id": "runs-itself",
+        "block_id": AgentExecutorBlock().id,
+        "input_default": {
+            "user_id": "",
+            "graph_id": "as-sent",
+            "graph_version": 1,
+            "inputs": {},
+            "input_schema": {},
+            "output_schema": {},
+        },
+    }
+
+    response = client.post(
+        "/graphs",
+        json={
+            "graph": {
+                "id": "as-sent",
+                "name": "Runs itself",
+                "description": "",
+                "nodes": [runs_itself],
+                "links": [],
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["message"] == SUB_WORKFLOW_RUNS_ITSELF
+    assert detail["node_errors"] == {
+        "runs-itself": {"graph_id": SUB_WORKFLOW_RUNS_ITSELF}
+    }
+    activate_mock.assert_not_awaited()
+    create_graph_mock.assert_not_awaited()
 
 
 def test_get_graph_all_versions_returns_404_when_empty(
@@ -1337,7 +1407,9 @@ def test_execute_graph_refuses_an_input_nested_too_deep(
     mocker.patch(
         "backend.executor.utils.is_user_paywalled", AsyncMock(return_value=False)
     )
-    mocker.patch("backend.executor.utils.is_user_banned", AsyncMock(return_value=False))
+    mocker.patch(
+        "backend.executor.utils.is_user_refused", AsyncMock(return_value=False)
+    )
     created = mocker.patch(
         "backend.executor.utils.execution_db.create_graph_execution", AsyncMock()
     )
@@ -1355,3 +1427,178 @@ def test_execute_graph_refuses_an_input_nested_too_deep(
     assert detail["type"] == "validation_error"
     assert "shift_tags" in detail["message"]
     created.assert_not_awaited()
+
+
+def _billing_manager_context(team_id: str | None = None):
+    return RequestContext(
+        user_id="billing-user",
+        org_id="test-org",
+        team_id=team_id,
+        is_org_owner=False,
+        is_org_admin=False,
+        is_org_billing_manager=team_id is None,
+        is_team_admin=False,
+        is_team_billing_manager=team_id is not None,
+        seat_status="ACTIVE",
+    )
+
+
+GRAPH_ROUTE_CALLS = [
+    ("get", "/graphs", None),
+    ("get", "/graphs/graph-1", None),
+    ("get", "/graphs/graph-1/versions", None),
+    ("get", "/graphs/graph-1/versions/2", None),
+    ("post", "/graphs", {"graph": {"name": "W", "description": "", "nodes": []}}),
+    ("put", "/graphs/graph-1", {"name": "W", "description": "", "nodes": []}),
+    ("delete", "/graphs/graph-1", None),
+    ("put", "/graphs/graph-1/versions/active", {"active_graph_version": 2}),
+    ("patch", "/graphs/graph-1/settings", {}),
+    ("post", "/graphs/graph-1/execute/1", {"inputs": {}}),
+]
+
+
+@pytest.mark.parametrize("team_id", [None, "team-1"], ids=["org-home", "team"])
+@pytest.mark.parametrize(
+    "method,path,body",
+    GRAPH_ROUTE_CALLS,
+    ids=[f"{m} {p}" for m, p, _ in GRAPH_ROUTE_CALLS],
+)
+def test_a_billing_manager_role_is_refused_every_workflow_route(
+    mocker: pytest_mock.MockFixture,
+    method: str,
+    path: str,
+    body: dict | None,
+    team_id: str | None,
+) -> None:
+    """The role covers spend, not workflows: the request's org (or team) role
+    is checked before anything is read or written."""
+
+    async def billing_manager():
+        return _billing_manager_context(team_id)
+
+    app.dependency_overrides[get_request_context] = billing_manager
+    reads = [
+        mocker.patch(f"backend.api.features.graphs.routes.graph_db.{name}")
+        for name in (
+            "list_graphs_paginated",
+            "get_graph",
+            "get_graph_all_versions",
+            "create_graph",
+            "user_owns_graph",
+        )
+    ]
+    run = mocker.patch(
+        "backend.api.features.graphs.routes.execution_utils.add_graph_execution"
+    )
+
+    response = client.request(method, path, json=body)
+
+    assert response.status_code == 403, response.text
+    for read in [*reads, run]:
+        read.assert_not_called()
+
+
+def test_delete_graph_checks_the_role_where_each_version_lives(
+    mocker: pytest_mock.MockFixture,
+    role_where_versions_live: AsyncMock,
+    test_user_id: str,
+) -> None:
+    """A version can live in a team the request doesn't name, so dropping the
+    team header must not get a delete past the role there."""
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.user_owns_graph",
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.owned_graph_scopes",
+        new=AsyncMock(return_value={("test-org", "team-1")}),
+    )
+    role_where_versions_live.side_effect = NotAuthorizedError("no")
+    deletable = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.assert_graph_deletable"
+    )
+    delete = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.delete_graph_permanently"
+    )
+
+    response = client.delete("/graphs/graph-123")
+
+    assert response.status_code == 403
+    role_where_versions_live.assert_awaited_once_with(
+        test_user_id,
+        "test-org",
+        "team-1",
+        OrgAction.CREATE_RESOURCES,
+        TeamAction.CREATE_AGENTS,
+    )
+    deletable.assert_not_called()
+    delete.assert_not_called()
+
+
+def test_update_graph_checks_the_role_where_the_existing_versions_live(
+    mocker: pytest_mock.MockFixture,
+    role_where_versions_live: AsyncMock,
+    test_user_id: str,
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(
+            return_value=[
+                Mock(version=1, is_active=True, organization_id="o", team_id="t1"),
+                Mock(version=2, is_active=False, organization_id="o", team_id=None),
+            ]
+        ),
+    )
+    role_where_versions_live.side_effect = [None, NotAuthorizedError("no")]
+    create_graph = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+
+    response = client.put(
+        "/graphs/graph-123",
+        json={
+            "id": "graph-123",
+            "name": "W",
+            "description": "",
+            "nodes": [],
+            "links": [],
+        },
+    )
+
+    assert response.status_code == 403
+    checked = {call.args[1:3] for call in role_where_versions_live.await_args_list}
+    assert checked == {("o", "t1"), ("o", None)}
+    assert {call.args[0] for call in role_where_versions_live.await_args_list} == {
+        test_user_id
+    }
+    create_graph.assert_not_awaited()
+
+
+def test_set_active_version_checks_the_role_where_both_versions_live(
+    mocker: pytest_mock.MockFixture,
+    role_where_versions_live: AsyncMock,
+) -> None:
+    versions = {
+        2: Mock(version=2, organization_id="o", team_id="t1"),
+        None: Mock(version=1, organization_id="o", team_id="t2"),
+    }
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph",
+        new=AsyncMock(
+            side_effect=lambda graph_id, version=None, **_: versions[version]
+        ),
+    )
+    role_where_versions_live.side_effect = NotAuthorizedError("no")
+    activate = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.set_graph_active_version",
+        AsyncMock(),
+    )
+
+    response = client.put(
+        "/graphs/graph-1/versions/active", json={"active_graph_version": 2}
+    )
+
+    assert response.status_code == 403
+    assert role_where_versions_live.await_args.args[1] == "o"
+    assert role_where_versions_live.await_args.args[2] in {"t1", "t2"}
+    activate.assert_not_awaited()

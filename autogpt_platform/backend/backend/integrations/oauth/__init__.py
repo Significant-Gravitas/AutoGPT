@@ -10,6 +10,7 @@ from .device_base import BaseDeviceAuthHandler
 from .discord import DiscordOAuthHandler
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
+from .hubspot import HubSpotOAuthHandler
 from .microsoft import MicrosoftDeviceAuthHandler, MicrosoftOAuthHandler
 from .microsoft_365_copilot import Microsoft365CopilotDeviceAuthHandler
 from .notion import NotionOAuthHandler
@@ -27,6 +28,7 @@ _ORIGINAL_HANDLERS = [
     DiscordOAuthHandler,
     GitHubOAuthHandler,
     GoogleOAuthHandler,
+    HubSpotOAuthHandler,
     NotionOAuthHandler,
     RedditOAuthHandler,
     TwitterOAuthHandler,

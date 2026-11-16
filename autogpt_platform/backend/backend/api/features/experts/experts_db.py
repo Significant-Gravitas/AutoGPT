@@ -154,6 +154,10 @@ def _raised_identity(name: str) -> str:
 # Postgres promises no row order without this, so the profile's workflow grid
 # could reshuffle between loads; createdAt keeps the roster's authored order.
 _WORKFLOW_ORDER = [{"createdAt": "asc"}, {"id": "asc"}]
+# A row whose library agent the owner deleted would link to a page that 404s.
+LIVE_WORKFLOWS: prisma.types.ExpertWorkflowWhereInput = {
+    "OR": [{"libraryAgentId": None}, {"LibraryAgent": {"is": {"isDeleted": False}}}]
+}
 
 _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     # AgentGraph carries the name/description of a user-created library agent;
@@ -162,10 +166,15 @@ _WORKFLOW_ROW_INCLUDE: prisma.types.ExpertWorkflowInclude = {
     "StoreListingVersion": True,
 }
 _WORKFLOW_INCLUDE = {
-    "Workflows": {"include": _WORKFLOW_ROW_INCLUDE, "order_by": _WORKFLOW_ORDER}
+    "Workflows": {
+        "where": LIVE_WORKFLOWS,
+        "include": _WORKFLOW_ROW_INCLUDE,
+        "order_by": _WORKFLOW_ORDER,
+    }
 }
 _ROSTER_WORKFLOW_INCLUDE: prisma.types.ExpertInclude = {
     "Workflows": {
+        "where": LIVE_WORKFLOWS,
         "include": {
             "LibraryAgent": {"include": {"AgentGraph": True}},
             "StoreListingVersion": True,
@@ -297,7 +306,7 @@ def _to_model(
         is_archived=row.isArchived,
         workflows=[_to_workflow_ref(w) for w in row.Workflows or []],
         last_run_at=latest_run.createdAt if latest_run else None,
-        last_run_status=(str(latest_run.executionStatus) if latest_run else None),
+        last_run_status=run_status(latest_run) if latest_run else None,
         weekly_budget=scheduling.effective_weekly_budget(row),
         weekly_spend=weekly_spend,
         schedules_paused_at=row.schedulesPausedAt,
@@ -340,6 +349,23 @@ def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
     ):
         return "failed"
     return cast(ExpertSetupStatus, row.setupStatus.lower())
+
+
+def run_status(execution: prisma.models.AgentGraphExecution) -> str:
+    """The run's status as an expert surface reports it.
+
+    A step that fails without a typed reason (a bad credential, say) leaves
+    the run COMPLETED (executor/manager.py), but a run with a failed step
+    must never read as done, so it reports FAILED."""
+    status = str(execution.executionStatus)
+    stats = execution.stats if isinstance(execution.stats, dict) else {}
+    try:
+        failed_steps = int(stats.get("node_error_count") or 0)
+    except (TypeError, ValueError):
+        failed_steps = 0
+    if status == prisma.enums.AgentExecutionStatus.COMPLETED and failed_steps > 0:
+        return str(prisma.enums.AgentExecutionStatus.FAILED)
+    return status
 
 
 async def _latest_runs(
@@ -535,7 +561,8 @@ async def list_expert_identities(user_id: str) -> list[ExpertIdentity]:
                    WHEN "autopilotMode" IN ('ask_first', 'auto', 'unsupervised')
                    THEN "autopilotMode"
                    ELSE NULL
-               END AS "autopilot_mode"
+               END AS "autopilot_mode",
+               "createdAt" AS "created_at"
         FROM {schema_prefix}"Expert"
         WHERE "ownerUserId" = $1 AND "isTemplate" = false
         """,
@@ -898,7 +925,7 @@ def _to_expert_run(
         graph_id=execution.agentGraphId,
         agent_name=agent_name,
         library_agent_id=library_agent_id,
-        status=cast(ExpertRunStatus, str(execution.executionStatus).lower()),
+        status=cast(ExpertRunStatus, run_status(execution).lower()),
         output_type=output_type,
         output_key=output_key,
         needs_review=needs_review,
@@ -2290,7 +2317,10 @@ async def _install_marketplace_workflow(
         include=_WORKFLOW_ROW_INCLUDE,
     )
     if existing is not None:
-        return _to_workflow_ref(existing)
+        if existing.LibraryAgent is not None and not existing.LibraryAgent.isDeleted:
+            return _to_workflow_ref(existing)
+        # Its library copy was deleted: drop the stale row and its job, install afresh.
+        await remove_workflow(user_id, expert_id, existing.id)
 
     library_agent = await library_db.add_store_agent_to_library(
         store_listing_version_id, user_id, track_listing_added=False

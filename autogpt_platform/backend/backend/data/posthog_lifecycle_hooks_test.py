@@ -1,6 +1,6 @@
-"""Every write that can change a user's lifecycle snapshot schedules a sync,
-a tier write alone doesn't, and a PostHog or Stripe failure in that sync
-never reaches the caller."""
+"""Every write that can change a user's lifecycle snapshot or tier schedules
+a sync, and a PostHog or Stripe failure in that sync never reaches the
+caller."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,7 +12,11 @@ from prisma.enums import SubscriptionTier
 from backend.copilot.rate_limit import set_user_tier
 from backend.data import posthog_lifecycle_sync as lifecycle
 from backend.data import user as user_module
-from backend.data.credit import set_subscription_tier, sync_subscription_from_stripe
+from backend.data.credit import (
+    ACCOUNT_DELETION_CANCELLATION_COMMENT,
+    set_subscription_tier,
+    sync_subscription_from_stripe,
+)
 from backend.data.stripe_reconciliation import _collect_status_page
 
 TRIAL_SUB = {
@@ -44,7 +48,8 @@ async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
     page = MagicMock(
         data=[stripe.Subscription.construct_from(TRIAL_SUB, "k")], has_more=False
     )
-    user = MagicMock(subscriptionTier=SubscriptionTier.TRIAL)
+    user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.TRIAL)
+    prisma = MagicMock(find_first=AsyncMock(return_value=user))
     with (
         patch(
             "backend.data.stripe_reconciliation.stripe.Subscription.list_async",
@@ -55,10 +60,8 @@ async def test_tier_sweep_does_not_schedule_lifecycle_syncs():
             "backend.data.credit._sync_subscription_tier_from_stripe",
             new_callable=AsyncMock,
         ) as inner,
-        patch(
-            "backend.data.stripe_reconciliation.User.prisma",
-            return_value=MagicMock(find_first=AsyncMock(return_value=user)),
-        ),
+        patch("backend.data.stripe_reconciliation.User.prisma", return_value=prisma),
+        patch("backend.data.credit.User.prisma", return_value=prisma),
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
     ):
         tiers: dict[str, SubscriptionTier] = {}
@@ -162,9 +165,46 @@ async def test_webhook_survives_posthog_and_stripe_failures():
     client.capture.assert_not_called()
 
 
-async def test_a_tier_change_alone_schedules_no_sync():
-    """SECRT-2795: the status doesn't read the tier, so a tier write can't
-    change it; the Stripe change that comes with one syncs via its webhook."""
+@pytest.mark.parametrize("track_lifecycle", [True, False])
+async def test_an_account_deletion_cancel_schedules_nothing(track_lifecycle: bool):
+    """The erasure deletes the person; a sync would only bring it back."""
+    cancel = {
+        **TRIAL_SUB,
+        "cancellation_details": {"comment": ACCOUNT_DELETION_CANCELLATION_COMMENT},
+    }
+    with (
+        patch(
+            "backend.data.credit._sync_subscription_tier_from_stripe",
+            new_callable=AsyncMock,
+        ),
+        patch("backend.data.credit.invalidate_billing_lookups", new=AsyncMock()),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        await sync_subscription_from_stripe(cancel, track_lifecycle=track_lifecycle)
+    schedule.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "tier", [SubscriptionTier.PRO, SubscriptionTier.NO_TIER], ids=["plan", "drop"]
+)
+async def test_a_tier_write_schedules_a_sync(tier: SubscriptionTier):
+    """SECRT-3411: the person carries the tier, so every tier write syncs it:
+    a cancel with no Stripe subscription, a plan changed in place, the lazy
+    reconcile."""
+    prisma = MagicMock(update=AsyncMock(), update_many=AsyncMock())
+    with (
+        patch("backend.data.credit.User.prisma", return_value=prisma),
+        patch("backend.data.credit.invalidate_subscription_caches"),
+        patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
+    ):
+        await set_subscription_tier("user-1", tier)
+    schedule.assert_called_once_with("user-1")
+
+
+async def test_a_tier_write_inside_a_webhook_or_the_sweep_leaves_the_sync_out():
+    """``sync_subscription_from_stripe`` decides, so an account deletion's
+    cancel doesn't sync the person the erasure deletes; the tier sweep leaves
+    its users to the daily lifecycle sweep."""
     with (
         patch(
             "backend.data.credit.User.prisma",
@@ -173,11 +213,15 @@ async def test_a_tier_change_alone_schedules_no_sync():
         patch("backend.data.credit.invalidate_subscription_caches"),
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as schedule,
     ):
-        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+        await set_subscription_tier(
+            "user-1", SubscriptionTier.PRO, track_lifecycle=False
+        )
     schedule.assert_not_called()
 
 
-async def test_an_admin_tier_override_schedules_no_sync():
+async def test_an_admin_tier_override_schedules_a_sync():
+    """An admin's grant changes the plan the limits apply, so the person's
+    tier follows. The sync reads the stored tier, not the request."""
     with (
         patch(
             "backend.copilot.rate_limit.PrismaUser.prisma",
@@ -187,10 +231,43 @@ async def test_an_admin_tier_override_schedules_no_sync():
         patch("backend.copilot.rate_limit.get_user_tier", new=MagicMock()),
         patch("backend.copilot.rate_limit.get_user_by_id", new=MagicMock()),
         patch("backend.data.credit.get_pending_subscription_change", new=MagicMock()),
-        patch.object(lifecycle, "schedule_posthog_lifecycle_sync") as schedule,
+        patch("backend.copilot.rate_limit.schedule_posthog_lifecycle_sync") as schedule,
     ):
         await set_user_tier("user-1", SubscriptionTier.ENTERPRISE)
-    schedule.assert_not_called()
+    schedule.assert_called_once_with("user-1")
+
+
+async def test_a_tier_write_survives_a_failing_sync():
+    """The real scheduler with PostHog failing: the tier write returns
+    normally and the failure stays in the background task."""
+    client = MagicMock()
+    client.capture.side_effect = RuntimeError("posthog down")
+    row = MagicMock(
+        id="user-1",
+        createdAt=None,
+        stripeCustomerId=None,
+        subscriptionTier=SubscriptionTier.PRO,
+        subscriptionTrial=None,
+    )
+    # One model class: the tier write and the sync's read share the patch.
+    prisma = MagicMock(update=AsyncMock(), find_unique=AsyncMock(return_value=row))
+    lifecycle._syncs.clear()
+    with (
+        patch("backend.data.credit.User.prisma", return_value=prisma),
+        patch("backend.data.credit.invalidate_subscription_caches"),
+        patch(f"{lifecycle.__name__}.get_posthog_client", return_value=client),
+        patch(f"{lifecycle.__name__}.queue_lifecycle_fields", new=AsyncMock()),
+    ):
+        await set_subscription_tier("user-1", SubscriptionTier.PRO)
+
+        async def drain() -> None:
+            while lifecycle._background_tasks:
+                await asyncio.gather(*list(lifecycle._background_tasks))
+                await asyncio.sleep(0)
+
+        await asyncio.wait_for(drain(), timeout=10)
+
+    client.capture.assert_called_once()
 
 
 @pytest.mark.parametrize("existing", [False, True])

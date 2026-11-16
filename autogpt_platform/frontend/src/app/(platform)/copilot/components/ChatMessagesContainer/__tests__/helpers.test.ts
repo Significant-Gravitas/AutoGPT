@@ -553,4 +553,96 @@ describe("extractReviewTargets", () => {
       ]),
     ).toEqual({ chat: false, runs: [{ graphExecId: "exec-b" }] });
   });
+
+  // What the backend streamed for a Gmail send with an HTML body before
+  // review outputs were exempt from its digest (SECRT-3418).
+  const digestedReview = [
+    `<tool-output-truncated total_chars=10200 workspace_path="tool-outputs/call-9.json" format="outline">`,
+    `$: {type="review_required", message="Block 'Gmail Send' requires human review. After the user approves, call resume_capability with review_id='copilot-node-gmail:ab12' to execute.", session_id="chat-1", block_id="gmail-send", block_name="Gmail Send", review_id="copilot-node-gmail:ab12", input_data={…4 keys @304+7650}}`,
+    `$.input_data: {to=[…1 items @310+19], subject="Launch notes", body="<p>Hello. Hello.…", content_type="text/html"}`,
+    `$.input_data.to: [0="ada@example.com"]`,
+    ``,
+    `The preview above is a structural outline of the 10,200-char output, not a literal prefix of it.`,
+    `</tool-output-truncated>`,
+  ].join("\n");
+
+  function digested(head: string) {
+    return [
+      `<tool-output-truncated total_chars=12000 workspace_path="tool-outputs/c.json" format="outline">`,
+      head,
+      ``,
+      `The preview above is a structural outline of the 12,000-char output, not a literal prefix of it.`,
+      `</tool-output-truncated>`,
+    ].join("\n");
+  }
+
+  it("finds the chat's review in an output the backend digested", () => {
+    expect(extractReviewTargets([toolOutput(digestedReview)])).toEqual({
+      chat: true,
+      runs: [],
+    });
+  });
+
+  it("finds the chat's review in an output cut in the middle", () => {
+    const head = JSON.stringify({
+      type: "review_required",
+      message: "Block 'Gmail Send' requires human review.",
+      review_id: "copilot-node-gmail:ab12",
+      input_data: { body: "x".repeat(200) },
+    }).slice(0, 180);
+    const preview = [
+      `<tool-output-truncated total_chars=60000 workspace_path="tool-outputs/c.json">`,
+      `${head}… (truncated) …"}}`,
+      `Full output (60,000 chars) saved to workspace.`,
+      `</tool-output-truncated>`,
+    ].join("\n");
+
+    expect(extractReviewTargets([toolOutput(preview)]).chat).toBe(true);
+  });
+
+  it("finds a digested held call only when it has a review id", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput(
+          digested(
+            `$: {type="approval_required", message="Held.", tool_name="send_email", reason="r", review_id="gate-1"}`,
+          ),
+        ),
+      ]).chat,
+    ).toBe(true);
+    expect(
+      extractReviewTargets([
+        toolOutput(
+          digested(
+            `$: {type="approval_required", message="Held.", tool_name="send_email", reason="r"}`,
+          ),
+        ),
+      ]).chat,
+    ).toBe(false);
+  });
+
+  it("finds no review in a digested block output", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput(
+          digested(
+            `$: {type="block_output", message="review_required means wait", block_id="b", review_id="nope", outputs={…1 keys @90+11000}}`,
+          ),
+        ),
+      ]),
+    ).toEqual({ chat: false, runs: [] });
+  });
+
+  it("still finds the chat's review behind the turn's later tool outputs", () => {
+    expect(
+      extractReviewTargets([
+        toolOutput(digestedReview),
+        toolOutput({ type: "bash_exec", stdout: "ok", exit_code: 0 }),
+        toolOutput({ type: "memory_store", memory_name: "launch" }),
+        toolOutput({ type: "todo_write", todos: [{ status: "completed" }] }),
+        toolOutput("plain text the tool returned"),
+        toolOutput(digested(`$: {type="web_fetch", url="https://x.dev"}`)),
+      ]),
+    ).toEqual({ chat: true, runs: [] });
+  });
 });

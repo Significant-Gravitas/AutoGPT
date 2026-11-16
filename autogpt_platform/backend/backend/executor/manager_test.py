@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import fastapi.responses
@@ -11,8 +12,9 @@ from backend.api.model import CreateGraph
 from backend.api.rest_api import AgentServer
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.data_manipulation import FindInDictionaryBlock
-from backend.blocks.io import AgentInputBlock
+from backend.blocks.io import AgentInputBlock, AgentTableInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
+from backend.blocks.text import TextSplitBlock
 from backend.data import execution, graph
 from backend.data.model import User
 from backend.usecases.sample import create_test_graph, create_test_user
@@ -239,6 +241,114 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     assert graph_exec.node_executions[2].status == execution.ExecutionStatus.COMPLETED
     assert graph_exec.node_executions[2].output_data == {"output": ["value2"]}
     logger.info("Completed test_input_pin_always_waited")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("input_block", [AgentInputBlock, AgentTableInputBlock])
+@pytest.mark.parametrize("source_name", ["result", "result_#_key", "result_$_0"])
+async def test_a_run_can_leave_an_optional_input_blank(
+    server: SpinTestServer, input_block: type[AgentInputBlock], source_name: str
+):
+    """
+    An input with Advanced on and no default is optional (#10614): a run that
+    leaves it blank still runs the block it feeds, with that pin's default.
+
+    AgentInputBlock "topic" (given) ===> input \\
+                                                StoreValueBlock
+    AgentInputBlock "data" (blank)  ===> data  //
+    """
+    nodes = [
+        graph.Node(block_id=AgentInputBlock().id, input_default={"name": "topic"}),
+        graph.Node(
+            block_id=input_block().id,
+            input_default={"name": "data", "advanced": True},
+        ),
+        graph.Node(block_id=StoreValueBlock().id),
+        graph.Node(
+            block_id=TextSplitBlock().id,
+            input_default={"text": " otters ", "delimiter": ","},
+        ),
+    ]
+    links = [
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="result",
+            sink_name="input",
+        ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[2].id,
+            source_name=source_name,
+            sink_name="data",
+        ),
+        graph.Link(
+            source_id=nodes[1].id,
+            sink_id=nodes[3].id,
+            source_name=source_name,
+            sink_name="strip",
+        ),
+    ]
+    test_user = await create_test_user()
+    test_graph = await create_graph(
+        server,
+        graph.Graph(
+            name="TestGraph", description="Test graph", nodes=nodes, links=links
+        ),
+        test_user,
+    )
+    assert test_graph.input_schema["required"] == ["topic"]
+
+    graph_exec_id = await execute_graph(
+        server.agent_server, test_graph, test_user, {"topic": "otters"}, 4
+    )
+
+    graph_exec = await execution.get_graph_execution(
+        test_user.id, graph_exec_id, include_node_executions=True
+    )
+    assert isinstance(graph_exec, execution.GraphExecutionWithNodes)
+    store_exec = next(
+        e for e in graph_exec.node_executions if e.block_id == StoreValueBlock().id
+    )
+    assert store_exec.status == execution.ExecutionStatus.COMPLETED
+    assert store_exec.output_data == {"output": ["otters"]}
+    split_exec = next(
+        e for e in graph_exec.node_executions if e.block_id == TextSplitBlock().id
+    )
+    assert split_exec.status == execution.ExecutionStatus.COMPLETED
+    assert split_exec.output_data == {"texts": [["otters"]]}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_delayed_optional_inputs_keep_each_value_in_its_own_execution(
+    server: SpinTestServer,
+):
+    test_user = await create_test_user()
+    test_graph = await create_graph(server, create_test_graph(), test_user)
+    run = await execution.create_graph_execution(
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
+        starting_nodes_input=[],
+        inputs={},
+        user_id=test_user.id,
+    )
+    node_id = test_graph.nodes[-1].id
+    first, _ = await execution.upsert_execution_input(node_id, run.id, "data", "keep")
+    await prisma.models.AgentNodeExecutionInputOutput.prisma().update_many(
+        where={"referencedByInputExecId": first.node_exec_id},
+        data={"time": datetime.now(timezone.utc) - timedelta(days=2)},
+    )
+
+    second, inputs = await execution.upsert_execution_input(
+        node_id, run.id, "data", None
+    )
+    _, first_inputs = await execution.upsert_execution_input(
+        node_id, run.id, "input", "trigger", node_exec_id=first.node_exec_id
+    )
+
+    assert second.node_exec_id != first.node_exec_id
+    assert inputs == {"data": None}
+    assert first_inputs == {"data": "keep", "input": "trigger"}
 
 
 @pytest.mark.asyncio(loop_scope="session")
