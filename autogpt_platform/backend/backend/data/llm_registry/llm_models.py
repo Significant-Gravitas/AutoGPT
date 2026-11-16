@@ -272,6 +272,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     QWEN3_CODER = "qwen/qwen3-coder"
     QWEN3_8_MAX_0902 = "qwen/qwen3.8-max-0902"
     QWEN3_8_FLASH = "qwen/qwen3.8-flash"
+    QWEN4_MAX = "qwen/qwen4-max"
     # Xiaomi models
     MIMO_V2_6_PRO = "xiaomi/mimo-v2.6-pro"
     MIMO_V2_6_FLASH = "xiaomi/mimo-v2.6-flash"
