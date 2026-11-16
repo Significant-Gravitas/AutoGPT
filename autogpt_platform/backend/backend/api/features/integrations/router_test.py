@@ -220,7 +220,11 @@ class TestGetCredentialReturnsMetaOnly:
 
 
 class TestSdkDefaultCredentialsNotAccessible:
-    """SDK default credentials (ID ending in '-default') must be hidden."""
+    """A refused SDK default credential stays hidden.
+
+    ``openai-default`` is the SDK key of a provider whose shared key may not
+    run (not in ``RUNNABLE_SDK_DEFAULT_PROVIDERS``), so nothing may offer it.
+    """
 
     def test_get_sdk_default_returns_404(self):
         with patch(
@@ -273,6 +277,61 @@ class TestSdkDefaultCredentialsNotAccessible:
 
         assert resp.status_code == 404
         mock_mgr.store.get_creds_by_id.assert_not_called()
+
+
+class TestRunnableSdkDefaultIsAPlatformKey:
+    """A runnable SDK default (``firecrawl-default``) is one of the platform's
+    keys, listed and protected exactly like a built-in system credential, so
+    every view can offer it the way it offers "Use Credits for OpenAI"
+    (SECRT-3207)."""
+
+    def test_list_includes_it_marked_as_system(self):
+        user_cred = _make_api_key_cred()
+        platform_key = _make_sdk_default_cred("firecrawl")
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(
+                return_value=[user_cred, platform_key]
+            )
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        by_id = {c["id"]: c for c in resp.json()}
+        assert by_id["firecrawl-default"]["is_system"] is True
+        assert by_id["cred-123"]["is_system"] is False
+        assert "sk-platform-secret-key" not in resp.text
+
+    def test_get_returns_its_metadata(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=_make_sdk_default_cred("firecrawl"))
+            resp = client.get("/firecrawl/credentials/firecrawl-default")
+
+        assert resp.status_code == 200
+        assert resp.json()["is_system"] is True
+        assert "sk-platform-secret-key" not in resp.text
+
+    def test_delete_is_refused_like_a_system_credential(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_creds_by_id = AsyncMock()
+            resp = client.request("DELETE", "/firecrawl/credentials/firecrawl-default")
+
+        assert resp.status_code == 403
+        mock_mgr.store.get_creds_by_id.assert_not_called()
+
+    def test_system_providers_include_it(self):
+        with patch(
+            "backend.sdk.registry.AutoRegistry.get_all_credentials",
+            return_value=[_make_sdk_default_cred("firecrawl")],
+        ):
+            resp = client.get("/providers/system")
+
+        assert resp.status_code == 200
+        assert "firecrawl" in resp.json()
 
 
 class TestCreateCredentialNoSecretInResponse:
@@ -985,7 +1044,7 @@ class TestOAuthHandlerResolutionForDeviceProviders:
             ),
             pytest.raises(fastapi.HTTPException) as exc,
         ):
-            _get_provider_oauth_handler(MagicMock(), self.DEVICE_ONLY_PROVIDER)
+            _get_provider_oauth_handler(self.DEVICE_ONLY_PROVIDER)
 
         assert exc.value.status_code == 400
         assert "device code" in exc.value.detail
@@ -1010,7 +1069,7 @@ class TestOAuthHandlerResolutionForDeviceProviders:
             ),
             pytest.raises(fastapi.HTTPException) as exc,
         ):
-            _get_provider_oauth_handler(MagicMock(), self.UNREGISTERED_PROVIDER)
+            _get_provider_oauth_handler(self.UNREGISTERED_PROVIDER)
 
         assert exc.value.status_code == 404
         assert "does not support OAuth" in exc.value.detail

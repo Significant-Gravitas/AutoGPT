@@ -49,6 +49,7 @@ from backend.data.includes import (
 )
 from backend.data.sharing.tokens import generate_share_token
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
+from backend.data.workspace_internal import is_internal_workspace_file
 from backend.util import type as type_utils
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ async def enable_chat_session_share(
     Raises ValueError if the session does not belong to *user_id*.
     """
     session = await PrismaChatSession.prisma().find_first(
-        where={"id": session_id, "userId": user_id},
+        where={"id": session_id, "userId": user_id, "archivedAt": None},
     )
     if not session:
         raise ValueError(f"Chat session {session_id} not found for user")
@@ -159,9 +160,11 @@ async def enable_chat_session_share(
 
         # Session update goes LAST inside the transaction so the chat
         # only becomes publicly readable after the allowlist + linkage
-        # are committed.
-        await PrismaChatSession.prisma(tx).update(
-            where={"id": session_id},
+        # are committed.  Conditional on the chat still being open: an
+        # expert reset can archive it after the check above, and the
+        # raise rolls back every write this share made.
+        shared = await PrismaChatSession.prisma(tx).update_many(
+            where={"id": session_id, "archivedAt": None},
             data={
                 "isShared": True,
                 "shareToken": share_token,
@@ -169,6 +172,8 @@ async def enable_chat_session_share(
                 "autoShareExecutions": auto_share_executions,
             },
         )
+        if not shared:
+            raise ValueError(f"Chat session {session_id} not found for user")
 
     return share_token
 
@@ -317,7 +322,12 @@ async def get_chat_session_by_share_token(
 ) -> SharedChatSession | None:
     """Look up a shared session header (no messages, no auth)."""
     session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            # A reset expert's archived chats are no longer readable.
+            "archivedAt": None,
+        },
     )
     if not session:
         return None
@@ -342,7 +352,12 @@ async def get_shared_chat_messages_paginated(
     disabled (uniform with :func:`get_chat_session_by_share_token`).
     """
     session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            # A reset expert's archived chats are no longer readable.
+            "archivedAt": None,
+        },
     )
     if not session:
         return None
@@ -387,22 +402,38 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     time, so a malicious tool output trying to reference a foreign
     workspace file still gets rejected.  On hit we backfill a
     SharedChatFile row so subsequent downloads short-circuit.
+
+    Otto's own working files are never served, even when the chat names
+    them (see :func:`_is_shareable`), including through an allowlist row
+    written before they were left out.
     """
     record = await SharedChatFile.prisma().find_first(
         where={
             "shareToken": share_token,
             "fileId": file_id,
-            "Session": {"is": {"shareToken": share_token, "isShared": True}},
-        }
+            "Session": {
+                "is": {
+                    "shareToken": share_token,
+                    "isShared": True,
+                    "archivedAt": None,
+                }
+            },
+        },
+        include={"File": True},
     )
     if record is not None:
-        return record.sessionId
+        return record.sessionId if _is_shareable(record.File) else None
 
     # Slow path: chat-share allowlists are built once at enable time,
     # but the chat keeps accumulating messages.  Re-derive ownership
     # from the live messages for this token before giving up.
     session = await PrismaChatSession.prisma().find_first(
-        where={"shareToken": share_token, "isShared": True},
+        where={
+            "shareToken": share_token,
+            "isShared": True,
+            # A reset expert's archived chats are no longer readable.
+            "archivedAt": None,
+        },
     )
     if session is None:
         return None
@@ -416,7 +447,7 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     file = await UserWorkspaceFile.prisma().find_first(
         where={"id": file_id, "workspaceId": workspace.id, "isDeleted": False}
     )
-    if file is None:
+    if not _is_shareable(file):
         return None
     # Backfill the allowlist so repeat downloads skip the re-scan.
     try:
@@ -519,9 +550,10 @@ async def get_chat_share_state(session_id: str, user_id: str) -> ChatShareState:
 async def _count_referenced_workspace_files(*, session_id: str, user_id: str) -> int:
     """How many of the workspace files referenced by this chat's messages
     the owner actually owns (and would land in the public allowlist if
-    the share were enabled right now).  Mirrors the ownership filter
-    ``_build_shared_chat_files`` applies at enable time so the count
-    matches what the public viewer can actually download.
+    the share were enabled right now).  Mirrors the ownership and
+    :func:`_is_shareable` filters ``_build_shared_chat_files`` applies at
+    enable time so the count matches what the public viewer can actually
+    download.
     """
     rows = await PrismaChatMessage.prisma().find_many(
         where={"sessionId": session_id},
@@ -546,7 +578,7 @@ async def _count_referenced_workspace_files(*, session_id: str, user_id: str) ->
             "isDeleted": False,
         }
     )
-    return len(owned)
+    return len([file for file in owned if _is_shareable(file)])
 
 
 # ---------- Helpers ----------------------------------------------------------
@@ -559,7 +591,8 @@ async def _build_shared_chat_files(
     *,
     tx: Any | None = None,
 ) -> int:
-    """Scan all messages in the session for workspace://<id> refs + persist allowlist."""
+    """Scan all messages in the session for workspace://<id> refs + persist
+    the allowlist of the ones that are the owner's files to share."""
     rows = await PrismaChatMessage.prisma(tx).find_many(
         where={"sessionId": session_id},
     )
@@ -588,8 +621,9 @@ async def _build_shared_chat_files(
         }
     )
 
+    shareable_files = [file for file in owned_files if _is_shareable(file)]
     created = 0
-    for file in owned_files:
+    for file in shareable_files:
         try:
             await SharedChatFile.prisma(tx).create(
                 data={
@@ -604,6 +638,20 @@ async def _build_shared_chat_files(
         except ForeignKeyViolationError:
             logger.debug("SharedChatFile FK violation for file %s", file.id)
     return created
+
+
+def _is_shareable(file: UserWorkspaceFile | None) -> bool:
+    """Whether a shared chat may serve *file*: one of the user's files, not
+    one of Otto's own working files (a large tool output saved in full, the
+    build scratchpad, a skill package), which the chat can name but which
+    the user never asked for as a file."""
+    if file is None:
+        return False
+    return not is_internal_workspace_file(
+        name=file.name,
+        path=file.path,
+        metadata=file.metadata if isinstance(file.metadata, dict) else None,
+    )
 
 
 async def _cascade_revoke_chat_linked_executions(

@@ -61,6 +61,7 @@ from .models import (
     SetupRequirementsResponse,
     ToolResponseBase,
 )
+from .review_card import review_card_location
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .session_registry import resolve_session_entry
@@ -472,7 +473,8 @@ async def _run_mcp(
             message=(
                 f"'{tool_name}' on {host} looks like a write to a server outside the "
                 "official catalog, so it needs the user's approval. Tell the user; "
-                f"after they approve, call resume_capability(review_id='{review_id}')."
+                f"after they approve, call resume_capability(review_id='{review_id}'). "
+                f"{review_card_location(session.metadata)}"
             ),
             session_id=session.session_id,
             block_id=entry.id if entry else server_url,

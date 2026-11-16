@@ -1,0 +1,92 @@
+{
+  "type": "ui_blocks",
+  "message": "Shown to the user.",
+  "session_id": "fixture-session",
+  "blocks": [
+    {
+      "type": "stats",
+      "items": [
+        {
+          "label": "Leads",
+          "value": "412",
+          "change": "+6%",
+          "tone": "positive"
+        },
+        {
+          "label": "Replies",
+          "value": "96",
+          "change": "+37%",
+          "tone": "positive"
+        }
+      ]
+    },
+    {
+      "type": "chart",
+      "title": "Replies per week",
+      "kind": "area",
+      "x_labels": ["Wk 1", "Wk 2", "Wk 3", "Wk 4"],
+      "series": [
+        {
+          "name": "This month",
+          "values": [14.0, 17.0, 28.0, 37.0]
+        }
+      ],
+      "annotation": {
+        "x": "Wk 3",
+        "label": "New subject lines"
+      }
+    },
+    {
+      "type": "workflow_diagram",
+      "title": "Where leads drop out",
+      "steps": [
+        {
+          "label": "New lead",
+          "detail": "412",
+          "status": "ok"
+        },
+        {
+          "label": "Enrich lead",
+          "detail": "31 failed",
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "type": "gallery",
+      "images": [
+        {
+          "src": "workspace://file-1#image/png",
+          "caption": "Before"
+        },
+        {
+          "src": "workspace://file-2",
+          "caption": "After"
+        }
+      ]
+    },
+    {
+      "type": "timeline",
+      "items": [
+        {
+          "date": "14 Oct",
+          "title": "New subject lines",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "type": "options",
+      "items": [
+        {
+          "title": "Fix enrichment",
+          "description": "Recover 31 leads"
+        },
+        {
+          "title": "Add a day 5 follow-up",
+          "tone": "positive"
+        }
+      ]
+    }
+  ]
+}
