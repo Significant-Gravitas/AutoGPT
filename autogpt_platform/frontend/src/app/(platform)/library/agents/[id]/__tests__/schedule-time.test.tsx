@@ -113,4 +113,43 @@ describe("SelectedScheduleView timezone labels", () => {
       await screen.findByText(getTimezoneDisplayName("America/Los_Angeles")),
     ).toBeDefined();
   });
+
+  test("falls back to browser timezone label when profile timezone is not-set", async () => {
+    const agent = getGetV2GetLibraryAgentResponseMock({
+      id: "agent-id",
+      graph_id: "graph-id",
+      graph_version: 1,
+      name: "Scheduled Agent",
+      input_schema: { properties: {} },
+      credentials_input_schema: { properties: {} },
+    });
+
+    server.use(
+      getGetV1GetUserTimezoneMockHandler({ timezone: "not-set" }),
+      http.get("/api/proxy/api/graphs/:graphId/schedules", ({ params }) =>
+        HttpResponse.json([
+          {
+            id: "schedule-id",
+            name: "Teig ansetzen",
+            user_id: "user-id",
+            graph_id: params.graphId,
+            graph_version: 1,
+            cron: "45 2 * * 1-5",
+            timezone: "Asia/Tokyo",
+            next_run_time: "2026-11-12T02:45:00+09:00",
+            input_data: {},
+            input_credentials: {},
+          },
+        ]),
+      ),
+    );
+
+    render(<SelectedScheduleView agent={agent} scheduleId="schedule-id" />);
+
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(
+      await screen.findByText(getTimezoneDisplayName(browserTimezone)),
+    ).toBeDefined();
+    expect(screen.queryByText("Not set")).toBeNull();
+  });
 });

@@ -149,7 +149,11 @@ export function SelectedScheduleView({
                           •
                         </Text>{" "}
                         <Text variant="body" as="span" tone="muted">
-                          {getTimezoneDisplayName(userTimezone || "UTC")}
+                          {getTimezoneDisplayName(
+                            userTimezone === "not-set"
+                              ? Intl.DateTimeFormat().resolvedOptions().timeZone
+                              : userTimezone || "UTC",
+                          )}
                         </Text>
                       </div>
                     </div>
