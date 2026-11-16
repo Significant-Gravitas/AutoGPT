@@ -6,16 +6,40 @@ import subprocess
 import sys
 
 
+# A shard runs its paths minus any other shard's paths nested inside them, so
+# "copilot" runs backend/copilot without the folders "copilot-sdk" takes.
 SHARDS = {
     "data": ["backend/data"],
     "copilot": ["backend/copilot"],
+    "copilot-sdk": [
+        "backend/copilot/sdk",
+        "backend/copilot/billing_e2e",
+        "backend/copilot/graphiti",
+        "backend/copilot/dream",
+    ],
     "util-executor": ["backend/util", "backend/executor"],
 }
 
 
+def _is_within(path: str, parent: str) -> bool:
+    return path.startswith(f"{parent}/")
+
+
 def shard_args(shard: str) -> list[str]:
     if shard in SHARDS:
-        return ["-c", "pyproject.toml", *SHARDS[shard]]
+        nested = [
+            path
+            for other, paths in SHARDS.items()
+            if other != shard
+            for path in paths
+            if any(_is_within(path, own) for own in SHARDS[shard])
+        ]
+        return [
+            "-c",
+            "pyproject.toml",
+            *SHARDS[shard],
+            *(f"--ignore={path}" for path in nested),
+        ]
     if shard != "remainder":
         raise ValueError(f"Unknown backend test shard: {shard}")
     return [
