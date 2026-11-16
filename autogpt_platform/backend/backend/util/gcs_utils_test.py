@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -203,15 +204,131 @@ async def test_download_in_chunks_maps_404_to_file_not_found(mocker):
         await anext(download_in_chunks("bucket", "missing", 16))
 
 
+@pytest.mark.asyncio
+async def test_download_in_chunks_resumes_where_the_connection_dropped(dropping_gcs):
+    gcs = await dropping_gcs(drops=1)
+
+    chunks = download_in_chunks("bucket", "blob", 1024)
+    first = await anext(chunks)
+    gcs.drop.set()
+    content = first + b"".join([chunk async for chunk in chunks])
+
+    assert content == _CONTENT
+    assert gcs.ranges[0] is None
+    assert len(gcs.ranges) == 2 and gcs.ranges[1].startswith("bytes=")
+
+
+@pytest.mark.asyncio
+async def test_download_in_chunks_stops_resuming_a_connection_that_keeps_dropping(
+    dropping_gcs,
+):
+    gcs = await dropping_gcs(drops=4)
+
+    chunks = download_in_chunks("bucket", "blob", 1024)
+    await anext(chunks)
+    gcs.drop.set()
+    with pytest.raises(aiohttp.ClientPayloadError):
+        async for _ in chunks:
+            pass
+
+    assert len(gcs.ranges) == 3
+
+
+@pytest.mark.asyncio
+async def test_download_in_chunks_refuses_a_resume_that_ignores_the_range(
+    dropping_gcs,
+):
+    gcs = await dropping_gcs(drops=1, honour_range=False)
+
+    received = []
+    chunks = download_in_chunks("bucket", "blob", 1024)
+    received.append(await anext(chunks))
+    gcs.drop.set()
+    with pytest.raises(RuntimeError, match="resumed"):
+        async for chunk in chunks:
+            received.append(chunk)
+
+    assert _CONTENT.startswith(b"".join(received))
+
+
 class StreamResponseStub:
     def __init__(self, content: bytes):
         self._content = content
         self.read_sizes: list[int] = []
+        self.content_length = len(content)
 
     async def read(self, size: int) -> bytes:
         self.read_sizes.append(size)
         chunk, self._content = self._content[:size], self._content[size:]
         return chunk
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info) -> None:
+        pass
+
+
+_CONTENT = bytes(range(256)) * 800
+_CUT = 50_000
+
+
+@pytest.fixture
+async def dropping_gcs(monkeypatch):
+    """Start a ``DroppingGCS`` and point the GCS client at it."""
+    started: list[tuple[DroppingGCS, asyncio.Server]] = []
+
+    async def start(**kwargs) -> DroppingGCS:
+        gcs = DroppingGCS(**kwargs)
+        server = await asyncio.start_server(gcs.serve, "127.0.0.1", 0)
+        started.append((gcs, server))
+        port = server.sockets[0].getsockname()[1]
+        monkeypatch.setenv("STORAGE_EMULATOR_HOST", f"http://127.0.0.1:{port}")
+        return gcs
+
+    yield start
+    for gcs, server in started:
+        gcs.drop.set()
+        server.close()
+        await server.wait_closed()
+
+
+class DroppingGCS:
+    """GCS's media endpoint over real TCP. It honours ``Range: bytes=N-`` and
+    closes the connection ``_CUT`` bytes into each of its first ``drops``
+    bodies, once ``drop`` is set, as GCS did mid-download in production."""
+
+    def __init__(self, drops: int, honour_range: bool = True):
+        self.drops = drops
+        self.honour_range = honour_range
+        self.ranges: list[str | None] = []
+        self.drop = asyncio.Event()
+
+    async def serve(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        head = (await reader.readuntil(b"\r\n\r\n")).decode()
+        headers = dict(
+            line.lower().split(": ", 1) for line in head.split("\r\n")[1:] if line
+        )
+        range_header = headers.get("range")
+        self.ranges.append(range_header)
+        start = 0
+        if range_header and self.honour_range:
+            start = int(range_header.removeprefix("bytes=").removesuffix("-"))
+        body = _CONTENT[start:]
+        status = "206 Partial Content" if start else "200 OK"
+        writer.write(
+            f"HTTP/1.1 {status}\r\nContent-Length: {len(body)}\r\n\r\n".encode()
+        )
+        if len(self.ranges) <= self.drops:
+            writer.write(body[:_CUT])
+            await writer.drain()
+            await self.drop.wait()
+        else:
+            writer.write(body)
+        await writer.drain()
+        writer.close()
 
 
 @pytest.mark.asyncio
