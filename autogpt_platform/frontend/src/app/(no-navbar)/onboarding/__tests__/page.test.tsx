@@ -475,6 +475,7 @@ describe("onboarding before payment", () => {
     render(<OnboardingPage />);
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
+    expect(screen.getByTestId("onboarding-placeholder")).toBeDefined();
     expect(getState).not.toHaveBeenCalled();
   });
 
