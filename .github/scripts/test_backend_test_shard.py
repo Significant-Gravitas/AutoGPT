@@ -83,8 +83,16 @@ class BackendShardTests(unittest.TestCase):
         ]
         self.assertCountEqual(matrix, [*SHARDS, "remainder"])
 
-    def test_main_propagates_pytest_status_and_scopes_restart_test_to_data(self):
-        for shard, restart in (("data", "1"), ("copilot", None)):
+    def test_main_propagates_pytest_status_and_scopes_docker_tests_to_their_shard(
+        self,
+    ):
+        flags = ("E2E_REDIS_CLUSTER_RESTART", "E2E_CLAMD_CONTAINER")
+        for shard, enabled in (
+            ("data", {"E2E_REDIS_CLUSTER_RESTART"}),
+            ("util-executor", {"E2E_CLAMD_CONTAINER"}),
+            ("copilot", set()),
+            ("remainder", set()),
+        ):
             with (
                 self.subTest(shard=shard),
                 patch.object(
@@ -95,9 +103,12 @@ class BackendShardTests(unittest.TestCase):
                 patch.dict(os.environ),
                 patch.object(sys, "argv", ["backend_test_shard.py", shard, "--", "-q"]),
             ):
-                os.environ.pop("E2E_REDIS_CLUSTER_RESTART", None)
+                for flag in flags:
+                    os.environ.pop(flag, None)
                 self.assertEqual(backend_test_shard.main(), 3)
-                self.assertEqual(os.environ.get("E2E_REDIS_CLUSTER_RESTART"), restart)
+                self.assertEqual(
+                    {f for f in flags if os.environ.get(f) == "1"}, enabled
+                )
                 run.assert_called_once_with(
                     ["poetry", "run", "pytest", *shard_args(shard), "-q"], check=False
                 )
