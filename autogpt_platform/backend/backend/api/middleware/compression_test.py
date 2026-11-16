@@ -192,21 +192,26 @@ def test_a_response_of_exactly_the_cap_is_still_compressed(
 
 
 @pytest.mark.asyncio
-async def test_an_event_stream_without_a_length_reaches_the_client_before_it_ends() -> (
-    None
-):
+@pytest.mark.parametrize(
+    "headers",
+    [
+        [(b"content-type", b"text/event-stream")],
+        [
+            (b"content-type", b"application/pdf"),
+            (b"content-disposition", b'attachment; filename="report.pdf"'),
+        ],
+    ],
+    ids=["event-stream", "file-download"],
+)
+async def test_a_stream_without_a_length_reaches_the_client_before_it_ends(
+    headers: list[tuple[bytes, bytes]],
+) -> None:
     first_chunk = b"data: first\n\n"
     delivered = asyncio.Event()
     sent: list[Message] = []
 
     async def stream(scope: Scope, receive: Receive, send: Send) -> None:
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 200,
-                "headers": [(b"content-type", b"text/event-stream")],
-            }
-        )
+        await send({"type": "http.response.start", "status": 200, "headers": headers})
         await send(
             {"type": "http.response.body", "body": first_chunk, "more_body": True}
         )
