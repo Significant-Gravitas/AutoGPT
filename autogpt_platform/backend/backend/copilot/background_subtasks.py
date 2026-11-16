@@ -94,6 +94,8 @@ async def start_background_subtask(
             team_id=parent.team_id,
             expert_id=parent.expert_id,
             origin="automation",
+            # The parent receives only the child's final text.
+            text_only_result=True,
             delegated_by_session_id=parent.session_id,
             delegated_by_expert_id=parent.expert_id,
             llm_auth_provider=parent.metadata.llm_auth_provider,

@@ -1090,16 +1090,13 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # ClaudeCodeBlock: bill via Claude Code CLI's `total_cost_usd` field,
-    # which rolls up all Anthropic LLM + internal tool-call spend across
-    # the run. Block emits provider_cost/cost_usd via merge_stats; 150 cr/$
-    # matches the 1.5× margin already baked into TOKEN_COST for every
-    # direct LLM block. E2B sandbox infra (~$0.00028/s) is absorbed into
-    # the margin.
+    # ClaudeCodeBlock: the platform's E2B sandbox, by walltime at the E2B blocks'
+    # rate. The model runs on the user's own Anthropic key, so it is not billed.
     ClaudeCodeBlock: [
         BlockCost(
-            cost_amount=150,
-            cost_type=BlockCostType.COST_USD,
+            cost_amount=1,
+            cost_type=BlockCostType.SECOND,
+            cost_divisor=10,
             cost_filter={
                 "e2b_credentials": {
                     "id": e2b_credentials.id,

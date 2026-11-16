@@ -70,7 +70,7 @@ const email = "new.user@example.com";
 const validPassword = "a-long-enough-password";
 
 function signupWithValidPayload() {
-  return signup(email, validPassword, validPassword, false);
+  return signup(email, validPassword, false);
 }
 
 beforeEach(() => {
@@ -120,7 +120,7 @@ describe("signup", () => {
   it("puts a marketing refusal in the verification link", async () => {
     signUpEmailMock.mockResolvedValue({ token: null, user: { id: "user-1" } });
 
-    await signup(email, validPassword, validPassword, true, "/marketplace");
+    await signup(email, validPassword, true, "/marketplace");
 
     expect(signUpEmailMock.mock.calls[0][0].body.callbackURL).toBe(
       "/auth/callback?method=email&next=%2Fmarketplace&marketing_opt_out=1",
@@ -136,7 +136,7 @@ describe("signup", () => {
     wasAccountCreatedMock.mockReturnValue(true);
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: true });
 
-    const result = await signup(email, validPassword, validPassword, true);
+    const result = await signup(email, validPassword, true);
 
     expect(postV1RecordUserConsentMock).toHaveBeenCalledTimes(1);
     expect(postV1RecordUserConsentMock).toHaveBeenCalledWith({
@@ -154,7 +154,7 @@ describe("signup", () => {
     postV1GetOrCreateUserMock.mockResolvedValue({ status: 200, data: {} });
     getOnboardingStatusMock.mockResolvedValue({ shouldShowOnboarding: false });
 
-    const result = await signup(email, validPassword, validPassword, true);
+    const result = await signup(email, validPassword, true);
 
     expect(postV1RecordUserConsentMock).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, next: "/home" });
@@ -284,14 +284,8 @@ describe("signup", () => {
   it("carries a safe next path through the verification link", async () => {
     signUpEmailMock.mockResolvedValue({ token: null, user: { id: "user-1" } });
 
-    await signup(email, validPassword, validPassword, false, "/marketplace");
-    await signup(
-      email,
-      validPassword,
-      validPassword,
-      false,
-      "https://evil.com",
-    );
+    await signup(email, validPassword, false, "/marketplace");
+    await signup(email, validPassword, false, "https://evil.com");
 
     expect(signUpEmailMock.mock.calls[0][0].body.callbackURL).toBe(
       "/auth/callback?method=email&next=%2Fmarketplace",
@@ -302,7 +296,7 @@ describe("signup", () => {
   });
 
   it("rejects a password shorter than 12 characters without calling Better Auth", async () => {
-    const result = await signup(email, "short-pass", "short-pass", false);
+    const result = await signup(email, "short-pass", false);
 
     expect(result).toEqual({ success: false, error: "Invalid signup payload" });
     expect(signUpEmailMock).not.toHaveBeenCalled();

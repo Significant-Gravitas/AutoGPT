@@ -84,6 +84,17 @@ def test_secrets_are_redacted_before_a_human_reads_them():
     assert payload["arguments"]["url"] == "https://x"
 
 
+def test_a_card_shows_a_string_argument_as_the_call_will_send_it():
+    """The card's copy of the arguments must hash back to the review id for a
+    call rebuilt from its card to run, so a string is never rewritten."""
+    content = '{\n  "name": "settings",\n  "token": "t-1"\n}'
+    args = {"filename": "settings.json", "content": content}
+
+    payload = review_payload("write_workspace_file", args)
+
+    assert payload["arguments"] == args
+
+
 def test_oversized_arguments_are_truncated():
     """File references expand before the handler runs, so an argument can
     arrive holding an entire file."""

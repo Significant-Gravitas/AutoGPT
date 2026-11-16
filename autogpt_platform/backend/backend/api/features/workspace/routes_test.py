@@ -1,4 +1,5 @@
 import io
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +13,8 @@ from backend.api.features.workspace.routes import router
 from backend.data.skill_capacity import SkillLimitError
 from backend.data.workspace import Workspace, WorkspaceFile
 from backend.data.workspace_scope import WorkspaceScope
+from backend.util.workspace_storage import LocalWorkspaceStorage
+from backend.util.workspace_storage_base import STREAM_CHUNK_BYTES
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -927,25 +930,25 @@ class TestSanitizeFilenameForHeader:
 
 
 class TestCreateStreamingResponse:
-    def test_attachment_disposition_by_default(self):
+    @pytest.mark.asyncio
+    async def test_attachment_disposition_by_default(self):
         from backend.api.features.workspace.routes import _create_streaming_response
 
         file = _make_file(name="data.bin", mime_type="application/octet-stream")
-        response = _create_streaming_response(b"binary-data", file)
+        response = _create_streaming_response(_stream_of(b"binary-", b"data"), file)
         assert (
             response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
         )
         assert response.headers["Content-Security-Policy"] == "sandbox"
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["Content-Type"] == "application/octet-stream"
-        assert response.headers["Content-Length"] == "11"
-        assert response.body == b"binary-data"
+        assert await _read_body(response) == b"binary-data"
 
     def test_inline_disposition(self):
         from backend.api.features.workspace.routes import _create_streaming_response
 
         file = _make_file(name="photo.png", mime_type="image/png")
-        response = _create_streaming_response(b"\x89PNG", file, inline=True)
+        response = _create_streaming_response(_stream_of(b"\x89PNG"), file, inline=True)
         assert response.headers["Content-Disposition"] == 'inline; filename="photo.png"'
         assert response.headers["Content-Security-Policy"] == "sandbox"
         assert response.headers["X-Content-Type-Options"] == "nosniff"
@@ -955,18 +958,10 @@ class TestCreateStreamingResponse:
         from backend.api.features.workspace.routes import _create_streaming_response
 
         file = _make_file(name='evil"\r\n.txt', mime_type="text/plain")
-        response = _create_streaming_response(b"data", file, inline=True)
+        response = _create_streaming_response(_stream_of(b"data"), file, inline=True)
         assert "\r" not in response.headers["Content-Disposition"]
         assert "\n" not in response.headers["Content-Disposition"]
         assert "inline" in response.headers["Content-Disposition"]
-
-    def test_content_length_matches_body(self):
-        from backend.api.features.workspace.routes import _create_streaming_response
-
-        content = b"x" * 1000
-        file = _make_file(name="big.bin", mime_type="application/octet-stream")
-        response = _create_streaming_response(content, file)
-        assert response.headers["Content-Length"] == "1000"
 
 
 # -- create_file_download_response tests --
@@ -978,7 +973,9 @@ class TestCreateFileDownloadResponse:
         from backend.api.features.workspace.routes import create_file_download_response
 
         mock_storage = AsyncMock()
-        mock_storage.retrieve.return_value = b"file contents"
+        mock_storage.retrieve_stream = MagicMock(
+            return_value=_stream_of(b"file contents")
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -990,7 +987,7 @@ class TestCreateFileDownloadResponse:
         )
         response = await create_file_download_response(file)
         assert response.status_code == 200
-        assert response.body == b"file contents"
+        assert await _read_body(response) == b"file contents"
         assert "attachment" in response.headers["Content-Disposition"]
 
     @pytest.mark.asyncio
@@ -998,7 +995,7 @@ class TestCreateFileDownloadResponse:
         from backend.api.features.workspace.routes import create_file_download_response
 
         mock_storage = AsyncMock()
-        mock_storage.retrieve.return_value = b"\x89PNG"
+        mock_storage.retrieve_stream = MagicMock(return_value=_stream_of(b"\x89PNG"))
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1038,7 +1035,9 @@ class TestCreateFileDownloadResponse:
 
         mock_storage = AsyncMock()
         mock_storage.get_download_url.return_value = "/api/fallback"
-        mock_storage.retrieve.return_value = b"fallback content"
+        mock_storage.retrieve_stream = MagicMock(
+            return_value=_stream_of(b"fallback content")
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1047,7 +1046,7 @@ class TestCreateFileDownloadResponse:
         file = _make_file(storage_path="gcs://bucket/file.txt")
         response = await create_file_download_response(file)
         assert response.status_code == 200
-        assert response.body == b"fallback content"
+        assert await _read_body(response) == b"fallback content"
 
     @pytest.mark.asyncio
     async def test_gcs_signed_url_failure_falls_back_to_streaming(self, mocker):
@@ -1055,7 +1054,7 @@ class TestCreateFileDownloadResponse:
 
         mock_storage = AsyncMock()
         mock_storage.get_download_url.side_effect = RuntimeError("GCS error")
-        mock_storage.retrieve.return_value = b"streamed"
+        mock_storage.retrieve_stream = MagicMock(return_value=_stream_of(b"streamed"))
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1064,7 +1063,7 @@ class TestCreateFileDownloadResponse:
         file = _make_file(storage_path="gcs://bucket/file.txt")
         response = await create_file_download_response(file)
         assert response.status_code == 200
-        assert response.body == b"streamed"
+        assert await _read_body(response) == b"streamed"
 
     @pytest.mark.asyncio
     async def test_gcs_total_failure_raises(self, mocker):
@@ -1072,7 +1071,9 @@ class TestCreateFileDownloadResponse:
 
         mock_storage = AsyncMock()
         mock_storage.get_download_url.side_effect = RuntimeError("GCS error")
-        mock_storage.retrieve.side_effect = RuntimeError("Also failed")
+        mock_storage.retrieve_stream = MagicMock(
+            return_value=_stream_of(RuntimeError("Also failed"))
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1093,7 +1094,9 @@ class TestCreateFileDownloadResponse:
 
         mock_storage = AsyncMock()
         mock_storage.get_download_url.return_value = "/api/fallback"
-        mock_storage.retrieve.side_effect = FileNotFoundError("File not found")
+        mock_storage.retrieve_stream = MagicMock(
+            return_value=_stream_of(FileNotFoundError("File not found"))
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1103,7 +1106,7 @@ class TestCreateFileDownloadResponse:
         with pytest.raises(fastapi.HTTPException) as exc_info:
             await create_file_download_response(file)
         assert exc_info.value.status_code == 404
-        assert mock_storage.retrieve.await_count == 1
+        assert mock_storage.retrieve_stream.call_count == 1
 
     @pytest.mark.asyncio
     async def test_transient_storage_error_is_retried(self, mocker, caplog):
@@ -1111,10 +1114,14 @@ class TestCreateFileDownloadResponse:
 
         mock_storage = AsyncMock()
         mock_storage.get_download_url.return_value = "/api/fallback"
-        mock_storage.retrieve.side_effect = [
-            aiohttp.ClientPayloadError("Response payload is not completed"),
-            b"second try",
-        ]
+        mock_storage.retrieve_stream = MagicMock(
+            side_effect=[
+                _stream_of(
+                    aiohttp.ClientPayloadError("Response payload is not completed")
+                ),
+                _stream_of(b"second try"),
+            ]
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1124,7 +1131,7 @@ class TestCreateFileDownloadResponse:
         with caplog.at_level("WARNING"):
             response = await create_file_download_response(file)
         assert response.status_code == 200
-        assert response.body == b"second try"
+        assert await _read_body(response) == b"second try"
         assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
     @pytest.mark.asyncio
@@ -1142,7 +1149,9 @@ class TestCreateFileDownloadResponse:
 
         mock_storage = AsyncMock()
         mock_storage.get_download_url.return_value = "/api/fallback"
-        mock_storage.retrieve.side_effect = error
+        mock_storage.retrieve_stream = MagicMock(
+            side_effect=lambda _: _stream_of(error)
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -1154,7 +1163,7 @@ class TestCreateFileDownloadResponse:
         ) as exc_info:
             await create_file_download_response(file)
         assert exc_info.value.status_code == 502
-        assert mock_storage.retrieve.await_count == 2
+        assert mock_storage.retrieve_stream.call_count == 2
         errors = [r for r in caplog.records if r.levelname == "ERROR"]
         assert len(errors) == 1
         assert errors[0].exc_info is not None
@@ -1172,7 +1181,9 @@ def test_download_file_missing_content_returns_404(mocker):
     )
     mock_storage = AsyncMock()
     mock_storage.get_download_url.return_value = "/api/fallback"
-    mock_storage.retrieve.side_effect = FileNotFoundError("File not found")
+    mock_storage.retrieve_stream = MagicMock(
+        return_value=_stream_of(FileNotFoundError("File not found"))
+    )
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace_storage",
         return_value=mock_storage,
@@ -1180,6 +1191,69 @@ def test_download_file_missing_content_returns_404(mocker):
 
     response = client.get("/files/file-001/download")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_download_reads_storage_only_as_its_body_is_taken(mocker):
+    from backend.api.features.workspace.routes import create_file_download_response
+
+    chunks = [b"first", b"second", b"third"]
+    taken: list[bytes] = []
+
+    async def retrieve_stream(_: str) -> AsyncIterator[bytes]:
+        for chunk in chunks:
+            taken.append(chunk)
+            yield chunk
+
+    storage = AsyncMock()
+    storage.retrieve_stream = retrieve_stream
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage",
+        return_value=storage,
+    )
+
+    response = await create_file_download_response(
+        _make_file(storage_path="local://ws/file-001/file.bin")
+    )
+
+    assert taken == chunks[:1]
+    assert await _read_body(response) == b"".join(chunks)
+    assert taken == chunks
+
+
+def test_download_file_sends_a_local_file_in_full(mocker, tmp_path):
+    content = bytes(range(256)) * (STREAM_CHUNK_BYTES // 256) * 2 + b"tail"
+    (tmp_path / "ws-001" / "file-001").mkdir(parents=True)
+    (tmp_path / "ws-001" / "file-001" / "a.bin").write_bytes(content)
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_file",
+        return_value=_make_file(storage_path="local://ws-001/file-001/a.bin"),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage",
+        return_value=LocalWorkspaceStorage(str(tmp_path)),
+    )
+
+    response = client.get("/files/file-001/download")
+
+    assert response.status_code == 200
+    assert response.content == content
+
+
+async def _stream_of(*chunks: bytes | Exception) -> AsyncIterator[bytes]:
+    for chunk in chunks:
+        if isinstance(chunk, Exception):
+            raise chunk
+        yield chunk
+
+
+async def _read_body(response: fastapi.Response) -> bytes:
+    assert isinstance(response, fastapi.responses.StreamingResponse)
+    return b"".join([bytes(chunk) async for chunk in response.body_iterator])
 
 
 # -- list_workspace_files: expert filter + attribution --

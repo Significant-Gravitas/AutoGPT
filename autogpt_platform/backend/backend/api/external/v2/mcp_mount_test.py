@@ -126,6 +126,11 @@ def test_a_credential_the_rate_limiter_verified_is_not_verified_again(
         new_callable=AsyncMock,
         return_value=("org-1", None),
     )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.resource_role_refusal",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     auth = APIAuthorizationInfo(
         user_id="user-1", scopes=[], type="api_key", created_at=datetime.now(UTC)
     )
@@ -164,6 +169,41 @@ async def test_a_token_shaped_bearer_is_never_tried_as_an_api_key_over_mcp(
     validate_key.assert_not_awaited()
 
 
+async def test_the_token_carries_why_the_callers_role_keeps_them_from_workflows(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Read with the tenant, once per request, for the tool handlers to apply."""
+    owner = APIAuthorizationInfo(
+        user_id="user-1", scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_api_key",
+        new_callable=AsyncMock,
+        return_value=owner,
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.owner_is_banned",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.resolve_credential_tenancy",
+        new_callable=AsyncMock,
+        return_value=("org-1", "team-1"),
+    )
+    refusal = mocker.patch(
+        "backend.api.external.v2.mcp_server.resource_role_refusal",
+        new_callable=AsyncMock,
+        return_value="Your role in team team-1 covers its billing",
+    )
+
+    verified = await ExternalAPITokenVerifier().verify_token("agpt_key")
+
+    assert isinstance(verified, TenantedAccessToken)
+    assert verified.role_refusal == "Your role in team team-1 covers its billing"
+    refusal.assert_awaited_once_with("user-1", "org-1", "team-1")
+
+
 @pytest.mark.parametrize(
     "token",
     ["agpt_key", f"{ACCESS_TOKEN_PREFIX}token"],
@@ -190,6 +230,11 @@ async def test_a_banned_owners_credential_gets_no_mcp_session(
         "backend.api.external.v2.mcp_server.resolve_credential_tenancy",
         new_callable=AsyncMock,
         return_value=("org-1", None),
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.resource_role_refusal",
+        new_callable=AsyncMock,
+        return_value=None,
     )
 
     verified = await ExternalAPITokenVerifier().verify_token(token)
