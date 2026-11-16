@@ -4,6 +4,7 @@ lands while a rebuild is still reading the folder."""
 
 import asyncio
 import uuid
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -60,7 +61,7 @@ async def test_a_cached_index_shows_a_store_and_a_delete_on_the_next_read(
         # Cached for the whole TTL, so a write that left it in place would
         # go unseen by every read below.
         key = _skills_cache_key(USER, expert_id)
-        assert redis.ttls[key] == SKILLS_INDEX_CACHE_TTL_S
+        assert redis.ttls[key] == 15 * 60
 
         await store_user_skill(
             USER, name="fresh", description="d", body="b", expert_id=expert_id
@@ -83,18 +84,124 @@ async def test_a_skill_stored_while_the_index_is_rebuilt_shows_on_the_next_read(
     async def read_then_wait(*args, **kwargs):
         found = await read_folder(*args, **kwargs)
         listed.set()
-        await resume.wait()
+        await asyncio.wait_for(resume.wait(), timeout=30)
         return found
 
     with _cached_skills(fake):
-        with patch.object(skills, "_list_user_skills_from_workspace", read_then_wait):
-            rebuild = asyncio.create_task(list_user_skills(USER))
-            await listed.wait()
-        await store_user_skill(USER, name="new", description="d", body="b")
-        resume.set()
+        rebuild = None
+        try:
+            with patch.object(
+                skills, "_list_user_skills_from_workspace", read_then_wait
+            ):
+                rebuild = asyncio.create_task(list_user_skills(USER))
+                await asyncio.wait_for(listed.wait(), timeout=30)
+            await store_user_skill(USER, name="new", description="d", body="b")
+            resume.set()
 
-        assert [s.name for s in await rebuild] == ["old"]
-        assert await _names() == ["new", "old"]
+            result = await asyncio.wait_for(rebuild, timeout=30)
+            assert [s.name for s in result] == ["old"]
+            assert await _names() == ["new", "old"]
+        finally:
+            resume.set()
+            if rebuild is not None:
+                if not rebuild.done():
+                    rebuild.cancel()
+                await asyncio.wait_for(
+                    asyncio.gather(rebuild, return_exceptions=True), timeout=30
+                )
+
+
+@pytest.mark.asyncio
+async def test_a_rejected_assigned_copy_still_allows_a_warm_index():
+    fake = _FakeWorkspaceManager()
+    fake.files["/skills/missing/SKILL.md"] = _skill("missing")
+    for number in range(skills.MAX_SKILLS_PER_EXPERT):
+        name = f"kept_{number}"
+        fake.files[f"/experts/expert-1/skills/{name}/SKILL.md"] = _skill(name)
+    with _cached_skills(fake):
+        skills.experts_db().get_expert.return_value.skills = ["missing"]
+        with patch.object(
+            skills, "copy_skill_to_expert", wraps=skills.copy_skill_to_expert
+        ) as copy:
+            first = await _names("expert-1")
+            assert len(first) == skills.MAX_SKILLS_PER_EXPERT
+            assert "missing" not in first
+            assert await _names("expert-1") == first
+            copy.assert_awaited_once_with(USER, "expert-1", "missing")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expert_id", [None, "expert-1"])
+@pytest.mark.parametrize(
+    "error", [None, RuntimeError("cleanup"), asyncio.CancelledError()]
+)
+async def test_external_file_delete_reaches_the_cached_index(expert_id, error):
+    from backend.api.external.v2 import files
+    from backend.api.external.v2.files_test import _auth
+
+    fake = _FakeWorkspaceManager()
+    path = f"{skills.skill_folder(expert_id)}/brief/SKILL.md"
+    fake.files[path] = _skill("brief")
+
+    async def delete(_file_id):
+        del fake.files[path]
+        if error is not None:
+            raise error
+        return True
+
+    manager = SimpleNamespace(
+        get_file_info=AsyncMock(return_value=SimpleNamespace(path=path)),
+        delete_file=delete,
+    )
+    with (
+        _cached_skills(fake),
+        patch.object(
+            files, "get_workspace", AsyncMock(return_value=SimpleNamespace(id="ws"))
+        ),
+        patch.object(files, "WorkspaceManager", return_value=manager),
+    ):
+        assert await _names(expert_id) == ["brief"]
+        if error is None:
+            await files.delete_file("file-1", auth=_auth())
+        else:
+            with pytest.raises(type(error)):
+                await files.delete_file("file-1", auth=_auth())
+        assert await _names(expert_id) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error", [RuntimeError("lost acknowledgement"), asyncio.CancelledError()]
+)
+async def test_a_committed_rename_invalidates_after_failure(error):
+    from backend.api.features.workspace import routes
+
+    fake = _FakeWorkspaceManager()
+    path = "/skills/brief/SKILL.md"
+    fake.files[path] = _skill("brief")
+
+    async def rename(*_args):
+        fake.files["/skills/brief/notes.md"] = fake.files.pop(path)
+        raise error
+
+    with (
+        _cached_skills(fake),
+        patch.object(
+            routes, "get_workspace", AsyncMock(return_value=SimpleNamespace(id="ws"))
+        ),
+        patch.object(
+            routes,
+            "get_workspace_file",
+            AsyncMock(return_value=SimpleNamespace(path=path)),
+        ),
+        patch.object(routes, "rename_workspace_file", rename),
+    ):
+        assert await _names() == ["brief"]
+        with pytest.raises(type(error)):
+            await routes.rename_workspace_file_route(
+                USER, "file-1", routes.RenameFileRequest(name="notes.md")
+            )
+        assert await _names() == []
 
 
 @pytest.mark.asyncio
@@ -219,7 +326,7 @@ async def test_a_failed_rebuild_leaves_another_rebuilds_claim():
 
 @requires_redis
 @pytest.mark.asyncio
-async def test_on_redis_an_index_is_written_only_while_its_claim_holds(server):
+async def test_on_redis_an_index_is_written_only_while_its_claim_holds():
     """The fake stands in for the write-if-claimed script everywhere else;
     this runs the script itself."""
     user = f"skills-index-{uuid.uuid4().hex}"
@@ -236,7 +343,7 @@ async def test_on_redis_an_index_is_written_only_while_its_claim_holds(server):
         )
         cached = await _read_skills_cache(user)
         assert cached is not None and [s.name for s in cached] == ["kept"]
-        assert 0 < await redis.ttl(key) <= SKILLS_INDEX_CACHE_TTL_S
+        assert 60 < await redis.ttl(key) <= SKILLS_INDEX_CACHE_TTL_S
 
         # A rebuild that missed before this index landed takes no claim over it.
         assert await _claim_skills_cache(user) is None

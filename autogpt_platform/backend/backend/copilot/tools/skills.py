@@ -28,7 +28,7 @@ import logging
 import posixpath
 import re
 import uuid
-from collections.abc import Awaitable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar, cast
@@ -1276,6 +1276,12 @@ async def store_user_skills(
     # Without the lock they fall back to a best-effort unlocked write.
     lock = await _acquire_skill_write_lock(user_id, expert_id)
     lock_held = lock is not None
+    write_started = False
+
+    def mark_write_started() -> None:
+        nonlocal write_started
+        write_started = True
+
     try:
         manager = await _get_user_skill_manager(user_id, scope)
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
@@ -1328,6 +1334,7 @@ async def store_user_skills(
                     owners,
                     copies,
                     config,
+                    before_write=mark_write_started,
                 )
             except Exception as e:
                 outcomes[index] = e
@@ -1349,7 +1356,8 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
         try:
-            await invalidate_skills_index_cache(user_id, expert_id)
+            if write_started:
+                await invalidate_skills_index_cache(user_id, expert_id)
         finally:
             if lock is not None and lock_held:
                 await _release_skill_write_lock(lock, user_id)
@@ -1642,6 +1650,8 @@ async def _write_skill(
     owners: set[str],
     copies: Mapping[str, ParsedSkill],
     config: Config,
+    *,
+    before_write: Callable[[], None] | None = None,
 ) -> frozenset[str]:
     """Write one prepared package; return the SHA-256 of every file written.
 
@@ -1707,6 +1717,8 @@ async def _write_skill(
     skill_md = skill.rendered.encode("utf-8")
     # One change for the whole package: a failure leaves the previous
     # package as it was, never new files beside an old SKILL.md.
+    if before_write is not None:
+        before_write()
     await manager.write_skill_package(
         root=SkillPackageFile(
             path=_skill_md_path(name, expert_id),

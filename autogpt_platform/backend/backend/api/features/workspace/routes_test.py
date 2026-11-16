@@ -577,8 +577,7 @@ def _files_page_over_skills():
 
 @pytest.mark.asyncio
 async def test_deleting_a_skill_file_reaches_the_owners_cached_skill_index():
-    """The expert's skill index is cached for minutes; a SKILL.md deleted
-    from the Files page must be gone from it on the expert's next turn."""
+    """Deleting an unassigned root removes it from the next index."""
     files = _files_page_over_skills()
     with (
         _cached_skills(files),
@@ -622,13 +621,16 @@ async def test_a_deleted_skill_file_leaves_the_index_when_cleanup_fails(error):
 
 @pytest.mark.asyncio
 async def test_renaming_a_skill_file_reaches_the_owners_cached_skill_index():
-    """Renaming SKILL.md on the Files page unpublishes the skill; the
-    expert's cached index must drop it on the next turn."""
+    """Renaming an unassigned root removes it from the next index."""
     files = _files_page_over_skills()
     with (
         _cached_skills(files),
         patch(
             f"{_ROUTES}.get_workspace", new=AsyncMock(return_value=_make_workspace())
+        ),
+        patch(
+            f"{_ROUTES}.get_workspace_file",
+            AsyncMock(return_value=_make_file(path=_EXPERT_SKILL)),
         ),
         patch(f"{_ROUTES}.rename_workspace_file", new=files.rename),
     ):
@@ -1586,7 +1588,10 @@ def _unique_violation() -> UniqueViolationError:
 @patch("backend.api.features.workspace.routes.get_chat_session_expert_ids")
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids):
+def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids, mocker):
+    mocker.patch(
+        f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=_make_file())
+    )
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.return_value = _make_file(
         id="f1", name="plan.md", path="/sessions/sess-a/plan.md"
@@ -1604,7 +1609,8 @@ def test_rename_file_success(mock_get_workspace, mock_rename, mock_expert_ids):
 
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_not_found(mock_get_workspace, mock_rename):
+def test_rename_file_not_found(mock_get_workspace, mock_rename, mocker):
+    mocker.patch(f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=None))
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.return_value = None
 
@@ -1615,7 +1621,10 @@ def test_rename_file_not_found(mock_get_workspace, mock_rename):
 
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_conflict(mock_get_workspace, mock_rename):
+def test_rename_file_conflict(mock_get_workspace, mock_rename, mocker):
+    mocker.patch(
+        f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=_make_file())
+    )
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.side_effect = _unique_violation()
 
@@ -1635,7 +1644,12 @@ def test_rename_file_rejects_bad_names(mock_get_workspace, mock_rename, name):
 
 @patch("backend.api.features.workspace.routes.rename_workspace_file")
 @patch("backend.api.features.workspace.routes.get_workspace")
-def test_rename_file_reports_skill_capacity_conflict(mock_get_workspace, mock_rename):
+def test_rename_file_reports_skill_capacity_conflict(
+    mock_get_workspace, mock_rename, mocker
+):
+    mocker.patch(
+        f"{_ROUTES}.get_workspace_file", new=AsyncMock(return_value=_make_file())
+    )
     mock_get_workspace.return_value = _make_workspace()
     mock_rename.side_effect = SkillLimitError("Skill limit reached (150 saved skills).")
     response = client.patch("/files/f1", json={"name": "SKILL.md"})

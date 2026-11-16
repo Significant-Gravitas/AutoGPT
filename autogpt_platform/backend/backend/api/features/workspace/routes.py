@@ -352,6 +352,9 @@ async def rename_workspace_file_route(
     workspace = await get_workspace(user_id)
     if workspace is None:
         raise fastapi.HTTPException(status_code=404, detail="Workspace not found")
+    file = await get_workspace_file(file_id, workspace.id)
+    if file is None:
+        raise fastapi.HTTPException(status_code=404, detail="File not found")
     try:
         renamed = await rename_workspace_file(file_id, workspace.id, payload.name)
     except UniqueViolationError:
@@ -360,10 +363,11 @@ async def rename_workspace_file_route(
         )
     except SkillLimitError as exc:
         raise fastapi.HTTPException(status_code=409, detail=str(exc))
+    finally:
+        # A rename stays in its folder, including after a lost acknowledgement.
+        await invalidate_skills_index_for_path(user_id, file.path)
     if renamed is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
-    # A rename stays in its folder, so the new path names the same owner.
-    await invalidate_skills_index_for_path(user_id, renamed.path)
     expert_by_session = await _expert_ids_by_session(user_id, [renamed])
     return _to_file_item(renamed, expert_by_session)
 

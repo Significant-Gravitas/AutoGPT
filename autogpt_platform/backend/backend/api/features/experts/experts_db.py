@@ -1685,10 +1685,9 @@ async def update_skills(
         for name in resolved:
             await add_expert_skill_name(user_id, expert_id, name)
     finally:
-        # A copy above clears the expert's skill index itself, but a
-        # marketplace name lands on the row alone, and only a rebuild heals
-        # it into the folder. Also after a failure part-way: the rows written
-        # so far stand, and the index is cached for minutes.
+        # Row-only assignments also change the index. A rebuild can copy an
+        # assigned name only when its personal-library package exists.
+        # Partially applied row updates must invalidate as well.
         await invalidate_skills_index_cache(user_id, expert_id)
     expert = await get_expert(user_id, expert_id)
     if expert is None:
