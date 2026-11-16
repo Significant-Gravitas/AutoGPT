@@ -332,3 +332,36 @@ test("a JSON draft that doesn't parse is shown again when the card remounts", ()
       .value,
   ).toBe(draft);
 });
+
+// JSON parsing rounds a whole number past 16 digits, so an ID typed bare is
+// saved as a different one. The editor says so and changes nothing itself.
+test("the JSON editor says to quote a whole number too long to keep", () => {
+  const hint = /put them in quotes to keep every digit/i;
+  const onReviewDataChange = vi.fn();
+  render(
+    <PendingReviewCard
+      review={makeReview({ payload: [1, 2] as unknown as ReviewPayload })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+  const field = screen.getByPlaceholderText(
+    "Edit JSON data",
+  ) as HTMLTextAreaElement;
+  expect(screen.queryByText(hint)).toBeNull();
+
+  fireEvent.change(field, { target: { value: "[1234567890123456789]" } });
+
+  const shown = screen.getByText(hint);
+  expect(field.getAttribute("aria-describedby")).toBe(shown.id);
+
+  fireEvent.change(field, { target: { value: '["1234567890123456789"]' } });
+  expect(screen.queryByText(hint)).toBeNull();
+  expect(field.value).toBe('["1234567890123456789"]');
+  expect(onReviewDataChange).toHaveBeenLastCalledWith(
+    "ne-1",
+    JSON.stringify(["1234567890123456789"], null, 2),
+  );
+
+  fireEvent.change(field, { target: { value: "[9007199254740991]" } });
+  expect(screen.queryByText(hint)).toBeNull();
+});

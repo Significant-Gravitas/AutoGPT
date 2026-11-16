@@ -21,6 +21,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.util.feature_flag import Flag
+
 from . import registry, scope_crons, scope_jobs, scope_reconcile
 from .registry_fakes_test import (
     ACCOUNT,
@@ -35,14 +37,22 @@ from .registry_fakes_test import (
     RegistryEnv,
     install_registry_env,
     job_ids,
+    learning_job_id,
 )
 
 TIMEOUT = 2
+NIGHTLY = f"dream_nightly_batch_{ACCOUNT.scope_key}"
+LEARNING = learning_job_id(ACCOUNT)
 
 
 @pytest.fixture
 def env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     return install_registry_env(monkeypatch)
+
+
+def _learning_on(env: RegistryEnv) -> None:
+    """Gives the account a second cron: nightly, then learning."""
+    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = True
 
 
 def _lose_every_cron(env: RegistryEnv) -> None:
@@ -88,8 +98,8 @@ async def test_a_registration_a_pause_refused_takes_no_later_resumes_crons(
     env, monkeypatch, cycles
 ):
     """After ``cycles`` of the interleaving the refused registrations report
-    ``scope_changed`` and take nothing down: the row is ACTIVE with both ids
-    recorded and the resume's crons in place, and a pass has nothing to
+    ``scope_changed`` and take nothing down: the row is ACTIVE with its id
+    recorded and the resume's cron in place, and a pass has nothing to
     change. (A takedown there once took the resume's crons, for the pass
     to restore.)"""
     await registry.ensure_scope_scheduled(EXPERT)
@@ -98,7 +108,7 @@ async def test_a_registration_a_pause_refused_takes_no_later_resumes_crons(
         assert {r["reason"] for r in outcomes.values()} == {"scope_changed"}
     row = env.db.rows[EXPERT.scope_key]
     assert row.state == ACTIVE
-    assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+    assert {row.nightly_job_id} == job_ids(EXPERT)
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
     report = await env.reconcile()
@@ -164,10 +174,11 @@ async def test_a_pass_registers_what_the_row_records_and_reads_no_flag(
     """An ACTIVE row's crons are the ones it records: the owner's flags, off
     by now, are not read, a cron the row no longer records stays missing,
     and a row recording none is left to the next ensure."""
-    await registry.ensure_scope_scheduled(EXPERT)
+    _learning_on(env)
+    await registry.ensure_scope_scheduled(ACCOUNT)
     await registry.ensure_scope_scheduled(OTHER_EXPERT)
-    env.db.update(EXPERT.scope_key, community_job_id=None)
-    env.db.update(OTHER_EXPERT.scope_key, community_job_id=None, nightly_job_id=None)
+    env.db.update(ACCOUNT.scope_key, learning_job_id=None)
+    env.db.update(OTHER_EXPERT.scope_key, nightly_job_id=None)
     _lose_every_cron(env)
     flags = AsyncMock(return_value=(False, True))
     monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flags)
@@ -175,8 +186,8 @@ async def test_a_pass_registers_what_the_row_records_and_reads_no_flag(
 
     report = await env.reconcile()
 
-    assert set(env.scheduler.jobs) == {f"dream_nightly_batch_{EXPERT.scope_key}"}
-    assert report.restored == [f"dream_nightly_batch_{EXPERT.scope_key}"]
+    assert set(env.scheduler.jobs) == {NIGHTLY}
+    assert report.restored == [NIGHTLY]
     flags.assert_not_awaited()
 
 
@@ -185,14 +196,14 @@ async def test_a_cron_the_row_does_not_record_is_left_where_it_is(env):
     """A cron an ACTIVE row does not record (its record was refused, or it
     predates the registry) is the registry's to decide: the pass neither
     removes it nor moves it to the row's timezone."""
-    await registry.ensure_scope_scheduled(EXPERT)
-    env.db.update(EXPERT.scope_key, community_job_id=None, timezone=TOKYO)
-    community = f"community_rebuild_{EXPERT.scope_key}"
-    env.scheduler.jobs[f"dream_nightly_batch_{EXPERT.scope_key}"] = TOKYO
+    _learning_on(env)
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    env.db.update(ACCOUNT.scope_key, learning_job_id=None, timezone=TOKYO)
+    env.scheduler.jobs[NIGHTLY] = TOKYO
 
     report = await env.reconcile()
 
-    assert env.scheduler.jobs[community] == PARIS
+    assert env.scheduler.jobs[LEARNING] == PARIS
     assert report.restored == report.removed == []
 
 
@@ -228,7 +239,7 @@ async def test_a_restore_landing_after_a_timezone_change_is_undone_by_the_next_p
     """The review's probe: a restore reads the row (Tokyo) and parks while
     the owner moves to Paris and ``reregister_user`` registers and records
     the crons there; released, it registers them in Tokyo again. The row
-    says Paris with both ids recorded, so the next pass, comparing
+    says Paris with its ids recorded, so the next pass, comparing
     timezones, puts them back in Paris."""
     env.timezone = TOKYO
     await registry.ensure_scope_scheduled(EXPERT)
@@ -260,7 +271,7 @@ async def test_a_restore_landing_after_a_timezone_change_is_undone_by_the_next_p
 
 
 def _zones(env: RegistryEnv, scope) -> set[str]:
-    """The timezones the scheduler runs ``scope``'s two crons in."""
+    """The timezones the scheduler runs ``scope``'s crons in."""
     return {env.scheduler.jobs[job_id] for job_id in job_ids(scope)}
 
 
@@ -420,7 +431,7 @@ async def test_a_pass_settles_each_scope_in_key_order(env, monkeypatch):
     await env.reconcile()
 
     assert done == [f"remove {scopes[0].scope_key}"] + [
-        f"add {scope.scope_key}" for scope in scopes[1:] for _ in range(2)
+        f"add {scope.scope_key}" for scope in scopes[1:] for _ in job_ids(scope)
     ]
 
 
@@ -515,6 +526,7 @@ async def test_a_pass_cut_off_in_a_scope_still_moves_the_next_one_on(env, monkey
     ceiling cuts its pass. The pass took the scope as its place before it
     began it, so the next one walks on after it and repairs the rest; the
     scope it was cut in comes round again at the end of the ring."""
+    _learning_on(env)
     scopes = [registry.MemoryScope.for_user(f"cut-{i}") for i in range(3)]
     for scope in scopes:
         await registry.ensure_scope_scheduled(scope)
@@ -539,7 +551,9 @@ async def test_a_pass_cut_off_in_a_scope_still_moves_the_next_one_on(env, monkey
 
     await asyncio.wait_for(env.reconcile(), TIMEOUT)
 
-    assert set(env.scheduler.jobs) == set().union(*(job_ids(s) for s in scopes))
+    assert set(env.scheduler.jobs) == set().union(
+        *(job_ids(s) | {learning_job_id(s)} for s in scopes)
+    )
     assert tried.index(scopes[1].scope_key) < len(tried) - 2, "the rest went first"
     assert tried[-2:] == [scopes[0].scope_key] * 2, "the cut scope last"
 
@@ -584,11 +598,11 @@ async def test_a_restore_the_row_stopped_recording_meanwhile_is_taken_back_next_
     and its write, which puts the cron back, tagged as the reconcile's. The
     next pass takes back the tagged cron the row no longer records (the
     pause's: every cron of the scope)."""
+    _learning_on(env)
     await registry.ensure_scope_scheduled(ACCOUNT)
     _lose_every_cron(env)
     add = env.crons.add
-    nightly = f"dream_nightly_batch_{ACCOUNT.scope_key}"
-    community = f"community_rebuild_{ACCOUNT.scope_key}"
+    nightly = NIGHTLY
 
     async def interleaved_add(job, scope, user_timezone):
         if job.job_id(scope) == nightly:
@@ -607,7 +621,7 @@ async def test_a_restore_the_row_stopped_recording_meanwhile_is_taken_back_next_
     report = await env.reconcile()
 
     if change == "delete":
-        assert set(env.scheduler.jobs) == {community}
+        assert set(env.scheduler.jobs) == {LEARNING}
         assert report.dropped == [nightly]
     else:
         assert env.scheduler.jobs == {}
@@ -619,18 +633,18 @@ async def test_a_restore_the_row_stopped_recording_meanwhile_is_taken_back_next_
 async def test_a_restore_cut_short_after_a_stale_add_leaves_nothing_next_pass(
     env, monkeypatch, ending: str
 ):
-    """The round-4 review's partial restore: the community cron is deleted
+    """The round-4 review's partial restore: the nightly cron is deleted
     between the restore's read and its add, which puts it back, then the
-    nightly add fails or the pass is cancelled. The tagged community cron
+    learning add fails or the pass is cancelled. The tagged nightly cron
     the row no longer records goes on the next pass."""
+    _learning_on(env)
     await registry.ensure_scope_scheduled(ACCOUNT)
     _lose_every_cron(env)
     add = env.crons.add
-    community = f"community_rebuild_{ACCOUNT.scope_key}"
 
     async def partial_add(job, scope, user_timezone):
-        if job.job_id(scope) == community:
-            await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community)
+        if job.job_id(scope) == NIGHTLY:
+            await env.db.forget_scope_job(USER, ACCOUNT.scope_key, NIGHTLY)
             await add(job, scope, user_timezone)
             return
         if ending == "cancel":
@@ -643,13 +657,13 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_nothing_next_pass(
             await env.reconcile()
     else:
         assert (await env.reconcile()).failed == [ACCOUNT.scope_key]
-    assert community in env.scheduler.jobs, "the stale add landed"
+    assert NIGHTLY in env.scheduler.jobs, "the stale add landed"
     monkeypatch.setattr(env.crons, "add", add)
 
     await env.reconcile()
 
-    assert set(env.scheduler.jobs) == {f"dream_nightly_batch_{ACCOUNT.scope_key}"}
-    assert env.db.rows[ACCOUNT.scope_key].community_job_id is None
+    assert set(env.scheduler.jobs) == {LEARNING}
+    assert env.db.rows[ACCOUNT.scope_key].nightly_job_id is None
 
 
 @pytest.mark.asyncio
@@ -660,16 +674,17 @@ async def test_a_stray_goes_before_a_restore_that_fails_in_its_scope(
     """The round-5 review's ordering: the scope's restore fails (or the pass
     is cancelled there) on every pass; its tagged stray goes first all the
     same, so a repair that keeps failing never keeps one running."""
+    _learning_on(env)
     await registry.ensure_scope_scheduled(ACCOUNT)
-    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS[:2]
-    env.scheduler.tagged.add(community.job_id(ACCOUNT))
-    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community.job_id(ACCOUNT))
-    env.scheduler.jobs[nightly.job_id(ACCOUNT)] = TOKYO
+    nightly, learning = scope_reconcile.DREAM_SYSTEM_JOBS[:2]
+    env.scheduler.tagged.add(nightly.job_id(ACCOUNT))
+    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, nightly.job_id(ACCOUNT))
+    env.scheduler.jobs[learning.job_id(ACCOUNT)] = TOKYO
 
     async def failing(job, scope, user_timezone):
         if ending == "cancel":
             raise asyncio.CancelledError
-        raise ConnectionError("the nightly's repair is unavailable")
+        raise ConnectionError("the learning cron's repair is unavailable")
 
     monkeypatch.setattr(env.crons, "add", failing)
 
@@ -678,11 +693,11 @@ async def test_a_stray_goes_before_a_restore_that_fails_in_its_scope(
             await env.reconcile()
     else:
         report = await env.reconcile()
-        assert report.dropped == [community.job_id(ACCOUNT)]
+        assert report.dropped == [nightly.job_id(ACCOUNT)]
         assert report.failed == [ACCOUNT.scope_key]
 
-    assert community.job_id(ACCOUNT) not in env.scheduler.jobs
-    assert env.scheduler.jobs[nightly.job_id(ACCOUNT)] == TOKYO
+    assert nightly.job_id(ACCOUNT) not in env.scheduler.jobs
+    assert env.scheduler.jobs[learning.job_id(ACCOUNT)] == TOKYO
 
 
 @pytest.mark.asyncio
@@ -690,11 +705,12 @@ async def test_a_take_back_that_fails_does_not_hold_up_the_restore(env, monkeypa
     """Each step stands on its own: the scope's stray cannot be taken back
     (its drop fails), and the row's cron running in the wrong timezone is
     repaired all the same; the scope is reported failed once."""
+    _learning_on(env)
     await registry.ensure_scope_scheduled(ACCOUNT)
-    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS[:2]
-    env.scheduler.tagged.add(community.job_id(ACCOUNT))
-    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community.job_id(ACCOUNT))
-    env.scheduler.jobs[nightly.job_id(ACCOUNT)] = TOKYO
+    nightly, learning = scope_reconcile.DREAM_SYSTEM_JOBS[:2]
+    env.scheduler.tagged.add(nightly.job_id(ACCOUNT))
+    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, nightly.job_id(ACCOUNT))
+    env.scheduler.jobs[learning.job_id(ACCOUNT)] = TOKYO
 
     async def failing(job, scope):
         raise ConnectionError("the take-back is unavailable")
@@ -704,8 +720,8 @@ async def test_a_take_back_that_fails_does_not_hold_up_the_restore(env, monkeypa
     report = await env.reconcile()
 
     assert report.failed == [ACCOUNT.scope_key]
-    assert report.restored == [nightly.job_id(ACCOUNT)]
-    assert env.scheduler.jobs[nightly.job_id(ACCOUNT)] == PARIS
+    assert report.restored == [learning.job_id(ACCOUNT)]
+    assert env.scheduler.jobs[learning.job_id(ACCOUNT)] == PARIS
 
 
 @pytest.mark.asyncio

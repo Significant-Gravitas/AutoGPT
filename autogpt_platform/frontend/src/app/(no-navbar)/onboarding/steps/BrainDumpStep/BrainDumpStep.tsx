@@ -83,7 +83,7 @@ export function BrainDumpStep() {
           <StepHeader
             screen={dump.screen}
             restHeadline={dump.headline}
-            insufficientMode={dump.insufficientMode}
+            isFollowUp={dump.isFollowUp}
             elapsedSeconds={dump.elapsedSeconds}
             question={dump.prompt.question.text}
             onTogglePause={dump.prompt.togglePause}
@@ -107,6 +107,7 @@ export function BrainDumpStep() {
                     onChange={dump.setTypedText}
                     isTooLong={dump.isTypedTooLong}
                     onSubmit={dump.handleSubmitTyped}
+                    placeholder={dump.typingPlaceholder}
                     question={dump.prompt.question.text}
                     announcement={dump.prompt.announcement}
                     onAnotherQuestion={showAnotherQuestion}
@@ -196,9 +197,12 @@ export function BrainDumpStep() {
             <RevealItem>
               <InsufficientState
                 mode={dump.insufficientMode}
+                heardText={dump.heardText}
+                replyKind={dump.replyKind}
+                role={dump.role}
                 canRecord={!dump.isMicBlocked}
-                onRecordAgain={dump.handleRestart}
-                onTypeInstead={dump.showTyping}
+                onTalk={dump.handleRestart}
+                onWrite={dump.showTyping}
                 onSkip={dump.handleSkip}
               />
             </RevealItem>

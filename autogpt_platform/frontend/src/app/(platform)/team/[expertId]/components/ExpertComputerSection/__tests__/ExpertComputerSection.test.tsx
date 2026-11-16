@@ -5,9 +5,11 @@ import {
   getPostV2StartExpertDesktopMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import type { ComputerInfo } from "@/app/api/__generated__/models/computerInfo";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { ExpertComputerSection } from "../ExpertComputerSection";
 
@@ -73,6 +75,41 @@ describe("ExpertComputerSection", () => {
       ).toBeDefined(),
     );
   });
+
+  it.each([
+    [
+      429,
+      "Too many sandboxes are running on your account: 10 at once is the most.",
+      "Too many sandboxes are running on your account: 10 at once is the most.",
+    ],
+    [
+      502,
+      "Failed to start the desktop.",
+      "The sandbox did not come up. Try again in a moment.",
+    ],
+  ])(
+    "a %i start failure toasts the right reason",
+    async (status, detail, shown) => {
+      server.use(
+        getGetV2GetExpertComputerMockHandler(computer),
+        http.post("/api/proxy/api/experts/:expertId/computer/desktop", () =>
+          HttpResponse.json({ detail }, { status }),
+        ),
+      );
+
+      render(
+        <>
+          <ExpertComputerSection expertId="expert-1" expertName="Maria" />
+          <Toaster />
+        </>,
+      );
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Turn on screen" }),
+      );
+
+      expect(await screen.findByText(shown)).toBeDefined();
+    },
+  );
 
   it("does not show one expert's desktop under another expert", async () => {
     server.use(

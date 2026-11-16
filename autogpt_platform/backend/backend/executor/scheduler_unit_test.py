@@ -119,6 +119,17 @@ def owner_gate(monkeypatch: pytest.MonkeyPatch) -> _OwnerGate:
 
 
 @pytest.fixture(autouse=True)
+def stored_chat(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """The follow-up's chat as the database has it, still open; a test
+    archives it. Patched for every test so none reaches the DatabaseManager."""
+    chat = MagicMock(archived_at=None)
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.get_chat_session_metadata", AsyncMock(return_value=chat)
+    )
+    return chat
+
+
+@pytest.fixture(autouse=True)
 def post_notice(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """The note a skipped run posts into its chat. Patched for every test so
     none reaches the DatabaseManager, whose client retries for minutes."""
@@ -376,6 +387,46 @@ async def test_execute_copilot_turn_skips_and_self_deletes_when_session_gone():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cached_archived_at",
+    [
+        datetime.now(tz=timezone.utc),
+        # The reset could not evict the cached chat, which still says open.
+        None,
+    ],
+)
+async def test_execute_copilot_turn_retires_a_follow_up_into_an_archived_chat(
+    stored_chat: MagicMock, cached_archived_at: datetime | None
+):
+    """Resetting an expert archives its chats; a follow-up aimed at one must
+    not run another turn on the old history, whatever the cache says."""
+    args = _args()
+    stored_chat.archived_at = datetime.now(tz=timezone.utc)
+    # The user's own chat, so nothing but the archive check could skip it.
+    cached = MagicMock(
+        archived_at=cached_archived_at, session_id="session-1", expert_id=None
+    )
+    mock_schedule_turn = AsyncMock()
+    mock_self_delete = AsyncMock()
+
+    with (
+        patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
+        patch(
+            "backend.executor.scheduler.get_chat_session",
+            new=AsyncMock(return_value=cached),
+        ),
+        patch(
+            f"{_SCHEDULER_PATH}._self_delete_copilot_turn_schedule",
+            new=mock_self_delete,
+        ),
+    ):
+        await _execute_copilot_turn(**args.model_dump(mode="json"))
+
+    mock_schedule_turn.assert_not_awaited()
+    mock_self_delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_execute_copilot_turn_creates_fresh_session_when_session_id_is_none():
     """Sentinel: when ``session_id`` is ``None`` the executor creates a brand-
     new chat at fire-time and routes the turn into it.  This is the path that
@@ -428,7 +479,7 @@ async def test_execute_copilot_turn_into_the_users_chat_is_marked_unattended():
     so its tools must not hand questions back to the user (SECRT-2804)."""
     args = _args()
     mock_schedule_turn = AsyncMock()
-    users_chat = MagicMock(session_id="session-1", expert_id=None)
+    users_chat = MagicMock(archived_at=None, session_id="session-1", expert_id=None)
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -448,7 +499,7 @@ _WORK_KEY = CredentialPin(id="exa-new", title="Work key")
 
 async def _fire_into_users_chat(args: CopilotTurnJobArgs, routine=None) -> dict:
     mock_schedule_turn = AsyncMock()
-    users_chat = MagicMock(session_id="session-1", expert_id=None)
+    users_chat = MagicMock(archived_at=None, session_id="session-1", expert_id=None)
     store = MagicMock(get_routine=AsyncMock(return_value=routine))
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -518,7 +569,9 @@ async def test_execute_copilot_turn_creates_fresh_expert_session_in_same_scope()
         team_id="team-sched",
     )
     mock_schedule_turn = AsyncMock()
-    new_session = MagicMock(session_id="new-expert-session", expert_id="expert-1")
+    new_session = MagicMock(
+        archived_at=None, session_id="new-expert-session", expert_id="expert-1"
+    )
     mock_create_session = AsyncMock(return_value=new_session)
 
     with (
@@ -617,7 +670,9 @@ async def test_execute_copilot_turn_skips_but_keeps_schedule_for_inactive_expert
 async def test_explicit_session_skips_but_keeps_schedule_for_inactive_expert(status):
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-1")
+    )
     mock_self_delete = AsyncMock()
     mock_reschedule = AsyncMock()
 
@@ -653,7 +708,9 @@ async def test_execute_copilot_turn_fails_closed_when_expert_lost_during_creatio
     kept, because this window can't tell reversible archive from deletion;
     the next firing's scope check deletes it iff the expert is truly gone."""
     args = _args(session_id=None, expert_id="expert-1")
-    new_session = MagicMock(session_id="new-session-uuid", expert_id=None)
+    new_session = MagicMock(
+        archived_at=None, session_id="new-session-uuid", expert_id=None
+    )
     mock_create_session = AsyncMock(return_value=new_session)
     mock_schedule_turn = AsyncMock()
     mock_self_delete = AsyncMock()
@@ -739,7 +796,9 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
     args = _args(session_id=None)
     payload = args.model_dump(mode="json", exclude={"expert_id"})
     mock_schedule_turn = AsyncMock()
-    new_session = MagicMock(session_id="new-legacy-session", expert_id=None)
+    new_session = MagicMock(
+        archived_at=None, session_id="new-legacy-session", expert_id=None
+    )
     mock_create_session = AsyncMock(return_value=new_session)
     mock_self_delete = AsyncMock()
 
@@ -773,7 +832,9 @@ async def test_execute_copilot_turn_preserves_legacy_fresh_autopilot_job():
 async def test_execute_copilot_turn_dispatches_when_session_exists():
     args = _args()
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -801,7 +862,9 @@ async def test_execute_copilot_turn_into_an_existing_session_is_not_a_user_turn(
     change the scheduling turn previewed."""
     args = _args()
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -838,7 +901,9 @@ async def test_execute_copilot_turn_into_a_fresh_session_stays_a_user_turn():
 async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-1")
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -857,7 +922,9 @@ async def test_execute_copilot_turn_dispatches_when_expert_scope_matches():
 async def test_explicit_expert_one_shot_retries_when_lookup_is_unavailable():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-1"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-1")
+    )
     mock_reschedule = AsyncMock()
 
     with (
@@ -907,7 +974,7 @@ async def test_expert_cron_does_not_duplicate_retry_when_lookup_is_unavailable()
 async def test_execute_copilot_turn_recovers_legacy_scope_from_owned_session():
     args = _args()
     payload = args.model_dump(mode="json", exclude={"expert_id"})
-    session = MagicMock(expert_id="expert-1")
+    session = MagicMock(archived_at=None, expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
     mock_get_session = AsyncMock(return_value=session)
     mock_self_delete = AsyncMock()
@@ -935,7 +1002,9 @@ async def test_execute_copilot_turn_recovers_legacy_scope_from_owned_session():
 async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
     args = _args(expert_id="expert-1")
     mock_schedule_turn = AsyncMock()
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id="expert-2"))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id="expert-2")
+    )
     mock_self_delete = AsyncMock()
 
     with (
@@ -954,10 +1023,14 @@ async def test_execute_copilot_turn_rejects_changed_explicit_session_scope():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("refusal", [ConcurrentTurnLimitError, SessionNotIdle])
-async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
+async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(
+    refusal, chat_blocked_events
+):
     args = _args()  # run_at set → one-shot
     mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
     mock_reschedule = AsyncMock()
 
     with (
@@ -968,6 +1041,15 @@ async def test_execute_copilot_turn_slot_refusal_reschedules_one_shot(refusal):
         await _execute_copilot_turn(**args.model_dump(mode="json"))
 
     mock_reschedule.assert_awaited_once()
+    # The turn cap is a limit; a chat already busy with a turn is not.
+    expected = (
+        [("concurrency", "refused", "schedule")]
+        if refusal is ConcurrentTurnLimitError
+        else []
+    )
+    assert [
+        (e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events
+    ] == expected
 
 
 @pytest.mark.asyncio
@@ -977,7 +1059,9 @@ async def test_execute_copilot_turn_slot_refusal_does_not_reschedule_cron(refusa
     re-fire on the next cron tick."""
     args = _args(run_at=None, cron="* * * * *")  # recurring
     mock_schedule_turn = AsyncMock(side_effect=refusal("busy"))
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
     mock_reschedule = AsyncMock()
 
     with (
@@ -995,7 +1079,9 @@ async def test_execute_copilot_turn_swallows_generic_exceptions():
     """Non-concurrency errors should be logged but not crash the scheduler."""
     args = _args()
     mock_schedule_turn = AsyncMock(side_effect=RuntimeError("transient queue error"))
-    mock_get_session = AsyncMock(return_value=MagicMock(expert_id=None))
+    mock_get_session = AsyncMock(
+        return_value=MagicMock(archived_at=None, expert_id=None)
+    )
 
     with (
         patch("backend.executor.scheduler.schedule_turn", new=mock_schedule_turn),
@@ -2049,6 +2135,26 @@ def test_orphan_sweep_registered_only_when_switched_on(monkeypatch, enabled):
     assert ids.count("report_orphaned_auth_identities") == int(enabled)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_stalled_erasure_check_runs_whether_the_erasure_job_is_on_or_not(
+    monkeypatch, enabled
+):
+    """The erase-account CLI claims requests too, so a stalled erasure is
+    checked for even while the hourly job is off."""
+    monkeypatch.setattr(
+        f"{_SCHEDULER_PATH}.config.account_erasure_sweep_enabled", enabled
+    )
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    match = [
+        c for c in calls if c.kwargs.get("id") == "report_stalled_account_erasures"
+    ]
+    assert len(match) == 1
+    assert (
+        match[0].kwargs["seconds"] == Config().account_erasure_stall_check_interval_secs
+    )
+
+
 def test_startup_embedding_backfill_defaults_on():
     assert Config.model_fields["scheduler_startup_embedding_backfill"].default is True
 
@@ -2639,6 +2745,7 @@ async def test_a_switched_on_routine_still_fires():
     db.get_routine = AsyncMock(return_value=on)
     db.record_routine_fired = AsyncMock()
     session = MagicMock(
+        archived_at=None,
         session_id="session-1",
         expert_id=None,
         metadata=MagicMock(llm_auth_provider=None, llm_credential_id=None),
@@ -2682,11 +2789,13 @@ async def _fire_hourly(session_id: str | None, provider: str) -> dict[str, Async
     mocks = {
         "schedule_turn": AsyncMock(),
         "create_chat_session": AsyncMock(
-            return_value=MagicMock(session_id="new-session", expert_id=None)
+            return_value=MagicMock(
+                archived_at=None, session_id="new-session", expert_id=None
+            )
         ),
         "_self_delete_copilot_turn_schedule": AsyncMock(),
     }
-    session = MagicMock(session_id="session-1", expert_id=None)
+    session = MagicMock(archived_at=None, session_id="session-1", expert_id=None)
     session.metadata.llm_auth_provider = provider
     with (
         patch(
@@ -2802,7 +2911,7 @@ async def test_a_refused_one_shot_routine_is_retried_or_switched_off(
         get_routine=AsyncMock(return_value=routine),
         mark_routine_unscheduled=AsyncMock(),
     )
-    session = MagicMock(session_id="session-1", expert_id=None)
+    session = MagicMock(archived_at=None, session_id="session-1", expert_id=None)
     session.metadata.llm_auth_provider = "platform"
     schedule_turn = AsyncMock()
     args = _args(routine_id="routine-1", **timing)
@@ -2832,7 +2941,7 @@ def _over_the_daily_limit(gate: _OwnerGate, resets_at: datetime) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("window", ["daily", "weekly"])
 async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
-    owner_gate, post_notice, window
+    owner_gate, post_notice, chat_blocked_events, window
 ):
     """Nick (2026-10-10): once usage comes back, the run should happen. A
     one-shot is moved to the reset, spread over a few minutes, and its chat is
@@ -2854,11 +2963,15 @@ async def test_a_one_shot_refused_by_a_used_up_limit_waits_for_the_reset(
     assert kwargs["usage_wait_count"] == 1
     notice = post_notice.call_args.args[0]
     assert notice.body.startswith("“check CI” will run when the limit resets")
+    # Held back to the reset, not refused.
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        (window, "queued")
+    ]
 
 
 @pytest.mark.asyncio
 async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
-    owner_gate, post_notice
+    owner_gate, post_notice, chat_blocked_events
 ):
     _over_the_daily_limit(
         owner_gate, datetime.now(tz=timezone.utc) + timedelta(hours=3)
@@ -2875,12 +2988,15 @@ async def test_a_one_shot_still_over_its_limit_after_waiting_is_dropped(
     scheduler_client.add_copilot_turn_schedule.assert_not_awaited()
     store.mark_routine_unscheduled.assert_awaited_once_with("routine-1", "sched-1")
     assert post_notice.call_args.args[0].body == "“check CI” didn't run."
+    assert [(e["limit"], e["outcome"]) for e in chat_blocked_events] == [
+        ("daily", "refused")
+    ]
 
 
 async def _fire(args: CopilotTurnJobArgs) -> dict[str, AsyncMock]:
     """Fire *args* into its existing chat, with the dispatch mocked."""
     mocks = {"schedule_turn": AsyncMock()}
-    session = MagicMock(session_id=args.session_id, expert_id=None)
+    session = MagicMock(archived_at=None, session_id=args.session_id, expert_id=None)
     session.metadata.llm_auth_provider = "platform"
     with (
         patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),
@@ -2925,6 +3041,27 @@ async def test_a_skipped_run_tells_its_chat_why(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    ("refuse", "expected"),
+    [
+        (_over_a_cap, [("daily", "refused", "schedule")]),
+        (_paywalled, []),
+        (_limits_unreadable, []),
+    ],
+    ids=["over-a-cap", "paywalled", "brown-out"],
+)
+async def test_only_a_run_skipped_on_a_usage_limit_is_sent_to_posthog(
+    owner_gate, post_notice, chat_blocked_events, refuse, expected
+):
+    refuse(owner_gate)
+    await _fire_hourly("session-1", "platform")
+
+    assert [
+        (e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events
+    ] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "refuse", [_limits_unreadable, _lookup_fails], ids=["brown-out", "lookup-fails"]
 )
 async def test_a_run_skipped_by_our_outage_tells_nobody(
@@ -2952,7 +3089,7 @@ async def test_a_banned_owners_run_is_skipped_and_its_chat_told_nothing(
     when the ban is lifted, a one-shot is dropped as a paywalled one is, and
     nothing is posted into its chats."""
     with (
-        patch(f"{_TURN_QUEUE_PATH}.is_user_banned", AsyncMock(return_value=True)),
+        patch(f"{_TURN_QUEUE_PATH}.is_user_refused", AsyncMock(return_value=True)),
         caplog.at_level(logging.INFO, logger=_SCHEDULER_PATH),
     ):
         mocks = await _fire(_args(**timing))
@@ -3042,7 +3179,7 @@ async def test_a_skipped_one_shot_logs_what_became_of_it(
 ):
     _lookup_fails(owner_gate)
     args = _args(plan_lookup_retry_count=0 if budget_left else _MAX_PLAN_LOOKUP_RETRIES)
-    session = MagicMock(session_id="session-1", expert_id=None)
+    session = MagicMock(archived_at=None, session_id="session-1", expert_id=None)
     session.metadata.llm_auth_provider = "platform"
     with (
         patch(f"{_SCHEDULER_PATH}.get_chat_session", AsyncMock(return_value=session)),

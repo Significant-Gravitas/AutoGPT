@@ -116,7 +116,9 @@ const INSUFFICIENT_DUMP_ERROR_CODES = [
   "insufficient_content",
 ] as const;
 
-export function isInsufficientDump(errorCode: unknown) {
+export function isInsufficientDump(
+  errorCode: unknown,
+): errorCode is (typeof INSUFFICIENT_DUMP_ERROR_CODES)[number] {
   return (
     typeof errorCode === "string" &&
     INSUFFICIENT_DUMP_ERROR_CODES.some((code) => code === errorCode)

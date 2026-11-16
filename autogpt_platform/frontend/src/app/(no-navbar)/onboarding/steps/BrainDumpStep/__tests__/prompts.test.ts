@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BRAIN_DUMP_PROMPT_SETS, promptSetNameForRole } from "../prompts";
+import {
+  BRAIN_DUMP_PROMPT_SETS,
+  offYourPlateExampleForRole,
+  promptSetNameForRole,
+} from "../prompts";
 
 // The ids RoleStep stores as `role`. A set keyed by anything else would never
 // be picked, and the user would silently get the Other set.
@@ -58,8 +62,41 @@ describe("brain dump prompt sets", () => {
     const copy = Object.values(BRAIN_DUMP_PROMPT_SETS).flatMap((set) => [
       ...set.questions.flatMap((question) => [question.label, question.text]),
       ...set.examples,
+      set.offYourPlateExample,
     ]);
 
     expect(copy.filter((line) => line.includes("—"))).toEqual([]);
   });
+
+  it.each(ROLE_IDS)(
+    "has an off-your-plate example for %s, used by the helper",
+    (role) => {
+      const example = offYourPlateExampleForRole(role);
+
+      expect(example.trim()).not.toBe("");
+      expect(example).not.toContain("—");
+      expect(example).toBe(
+        BRAIN_DUMP_PROMPT_SETS[role as keyof typeof BRAIN_DUMP_PROMPT_SETS]
+          .offYourPlateExample,
+      );
+    },
+  );
+
+  it("gives each role its own off-your-plate example", () => {
+    const examples = ROLE_IDS.map(offYourPlateExampleForRole);
+
+    expect(new Set(examples).size).toBe(ROLE_IDS.length);
+    expect(offYourPlateExampleForRole("Marketing")).toBe(
+      "The newsletter. It's always the thing that slips.",
+    );
+  });
+
+  it.each(["", "Dentist", "founder/ceo", "toString"])(
+    "falls back to Other's off-your-plate example for %j",
+    (role) => {
+      expect(offYourPlateExampleForRole(role)).toBe(
+        "The reminders and invoices for my students.",
+      );
+    },
+  );
 });

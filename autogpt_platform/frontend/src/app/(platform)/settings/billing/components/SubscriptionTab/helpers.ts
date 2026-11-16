@@ -9,12 +9,12 @@ interface CheckoutReturnArgs {
 }
 
 // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
-// report the subscription to Google Ads.
+// report the subscription to Google Ads, or open the same checkout again.
 export function getCheckoutReturnURLs({ tier, cycle }: CheckoutReturnArgs) {
   const page = `${window.location.origin}${window.location.pathname}`;
   return {
     successURL: `${page}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`,
-    cancelURL: `${page}?subscription=cancelled`,
+    cancelURL: `${page}?subscription=cancelled&plan=${tier}&cycle=${cycle}`,
   };
 }
 

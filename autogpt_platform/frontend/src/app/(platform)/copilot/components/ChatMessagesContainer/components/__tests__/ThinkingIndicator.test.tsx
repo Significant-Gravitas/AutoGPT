@@ -5,8 +5,8 @@ import { ThinkingIndicator } from "../ThinkingIndicator";
 vi.mock("../../../ToolChain/SwapText", () => ({
   SwapText: ({ text }: { text: string }) => <span>{text}</span>,
 }));
-vi.mock("../../../DrawnLineLoader/DrawnLineLoader", () => ({
-  DrawnLineLoader: () => null,
+vi.mock("../../../StoneStackLoader/StoneStackLoader", () => ({
+  StoneStackLoader: () => null,
 }));
 
 const NOW = new Date("2026-04-23T10:00:00.000Z").getTime();
