@@ -11,7 +11,10 @@ from ._test_data import make_session
 from .schedule_duplicates import find_duplicate_followup, find_duplicate_graph_schedule
 
 _USER = "test-user-duplicates"
-_NOON = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
+# Tomorrow's noon: a one-shot only counts while it is still to come.
+_NOON = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+    hour=12, minute=0, second=0, microsecond=0
+)
 _MESSAGE = "Check whether the repo is trending and post if it is."
 
 
@@ -138,6 +141,11 @@ async def test_a_one_shot_asked_for_again_minutes_later_is_a_duplicate():
             {"cron": None, "run_at": _NOON},
             {},
             id="a cadence where a one-shot is set",
+        ),
+        pytest.param(
+            {"cron": None, "run_at": datetime.now(timezone.utc) - timedelta(minutes=1)},
+            {"cron": None, "run_at": datetime.now(timezone.utc) + timedelta(minutes=1)},
+            id="a one-shot already due",
         ),
     ],
 )

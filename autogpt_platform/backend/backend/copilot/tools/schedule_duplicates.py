@@ -10,7 +10,7 @@ has fired is spent, so setting the same thing up again is a real request.
 
 import json
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend.copilot.credential_selection import CredentialPins
@@ -42,9 +42,10 @@ async def find_duplicate_followup(
 ) -> CopilotTurnJobInfo | None:
     """A follow-up that already sends this message to the same chat (or to a
     fresh one), on the same accounts, on the same cron in the same timezone,
-    or once within ``ONE_SHOT_DUPLICATE_WINDOW`` of the same time. Spacing in
-    the message or the cron doesn't make it a different one. A routine's jobs
-    are left out: the routine is the record to change, through its own tool."""
+    or once, still to come, within ``ONE_SHOT_DUPLICATE_WINDOW`` of the same
+    time. Spacing in the message or the cron doesn't make it a different one.
+    A routine's jobs are left out: the routine is the record to change,
+    through its own tool."""
     jobs = await scheduler.get_execution_schedules(user_id=user_id, kind="copilot_turn")
     for job in jobs:
         if (
@@ -68,6 +69,8 @@ async def find_duplicate_followup(
             job.cron is None
             and job.run_at is not None
             and run_at is not None
+            # The job list can be a snapshot from before the job fired.
+            and job.run_at > datetime.now(UTC)
             and abs(job.run_at - run_at) <= ONE_SHOT_DUPLICATE_WINDOW
         ):
             return job

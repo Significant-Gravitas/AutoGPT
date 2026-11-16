@@ -1,6 +1,6 @@
 """Tests for ScheduleFollowupTool."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -565,3 +565,36 @@ async def test_asking_again_for_a_followup_already_set_adds_no_second_one(
     assert "no second one was added" in result.message
     mock_client.add_copilot_turn_schedule.assert_not_awaited()
     tracked.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_one_shot_that_has_already_fired_is_set_up_again(tool, session):
+    """A job list read just before a one-shot fired can still hold it. Asked
+    for the same check again, a new one is made: the old one is spent."""
+    mock_user_db = MagicMock()
+    mock_user_db().get_user_by_id = AsyncMock(return_value=MagicMock(timezone="UTC"))
+    spent = _info(run_at=datetime.now(timezone.utc) - timedelta(minutes=1)).model_copy(
+        update={"id": "spent-check", "session_id": None, "message": "trending check"}
+    )
+    mock_client = AsyncMock()
+    mock_client.get_execution_schedules = AsyncMock(return_value=[spent])
+    mock_client.add_copilot_turn_schedule = AsyncMock(
+        return_value=_info(run_at=datetime.now(timezone.utc) + timedelta(minutes=1))
+    )
+
+    with (
+        patch(f"{_TOOL_PATH}.user_db", return_value=mock_user_db()),
+        patch(f"{_TOOL_PATH}.get_scheduler_client", return_value=mock_client),
+        patch(f"{_TOOL_PATH}.track_chat_outcome", new=MagicMock()),
+    ):
+        result = await tool._execute(
+            user_id=_USER,
+            session=session,
+            message="trending check",
+            delay_seconds=60,
+        )
+
+    assert isinstance(result, ScheduleCreatedResponse)
+    assert not result.already_scheduled
+    assert result.schedule_id == "cop-1"
+    mock_client.add_copilot_turn_schedule.assert_awaited_once()
