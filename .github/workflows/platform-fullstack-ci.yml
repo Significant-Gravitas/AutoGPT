@@ -87,7 +87,7 @@ jobs:
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
       - name: Set up Backend - Set up dependency cache
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pypoetry
           key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
@@ -496,7 +496,7 @@ jobs:
 
       - name: Set up tests - Cache Playwright browsers
         if: matrix.suite == 'smoke'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
