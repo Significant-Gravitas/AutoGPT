@@ -4,7 +4,7 @@ import unittest
 
 import security_public_sync as sync
 from security_public_api import PublicDataError, PublicErrorCode
-from security_release_notes import BASE_URL, END, START
+from security_release_notes import BASE_URL, END, START, fixed_in
 
 TAG = "autogpt-platform-beta-v0.9.0"
 
@@ -113,52 +113,26 @@ class ReleaseAttributionTest(unittest.TestCase):
         self.assertIn("(CVE-2026-12345)", result)
         self.assertEqual(result.count(START), 1)
 
-    def test_rows_fixed_in_different_versions_need_a_mapping_for_the_patched_row(self):
+    def test_each_release_is_credited_with_the_rows_it_patched(self):
+        # A release with no image: its Docker row is patched in the next release.
+        later = "autogpt-platform-beta-v0.9.1"
+        platform = {"ecosystem": "other", "name": "autogpt-platform-beta"}
+        docker = {"ecosystem": "other", "name": "significantgravitas/autogpt"}
         item = advisory()
-        platform = {"ecosystem": "other", "name": "autogpt-platform"}
-        classic = {"ecosystem": "other", "name": "autogpt-classic"}
         item["vulnerabilities"] = [
-            {"package": platform, "patched_versions": "0.8.0"},
-            {"package": classic, "patched_versions": "0.9.0"},
+            {"package": platform, "patched_versions": "0.9.0"},
+            {"package": docker, "patched_versions": "0.9.1"},
         ]
-        with self.assertRaises(PublicDataError) as raised:
-            release_tags(item)
-        self.assertIs(raised.exception.code, PublicErrorCode.RELEASE_MAPPING)
-
-        # The mapped row was fixed in a different release, so this one isn't credited.
-        reference = json.dumps({"tag": TAG, "package": platform})
-        item["description"] += f"\n<!-- security-release: {reference} -->"
-        self.assertEqual(release_tags(item), [])
-
-        item["vulnerabilities"][0]["patched_versions"] = "0.9.0"
-        item["vulnerabilities"][1]["patched_versions"] = "0.8.0"
         self.assertEqual(release_tags(item), [TAG])
+        item["description"] += f" The image: {BASE_URL}/releases/tag/{later}."
+        self.assertEqual(release_tags(item), [TAG, later])
+        for tag, package in ((TAG, platform), (later, docker)):
+            self.assertEqual([row["package"] for row in fixed_in(item, tag)], [package])
 
-        item["description"] = advisory()["description"]
-        reference = json.dumps({"tag": TAG + "0", "package": platform})
+        # A mapping comment left by the old sync no longer overrides the rows.
+        reference = json.dumps({"tag": TAG, "package": docker})
         item["description"] += f"\n<!-- security-release: {reference} -->"
-        with self.assertRaises(PublicDataError):
-            release_tags(item)
-
-    def test_package_references_are_validated(self):
-        item = advisory()
-        package = {"ecosystem": "other", "name": "significantgravitas/autogpt"}
-        item["vulnerabilities"] = [
-            {"package": package, "patched_versions": "0.9.0"},
-            {
-                "package": {"ecosystem": "other", "name": "autogpt-platform"},
-                "patched_versions": "0.8.0",
-            },
-        ]
-        for invalid in ("not-json", "null", "[]", '{"tag": "x"}'):
-            item["description"] = advisory()["description"]
-            item["description"] += f"\n<!-- security-release: {invalid} -->"
-            with self.subTest(invalid=invalid), self.assertRaises(PublicDataError):
-                release_tags(item)
-        reference = json.dumps({"tag": TAG, "package": package})
-        item["description"] = advisory()["description"]
-        item["description"] += f"\n<!-- security-release: {reference} -->"
-        self.assertEqual(release_tags(item), [TAG])
+        self.assertEqual([row["package"] for row in fixed_in(item, TAG)], [platform])
 
     def test_release_links_allow_prose_punctuation_but_reject_tag_extensions(self):
         item = advisory()

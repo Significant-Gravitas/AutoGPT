@@ -1,6 +1,5 @@
 """Match published security advisories to the releases that fixed them."""
 
-import json
 import re
 
 from security_public_api import public_pages
@@ -43,72 +42,23 @@ def version_number(value):
     return match[1] if match else None
 
 
-def release_packages(advisory, tag):
-    packages = []
-    for raw in re.findall(
-        r"<!-- security-release:\s*(.*?)\s*-->",
-        advisory.get("description") or "",
-        re.DOTALL,
-    ):
-        try:
-            reference = json.loads(raw)
-            package = reference["package"]
-            if not isinstance(reference["tag"], str) or not all(
-                isinstance(package[key], str) and package[key]
-                for key in ("ecosystem", "name")
-            ):
-                raise ValueError
-        except (ValueError, KeyError, TypeError) as error:
-            raise ValueError(
-                f"Invalid package-specific release reference in {advisory['ghsa_id']}"
-            ) from error
-        if reference["tag"] == tag:
-            packages.append(package)
-    return packages
-
-
 def fixed_in(advisory, tag):
+    """Version rows patched in this release, if the description links its exact tag,
+    which names the product line (Classic and Platform share version numbers)."""
     version = version_number(tag)
-    if not version:
-        raise ValueError(
-            "Use a stable release tag, such as autogpt-platform-beta-v0.9.0"
-        )
     release_url = f"{BASE_URL}/releases/tag/{tag}"
     # Accept closing delimiters and prose punctuation without matching tag extensions.
     has_reference = re.search(
         re.escape(release_url) + r"""(?=$|[\s)#?<>\]"'`]|[.,;:!]+(?=$|[\s)<>\]"'`]))""",
         advisory.get("description") or "",
     )
-    vulnerabilities = advisory.get("vulnerabilities") or []
-    matching = [
-        vulnerability
-        for vulnerability in vulnerabilities
-        if version_number(vulnerability.get("patched_versions")) == version
+    if not version or not has_reference:
+        return []
+    return [
+        row
+        for row in advisory.get("vulnerabilities") or []
+        if version_number(row.get("patched_versions")) == version
     ]
-    if not has_reference or not matching:
-        return False
-    # Rows that agree on the fixed version (e.g. the Platform source and its Docker image,
-    # both patched in 0.9.0) can't be misattributed; only disagreeing rows need a mapping.
-    patched = {version_number(v.get("patched_versions")) for v in vulnerabilities}
-    if len(patched - {None}) > 1:
-        packages = release_packages(advisory, tag)
-        if not packages:
-            raise ValueError(
-                f"{advisory['ghsa_id']} needs a package-specific release reference "
-                f"for {tag}; notes unchanged"
-            )
-        matching = [
-            v
-            for v in matching
-            if any(
-                all(
-                    (v.get("package") or {}).get(key) == p[key]
-                    for key in ("ecosystem", "name")
-                )
-                for p in packages
-            )
-        ]
-    return bool(matching)
 
 
 def fetch_advisories():
