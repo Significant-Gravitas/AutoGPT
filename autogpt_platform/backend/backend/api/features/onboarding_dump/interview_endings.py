@@ -162,7 +162,7 @@ async def keep_text_pick(user_id: str, pick: str | None) -> None:
     key = _TEXT_PICK_KEY.format(user_id=user_id)
     try:
         redis = await get_redis_async()
-        if fits_mode(pick, "text"):
+        if pick is not None and fits_mode(pick, "text"):
             await redis.set(key, pick, ex=_TEXT_PICK_TTL_S)
         else:
             await redis.delete(key)

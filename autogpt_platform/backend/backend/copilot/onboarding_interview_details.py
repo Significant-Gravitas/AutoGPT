@@ -187,7 +187,9 @@ def parse_details(text: str | None, person_words: str) -> InterviewDetails | Non
         if not label or not quote or not quote_in_words(quote, person_words):
             continue
         facts.append(Fact(label=label, quote=quote))
-    topics = [topic for topic in TOPICS if topic in (answer.get("topics") or [])]
+    topics: list[Topic] = [
+        topic for topic in TOPICS if topic in (answer.get("topics") or [])
+    ]
     try:
         return InterviewDetails(
             business=_clean(answer.get("business")),
