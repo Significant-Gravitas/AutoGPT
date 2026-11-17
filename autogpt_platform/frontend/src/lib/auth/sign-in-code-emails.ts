@@ -102,22 +102,38 @@ export async function releaseCodeEmail(
   );
 }
 
+// The users each request created, by its endpoint context: Better Auth hands
+// the same one to every database hook a request runs.
+const signUps = new WeakMap<object, Set<string>>();
+
+/** Notes a user this request created (Better Auth's `user.create.after`). */
+export function noteSignUp(ctx: object | null, userID: string) {
+  if (!ctx) return;
+  signUps.set(ctx, (signUps.get(ctx) ?? new Set<string>()).add(userID));
+}
+
 /**
- * Emails the account's owner when a sign-in provider joins an account it
- * didn't create. Called after the account row is written; a provider's first
- * row on a new account is its sign-up, which needs no notice.
+ * Whether a new account row joins an account, rather than being the one its
+ * user signed up with, which the same request writes. Counting the account's
+ * rows instead would miss an account that had none, such as one copied from
+ * Supabase with neither a password nor a provider.
+ */
+export function joinsAnAccount(
+  account: { userId: string },
+  ctx: object | null,
+) {
+  return !(ctx && signUps.get(ctx)?.has(account.userId));
+}
+
+/**
+ * Emails the account's owner that a sign-in provider joined their account
+ * (`joinsAnAccount`). Called after the account row is written.
  */
 export async function alertNewSignInMethod(
   context: AuthEmailContext,
   account: { userId: string; providerId: string },
 ) {
   if (!isSignInProvider(account.providerId)) return;
-  const accounts = await context.adapter.findMany({
-    model: "account",
-    where: [{ field: "userId", value: account.userId }],
-    limit: 2,
-  });
-  if (accounts.length < 2) return;
   const [user] = (await context.adapter.findMany({
     model: "user",
     where: [{ field: "id", value: account.userId }],

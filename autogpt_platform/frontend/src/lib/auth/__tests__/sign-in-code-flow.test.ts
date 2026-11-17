@@ -603,6 +603,26 @@ describe("joining an existing account", () => {
     ]);
   });
 
+  it("emails the owner of an account that had no sign-in method yet", async () => {
+    const { handler, db } = await createAuth();
+    // Copied from Supabase with neither a password nor a provider.
+    existingAccount(db, "pat@gmail.com");
+    db.UserAuthAccount.length = 0;
+    answerAs("google", { email: "pat@gmail.com" });
+
+    await new Browser(handler).signInWith("google");
+
+    await backgroundTasksDone();
+    expect(linkedAccounts(db, "google")).toHaveLength(1);
+    expect(emailsOfType("sign_in_method_added")).toEqual([
+      {
+        to: "pat@gmail.com",
+        type: "sign_in_method_added",
+        provider: "google",
+      },
+    ]);
+  });
+
   it("still refuses to join an account whose own address was never verified", async () => {
     const { handler, db } = await createAuth();
     // Someone else could have signed up with the address first.
@@ -629,6 +649,9 @@ describe("signing up", () => {
     expect(db.UserAuthIdentity).toEqual([
       expect.objectContaining({ email: "pat@company.example" }),
     ]);
+    // Its own provider is no news to a new account.
+    await backgroundTasksDone();
+    expect(emailsOfType("sign_in_method_added")).toEqual([]);
   });
 
   it("still creates no account for an address the provider didn't verify, whether or not one uses it", async () => {

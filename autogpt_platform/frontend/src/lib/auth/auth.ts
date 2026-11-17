@@ -53,7 +53,11 @@ import {
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
 import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
 import { requireSignInCode } from "./require-sign-in-code";
-import { alertNewSignInMethod } from "./sign-in-code-emails";
+import {
+  alertNewSignInMethod,
+  joinsAnAccount,
+  noteSignUp,
+} from "./sign-in-code-emails";
 import { signInCode } from "./sign-in-code-plugin";
 import { JWKS_ALG } from "./service-token";
 import {
@@ -264,6 +268,8 @@ export const auth = betterAuth({
           },
           ctx: HookContext,
         ) => {
+          // So the provider row a sign-up writes next sends no notice.
+          noteSignUp(ctx, user.id);
           if (ctx?.path !== ADMIN_CREATE_USER_PATH) {
             await recordAuthIP(authDbPool, {
               userId: user.id,
@@ -303,7 +309,11 @@ export const auth = betterAuth({
     // account's owner (sign-in-code-emails.ts), alongside the response.
     account: {
       create: {
-        after: async (account: { userId: string; providerId: string }) => {
+        after: async (
+          account: { userId: string; providerId: string },
+          ctx: HookContext,
+        ) => {
+          if (!joinsAnAccount(account, ctx)) return;
           runAfterResponse(
             getAuthContext().then((context) =>
               alertNewSignInMethod(context, account),
