@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot import db as chat_module
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
 from backend.copilot.sdk import session_waiter
@@ -20,11 +21,12 @@ async def test_message_session_refuses_full_queue_without_waking_target(
         buffer_length=0, max_buffer_length=10, turn_in_flight=False
     )
     monkeypatch.setattr(message_session, "take_session_message_slot", lambda: None)
+    monkeypatch.setattr("backend.data.db.is_connected", lambda: True)
     monkeypatch.setattr(
-        message_session, "get_chat_session_metadata", AsyncMock(return_value=target)
+        chat_module, "get_chat_session_metadata", AsyncMock(return_value=target)
     )
     monkeypatch.setattr(
-        message_session, "get_chat_session_status", AsyncMock(return_value="queued")
+        chat_module, "get_chat_session_status", AsyncMock(return_value="queued")
     )
     monkeypatch.setattr(
         message_session,
