@@ -2329,6 +2329,13 @@ async def test_a_launch_whose_apps_program_lookup_stalls_never_starts(
         released.wait(timeout=60)
         return "/usr/bin/zebra-notes"
 
+    check = handlers_module.check_arguments
+
+    def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
+        # Linux's check on every OS, so that the name is looked up too.
+        check(tool, arguments, approved, platform="linux", on_path=on_path)
+
+    monkeypatch.setattr(handlers_module, "check_arguments", checked_as_on_linux)
     monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
     handler = make_handler(platform="linux")
     try:
