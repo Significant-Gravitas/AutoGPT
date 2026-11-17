@@ -48,6 +48,7 @@ from backend.data.redis_client import get_redis_async
 
 from . import auth, choice_ui, commands, config
 from .api_client import TeamsApiError, TeamsClient
+from .graph import TeamsGraphClient
 from .text import mention_entities, mention_token, to_teams_markdown
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ class TeamsAdapter(WebhookAdapter):
     def __init__(self, api: BotBackend):
         self._api = api
         self._client = TeamsClient()
+        self._graph = TeamsGraphClient()
         self._validator = auth.ConnectorTokenValidator()
         self._on_message_callback: Optional[MessageCallback] = None
         # serviceUrl is per-tenant and can change, so it is deliberately NOT
@@ -331,6 +333,11 @@ class TeamsAdapter(WebhookAdapter):
     def client(self) -> TeamsClient:
         """The Connector client, for handlers that need their own reads."""
         return self._client
+
+    @property
+    def graph(self) -> TeamsGraphClient:
+        """The Graph client, for the team-role reads the Connector can't do."""
+        return self._graph
 
     def _on_activity_task_done(self, task: "asyncio.Task[None]") -> None:
         """Dispatch runs after the 200 ACK, so a failure has nowhere to surface.

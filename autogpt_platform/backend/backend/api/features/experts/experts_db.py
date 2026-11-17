@@ -986,12 +986,65 @@ async def check_private_expert(user_id: str, expert_id: str) -> CheckedExpert:
     organization and team it works in, how far its hire setup got, and the
     columns its identity prompt is built from. The latest run and the weekly
     spend that :func:`get_expert` adds for the roster are not read.
+
+    The owner's scope doesn't depend on the expert's row, so the two are read
+    side by side; when both fail, the missing expert is the error.
     """
-    row = await _active_private_expert_row(user_id, expert_id)
-    organization_id, team_id = await _private_expert_owner_scope(user_id, expert_id)
+    scope = asyncio.create_task(_private_expert_owner_scope(user_id, expert_id))
+    row: prisma.models.Expert | None = None
+    row_error: BaseException | None = None
+    cancellation: asyncio.CancelledError | None = None
+    row_read = asyncio.gather(
+        _active_private_expert_row(user_id, expert_id), return_exceptions=True
+    )
+    try:
+        row_outcome = (await row_read)[0]
+    except asyncio.CancelledError as error:
+        cancellation = error
+    else:
+        if isinstance(row_outcome, BaseException):
+            row_error = row_outcome
+        else:
+            row = row_outcome
+
+    scope_result, scope_error, cancellation = await _settle_private_expert_scope(
+        scope, cancellation
+    )
+    if cancellation is not None:
+        raise cancellation
+    if row_error is not None:
+        raise row_error
+    if scope_error is not None:
+        raise scope_error
+
+    assert row is not None
+    assert scope_result is not None
+    organization_id, team_id = scope_result
     return CheckedExpert(
         expert=_to_model(row), organization_id=organization_id, team_id=team_id
     )
+
+
+async def _settle_private_expert_scope(
+    scope: asyncio.Task[tuple[str, str | None]],
+    cancellation: asyncio.CancelledError | None,
+) -> tuple[
+    tuple[str, str | None] | None,
+    BaseException | None,
+    asyncio.CancelledError | None,
+]:
+    """Finish and observe the owned scope task before restoring cancellation."""
+    settled = asyncio.gather(scope, return_exceptions=True)
+    while not settled.done():
+        try:
+            await asyncio.shield(settled)
+        except asyncio.CancelledError as error:
+            cancellation = cancellation or error
+
+    outcome = settled.result()[0]
+    if isinstance(outcome, BaseException):
+        return None, outcome, cancellation
+    return outcome, None, cancellation
 
 
 async def _active_private_expert_row(

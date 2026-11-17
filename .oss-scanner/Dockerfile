@@ -297,9 +297,12 @@ TCPAddr 127.0.0.1
 DatabaseDirectory /var/lib/autogpt-services/clamav
 LogFile /var/log/autogpt-services/clamd.log
 PidFile /run/clamav/clamd.pid
-StreamMaxLength 50M
-MaxFileSize 100M
-MaxScanSize 100M
+StreamMaxLength 256M
+MaxFileSize 256M
+MaxScanSize 1024M
+PCREMaxFileSize 256M
+AlertExceedsMax yes
+MaxScanTime 300000
 MaxThreads 4
 ReadTimeout 300
 EOF
