@@ -116,11 +116,14 @@ async function verify(ctx: GenericEndpointContext, typed: string) {
 
 // Past the address's limit the sign-in ends, and no code goes to the address
 // for a while. It ends too when the wrong code can't be counted, so an outage
-// can't let guesses past the limit.
+// can't let guesses past the limit. Either way, if a new code replaced this
+// one meanwhile, the sign-in goes on with the new code.
 async function countWrongCode(ctx: GenericEndpointContext, pending: Pending) {
   const counted = await recordWrongCode(ctx.context, pending.record.email);
   if (counted === "counted") return;
-  await consumePending(ctx.context, pending);
+  if (!(await consumePending(ctx.context, pending))) {
+    throw await afterLostVersion(ctx);
+  }
   throw counted === "locked" ? lockedOutError(ctx) : uncheckedError(ctx);
 }
 

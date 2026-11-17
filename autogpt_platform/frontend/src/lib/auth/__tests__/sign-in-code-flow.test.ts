@@ -961,6 +961,54 @@ describe("the code", () => {
     expect((await browser.enterCode(emailedCode())).status).toBe(200);
   });
 
+  it("keeps a new code working when a check of the one it replaced can't be counted", async () => {
+    const { browser, db } = await waitingOnCode();
+    const first = emailedCode();
+    ageCode(db, 61_000);
+    let reached = () => {};
+    const atCount = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let resume = () => {};
+    const resent = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    // A wrong check of the first code waits at its count while a new code
+    // replaces the first, then the count fails.
+    dbGate.current = async (method, [query]) => {
+      const { model, data } = query as {
+        model?: string;
+        data?: { identifier?: unknown };
+      };
+      if (
+        method !== "create" ||
+        model !== "verification" ||
+        !String(data?.identifier).startsWith("sign-in-code-wrong:")
+      ) {
+        return;
+      }
+      reached();
+      await resent;
+      throw new Error("database unavailable");
+    };
+
+    // Both from the same browser, so an answer that ended the sign-in would
+    // drop its cookie.
+    const checking = browser.enterCode(wrong(first));
+    await atCount;
+    const resend = await browser.resendCode();
+    resume();
+    const answer = await checking;
+    dbGate.current = null;
+
+    expect(resend.status).toBe(200);
+    expect(await answer.json()).toMatchObject({
+      code: "sign_in_code_invalid",
+    });
+    expect(browser.has("sign_in_code")).toBe(true);
+    expect((await browser.enterCode(emailedCode())).status).toBe(200);
+  });
+
   it("doesn't renew a sign-in that ran out while its new code was made", async () => {
     const { browser, db } = await waitingOnCode();
     ageCode(db, 61_000);
