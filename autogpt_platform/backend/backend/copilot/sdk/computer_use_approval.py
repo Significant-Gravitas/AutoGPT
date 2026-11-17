@@ -1,16 +1,16 @@
 """Computer-use calls that reach the user's disk wait for their approval.
 
 The shim names each tool's approval arguments in its tool list
-(``approval_arguments``): ``screenshot_out_file``, clipboard ``file_path`` and
-``image_path``, ``browser_set_input_files.files``, ``run_script.script``,
-whose calls inside the driver can save a screenshot to a file, and what
-``launch_app`` runs out of sight (a command line, a program's path, extra
-arguments, links or files to open, an inspector port). A call that uses one
-is its own gate subject, an outward act, so it asks in Ask First and in
-Auto, on a card that shows the path, the script or what runs. The handler sends the
-argument to the shim as approved only when the gate decided on that subject
-or the user approved the exact call (``mcp_seam.approved_for``), and the shim
-refuses it otherwise.
+(``approval_arguments``): ``screenshot_out_file``, ``click.debug_image_out``,
+clipboard ``file_path`` and ``image_path``, ``browser_set_input_files.files``,
+``run_script.script``, whose calls inside the driver can save a screenshot to
+a file, and what ``launch_app`` runs out of sight (a command line, a
+program's path, extra arguments, links or files to open, an inspector port).
+A call that uses one is its own gate subject, an outward act, so it asks in
+Ask First and in Auto, on a card that shows the path, the script or what
+runs. The handler sends the argument to the shim as approved only when the
+gate decided on that subject or the user approved the exact call
+(``mcp_seam.approved_for``), and the shim refuses it otherwise.
 """
 
 from typing import Any
@@ -27,6 +27,8 @@ _KEY_PREFIX = "local_pc_computer"
 _ASKS: dict[tuple[str, str], str] = {
     ("get_window_state", "screenshot_out_file"): "Save a screenshot on your computer",
     ("get_desktop_state", "screenshot_out_file"): "Save a screenshot on your computer",
+    # On a Mac: a picture of the window, saved before the click.
+    ("click", "debug_image_out"): "Save a screenshot on your computer",
     ("clipboard_write", "file_path"): "Copy a file on your computer to its clipboard",
     ("clipboard_write", "image_path"): (
         "Copy an image on your computer to its clipboard"
@@ -49,7 +51,7 @@ _LAUNCHED_APP = ("name", "bundle_id", "aumid")
 # Arguments the card's headline shows on one line: a script's line breaks.
 _ONE_LINE = frozenset({"script"})
 # Arguments that write a file, which can replace one already there.
-_WRITES = frozenset({"screenshot_out_file"})
+_WRITES = frozenset({"screenshot_out_file", "debug_image_out"})
 _MAX_PATHS_CHARS = 300
 
 # The tool list could not be read, so nobody can tell whether the call
