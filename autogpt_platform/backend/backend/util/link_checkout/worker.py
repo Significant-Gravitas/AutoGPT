@@ -149,7 +149,9 @@ async def inject_pay_token(
     cdp: CDP, control: Control, token: SecretStr, receipt: WorkerReceipt
 ) -> None:
     """Put the Link Pay Token in the pinned token field as Stripe's guide
-    does: the native value setter and an input event, not keystrokes."""
+    does: the native value setter and an input event, not keystrokes. A page
+    that answers `false` refused the field before anything was set, so the
+    token never reached it."""
     await cdp.check_control(control, "link_pay_token")
     receipt.status = "outcome_unknown"
     result = await cdp.call(
@@ -162,7 +164,10 @@ async def inject_pay_token(
         },
         control.session,
     )
-    if result.result is None or result.result.value is not True:
+    answer = None if result.result is None else result.result.value
+    if answer is not True:
+        if answer is False:
+            receipt.status = "not_submitted"
         raise RuntimeError("Private fill failed")
 
 

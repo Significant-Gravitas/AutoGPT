@@ -264,8 +264,9 @@ async def _attempt(
                 update={
                     "receipt": receipt,
                     "attempted": True,
-                    "message": "The checkout stopped before the card reached the "
-                    "page, so its Link request was canceled. Nothing was charged.",
+                    "message": "The checkout stopped before the card or Pay "
+                    "Token reached the page, so its Link request was canceled. "
+                    "Nothing was charged.",
                 }
             )
     return view(intent, spend).model_copy(

@@ -81,6 +81,8 @@ class ScriptedBrowser:
         self.steering = False
         self.steering_ticked = False
         self.pay_token = ""
+        # The page refuses the token field before setting anything.
+        self.token_refused = False
         self._replies: asyncio.Queue[str] = asyncio.Queue()
 
     async def send(self, raw: str) -> None:
@@ -138,6 +140,8 @@ class ScriptedBrowser:
         if "data-stripe-merchant-account" in code:
             return {"value": "acct_test123" if self.steering_ticked else None}
         if "set.call(el, token)" in code:
+            if self.token_refused:
+                return {"value": False}
             self.pay_token = params["arguments"][0]["value"]
             return {"value": True}
         if "this.name !== 'link_pay_token'" in code:
@@ -525,6 +529,26 @@ async def test_a_stripe_checkout_gets_the_pay_token_and_never_a_card(
     assert browser.filled == {}
     assert browser.clicks == 1
     assert browser.closed
+
+
+@pytest.mark.asyncio
+async def test_a_token_field_the_page_refuses_leaves_the_purchase_unused(
+    browser, intent, monkeypatch
+):
+    """Nothing was set, so the token never reached the page: the purchase
+    reads not_submitted, and its Link request can be canceled like any other
+    that never reached the page."""
+    browser.steering = True
+    browser.token_refused = True
+    intent.plan = pay_token_plan(intent.plan)
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "not_submitted"
+    assert browser.pay_token == ""
+    assert browser.clicks == 0
 
 
 @pytest.mark.asyncio
