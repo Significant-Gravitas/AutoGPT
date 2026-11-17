@@ -126,7 +126,7 @@ async def execute_block_test(block: Block):
 
     # The test's step has a fresh id that was never reviewed, and block tests
     # run without the database the review gate reads a stored answer from.
-    # Only this instance skips the gate, as dev's gate did with safe mode off.
+    # Only this instance skips the gate, so the block runs unreviewed.
     async def no_review(input_data: BlockInput, **_kwargs) -> tuple[bool, BlockInput]:
         return False, input_data
 

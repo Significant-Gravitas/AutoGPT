@@ -53,29 +53,27 @@ class HITLReviewHelper:
         return await get_database_manager_async_client().check_approval(**kwargs)
 
     @staticmethod
-    async def get_existing_decision(
+    async def get_stored_review(
         node_exec_id: str, user_id: str
-    ) -> Optional[ReviewDecision]:
-        """The answer a person already gave on this step, or None while it has
-        none (no review, or one still waiting).
+    ) -> Optional[ReviewResult]:
+        """The review stored on this step, answered or still waiting, or None
+        if it was never asked.
 
-        A read error propagates: an answer that can't be read is never taken
-        for no answer, which would run a step its reviewer may have rejected.
+        A read error propagates: a review that can't be read is never taken
+        for none, which would run a step its reviewer may have rejected.
         """
         reviews = await review_db().get_reviews_by_node_exec_ids(
             [node_exec_id], user_id
         )
         review = reviews.get(node_exec_id)
-        if review is None or review.status == ReviewStatus.WAITING:
+        if review is None:
             return None
-        return ReviewDecision.from_result(
-            ReviewResult(
-                data=review.payload,
-                status=review.status,
-                message=review.review_message or "",
-                processed=review.processed,
-                node_exec_id=node_exec_id,
-            )
+        return ReviewResult(
+            data=review.payload,
+            status=review.status,
+            message=review.review_message or "",
+            processed=review.processed,
+            node_exec_id=node_exec_id,
         )
 
     @staticmethod
@@ -151,8 +149,8 @@ class HITLReviewHelper:
         """
         from backend.data.execution import ExecutionStatus
 
-        # Reached only for a step with no answer of its own and its safe mode
-        # on (handle_review_decision). An "approve future" stands in for the
+        # Reached only for a step with no review of its own and its safe mode
+        # on (handle_review_decision). An "approve future" stands in for an
         # answer here, so it can never outrank one the step was given.
         if approval_result := await HITLReviewHelper.check_approval(
             node_exec_id=node_exec_id,
@@ -328,9 +326,10 @@ class HITLReviewHelper:
         """
         Decide a step that may need a person's review, in this order:
 
-        1. The answer a person already gave on this step. It binds whatever
-           the safe mode or the run's queue message says now: a resume, or a
-           late or duplicate delivery of the run, may carry another one.
+        1. The review already stored on this step. An answer decides it, and
+           a review still waiting holds it for that answer, whatever the safe
+           mode or the run's queue message says now: a resume, or a late or
+           duplicate delivery of the run, may carry another one.
         2. With ``ask`` off (the step's safe mode), an approval of
            ``input_data`` as it is.
         3. An "approve future" for this node, or else a review to wait for.
@@ -352,14 +351,29 @@ class HITLReviewHelper:
             ReviewDecision if review is complete (approved/rejected),
             None if execution should pause (awaiting review)
         """
-        if decision := await HITLReviewHelper.get_existing_decision(
+        stored = await HITLReviewHelper.get_stored_review(
             node_exec_id=node_exec_id, user_id=user_id
-        ):
-            if not decision.review_result.processed:
+        )
+        if stored is not None and stored.status == ReviewStatus.WAITING:
+            logger.info(
+                f"Block {block_name} holds node {node_exec_id}: its review is "
+                "still waiting for an answer"
+            )
+            if is_graph_execution:
+                from backend.data.execution import ExecutionStatus
+
+                await HITLReviewHelper.update_node_execution_status(
+                    exec_id=node_exec_id, status=ExecutionStatus.REVIEW
+                )
+            return None
+        if stored is not None:
+            if not stored.processed:
                 await HITLReviewHelper.update_review_processed_status(
                     node_exec_id=node_exec_id, processed=True
                 )
-            return decision
+            if stored.data is None:
+                stored = stored.model_copy(update={"data": input_data})
+            return ReviewDecision.from_result(stored)
 
         if not ask:
             logger.debug(

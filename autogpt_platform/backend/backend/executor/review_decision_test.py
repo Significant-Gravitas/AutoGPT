@@ -17,19 +17,31 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ReviewStatus
-from prisma.models import PendingHumanReview
+from prisma.models import AgentGraphExecution, PendingHumanReview
 from pydantic import BaseModel, SecretStr
 
 from backend.api.features.graph_executions.review.model import ReviewItem
 from backend.api.features.graph_executions.review.service import process_reviews
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.email_block import SendEmailBlock
+from backend.blocks.helpers.review import SAFE_MODE_OFF_MESSAGE
 from backend.blocks.human_in_the_loop import HumanInTheLoopBlock
 from backend.blocks.io import AgentInputBlock
 from backend.blocks.iteration import StepThroughItemsBlock
+from backend.copilot.tools._test_data import make_session
+from backend.copilot.tools.models import (
+    BlockOutputResponse,
+    ErrorResponse,
+    ReviewRequiredResponse,
+)
+from backend.copilot.tools.resume_capability import ResumeCapabilityTool
+from backend.copilot.tools.run_block import RunBlockTool
 from backend.data import graph
 from backend.data.execution import ExecutionStatus
-from backend.data.human_review import get_pending_reviews_for_execution
+from backend.data.human_review import (
+    get_pending_reviews_for_execution,
+    process_all_reviews_for_execution,
+)
 from backend.data.model import User, UserPasswordCredentials
 from backend.executor.admin_requeue_test import (
     _assert_ran_once,
@@ -57,6 +69,13 @@ REJECTION = "Not this one"
 # What the email step answers when it runs: it refuses the port before it
 # connects anywhere, so a step that runs is seen without a message leaving.
 EMAIL_STEP_RAN = "SMTP port 1 is not allowed"
+EMAIL = {
+    "to_email": "someone@example.com",
+    "subject": "Checkout is down",
+    "body": "The checkout is down.",
+    "config": {"smtp_server": "smtp.example.com", "smtp_port": 1},
+}
+SENT_EMAIL = {**EMAIL, "config": {"smtp_server": "smtp.example.com", "smtp_port": 25}}
 
 
 @pytest.fixture(autouse=True)
@@ -184,6 +203,42 @@ async def test_a_late_original_with_a_stale_safe_mode_does_not_run_a_rejected_st
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("safe_mode", SAFE_MODES)
+async def test_a_stale_delivery_never_runs_a_step_whose_review_still_waits(
+    server: SpinTestServer, safe_mode: str
+):
+    """The run was queued while the safe mode was off. The user turned it on,
+    an admin requeue ran the run up to a review, and the review still waits.
+    An executor pod from before #15328 resumes such a run from any delivery
+    (#15328's rollout window), and the late original then runs it with the
+    safe mode it was queued with, off. The step must keep waiting for its
+    answer, the review must stay unanswered and the run parked."""
+    user = await create_test_user()
+    async with _an_smtp_login(user) as login:
+        gated = await _graph_gated_by(server, user, safe_mode, login)
+        await _set_safe_mode(user, gated.workflow, safe_mode, on=False)
+        original: list[dict[str, Any]] = []
+        run = await _start_with_delivery_held(
+            server, user, gated.workflow, gated.inputs, original
+        )
+        await _set_safe_mode(user, gated.workflow, safe_mode, on=True)
+        assert (await _requeue(run.id)).requeued_count == 1
+        await _wait_for(
+            lambda: _row_in(run.id, ExecutionStatus.REVIEW), "the run to reach review"
+        )
+
+        # What such a pod does with a delivery that finds the run in REVIEW.
+        await AgentGraphExecution.prisma().update(
+            where={"id": run.id}, data={"executionStatus": ExecutionStatus.QUEUED}
+        )
+        await _deliver(original)
+        await _wait_for(lambda: _settled(run.id), "the late original to run the run")
+        await _let_the_executor_catch_up(server, user, run.id)
+
+        await _assert_waiting_for_review(user, run.id, gated.step)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_an_approved_step_runs_once_with_the_reviewers_data(
     server: SpinTestServer,
 ):
@@ -243,12 +298,70 @@ async def test_a_step_with_no_answer_asks_only_when_the_safe_mode_is_on(
         if safe_mode == HITL:
             await _assert_ran_once(user, run.id, gated.workflow)
             (asked,) = await _execs_of(user, run.id, gated.reviewed)
-            assert asked.output_data.get("review_message") == [
-                "Auto-approved (safe mode disabled)"
-            ]
+            assert asked.output_data.get("review_message") == [SAFE_MODE_OFF_MESSAGE]
         else:
             (email,) = await _execs_of(user, run.id, gated.step)
             assert EMAIL_STEP_RAN in str(email.output_data.get("error"))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approved_email_step_in_a_workflow_runs_with_its_login(
+    server: SpinTestServer,
+):
+    """The safe mode is turned off before the approval, so the stored answer
+    decides; the step runs with the login the run resolved."""
+    user = await create_test_user()
+    async with _an_smtp_login(user) as login:
+        error = await _approve_and_resume_in_workflow(server, user, login)
+    assert EMAIL_STEP_RAN in error, error
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "gate_decided", [False, True], ids=["no_gate_verdict", "unified_approvals_off"]
+)
+async def test_an_approved_email_from_a_chat_is_sent_once_with_the_users_login(
+    server: SpinTestServer, gate_decided: bool
+):
+    """Otto asks to send an email; the chat's approval gate gives no verdict
+    (auto mode off, its default), or unified approvals are off, so the user
+    gets a card. The user approves it and Otto resumes it with no input
+    overrides. The stored payload has no login, since a chat adds the login
+    when the call runs: the email goes out once, logged in with the user's
+    SMTP login, and the approval is spent, so resuming again sends nothing."""
+    user = await create_test_user()
+    scope = f"smtp://{SENT_EMAIL['config']['smtp_server']}:25"
+    async with _an_smtp_login(user, scope=scope) as login:
+        session = make_session(user_id=user.id)
+        with patch(
+            "backend.copilot.tools.run_block.unified_approvals",
+            AsyncMock(return_value=False),
+        ):
+            asked = await RunBlockTool()._execute(
+                user_id=user.id,
+                session=session,
+                block_id=SendEmailBlock().id,
+                input_data=dict(SENT_EMAIL),
+                gate_decided=gate_decided,
+            )
+        assert isinstance(asked, ReviewRequiredResponse), asked
+        await process_all_reviews_for_execution(
+            user.id, {asked.review_id: (ReviewStatus.APPROVED, None, None)}
+        )
+
+        with _a_mail_server() as mail:
+            resume = ResumeCapabilityTool()
+            sent = await resume._execute(user.id, session, review_id=asked.review_id)
+            again = await resume._execute(user.id, session, review_id=asked.review_id)
+
+    assert isinstance(sent, BlockOutputResponse), sent
+    password = login.password.get_secret_value()
+    assert mail.logins == [(login.username.get_secret_value(), password)]
+    assert mail.sent == [SENT_EMAIL["to_email"]]
+    assert isinstance(again, ErrorResponse) and "already executed" in again.message
+    assert not await PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": asked.review_id}
+    )
 
 
 class _Gated(BaseModel):
@@ -284,9 +397,9 @@ async def _graph_gated_by(
         graph.Node(
             block_id=SendEmailBlock().id,
             input_default={
-                "to_email": "someone@example.com",
-                "body": "The checkout is down.",
-                "config": {"smtp_server": "smtp.example.com", "smtp_port": 1},
+                "to_email": EMAIL["to_email"],
+                "body": EMAIL["body"],
+                "config": EMAIL["config"],
                 "credentials": {
                     "id": login.id,
                     "provider": login.provider,
@@ -314,7 +427,7 @@ async def _graph_gated_by(
     email = _node_of(test_graph, SendEmailBlock)
     return _Gated(
         workflow=test_graph,
-        inputs={"subject": "Checkout is down"},
+        inputs={"subject": EMAIL["subject"]},
         reviewed=email,
         step=email,
     )
@@ -358,15 +471,19 @@ def _graph_reviewing_each_item() -> graph.Graph:
 
 
 @asynccontextmanager
-async def _an_smtp_login(user: User) -> AsyncIterator[UserPasswordCredentials]:
-    """An SMTP login the user holds for the test only. Nothing is ever sent
-    with it: the email step refuses its port before connecting anywhere."""
+async def _an_smtp_login(
+    user: User, scope: str | None = None
+) -> AsyncIterator[UserPasswordCredentials]:
+    """An SMTP login the user holds for the test only. It never reaches a
+    real server: the email step refuses port 1 before connecting anywhere,
+    and a chat's send goes to _a_mail_server."""
     login = UserPasswordCredentials(
         id=str(uuid.uuid4()),
         provider="smtp",
         username=SecretStr("sender@example.com"),
         password=SecretStr("not-a-real-password"),
         title="SMTP",
+        scope=scope,
     )
     store = IntegrationCredentialsStore()
     await store.add_creds(user.id, login)
@@ -374,6 +491,67 @@ async def _an_smtp_login(user: User) -> AsyncIterator[UserPasswordCredentials]:
         yield login
     finally:
         await store.delete_creds_by_id(user.id, login.id)
+
+
+class _MailServer(BaseModel):
+    """What reached the mail server: logins, and each message's recipient."""
+
+    logins: list[tuple[str, str]] = []
+    sent: list[str] = []
+
+
+@contextmanager
+def _a_mail_server() -> Iterator[_MailServer]:
+    """The mail server at the network edge, in this process: the email step,
+    its login and the review gate all run for real, and only the SMTP
+    connection and the server name's lookup are stood in for."""
+    mail = _MailServer()
+
+    class _Connection:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return False
+
+        def starttls(self, **_kwargs):
+            pass
+
+        def login(self, username: str, password: str):
+            mail.logins.append((username, password))
+
+        def sendmail(self, _sender: str, to: str, _message: str):
+            mail.sent.append(to)
+
+    with (
+        patch(
+            "backend.blocks.email_block.resolve_and_check_blocked",
+            AsyncMock(return_value=["203.0.113.10"]),
+        ),
+        patch("backend.blocks.email_block.PinnedSMTP", _Connection),
+    ):
+        yield mail
+
+
+async def _approve_and_resume_in_workflow(
+    server: SpinTestServer, user: User, login: UserPasswordCredentials
+) -> str:
+    """Run the email workflow to its review, turn the safe mode off, approve;
+    returns the email step's error."""
+    gated = await _graph_gated_by(server, user, SENSITIVE, login)
+    await _set_safe_mode(user, gated.workflow, SENSITIVE, on=True)
+    run = await _start(server, user, gated)
+    await _wait_for(
+        lambda: _row_in(run.id, ExecutionStatus.REVIEW), "the run to reach review"
+    )
+    await _set_safe_mode(user, gated.workflow, SENSITIVE, on=False)
+    await _answer(user, run.id, approved=True)
+    await _wait_for(lambda: _ended(run.id), "the run to end")
+    (email,) = await _execs_of(user, run.id, gated.step)
+    return str(email.output_data.get("error"))
 
 
 async def _start(server: SpinTestServer, user: User, gated: _Gated):
@@ -425,6 +603,13 @@ async def _ended(graph_exec_id: str) -> bool:
         if await _row_in(graph_exec_id, status):
             return True
     return False
+
+
+async def _settled(graph_exec_id: str) -> bool:
+    """The run ended or stopped for review again."""
+    return bool(await _row_in(graph_exec_id, ExecutionStatus.REVIEW)) or await _ended(
+        graph_exec_id
+    )
 
 
 async def _execs_of(user: User, graph_exec_id: str, node_id: str):

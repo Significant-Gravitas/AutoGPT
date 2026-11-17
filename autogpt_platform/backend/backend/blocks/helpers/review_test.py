@@ -1,16 +1,19 @@
 """Unit tests for the HITL review helper chain."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.blocks.basic import StoreValueBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
 from backend.blocks.helpers.review import HITLReviewHelper
 from backend.copilot.gate import Ruling
 from backend.data.execution import ExecutionContext, ExecutionStatus
 from backend.data.human_review import ReviewResult, ReviewStatus
 from backend.util.exceptions import BlockExecutionError
+from backend.util.test import execute_block_test
 
 
 @pytest.mark.asyncio
@@ -296,21 +299,31 @@ _APPROVE_FUTURE = ReviewResult(
 
 @pytest.mark.parametrize("ask", [True, False], ids=["safe_mode_on", "safe_mode_off"])
 @pytest.mark.parametrize(
-    "stored, runs_with",
+    "stored, processed, outcome",
     [
-        (None, _INPUT),
-        (ReviewStatus.WAITING, _INPUT),
-        (ReviewStatus.APPROVED, _EDITED),
-        (ReviewStatus.REJECTED, None),
+        (None, False, "runs"),
+        (ReviewStatus.WAITING, False, "waits"),
+        (ReviewStatus.APPROVED, False, "runs_approved"),
+        (ReviewStatus.APPROVED, True, "runs_approved"),
+        (ReviewStatus.REJECTED, False, "stops"),
+        (ReviewStatus.REJECTED, True, "stops"),
     ],
-    ids=["no_review", "unanswered", "approved", "rejected"],
+    ids=[
+        "no_review",
+        "waiting",
+        "approved",
+        "approved_processed",
+        "rejected",
+        "rejected_processed",
+    ],
 )
-async def test_a_steps_own_answer_decides_it_whatever_the_safe_mode(
-    stored: ReviewStatus | None, runs_with: dict | None, ask: bool
+async def test_a_steps_own_review_decides_it_whatever_the_safe_mode(
+    stored: ReviewStatus | None, processed: bool, outcome: str, ask: bool
 ):
-    """The step's own answer comes first: a rejection stops it and an approval
-    runs the reviewer's data, whatever the safe mode, and an "approve future"
-    for the node never outranks it. A review still waiting is no answer."""
+    """The step's own review comes first, whatever the safe mode: a rejection
+    stops it, an approval runs the reviewer's data, and a review still waiting
+    holds it for the answer. An "approve future" for the node never outranks
+    it; with no review, the step runs as it is."""
     rows = (
         {}
         if stored is None
@@ -319,7 +332,7 @@ async def test_a_steps_own_answer_decides_it_whatever_the_safe_mode(
                 payload=_EDITED,
                 status=stored,
                 review_message="",
-                processed=False,
+                processed=processed,
             )
         }
     )
@@ -343,15 +356,22 @@ async def test_a_steps_own_answer_decides_it_whatever_the_safe_mode(
         for p in patches:
             p.stop()
 
-    assert decision is not None
-    if runs_with is None:
-        assert not decision.should_proceed
+    if outcome == "waits":
+        assert decision is None
+        stubs["update_node_execution_status"].assert_awaited_once_with(
+            exec_id="ne-1", status=ExecutionStatus.REVIEW
+        )
+        stubs["check_approval"].assert_not_awaited()
     else:
-        assert decision.should_proceed
-        assert decision.review_result.data == runs_with
+        assert decision is not None
+        assert decision.should_proceed is (outcome != "stops")
+        if outcome != "stops":
+            assert decision.review_result.data == (
+                _EDITED if outcome == "runs_approved" else _INPUT
+            )
     stubs["get_or_create_human_review"].assert_not_awaited()
     marked = stubs["update_review_processed_status"]
-    if stored in (ReviewStatus.APPROVED, ReviewStatus.REJECTED):
+    if outcome in ("runs_approved", "stops") and not processed:
         marked.assert_awaited_once_with(node_exec_id="ne-1", processed=True)
     else:
         marked.assert_not_awaited()
@@ -380,3 +400,77 @@ async def test_an_answer_that_cannot_be_read_fails_the_step(ask: bool):
         for p in patches:
             p.stop()
     stubs["check_approval"].assert_not_awaited()
+
+
+def test_an_approval_never_replaces_the_runs_credentials():
+    """The reviewer's edits apply over this run's input, which keeps the
+    credentials this run resolved; a stored credential field never wins."""
+    own = {
+        **_INPUT,
+        "credentials": {
+            "id": "this-runs-login",
+            "provider": "discord",
+            "type": "api_key",
+            "title": "Bot",
+        },
+    }
+    reviewed = {
+        "message_content": "edited",
+        "credentials": {
+            "id": "another-login",
+            "provider": "discord",
+            "type": "api_key",
+            "title": "Other",
+        },
+    }
+
+    approved = SendDiscordMessageBlock()._approved_input(own, reviewed)
+
+    assert approved == {**own, "message_content": "edited"}
+
+
+async def test_a_block_test_in_progress_does_not_hide_another_steps_rejection():
+    """``execute_block_test`` skips the review gate only on the block it
+    tests. While one is held mid-run, another step in the same process, with
+    the safe mode off, still reads its stored rejection and does not run."""
+    entered, release = asyncio.Event(), asyncio.Event()
+    tested = StoreValueBlock()
+    own_run = tested.run
+
+    async def held_run(*args, **kwargs):
+        entered.set()
+        await asyncio.wait_for(release.wait(), timeout=30)
+        async for output in own_run(*args, **kwargs):
+            yield output
+
+    setattr(tested, "run", held_run)
+    block_test = asyncio.create_task(execute_block_test(tested))
+    rejected = SimpleNamespace(
+        payload=_INPUT,
+        status=ReviewStatus.REJECTED,
+        review_message="Not this one",
+        processed=False,
+    )
+    _, patches = _pause({"ne-1": rejected})
+    for p in patches:
+        p.start()
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=30)
+        with pytest.raises(BlockExecutionError, match="Not this one"):
+            await SendDiscordMessageBlock().is_block_exec_need_review(
+                _INPUT,
+                user_id="u1",
+                node_id="n-1",
+                node_exec_id="ne-1",
+                graph_exec_id="ge-1",
+                graph_id="g-1",
+                graph_version=1,
+                execution_context=ExecutionContext(
+                    user_id="u1", graph_exec_id="ge-1", sensitive_action_safe_mode=False
+                ),
+            )
+    finally:
+        for p in patches:
+            p.stop()
+        release.set()
+        await asyncio.wait_for(block_test, timeout=30)

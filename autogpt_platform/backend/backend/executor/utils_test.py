@@ -3507,7 +3507,7 @@ async def test_pause_override_parks_a_marked_block_with_library_setting_off(
 
     mocker.patch.object(
         HITLReviewHelper,
-        "get_existing_decision",
+        "get_stored_review",
         new=mocker.AsyncMock(return_value=None),
     )
     park = mocker.patch.object(

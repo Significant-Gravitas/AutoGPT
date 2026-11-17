@@ -44,6 +44,7 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Config
 from backend.util.text import split_camelcase
+from backend.util.type import coerce_inputs_to_schema
 
 from ._preview import ChangePreview
 
@@ -972,7 +973,40 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_name=self.name,
                 block_id=self.id,
             )
-        return False, reviewed_data
+        return False, self._approved_input(input_data, reviewed_data)
+
+    def _approved_input(
+        self, input_data: BlockInput, reviewed_data: dict[str, Any]
+    ) -> BlockInput:
+        """This run's input with the reviewer's edits applied.
+
+        The stored payload was recorded before this run resolved its
+        credentials (a chat's resume injects them afterwards), so it only
+        overrides the fields a reviewer can edit. Credential and secret fields,
+        and the account behind a file picker, stay this run's own. The result
+        is coerced like the input was.
+        """
+        properties = self.input_schema.jsonschema().get("properties", {})
+        kept = {
+            name
+            for name, prop in properties.items()
+            if "credentials_provider" in prop or prop.get("secret")
+        }
+        merged = {
+            **input_data,
+            **{k: v for k, v in reviewed_data.items() if k not in kept},
+        }
+        for auto in self.input_schema.get_auto_credentials_fields().values():
+            field = auto["field_name"]
+            edited, own = merged.get(field), input_data.get(field)
+            if not isinstance(edited, dict) or edited is own:
+                continue
+            pinned = {k: v for k, v in edited.items() if k != "_credentials_id"}
+            if isinstance(own, dict) and "_credentials_id" in own:
+                pinned["_credentials_id"] = own["_credentials_id"]
+            merged[field] = pinned
+        coerce_inputs_to_schema(merged, self.input_schema)
+        return merged
 
     async def _execute(
         self,
