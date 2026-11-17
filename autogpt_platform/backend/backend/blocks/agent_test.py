@@ -88,25 +88,29 @@ class _Stream:
             yield await self.items.get()
 
 
-def _db(*metas: GraphExecutionMeta | Exception, nodes: list) -> MagicMock:
+def _db(
+    *metas: GraphExecutionMeta | Exception, nodes: list, later_nodes: list | None = None
+) -> MagicMock:
     """The database: each catch-up reads the next of ``metas`` (the last one
-    repeats), and the child's finished node executions, newest first as
-    ``get_node_executions`` orders them."""
+    repeats), then the child's finished node executions, newest first as
+    ``get_node_executions`` orders them: ``nodes`` on the first read,
+    ``later_nodes`` (if given) after that."""
     db = MagicMock()
-    answers = list(metas)
+    metas_left = list(metas)
+    node_reads = [nodes] if later_nodes is None else [nodes, later_nodes]
 
     async def get_meta(**_kwargs: Any) -> GraphExecutionMeta:
-        answer = answers.pop(0) if len(answers) > 1 else answers[0]
+        answer = metas_left.pop(0) if len(metas_left) > 1 else metas_left[0]
         if isinstance(answer, Exception):
             raise answer
         return answer
 
+    async def get_nodes(**_kwargs: Any) -> list:
+        visible = node_reads.pop(0) if len(node_reads) > 1 else node_reads[0]
+        return sorted(visible, key=lambda node: node.end_time, reverse=True)
+
     db.get_graph_execution_meta = AsyncMock(side_effect=get_meta)
-    db.get_node_executions = AsyncMock(
-        side_effect=lambda **_kwargs: sorted(
-            nodes, key=lambda node: node.end_time, reverse=True
-        )
-    )
+    db.get_node_executions = AsyncMock(side_effect=get_nodes)
     return db
 
 
@@ -141,6 +145,9 @@ async def test_a_child_that_ended_before_the_subscription_is_caught_up_in_order(
     outputs, block = await _run(monkeypatch, stream, db)
 
     assert outputs == [("result", "a"), ("result", "b")]
+    # Only output blocks matter: a big child's other nodes aren't loaded.
+    read = db.get_node_executions.await_args
+    assert read is not None and read.kwargs["block_ids"] == [AgentOutputBlock().id]
     assert block.execution_stats.reconciled_cost_delta == 7
     assert block.execution_stats.extra_steps == 3
 
@@ -152,11 +159,35 @@ async def test_a_lost_stream_is_caught_up_in_order_without_repeats(
     a, b, c = _output(1, "a"), _output(2, "b"), _output(3, "c")
     for item in (None, a, None, c, _finished_event()):
         stream.items.put_nowait(item)
-    # b was published while the stream was down; the resync catches it up.
+    # b was published while the stream was down: only the resync's catch-up
+    # can find it.
     db = _db(
         _meta(ExecutionStatus.RUNNING),
         _meta(ExecutionStatus.RUNNING),
-        nodes=[a, b, c],
+        nodes=[],
+        later_nodes=[a, b],
+    )
+
+    outputs, _ = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "a"), ("result", "b"), ("result", "c")]
+
+
+async def test_a_newer_output_waits_for_a_failed_catch_up_to_be_retried(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """b was missed and the resync's catch-up failed; c then arrives live and
+    must not overtake b."""
+    stream = _Stream()
+    a, b, c = _output(1, "a"), _output(2, "b"), _output(3, "c")
+    for item in (None, a, None, c, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        _meta(ExecutionStatus.RUNNING),
+        nodes=[],
+        later_nodes=[a, b, c],
     )
 
     outputs, _ = await _run(monkeypatch, stream, db)
@@ -245,7 +276,8 @@ async def test_a_child_that_ends_while_redis_is_dropped_still_ends_the_wait(
                     await publisher.publish_event(a, channel)
                     await asyncio.sleep(0.1)
             proxy.drop()
-            db.get_node_executions.side_effect = lambda **_kwargs: [b, a]
+            db.get_node_executions.side_effect = None
+            db.get_node_executions.return_value = [b, a]
             db.get_graph_execution_meta.side_effect = None
             db.get_graph_execution_meta.return_value = _meta(ExecutionStatus.COMPLETED)
             await publisher.publish_event(b, channel)

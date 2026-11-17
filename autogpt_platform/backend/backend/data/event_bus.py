@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from abc import ABC, abstractmethod
 from contextlib import aclosing
 from typing import Any, AsyncGenerator, Generic, Optional, TypeVar
@@ -17,8 +18,10 @@ config = Settings().config
 
 M = TypeVar("M", bound=BaseModel)
 
-# Pause between subscription attempts while a stream can't be reopened.
+# Pause before reopening a lost stream, doubling (with jitter, so listeners
+# don't retry in lockstep after a failover) while Redis stays unreachable.
 RESUBSCRIBE_DELAY_S = 1.0
+RESUBSCRIBE_MAX_DELAY_S = 30.0
 
 
 def _assert_no_wildcard(channel_key: str) -> None:
@@ -163,24 +166,30 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         resubscribing whenever the stream is lost.
 
         ``None`` means events may have been missed: re-read the state they
-        describe. It comes once each subscription is confirmed (so nothing
-        after the re-read can be missed) and after each failed attempt while
-        Redis is unreachable (so a caller waiting on a state change still
-        notices it).
+        describe. It comes once each subscription is confirmed, so nothing
+        after the re-read can be missed, and once when a stream is lost or
+        can't be opened, so the caller can stop trusting what it holds; not
+        again for each failed attempt while Redis stays unreachable.
         """
         _assert_no_wildcard(channel_key)
         full_channel_name = self._build_channel_name(channel_key)
+        delay = RESUBSCRIBE_DELAY_S
+        gap_reported = False
         while True:
             try:
                 async with await ShardedSubscription.open(full_channel_name) as stream:
+                    delay, gap_reported = RESUBSCRIBE_DELAY_S, False
                     yield None
                     async with aclosing(self._events(stream, channel_key)) as events:
                         async for event in events:
                             yield event
             except EventStreamLostError as e:
                 logger.warning(f"Event stream lost, resubscribing: {e}")
-            yield None
-            await asyncio.sleep(RESUBSCRIBE_DELAY_S)
+            if not gap_reported:
+                gap_reported = True
+                yield None
+            await asyncio.sleep(delay * random.uniform(0.5, 1.5))
+            delay = min(delay * 2, RESUBSCRIBE_MAX_DELAY_S)
 
     async def _events(
         self, stream: ShardedSubscription, channel_key: str

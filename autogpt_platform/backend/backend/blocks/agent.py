@@ -214,28 +214,37 @@ class AgentExecutorBlock(Block):
                             f"node={getattr(event, 'node_exec_id', '?')}"
                         )
                         continue
-                    if event.event_type == ExecutionEventType.NODE_EXEC_UPDATE:
-                        for output in self._outputs_of(event, yielded, log_id, logger):
-                            yield output
-                        continue
                     if not stale:
+                        if event.event_type == ExecutionEventType.NODE_EXEC_UPDATE:
+                            for output in self._outputs_of(
+                                event, yielded, log_id, logger
+                            ):
+                                yield output
+                            continue
                         logger.info(
                             f"Execution {log_id} graph completed with status "
                             f"{event.status}, yielded {len(yielded)} outputs"
                         )
                         self._record_sub_graph_stats(event.stats)
                         return
-                # A resync, a quiet spell, or the end with events possibly
-                # missed: the database has the rest.
+                # A resync, a quiet spell, or an event while events may have
+                # been missed (which must not overtake them): the database has
+                # the rest, in order.
                 try:
                     outputs, finished = await self._catch_up(
                         user_id, graph_exec_id, stale, yielded, log_id, logger
                     )
                 except Exception:
-                    # Like a missed event: the next resync or quiet spell retries.
+                    # Like a missed event: the next event, resync or quiet
+                    # spell retries, and nothing newer is yielded meanwhile.
                     logger.warning(f"Execution {log_id} catch-up failed", exc_info=True)
                     continue
                 stale = False
+                if event is not None and (
+                    event.event_type == ExecutionEventType.NODE_EXEC_UPDATE
+                ):
+                    # In case the database hadn't caught up with it yet.
+                    outputs += self._outputs_of(event, yielded, log_id, logger)
                 for output in outputs:
                     yield output
                 if finished is not None:
@@ -268,9 +277,13 @@ class AgentExecutorBlock(Block):
         finished = meta if meta.status in _TERMINAL_STATUSES else None
         if not (stale or finished):
             return [], None
+        from backend.blocks import get_output_block_ids
+
         # Read with the user's id just above, so these nodes are the user's.
         nodes = await db.get_node_executions(
-            graph_exec_id=graph_exec_id, statuses=list(_TERMINAL_STATUSES)
+            graph_exec_id=graph_exec_id,
+            statuses=list(_TERMINAL_STATUSES),
+            block_ids=list(get_output_block_ids()),
         )
         nodes.sort(key=lambda node: node.end_time or node.add_time)
         outputs = [

@@ -607,12 +607,16 @@ class TestCacheInvalidationListener:
         _token_cache[("other-user", "notion")] = "maybe-revoked"
         _null_cache[(_USER, "linear")] = True
         _credential_id_cache[(_USER, "github")] = "cred-1"
+        _gh_identity_cache[(_USER, "cred-1", None)] = MagicMock()
+        _gh_identity_null_cache[("other-user", None, None)] = True
 
         await _consume(None)
 
         assert not _token_cache
         assert not _null_cache
         assert not _credential_id_cache
+        assert not _gh_identity_cache
+        assert not _gh_identity_null_cache
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_resubscribes_when_the_stream_ends(self):

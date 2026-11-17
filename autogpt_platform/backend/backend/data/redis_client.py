@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import threading
 import time
 from collections.abc import AsyncGenerator
 from weakref import ReferenceType, WeakKeyDictionary, ref
@@ -291,15 +292,17 @@ def refresh_slot_map() -> None:
     shard-pinned connection that can't reach its shard may be dialling one
     that failed over. Blocks on the network; call it off the event loop."""
     global _slot_map_refreshed_at
-    now = time.monotonic()
-    if now - _slot_map_refreshed_at < _SLOT_MAP_REFRESH_EVERY_S:
-        return
-    _slot_map_refreshed_at = now
+    with _slot_map_refresh_lock:
+        now = time.monotonic()
+        if now - _slot_map_refreshed_at < _SLOT_MAP_REFRESH_EVERY_S:
+            return
+        _slot_map_refreshed_at = now
     get_redis().nodes_manager.initialize()
 
 
 _SLOT_MAP_REFRESH_EVERY_S = 5.0
 _slot_map_refreshed_at = float("-inf")
+_slot_map_refresh_lock = threading.Lock()
 
 
 @conn_retry("RedisShardedPubSub", "Acquiring connection")

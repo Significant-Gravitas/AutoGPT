@@ -404,16 +404,18 @@ async def test_async_listen_events_reports_a_shard_dropping_the_subscription():
 
 
 @pytest.mark.asyncio
-async def test_listen_with_resync_marks_every_subscription_and_failed_attempt(
+async def test_listen_with_resync_marks_each_subscription_and_each_gap_once(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """``None`` after each confirmed subscription and each failed attempt, so a
-    caller re-reads state whenever events may have been missed."""
+    """``None`` after each confirmed subscription and once per gap, so a caller
+    re-reads state whenever events may have been missed, but not again for
+    every failed attempt while Redis stays down."""
     monkeypatch.setattr(event_bus, "RESUBSCRIBE_DELAY_S", 0)
     bus = _BusUnderTest()
     attempts = [
         _FakeSubscription([_smessage("one")], end=EventStreamLostError("dropped")),
         EventStreamLostError("redis down"),
+        EventStreamLostError("redis still down"),
         _FakeSubscription([_smessage("two")]),
     ]
 
@@ -430,7 +432,7 @@ async def test_listen_with_resync_marks_every_subscription_and_failed_attempt(
             if event is not None and event.message == "two":
                 break
 
-    assert seen == [None, "one", None, None, None, "two"]
+    assert seen == [None, "one", None, None, "two"]
 
 
 @pytest.mark.asyncio

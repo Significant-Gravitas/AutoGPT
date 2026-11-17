@@ -22,7 +22,12 @@ from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.asyncio.retry import Retry as AsyncRetry
 from redis.backoff import NoBackoff
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import MovedError, RedisClusterException, RedisError
+from redis.exceptions import (
+    MovedError,
+    RedisClusterException,
+    RedisError,
+    SlotNotCoveredError,
+)
 
 from backend.data import redis_client as redis
 
@@ -38,6 +43,9 @@ _LIVENESS_PING = "autogpt-pubsub-liveness"
 # health check matches both forms for the same reason.
 _PONG_REPLIES = (_LIVENESS_PING, ["pong", _LIVENESS_PING])
 _OPEN_ERRORS = (TimeoutError, OSError, RedisError, RedisClusterException)
+# The read after a PING's deadline, before the stream is reported lost: long
+# enough for a reply held up by a stalled event loop to be read.
+_LAST_LOOK_S = 1.0
 
 
 class EventStreamLostError(Exception):
@@ -61,7 +69,7 @@ class ShardedSubscription:
             async with asyncio.timeout(OPEN_TIMEOUT_S):
                 return await cls._open(channel)
         except MovedError as e:
-            redis.follow_moved_slot(e)
+            _follow_moved_slot(e)
             raise EventStreamLostError(f"{channel} moved: {_describe(e)}") from e
         except _OPEN_ERRORS as e:
             await _refresh_slot_map()
@@ -71,7 +79,11 @@ class ShardedSubscription:
 
     @classmethod
     async def _open(cls, channel: str) -> Self:
-        client = await redis.connect_sharded_pubsub_async(channel)
+        try:
+            client = await redis.connect_sharded_pubsub_async(channel)
+        except RuntimeError as e:
+            # resolve_shard_for_channel: no shard owns the slot (mid-reshard).
+            raise SlotNotCoveredError(str(e)) from e
         pubsub = client.pubsub()
         try:
             await pubsub.connect()
@@ -113,43 +125,30 @@ class ShardedSubscription:
         ``EventStreamLostError``: the connection failed, or after
         ``PUBSUB_PING_AFTER`` seconds without a word a PING got no reply
         within ``PUBSUB_PONG_TIMEOUT``. Never ends on its own."""
-        ping_after, pong_timeout = redis.PUBSUB_PING_AFTER, redis.PUBSUB_PONG_TIMEOUT
         loop = asyncio.get_running_loop()
-        heard_at = loop.time()
-        pinged_at: float | None = None
-        last_look = False
+        live = _Liveness(
+            loop.time(), redis.PUBSUB_PING_AFTER, redis.PUBSUB_PONG_TIMEOUT
+        )
         try:
             while True:
-                if pinged_at is None and loop.time() - heard_at >= ping_after:
+                if live.ping_due(loop.time()):
                     await self._pubsub.ping(_LIVENESS_PING)
-                    pinged_at = loop.time()
-                due = (
-                    heard_at + ping_after
-                    if pinged_at is None
-                    else pinged_at + pong_timeout
-                )
+                    live.pinged(loop.time())
                 response = await self._pubsub.parse_response(
-                    block=False, timeout=max(due - loop.time(), 0.01)
+                    block=False, timeout=live.read_timeout(loop.time())
                 )
-                if response is not None:
-                    heard_at, pinged_at, last_look = loop.time(), None, False
-                    if response in _PONG_REPLIES:
-                        continue
-                    if (
-                        message := await self._pubsub.handle_message(response)
-                    ) is not None:
-                        yield message
+                if response is None:
+                    if live.lost(loop.time()):
+                        raise EventStreamLostError(
+                            f"{self._name}: no reply to a PING in "
+                            f"{live.pong_timeout}s"
+                        )
                     continue
-                if pinged_at is None or loop.time() - pinged_at < pong_timeout:
+                live.heard(loop.time())
+                if response in _PONG_REPLIES:
                     continue
-                if not last_look:
-                    # A reply that came in while the event loop was stalled can
-                    # lose the race against the read's timeout: read once more.
-                    last_look = True
-                    continue
-                raise EventStreamLostError(
-                    f"{self._name}: no reply to a PING in {pong_timeout}s"
-                )
+                if (message := await self._pubsub.handle_message(response)) is not None:
+                    yield message
         except (OSError, RedisError) as e:
             raise EventStreamLostError(f"{self._name}: {_describe(e)}") from e
 
@@ -161,6 +160,54 @@ class ShardedSubscription:
 
     async def __aexit__(self, *_exc: object) -> None:
         await self.aclose()
+
+
+class _Liveness:
+    """When a quiet stream is PINGed, and when an unanswered PING means the
+    shard is gone. Times come from the caller's clock."""
+
+    def __init__(self, now: float, ping_after: float, pong_timeout: float) -> None:
+        self.ping_after = ping_after
+        self.pong_timeout = pong_timeout
+        self._heard_at = now
+        self._pinged_at: float | None = None
+        self._last_look = False
+
+    def heard(self, now: float) -> None:
+        self._heard_at, self._pinged_at, self._last_look = now, None, False
+
+    def ping_due(self, now: float) -> bool:
+        return self._pinged_at is None and now - self._heard_at >= self.ping_after
+
+    def pinged(self, now: float) -> None:
+        self._pinged_at = now
+
+    def read_timeout(self, now: float) -> float:
+        if self._last_look:
+            return _LAST_LOOK_S
+        if self._pinged_at is None:
+            due = self._heard_at + self.ping_after
+        else:
+            due = self._pinged_at + self.pong_timeout
+        return max(due - now, 0.01)
+
+    def lost(self, now: float) -> bool:
+        """After a read that returned nothing."""
+        if self._pinged_at is None or now - self._pinged_at < self.pong_timeout:
+            return False
+        if not self._last_look:
+            # A reply that came in while the event loop was stalled can lose
+            # the race against the read's timeout: read once more.
+            self._last_look = True
+            return False
+        return True
+
+
+def _follow_moved_slot(error: MovedError) -> None:
+    try:
+        redis.follow_moved_slot(error)
+    except Exception:
+        logger.warning("Could not follow a MOVED reply", exc_info=True)
 
 
 def _describe(error: BaseException) -> str:

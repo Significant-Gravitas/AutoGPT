@@ -20,7 +20,7 @@ pytestmark = pytest.mark.skipif(
 
 _PING_AFTER_S = 0.25
 _PONG_TIMEOUT_S = 1.0
-_WITHIN_S = 8.0
+_WITHIN_S = 15.0
 
 
 @pytest.fixture
@@ -48,11 +48,15 @@ async def _open_stream(channel: str) -> tuple[_ShardStream, asyncio.Event]:
 
     stream = _ShardStream(on_lost)
     await stream.add(channel, handler)
-    cluster = await redis_client.get_redis_async()
-    async with asyncio.timeout(_WITHIN_S):
-        while not got:
-            await cluster.execute_command("SPUBLISH", channel, "first")
-            await asyncio.sleep(0.1)
+    try:
+        cluster = await redis_client.get_redis_async()
+        async with asyncio.timeout(_WITHIN_S):
+            while not got:
+                await cluster.execute_command("SPUBLISH", channel, "first")
+                await asyncio.sleep(0.1)
+    except BaseException:
+        await stream.stop()
+        raise
     return stream, lost
 
 

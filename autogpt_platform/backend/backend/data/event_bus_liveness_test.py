@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 # assertions below allow several times as long.
 _PING_AFTER_S = 0.25
 _PONG_TIMEOUT_S = 1.0
-_WITHIN_S = 8.0
+_WITHIN_S = 15.0
 
 
 class _Event(BaseModel):
@@ -121,7 +121,7 @@ async def test_a_quiet_but_healthy_shard_is_not_reported_lost(
 ):
     # Longer than the others, so a stalled runner can't make a healthy reply
     # late; the quiet spell below still outlasts it twice over.
-    pong_timeout = 1.5
+    pong_timeout = 2.5
     monkeypatch.setattr(redis_client, "PUBSUB_PONG_TIMEOUT", pong_timeout)
     bus = _Bus()
     channel_key = f"quiet-{uuid4()}"

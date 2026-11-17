@@ -115,7 +115,7 @@ async def _subscribe_and_wait(
     """Wait on execution events for a terminal or paused status.
 
     ``listen_with_resync`` yields ``None`` once each (re)subscription is
-    confirmed, and while Redis can't be reached; the database is checked
+    confirmed, and once when the stream is lost; the database is checked
     then, so a status reached before the subscription or while the stream
     was down is still seen.
     """
