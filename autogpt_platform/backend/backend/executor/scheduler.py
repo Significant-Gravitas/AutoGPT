@@ -2885,6 +2885,19 @@ def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
 
 _DOW_DIGIT_RE = re.compile(r"\d")
 
+# Unix-cron day names (0=Sun..6=Sat). Translating them to numbers up front
+# sends named and numeric fields through the same Unix -> APScheduler mapping;
+# passed through untouched, APScheduler reads ``sun-thu`` with its own
+# Monday-first numbering as the descending range ``6-3`` and rejects it.
+_DOW_NAMES = ("sun", "mon", "tue", "wed", "thu", "fri", "sat")
+_DOW_NAME_RE = re.compile(r"\b(" + "|".join(_DOW_NAMES) + r")\b", re.IGNORECASE)
+
+
+def _dow_names_to_unix_numbers(dow: str) -> str:
+    """Replace three-letter day names in a day-of-week field with their
+    Unix-cron numbers, e.g. ``sun-thu`` -> ``0-4``."""
+    return _DOW_NAME_RE.sub(lambda m: str(_DOW_NAMES.index(m.group(1).lower())), dow)
+
 
 def _unix_dow_to_apscheduler(n: int) -> int:
     """Map Unix-cron day-of-week (0=Sun..6=Sat, 7=Sun) to APScheduler's
@@ -2930,12 +2943,13 @@ def _convert_dow_token(token: str) -> str:
 
 def _normalize_cron_day_of_week(cron: str) -> str:
     """Rewrite the day-of-week field of a 5-field Unix cron string into the
-    numbering APScheduler expects. Leaves the field untouched if it contains
-    no digits (``mon-fri``), is ``*``/``?``, or the cron is malformed."""
+    numbering APScheduler expects. Day names (``sun-thu``) are first turned
+    into Unix numbers (``0-4``). Leaves the field untouched if it is
+    ``*``/``?``, still has no digits after that, or the cron is malformed."""
     parts = cron.split()
     if len(parts) != 5:
         return cron
-    dow = parts[4]
+    dow = _dow_names_to_unix_numbers(parts[4])
     if dow in ("*", "?") or not _DOW_DIGIT_RE.search(dow):
         return cron
     parts[4] = ",".join(_convert_dow_token(t) for t in dow.split(","))

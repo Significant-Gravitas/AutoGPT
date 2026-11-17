@@ -1589,7 +1589,16 @@ async def test_copilot_turn_schedule_requires_cron_xor_run_at(server: SpinTestSe
     [
         ("*", "*"),
         ("?", "?"),
-        ("mon-fri", "mon-fri"),
+        ("mon-fri", "0-4"),
+        ("MON-FRI", "0-4"),
+        ("sun", "6"),
+        # #16839: name ranges starting at Sunday are ascending in Unix cron.
+        ("sun-thu", "6-6,0-3"),
+        ("SUN-THU", "6-6,0-3"),
+        ("sun-sat", "6-6,0-5"),
+        ("sat-sun", "5-6"),
+        ("sun,mon-thu", "6,0-3"),
+        ("mon-fri/2", "0-4/2"),
         ("1-5", "0-4"),
         ("1,3,5", "0,2,4"),
         ("0", "6"),
@@ -1606,8 +1615,9 @@ def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
     raw: str, expected: str
 ):
     """Unix-cron uses 0=Sun..6=Sat; APScheduler uses 0=Mon..6=Sun.
-    The numbers must be translated, but named tokens and ``*``/``?`` pass
-    through unchanged. Wrap-around ranges split into two APS ranges."""
+    Day names become Unix numbers first, then every number is translated;
+    ``*``/``?`` pass through unchanged. Wrap-around ranges split into two
+    APS ranges."""
     cron = f"0 9 * * {raw}"
     assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
 
@@ -1639,6 +1649,13 @@ def test_build_trigger_with_unix_dow_numbers_fires_on_correct_weekday():
         ("0 9 * * 6-1", datetime(2026, 5, 24, 16, 0), "Monday"),
         # Weekends only (Sat,Sun) from Friday -> Saturday
         ("0 9 * * 0,6", datetime(2026, 5, 22, 16, 0), "Saturday"),
+        # #16839: Sun-Thu by name from Friday -> Sunday, from Sunday -> Monday
+        ("0 9 * * sun-thu", datetime(2026, 5, 22, 16, 0), "Sunday"),
+        ("0 9 * * SUN-THU", datetime(2026, 5, 24, 16, 0), "Monday"),
+        # Sun-Sat by name is every day: from Friday -> Saturday
+        ("0 9 * * sun-sat", datetime(2026, 5, 22, 16, 0), "Saturday"),
+        # Mon-Fri by name from Saturday -> Monday (unchanged behaviour)
+        ("0 9 * * mon-fri", datetime(2026, 5, 23, 16, 0), "Monday"),
     ],
 )
 def test_build_trigger_unix_dow_various_cases(
