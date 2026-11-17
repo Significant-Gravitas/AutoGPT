@@ -18,6 +18,7 @@ import * as z from "zod";
 import { limitAttemptsPerIP } from "./attempt-limits";
 import {
   type AuthEmailContext,
+  claimOneOf,
   claimWindowSlot,
   createVerification,
 } from "./auth-email-cooldown";
@@ -68,6 +69,7 @@ const CODE_EMAILS_PER_ADDRESS = { max: 5, windowSeconds: 60 * 60 };
 const CODE_CHECKS_PER_IP = { max: 10, windowSeconds: 60 };
 
 const RECORD_PREFIX = "sign-in-code:";
+const TRY_PREFIX = "sign-in-code-try:";
 const COOKIE_NAME = "sign_in_code";
 
 const CODE_PROVIDERS: ReadonlySet<string> = new Set([
@@ -89,11 +91,10 @@ const pendingSchema = z.object({
   name: z.string(),
   image: z.string().nullable(),
   codeHash: z.string(),
-  attempts: z.number().int().min(0),
   sentAt: z.number(),
 });
 type PendingRecord = z.infer<typeof pendingSchema>;
-type PendingSignIn = Omit<PendingRecord, "codeHash" | "attempts" | "sentAt">;
+type PendingSignIn = Omit<PendingRecord, "codeHash" | "sentAt">;
 
 interface Pending {
   id: string;
@@ -171,15 +172,26 @@ export function signInCode() {
           });
           const pending = await findPending(ctx);
           if (!pending) throw expired(ctx);
-          const { id, rowId, record } = pending;
+          const { id, rowId, record, expiresAt } = pending;
+          // Each check takes one of the code's tries before it is compared.
+          // A try is a row only one request can insert, so checks sent at
+          // once can't share one. A new code gets its own.
+          const attempt = await claimOneOf(
+            ctx.context,
+            `${TRY_PREFIX}${id}:${record.sentAt}`,
+            MAX_CODE_ATTEMPTS,
+            Math.max(1, (expiresAt.getTime() - Date.now()) / 1000),
+          );
+          if (attempt === null) {
+            await deletePending(ctx.context, rowId);
+            throw expired(ctx);
+          }
           const code = ctx.body.code.replace(/\s+/g, "");
           if (!codeMatches(ctx.context.secret, id, code, record.codeHash)) {
-            const attempts = record.attempts + 1;
-            if (attempts >= MAX_CODE_ATTEMPTS) {
+            if (attempt === MAX_CODE_ATTEMPTS - 1) {
               await deletePending(ctx.context, rowId);
               throw expired(ctx);
             }
-            await savePending(ctx.context, rowId, { ...record, attempts });
             throw new APIError("BAD_REQUEST", {
               code: SIGN_IN_CODE_INVALID,
               message: "That code isn't right.",
@@ -223,7 +235,6 @@ export function signInCode() {
             {
               ...record,
               codeHash: hashCode(ctx.context.secret, id, code),
-              attempts: 0,
               sentAt,
             },
             new Date(sentAt + SIGN_IN_CODE_TTL_SECONDS * 1000),
@@ -286,7 +297,6 @@ async function startSignInCode(
   const record: PendingRecord = {
     ...pending,
     codeHash: hashCode(ctx.context.secret, id, code),
-    attempts: 0,
     sentAt: Date.now(),
   };
   await createVerification(ctx.context, {

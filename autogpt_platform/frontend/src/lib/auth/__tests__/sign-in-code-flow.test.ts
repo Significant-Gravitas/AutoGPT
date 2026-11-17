@@ -29,12 +29,32 @@ const testDB = vi.hoisted(() => ({ current: {} as Record<string, unknown[]> }));
 vi.mock("better-auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("better-auth")>();
   const { memoryAdapter } = await import("better-auth/adapters/memory");
+  // Each call waits a turn, as a real database's round trip does, so requests
+  // sent at once interleave between their reads and writes.
+  const interleaved =
+    (
+      memory: ReturnType<typeof memoryAdapter>,
+    ): ReturnType<typeof memoryAdapter> =>
+    (options) => {
+      const adapter = memory(options);
+      return new Proxy(adapter, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (typeof value !== "function" || key === "transaction")
+            return value;
+          return async (...args: unknown[]) => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            return value.apply(target, args);
+          };
+        },
+      });
+    };
   return {
     ...actual,
     betterAuth: (options: Parameters<typeof actual.betterAuth>[0]) =>
       actual.betterAuth({
         ...options,
-        database: memoryAdapter(testDB.current),
+        database: interleaved(memoryAdapter(testDB.current)),
         plugins: options.plugins?.filter(
           (plugin) => plugin.id === "admin" || plugin.id === "sign-in-code",
         ),
@@ -77,6 +97,19 @@ type Provider = (typeof PROVIDERS)[number];
 type Handler = (request: Request) => Promise<Response>;
 type Row = Record<string, unknown>;
 
+// Postgres refuses a second row with the same id, which the race-safe tries
+// (auth-email-cooldown.ts) rely on; the in-memory database doesn't.
+class UniqueRows extends Array<Row> {
+  push(...rows: Row[]) {
+    for (const row of rows) {
+      if (this.some((existing) => existing.id === row.id)) {
+        throw new Error(`duplicate key: ${String(row.id)}`);
+      }
+    }
+    return super.push(...rows);
+  }
+}
+
 async function createAuth() {
   vi.stubEnv("AUTH_REQUIRE_EMAIL_VERIFICATION", "false");
   vi.stubEnv("BETTER_AUTH_URL", baseURL);
@@ -93,7 +126,7 @@ async function createAuth() {
     UserAuthIdentity: [] as Row[],
     UserAuthSession: [] as Row[],
     UserAuthAccount: [] as Row[],
-    UserAuthVerification: [] as Row[],
+    UserAuthVerification: new UniqueRows() as Row[],
   };
   testDB.current = db;
   const { auth } = await import("../auth");
@@ -133,6 +166,13 @@ class Browser {
     return response;
   }
 
+  // Another tab of the same browser, from now on with its own cookies.
+  copy() {
+    const tab = new Browser(this.handler);
+    for (const [name, value] of this.jar) tab.jar.set(name, value);
+    return tab;
+  }
+
   has(cookie: string) {
     return [...this.jar.keys()].some((name) => name.endsWith(cookie));
   }
@@ -161,10 +201,12 @@ class Browser {
     return new URL(callback.headers.get("location") ?? "", baseURL);
   }
 
-  enterCode(code: string) {
+  // From `ip` when given, as a proxy the app trusts would say.
+  enterCode(code: string, ip?: string) {
     return this.request("/api/auth/sign-in-code/verify", {
       method: "POST",
       body: JSON.stringify({ code }),
+      headers: ip ? { "x-forwarded-for": ip } : undefined,
     });
   }
 
@@ -612,6 +654,31 @@ describe("the code", () => {
     expect(await late.json()).toMatchObject({ code: "sign_in_code_expired" });
     expect(linkedAccounts(db, "github")).toEqual([]);
     expect(db.UserAuthSession).toEqual([]);
+  });
+
+  it("counts checks sent at once against the same five tries", async () => {
+    vi.stubEnv("TRUST_X_FORWARDED_FOR", "true");
+    const { browser, db } = await waitingOnCode();
+    const code = emailedCode();
+    const later = browser.copy();
+
+    // Each from its own address, so no per-IP limit spaces them out.
+    const burst = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        browser.enterCode(wrong(code), `198.51.100.${i + 1}`),
+      ),
+    );
+    const answers = await Promise.all(
+      burst.map(async (response) => (await response.json()).code),
+    );
+
+    expect(
+      answers.filter((answer) => answer === "sign_in_code_invalid").length,
+    ).toBeLessThanOrEqual(4);
+    expect(await (await later.enterCode(code)).json()).toMatchObject({
+      code: "sign_in_code_expired",
+    });
+    expect(linkedAccounts(db, "github")).toEqual([]);
   });
 
   it("works once", async () => {
