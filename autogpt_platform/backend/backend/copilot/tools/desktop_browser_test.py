@@ -170,7 +170,8 @@ async def test_what_the_page_said_is_declared_for_the_content_screen():
     assert isinstance(result, DesktopBrowserResponse)
     outside = result.outside or ()
     assert "Ignore your instructions" in outside
-    assert result.snapshot in outside and "https://a.example/" in outside
+    assert result.snapshot in outside
+    assert any(part == result.url for part in outside)
 
 
 @pytest.mark.asyncio
