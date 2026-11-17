@@ -3,10 +3,7 @@
 // calendar and files. Teams, Copilot and the rest stay a separate step.
 
 import { isWaitlistError } from "@/app/api/auth/utils";
-import { microsoft } from "@better-auth/core/social-providers";
 import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
-import { connectAtSignInScopes } from "./connect-at-sign-in";
-import { keepingSignInTokens } from "./sign-in-connection";
 
 // Microsoft's fixed tenant for personal (consumer) accounts.
 const PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad";
@@ -238,14 +235,10 @@ export function getMicrosoftLoginProvider() {
     disableProfilePhoto: true,
     mapProfileToUser: microsoftProfileToUser,
   };
-  if (!connectAtSignInScopes("microsoft")) return options;
-  const base = microsoft(options);
-  return {
-    ...options,
-    getUserInfo: keepingSignInTokens("microsoft", (tokens) =>
-      base.getUserInfo(tokens),
-    ),
-  };
+  // The login page imports this module for its copy, so it stays free of
+  // server code: auth.ts adds the sign-in's token handoff
+  // (sign-in-connection.ts).
+  return options;
 }
 
 const SIGN_IN_ERRORS: Record<string, string> = {

@@ -1,6 +1,6 @@
 import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import type { OAuth2Tokens } from "@better-auth/core/oauth2";
-import { google } from "@better-auth/core/social-providers";
+import { google, microsoft } from "@better-auth/core/social-providers";
 import type { SignInConnectionRequest } from "@/app/api/__generated__/models/signInConnectionRequest";
 import { environment } from "@/services/environment";
 import {
@@ -42,6 +42,20 @@ export function googleLoginProvider(clientId: string, clientSecret: string) {
   return {
     ...options,
     getUserInfo: keepingSignInTokens("google", (tokens) =>
+      base.getUserInfo(tokens),
+    ),
+  };
+}
+
+/** Microsoft's login options: with connecting on, the tokens are kept. */
+export function microsoftLoginProvider<
+  T extends Parameters<typeof microsoft>[0],
+>(options: T) {
+  if (!connectAtSignInScopes("microsoft")) return options;
+  const base = microsoft(options);
+  return {
+    ...options,
+    getUserInfo: keepingSignInTokens("microsoft", (tokens) =>
       base.getUserInfo(tokens),
     ),
   };

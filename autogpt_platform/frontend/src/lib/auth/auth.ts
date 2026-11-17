@@ -71,7 +71,11 @@ import {
   assertSignInScopes,
   withoutProviderTokens,
 } from "./connect-at-sign-in";
-import { connectSignIn, googleLoginProvider } from "./sign-in-connection";
+import {
+  connectSignIn,
+  googleLoginProvider,
+  microsoftLoginProvider,
+} from "./sign-in-connection";
 import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
 import { assertTeamEmailUsesGoogle } from "./team-email-policy";
 import { sendVerificationLink } from "./verification-link";
@@ -100,7 +104,9 @@ function getSocialProviders() {
   if (apple) providers.apple = apple;
 
   const microsoft = getMicrosoftLoginProvider();
-  return microsoft ? { ...providers, microsoft } : providers;
+  return microsoft
+    ? { ...providers, microsoft: microsoftLoginProvider(microsoft) }
+    : providers;
 }
 
 async function findAppleAccountUser(
