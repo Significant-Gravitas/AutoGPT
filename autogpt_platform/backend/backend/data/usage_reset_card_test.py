@@ -70,6 +70,7 @@ def table(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
         usage_reset_card, "stripe_call", AsyncMock(return_value=_paid_session())
     )
     monkeypatch.setattr(usage_reset_card, "announce_reset", AsyncMock())
+    monkeypatch.setattr(usage_reset_card.posthog_client, "capture", MagicMock())
     # The account is open: neither closed-account guard stops a checkout.
     monkeypatch.setattr(usage_reset_card, "refuse_closed_account", AsyncMock())
     monkeypatch.setattr(usage_reset_card, "expire_if_account_closed", AsyncMock())
@@ -88,12 +89,14 @@ async def test_a_paid_reset_takes_the_next_number_when_its_own_was_just_taken(
         usage_reset_card, "clock_from_state", lambda *_: MagicMock(windows=windows)
     )
     table.count.side_effect = [0, 1]
-    table.update_many.side_effect = [TAKEN, 1]
+    # The payment intent is noted first; then the two tries at a number.
+    table.update_many.side_effect = [1, TAKEN, 1]
 
     grant = await fulfill_card_reset("cs_test_1", NOW)
 
     assert grant is not None and grant.granted_now
-    first, second = table.update_many.await_args_list
+    noted, first, second = table.update_many.await_args_list
+    assert noted.kwargs["data"] == {"stripePaymentIntentId": "pi_test_1"}
     assert first.kwargs["data"]["sequence"] == 1
     assert second.kwargs["data"]["sequence"] == 2
     # Only ever a row that is still pending.
@@ -106,7 +109,7 @@ async def test_a_paid_reset_that_cannot_be_numbered_is_an_error_stripe_retries(
 ):
     monkeypatch.setattr(usage_reset_card, "get_usage_activation_state", _on_max())
     monkeypatch.setattr(usage_reset_card, "clock_from_state", lambda *_: MagicMock())
-    table.update_many.side_effect = TAKEN
+    table.update_many.side_effect = [1, TAKEN, TAKEN, TAKEN, TAKEN, TAKEN]
 
     with pytest.raises(RuntimeError):
         await fulfill_card_reset("cs_test_1", NOW)
@@ -125,7 +128,10 @@ async def test_a_paid_reset_with_no_window_to_go_in_is_an_error_not_a_loss(
     with pytest.raises(RuntimeError):
         await fulfill_card_reset("cs_test_1", NOW)
 
-    table.update_many.assert_not_awaited()
+    # Only the payment's intent was noted; the purchase is still pending.
+    assert [call.kwargs["data"] for call in table.update_many.await_args_list] == [
+        {"stripePaymentIntentId": "pi_test_1"}
+    ]
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  rememberReturnPath,
+  takeReturnPath,
+} from "@/app/(platform)/copilot/components/UsageLimits/PaidReset/helpers";
 import { server } from "@/mocks/mock-server";
 import { render, waitFor } from "@/tests/integrations/test-utils";
 import { usePaidResetReturn } from "../components/SubscriptionTab/AutopilotUsageCard/usePaidResetReturn";
@@ -25,25 +30,37 @@ vi.mock("next/navigation", async (importOriginal) => {
   };
 });
 
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  toast,
+}));
+
 afterEach(() => {
   mockSearchParams.current = new URLSearchParams();
   mockRouterReplace.mockReset();
+  toast.mockReset();
+  takeReturnPath();
 });
 
 function Returning() {
+  // The usage read-out is on the page, so refreshing it reads it again.
+  useGetV2GetCopilotUsage();
   // No waiting between attempts in tests.
   usePaidResetReturn(1);
   return null;
 }
 
 function onConfirm(answers: Array<"granted" | "pending" | "error">) {
-  const sessions: string[] = [];
-  const usageReads = { count: 0 };
+  const seen = { sessions: [] as string[], usageReads: 0 };
   server.use(
     http.post("*/api/chat/usage/paid-reset/confirm", async ({ request }) => {
       const body = (await request.json()) as { session_id: string };
-      sessions.push(body.session_id);
-      const answer = answers[Math.min(sessions.length, answers.length) - 1];
+      seen.sessions.push(body.session_id);
+      const answer =
+        answers[Math.min(seen.sessions.length, answers.length) - 1];
       if (answer === "error")
         return HttpResponse.json({ detail: "down" }, { status: 503 });
       return HttpResponse.json({
@@ -53,16 +70,20 @@ function onConfirm(answers: Array<"granted" | "pending" | "error">) {
       });
     }),
     http.get("*/api/chat/usage", () => {
-      usageReads.count += 1;
+      seen.usageReads += 1;
       return HttpResponse.json({ tier: "MAX", daily: null, weekly: null });
     }),
   );
-  return sessions;
+  return seen;
+}
+
+function titles() {
+  return toast.mock.calls.map(([shown]) => shown.title);
 }
 
 describe("returning from paying for a usage reset by card", () => {
-  it("confirms the payment with the session Stripe sent back", async () => {
-    const sessions = onConfirm(["granted"]);
+  it("confirms the payment, says the limits are reset and reads usage again", async () => {
+    const seen = onConfirm(["granted"]);
     mockSearchParams.current = new URLSearchParams({
       usage_reset: "success",
       session_id: "cs_test_paid",
@@ -70,13 +91,18 @@ describe("returning from paying for a usage reset by card", () => {
 
     render(<Returning />);
 
-    await waitFor(() => expect(sessions[0]).toBe("cs_test_paid"));
+    await waitFor(() => expect(titles()).toContain("Your limits are reset"));
+    expect(seen.sessions[0]).toBe("cs_test_paid");
+    // Granted on the first answer: nothing more is asked.
+    expect(new Set(seen.sessions).size).toBe(1);
+    // Once on mount and again for the reset.
+    await waitFor(() => expect(seen.usageReads).toBeGreaterThanOrEqual(2));
     // The query string is dropped, so a reload doesn't ask again.
     expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing");
   });
 
   it("keeps asking for a moment while Stripe hasn’t confirmed yet", async () => {
-    const sessions = onConfirm(["pending", "error", "granted"]);
+    const seen = onConfirm(["pending", "error", "granted"]);
     mockSearchParams.current = new URLSearchParams({
       usage_reset: "success",
       session_id: "cs_test_slow",
@@ -84,11 +110,12 @@ describe("returning from paying for a usage reset by card", () => {
 
     render(<Returning />);
 
-    await waitFor(() => expect(sessions).toHaveLength(3));
+    await waitFor(() => expect(titles()).toContain("Your limits are reset"));
+    expect(seen.sessions).toHaveLength(3);
   });
 
-  it("gives up asking after a few tries and leaves it to Stripe’s own confirmation", async () => {
-    const sessions = onConfirm(["pending"]);
+  it("stops asking after a few tries, says so, and keeps reading usage for a late confirmation", async () => {
+    const seen = onConfirm(["pending"]);
     mockSearchParams.current = new URLSearchParams({
       usage_reset: "success",
       session_id: "cs_test_unpaid",
@@ -96,13 +123,16 @@ describe("returning from paying for a usage reset by card", () => {
 
     render(<Returning />);
 
-    await waitFor(() => expect(sessions).toHaveLength(4));
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(sessions).toHaveLength(4);
+    await waitFor(() => expect(titles()).toContain("Confirming your payment"));
+    expect(titles()).not.toContain("Your limits are reset");
+    // Usage is read on mount, when the asking ends, and three times after.
+    await waitFor(() => expect(seen.usageReads).toBeGreaterThanOrEqual(5));
+    // The asking itself ended at four tries.
+    expect(seen.sessions).toHaveLength(4);
   });
 
   it("confirms nothing after a cancelled payment", async () => {
-    const sessions = onConfirm(["granted"]);
+    const seen = onConfirm(["granted"]);
     mockSearchParams.current = new URLSearchParams({ usage_reset: "cancel" });
 
     render(<Returning />);
@@ -110,20 +140,51 @@ describe("returning from paying for a usage reset by card", () => {
     await waitFor(() =>
       expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
     );
-    expect(sessions).toEqual([]);
+    expect(titles()).toEqual(["Payment cancelled"]);
+    expect(seen.sessions).toEqual([]);
   });
 
   it("confirms nothing without a session, and does nothing on a normal visit", async () => {
-    const sessions = onConfirm(["granted"]);
+    const seen = onConfirm(["granted"]);
     mockSearchParams.current = new URLSearchParams({ usage_reset: "success" });
 
     render(<Returning />);
 
     await waitFor(() => expect(mockRouterReplace).toHaveBeenCalled());
-    expect(sessions).toEqual([]);
+    expect(seen.sessions).toEqual([]);
     mockRouterReplace.mockReset();
     mockSearchParams.current = new URLSearchParams();
     render(<Returning />);
     expect(mockRouterReplace).not.toHaveBeenCalled();
   });
+
+  it("goes back to the chat the customer paid from", async () => {
+    onConfirm(["granted"]);
+    rememberReturnPath("/copilot?sessionId=abc");
+    mockSearchParams.current = new URLSearchParams({
+      usage_reset: "success",
+      session_id: "cs_test_paid",
+    });
+
+    render(<Returning />);
+
+    await waitFor(() =>
+      expect(mockRouterReplace).toHaveBeenCalledWith("/copilot?sessionId=abc"),
+    );
+  });
+
+  it.each(["https://elsewhere.test/x", "//elsewhere.test/x", "copilot"])(
+    "never leaves the site for a remembered %s",
+    async (path) => {
+      onConfirm(["granted"]);
+      rememberReturnPath(path);
+      mockSearchParams.current = new URLSearchParams({ usage_reset: "cancel" });
+
+      render(<Returning />);
+
+      await waitFor(() =>
+        expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+      );
+    },
+  );
 });

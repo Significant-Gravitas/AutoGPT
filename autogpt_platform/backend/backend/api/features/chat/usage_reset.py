@@ -23,7 +23,6 @@ from autogpt_libs import auth
 from fastapi import APIRouter, Depends, HTTPException, Security
 from prisma.enums import SubscriptionTier as PrismaTier
 from prisma.errors import UniqueViolationError
-from pydantic import BaseModel, Field
 
 from backend.api.features.chat.usage_reset_models import (
     UsageResetConfirmRequest,

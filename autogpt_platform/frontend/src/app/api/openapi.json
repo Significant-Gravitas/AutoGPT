@@ -35934,7 +35934,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["pending", "granted"],
+            "enum": ["pending", "granted", "refund_due"],
             "title": "Status"
           },
           "week_start": {

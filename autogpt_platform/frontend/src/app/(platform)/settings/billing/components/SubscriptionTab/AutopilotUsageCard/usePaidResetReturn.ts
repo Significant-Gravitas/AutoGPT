@@ -13,6 +13,9 @@ import {
   CONFIRM_ATTEMPTS,
   CONFIRM_WAIT_MS,
   grantedMessage,
+  LATE_REFRESH_WAITS,
+  LATE_REFRESHES,
+  takeReturnPath,
 } from "@/app/(platform)/copilot/components/UsageLimits/PaidReset/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { formatExactReset } from "@/services/usageExperience/resetTime";
@@ -36,13 +39,21 @@ async function confirmPayment(confirm: Confirm, waitMs: number) {
   return null;
 }
 
-async function reportReturn(confirm: Confirm, waitMs: number) {
+/** Confirm the payment and say what happened. Usage is read again when it
+ *  is settled; if Stripe hasn't confirmed by then, a few more times, so a
+ *  reset granted a little later shows without a reload. */
+async function reportReturn(
+  confirm: Confirm,
+  refreshUsage: () => Promise<void>,
+  waitMs: number,
+) {
   const granted = await confirmPayment(confirm, waitMs);
   if (granted) {
     toast({
       title: "Your limits are reset",
       description: grantedMessage(formatExactReset(granted.resets_at)),
     });
+    await refreshUsage();
     return;
   }
   toast({
@@ -50,10 +61,15 @@ async function reportReturn(confirm: Confirm, waitMs: number) {
     description:
       "Your limits reset as soon as the payment goes through. If it didn’t, nothing was charged.",
   });
+  await refreshUsage();
+  for (let refresh = 0; refresh < LATE_REFRESHES; refresh += 1) {
+    await pause(waitMs * LATE_REFRESH_WAITS);
+    await refreshUsage();
+  }
 }
 
 /** Back from paying for a usage reset by card: confirm it, say what
- *  happened, and drop the query string. */
+ *  happened, and return to the page the customer paid from. */
 export function usePaidResetReturn(waitMs = CONFIRM_WAIT_MS) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -72,11 +88,11 @@ export function usePaidResetReturn(waitMs = CONFIRM_WAIT_MS) {
       if (outcome === "success" && sessionId) {
         void reportReturn(
           () => confirm({ data: { session_id: sessionId } }),
+          () =>
+            queryClient.invalidateQueries({
+              queryKey: getGetV2GetCopilotUsageQueryKey(),
+            }),
           waitMs,
-        ).then(() =>
-          queryClient.invalidateQueries({
-            queryKey: getGetV2GetCopilotUsageQueryKey(),
-          }),
         );
       } else if (outcome === "cancel") {
         toast({
@@ -84,7 +100,9 @@ export function usePaidResetReturn(waitMs = CONFIRM_WAIT_MS) {
           description: "Your limits weren’t reset and nothing was charged.",
         });
       }
-      router.replace("/settings/billing");
+      // Back to where they were when they went to pay (their chat), or
+      // stay here; either way without the query string.
+      router.replace(takeReturnPath() ?? "/settings/billing");
     },
     [outcome, sessionId, confirm, queryClient, router, waitMs],
   );

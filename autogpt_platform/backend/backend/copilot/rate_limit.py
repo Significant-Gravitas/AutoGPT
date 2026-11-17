@@ -687,6 +687,7 @@ async def get_usage_status(
     user_id: str,
     daily_cost_limit: int,
     weekly_cost_limit: int,
+    *,
     rate_limit_reset_cost: int = 0,
     tier: SubscriptionTier = DEFAULT_TIER,
     fail_closed: bool = False,
@@ -1423,7 +1424,7 @@ async def _record_on_billing_clock(
         clock = clock_from_state(state, now)
         if clock is None:
             return False
-        daily, weekly, plan = await _limits_for_recording(state)
+        daily, weekly, plan = await _limits_for_recording(state, now)
         await record_live(
             state,
             generation,
@@ -1451,7 +1452,7 @@ async def _record_on_billing_clock(
 
 
 async def _limits_for_recording(
-    state: UsageActivationState,
+    state: UsageActivationState, now: int
 ) -> tuple[int, int, PlanLimits | None]:
     """The daily and weekly limits and the plan's own limits, for splitting a
     recorded cost between the day's reserve and the week's pool. A trial has
@@ -1463,7 +1464,7 @@ async def _limits_for_recording(
         _chat_config.daily_cost_limit_microdollars,
         _chat_config.weekly_cost_limit_microdollars,
     )
-    daily, weekly = await _tier_limits(tier, base_daily, base_weekly)
+    daily, weekly = await _tier_limits(tier, base_daily, base_weekly, now)
     plan = await plan_limits_for(tier.value)
     return daily, weekly, plan
 
@@ -1817,7 +1818,7 @@ async def get_global_rate_limits(
         if trial is None or not trial.active:
             return 0, 0, SubscriptionTier.NO_TIER
         return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
-    daily, weekly = await _tier_limits(tier, daily, weekly)
+    daily, weekly = await _tier_limits(tier, daily, weekly, now_seconds())
     return daily, weekly, tier
 
 
@@ -1833,7 +1834,7 @@ async def _base_limits(config_daily: int, config_weekly: int) -> tuple[int, int]
 
 
 async def _tier_limits(
-    tier: SubscriptionTier, daily: int, weekly: int
+    tier: SubscriptionTier, daily: int, weekly: int, now: int
 ) -> tuple[int, int]:
     """A plan's daily and weekly limits from the base ones.
 
@@ -1844,7 +1845,7 @@ async def _tier_limits(
     stops all spend. Every other plan, and every plan on the calendar, is
     the base limit times its multiplier.
     """
-    if await billing_clock_live():
+    if await billing_clock_live(now):
         plan = await plan_limits_for(tier.value)
         if plan is not None:
             return (

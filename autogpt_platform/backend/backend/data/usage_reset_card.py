@@ -24,6 +24,8 @@ from backend.data.stripe_client import stripe_call
 from backend.data.stripe_invoice_payments import stripe_id
 from backend.data.subscription_checkout import expire_if_account_closed
 from backend.data.usage_reset import ResetPurchase, announce_reset, find_reset_purchase
+from backend.util import posthog_client
+from backend.util.posthog_events import PostHogEvent
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -154,18 +156,24 @@ async def card_reset_outcome(
         return None, "unknown_session"
     if row.status == "granted":
         return CardGrant(purchase=ResetPurchase.from_db(row), granted_now=False), None
+    if row.status == "refund_due":
+        return None, "plan_changed"
     session = await stripe_call(stripe.checkout.Session.retrieve_async, session_id)
     if not _pays_for(session, row):
         return None, "not_paid"
+    # Paid: from here the payment is known by its intent, granted or not, so
+    # a refund or dispute of it is recognised as a reset's (no credits).
+    await UsageReset.prisma().update_many(
+        where={"id": row.id, "status": "pending"},
+        data={
+            "stripePaymentIntentId": stripe_id(session.get("payment_intent")) or None
+        },
+    )
     state = await get_usage_activation_state(row.userId)
     if state.tier.value != SubscriptionTier(row.tier).value:
         # Paid at one plan's price after moving to another plan: that price
-        # doesn't buy the new plan's weekly limit. Not granted; it stays
-        # pending for support to refund. ERROR reaches Sentry.
-        logger.error(
-            "A paid usage reset was not granted: the plan changed between "
-            "opening its checkout and paying it"
-        )
+        # doesn't buy the new plan's weekly limit. Not granted, now or later.
+        await _mark_refund_due(row, session)
         return None, "plan_changed"
     clock = clock_from_state(state, now)
     if clock is None:
@@ -177,9 +185,40 @@ async def card_reset_outcome(
     if granted_now:
         logger.info("A usage reset paid by card was granted")
         await announce_reset(row.userId)
+        # Counted here, by the one call that granted it, whichever path
+        # that was: the webhook, the buyer's return, or a retried purchase.
+        posthog_client.capture(
+            row.userId,
+            PostHogEvent.USAGE_RESET_PURCHASED,
+            {
+                "tier": SubscriptionTier(row.tier).value,
+                "price_credits": row.priceCredits,
+                "paid_with": "card",
+            },
+        )
     current = await UsageReset.prisma().find_unique_or_raise(where={"id": row.id})
     purchase = ResetPurchase.from_db(current)
     return CardGrant(purchase=purchase, granted_now=granted_now), None
+
+
+async def _mark_refund_due(row: UsageReset, session: stripe.checkout.Session) -> None:
+    """Close a paid purchase that can't be granted, for good: no later
+    webhook, return or retry can grant it, even once the plan matches again
+    (Stripe still calls a refunded session paid). Its payment intent is
+    kept, so the refund's own webhook knows the payment bought no credits."""
+    closed = await UsageReset.prisma().update_many(
+        where={"id": row.id, "status": "pending"},
+        data={
+            "status": "refund_due",
+            "stripePaymentIntentId": stripe_id(session.get("payment_intent")) or None,
+        },
+    )
+    if closed:
+        # ERROR reaches Sentry: someone has to refund this payment.
+        logger.error(
+            "A paid usage reset was not granted and needs a refund: the plan "
+            "changed between opening its checkout and paying it"
+        )
 
 
 async def _grant_paid(
@@ -284,6 +323,8 @@ async def _resume_checkout(
     None when a new session is needed."""
     if pending.status == "granted":
         return CardCheckout(purchase=pending, url=None)
+    if pending.status == "refund_due":
+        raise CheckoutUnsettled("The purchase was paid and is to be refunded")
     session_id = pending.checkout_session_id or ""
     session = await stripe_call(stripe.checkout.Session.retrieve_async, session_id)
     if session.get("status") == "open" and session.get("url"):

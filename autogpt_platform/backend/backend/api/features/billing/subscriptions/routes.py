@@ -854,11 +854,18 @@ def _stripe_event_dedup_key(event_id: str) -> str:
     return f"stripe_webhook_event:{event_id}"
 
 
+_PAID_CHECKOUT_EVENTS = (
+    "checkout.session.completed",
+    "checkout.session.async_payment_succeeded",
+)
+
+
 async def _recover_usage_reset(event_type: str, session: dict) -> None:
     """A delivery that was claimed and then died before granting the reset it
     paid for must still grant it on Stripe's retry. Granting is idempotent,
     so an event that was fully processed changes nothing here."""
-    if not event_type.startswith("checkout.session."):
+    if event_type not in _PAID_CHECKOUT_EVENTS:
+        # An expired or failed session has nothing to grant.
         return
     session_id = session.get("id")
     if session_id and _is_usage_reset_checkout(session):
@@ -1054,8 +1061,7 @@ async def stripe_webhook(request: Request):
                     # session isn't what the purchase asked for. Retrying
                     # can't change that: it needs a person. ERROR reaches
                     # Sentry; the payment is found in Stripe by this event.
-                    # (A plan changed before payment is logged where it is
-                    # found, with its own words.)
+                    # plan_changed is logged in card_reset_outcome.
                     logger.error(
                         "stripe_webhook: %s for a paid usage reset was not "
                         "granted: no pending purchase matches its session",

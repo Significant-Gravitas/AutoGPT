@@ -265,13 +265,28 @@ def test_a_paid_usage_reset_with_no_purchase_to_grant_is_an_error_someone_sees(
     assert bool(errors) == logged
 
 
-@pytest.mark.parametrize("is_reset", [True, False])
+@pytest.mark.parametrize(
+    "event_type,is_reset,settled",
+    [
+        ("checkout.session.completed", True, True),
+        ("checkout.session.async_payment_succeeded", True, True),
+        ("checkout.session.completed", False, False),
+        # Nothing was paid, so there is nothing to grant or to ask Stripe.
+        ("checkout.session.expired", True, False),
+        ("checkout.session.async_payment_failed", True, False),
+    ],
+)
 def test_a_delivery_that_died_before_granting_a_reset_grants_it_on_the_retry(
-    mocker: pytest_mock.MockFixture, settle_reset: AsyncMock, is_reset: bool
+    mocker: pytest_mock.MockFixture,
+    settle_reset: AsyncMock,
+    event_type: str,
+    is_reset: bool,
+    settled: bool,
 ) -> None:
     """The first delivery claimed the event and stopped before the grant.
     Stripe's retry finds the claim; it must still grant the paid reset."""
     event = _make_checkout_event("payment")
+    event["type"] = event_type
     event["data"]["object"]["metadata"] = {"usage_reset": "1"} if is_reset else {}
     mocker.patch("stripe.Webhook.construct_event", return_value=event)
     mocker.patch(
@@ -300,7 +315,7 @@ def test_a_delivery_that_died_before_granting_a_reset_grants_it_on_the_retry(
 
     assert response.status_code == 200
     fulfill.assert_not_called()
-    if is_reset:
+    if settled:
         settle_reset.assert_awaited_once_with(event["data"]["object"]["id"])
     else:
         settle_reset.assert_not_awaited()

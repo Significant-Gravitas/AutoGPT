@@ -1236,8 +1236,8 @@ class UserCredit(UserCreditBase):
             return transaction
         # A paid usage reset is a card payment that buys no credits: refunding
         # it (or losing a dispute over it) takes none back.
-        if request.payment_intent and await UsageReset.prisma().find_first(
-            where={"stripePaymentIntentId": str(request.payment_intent)}
+        if request.payment_intent and await _paid_for_usage_reset(
+            str(request.payment_intent)
         ):
             # A dispute is a chargeback someone must answer in Stripe; only
             # ERROR reaches Sentry.
@@ -1771,6 +1771,15 @@ class DisabledUserCredit(UserCreditBase):
 
     async def fulfill_checkout(self, *args, **kwargs):
         pass
+
+
+async def _paid_for_usage_reset(payment_intent_id: str) -> bool:
+    """Whether the payment bought a usage reset, granted or not: a purchase
+    records its payment intent as soon as Stripe reports its session paid."""
+    found = await UsageReset.prisma().find_first(
+        where={"stripePaymentIntentId": payment_intent_id}
+    )
+    return found is not None
 
 
 async def get_user_credit_model(user_id: str) -> UserCreditBase:

@@ -108,8 +108,12 @@ async def test_saving_reports_whether_the_row_was_written(
 ):
     execute = AsyncMock(return_value=rows)
     monkeypatch.setattr(usage_clock, "execute_raw_with_schema", execute)
+    # Asked only when nothing was written, to tell "unchanged" from "older".
+    stored = AsyncMock(return_value=[{"?column?": 1}])
+    monkeypatch.setattr(usage_clock, "query_raw_with_schema", stored)
 
     assert await save_billing_clock("user-1", _subscription()) is saved
+    assert stored.await_count == (0 if saved else 1)
 
     statement, *values = execute.await_args.args
     assert values == [

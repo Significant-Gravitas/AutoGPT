@@ -28,7 +28,7 @@ from prisma.enums import SubscriptionTier
 from prisma.models import User
 from pydantic import BaseModel
 
-from backend.data.db import execute_raw_with_schema
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.data.stripe_client import stripe_call
 
 logger = logging.getLogger(__name__)
@@ -139,12 +139,32 @@ async def save_billing_clock(
     # counts both as private here. Callers that know who it is for say so.
     if written:
         logger.info("Billing clock copied from Stripe")
+    elif await _is_stored(user_id, period, client):
+        # The usual case, once per subscriber on every sweep: nothing new.
+        logger.debug("Billing clock unchanged: Stripe's period is the stored one")
     else:
         logger.warning(
             "Billing clock kept: Stripe's period is older than the stored "
             "one, or belongs to an older plan"
         )
     return bool(written)
+
+
+async def _is_stored(
+    user_id: str, period: BillingPeriod, client: Prisma | None
+) -> bool:
+    """Whether the stored clock is exactly this period of this subscription."""
+    rows = await query_raw_with_schema(
+        """SELECT 1 FROM {schema_prefix}"UsageBillingClock"
+        WHERE "userId" = $1 AND "stripeSubscriptionId" = $2
+            AND "periodStart" = $3 AND "periodEnd" = $4""",
+        user_id,
+        period.subscription_id,
+        period.start,
+        period.end,
+        client=client,
+    )
+    return bool(rows)
 
 
 async def refresh_billing_clock(user_id: str) -> RefreshOutcome:

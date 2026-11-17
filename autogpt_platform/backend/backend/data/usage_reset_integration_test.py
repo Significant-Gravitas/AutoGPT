@@ -4,7 +4,7 @@ paid, then exactly once."""
 
 import asyncio
 import time
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -35,6 +35,7 @@ from backend.data.usage_reset_card import (
     start_card_reset,
 )
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.posthog_events import PostHogEvent
 
 billing_user = fixtures.billing_user
 pytestmark = fixtures.pytestmark
@@ -254,6 +255,7 @@ class Stripe:
         self.created: list[dict] = []
         self.both_creating: asyncio.Barrier | None = None
         self.all_reading: asyncio.Barrier | None = None
+        self.events = MagicMock()
         monkeypatch.setattr(usage_reset_card, "stripe_call", self._call)
         monkeypatch.setattr(
             usage_reset_card,
@@ -312,7 +314,10 @@ class _Session(dict):
 @pytest.fixture
 def stripe_side(monkeypatch: pytest.MonkeyPatch) -> Stripe:
     monkeypatch.setattr(usage_reset_card, "announce_reset", AsyncMock())
-    return Stripe(monkeypatch)
+    side = Stripe(monkeypatch)
+    side.events = MagicMock()
+    monkeypatch.setattr(usage_reset_card.posthog_client, "capture", side.events)
+    return side
 
 
 async def _open(user_id: str, key: str = "key-card-1", now: int = NOW):
@@ -416,6 +421,12 @@ async def test_a_paid_checkout_is_granted_once_however_often_stripe_says_so(
     )
     assert await _resets_now(billing_user) == (START, 1)
     assert await UsageReset.prisma().count(where={"userId": billing_user}) == 1
+    # Counted once, by the delivery that granted it.
+    stripe_side.events.assert_called_once_with(
+        billing_user,
+        PostHogEvent.USAGE_RESET_PURCHASED,
+        {"tier": "PRO", "price_credits": PRICE, "paid_with": "card"},
+    )
     # No credits moved: the card paid the whole price.
     assert await _charges(billing_user) == []
 
@@ -712,7 +723,34 @@ async def test_a_checkout_paid_after_changing_plan_is_not_granted(
     assert await card_reset_outcome(session_id, NOW + 120) == (None, "plan_changed")
 
     assert await _resets_now(billing_user) == (None, 0)
-    assert (await list_reset_purchases(billing_user))[0].status == "pending"
+    closed = (await list_reset_purchases(billing_user))[0]
+    assert closed.status == "refund_due"
+    paid_with = stripe_side.sessions[session_id]["payment_intent"]
+    assert closed.payment_intent_id == paid_with
+    stripe_side.events.assert_not_called()
+
+    # Support refunds it. The refund's webhook takes no credits and doesn't
+    # ask Stripe to retry: the payment is known to have bought no credits.
+    refund = stripe.Refund.construct_from(
+        {"id": "re_test_plan_changed", "amount": PRICE, "payment_intent": paid_with},
+        "sk_test_none",
+    )
+    assert await UserCredit()._find_top_up(refund) is None
+
+    # Stripe still calls the refunded session paid. Back on the plan it was
+    # priced for, nothing can grant it any more: not a webhook redelivery,
+    # not the customer's return, not a retry of the purchase.
+    await User.prisma().update(
+        where={"id": billing_user}, data={"subscriptionTier": "PRO"}
+    )
+    assert await card_reset_outcome(session_id, NOW + 600) == (None, "plan_changed")
+    assert await card_reset_outcome(session_id, NOW + 600, user_id=billing_user) == (
+        None,
+        "plan_changed",
+    )
+    with pytest.raises(CheckoutUnsettled):
+        await _open(billing_user, now=NOW + 600)
+    assert await _resets_now(billing_user) == (None, 0)
 
 
 @pytest.mark.asyncio
@@ -787,6 +825,13 @@ async def test_asking_again_after_paying_grants_instead_of_charging_again(
     assert again.url is None and again.purchase.status == "granted"
     assert len(stripe_side.created) == 1
     assert await _resets_now(billing_user) == (START, 1)
+    # This path grants too, so it counts the purchase; the webhook that
+    # arrives afterwards finds it granted and counts nothing more.
+    stripe_side.events.assert_called_once()
+    assert stripe_side.events.call_args.args[1] == PostHogEvent.USAGE_RESET_PURCHASED
+    late = await fulfill_card_reset(first.purchase.checkout_session_id, NOW + 60)
+    assert late is not None and not late.granted_now
+    stripe_side.events.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -803,6 +848,34 @@ async def test_a_payment_without_a_billing_clock_is_not_silently_dropped(
     grant = await fulfill_card_reset(session_id, NOW)
 
     assert grant is not None and grant.purchase.status == "granted"
+
+
+@pytest.mark.asyncio
+async def test_a_refund_of_a_paid_reset_that_could_not_be_granted_yet_takes_no_credits(
+    billing_user, stripe_side: Stripe, monkeypatch: pytest.MonkeyPatch
+):
+    """Paid, but the grant failed (here: no clock to place it on) and the
+    purchase is still pending. Its payment is already known as a reset's."""
+    await save_billing_clock(billing_user, PERIOD)
+    checkout = await _open(billing_user)
+    session_id = checkout.purchase.checkout_session_id
+    assert session_id
+    stripe_side.pays(session_id)
+    monkeypatch.setattr(usage_reset_card, "clock_from_state", lambda *_: None)
+    with pytest.raises(RuntimeError):
+        await fulfill_card_reset(session_id, NOW)
+
+    pending = (await list_reset_purchases(billing_user))[0]
+    assert pending.status == "pending" and pending.payment_intent_id
+    refund = stripe.Refund.construct_from(
+        {
+            "id": "re_test_pending",
+            "amount": PRICE,
+            "payment_intent": pending.payment_intent_id,
+        },
+        "sk_test_none",
+    )
+    assert await UserCredit()._find_top_up(refund) is None
 
 
 @pytest.mark.asyncio

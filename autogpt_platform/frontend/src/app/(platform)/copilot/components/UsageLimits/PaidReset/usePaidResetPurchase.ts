@@ -16,6 +16,7 @@ import {
   grantedMessage,
   isOfferStale,
   newPurchaseKey,
+  rememberReturnPath,
 } from "./helpers";
 
 interface Args {
@@ -46,6 +47,7 @@ async function attemptPurchase(
     if (answer.status === "payment_required") {
       if (!answer.checkout_url) throw new Error();
       // Nothing is reset until the card payment goes through.
+      rememberReturnPath(window.location.pathname + window.location.search);
       goToCheckout(answer.checkout_url);
       return "checkout" satisfies Outcome;
     }

@@ -16,6 +16,42 @@ const DOLLARS_AND_CENTS = new Intl.NumberFormat("en-US", {
 /** How long to wait between asking whether a card payment has gone through. */
 export const CONFIRM_WAIT_MS = 2000;
 export const CONFIRM_ATTEMPTS = 4;
+/** After that, usage is read again a few times, further apart, for a
+ *  payment Stripe confirms late. */
+export const LATE_REFRESHES = 3;
+export const LATE_REFRESH_WAITS = 5;
+
+const RETURN_PATH_KEY = "usage-reset-return-path";
+
+/** Remember the page the customer leaves for Stripe's checkout, so they
+ *  come back to it (their chat) rather than to the billing page. */
+export function rememberReturnPath(path: string) {
+  try {
+    window.sessionStorage.setItem(RETURN_PATH_KEY, path);
+  } catch {
+    // No storage (private mode): they return to the billing page.
+  }
+}
+
+/** The remembered page, once; null unless it is a path on this site. */
+export function takeReturnPath() {
+  try {
+    const path = window.sessionStorage.getItem(RETURN_PATH_KEY);
+    window.sessionStorage.removeItem(RETURN_PATH_KEY);
+    return isLocalPath(path) ? path : null;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalPath(path: string | null): path is string {
+  return (
+    !!path &&
+    path.startsWith("/") &&
+    !path.startsWith("//") &&
+    !path.includes("\\")
+  );
+}
 
 /** Credits are cents: 8000 reads "$80", 1250 reads "$12.50". */
 export function formatResetPrice(credits: number) {

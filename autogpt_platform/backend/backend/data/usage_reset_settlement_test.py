@@ -1,7 +1,7 @@
-"""Settling a card payment: the purchase is counted once, by whichever call
-granted it, and an ungranted payment says why."""
+"""Settling a card payment: a granted one is answered with its purchase, an
+ungranted one says why."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -9,7 +9,6 @@ from backend.data import usage_reset_settlement as settlement
 from backend.data.usage_reset import ResetPurchase
 from backend.data.usage_reset_card import CardGrant
 from backend.data.usage_reset_settlement import settle_card_reset
-from backend.util.posthog_events import PostHogEvent
 
 NOW = 1_793_824_256
 SESSION = "cs_test_a1b2c3"
@@ -27,12 +26,9 @@ PURCHASE = ResetPurchase(
 )
 
 
-@pytest.fixture
-def events(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    capture = MagicMock()
-    monkeypatch.setattr(settlement.posthog_client, "capture", capture)
+@pytest.fixture(autouse=True)
+def pinned_now(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settlement, "now_seconds", lambda: NOW)
-    return capture
 
 
 def _outcome(monkeypatch: pytest.MonkeyPatch, grant, ungranted=None) -> AsyncMock:
@@ -42,43 +38,27 @@ def _outcome(monkeypatch: pytest.MonkeyPatch, grant, ungranted=None) -> AsyncMoc
 
 
 @pytest.mark.asyncio
-async def test_the_call_that_grants_counts_the_purchase(
-    events: MagicMock, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("granted_now", [True, False])
+async def test_a_granted_payment_is_answered_with_its_purchase(
+    monkeypatch: pytest.MonkeyPatch, granted_now: bool
 ):
-    outcome = _outcome(monkeypatch, CardGrant(purchase=PURCHASE, granted_now=True))
+    """Granted by this call or an earlier one: the webhook and the customer's
+    return both settle, and both get the purchase."""
+    outcome = _outcome(
+        monkeypatch, CardGrant(purchase=PURCHASE, granted_now=granted_now)
+    )
 
     settled = await settle_card_reset(SESSION, user_id="user-1")
 
     outcome.assert_awaited_once_with(SESSION, NOW, user_id="user-1")
     assert settled.purchase == PURCHASE and settled.ungranted is None
-    events.assert_called_once_with(
-        "user-1",
-        PostHogEvent.USAGE_RESET_PURCHASED,
-        {"tier": "MAX", "price_credits": 8_000, "paid_with": "card"},
-    )
-
-
-@pytest.mark.asyncio
-async def test_a_grant_already_made_is_not_counted_again(
-    events: MagicMock, monkeypatch: pytest.MonkeyPatch
-):
-    """The webhook and the customer's return both settle; one of them granted."""
-    _outcome(monkeypatch, CardGrant(purchase=PURCHASE, granted_now=False))
-
-    settled = await settle_card_reset(SESSION)
-
-    assert settled.purchase == PURCHASE
-    events.assert_not_called()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("why", ["unknown_session", "not_paid", "plan_changed"])
-async def test_an_ungranted_payment_says_why(
-    events: MagicMock, monkeypatch: pytest.MonkeyPatch, why: str
-):
+async def test_an_ungranted_payment_says_why(monkeypatch: pytest.MonkeyPatch, why: str):
     _outcome(monkeypatch, None, why)
 
     settled = await settle_card_reset(SESSION)
 
     assert settled.purchase is None and settled.ungranted == why
-    events.assert_not_called()

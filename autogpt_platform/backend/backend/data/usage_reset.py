@@ -48,7 +48,14 @@ from backend.util.json import SafeJson
 logger = logging.getLogger(__name__)
 
 PaidWith = Literal["credits", "card"]
-ResetStatus = Literal["pending", "granted"]
+# "pending": a card payment Stripe hasn't confirmed. "granted": in force for
+# its window. "refund_due": paid, but it can never be granted (the buyer
+# changed plan before paying); support refunds it. Nothing leaves that state.
+ResetStatus = Literal["pending", "granted", "refund_due"]
+_STATUSES: dict[str, ResetStatus] = {
+    "granted": "granted",
+    "refund_due": "refund_due",
+}
 
 
 class ResetPurchase(BaseModel):
@@ -78,7 +85,7 @@ class ResetPurchase(BaseModel):
             tier=SubscriptionTier(row.tier).value,
             price_credits=row.priceCredits,
             paid_with="card" if row.paidWith == "card" else "credits",
-            status="granted" if row.status == "granted" else "pending",
+            status=_STATUSES.get(row.status, "pending"),
             week_start=row.weekStart,
             week_end=row.weekEnd,
             sequence=row.sequence,

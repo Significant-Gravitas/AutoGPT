@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { takeReturnPath } from "../helpers";
 import { LimitReachedExtras } from "../LimitReachedExtras";
 import { PaidResetOffer } from "../PaidResetOffer";
 
@@ -155,6 +156,10 @@ describe("buying a usage reset", () => {
     );
     expect(onBought).not.toHaveBeenCalled();
     expect(keys).toHaveLength(1);
+    // The page they left is remembered, to come back to after paying.
+    expect(takeReturnPath()).toBe(
+      window.location.pathname + window.location.search,
+    );
   });
 
   it("lets the customer pay again after coming back from checkout with Back", async () => {

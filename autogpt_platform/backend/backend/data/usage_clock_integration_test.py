@@ -53,6 +53,35 @@ async def test_a_period_is_copied_and_read_back_with_the_usage_state(billing_use
 
 
 @pytest.mark.asyncio
+async def test_the_same_period_again_is_not_a_warning_an_older_one_is(
+    billing_user, caplog: pytest.LogCaptureFixture
+):
+    """The sweep re-copies every subscriber's period every few hours; only a
+    period that really is older than the stored one is worth a warning."""
+    await save_billing_clock(billing_user, NOVEMBER)
+
+    with caplog.at_level("DEBUG", logger="backend.data.usage_clock"):
+        caplog.clear()
+        assert await save_billing_clock(billing_user, NOVEMBER) is False
+        unchanged = _clock_lines(caplog)
+        caplog.clear()
+        assert await save_billing_clock(billing_user, OCTOBER) is False
+        older = _clock_lines(caplog)
+
+    assert unchanged == ["DEBUG"]
+    assert older == ["WARNING"]
+
+
+def _clock_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """The levels of what saving a clock logged about the clock."""
+    return [
+        record.levelname
+        for record in caplog.records
+        if record.getMessage().startswith("Billing clock")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_a_user_without_a_clock_still_has_a_state(billing_user):
     state = await get_usage_activation_state(billing_user)
 
