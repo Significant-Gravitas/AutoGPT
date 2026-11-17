@@ -2,7 +2,7 @@
 
 import { environment } from "@/services/environment";
 import BackendAPI from "./client";
-import React, { createContext, useMemo } from "react";
+import React, { createContext, useEffect, useMemo } from "react";
 
 // Add window.api type declaration for global access
 declare global {
@@ -19,6 +19,10 @@ export function BackendAPIProvider({
   children?: React.ReactNode;
 }): React.ReactNode {
   const api = useMemo(() => new BackendAPI(), []);
+
+  useEffect(() => {
+    return () => api.disconnectWebSocket();
+  }, [api]);
 
   if (environment.isLocal() && !environment.isServerSide()) {
     window.api = api; // Expose the API globally for debugging purposes

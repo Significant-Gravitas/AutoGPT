@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 
+from backend.copilot.constants import is_transient_api_error
 from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
@@ -484,6 +485,20 @@ class TestIsPromptTooLong:
     def test_request_too_large(self):
         err = Exception("request too large: 250000 tokens")
         assert _is_prompt_too_long(err) is True
+
+    def test_openai_request_too_large_is_compacted_not_backed_off(self):
+        """The retry loop tries the transient backoff before compaction, and
+        OpenAI's oversized-request 429 carries rate_limit_exceeded: it must
+        read as a context error only, or it is retried unchanged and the
+        compaction that could make it fit never runs."""
+        err = Exception(
+            "Error code: 429 - {'error': {'message': 'Request too large for "
+            "gpt-4.1-mini-2025-04-14 in organization org-test on tokens per min "
+            "(TPM): Limit 400000, Requested 520131.', 'type': 'tokens', "
+            "'code': 'rate_limit_exceeded'}}"
+        )
+        assert _is_prompt_too_long(err) is True
+        assert is_transient_api_error(str(err)) is False
 
     def test_maximum_context_length(self):
         err = ValueError("maximum context length exceeded")

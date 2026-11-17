@@ -6,6 +6,8 @@ the test user owns; the route must serve exactly its committed frames.
 
 import json
 import uuid
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import fastapi
 import pytest
@@ -14,6 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from backend.api.features.chat import routes as chat_routes
 from backend.copilot import stream_registry
+from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
 from backend.copilot.stream_drift.recording import RecordedTurn, load_fixture
 from backend.data import redis_client
 from backend.util.testing import is_tcp_port_reachable
@@ -35,6 +38,24 @@ def auth(mock_jwt_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def chat(test_user_id, monkeypatch):
+    """The stored session's chat row, still open; a test archives it."""
+    now = datetime.now(UTC)
+    chat = ChatSessionInfo(
+        session_id="resume",
+        user_id=test_user_id,
+        usage=[],
+        started_at=now,
+        updated_at=now,
+        metadata=ChatSessionMetadata(),
+    )
+    monkeypatch.setattr(
+        chat_routes, "get_chat_session_metadata", AsyncMock(return_value=chat)
+    )
+    return chat
 
 
 @pytest.fixture
@@ -109,6 +130,21 @@ async def test_a_stream_that_is_gone_is_answered_410(stored):
 
     assert response.status_code == 410
     assert response.json() == {"reason": "expired", "checkpoint": None}
+
+
+async def test_a_finished_turn_of_a_removed_chat_is_not_replayed(stored, chat):
+    session_id, turn_id = await stored(load_fixture("dummy-text-turn"))
+    chat.archived_at = datetime.now(UTC)
+
+    response = await _get_stream(session_id, turn=turn_id, after="0-0")
+
+    assert response.status_code == 410
+    assert response.json()["detail"] == {
+        "type": "chat_removed",
+        "expert_id": None,
+        "expert_name": None,
+        "message": "This chat was removed when its expert was reset.",
+    }
 
 
 async def _get_stream(session_id: str, **params: str):

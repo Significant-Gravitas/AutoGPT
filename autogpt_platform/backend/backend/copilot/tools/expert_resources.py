@@ -2,7 +2,7 @@
 
 An expert session installs onto itself. Personal AutoPilot names the expert.
 Credential grants are the owner's decision, so grant/revoke live in the
-``expert_admin`` group and only personal AutoPilot sees them.
+``expert_admin`` group and run only in an Otto chat the owner is typing in.
 """
 
 import logging
@@ -10,12 +10,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.api.features.experts.models import ExpertCredentialRef, ExpertWorkflowRef
+from backend.copilot.context import is_unattended_turn
 from backend.copilot.model import ChatSession, PendingQuestion
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import chat_db, experts_db
 from backend.util.exceptions import ExpertNotFoundError, NotFoundError
 
 from .base import BaseTool
+from .expert_proposal import autopilot_session_guard
 from .expert_scope import resolve_target_expert, settle_expert_grants
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 from .utils import fetch_graph_from_store_slug
@@ -127,7 +129,7 @@ class InstallExpertWorkflowTool(BaseTool):
                         message=f"Marketplace workflow '{username_agent_slug}' not found",
                         session_id=session_id,
                     )
-            await settle_expert_grants(user_id, session)
+            await settle_expert_grants(user_id, session, target)
             ref: ExpertWorkflowRef = await experts_db().install_workflow(
                 user_id,
                 target,
@@ -303,6 +305,12 @@ class GrantExpertCredentialTool(BaseTool):
         credential_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        # An expert session falls through to _change_grant's refusal, which
+        # names the tool it may use instead.
+        if session.expert_id is None and (
+            error := autopilot_session_guard(user_id, session)
+        ):
+            return error
         return await _change_grant(
             user_id, session, expert_id, credential_id, grant=True
         )
@@ -348,6 +356,12 @@ class RevokeExpertCredentialTool(BaseTool):
         credential_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
+        # An expert session falls through to _change_grant's refusal, which
+        # names the tool it may use instead.
+        if session.expert_id is None and (
+            error := autopilot_session_guard(user_id, session)
+        ):
+            return error
         return await _change_grant(
             user_id, session, expert_id, credential_id, grant=False
         )
@@ -369,6 +383,16 @@ async def _change_grant(
             message=(
                 "An expert cannot change credential grants. Use "
                 "tool:request_credential_grant to ask the user for access."
+            ),
+            error="access_denied",
+            session_id=session_id,
+        )
+    if is_unattended_turn():
+        return ErrorResponse(
+            message=(
+                "The user did not start this turn, so it cannot change an "
+                "expert's credentials. Tell them what the expert needs; they "
+                "change its access from the expert's Integrations page."
             ),
             error="access_denied",
             session_id=session_id,

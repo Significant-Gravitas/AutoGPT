@@ -1,8 +1,9 @@
-"""Thumbs up/down and copy ratings on AutoPilot replies.
+"""Thumbs up/down, copy, work check and mistake ratings on AutoPilot replies.
 
 Postgres (``ChatMessageFeedback``) keeps every rating, named after what it
-rates ("user-feedback": 1 = up, 0 = down; "copy": 1). Rating a reply again
-overwrites its rating and keeps its id.
+rates ("user-feedback": 1 = up, 0 = down; "copy": 1; "work_check": 0 = bad,
+1 = okay, 2 = great; "otto_mistake": 0). Rating a reply again overwrites its
+rating and keeps its id.
 
 Each rating also goes to PostHog LLM analytics as an ``$ai_metric`` event on
 the user (distinct id = user id), for every user regardless of cookie
@@ -23,13 +24,32 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from pydantic import BaseModel, Field
 
 from backend.copilot import feedback_db
+from backend.data.feedback_prompts import REASONS_BY_KIND, SCORES_BY_KIND
 from backend.util.posthog_client import capture
 from backend.util.posthog_events import PostHogEvent
 
-FeedbackScoreName = Literal["user-feedback", "copy"]
-FeedbackScoreValue = Literal[0, 1]
+FeedbackScoreName = Literal["user-feedback", "copy", "work_check", "otto_mistake"]
+FeedbackScoreValue = Literal[0, 1, 2]
+
+SCORE_VALUES_BY_NAME: dict[FeedbackScoreName, frozenset[int]] = {
+    "user-feedback": frozenset({0, 1}),
+    "copy": frozenset({1}),
+    "work_check": SCORES_BY_KIND["work_check"],
+    "otto_mistake": SCORES_BY_KIND["otto_mistake"],
+}
+REASONS_BY_SCORE_NAME: dict[FeedbackScoreName, frozenset[str]] = {
+    "work_check": REASONS_BY_KIND["work_check"],
+    "otto_mistake": REASONS_BY_KIND["otto_mistake"],
+}
+
+# Ratings from a feedback card. An admin acting as the user answers one without
+# leaving a trace, as with the card's ``FeedbackPrompt`` row.
+_CARD_SCORE_NAMES: frozenset[FeedbackScoreName] = frozenset(
+    {"work_check", "otto_mistake"}
+)
 
 MAX_FEEDBACK_COMMENT_CHARS = 2000
+MAX_FEEDBACK_REASON_CHARS = 64
 
 # Sequences are Postgres ``int4``: more digits than this could overflow the
 # lookup, and no chat is that long.
@@ -54,19 +74,24 @@ async def record_message_feedback(
     score_value: FeedbackScoreValue,
     comment: str | None,
     impersonated: bool = False,
+    reason: str | None = None,
 ) -> MessageFeedbackResponse | None:
     """Save a rating of one reply in *user_id*'s chat and send it to PostHog.
 
     *message_id* is the id the chat UI knows the reply by: ``<session>-seq-<N>``
     for a reply loaded from the chat history, or the message row's own id.
     *impersonated* marks a rating an admin gave while acting as the user.
+    *reason* is the option picked on a work check or mistake card.
 
     Returns ``None`` when the session is not the caller's or *message_id* is
-    not a reply in it.
+    not a reply in it. A card rating by an impersonating admin saves and sends
+    nothing and comes back with an empty id.
     """
     message = await _find_rated_message(user_id, session_id, message_id)
     if message is None:
         return None
+    if impersonated and score_name in _CARD_SCORE_NAMES:
+        return MessageFeedbackResponse(id="")
     feedback_id = await feedback_db.upsert_message_feedback(
         user_id=user_id,
         session_id=session_id,
@@ -74,6 +99,7 @@ async def record_message_feedback(
         score_name=score_name,
         score_value=score_value,
         comment=comment,
+        reason=reason,
     )
     _send_to_posthog(
         user_id=user_id,
@@ -84,6 +110,7 @@ async def record_message_feedback(
         score_value=score_value,
         comment=comment,
         impersonated=impersonated,
+        reason=reason,
     )
     return MessageFeedbackResponse(id=feedback_id)
 
@@ -126,6 +153,7 @@ def _send_to_posthog(
     score_value: FeedbackScoreValue,
     comment: str | None,
     impersonated: bool,
+    reason: str | None,
 ) -> None:
     """Queue the rating as an ``$ai_metric`` event. ``capture`` logs and
     swallows a PostHog failure, so the rating is never lost to one."""
@@ -143,4 +171,6 @@ def _send_to_posthog(
         properties["$ai_trace_id"] = message.traceId
     if comment:
         properties["$ai_feedback_text"] = comment
+    if reason:
+        properties["reason"] = reason
     capture(user_id, PostHogEvent.AI_METRIC, properties)

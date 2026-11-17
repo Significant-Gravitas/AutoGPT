@@ -6,6 +6,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/organisms/Conversation/Conversation";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import {
   Message,
   MessageContent,
@@ -71,6 +72,7 @@ export function TourMessageList({ messages, isStreaming, footer }: Props) {
             active
             elapsedSeconds={0}
             statusMessage="Thinking…"
+            color={AUTOPILOT_HEX}
           />
         )}
         {footer}

@@ -1,5 +1,4 @@
 import { getV2ListSessions } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import {
   type InfiniteData,
   type QueryClient,
@@ -8,7 +7,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { shareSessionListData } from "./sessionListSharing";
 
 export const SESSION_LIST_PAGE_SIZE = 50;
@@ -57,11 +55,7 @@ export function useSessionList({ enabled = true }: Args = {}) {
         offset: pageParam,
       }),
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.status !== 200) return undefined;
-      const loaded = countLoadedSessions(allPages);
-      return loaded < lastPage.data.total ? loaded : undefined;
-    },
+    getNextPageParam: getNextSessionListOffset,
     structuralSharing: shareSessionListData,
     refetchInterval: (listQuery) =>
       hasOlderPages(listQuery.state.data)
@@ -94,23 +88,9 @@ export function useSessionList({ enabled = true }: Args = {}) {
     // Nothing reads this cache entry; the poll only patches the list.
     notifyOnChangeProps: [],
   });
-  const deletingIds = useMutationState({
-    filters: { mutationKey: SESSION_DELETE_MUTATION_KEY, status: "pending" },
-    select: (mutation) =>
-      (mutation.state.variables as { sessionId: string }).sessionId,
-  });
-  // `query.data` and `deletingIds` keep their identity while nothing in them
-  // changes (structural sharing), so a refetch that returns the same sessions
-  // hands the lists the same array and every memoised row skips its render.
-  // Kept with the compiler on: the recent-chats sidebar that reads this list
-  // is outside the compiled folders, and its row-render tests expect a
-  // refetch of the same sessions to leave every row alone.
-  const sessions = useMemo(
-    () =>
-      flattenSessions(query.data).filter(
-        (session) => !deletingIds.includes(session.id),
-      ),
-    [query.data, deletingIds],
+  const deletingIds = useDeletingSessionIds();
+  const sessions = flattenSessions(query.data).filter(
+    (session) => !deletingIds.includes(session.id),
   );
 
   return {
@@ -124,6 +104,17 @@ export function useSessionList({ enabled = true }: Args = {}) {
     isLoadingMore: query.isFetchingNextPage,
     loadMore: query.fetchNextPage,
   };
+}
+
+/** `getNextPageParam` for a paged session list: the next offset, or none
+ *  once every session the server counts is loaded. */
+export function getNextSessionListOffset(
+  lastPage: SessionListPage,
+  allPages: SessionListPage[],
+) {
+  if (lastPage.status !== 200) return undefined;
+  const loaded = countLoadedSessions(allPages);
+  return loaded < lastPage.data.total ? loaded : undefined;
 }
 
 export function flattenSessions(data: SessionListInfiniteData | undefined) {
@@ -181,32 +172,14 @@ export function removeSessionFromList(
   };
 }
 
-export interface SessionGroup {
-  expertId: string | null;
-  sessions: SessionSummaryResponse[];
-}
-
-export function groupSessionsByExpert(
-  sessions: SessionSummaryResponse[],
-): SessionGroup[] {
-  const byExpert = new Map<string | null, SessionSummaryResponse[]>();
-  for (const session of sessions) {
-    const key = session.expert_id ?? null;
-    const bucket = byExpert.get(key);
-    if (bucket) {
-      bucket.push(session);
-    } else {
-      byExpert.set(key, [session]);
-    }
-  }
-  return [...byExpert.entries()]
-    .map(([expertId, grouped]) => ({ expertId, sessions: grouped }))
-    .sort((a, b) => {
-      if (a.expertId === b.expertId) return 0;
-      if (a.expertId === null) return -1;
-      if (b.expertId === null) return 1;
-      return 0;
-    });
+/** Ids of the chats with a delete in flight, which every list leaves out
+ *  whatever a refetch returns before the server has removed them. */
+export function useDeletingSessionIds() {
+  return useMutationState({
+    filters: { mutationKey: SESSION_DELETE_MUTATION_KEY, status: "pending" },
+    select: (mutation) =>
+      (mutation.state.variables as { sessionId: string }).sessionId,
+  });
 }
 
 function hasOlderPages(data: SessionListInfiniteData | undefined) {

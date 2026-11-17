@@ -372,7 +372,9 @@ async def test_a_delegated_turn_leaves_the_users_last_slot_free(
 
 
 @pytest.mark.asyncio
-async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
+async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome(
+    chat_blocked_events,
+):
     """Slot-cap rejection in ``schedule_turn`` surfaces as the dedicated
     ``rejected_concurrent_turn_cap`` outcome (not generic ``failed``) so
     callers can render an actionable message instead of pointing at an
@@ -423,6 +425,10 @@ async def test_idle_session_concurrent_turn_cap_returns_rejected_outcome():
     create_session.assert_not_awaited()
     enqueue.assert_not_awaited()
     wait_result.assert_not_awaited()
+    # The AutoPilot block's turn: a workflow block refused at the cap.
+    assert [(e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events] == [
+        ("concurrency", "refused", "block")
+    ]
 
 
 @pytest.mark.asyncio
@@ -722,7 +728,7 @@ async def test_a_dispatched_turn_with_no_wait_returns_without_reading_its_stream
 
 @pytest.mark.asyncio
 async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
-    mock_session_lookup,
+    mock_session_lookup, chat_blocked_events
 ):
     """Once queue_spawned_turn has stored the turn it will run when a slot
     frees, so with nothing to wait for a status read can only fail, and a
@@ -758,6 +764,10 @@ async def test_a_turn_queued_for_a_slot_with_no_wait_returns_without_reading_it(
     assert result.queued is True
     queued.assert_awaited_once()
     status_read.assert_not_awaited()
+    # A subtask waiting for a free slot, sent once it is stored.
+    assert [(e["limit"], e["outcome"], e["surface"]) for e in chat_blocked_events] == [
+        ("concurrency", "queued", "background")
+    ]
 
 
 @pytest.mark.asyncio

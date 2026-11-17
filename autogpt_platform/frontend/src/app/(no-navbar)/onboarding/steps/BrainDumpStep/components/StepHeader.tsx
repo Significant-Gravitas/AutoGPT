@@ -5,21 +5,21 @@ import { SwapFade } from "@/components/atoms/SwapFade/SwapFade";
 import { Text } from "@/components/atoms/Text/Text";
 import type { ScreenState } from "../useBrainDumpStep";
 import { ElapsedTime } from "./ElapsedTime";
+import {
+  FEW_SENTENCES_HINT,
+  OFF_YOUR_PLATE_QUESTION,
+} from "./insufficient-copy";
 import { OttoMightAsk } from "./OttoMightAsk";
+import { OttoQuestionCard } from "./OttoQuestionCard";
 
 const FAILURE_HEADLINE = "That didn't go through.";
 const TYPING_HEADLINE = "Write to me about your work";
-// "Catch" fits a mishearing, not a typed answer — the typed reject asks
-// for more instead of implying the system misheard.
-const INSUFFICIENT_HEADLINES = {
-  voice: "We didn't catch enough of that.",
-  typed: "Tell us a bit more.",
-} as const;
 
 interface Props {
   screen: ScreenState;
   restHeadline: string;
-  insufficientMode: "voice" | "typed";
+  // After the not-enough screen, Otto's question stays the headline.
+  isFollowUp: boolean;
   elapsedSeconds: number;
   question: string;
   onTogglePause: () => void;
@@ -28,15 +28,22 @@ interface Props {
 export function StepHeader({
   screen,
   restHeadline,
-  insufficientMode,
+  isFollowUp,
   elapsedSeconds,
   question,
   onTogglePause,
 }: Props) {
+  // Otto's big question is the heading of the not-enough screen.
+  if (screen === "insufficient") return null;
   const isRecording = screen === "recording";
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-2 px-4 text-center">
+      {isRecording && isFollowUp && (
+        <RevealItem className="flex w-full justify-center">
+          <OttoQuestionCard />
+        </RevealItem>
+      )}
       <RevealItem>
         <SwapFade
           swapKey={isRecording ? "timer" : "headline"}
@@ -46,7 +53,7 @@ export function StepHeader({
             <ElapsedTime seconds={elapsedSeconds} />
           ) : (
             <Text variant="h3">
-              {stateHeadline(screen, restHeadline, insufficientMode)}
+              {stateHeadline(screen, restHeadline, isFollowUp)}
             </Text>
           )}
         </SwapFade>
@@ -75,12 +82,18 @@ export function StepHeader({
       )}
       {screen === "typing" && (
         <RevealItem>
-          <Text variant="body" tone="muted" className="max-w-2xl">
-            What repeats every week, and what would you hand off first?{" "}
-            <Text variant="body-medium" as="span">
-              A few sentences is plenty.
+          {isFollowUp ? (
+            <Text variant="body" tone="muted" className="max-w-2xl">
+              {FEW_SENTENCES_HINT}
             </Text>
-          </Text>
+          ) : (
+            <Text variant="body" tone="muted" className="max-w-2xl">
+              What repeats every week, and what would you hand off first?{" "}
+              <Text variant="body-medium" as="span">
+                {FEW_SENTENCES_HINT}
+              </Text>
+            </Text>
+          )}
         </RevealItem>
       )}
     </div>
@@ -90,11 +103,10 @@ export function StepHeader({
 function stateHeadline(
   screen: ScreenState,
   restHeadline: string,
-  insufficientMode: "voice" | "typed",
+  isFollowUp: boolean,
 ) {
   if (screen === "failed") return FAILURE_HEADLINE;
-  if (screen === "typing") return TYPING_HEADLINE;
-  if (screen === "insufficient")
-    return INSUFFICIENT_HEADLINES[insufficientMode];
+  if (screen === "typing")
+    return isFollowUp ? OFF_YOUR_PLATE_QUESTION : TYPING_HEADLINE;
   return restHeadline;
 }

@@ -617,7 +617,7 @@ class DiscordAdapter(SocketAdapter):
             message_text = self._compose_with_forward(message, own_text)
             replied = await self._resolve_reply(message)
             message_text = self._with_reply_context(replied, message_text)
-            attachments, skipped = await self._extract_attachments(message)
+            attachments, skipped = await self._extract_attachments(message, replied)
             location = location_of(message.guild, channel)
             ctx = MessageContext(
                 platform="discord",
@@ -711,15 +711,24 @@ class DiscordAdapter(SocketAdapter):
         await self._on_message_callback(ctx, self)
 
     async def _extract_attachments(
-        self, message: discord.Message
+        self, message: discord.Message, replied: discord.Message | None = None
     ) -> tuple[tuple[InboundAttachment, ...], tuple[tuple[str, str], ...]]:
-        """Download the user's file attachments so the handler can upload them.
+        """Download the files the message is about so the handler can upload
+        them: the user's own first, then any a forward carries, then the
+        replied-to message's. Without the last two, an image the user points at
+        by forwarding or replying reached the model as its filename only.
 
         Returns ``(downloaded, skipped)`` where ``skipped`` is ``(filename,
         reason)`` for files we couldn't ingest (over the per-file cap, beyond
         the per-message count, or a failed download) so the handler can tell
         the user and the model rather than silently dropping them.
         """
+        snapshots = getattr(message, "message_snapshots", [])
+        sources = [
+            message.attachments,
+            *(snapshot.attachments for snapshot in snapshots),
+            replied.attachments if replied is not None else [],
+        ]
         files = [
             InboundFile(
                 filename=a.filename,
@@ -727,7 +736,8 @@ class DiscordAdapter(SocketAdapter):
                 mime_type=a.content_type,
                 fetch=a.read,
             )
-            for a in message.attachments
+            for attachments in sources
+            for a in attachments
         ]
         return await collect_attachments(
             files,
@@ -846,7 +856,7 @@ class DiscordAdapter(SocketAdapter):
         """
         if replied is None:
             return message_text
-        quoted = self._message_text(replied)
+        quoted = _with_attachment_names(self._message_text(replied), replied)
         if not quoted:
             return message_text
         prefix = f"[Replying to {replied.author.display_name}]\n{quoted}"
@@ -892,8 +902,8 @@ class DiscordAdapter(SocketAdapter):
             content = (snapshot.content or "").strip()
             if content:
                 parts.append(content)
-            # Surface forwarded attachments by name so the LLM knows files came
-            # with the forward, even though we can't inline their bytes here.
+            # Name forwarded attachments so the LLM knows which files came with
+            # the forward; ``_extract_attachments`` uploads the files themselves.
             for attachment in snapshot.attachments:
                 parts.append(f"[Attached file: {attachment.filename}]")
         return "\n\n".join(parts).strip()
@@ -1115,7 +1125,7 @@ class DiscordAdapter(SocketAdapter):
         own posts is about that post, and the post belongs to whichever
         session produced it, not to this thread's.
         """
-        text = self._strip_mentions(starter)
+        text = _with_attachment_names(self._strip_mentions(starter), starter)
         if not text:
             return None
         return MessageHistoryEntry(
@@ -1142,7 +1152,7 @@ class DiscordAdapter(SocketAdapter):
                     continue
                 if skip_ids and prior.id in skip_ids:
                     continue
-                text = self._strip_mentions(prior)
+                text = _with_attachment_names(self._strip_mentions(prior), prior)
                 if not text:
                     continue
                 yield MessageHistoryEntry(
@@ -1264,6 +1274,15 @@ def _interaction_channel_type(interaction: discord.Interaction) -> ChannelType:
     if isinstance(interaction.channel, discord.Thread):
         return "thread"
     return "channel"
+
+
+def _with_attachment_names(text: str, message: discord.Message) -> str:
+    """``text`` followed by a line naming each file ``message`` carries, so a
+    message that is only an image still shows up as context."""
+    names = [f"[Attached file: {a.filename}]" for a in message.attachments]
+    if not names:
+        return text
+    return "\n".join([text, *names] if text else names)
 
 
 def _resolve_mentions(

@@ -3149,6 +3149,7 @@ class TestForcedToolChoiceCapability:
             "anthropic.claude-sonnet-5-5",
             "claude-sonnet-5-5-20260928",
             "claude-fable-5-1",
+            "claude-fable-5-2",
             "claude-mythos-5-1",
         ],
     )

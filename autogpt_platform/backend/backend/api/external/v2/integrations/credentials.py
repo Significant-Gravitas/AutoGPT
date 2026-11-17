@@ -8,12 +8,12 @@ import logging
 from typing import Annotated, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Security
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security
 from prisma.enums import APIKeyPermission
 from pydantic import SecretStr
 from starlette import status
 
-from backend.api.features.integrations.router import delete_credentials_and_dependents
+from backend.api.features.integrations.router import delete_and_revoke_credentials
 from backend.data.model import (
     APIKeyCredentials,
     HostScopedCredentials,
@@ -114,7 +114,6 @@ async def create_credential(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_credential(
-    request: Request,
     credential_id: str,
     force: Annotated[
         bool,
@@ -139,8 +138,14 @@ async def delete_credential(
     Platform-provided credentials cannot be deleted. Any agents using this
     credential will fail on their next run.
     """
-    # An SDK default is not the caller's credential at all, so it is not there
-    # to find; a system or AutoGPT-managed one is, and refusing says so.
+    # A refused SDK default is not usable by anyone, so it is not there to find.
+    # The platform's own keys (system credentials, including runnable SDK
+    # defaults) and AutoGPT-managed ones are, and refusing says so.
+    if is_system_credential(credential_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform-managed credentials cannot be deleted",
+        )
     if is_sdk_default(credential_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -162,12 +167,11 @@ async def delete_credential(
         )
 
     try:
-        await delete_credentials_and_dependents(
-            request,
+        await delete_and_revoke_credentials(
             auth.user_id,
             existing,
             ProviderName(existing.provider),
-            force,
+            force=force,
         )
     except NeedConfirmation as e:
         raise HTTPException(
