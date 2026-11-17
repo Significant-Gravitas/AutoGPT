@@ -1,6 +1,7 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -152,6 +153,7 @@ from backend.copilot.rate_limit import (
     get_global_rate_limits,
     get_usage_status,
     increment_daily_reset_count,
+    is_user_paywalled,
     release_reset_lock,
     reset_daily_usage,
 )
@@ -2392,6 +2394,12 @@ async def _apply_autopilot_mode(
     session.metadata.autopilot_mode = mode
 
 
+async def _read_paywall_state(user_id: str) -> None:
+    """Warm the request's shared reads; enforcement keeps its usual position."""
+    with contextlib.suppress(Exception):
+        await is_user_paywalled(user_id)
+
+
 def _ui_message_stream_headers() -> dict[str, str]:
     return {
         "Cache-Control": "no-cache",
@@ -2493,120 +2501,149 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    session = await _validate_and_get_writable_session(session_id, user_id)
-    message = request.message
-    if request.is_user_message:
-        # The same input normalisation as the engines' own, applied before
-        # the message is stored or queued: the stored row is replayed as
-        # history on later turns, past the engines' entry sanitising. It runs
-        # before anything is written, so a refused message changes nothing.
-        try:
-            message = normalise_user_message(message)
-        except EmptyUserMessage as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    # An onboarding interview admits its own turns, in place of the paywall
-    # and allowance checks below, and charges its own budget when the turn
-    # is dispatched.
-    interview_plan = None
-    if is_onboarding_interview(session):
-        interview_plan = await admit_onboarding_interview_turn(
-            session,
-            user_id,
-            is_user_message=request.is_user_message,
-            expert_kickoff=request.expert_kickoff,
-            has_attachments=bool(request.file_ids or request.folder_ids),
-        )
-        # The interview runs on its own fast route and in its own typed
-        # style, before anyone has a plan: the request's model tier, voice
-        # mode and approval mode are not the interview's to change.
-        request = request.model_copy(
-            update={"model": None, "voice": False, "autopilot_mode": None}
-        )
-    await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
-
-    await enforce_model_entitlement(request.model, session, user_id)
-
-    # Fire-and-forget; per-user Redis dedup inside the helper provides
-    # cross-process / cross-restart idempotency. Same pattern as
-    # graphiti/ingest.py's ensure_scope_scheduled registration.
-    from backend.copilot.briefing.scheduling import ensure_morning_briefing_scheduled
-
-    # Spawned through the shared helper: the loop only holds a weak
-    # reference, so an unretained task can be GC'd mid-flight — leaving the
-    # Redis marker unwritten and making every subsequent turn redo the whole
-    # registration.
-    spawn_background_task(
-        ensure_morning_briefing_scheduled(user_id),
-        name=f"morning-briefing-register-{user_id[:12]}",
+    paywall_reads = asyncio.create_task(
+        _read_paywall_state(user_id), name=f"chat-paywall-reads-{session_id[:12]}"
     )
-
-    is_platform_route = session.metadata.llm_auth_provider == "platform"
-    if is_platform_route and interview_plan is None:
-        await enforce_payment_paywall(user_id)
-    elif session.metadata.llm_auth_provider == "codex":
-        await enforce_codex_access_http(user_id)
-
-    if request.is_user_message:
-        # The only writer of card approvals: a model can add chat rows, not requests.
-        await record_card_decisions(user_id, session_id, message)
-    message_id = (
-        scoped_client_message_id(user_id, session_id, request.message_id)
-        if request.message_id
+    turn_in_flight_read = (
+        asyncio.create_task(
+            is_turn_in_flight(session_id), name=f"chat-in-flight-{session_id[:12]}"
+        )
+        if request.is_user_message and request.message
         else None
     )
-    message_metadata: dict[str, Any] | None = None
-    persisted_kickoff_has_reply: bool | None = None
-    resume_persisted_kickoff = False
-    if request.expert_kickoff:
-        if not request.is_user_message or not message.strip():
-            raise HTTPException(
-                status_code=422,
-                detail="expert_kickoff requires a non-empty user message",
-            )
-        if session.expert_id is None:
-            raise HTTPException(
-                status_code=422,
-                detail="expert_kickoff requires an expert-scoped session",
-            )
-        message_id = expert_kickoff_message_id(
-            user_id,
-            session_id,
-            session.expert_id,
-        )
-        message_metadata = expert_kickoff_metadata(session.expert_id)
-        persisted_kickoff_has_reply = await _chat_message_reply_status_for_http(
-            message_id,
-            session_id,
-        )
-
-    # The kickoff owns a server-derived id and its own replay handling.
-    client_message_id = None if request.expert_kickoff else message_id
-
-    # Session-anchored tenancy: the ChatSession row is the authoritative
-    # org/team for every turn in it — a user whose active header org
-    # differs still charges/attributes turns to the session's org.
-    # Untagged legacy sessions fall back to the request context.
-    turn_org_id = session.organization_id or ctx.org_id
-    turn_team_id = session.team_id if session.organization_id else ctx.team_id
-
+    early_reads = (
+        (paywall_reads, turn_in_flight_read)
+        if turn_in_flight_read is not None
+        else (paywall_reads,)
+    )
     try:
-        if request.is_user_message and await pending_message_was_received(
-            session_id, message_id
-        ):
-            return _empty_ui_message_stream_response(follow_up_queued=True)
-        turn_in_flight = (
-            request.is_user_message and message and await is_turn_in_flight(session_id)
+        session = await _validate_and_get_writable_session(session_id, user_id)
+        message = request.message
+        if request.is_user_message:
+            # The same input normalisation as the engines' own, applied before
+            # the message is stored or queued: the stored row is replayed as
+            # history on later turns, past the engines' entry sanitising. It runs
+            # before anything is written, so a refused message changes nothing.
+            try:
+                message = normalise_user_message(message)
+            except EmptyUserMessage as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        # An onboarding interview admits its own turns, in place of the paywall
+        # and allowance checks below, and charges its own budget when the turn
+        # is dispatched.
+        interview_plan = None
+        if is_onboarding_interview(session):
+            interview_plan = await admit_onboarding_interview_turn(
+                session,
+                user_id,
+                is_user_message=request.is_user_message,
+                expert_kickoff=request.expert_kickoff,
+                has_attachments=bool(request.file_ids or request.folder_ids),
+            )
+            # The interview runs on its own fast route and in its own typed
+            # style, before anyone has a plan: the request's model tier, voice
+            # mode and approval mode are not the interview's to change.
+            request = request.model_copy(
+                update={"model": None, "voice": False, "autopilot_mode": None}
+            )
+        await _apply_autopilot_mode(session, user_id, request.autopilot_mode)
+
+        await enforce_model_entitlement(request.model, session, user_id)
+
+        # Fire-and-forget; per-user Redis dedup inside the helper provides
+        # cross-process / cross-restart idempotency. Same pattern as
+        # graphiti/ingest.py's ensure_scope_scheduled registration.
+        from backend.copilot.briefing.scheduling import (
+            ensure_morning_briefing_scheduled,
         )
-    except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
-        # Same fail-closed mapping as the RateLimitUnavailable branch below:
-        # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
-        # so a Redis brown-out at this step would otherwise surface as a raw
-        # 500 instead of the polished 503 + Retry-After.
-        raise HTTPException(
-            status_code=503,
-            detail="Chat service degraded, retry shortly",
-            headers={"Retry-After": "30"},
-        ) from exc
+
+        # Spawned through the shared helper: the loop only holds a weak
+        # reference, so an unretained task can be GC'd mid-flight — leaving the
+        # Redis marker unwritten and making every subsequent turn redo the whole
+        # registration.
+        spawn_background_task(
+            ensure_morning_briefing_scheduled(user_id),
+            name=f"morning-briefing-register-{user_id[:12]}",
+        )
+
+        is_platform_route = session.metadata.llm_auth_provider == "platform"
+        if is_platform_route and interview_plan is None:
+            await enforce_payment_paywall(user_id)
+        elif session.metadata.llm_auth_provider == "codex":
+            await enforce_codex_access_http(user_id)
+
+        if request.is_user_message:
+            # The only writer of card approvals: a model can add chat rows, not requests.
+            await record_card_decisions(user_id, session_id, message)
+        message_id = (
+            scoped_client_message_id(user_id, session_id, request.message_id)
+            if request.message_id
+            else None
+        )
+        message_metadata: dict[str, Any] | None = None
+        persisted_kickoff_has_reply: bool | None = None
+        resume_persisted_kickoff = False
+        if request.expert_kickoff:
+            if not request.is_user_message or not message.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="expert_kickoff requires a non-empty user message",
+                )
+            if session.expert_id is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="expert_kickoff requires an expert-scoped session",
+                )
+            message_id = expert_kickoff_message_id(
+                user_id,
+                session_id,
+                session.expert_id,
+            )
+            message_metadata = expert_kickoff_metadata(session.expert_id)
+            persisted_kickoff_has_reply = await _chat_message_reply_status_for_http(
+                message_id,
+                session_id,
+            )
+
+        # The kickoff owns a server-derived id and its own replay handling.
+        client_message_id = None if request.expert_kickoff else message_id
+
+        # Session-anchored tenancy: the ChatSession row is the authoritative
+        # org/team for every turn in it — a user whose active header org
+        # differs still charges/attributes turns to the session's org.
+        # Untagged legacy sessions fall back to the request context.
+        turn_org_id = session.organization_id or ctx.org_id
+        turn_team_id = session.team_id if session.organization_id else ctx.team_id
+
+        try:
+            if request.is_user_message and await pending_message_was_received(
+                session_id, message_id
+            ):
+                return _empty_ui_message_stream_response(follow_up_queued=True)
+            turn_in_flight = (
+                turn_in_flight_read is not None and await turn_in_flight_read
+            )
+        except (StreamRegistryUnavailable, PendingMessageReceiptUnavailable) as exc:
+            # Same fail-closed mapping as the RateLimitUnavailable branch below:
+            # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
+            # so a Redis brown-out at this step would otherwise surface as a raw
+            # 500 instead of the polished 503 + Retry-After.
+            raise HTTPException(
+                status_code=503,
+                detail="Chat service degraded, retry shortly",
+                headers={"Retry-After": "30"},
+            ) from exc
+
+    finally:
+        for read in early_reads:
+            if not read.done():
+                read.cancel()
+        if turn_in_flight_read is None:
+            await asyncio.gather(paywall_reads, return_exceptions=True)
+        else:
+            await asyncio.gather(
+                paywall_reads, turn_in_flight_read, return_exceptions=True
+            )
 
     if (
         turn_in_flight
