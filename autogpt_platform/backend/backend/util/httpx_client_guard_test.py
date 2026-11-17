@@ -28,16 +28,17 @@ def test_names_only_an_sdk_client_left_open_with_connections_on_a_closed_loop(
 ) -> None:
     guard = HttpxClientGuard()
     guard.start()
+    client = _client(client_kind)
     loop = asyncio.new_event_loop()
-    client = loop.run_until_complete(
-        _request_once(guard, _client(client_kind), close=close_client)
-    )
-    if close_loop:
-        loop.close()
+    try:
+        loop.run_until_complete(_request_once(guard, client, close=close_client))
+        if close_loop:
+            loop.close()
 
-    left_open = guard.stop()
+        left_open = guard.stop()
+    finally:
+        _close(client, loop)
 
-    _close(client, loop)
     assert len(left_open) == int(named)
     if named:
         assert left_open[0].startswith("openai client to http://127.0.0.1:")
@@ -46,13 +47,18 @@ def test_names_only_an_sdk_client_left_open_with_connections_on_a_closed_loop(
 
 def test_a_client_is_checked_only_in_the_test_that_sent_through_it() -> None:
     guard = HttpxClientGuard()
+    client = _client("sdk")
     loop = asyncio.new_event_loop()
-    client = loop.run_until_complete(_request_once(guard, _client("sdk"), close=False))
-    loop.close()
+    try:
+        loop.run_until_complete(_request_once(guard, client, close=False))
+        loop.close()
 
-    guard.start()
-    assert guard.stop() == []
-    _close(client, loop)
+        guard.start()
+        left_open = guard.stop()
+    finally:
+        _close(client, loop)
+
+    assert left_open == []
 
 
 def _client(kind: str) -> httpx.AsyncClient:
@@ -65,23 +71,25 @@ def _client(kind: str) -> httpx.AsyncClient:
 
 async def _request_once(
     guard: HttpxClientGuard, client: httpx.AsyncClient, *, close: bool
-) -> httpx.AsyncClient:
+) -> None:
     """One request from ``client`` to a local server that keeps the
-    connection alive, as a provider does, so the client pools it."""
+    connection alive, as a provider does, so the client pools it. The server
+    and the client's sockets are released however the request goes."""
     connections: list[asyncio.StreamWriter] = []
     server = await asyncio.start_server(partial(_answer, connections), "127.0.0.1", 0)
-    host, port = server.sockets[0].getsockname()[:2]
-    send = guard.wrap(_send_past_the_session_guard)
-    response = await send(client, httpx.Request("GET", f"http://{host}:{port}/"))
-    assert response.status_code == 200
-    if close:
-        await client.aclose()
-    await _drop_sockets(client)
-    for connection in connections:
-        connection.close()
-    server.close()
-    await server.wait_closed()
-    return client
+    try:
+        host, port = server.sockets[0].getsockname()[:2]
+        send = guard.wrap(_send_past_the_session_guard)
+        response = await send(client, httpx.Request("GET", f"http://{host}:{port}/"))
+        assert response.status_code == 200
+        if close:
+            await client.aclose()
+    finally:
+        await _drop_sockets(client)
+        for connection in connections:
+            connection.close()
+        server.close()
+        await server.wait_closed()
 
 
 async def _drop_sockets(client: httpx.AsyncClient) -> None:
@@ -97,11 +105,14 @@ async def _drop_sockets(client: httpx.AsyncClient) -> None:
 
 def _close(client: httpx.AsyncClient, loop: asyncio.AbstractEventLoop) -> None:
     """Closes a client left open on purpose, so its finalizer has nothing to
-    do. Its sockets are already gone, so any loop can close it."""
+    do, and then the loop. Its sockets are already gone, so any loop can
+    close it."""
     if loop.is_closed():
         loop = asyncio.new_event_loop()
-    loop.run_until_complete(client.aclose())
-    loop.close()
+    try:
+        loop.run_until_complete(client.aclose())
+    finally:
+        loop.close()
 
 
 async def _send_past_the_session_guard(
