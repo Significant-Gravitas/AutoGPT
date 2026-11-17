@@ -11,6 +11,7 @@ heavy dependencies that are irrelevant for error handling tests.
 """
 
 import json
+from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
@@ -337,10 +338,20 @@ def test_a_download_that_cannot_read_its_content(
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace_storage",
         new_callable=AsyncMock,
-        return_value=Mock(retrieve=AsyncMock(side_effect=storage_error)),
+        return_value=Mock(
+            retrieve_stream=Mock(
+                side_effect=lambda _: _stream_failing_with(storage_error)
+            )
+        ),
     )
 
     response = client.get("/files/file-1/download")
 
     assert response.status_code == expected_status
     assert set(response.json()) == {"error"}
+
+
+async def _stream_failing_with(error: Exception) -> AsyncIterator[bytes]:
+    for chunk in ():
+        yield chunk
+    raise error

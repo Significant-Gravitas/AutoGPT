@@ -36,6 +36,16 @@ class TestGetSdkSupplementStaticPlaceholder:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert "<session-id>" not in result
 
+    def test_local_pc_mode_describes_the_real_machine_boundary(self):
+        result = prompting.get_local_pc_sdk_supplement()
+        assert "real local machine" in result
+        assert "not in a cloud or" in result
+        assert "shell is\n  not limited by that file jail" in result
+        assert "<local-pc-allowed-root>" in result
+        assert "Full Linux environment" not in result
+        assert "pre-authenticated" not in result
+        assert "`read_tool_result`" in result
+
     @pytest.mark.parametrize("use_e2b", [False, True])
     def test_sdk_results_use_the_mcp_read_handler(self, use_e2b):
         result = prompting.get_sdk_supplement(use_e2b=use_e2b)

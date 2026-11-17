@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 import pytest
 
 from backend.copilot.model import ChatMessage as ChatMessageDomain
-from backend.copilot.sharing.models import _redact_secret_keys, sanitize_chat_message
+from backend.copilot.sharing.models import sanitize_chat_message
+from backend.copilot.sharing.redaction import _redact_secret_keys
 
 
 def _msg(**overrides) -> ChatMessageDomain:

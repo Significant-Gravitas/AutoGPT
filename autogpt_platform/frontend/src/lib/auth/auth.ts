@@ -44,6 +44,7 @@ import {
   platformUserExists,
   provisionPlatformUser,
 } from "./provision-platform-user";
+import { assertProviderVerifiedEmail } from "./provider-verified-email";
 import {
   recordResetLinkAddress,
   type ResetLinkContext,
@@ -233,7 +234,10 @@ export const auth = betterAuth({
           user: { email: string; emailVerified?: boolean | null },
           ctx: HookContext,
         ) => {
-          // Microsoft's first: its refusals carry codes /login explains.
+          // First, so an unverified address is answered the same whether or
+          // not an account uses it, before any later check tells them apart.
+          assertProviderVerifiedEmail(user, ctx);
+          // Microsoft's next: its refusals carry codes /login explains.
           assertMicrosoftSignUpAllowed(user, ctx);
           assertSignUpPolicy(user.email, ctx);
           // An email sign-up was already checked in hooks.before.

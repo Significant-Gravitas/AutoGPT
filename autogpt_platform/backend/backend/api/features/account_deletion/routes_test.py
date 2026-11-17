@@ -3,10 +3,10 @@ the real service and the real database.
 
 Each test gets a throwaway account of its own, removed afterwards with its
 deletion request and this process's closed-account answer for it. Only the
-edges are mocked, each where it is used: the flag, Stripe (in credit.py), the
-providers behind the connected apps, the scheduler, the AutoPilot turn and
-chat-link lookups, the MailerLite queue, the email client and the PostHog
-client. The app runs on the session event loop through httpx's ASGI transport;
+edges are mocked, each where it is used: Stripe (in credit.py), the providers
+behind the connected apps, the scheduler, the AutoPilot turn and chat-link
+lookups, the MailerLite queue, the email client and the PostHog client.
+The app runs on the session event loop through httpx's ASGI transport;
 TestClient's own loop would strand the Prisma connection the next test needs.
 """
 
@@ -150,15 +150,6 @@ async def api(account: Account) -> AsyncIterator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-def flag(mocker: MockerFixture) -> AsyncMock:
-    return mocker.patch(
-        f"{PACKAGE}.routes.is_feature_enabled",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-
-
-@pytest.fixture
 def posthog(mocker: MockerFixture) -> MagicMock:
     """The client behind the real ``capture_anonymous``."""
     client = MagicMock()
@@ -167,9 +158,7 @@ def posthog(mocker: MockerFixture) -> MagicMock:
 
 
 @pytest.fixture
-def edges(
-    mocker: MockerFixture, account: Account, flag: AsyncMock, posthog: MagicMock
-) -> Edges:
+def edges(mocker: MockerFixture, account: Account, posthog: MagicMock) -> Edges:
     creds_manager = mocker.patch(f"{PACKAGE}.connected_apps.creds_manager")
     creds_manager.store.get_all_creds = AsyncMock(return_value=_credentials())
     _no_autopilot_work(mocker)
@@ -572,62 +561,8 @@ async def test_neither_email_is_logged(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_with_the_flag_off_both_routes_are_hidden(
-    account: Account,
-    api: httpx.AsyncClient,
-    edges: Edges,
-    flag: AsyncMock,
-    posthog: MagicMock,
-):
-    flag.return_value = False
-
-    deleted = await api.post(DELETE, json=account.confirm())
-    answered = await api.post(FEEDBACK, json=ANSWER)
-
-    assert (deleted.status_code, answered.status_code) == (404, 404)
-    assert await _deletion_request(account) is None
-    edges.stripe_list.assert_not_awaited()
-    posthog.capture.assert_not_called()
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_the_flag_is_off_when_no_flag_service_answers(
-    account: Account,
-    api: httpx.AsyncClient,
-    posthog: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-    mocker: MockerFixture,
-):
-    """The real gate, with no local override and no flag vendor (self-hosted,
-    CI): closing an account is permanent, so the gate must fail closed."""
-    for name in (
-        "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION",
-        "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION",
-        "FORCE_ALL_FLAGS",
-        "NEXT_PUBLIC_FORCE_ALL_FLAGS",
-    ):
-        monkeypatch.delenv(name, raising=False)
-    mocker.patch(
-        "backend.util.feature_flag._evaluate_flag_value",
-        new_callable=AsyncMock,
-        side_effect=lambda key, user_id, default, **_: (default, False),
-    )
-    stripe_list = mocker.patch(
-        "backend.data.credit.stripe.Subscription.list_async", new_callable=AsyncMock
-    )
-
-    deleted = await api.post(DELETE, json=account.confirm())
-    answered = await api.post(FEEDBACK, json=ANSWER)
-
-    assert (deleted.status_code, answered.status_code) == (404, 404)
-    assert await _deletion_request(account) is None
-    stripe_list.assert_not_awaited()
-    posthog.capture.assert_not_called()
-
-
-@pytest.mark.asyncio(loop_scope="session")
 async def test_an_admin_acting_as_the_account_can_neither_delete_nor_answer(
-    account: Account, flag: AsyncMock, posthog: MagicMock, mocker: MockerFixture
+    account: Account, posthog: MagicMock, mocker: MockerFixture
 ):
     """Impersonation is for support; closing an account is its owner's own act."""
     delete = mocker.patch(f"{PACKAGE}.routes.delete_account", new_callable=AsyncMock)
@@ -671,7 +606,7 @@ def test_both_routes_declare_the_impersonation_refusal():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_open_account_has_nothing_scheduled(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock
+    account: Account, api: httpx.AsyncClient
 ):
     response = await api.get(STATUS)
 
@@ -823,24 +758,6 @@ async def test_an_account_whose_ban_ran_out_can_be_kept(
     assert await _deletion_request(account) is None
 
 
-@pytest.mark.asyncio(loop_scope="session")
-async def test_the_account_can_be_kept_with_the_flag_off(
-    account: Account, api: httpx.AsyncClient, edges: Edges, flag: AsyncMock
-):
-    """Turning the flag off must not strand someone who closed their account
-    while it was on."""
-    await api.post(DELETE, json=account.confirm())
-    flag.return_value = False
-
-    status = await api.get(STATUS)
-    kept = await api.post(RESTORE)
-
-    assert status.json()["status"] == "scheduled"
-    assert kept.status_code == 200
-    assert await _deletion_request(account) is None
-
-
-@pytest.mark.asyncio(loop_scope="session")
 async def test_an_admin_acting_as_the_account_cannot_keep_it(
     account: Account, edges: Edges, mocker: MockerFixture
 ):
@@ -869,7 +786,7 @@ async def test_an_admin_acting_as_the_account_cannot_keep_it(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_answer_is_counted_without_the_person(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+    account: Account, api: httpx.AsyncClient, posthog: MagicMock
 ):
     await _update(
         account,
@@ -896,7 +813,7 @@ async def test_an_answer_is_counted_without_the_person(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_open_is_counted_with_its_surface_without_the_person(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+    account: Account, api: httpx.AsyncClient, posthog: MagicMock
 ):
     await _update(
         account,
@@ -920,7 +837,7 @@ async def test_an_open_is_counted_with_its_surface_without_the_person(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_the_text_is_trimmed_and_capped(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+    account: Account, api: httpx.AsyncClient, posthog: MagicMock
 ):
     response = await api.post(
         FEEDBACK,
@@ -934,7 +851,7 @@ async def test_the_text_is_trimmed_and_capped(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_text_past_the_request_bound_is_refused(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+    account: Account, api: httpx.AsyncClient, posthog: MagicMock
 ):
     response = await api.post(
         FEEDBACK,
@@ -947,7 +864,7 @@ async def test_text_past_the_request_bound_is_refused(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_the_plan_and_tenure_come_from_the_server(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+    account: Account, api: httpx.AsyncClient, posthog: MagicMock
 ):
     await _update(
         account,
@@ -1004,7 +921,6 @@ async def test_the_plan_and_tenure_come_from_the_server(
 async def test_an_invalid_body_is_refused(
     account: Account,
     api: httpx.AsyncClient,
-    flag: AsyncMock,
     posthog: MagicMock,
     body: dict,
 ):
@@ -1016,7 +932,7 @@ async def test_an_invalid_body_is_refused(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_answers_past_the_limit_get_a_429(
-    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+    account: Account, api: httpx.AsyncClient, posthog: MagicMock
 ):
     responses = [
         await api.post(FEEDBACK, json=ANSWER) for _ in range(FEEDBACK_MAX_REQUESTS + 1)
