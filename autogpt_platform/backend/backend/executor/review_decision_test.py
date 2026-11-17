@@ -242,6 +242,10 @@ async def test_a_step_with_no_answer_asks_only_when_the_safe_mode_is_on(
         )
         if safe_mode == HITL:
             await _assert_ran_once(user, run.id, gated.workflow)
+            (asked,) = await _execs_of(user, run.id, gated.reviewed)
+            assert asked.output_data.get("review_message") == [
+                "Auto-approved (safe mode disabled)"
+            ]
         else:
             (email,) = await _execs_of(user, run.id, gated.step)
             assert EMAIL_STEP_RAN in str(email.output_data.get("error"))

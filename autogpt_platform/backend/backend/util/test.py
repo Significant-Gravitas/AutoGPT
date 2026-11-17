@@ -4,15 +4,13 @@ import logging
 import time
 import uuid
 from typing import Sequence, cast
-from unittest.mock import AsyncMock, patch
 
 from autogpt_libs.auth import get_user_id
 
 from backend.api.rest_api import AgentServer
 from backend.blocks._base import Block, BlockSchema
-from backend.blocks.helpers.review import HITLReviewHelper
 from backend.data import db, redis_client
-from backend.data.block import initialize_blocks
+from backend.data.block import BlockInput, initialize_blocks
 from backend.data.db_manager import DatabaseManager
 from backend.data.execution import (
     ExecutionContext,
@@ -111,9 +109,6 @@ async def wait_execution(
     assert False, "Execution did not complete in time."
 
 
-# A test's step has a fresh id that was never reviewed, and block tests run
-# without the database a reviewer's answer would be read from.
-@patch.object(HITLReviewHelper, "get_existing_decision", AsyncMock(return_value=None))
 async def execute_block_test(block: Block):
     prefix = f"[Test-{block.name}]"
 
@@ -128,6 +123,14 @@ async def execute_block_test(block: Block):
     output_index = 0
     log.info(f"{prefix} Executing {len(block.test_input)} tests...")
     prefix = " " * 4 + prefix
+
+    # The test's step has a fresh id that was never reviewed, and block tests
+    # run without the database the review gate reads a stored answer from.
+    # Only this instance skips the gate, as dev's gate did with safe mode off.
+    async def no_review(input_data: BlockInput, **_kwargs) -> tuple[bool, BlockInput]:
+        return False, input_data
+
+    setattr(block, "is_block_exec_need_review", no_review)
 
     for mock_name, mock_obj in (block.test_mock or {}).items():
         log.info(f"{prefix} mocking {mock_name}...")

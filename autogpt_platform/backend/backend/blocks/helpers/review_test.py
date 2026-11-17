@@ -76,14 +76,24 @@ def _approved(message: str = "ok") -> ReviewResult:
     )
 
 
-def _stored_reviews(rows: dict[str, SimpleNamespace]):
+def _stored_reviews(
+    rows: dict[str, SimpleNamespace], read_error: Exception | None = None
+):
     """The reviews already stored, by step, as the Prisma-or-RPC read returns
-    them."""
-    reads = SimpleNamespace(get_reviews_by_node_exec_ids=AsyncMock(return_value=rows))
+    them, or ``read_error`` from that read."""
+    reads = SimpleNamespace(
+        get_reviews_by_node_exec_ids=AsyncMock(
+            return_value=rows, side_effect=read_error
+        )
+    )
     return patch(f"{_REVIEW}.review_db", return_value=reads)
 
 
-def _pause(rows: dict[str, SimpleNamespace] | None = None, **helpers):
+def _pause(
+    rows: dict[str, SimpleNamespace] | None = None,
+    read_error: Exception | None = None,
+    **helpers,
+):
     """The block's own pause, with the review helper's DB calls stubbed and
     ``rows`` the reviews already stored."""
     stubs = {
@@ -95,7 +105,7 @@ def _pause(rows: dict[str, SimpleNamespace] | None = None, **helpers):
         **helpers,
     }
     patches = [patch.object(HITLReviewHelper, k, v) for k, v in stubs.items()]
-    return stubs, [*patches, _stored_reviews(rows or {})]
+    return stubs, [*patches, _stored_reviews(rows or {}, read_error)]
 
 
 async def _run(
@@ -340,3 +350,33 @@ async def test_a_steps_own_answer_decides_it_whatever_the_safe_mode(
         assert decision.should_proceed
         assert decision.review_result.data == runs_with
     stubs["get_or_create_human_review"].assert_not_awaited()
+    marked = stubs["update_review_processed_status"]
+    if stored in (ReviewStatus.APPROVED, ReviewStatus.REJECTED):
+        marked.assert_awaited_once_with(node_exec_id="ne-1", processed=True)
+    else:
+        marked.assert_not_awaited()
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["safe_mode_on", "safe_mode_off"])
+async def test_an_answer_that_cannot_be_read_fails_the_step(ask: bool):
+    """A failed read is never taken for no answer, which would run a step its
+    reviewer may have rejected."""
+    stubs, patches = _pause(read_error=ConnectionError("down"))
+    for p in patches:
+        p.start()
+    try:
+        with pytest.raises(ConnectionError):
+            await HITLReviewHelper.handle_review_decision(
+                input_data=_INPUT,
+                user_id="u1",
+                node_id="n-1",
+                node_exec_id="ne-1",
+                graph_exec_id="ge-1",
+                graph_id="g-1",
+                graph_version=1,
+                ask=ask,
+            )
+    finally:
+        for p in patches:
+            p.stop()
+    stubs["check_approval"].assert_not_awaited()
