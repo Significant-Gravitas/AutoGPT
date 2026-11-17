@@ -41,7 +41,14 @@ export async function getAccessToken() {
     });
     pending = mint;
   }
-  const token = await pending;
+  let token: string;
+  try {
+    token = await pending;
+  } catch (error) {
+    // The old session's refusal must not sign out whoever is signed in now.
+    assertSameSession(mark);
+    throw error;
+  }
   // A sign-out, or a sign-in as someone else, while the token was minted.
   assertSameSession(mark);
   return token;

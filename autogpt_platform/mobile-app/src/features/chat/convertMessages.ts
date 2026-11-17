@@ -166,6 +166,21 @@ function toRow(raw: unknown): Row | null {
   };
 }
 
+/** A row the server keeps out of the thread, such as an expert's kickoff. */
+export function isHiddenRow(raw: unknown) {
+  if (!raw || typeof raw !== "object") return false;
+  return isHiddenMetadata((raw as Record<string, unknown>).metadata);
+}
+
+/** A user message's own text and the file ids in its `[Attached files]` block. */
+export function splitUserContent(content: string) {
+  const block = ATTACHED_FILES_RE.exec(content)?.[0] ?? "";
+  return {
+    text: content.replace(ATTACHED_FILES_RE, ""),
+    fileIDs: [...block.matchAll(/file_id=([0-9a-f-]+)/g)].map((match) => match[1]),
+  };
+}
+
 function isHiddenMetadata(metadata: unknown) {
   if (!metadata || typeof metadata !== "object") return false;
   const value = metadata as Record<string, unknown>;

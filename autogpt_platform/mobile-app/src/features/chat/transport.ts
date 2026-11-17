@@ -86,7 +86,11 @@ const fetchStream: typeof globalThis.fetch = async (input, init) => {
     assertSameSession(mark);
     clearAccessToken();
     response = await send(input, withHeaders(init, await streamHeaders()));
-    if (response.status === 401) throw new SignedOutError();
+    if (response.status === 401) {
+      // Signs out only if the session that sent this is still the current one.
+      assertSameSession(mark);
+      throw new SignedOutError();
+    }
   }
   if (response.ok) return response;
   throw new Error(statusMessage(response.status));

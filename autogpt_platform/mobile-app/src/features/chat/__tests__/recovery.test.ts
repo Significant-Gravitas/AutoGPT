@@ -84,6 +84,52 @@ describe("turnLanded", () => {
     expect(turnLanded(rows, local, null)).toBe(true);
   });
 
+  it("is false when someone else sent a longer message that starts the same", () => {
+    const rows = [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "hello world" },
+    ];
+    expect(turnLanded(rows, local, { turn_id: "t1" })).toBe(false);
+  });
+
+  it("matches an attachment-only send by its files", () => {
+    const sentFiles = [
+      ...local.slice(0, 2),
+      {
+        id: "l3",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "" }],
+        metadata: { fileIDs: ["f1"], fileNames: ["a.pdf"] },
+      },
+    ];
+    const rows = (fileID: string) => [
+      { role: "user", content: "earlier" },
+      { role: "assistant", content: "ok" },
+      {
+        role: "user",
+        content: `\n\n[Attached files]\n- a.pdf (application/pdf, 1.0 KB), file_id=${fileID}`,
+      },
+      { role: "assistant", content: "Got it" },
+    ];
+    expect(turnLanded(rows("f1"), sentFiles, null)).toBe(true);
+    expect(turnLanded(rows("f2"), sentFiles, null)).toBe(false);
+  });
+
+  it("does not count a hidden kickoff toward the server's messages", () => {
+    const repeat = [
+      message("l1", "user", "yes"),
+      message("l2", "assistant", "Shall I go on?"),
+      message("l3", "user", "yes"),
+    ];
+    const rows = [
+      { role: "user", content: "kick off", metadata: { kind: "expert_kickoff" } },
+      { role: "user", content: "yes" },
+      { role: "assistant", content: "Shall I go on?" },
+    ];
+    expect(turnLanded(rows, repeat, null)).toBe(false);
+  });
+
   it("is false for a repeat that never left the phone", () => {
     const repeat = [
       message("l1", "user", "yes"),

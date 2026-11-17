@@ -182,6 +182,7 @@ async function fetchWithFreshToken(
     assertSameSession(mark);
     clearAccessToken();
     response = await fetch(url, { ...init(), headers: await authHeaders() });
+    assertSameSession(mark);
   }
   return response;
 }

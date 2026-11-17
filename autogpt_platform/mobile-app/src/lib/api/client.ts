@@ -41,6 +41,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     assertSameSession(mark);
     clearAccessToken();
     response = await send(path, options);
+    // A second 401 reads as a dead session; only if it is still this one.
+    assertSameSession(mark);
   }
   if (!response.ok) {
     throw new ApiError(response.status, await readErrorMessage(response));

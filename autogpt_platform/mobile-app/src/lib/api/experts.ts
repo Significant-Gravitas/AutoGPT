@@ -59,6 +59,7 @@ export async function createExpert(body: CreateExpertBody) {
     assertSameSession(mark);
     clearAccessToken();
     response = await postRaise(body);
+    assertSameSession(mark);
   }
   if (!response.ok) throw await createExpertError(response);
   return (await response.json()) as RaiseResult;
