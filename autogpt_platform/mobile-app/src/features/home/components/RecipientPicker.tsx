@@ -1,4 +1,5 @@
 import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 
 import { ExpertAvatar } from "@/components/ExpertAvatar";
@@ -6,7 +7,7 @@ import { Icon } from "@/components/Icon";
 import { avatarSource, avatarTint } from "@/features/team/helpers";
 import type { Expert } from "@/lib/api/experts";
 import { OTTO_AVATAR_URL, OTTO_NAME, OTTO_TINT } from "@/lib/otto";
-import { createStyles, radius, useColors, useScheme } from "@/lib/theme";
+import { createStyles, radius, spacing, type, useColors, useScheme } from "@/lib/theme";
 
 import { useRecipientMenu } from "../useRecipientMenu";
 import { RecipientMenu } from "./RecipientMenu";
@@ -30,6 +31,11 @@ export function RecipientPicker({ experts, selected, onSelect }: Props) {
     onSelect(expertID);
   }
 
+  function handleCreate() {
+    close();
+    router.navigate("/create-expert");
+  }
+
   return (
     <>
       <Pressable
@@ -50,14 +56,14 @@ export function RecipientPicker({ experts, selected, onSelect }: Props) {
             name={selected.name}
             source={avatarSource(selected)}
             tint={avatarTint(selected)}
-            size={24}
+            size={30}
           />
         ) : (
           <ExpertAvatar
             name={OTTO_NAME}
             source={OTTO_AVATAR_URL}
             tint={OTTO_TINT}
-            size={24}
+            size={30}
             inset
           />
         )}
@@ -74,6 +80,7 @@ export function RecipientPicker({ experts, selected, onSelect }: Props) {
           experts={experts}
           selectedID={selected?.id ?? null}
           onSelect={handleSelect}
+          onCreate={handleCreate}
           onClose={close}
         />
       ) : null}
@@ -85,10 +92,10 @@ const useStyles = createStyles((colors) => ({
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingLeft: 5,
-    paddingRight: 10,
-    paddingVertical: 4,
+    gap: spacing.sm,
+    height: 40,
+    paddingLeft: 4,
+    paddingRight: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.borderBase,
@@ -102,6 +109,6 @@ const useStyles = createStyles((colors) => ({
     elevation: 1,
   },
   pressed: { opacity: 0.6 },
-  name: { fontSize: 20, lineHeight: 26, color: colors.textSecondary },
+  name: { ...type.label, fontSize: 16, color: colors.text },
   flipped: { transform: [{ rotate: "180deg" }] },
 }));

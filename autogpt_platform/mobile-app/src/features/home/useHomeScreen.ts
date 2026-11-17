@@ -6,15 +6,13 @@ import { useAttachments } from "@/features/chat/useAttachments";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
 import { ApiError } from "@/lib/api/client";
 import { expertKeys, listExperts } from "@/lib/api/experts";
-import { expertTint } from "@/lib/expertPalette";
 import { getHome, homeKeys } from "@/lib/api/home";
-import { authClient } from "@/lib/auth/client";
 import { isSessionGone, signOut } from "@/lib/session";
 
 import { areaPrompts } from "./areaPrompts";
 import {
-  firstName,
   hasExistingWork,
+  homeRows,
   inputPlaceholder,
   ottoWording,
 } from "./helpers";
@@ -41,7 +39,6 @@ export function useHomeScreen() {
   });
   const home = useQuery({ queryKey: homeKeys.dashboard, queryFn: getHome });
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
-  const { data: session } = authClient.useSession();
   // No chat exists until the first send, so files upload to the workspace.
   const files = useAttachments(null);
 
@@ -51,22 +48,17 @@ export function useHomeScreen() {
   // The suggestions come from what Otto knows about the user's business; an
   // expert gets starters for their own area instead.
   const ottoPrompts = suggested.length > 0 ? suggested : FALLBACK_PROMPTS;
-  const prompts = selected ? areaPrompts(selected) : ottoPrompts;
-  const promptExpert = selected
-    ? {
-        name: selected.name,
-        tint: expertTint({
-          avatarUrl: selected.avatar_url,
-          categories: selected.categories,
-          role: selected.role,
-        }),
-      }
-    : null;
   // A failed refresh keeps the last good answer on screen.
   const dashboard = home.data;
-  const attention = dashboard?.attention ?? [];
-  const activeTask = dashboard?.active_tasks[0] ?? null;
-  const upcomingTask = dashboard?.upcoming_tasks[0] ?? null;
+  // What needs you belongs to the whole team, so it shows only with Otto.
+  const rows = selected
+    ? homeRows({ prompts: areaPrompts(selected) })
+    : homeRows({
+        attention: dashboard?.attention,
+        activeTask: dashboard?.active_tasks[0],
+        upcomingTask: dashboard?.upcoming_tasks[0],
+        prompts: ottoPrompts,
+      });
 
   async function refresh() {
     setIsRefreshing(true);
@@ -104,17 +96,11 @@ export function useHomeScreen() {
   }
 
   return {
-    name: firstName(session?.user?.name, session?.user?.email),
-    attention,
-    activeTask,
-    upcomingTask,
-    hasCards: attention.length > 0 || !!activeTask || !!upcomingTask,
     experts: team,
     selected,
     select: setSelectedID,
     placeholder: inputPlaceholder(selected, hasExistingWork(dashboard)),
-    prompts,
-    promptExpert,
+    rows,
     files,
     isStarting,
     error,

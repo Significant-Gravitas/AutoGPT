@@ -1,5 +1,5 @@
 // Ported from the web's services/experts/expert-role-label.ts and
-// EmptySession/helpers.ts so the home sentence reads the same on both.
+// EmptySession/helpers.ts so an expert's role reads the same on both.
 const ROLE_LABELS: Record<string, string> = {
   "SEO & Content": "SEO Content Manager",
   "Social & Content Repurposing": "Social Media Manager",
@@ -20,7 +20,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 // A role either names a person ("Marketer") or a domain ("Support"); a domain
-// gets "expert" appended so the sentence does not read "your Support".
+// gets "expert" appended so it does not read as a bare "Support".
 const PERSON_NOUN_SUFFIXES = ["er", "or", "ist", "yst", "ant", "ian"];
 const PERSON_NOUNS = new Set([
   "agent",

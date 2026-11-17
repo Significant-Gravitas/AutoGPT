@@ -22,6 +22,8 @@ interface Props {
   isDisabled?: boolean;
   /** Buttons between the field and the send button. */
   trailing?: ReactNode;
+  /** Stands in for the send button, e.g. dictation while the field is empty. */
+  action?: ReactNode;
   /** `card` puts the text above a row of buttons, with no outline of its own. */
   layout?: "bar" | "card";
 }
@@ -37,6 +39,7 @@ export function ComposerField({
   isBusy,
   isDisabled,
   trailing,
+  action,
   layout = "bar",
 }: Props) {
   const styles = useStyles();
@@ -50,7 +53,7 @@ export function ComposerField({
       label="Attach"
       onPress={onAttach}
       disabled={isDisabled}
-      variant="icon"
+      variant={isCard ? "tray" : "icon"}
     />
   ) : null;
   const input = (
@@ -67,7 +70,8 @@ export function ComposerField({
     />
   );
   const send =
-    isBusy && onStop ? (
+    action ??
+    (isBusy && onStop ? (
       <IconButton icon={StopIcon} label="Stop" onPress={onStop} variant="primary" />
     ) : (
       <IconButton
@@ -77,7 +81,7 @@ export function ComposerField({
         disabled={!canSend}
         variant="primary"
       />
-    );
+    ));
 
   if (isCard) {
     return (
@@ -146,12 +150,12 @@ const useStyles = createStyles((colors) => ({
     paddingBottom: 9,
     color: colors.text,
   },
-  // About three lines tall, growing to about six.
+  // One line tall, growing to about six.
   cardInput: {
     flex: 0,
-    minHeight: 84,
+    minHeight: 52,
     maxHeight: 156,
-    paddingTop: 14,
+    paddingTop: 16,
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.lg,
     textAlignVertical: "top",
@@ -159,7 +163,7 @@ const useStyles = createStyles((colors) => ({
   cardRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: spacing.xs,
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
   },

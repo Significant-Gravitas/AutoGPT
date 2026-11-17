@@ -15,9 +15,11 @@ interface Props {
   left?: ReactNode;
   center?: ReactNode;
   right?: ReactNode;
+  /** `icon` draws the menu button as a raised circle, for screens with no title. */
+  menuVariant?: "tray" | "icon";
 }
 
-export function ScreenHeader({ title, left, center, right }: Props) {
+export function ScreenHeader({ title, left, center, right, menuVariant = "tray" }: Props) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const styles = useStyles();
@@ -30,7 +32,12 @@ export function ScreenHeader({ title, left, center, right }: Props) {
     <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
       <View style={styles.side}>
         {left ?? (
-          <IconButton icon={Menu01Icon} label="Open menu" onPress={openMenu} />
+          <IconButton
+            icon={Menu01Icon}
+            label="Open menu"
+            onPress={openMenu}
+            variant={menuVariant}
+          />
         )}
       </View>
       {center ? (

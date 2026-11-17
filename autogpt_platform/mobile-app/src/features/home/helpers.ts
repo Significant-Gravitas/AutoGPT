@@ -1,8 +1,11 @@
 import { isSessionID } from "@/lib/api/chat";
-import type { HomeDashboard } from "@/lib/api/home";
+import type {
+  HomeActiveTask,
+  HomeAttentionItem,
+  HomeDashboard,
+  HomeUpcomingTask,
+} from "@/lib/api/home";
 import { FRONTEND_URL } from "@/lib/env";
-
-import { expertRoleLabel } from "./expertRoleLabel";
 
 export type HomeLinkTarget =
   | { kind: "chat"; sessionID: string }
@@ -31,54 +34,6 @@ export function homeLinkTarget(href: string): HomeLinkTarget | null {
   return null;
 }
 
-/**
- * The first name to greet. Email sign-up stores the address's local part as
- * the name; that one was never given, so it does not count.
- */
-export function firstName(
-  name: string | null | undefined,
-  email?: string | null,
-) {
-  const given = name?.trim();
-  if (!given) return null;
-  const emailName = email?.split("@")[0].toLowerCase();
-  if (given.toLowerCase() === emailName) return null;
-  return given.split(/\s+/)[0];
-}
-
-export function greetingLine(name: string | null) {
-  return name ? `Hey, ${name}` : "Hey there";
-}
-
-interface Recipient {
-  name: string;
-  role: string | null;
-}
-
-/** The hero sentence before and after the picker; `null` is Otto. */
-export function introParts(expert: Recipient | null) {
-  if (!expert) {
-    return {
-      before: "Tell",
-      after: " about your work, and it will find what to automate.",
-    };
-  }
-  const role = expert.role?.trim();
-  return {
-    before: "I'm",
-    after: role
-      ? `, your ${expertRoleLabel(role)}. What should I take on?`
-      : ". What should I take on?",
-  };
-}
-
-/** A sentence part as words, with a leading comma or full stop kept apart to sit against the picker. */
-export function sentenceWords(part: string) {
-  const mark = /^[,.]/.exec(part)?.[0] ?? "";
-  const words = part.slice(mark.length).trim().split(/\s+/).filter(Boolean);
-  return { mark, words };
-}
-
 const TEAM_PLACEHOLDER =
   "What should the team work on? e.g. 'Follow up with yesterday's leads'";
 
@@ -97,7 +52,7 @@ export function hasExistingWork(dashboard: HomeDashboard | undefined) {
 }
 
 export function inputPlaceholder(
-  expert: Pick<Recipient, "name"> | null,
+  expert: { name: string } | null,
   hasWork = false,
 ) {
   if (expert) return `What should ${expert.name} work on?`;
@@ -134,4 +89,39 @@ export function nextRunLabel(
 // features", so they name the product where the person is talking to Otto.
 export function ottoWording(prompt: string) {
   return prompt.replace(/\bAutoGPT\b/g, "Otto");
+}
+
+export type HomeRow =
+  | { kind: "attention"; item: HomeAttentionItem }
+  | { kind: "active"; task: HomeActiveTask }
+  | { kind: "upcoming"; task: HomeUpcomingTask }
+  | { kind: "prompt"; prompt: string };
+
+const MAX_ROWS = 4;
+const MAX_STATUS_ROWS = 2;
+
+interface HomeRowsInput {
+  attention?: HomeAttentionItem[];
+  activeTask?: HomeActiveTask | null;
+  upcomingTask?: HomeUpcomingTask | null;
+  prompts: string[];
+}
+
+/**
+ * The short list above the composer: what needs you, then what is running
+ * or next, then starters to fill the rest.
+ */
+export function homeRows({
+  attention = [],
+  activeTask,
+  upcomingTask,
+  prompts,
+}: HomeRowsInput): HomeRow[] {
+  const status: HomeRow[] = [
+    ...attention.map((item) => ({ kind: "attention" as const, item })),
+    ...(activeTask ? [{ kind: "active" as const, task: activeTask }] : []),
+    ...(upcomingTask ? [{ kind: "upcoming" as const, task: upcomingTask }] : []),
+  ].slice(0, MAX_STATUS_ROWS);
+  const starters = prompts.map((prompt) => ({ kind: "prompt" as const, prompt }));
+  return [...status, ...starters].slice(0, MAX_ROWS);
 }

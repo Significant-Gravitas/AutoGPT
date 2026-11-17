@@ -1,15 +1,14 @@
 import { FRONTEND_URL } from "@/lib/env";
 
+import type { HomeAttentionItem } from "@/lib/api/home";
+
 import {
-  firstName,
-  greetingLine,
   hasExistingWork,
   homeLinkTarget,
+  homeRows,
   inputPlaceholder,
-  introParts,
   nextRunLabel,
   ottoWording,
-  sentenceWords,
 } from "../helpers";
 
 const SESSION = "0b6f3c1e-5d2a-4c8b-9f1e-2a3b4c5d6e7f";
@@ -57,87 +56,6 @@ describe("homeLinkTarget", () => {
 
   it("refuses an empty link", () => {
     expect(homeLinkTarget("")).toBeNull();
-  });
-});
-
-describe("firstName", () => {
-  it("takes the first word of the name", () => {
-    expect(firstName("  Sam Lee ", "sam@example.com")).toBe("Sam");
-  });
-
-  it("ignores a name that is only the email's local part", () => {
-    expect(firstName("sam.lee", "Sam.Lee@example.com")).toBeNull();
-  });
-
-  it("has nothing for a missing or blank name", () => {
-    expect(firstName(null)).toBeNull();
-    expect(firstName("   ")).toBeNull();
-  });
-});
-
-describe("greetingLine", () => {
-  it("greets by name", () => {
-    expect(greetingLine("Sam")).toBe("Hey, Sam");
-  });
-
-  it("falls back without a name", () => {
-    expect(greetingLine(null)).toBe("Hey there");
-  });
-});
-
-describe("introParts", () => {
-  it("asks about the work for Otto", () => {
-    expect(introParts(null)).toEqual({
-      before: "Tell",
-      after: " about your work, and it will find what to automate.",
-    });
-  });
-
-  it("uses a role that names a person as written", () => {
-    expect(introParts({ name: "Max", role: "Marketer" })).toEqual({
-      before: "I'm",
-      after: ", your Marketer. What should I take on?",
-    });
-  });
-
-  it("adds expert to a domain role", () => {
-    expect(introParts({ name: "Max", role: "Support" }).after).toBe(
-      ", your Support expert. What should I take on?",
-    );
-    expect(introParts({ name: "Max", role: "Customer Success" }).after).toBe(
-      ", your Customer Success expert. What should I take on?",
-    );
-  });
-
-  it("maps a preset role to its display label", () => {
-    expect(introParts({ name: "Max", role: "Sales" }).after).toBe(
-      ", your Sales Development Rep. What should I take on?",
-    );
-  });
-
-  it("leaves the role out when there is none", () => {
-    expect(introParts({ name: "Max", role: null }).after).toBe(
-      ". What should I take on?",
-    );
-    expect(introParts({ name: "Max", role: "  " }).after).toBe(
-      ". What should I take on?",
-    );
-  });
-});
-
-describe("sentenceWords", () => {
-  it("keeps a leading mark apart from the words", () => {
-    expect(sentenceWords(", your Marketer. What")).toEqual({
-      mark: ",",
-      words: ["your", "Marketer.", "What"],
-    });
-  });
-
-  it("has no mark for a part that starts with a space", () => {
-    expect(sentenceWords(" about your work.")).toEqual({
-      mark: "",
-      words: ["about", "your", "work."],
-    });
   });
 });
 
@@ -218,5 +136,50 @@ describe("ottoWording", () => {
 
   it("leaves other words alone", () => {
     expect(ottoWording("Plan my AutoGPTish week")).toBe("Plan my AutoGPTish week");
+  });
+});
+
+describe("homeRows", () => {
+  function need(id: string): HomeAttentionItem {
+    return {
+      id,
+      kind: "approval",
+      priority: "normal",
+      title: `Approve ${id}`,
+      description: "",
+      primary_action: { label: "Review", href: "/team" },
+    };
+  }
+  const active = { id: "a", title: "Drafting the newsletter", status: "running" as const };
+  const upcoming = { id: "u", title: "Weekly report", next_run_time: "2026-11-18T09:00:00Z" };
+  const prompts = ["Plan my week", "Draft a follow-up email", "Research a topic", "Sum up a doc"];
+
+  it("shows only starters when nothing is going on", () => {
+    expect(homeRows({ prompts })).toEqual(prompts.map((prompt) => ({ kind: "prompt", prompt })));
+  });
+
+  it("puts what needs you first, then what is running, then starters, four rows in all", () => {
+    const rows = homeRows({
+      attention: [need("x")],
+      activeTask: active,
+      upcomingTask: upcoming,
+      prompts,
+    });
+    expect(rows.map((row) => row.kind)).toEqual(["attention", "active", "prompt", "prompt"]);
+  });
+
+  it("keeps at least two starters however much is waiting", () => {
+    const rows = homeRows({
+      attention: [need("x"), need("y"), need("z")],
+      activeTask: active,
+      prompts,
+    });
+    expect(rows.map((row) => row.kind)).toEqual(["attention", "attention", "prompt", "prompt"]);
+  });
+
+  it("shows what is next when nothing needs you", () => {
+    expect(homeRows({ upcomingTask: upcoming, prompts: [] })).toEqual([
+      { kind: "upcoming", task: upcoming },
+    ]);
   });
 });
