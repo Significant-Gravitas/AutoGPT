@@ -66,6 +66,20 @@ class HttpxClientGuard:
         return recorded_send
 
 
+def left_open_report(nodeid: str, left_open: list[str]) -> str:
+    """What a test that left clients open is told, and how to fix it."""
+    return (
+        f"{nodeid} left {len(left_open)} httpx client(s) open on an event loop "
+        "that has closed:\n"
+        + "\n".join(f"  {client}" for client in left_open)
+        + "\nTheir pooled connections can no longer be closed, and an OpenAI or "
+        "Anthropic client then fails a later test: garbage-collected, it runs "
+        'aclose() on that test\'s loop, which raises "Event loop is closed" '
+        '("Task exception was never retrieved"). Close each client before its '
+        "loop ends: `async with` it, or close it in the fixture that made it."
+    )
+
+
 def _pooled(client: httpx.AsyncClient) -> int:
     """How many connections the client's pools still hold open."""
     transports = [client._transport, *client._mounts.values()]
