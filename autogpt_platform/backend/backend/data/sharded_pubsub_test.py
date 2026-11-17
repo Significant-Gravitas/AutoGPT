@@ -2,6 +2,7 @@
 shard) is covered over a real Redis in ``event_bus_liveness_test``."""
 
 import asyncio
+from contextlib import aclosing
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -175,8 +176,10 @@ async def test_pong_replies_are_not_yielded_in_either_form(confirmed_shard):
 
     pubsub.parse_response = parse_response
     pubsub.handle_message = handle_message
-    async with await ShardedSubscription.open("chan") as subscription:
-        messages = aiter(subscription.messages())
+    async with (
+        await ShardedSubscription.open("chan") as subscription,
+        aclosing(subscription.messages()) as messages,
+    ):
         assert await anext(messages) == {
             "type": "smessage",
             "channel": "chan",

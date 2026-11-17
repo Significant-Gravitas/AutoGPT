@@ -315,8 +315,11 @@ _slot_map_refresh_lock = threading.Lock()
 def connect_sharded_pubsub(channel: str) -> Redis:
     """Open a plain ``Redis`` connection pinned to the channel's owning shard."""
     host, port = resolve_shard_for_channel(channel)
-    # socket_timeout=None: pubsub reads block indefinitely; a spurious
-    # read timeout forces a reconnect whose PING races with subscribe-mode.
+    # socket_timeout=None on purpose: a quiet subscription is healthy, so a
+    # socket read timeout mustn't end it. ShardedSubscription checks liveness
+    # above the socket instead: it bounds each read, PINGs a quiet stream, and
+    # turns off redis-py's retry, so a lost connection is reported rather than
+    # silently resubscribed.
     c = Redis(
         host=host,
         port=port,

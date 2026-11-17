@@ -182,7 +182,7 @@ async def test_a_newer_output_waits_for_a_failed_catch_up_to_be_retried(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """b was missed and the resync's catch-up failed; c then arrives live and
-    must not overtake b."""
+    must not overtake b, nor be lost when the database hasn't recorded it."""
     stream = _Stream()
     a, b, c = _output(1, "a"), _output(2, "b"), _output(3, "c")
     for item in (None, a, None, c, _finished_event()):
@@ -192,7 +192,7 @@ async def test_a_newer_output_waits_for_a_failed_catch_up_to_be_retried(
         ConnectionError("database manager unreachable"),
         _meta(ExecutionStatus.RUNNING),
         nodes=[],
-        later_nodes=[a, b, c],
+        later_nodes=[a, b],
     )
 
     outputs, _ = await _run(monkeypatch, stream, db)
@@ -204,8 +204,10 @@ async def test_a_live_end_during_a_pending_catch_up_ends_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """The end arrives while a failed catch-up is still owed, and the database
-    hasn't recorded it yet: the retried catch-up yields what was missed, then
-    the live end finishes the wait, without waiting for the quiet recheck."""
+    hasn't recorded it yet: the end retries the catch-up at once, which yields
+    what was missed, then the live end finishes the wait."""
+    # Beyond the test's bound: only an immediate retry finishes in time.
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 60.0)
     stream = _Stream()
     a, b = _output(1, "a"), _output(2, "b")
     for item in (None, a, None, _finished_event()):
@@ -375,6 +377,33 @@ async def test_failed_catch_ups_back_off(monkeypatch: pytest.MonkeyPatch):
 
     # 0.05, 0.1, 0.2, 0.4 s apart: about five reads, not twenty.
     assert db.get_graph_execution_meta.await_count <= 8
+
+
+async def test_a_busy_child_adds_no_reads_while_a_retry_is_scheduled(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """While a failed catch-up's retry is scheduled, the child's finished
+    nodes wait for it rather than each reading a database that keeps failing.
+    It stays down, so the wait ends on the end seen live, with the outputs
+    seen live."""
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.3)
+    monkeypatch.setattr(sub_agent_wait, "QUIET_RECHECK_S", 1.0)
+    stream = _Stream()
+    a, b = _output(1, "a"), _output(22, "b")
+    busy = [
+        _output(n, "-").model_copy(update={"block_id": AgentExecutorBlock().id})
+        for n in range(2, 22)
+    ]
+    for item in (None, a, *busy, b, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(ConnectionError("database manager unreachable"), nodes=[])
+
+    outputs, _ = await _run(monkeypatch, stream, db)
+
+    # The gap, the end, then the retries until the wait gives up: about four
+    # reads, not one more for each of the 22 finished nodes.
+    assert db.get_graph_execution_meta.await_count < 10
+    assert outputs == [("result", "a"), ("result", "b")]
 
 
 async def test_an_owed_catch_up_runs_on_time_while_the_child_keeps_streaming(

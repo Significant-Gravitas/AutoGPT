@@ -19,6 +19,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEvent,
     GraphExecutionMeta,
+    NodeExecutionEvent,
     NodeExecutionResult,
 )
 
@@ -37,7 +38,8 @@ TERMINAL_STATUSES = (
 # Bounds how long such a miss holds the parent run, which has no timeout.
 QUIET_RECHECK_S = 60.0
 # How soon a catch-up the stream still owes is retried after it failed; the
-# delay doubles with each failure in a row, up to QUIET_RECHECK_S.
+# delay doubles with each failure in a row, up to QUIET_RECHECK_S. Until then,
+# events other than the child's end wait for that retry.
 CATCH_UP_RETRY_S = 5.0
 # Failed catch-ups after the child's end was seen live before the wait ends on
 # that end anyway: outputs missed in a gap may then be missing.
@@ -80,6 +82,8 @@ class SubAgentWait:
         # When an owed catch-up is retried. Absolute, so the child's
         # non-terminal updates arriving meanwhile don't keep pushing it out.
         self._retry_at: float | None = None
+        # Outputs seen live while a catch-up was owed, yielded after it.
+        self._held: list[NodeExecutionEvent] = []
         self._failures_after_end = 0
         self.finished = False
         self.stats: GraphExecutionMeta.Stats | None = None
@@ -107,12 +111,13 @@ class SubAgentWait:
     async def _next(self) -> ExecutionEvent | None:
         """The next event; ``None`` for a gap, a quiet spell or a retry."""
         wait = QUIET_RECHECK_S
-        if self._stale and self._retry_at is not None:
+        if self._retry_at is not None:
             wait = max(self._retry_at - asyncio.get_running_loop().time(), 0.0)
         try:
             async with asyncio.timeout(wait):
                 event = await self._queue.get()
         except TimeoutError:
+            self._retry_at = None  # a scheduled retry is due
             return None
         self._stale = self._stale or event is None
         return event
@@ -132,12 +137,19 @@ class SubAgentWait:
                 self._finish(event.stats, f"graph completed: {event.status}")
                 return []
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
+                # The child's last event, so one read at most: try at once.
                 self._pending_end = event
+                return await self._try_catch_up()
+            self._hold(event)
+        if self._retry_at is not None:
+            # A failed catch-up's retry is scheduled and reads this too, so a
+            # busy child adds no read per finished node to a failing database.
+            return []
         # A gap, a quiet spell, or an event while events may have been missed
         # (which must not overtake them): the database has the rest, in order.
-        return await self._catch_up_with(event)
+        return await self._try_catch_up()
 
-    async def _catch_up_with(self, event: ExecutionEvent | None) -> list[Output]:
+    async def _try_catch_up(self) -> list[Output]:
         try:
             outputs, finished = await self._catch_up()
         except SubAgentRunGoneError:
@@ -145,17 +157,14 @@ class SubAgentWait:
                 raise
             end = self._pending_end
             self._finish(end.stats, f"graph completed: {end.status}; run since gone")
-            return []
+            return self._release_held()
         except Exception:
             self._on_failed_catch_up()
-            return []
+            # Given up on the database: still yield what was seen live.
+            return self._release_held() if self.finished else []
         self._stale, self._failures, self._retry_at = False, 0, None
-        if (
-            event is not None
-            and event.event_type == ExecutionEventType.NODE_EXEC_UPDATE
-        ):
-            # In case the database hadn't caught up with it yet.
-            outputs += self._outputs_of(event)
+        # In case the database hadn't recorded them yet.
+        outputs += self._release_held()
         if finished is not None:
             self._finish(finished.stats, f"found {finished.status} in the database")
         elif self._pending_end is not None:
@@ -167,15 +176,14 @@ class SubAgentWait:
     async def _catch_up(self) -> tuple[list[Output], GraphExecutionMeta | None]:
         """Outputs the stream may have missed, oldest first, and the child's
         execution if it has finished."""
-        db = execution_db()
-        meta = await self._read_run(db)
+        meta = await self._read_run()
         finished = meta if meta.status in TERMINAL_STATUSES else None
         if not (self._stale or finished):
             return [], None
         from backend.blocks import get_output_block_ids
 
         # Read with the user's id just above, so these nodes are the user's.
-        nodes = await db.get_node_executions(
+        nodes = await execution_db().get_node_executions(
             graph_exec_id=self._graph_exec_id,
             statuses=list(TERMINAL_STATUSES),
             block_ids=list(get_output_block_ids()),
@@ -185,10 +193,11 @@ class SubAgentWait:
         outputs = [output for node in nodes for output in self._outputs_of(node)]
         return outputs, finished
 
-    async def _read_run(self, db: Any) -> GraphExecutionMeta:
+    async def _read_run(self) -> GraphExecutionMeta:
         """The child's run, including one deleted from the user's history:
         deleting a run doesn't stop it, so it may still be running and
         publishing. Only a row that's truly absent raises."""
+        db = execution_db()
         meta = await db.get_graph_execution_meta(
             user_id=self._user_id, execution_id=self._graph_exec_id
         )
@@ -204,6 +213,17 @@ class SubAgentWait:
                 "This sub-workflow's run no longer exists, so it can't finish."
             )
         return deleted[0]
+
+    def _hold(self, event: NodeExecutionEvent) -> None:
+        from backend.blocks import get_output_block_ids
+
+        if event.block_id in get_output_block_ids():
+            self._held.append(event)
+
+    def _release_held(self) -> list[Output]:
+        outputs = [output for event in self._held for output in self._outputs_of(event)]
+        self._held.clear()
+        return outputs
 
     def _outputs_of(self, node: NodeExecutionResult) -> list[Output]:
         from backend.blocks import get_block
