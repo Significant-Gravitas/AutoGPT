@@ -214,15 +214,22 @@ async def check_action(
     session_id = session.session_id
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
 
+    # A held call the fold is running: the fold spent its approval already.
+    review = held.taken(review_id)
+    if review is not None:
+        if review_store.is_spend_card(review):
+            await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
+        return Decision(allowed=True, approved=True, decided=True)
     review = await review_store.find_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:
-        if await review_store.consume(review_id, user_id):
+        # Raises when the spend fails; the tool then refuses, so nothing runs.
+        if await review_store.consume(review, user_id):
             if review_store.is_spend_card(review):
                 await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
             return Decision(allowed=True, approved=True, decided=True)
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
-        await review_store.consume(review_id, user_id)
+        await review_store.discard(review, user_id)
         await chat_rules.set_ask(
             session_id,
             await held.rule_key(session_id, review_id, tool_name),

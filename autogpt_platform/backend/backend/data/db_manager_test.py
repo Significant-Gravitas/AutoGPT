@@ -6,6 +6,7 @@ from prisma.enums import (
     DreamPassRoute,
     DreamPassStatus,
     DreamPassTrigger,
+    ReviewStatus,
 )
 from pydantic import TypeAdapter
 
@@ -236,6 +237,25 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
 def test_the_audience_consumer_can_read_the_opt_out() -> None:
     assert hasattr(DatabaseManager, "is_marketing_opted_out")
     assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")
+
+
+def test_the_gate_spends_an_approval_as_it_read_it_over_the_rpc() -> None:
+    """The copilot executor has no Prisma, so the gate spends an approval over
+    this RPC. The row's creation time and status must arrive exactly as read,
+    or the delete misses the row it read and nothing runs."""
+    assert hasattr(DatabaseManagerAsyncClient, "delete_review_as_read")
+    args = {
+        "node_exec_id": "copilot-gate-bash_exec|abc",
+        "user_id": "u1",
+        "status": ReviewStatus.APPROVED,
+        "created_at": datetime(2026, 11, 17, 8, 0, 0, 123000, tzinfo=timezone.utc),
+    }
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        DatabaseManager.delete_review_as_read
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(to_dict(args))
+    assert sent.model_dump() == args
 
 
 def test_the_executor_can_record_a_scheduled_run() -> None:

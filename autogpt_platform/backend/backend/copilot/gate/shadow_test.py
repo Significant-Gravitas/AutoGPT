@@ -97,6 +97,7 @@ def rows():
         ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(held, "remember", fake.remember),
         patch.object(held, "review_db", lambda: fake),
         patch.object(review_store, "open_review_row", fake.open_review_row),

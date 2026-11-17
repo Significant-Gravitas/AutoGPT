@@ -107,8 +107,15 @@ class _Rows:
     async def find_review(self, review_id, user_id, session_id):
         return self.rows.get(review_id)
 
-    async def consume(self, review_id, user_id):
-        return self.rows.pop(review_id, None) is not None
+    async def consume(self, review, user_id):
+        # The row as read: a card replaced since is another row.
+        if self.rows.get(review.node_exec_id) is not review:
+            return False
+        del self.rows[review.node_exec_id]
+        return True
+
+    async def discard(self, review, user_id):
+        await self.consume(review, user_id)
 
     async def remember(self, session_id, call):
         self.held.append(call)
@@ -171,6 +178,7 @@ def rows(supervisor: AsyncMock):
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(review_store, "open_review_row", fake.open_review_row),
         patch.object(held, "remember", fake.remember),
         patch.object(held, "_held", fake.held_calls),

@@ -1,7 +1,7 @@
 import io
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from PIL import Image
@@ -70,8 +70,9 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
     ).with_image(image)
     consume = AsyncMock(return_value=True)
     monkeypatch.setattr(held.review_store, "consume", consume)
+    row = MagicMock()
 
-    outcome, output = await held._run("user-1", session, call, tool)
+    outcome, output = await held._run("user-1", session, call, row, tool)
 
     assert outcome == "approved"
     released = HeldImage.model_validate_json(output)
@@ -83,7 +84,7 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
     tool.execute.assert_awaited_once_with(
         "user-1", session, call.tool_call_id, file_id="f"
     )
-    consume.assert_awaited_once_with(call.review_id, "user-1")
+    consume.assert_awaited_once_with(row, "user-1")
 
 
 @pytest.mark.parametrize("engine", ["sdk", "baseline"])

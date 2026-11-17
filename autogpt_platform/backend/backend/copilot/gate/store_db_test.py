@@ -67,9 +67,11 @@ async def test_four_concurrent_consumes_of_one_approval_run_once(
     await PendingHumanReview.prisma().update(
         where={"nodeExecId": review_id}, data={"status": ReviewStatus.APPROVED}
     )
+    review = await review_store.find_review(review_id, test_user_id, session.session_id)
+    assert review is not None
 
     results = await asyncio.gather(
-        *(review_store.consume(review_id, test_user_id) for _ in range(4))
+        *(review_store.consume(review, test_user_id) for _ in range(4))
     )
 
     assert sorted(results) == [False, False, False, True]

@@ -196,12 +196,12 @@ async def release_held_read(
         return Release(
             output=_stub(tool_name, source, _WAITING, session), success=False
         )
-    consumed = await review_store.consume(review_id, user_id)
     if review.status == ReviewStatus.REJECTED:
+        await review_store.discard(review, user_id)
         return Release(
             output=_stub(tool_name, source, _REJECTED, session), success=False
         )
-    if not consumed:
+    if not await review_store.consume(review, user_id):
         # The late result took the approved bytes first.
         return Release(
             output=_stub(tool_name, source, _DELIVERED, session), success=False
@@ -226,10 +226,10 @@ async def answered_read(
     Never re-runs the read, and never sets a chat rule: a rejected page says
     nothing about the tool that fetched it.
     """
-    consumed = await review_store.consume(review.node_exec_id, user_id)
     if review.status != ReviewStatus.APPROVED:
+        await review_store.discard(review, user_id)
         return "rejected", _REJECTED
-    if not consumed:
+    if not await review_store.consume(review, user_id):
         # An identical re-read already received the released bytes.
         return "closed", _DELIVERED
     approved_at = review.reviewed_at or review.updated_at or review.created_at

@@ -114,9 +114,7 @@ class _Interleaving:
             moved = pick({n: label for n, (_, label) in self._parked.items()})
             before = await self._card()
             self._parked.pop(moved)[0].set()
-            await self._settle(
-                lambda: moved in self._parked or tasks[moved].done()
-            )
+            await self._settle(lambda: moved in self._parked or tasks[moved].done())
             after = await self._card()
             if (
                 before is not None
@@ -199,7 +197,9 @@ class _Scene:
     def _in_a_turn(self) -> None:
         sid = self.session.session_id
         set_execution_context(
-            self.user_id, self.session, envelope=root_envelope(f"turn-{sid}", session_id=sid)
+            self.user_id,
+            self.session,
+            envelope=root_envelope(f"turn-{sid}", session_id=sid),
         )
 
     def stepping(self) -> ExitStack:
@@ -330,7 +330,9 @@ async def test_a_fold_with_the_gate_off_spends_the_approval_before_it_runs(
     scene = await _scene(test_user_id, post_tool)
     await scene.approve()
 
-    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)):
+    with patch(
+        "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=False)
+    ):
         [delivered] = await _resolved(test_user_id, scene.session)
 
     assert post_tool.runs == [_ARGS]
@@ -352,9 +354,7 @@ class _DeletesFail:
 
 def _deletes_fail():
     real = review_db()
-    return patch(
-        "backend.copilot.gate.review.review_db", lambda: _DeletesFail(real)
-    )
+    return patch("backend.copilot.gate.review.review_db", lambda: _DeletesFail(real))
 
 
 @pytest.mark.parametrize("gate", [True, False])

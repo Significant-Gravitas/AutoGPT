@@ -314,7 +314,7 @@ def _card(status: ReviewStatus) -> PendingHumanReviewModel:
 def rows():
     db = SimpleNamespace(
         process_all_reviews_for_execution=AsyncMock(return_value={}),
-        delete_review_by_node_exec_id=AsyncMock(return_value=1),
+        delete_review_as_read=AsyncMock(return_value=1),
         reopen_review=AsyncMock(return_value=1),
     )
     with (
@@ -345,8 +345,8 @@ async def test_an_answered_card_answers_its_steps_row_and_is_consumed(
         user_id="user-1",
         review_decisions={_STEP.node_exec_id: (status, None, message)},
     )
-    rows.delete_review_by_node_exec_id.assert_awaited_once_with(
-        card.node_exec_id, "user-1"
+    rows.delete_review_as_read.assert_awaited_once_with(
+        card.node_exec_id, "user-1", status, card.created_at
     )
     asked = await chat_rules.rule_for("chat-1", f"block:{_BLOCK.id}", "user-1", None)
     assert (asked is not None) is (status == ReviewStatus.REJECTED)
@@ -357,7 +357,7 @@ async def test_a_step_answered_on_the_run_page_first_keeps_that_answer(rows, red
     card = _card(ReviewStatus.APPROVED)
     finished = await workflow.finish_step_cards("user-1", [card])
     assert finished.answered == [] and finished.failed == []
-    rows.delete_review_by_node_exec_id.assert_awaited_once()
+    rows.delete_review_as_read.assert_awaited_once()
 
 
 async def test_a_step_update_that_fails_keeps_the_card_and_says_so(rows, redis):
@@ -366,7 +366,7 @@ async def test_a_step_update_that_fails_keeps_the_card_and_says_so(rows, redis):
 
     finished = await workflow.finish_step_cards("user-1", [card])
 
-    rows.delete_review_by_node_exec_id.assert_not_awaited()
+    rows.delete_review_as_read.assert_not_awaited()
     rows.reopen_review.assert_awaited_once_with(card.node_exec_id, "user-1")
     assert finished.answered == [] and finished.failed == [card.node_exec_id]
     # Nothing was declined yet, so the block keeps no new rule.

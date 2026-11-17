@@ -276,10 +276,10 @@ async def test_an_approval_nobody_came_back_for_expires(status, age, expected):
     )
     db = MagicMock()
     db.get_reviews_by_node_exec_ids = AsyncMock(return_value={"rid": stored})
-    db.delete_review_by_node_exec_id = AsyncMock(return_value=1)
+    db.delete_review_as_read = AsyncMock(return_value=1)
     with patch("backend.copilot.gate.review.review_db", return_value=db):
         assert await find_decision("rid", "u1", "s1") == expected
-    assert db.delete_review_by_node_exec_id.await_count == (expected is None)
+    assert db.delete_review_as_read.await_count == (expected is None)
 
 
 def test_a_block_subject_names_the_card_marks_it_and_labels_its_fields():

@@ -12,13 +12,16 @@ for the chat's last card, so a burst of answers starts one turn.
 
 A tool outside ``TOOL_REGISTRY`` (an MCP tool the SDK engine registers, such
 as Local PC computer use) runs through the handler the engine hands
-:func:`resolve_answered`, wrapped as it registers it, so its own gate seam
-finds and spends the approval.
+:func:`resolve_answered`, wrapped as it registers it. The fold spends the
+approval before either kind runs, and the gate's seam lets that one call
+through.
 """
 
 import json
 import logging
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import partial
 from typing import (
@@ -28,6 +31,7 @@ from typing import (
     Awaitable,
     Callable,
     Iterable,
+    Iterator,
     Literal,
     Mapping,
 )
@@ -93,6 +97,16 @@ _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
+_SPENT = (
+    "Nothing ran: this approval was already used by an identical call, or "
+    "withdrawn. Do not retry it; tell the user."
+)
+# The card the fold spent for the held call it is running, by review id. The
+# gate lets exactly that call through, once, so the approval is spent before
+# the call runs whether the gate is on or off.
+_taken: "ContextVar[dict[str, PendingHumanReviewModel] | None]" = ContextVar(
+    "_held_taken", default=None
+)
 
 
 def is_answer_row(message: "ChatMessage") -> bool:
@@ -155,6 +169,12 @@ async def remember(session_id: str, call: HeldCall) -> bool:
             f"Gate could not store held call {call.review_id}", exc_info=True
         )
         return False
+
+
+def taken(review_id: str) -> "PendingHumanReviewModel | None":
+    """The card the fold spent for this call, if the fold is running it; once."""
+    spent = _taken.get()
+    return spent.pop(review_id, None) if spent else None
 
 
 async def rule_key(session_id: str, review_id: str, tool_name: str) -> str:
@@ -243,8 +263,8 @@ async def resolve_answered(
     execution context is set. ``cap`` is the engine's own last step on a
     direct tool result, so a late one reads the same. ``mcp_handlers`` runs
     the engine's MCP tools outside ``TOOL_REGISTRY``. The HDEL claims the
-    call, so two turns racing over one card cannot both run it; the gate's own
-    consume stays the second lock behind it.
+    call, so two turns racing over one card cannot both run it; spending the
+    approval as read, before the call runs, is the second lock behind it.
     """
     if not user_id:
         return
@@ -463,7 +483,8 @@ async def _resolve(
     cap: Callable[[str], str],
 ) -> None:
     if call.cost_context is None or call.cost_context.user_id != user_id:
-        await review_store.consume(call.review_id, user_id)
+        if row is not None:
+            await review_store.discard(row, user_id)
         deliver(_result_row(call, _RESEND, "closed"))
         return
     with restore_cost_context(user_id, call.cost_context):
@@ -592,10 +613,10 @@ def _due(
         return None
     tool = get_tool(call.tool_name)
     if tool is not None:
-        return partial(_run, user_id, session, call, tool)
+        return partial(_run, user_id, session, call, row, tool)
     handler = mcp_handlers.get(call.tool_name)
     if handler is not None:
-        return partial(_run_handler, user_id, call, handler)
+        return partial(_run_handler, user_id, call, row, handler)
     return None
 
 
@@ -614,7 +635,7 @@ async def _settled(
     if is_held_read(call.review_id):
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
-        await review_store.consume(call.review_id, user_id)
+        await review_store.discard(row, user_id)
         await chat_rules.set_ask(
             session.session_id,
             call.rule_key or call.tool_name,
@@ -625,7 +646,7 @@ async def _settled(
             "Nothing ran: the user declined this action. Do not retry it or "
             "reach the same effect another way."
         )
-    await review_store.consume(call.review_id, user_id)
+    await review_store.discard(row, user_id)
     if _expired(row):
         return "expired", (
             "Nothing ran: the approval expired an hour after it was given. "
@@ -650,14 +671,18 @@ def _headline(call: HeldCall, row: "PendingHumanReviewModel | None") -> str:
 
 
 async def _run(
-    user_id: str, session: ChatSession, call: HeldCall, tool: "BaseTool"
+    user_id: str,
+    session: ChatSession,
+    call: HeldCall,
+    row: "PendingHumanReviewModel",
+    tool: "BaseTool",
 ) -> tuple[Outcome, str]:
-    # The gate finds the approval for exactly these arguments and spends it.
-    with replaying_bound_args(call.args_bound):
+    # Spent before it runs, with the gate on or off, so one approval buys one
+    # run. A spend that fails raises, and the call waits for the next turn.
+    if not await review_store.consume(row, user_id):
+        return "closed", _SPENT
+    with _running(call, row), replaying_bound_args(call.args_bound):
         result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
-    # With the flag switched off since, the gate ran it without spending the
-    # approval; spend it here so no later identical call rides on it.
-    await review_store.consume(call.review_id, user_id)
     if result.image is not None:
         text = (
             result.output
@@ -671,12 +696,16 @@ async def _run(
 
 
 async def _run_handler(
-    user_id: str, call: HeldCall, handler: McpHandler
+    user_id: str,
+    call: HeldCall,
+    row: "PendingHumanReviewModel",
+    handler: McpHandler,
 ) -> tuple[Outcome, str]:
-    # The handler's own seam finds the approval for exactly these arguments
-    # and spends it; spend it here too, as ``_run`` does.
-    result = await handler(call.args)
-    await review_store.consume(call.review_id, user_id)
+    # Spent before it runs, as in ``_run``.
+    if not await review_store.consume(row, user_id):
+        return "closed", _SPENT
+    with _running(call, row):
+        result = await handler(call.args)
     blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
     text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
     images = [b for b in blocks if b.get("type") == "image" and b.get("data")]
@@ -696,6 +725,17 @@ async def _run_handler(
     if shown is None:
         return "approved", text
     return "approved", HeldImage(text=text, image=shown).model_dump_json()
+
+
+@contextmanager
+def _running(call: HeldCall, row: "PendingHumanReviewModel") -> Iterator[None]:
+    """Run the call on the approval the fold just spent: the gate's seam, the
+    tool's or the MCP handler's, lets this one call through, once."""
+    token = _taken.set({call.review_id: row})
+    try:
+        yield
+    finally:
+        _taken.reset(token)
 
 
 def _tool_image(block: dict[str, Any]) -> ToolImage | None:

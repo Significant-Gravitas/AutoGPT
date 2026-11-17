@@ -631,8 +631,8 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
     review_id = await _hold(session, test_user_id, "spent")
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    async def spend_then_fail(user_id, *_args):
-        await review_store.consume(review_id, user_id)
+    async def spend_then_fail(user_id, _session, _call, row, _tool):
+        await review_store.consume(row, user_id)
         raise RuntimeError("lost after the gate")
 
     with patch.object(held, "_run", spend_then_fail):

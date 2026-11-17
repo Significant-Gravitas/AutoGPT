@@ -233,23 +233,47 @@ async def find_review(
         review.status == ReviewStatus.APPROVED
         and datetime.now(UTC) - approved_at > APPROVAL_TTL
     ):
-        await consume(review_id, user_id)
+        await discard(review, user_id)
         return None
     return review
 
 
-async def consume(review_id: str, user_id: str) -> bool:
-    """Burn a used approval. The delete IS the mutex.
+async def consume(review: PendingHumanReviewModel, user_id: str) -> bool:
+    """Spend the card as it was read. The delete IS the mutex.
 
     Parallel dispatch is deliberate (every MCP tool is ``readOnlyHint=True``),
     so two identical calls can both read APPROVED; only the one whose delete
-    removes a row may proceed.
+    removes the row may proceed. The delete matches the row's status and
+    creation time as read: once a card is spent, the same call proposed again
+    opens a fresh one under the same id, and a reader still holding the old
+    approval must not take the new card in its place. Raises when the delete
+    fails, so no caller runs on an approval it may not have taken.
     """
+    deleted = await review_db().delete_review_as_read(
+        review.node_exec_id, user_id, review.status, review.created_at
+    )
+    return deleted == 1
+
+
+async def discard(review: PendingHumanReviewModel, user_id: str) -> None:
+    """:func:`consume` a card nothing runs on, such as a rejection or a lapsed
+    approval. A failed delete leaves the card for the next look."""
     try:
-        return await review_db().delete_review_by_node_exec_id(review_id, user_id) == 1
+        await consume(review, user_id)
     except Exception:
-        logger.warning(f"Gate could not consume review {review_id}", exc_info=True)
-        return False
+        logger.warning(
+            f"Gate could not remove review {review.node_exec_id}", exc_info=True
+        )
+
+
+async def close(review_id: str, user_id: str) -> None:
+    """Remove a card whatever its state. Only for cards nothing runs on whose
+    id is never reused, such as a workflow step's card once its run page
+    answered the step."""
+    try:
+        await review_db().delete_review_by_node_exec_id(review_id, user_id)
+    except Exception:
+        logger.warning(f"Gate could not close review {review_id}", exc_info=True)
 
 
 async def open_review(

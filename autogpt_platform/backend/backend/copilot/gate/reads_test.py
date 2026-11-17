@@ -65,8 +65,15 @@ class _Rows:
     async def find_review(self, review_id, user_id, session_id):
         return self.rows.get(review_id)
 
-    async def consume(self, review_id, user_id):
-        return self.rows.pop(review_id, None) is not None
+    async def consume(self, review, user_id):
+        # The row as read: a card replaced since is another row.
+        if self.rows.get(review.node_exec_id) is not review:
+            return False
+        del self.rows[review.node_exec_id]
+        return True
+
+    async def discard(self, review, user_id):
+        await self.consume(review, user_id)
 
     async def remember(self, session_id, call):
         self.held.append(call)
@@ -160,6 +167,7 @@ def rows():
         ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
+        patch.object(review_store, "discard", fake.discard),
         patch.object(held, "remember", fake.remember),
         patch.object(held, "_held", fake.held_calls),
         patch.object(held, "_claim", fake.claim),
@@ -641,7 +649,7 @@ async def test_a_released_read_a_re_read_already_took_is_not_reported_declined(r
         await tool.execute("user-1", _session(), "call-7", url="u")
     rows.answer(ReviewStatus.APPROVED)
     (review,) = rows.rows.values()
-    await rows.consume(review.node_exec_id, "user-1")
+    await rows.consume(review, "user-1")
 
     outcome, late = await reads.answered_read("user-1", review)
 
@@ -744,7 +752,7 @@ async def test_an_expired_release_already_delivered_reports_it_was_delivered(row
     rows.answer(ReviewStatus.APPROVED)
     (review,) = rows.rows.values()
     review.reviewed_at = datetime.now(UTC) - timedelta(hours=2)
-    await rows.consume(review.node_exec_id, "user-1")
+    await rows.consume(review, "user-1")
 
     outcome, _ = await reads.answered_read("user-1", review)
 
