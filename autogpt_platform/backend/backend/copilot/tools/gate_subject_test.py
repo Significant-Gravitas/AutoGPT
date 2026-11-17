@@ -310,7 +310,7 @@ async def test_after_a_rejection_the_block_asks_again(gate, ran, block, payload)
         patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
         patch(
             f"{_GATE}.held._held",
-            AsyncMock(return_value={"x": SimpleNamespace(rule_key=key)}),
+            AsyncMock(return_value={"x": SimpleNamespace(review_id="x", rule_key=key)}),
         ),
         patch(f"{_GATE}.review_store.review_id_for", side_effect=["x", "y"]),
         patch(f"{_GATE}.supervise", judge),
@@ -507,7 +507,7 @@ async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
     gate.find_review.return_value = SimpleNamespace(
         status=ReviewStatus.REJECTED, payload={}
     )
-    call = SimpleNamespace(rule_key="block:abc")
+    call = SimpleNamespace(review_id="x", rule_key="block:abc")
     with (
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()) as set_ask,
         patch(f"{_GATE}.held._held", AsyncMock(return_value={"x": call})),

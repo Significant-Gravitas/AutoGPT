@@ -307,6 +307,7 @@ async def screen_read(
             args=args,
             envelope=get_current_envelope(),
             cost_context=await capture_cost_context(user_id),
+            card_created_at=held.card_generation(),
         )
         return await _hold(
             call,
@@ -662,6 +663,7 @@ async def _hold(
         session,
         payload,
         headline.text,
+        call.card_created_at,
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)

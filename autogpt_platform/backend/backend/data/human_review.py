@@ -216,6 +216,7 @@ async def get_or_create_human_review(
     organization_id: str | None = None,
     team_id: str | None = None,
     alert: bool = True,
+    created_at: datetime | None = None,
 ) -> Optional[ReviewResult]:
     """
     Get existing review or create a new pending review entry.
@@ -231,6 +232,9 @@ async def get_or_create_human_review(
         graph_exec_id, graph_id, graph_version: the graph execution asking, or
         chat_session_id: the chat asking — exactly one of the two
         alert: False when the chat's approval card asks in its place
+        created_at: a new row's creation time, when the caller names the row by
+            it before creating it (CoPilot's held calls); the database's own
+            clock otherwise
 
     Returns:
         ReviewResult if the review is complete, None if waiting for human input
@@ -257,6 +261,7 @@ async def get_or_create_human_review(
                     "status": ReviewStatus.WAITING,
                     **({"organizationId": organization_id} if organization_id else {}),
                     **({"teamId": team_id} if team_id else {}),
+                    **({"createdAt": created_at} if created_at else {}),
                 },
                 "update": {},  # Do nothing on update - keep existing review as is
             },

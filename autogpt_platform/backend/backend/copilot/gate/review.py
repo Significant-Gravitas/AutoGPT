@@ -287,9 +287,10 @@ async def open_review(
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
     decided_by: DecidedBy | None = None,
+    created_at: datetime | None = None,
 ) -> Headline | None:
     """Park the call for approval; the card's headline, or None if nothing was
-    recorded."""
+    recorded. ``created_at`` names a new card, as its held call does."""
     try:
         references = await resolve_references(tool_name, args, user_id, session)
         payload = review_payload(
@@ -313,7 +314,9 @@ async def open_review(
         )
         return None
     headline = Headline.model_validate(payload["headline"])
-    if not await open_review_row(review_id, user_id, session, payload, headline.text):
+    if not await open_review_row(
+        review_id, user_id, session, payload, headline.text, created_at
+    ):
         return None
     return headline
 
@@ -324,6 +327,7 @@ async def open_review_row(
     session: ChatSession,
     payload: dict[str, Any],
     message: str,
+    created_at: datetime | None = None,
 ) -> bool:
     try:
         await review_db().get_or_create_human_review(
@@ -335,6 +339,7 @@ async def open_review_row(
             editable=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
+            created_at=created_at,
         )
         return True
     except Exception:

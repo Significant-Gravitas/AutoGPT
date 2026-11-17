@@ -28,7 +28,13 @@ from backend.copilot.gate.consume_once_harness_test import (
 )
 from backend.copilot.pending_messages import PendingMessage
 
-_SEEDS = range(40)
+_SEEDS = range(80)
+
+
+async def _held_under(scene) -> list[str]:
+    """The tool calls held under the scene's review id, whatever their card."""
+    calls = (await held._held(scene.session.session_id)).values()
+    return [c.tool_call_id for c in calls if c.review_id == scene.review_id]
 
 
 @pytest.fixture
@@ -93,7 +99,13 @@ async def test_a_stale_approval_never_takes_the_card_an_identical_call_opened_af
 async def test_one_approval_runs_at_most_once_and_loses_no_card_in_any_order(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Three identical calls, two folds and three answers, in seeded orders."""
+    """Three identical calls (each a replacement under the same review id once
+    the card before it is spent), two folds, a fold that fails before it
+    spends and so recovers, a restore from the card, and three answers, in
+    seeded orders. Every step is checked on its own: no waiting card goes
+    missing, no approved card goes without its call running, and no held call
+    is removed except by the fold that listed it. Then later turns settle
+    whatever is left: no approved call may stay unrun, and none ran twice."""
     ran = 0
     for seed in _SEEDS:
         rng = random.Random(seed)
@@ -105,14 +117,19 @@ async def test_one_approval_runs_at_most_once_and_loses_no_card_in_any_order(
         ]
         actors = {f"call-{n}": scene.caller(n) for n in (1, 2, 3)}
         actors |= {"fold-1": scene.fold(), "fold-2": scene.fold()}
+        actors |= {"failing-fold": scene.fold(), "restorer": scene.restorer()}
         actors["user"] = scene.user(verdicts)
 
-        with scene.stepping():
+        with scene.stepping_the_held_store():
             await scene.interleaving.run(
-                actors, lambda parked: rng.choice(sorted(parked))
+                actors, lambda parked: rng.choice(sorted(parked)), scene.seen
             )
+        await scene.settle()
 
         assert scene.interleaving.lost == [], f"seed {seed}"
+        card = await scene.interleaving.card()
+        left = card is not None and card.status == ReviewStatus.APPROVED
+        assert not left, f"seed {seed}: an approved call was never run"
         assert len(post_tool.runs) <= scene.approvals, f"seed {seed}"
         ran += len(post_tool.runs)
     assert ran, "no seed ran the call at all"
@@ -232,7 +249,7 @@ async def test_a_card_opened_after_the_fold_spent_its_own_is_not_taken_for_it(
     assert card is not None and card.status == ReviewStatus.WAITING
     assert card.createdAt > first.createdAt
     kept = await held._held(scene.session.session_id)
-    assert kept[scene.review_id].tool_call_id == "call-C"
+    assert "call-C" in {c.tool_call_id for c in kept.values()}
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -262,17 +279,19 @@ async def test_an_approval_that_lapses_while_its_fold_waits_runs_nothing(
 async def test_the_folds_pass_lets_its_one_call_through_once(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """A second identical call in the same run is gated as any other: with
-    the approval spent, it asks again."""
+    """The first call to reach the gate spends the fold's card and goes
+    through; a second identical call in the same run is gated as any other:
+    with the approval spent, it asks again."""
     scene = await new_scene(test_user_id, post_tool)
     await scene.approve()
     sid = scene.session.session_id
     card = await review_store.find_review(scene.review_id, test_user_id, sid)
-    assert card is not None and await review_store.consume(card, test_user_id)
+    assert card is not None
+    fold_pass = spent_approval.FoldPass(card)
 
     async def twice():
         scene.enter_turn()
-        with spent_approval.running(scene.review_id, card):
+        with spent_approval.running(scene.review_id, fold_pass):
             return [
                 await check_action(TOOL, ARGS, test_user_id, scene.session)
                 for _ in range(2)
@@ -281,6 +300,7 @@ async def test_the_folds_pass_lets_its_one_call_through_once(
     first, second = await asyncio.create_task(twice())
 
     assert first.allowed and first.approved
+    assert fold_pass.use == "spent"
     assert not second.allowed and second.review_id == scene.review_id
 
 
@@ -319,13 +339,9 @@ async def test_a_spent_call_that_fails_while_lookups_fail_says_it_may_have_run(
     scene = await new_scene(test_user_id, post_tool)
     await scene.approve()
 
-    async def runs_then_fails(*_args, **_kwargs):
-        post_tool.runs.append(ARGS)
-        raise RuntimeError("lost after the run")
-
     with (
         faulty_reviews(reads_fail_after_delete=True),
-        patch.object(post_tool, "execute", runs_then_fails),
+        patch.object(held, "_tool_outcome", side_effect=RuntimeError("lost")),
     ):
         [delivered] = await resolved(test_user_id, scene.session)
 
@@ -334,7 +350,7 @@ async def test_a_spent_call_that_fails_while_lookups_fail_says_it_may_have_run(
     assert "may have run" in delivered.content
     assert await scene.interleaving.card() is None
     assert await held.answered(test_user_id, scene.session.session_id) == []
-    assert scene.review_id not in await held._held(scene.session.session_id)
+    assert await _held_under(scene) == []
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -359,7 +375,7 @@ async def test_a_fold_that_fails_before_spending_while_lookups_fail_says_nothing
     assert post_tool.runs == []
     assert delivered.metadata["held_call"]["outcome"] == "closed"
     assert "Nothing ran" in delivered.content
-    assert scene.review_id not in await held._held(scene.session.session_id)
+    assert await _held_under(scene) == []
     card = await scene.interleaving.card()
     assert card is not None and card.status == ReviewStatus.APPROVED
 
@@ -391,4 +407,177 @@ async def test_a_fold_that_fails_before_spending_leaves_a_later_card_to_its_call
     assert card is not None and card.status == ReviewStatus.WAITING
     assert card.createdAt > first.createdAt
     kept = await held._held(scene.session.session_id)
-    assert kept[scene.review_id].tool_call_id == "call-C"
+    assert "call-C" in {c.tool_call_id for c in kept.values()}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_refused_before_its_gate_spends_nothing_and_is_not_approved(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The tool refuses the held call before its gate is reached (here the
+    turn denies the tool by name). The spend sits at the gate, so the
+    approval still stands, and the chat isn't told the call was approved."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+
+    with patch("backend.copilot.tools.base.gate_denied", return_value=True):
+        [delivered] = await resolved(test_user_id, scene.session)
+
+    assert post_tool.runs == []
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
+    card = await scene.interleaving.card()
+    assert card is not None and card.status == ReviewStatus.APPROVED
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_runs_the_call_held_for_its_own_card(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """P's card is spent by an identical call B, which runs, leaving P's held
+    call behind with no card. C, the same call, then parks on a fresh card,
+    which the user approves. The fold runs C's call on C's approval: P's held
+    call belongs to a card that is gone, so it never runs on C's, and C's
+    result reaches C."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+    await scene.caller(2)()
+    await scene.park(tool_call_id="call-C")
+    await scene.approve()
+
+    delivered = await resolved(test_user_id, scene.session)
+
+    assert post_tool.runs == [ARGS, ARGS]
+    ran = [m for m in delivered if m.metadata["held_call"]["outcome"] == "approved"]
+    assert [m.metadata["held_call"]["tool_call_id"] for m in ran] == ["call-C"]
+    assert await scene.interleaving.card() is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_stale_fold_never_claims_a_call_parked_after_it_listed_its_own(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The fold lists P's held call on its approved card, then stops before
+    claiming it. B, the same call, spends that card and runs; C parks on a
+    fresh card. The fold's claim takes P's held call only, so C's stays, and
+    C runs once its card is approved."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+
+    with scene.stepping_the_held_store():
+        await scene.interleaving.run(
+            {"fold": scene.fold(), "B": scene.caller(2), "C": scene.caller(3)},
+            scripted([("fold", "claim"), ("B", None), ("C", None), ("fold", None)]),
+            scene.seen,
+        )
+    assert scene.interleaving.lost == []
+    assert await _held_under(scene) == ["call-3"]
+
+    await scene.approve()
+    await scene.settle()
+    assert post_tool.runs == [ARGS, ARGS]
+    assert await scene.interleaving.card() is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_recovery_never_overwrites_a_call_parked_after_its_lookup(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """A fold fails before it spends and recovers: its lookup finds the card
+    it read, so it holds the call again. Before that write, B spends the card
+    and runs, and C parks on a fresh one. The re-hold goes under the old card
+    and leaves C's held call as it was."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+
+    with scene.stepping_the_held_store():
+        await scene.interleaving.run(
+            {
+                "failing-fold": scene.fold(),
+                "B": scene.caller(2),
+                "C": scene.caller(3),
+            },
+            scripted(
+                [
+                    ("failing-fold", "remember(recover)"),
+                    ("B", None),
+                    ("C", None),
+                    ("failing-fold", None),
+                ]
+            ),
+            scene.seen,
+        )
+
+    assert scene.interleaving.lost == []
+    assert sorted(await _held_under(scene)) == ["call-0", "call-3"]
+    assert post_tool.runs == [ARGS]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_fold_that_listed_a_call_before_its_card_was_replaced_runs_nothing(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The fold lists P's held call, then stops. B, the same call, spends P's
+    card and runs; C parks on a fresh card; the user approves it. When the
+    fold reads the card again it finds C's, which isn't P's: P's card is gone,
+    and C's approval waits for C's own held call."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+
+    with scene.stepping_the_held_store(pause_after_listing=True):
+        await scene.interleaving.run(
+            {
+                "fold": scene.fold(),
+                "B": scene.caller(2),
+                "C": scene.caller(3),
+                "user": scene.user([ReviewStatus.APPROVED]),
+            },
+            scripted(
+                [
+                    ("fold", "listed"),
+                    ("B", None),
+                    ("C", None),
+                    ("user", None),
+                    ("fold", None),
+                ]
+            ),
+            scene.seen,
+        )
+
+    assert scene.interleaving.lost == []
+    assert post_tool.runs == [ARGS]
+    [p] = scene.delivered
+    assert p.metadata["held_call"]["tool_call_id"] == "call-0"
+    assert p.metadata["held_call"]["outcome"] == "closed"
+    await scene.settle()
+    assert post_tool.runs == [ARGS, ARGS]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_restore_never_replaces_a_held_call_with_its_cards_copy(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """A long call's card keeps a clipped copy of its arguments, which can't
+    run. A fold fails before it spends and holds the exact call again; a
+    restore that found nothing held a moment before then writes the card's
+    copy. The exact call stays held, and it runs."""
+    long = {"text": "x" * 30_000}
+    scene = await new_scene(test_user_id, post_tool, long)
+    await scene.approve()
+
+    with scene.stepping_the_held_store():
+        await scene.interleaving.run(
+            {"failing-fold": scene.fold(), "restorer": scene.restorer()},
+            scripted(
+                [
+                    ("failing-fold", "remember(recover)"),
+                    ("restorer", "remember(restore)"),
+                    ("failing-fold", None),
+                    ("restorer", None),
+                ]
+            ),
+            scene.seen,
+        )
+    await scene.settle()
+
+    assert scene.interleaving.lost == []
+    assert post_tool.runs == [long]

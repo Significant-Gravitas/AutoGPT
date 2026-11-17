@@ -139,6 +139,14 @@ async def _row(review_id: str, user_id: str):
     return rows.get(review_id)
 
 
+async def _lose_held_call(session_id: str, review_id: str) -> None:
+    """The held call gone from Redis, which only its card can rebuild."""
+    [call] = [
+        c for c in (await held._held(session_id)).values() if c.review_id == review_id
+    ]
+    assert await held._claim(session_id, call)
+
+
 async def _resolved(
     user_id: str, session: ChatSession, **kwargs: Any
 ) -> list[PendingMessage]:
@@ -332,7 +340,7 @@ async def test_a_call_rebuilt_without_usage_origin_asks_for_resend_in_own_chat(
     """The card alone cannot establish which allowance bought the work."""
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "lost in Redis")
-    assert await held._claim(session.session_id, review_id)
+    await _lose_held_call(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
     rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
     today = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
@@ -361,7 +369,7 @@ async def test_a_call_rebuilt_from_its_card_in_a_sub_session_is_not_woken(
     turn carries the answer."""
     session = await _new_session(test_user_id, delegated_by="parent-session")
     review_id = await _hold(session, test_user_id, "lost in Redis")
-    assert await held._claim(session.session_id, review_id)
+    await _lose_held_call(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
     rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
     dispatch = AsyncMock()
@@ -435,7 +443,7 @@ async def _approve_after_losing_the_held_call(
     session: ChatSession, user_id: str, review_id: str
 ) -> None:
     """Redis lost the entry (eviction, flush) while the card sat in Postgres."""
-    assert await held._claim(session.session_id, review_id)
+    await _lose_held_call(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
     rows = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
     with patch("backend.copilot.executor.utils.dispatch_turn", AsyncMock()):
@@ -502,6 +510,7 @@ async def test_a_call_held_without_its_usage_origin_is_never_announced_as_runnin
     review_id = await _hold(session, test_user_id, "held before origins")
     await _answer(review_id, ReviewStatus.APPROVED)
     [call] = await held.answered(test_user_id, session.session_id)
+    assert await held._claim(session.session_id, call)
     assert await held.remember(
         session.session_id, call.model_copy(update={"cost_context": None})
     )
@@ -632,11 +641,7 @@ async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
     review_id = await _hold(session, test_user_id, "spent")
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    async def runs_then_fails(*_args, **_kwargs):
-        post_tool.runs.append({"text": "spent"})
-        raise RuntimeError("lost after the gate")
-
-    with patch.object(post_tool, "execute", runs_then_fails):
+    with patch.object(held, "_tool_outcome", side_effect=RuntimeError("lost")):
         [delivered] = await _resolved(test_user_id, session)
 
     assert post_tool.runs == [{"text": "spent"}]

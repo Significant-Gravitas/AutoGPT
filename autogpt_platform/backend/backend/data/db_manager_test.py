@@ -258,6 +258,29 @@ def test_the_gate_spends_an_approval_as_it_read_it_over_the_rpc() -> None:
     assert sent.model_dump() == args
 
 
+def test_a_held_calls_card_opens_with_the_creation_time_it_is_held_under() -> None:
+    """The gate names a card's creation time before the card exists, and the
+    held call is stored under it; over the RPC it must arrive exactly."""
+    created = datetime(2026, 11, 17, 8, 0, 0, 123000, tzinfo=timezone.utc)
+    endpoint = DatabaseManager()._create_fastapi_endpoint(
+        DatabaseManager.get_or_create_human_review
+    )
+    body = inspect.signature(endpoint).parameters["body"].annotation
+    sent = body.model_validate(
+        to_dict(
+            {
+                "user_id": "u1",
+                "node_exec_id": "copilot-gate-bash_exec|abc",
+                "input_data": {},
+                "message": "m",
+                "editable": False,
+                "created_at": created,
+            }
+        )
+    )
+    assert sent.created_at == created
+
+
 def test_the_executor_can_record_a_scheduled_run() -> None:
     """The copilot executor has no Prisma of its own. A run's outcome, the
     deepest payload here, crosses this RPC; a schema that cannot be built

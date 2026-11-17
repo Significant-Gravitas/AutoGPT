@@ -265,14 +265,22 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
 
 
 async def test_a_money_card_the_fold_spent_buys_the_chat_one_more_dollar(gate, chat):
-    """The fold spends the card before its call runs, and the gate lets that
-    call through on it, so the dollar is bought there, without a lookup.
+    """The gate spends the card the fold read as the call reaches it, and lets
+    the call through on it, so the dollar is bought there, without a lookup.
     Kills: dropping the raise from the gate's branch for the fold's call."""
     await _open(chat, ceiling=0)
-    card = SimpleNamespace(status=ReviewStatus.APPROVED, payload={"spend": {}})
     review_id = review_id_for(_CHAT, "user-1", "t", {"q": 1})
-    with spent_approval.running(review_id, card):
+    card = SimpleNamespace(
+        node_exec_id=review_id,
+        status=ReviewStatus.APPROVED,
+        payload={"spend": {}},
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
+    with spent_approval.running(review_id, spent_approval.FoldPass(card)):
         assert (await _check(_PAID)).allowed
+    gate.consume.assert_awaited_once_with(card, "user-1")
     gate.find_review.assert_not_awaited()
     ceiling = (await chat.snapshot(_ledger_id()))["ceiling"]
     assert ceiling == CEILING_UNIT_MICRODOLLARS

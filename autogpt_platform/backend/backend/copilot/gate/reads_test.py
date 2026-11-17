@@ -89,20 +89,22 @@ class _Rows:
     async def held_calls(self, session_id):
         return {call.review_id: call for call in self.held}
 
-    async def claim(self, session_id, review_id):
-        kept = [call for call in self.held if call.review_id != review_id]
+    async def claim(self, session_id, call):
+        kept = [held for held in self.held if held is not call]
         claimed, self.held = len(kept) < len(self.held), kept
         return claimed
 
     async def get_reviews_by_node_exec_ids(self, ids, user_id):
         return {i: self.rows[i] for i in ids if i in self.rows}
 
-    async def open_review_row(self, review_id, user_id, session, payload, instructions):
+    async def open_review_row(
+        self, review_id, user_id, session, payload, instructions, created_at=None
+    ):
         self.rows[review_id] = SimpleNamespace(
             node_exec_id=review_id,
             session_id=session.session_id,
             status=ReviewStatus.WAITING,
-            created_at=datetime.now(UTC),
+            created_at=created_at or datetime.now(UTC),
             updated_at=None,
             reviewed_at=None,
             payload=sanitize_json(payload),

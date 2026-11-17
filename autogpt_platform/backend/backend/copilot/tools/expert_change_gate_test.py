@@ -295,8 +295,12 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             status=ReviewStatus.APPROVED, payload={}
         )
         approved = SimpleNamespace(
+            node_exec_id=review_id,
             status=ReviewStatus.APPROVED,
             session_id=session.session_id,
+            # The card the call was held for.
+            created_at=call.card_created_at,
+            updated_at=None,
             reviewed_at=datetime.now(UTC),
             # The card the gate stored; the late result carries its arguments.
             payload=review_payload(call.tool_name, call.args),
