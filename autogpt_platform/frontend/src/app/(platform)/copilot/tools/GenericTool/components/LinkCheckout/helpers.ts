@@ -22,6 +22,18 @@ const STATUS_LABELS: Record<string, string> = {
 // backend applies the same rule.
 const LINK_ACTION_DOMAINS = ["link.com", "stripe.com"];
 
+// Payment pages many sellers share: their address alone doesn't say who gets
+// paid.
+const SHARED_CHECKOUT_HOSTS = [
+  "buy.stripe.com",
+  "checkout.stripe.com",
+  "paypal.com",
+  "www.paypal.com",
+  "square.link",
+  "checkout.square.site",
+  "buy.paddle.com",
+];
+
 // Only these tools return a checkout; another tool's output that claims the
 // type must not get a card with Approve on it.
 const CHECKOUT_TOOLS = [
@@ -55,6 +67,8 @@ export function checkoutPresentation(output: Record<string, unknown>) {
   );
   return {
     merchant,
+    address: purchaseAddress(output.merchant_url),
+    sharedPage: isSharedCheckoutPage(output.merchant_url),
     total: formatTotal(output.amount, output.currency),
     approvalUrl: showsLink ? trustedLinkUrl(link) : "",
     linkLabel:
@@ -88,18 +102,30 @@ export function continueAfterDecision({
 export function purchaseDetails(record: LinkPurchaseApproval) {
   return {
     merchant: record.merchant_name,
-    host: purchaseHost(record.merchant_url),
+    address: purchaseAddress(record.merchant_url),
+    sharedPage: isSharedCheckoutPage(record.merchant_url),
     total: formatTotal(record.amount, record.currency),
     context: record.context,
     testMode: record.test_mode,
   };
 }
 
-export function purchaseHost(merchantUrl: string) {
+export function purchaseAddress(merchantUrl: unknown) {
+  if (typeof merchantUrl !== "string") return "";
   try {
-    return new URL(merchantUrl).hostname;
+    const url = new URL(merchantUrl);
+    return url.hostname + (url.pathname === "/" ? "" : url.pathname);
   } catch {
     return "";
+  }
+}
+
+export function isSharedCheckoutPage(merchantUrl: unknown) {
+  if (typeof merchantUrl !== "string") return false;
+  try {
+    return SHARED_CHECKOUT_HOSTS.includes(new URL(merchantUrl).hostname);
+  } catch {
+    return false;
   }
 }
 
