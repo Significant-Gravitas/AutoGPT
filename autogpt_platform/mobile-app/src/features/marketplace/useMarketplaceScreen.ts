@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { router, useNavigation } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { useToast } from "@/components/useToast";
 import {
@@ -28,6 +28,8 @@ export function useMarketplaceScreen() {
   const navigation = useNavigation();
   const { hire, isHiring } = useHireExpert({ onHired: handleHired, onError: handleError });
   const hiredIDs = hiredTemplateIDs(experts.data ?? []);
+  // State lands a render late; the ref stops a second tap in the same frame.
+  const isOpeningChat = useRef(false);
 
   function handleHired(expert: Expert) {
     show({
@@ -46,12 +48,16 @@ export function useMarketplaceScreen() {
   }
 
   async function openChat(expertID: string) {
+    if (isOpeningChat.current) return;
+    isOpeningChat.current = true;
     try {
       const sessionID = await latestOrNewSession(expertID);
       if (navigation.isFocused()) router.push(`/chat/${sessionID}`);
     } catch (caught) {
       if (isSessionGone(caught)) void signOut();
       else show({ message: "Couldn't open that chat. Try again.", tone: "error" });
+    } finally {
+      isOpeningChat.current = false;
     }
   }
 

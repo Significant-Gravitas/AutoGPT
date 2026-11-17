@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { AccessibilityInfo } from "react-native";
 
 import { useMountEffect } from "@/lib/useMountEffect";
 
@@ -24,6 +25,8 @@ export function useToast() {
   function show(next: ToastState) {
     clearTimer();
     setToast(next);
+    // iOS reads no live region out loud; announce it instead.
+    AccessibilityInfo.announceForAccessibility(next.message);
     timer.current = setTimeout(hide, TOAST_MS);
   }
 

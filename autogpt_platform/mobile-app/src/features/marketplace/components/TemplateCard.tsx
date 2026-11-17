@@ -22,6 +22,9 @@ export function TemplateCard({ template, isOnTeam, isHiring, onOpen, onHire }: P
   const styles = useStyles();
   const colors = useColors();
   const role = roleLine(template);
+  const label = [template.name, role, isOnTeam ? "on your team" : null]
+    .filter(Boolean)
+    .join(", ");
 
   // Two siblings, not a button inside a button: a nested one is out of
   // VoiceOver's reach.
@@ -29,7 +32,7 @@ export function TemplateCard({ template, isOnTeam, isHiring, onOpen, onHire }: P
     <View style={styles.card}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={template.name}
+        accessibilityLabel={label}
         accessibilityHint="Shows what they do"
         onPress={onOpen}
         style={({ pressed }) => [styles.open, pressed && styles.pressed]}

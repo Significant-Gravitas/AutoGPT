@@ -1,5 +1,3 @@
-import { useRef, useState } from "react";
-
 import {
   type Expert,
   type ExpertTemplate,
@@ -9,6 +7,7 @@ import {
 import { isSessionGone, queryClient, sessionGeneration, signOut } from "@/lib/session";
 
 import { hireErrorMessage, withHiredExpert } from "./helpers";
+import { claimHire, releaseHire, useHiresInFlight } from "./hiresInFlight";
 
 interface Args {
   onHired: (expert: Expert, template: ExpertTemplate) => void;
@@ -16,40 +15,36 @@ interface Args {
 }
 
 export function useHireExpert({ onHired, onError }: Args) {
-  const [hiringIDs, setHiringIDs] = useState<string[]>([]);
-  // State lands a render late; the ref stops a second tap in the same frame.
-  const inFlight = useRef(new Set<string>());
+  const hiring = useHiresInFlight();
 
   async function hire(template: ExpertTemplate) {
-    if (inFlight.current.has(template.id)) return;
-    inFlight.current.add(template.id);
-    setHiringIDs((ids) => [...ids, template.id]);
+    if (!claimHire(template.id)) return;
     const generation = sessionGeneration();
     try {
       const { expert } = await hireExpert(template.id);
       // Signed out meanwhile: the old account's expert stays out of the cache.
       if (generation !== sessionGeneration()) return;
+      // Only into a list that loaded: a team of one would hide a failed load.
       queryClient.setQueryData<Expert[]>(expertKeys.list, (old) =>
-        withHiredExpert(old, expert),
+        old ? withHiredExpert(old, expert) : old,
       );
       void queryClient.invalidateQueries({ queryKey: expertKeys.list });
       onHired(expert, template);
     } catch (caught) {
+      // A refusal for an account already signed out must not end the next one.
+      if (generation !== sessionGeneration()) return;
       if (isSessionGone(caught)) {
         void signOut();
         return;
       }
-      if (generation === sessionGeneration()) {
-        onError(hireErrorMessage(caught, template.name), template);
-      }
+      onError(hireErrorMessage(caught, template.name), template);
     } finally {
-      inFlight.current.delete(template.id);
-      setHiringIDs((ids) => ids.filter((id) => id !== template.id));
+      releaseHire(template.id);
     }
   }
 
   function isHiring(templateID: string) {
-    return hiringIDs.includes(templateID);
+    return hiring.has(templateID);
   }
 
   return { hire, isHiring };
