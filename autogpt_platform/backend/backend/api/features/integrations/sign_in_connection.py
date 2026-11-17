@@ -19,7 +19,7 @@ import jwt
 from autogpt_libs.auth.service import frontend_service_claims
 from fastapi import APIRouter, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.credentials_store import is_system_credential
@@ -44,6 +44,8 @@ from .router import (
 logger = logging.getLogger(__name__)
 
 SIGN_IN_CONNECTION_SCOPE = "integrations:sign-in-connection"
+# Well past any Google or Microsoft token, so only a malformed body hits it.
+TOKEN_MAX_LENGTH = 16_384
 
 sign_in_connection_router = APIRouter()
 _bearer = HTTPBearer(auto_error=False)
@@ -51,14 +53,14 @@ _bearer = HTTPBearer(auto_error=False)
 
 class SignInConnectionRequest(BaseModel):
     provider: Literal["google", "microsoft"]
-    access_token: SecretStr
-    refresh_token: SecretStr | None = None
+    access_token: SecretStr = Field(max_length=TOKEN_MAX_LENGTH)
+    refresh_token: SecretStr | None = Field(default=None, max_length=TOKEN_MAX_LENGTH)
     # Unix seconds.
     expires_at: int | None = None
     # What the provider granted, space-separated, as its token response says.
-    scope: str = ""
+    scope: str = Field(default="", max_length=4_096)
     # Microsoft names the account in it; Google's isn't needed.
-    id_token: SecretStr | None = None
+    id_token: SecretStr | None = Field(default=None, max_length=TOKEN_MAX_LENGTH)
 
 
 SignInConnectionResult = Literal["created", "updated", "kept", "skipped"]
