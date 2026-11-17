@@ -21,6 +21,8 @@ import z from "zod";
 import { signup as signupAction } from "./actions";
 import { isTeamEmail } from "@/lib/auth/team-email";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
+import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
+import { useConnectFallback } from "@/components/auth/useConnectFallback";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
@@ -32,6 +34,7 @@ export function useSignupPage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const connectFallback = useConnectFallback();
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
   const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
@@ -99,7 +102,10 @@ export function useSignupPage() {
     if (optOut) trackSignupMarketingOptOut();
   }
 
-  async function handleProviderSignup(provider: LoginProvider) {
+  async function handleProviderSignup(
+    provider: LoginProvider,
+    { connect }: { connect?: boolean } = {},
+  ) {
     setLoadingProvider(provider);
     setIsSigningUp(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
@@ -114,7 +120,11 @@ export function useSignupPage() {
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
+        body: JSON.stringify({
+          provider,
+          redirectTo: fullCallbackUrl,
+          connect,
+        }),
       });
 
       if (!response.ok) {
@@ -129,7 +139,8 @@ export function useSignupPage() {
         throw new Error(error || "Failed to start OAuth flow");
       }
 
-      const { url } = await response.json();
+      const { url, connecting } = await response.json();
+      if (connecting) rememberConnectAttempt(provider);
       if (url) window.location.href = url as string;
     } catch (error) {
       setLoadingProvider(null);
@@ -255,6 +266,7 @@ export function useSignupPage() {
     handleToggleMarketingOptOut,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
+    connectFallback,
     handleStartAgain,
   };
 }

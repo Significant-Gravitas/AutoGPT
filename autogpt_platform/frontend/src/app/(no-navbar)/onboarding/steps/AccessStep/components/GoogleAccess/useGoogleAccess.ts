@@ -6,7 +6,7 @@ import {
   type GoogleService,
   missingServices,
   pickGoogleCredential,
-} from "./helpers";
+} from "@/lib/google-access";
 
 export function useGoogleAccess() {
   const saved = useGetV1ListCredentialsByProvider(GOOGLE_PROVIDER);

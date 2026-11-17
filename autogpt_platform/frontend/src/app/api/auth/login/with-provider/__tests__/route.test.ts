@@ -62,7 +62,58 @@ describe("POST /api/auth/login/with-provider", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       url: "https://accounts.google.com/o/oauth2/auth?state=xyz",
+      connecting: false,
     });
+  });
+
+  it("asks Google for the data scopes too while connecting at sign-in is on", async () => {
+    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google,microsoft");
+    signInSocialMock.mockResolvedValue({
+      url: "https://accounts.google.com/x",
+    });
+    const { GOOGLE_ACCESS_SCOPES } = await import("@/lib/google-access");
+
+    const response = await POST(
+      makeProviderRequest({
+        provider: "google",
+        redirectTo: "/auth/callback?next=/marketplace",
+      }),
+    );
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toEqual(GOOGLE_ACCESS_SCOPES);
+    // A refused sign-in says it was connecting, so /login can offer one
+    // without connecting.
+    expect(body.errorCallbackURL).toBe(
+      "/login?connect=google&next=%2Fmarketplace",
+    );
+    expect(await response.json()).toMatchObject({ connecting: true });
+  });
+
+  it("signs in without the data scopes when asked to", async () => {
+    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google,microsoft");
+    signInSocialMock.mockResolvedValue({
+      url: "https://accounts.google.com/x",
+    });
+
+    const response = await POST(
+      makeProviderRequest({ provider: "google", connect: false }),
+    );
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toBeUndefined();
+    expect(body.errorCallbackURL).not.toContain("connect=");
+    expect(await response.json()).toMatchObject({ connecting: false });
+  });
+
+  it("asks a provider whose data isn't connected at sign-in for nothing more", async () => {
+    vi.stubEnv("AUTH_CONNECT_AT_SIGN_IN", "google,microsoft");
+    signInSocialMock.mockResolvedValue({ url: "https://github.com/oauth" });
+
+    await POST(makeProviderRequest({ provider: "github" }));
+
+    const [{ body }] = signInSocialMock.mock.calls[0];
+    expect(body.scopes).toBeUndefined();
   });
 
   it("falls back to the default callback URL when redirectTo is omitted", async () => {
@@ -158,7 +209,7 @@ describe("POST /api/auth/login/with-provider", () => {
       headers: request.headers,
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ url });
+    expect(await response.json()).toEqual({ url, connecting: false });
   });
 
   it("returns 400 when no provider is supplied", async () => {

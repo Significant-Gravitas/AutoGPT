@@ -9,7 +9,11 @@ and workflows, Work IQ, and "Continue with Microsoft" on the login page.
 **Continue with Microsoft** signs in with the account picker and asks only for
 name and email. A new account's onboarding then opens with an access step that
 offers the data connection; skipping it is fine. Existing accounts go straight
-where they were heading and can connect from Settings.
+where they were heading and can connect from Settings. With
+`AUTH_CONNECT_AT_SIGN_IN` naming `microsoft`, the sign-in also asks for mail,
+calendar and files and makes the connection itself, and the access step only
+appears when it didn't (see
+[Connecting at sign-in](oauth-integration-flow.md#connecting-at-sign-in)).
 
 **Connect Microsoft** (Settings → Integrations, the Copilot card, or the access step) creates
 one `microsoft` connection per Microsoft account:

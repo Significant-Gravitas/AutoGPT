@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { GOOGLE_ACCESS_SCOPES } from "../AccessStep/components/GoogleAccess/helpers";
+import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
 
 const GOOGLE_BLOCKS = resolve("../backend/backend/blocks/google");
 const GOOGLE_SCOPE = /https:\/\/www\.googleapis\.com\/auth\/[a-z._]+/g;

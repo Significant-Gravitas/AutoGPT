@@ -26,6 +26,8 @@ import { getPostLoginPath, getSignInErrorNotice } from "./helpers";
 import { isTeamEmail } from "@/lib/auth/team-email";
 import { SIGN_IN_CODE_SENT } from "@/lib/auth/sign-in-code";
 import { clearImpersonationEverywhere } from "@/lib/impersonation";
+import { rememberConnectAttempt } from "@/lib/auth/connect-attempt";
+import { useConnectFallback } from "@/components/auth/useConnectFallback";
 
 export function useLoginPage() {
   useCaptureMarketingPrompt();
@@ -49,6 +51,7 @@ export function useLoginPage() {
       ? searchParams.get("error")
       : null;
   const isWaitlisted = isWaitlistSignInError(microsoftErrorCode);
+  const connectFallback = useConnectFallback();
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(isWaitlisted);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
@@ -94,7 +97,10 @@ export function useLoginPage() {
   });
   const { formRef, isHydrated } = useServerRenderedForm(form);
 
-  async function handleProviderLogin(provider: LoginProvider) {
+  async function handleProviderLogin(
+    provider: LoginProvider,
+    { connect }: { connect?: boolean } = {},
+  ) {
     setLoadingProvider(provider);
     setIsLoggingIn(true);
     // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
@@ -107,7 +113,11 @@ export function useLoginPage() {
       const response = await fetch("/api/auth/login/with-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
+        body: JSON.stringify({
+          provider,
+          redirectTo: fullCallbackUrl,
+          connect,
+        }),
       });
 
       if (!response.ok) {
@@ -115,7 +125,8 @@ export function useLoginPage() {
         throw new Error(error || "Failed to start OAuth flow");
       }
 
-      const { url } = await response.json();
+      const { url, connecting } = await response.json();
+      if (connecting) rememberConnectAttempt(provider);
       if (url) window.location.href = url as string;
     } catch (error) {
       setLoadingProvider(null);
@@ -214,6 +225,7 @@ export function useLoginPage() {
     showNotAllowedModal,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
+    connectFallback,
     handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleBackToLogin: () => setVerificationEmail(null),
     handleLeaveSignInCode,

@@ -11,6 +11,7 @@ import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox"
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
+import { SignInWithoutConnecting } from "@/components/auth/SignInWithoutConnecting";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
@@ -50,6 +51,7 @@ export default function SignupPage() {
     handleSubmit,
     handleToggleMarketingOptOut,
     handleProviderSignup,
+    connectFallback,
     handleCloseNotAllowedModal,
     handleStartAgain,
   } = useSignupPage();
@@ -152,6 +154,20 @@ export default function SignupPage() {
                 />
               ) : null}
             </div>
+            {connectFallback ? (
+              <SignInWithoutConnecting
+                provider={connectFallback}
+                disabled={
+                  !isHydrated ||
+                  isLoading ||
+                  isGoogleLoading ||
+                  isMicrosoftLoading
+                }
+                onSignIn={() =>
+                  handleProviderSignup(connectFallback, { connect: false })
+                }
+              />
+            ) : null}
           </>
         ) : null}
 

@@ -8,6 +8,7 @@ const source = vi.hoisted(() => ({
   local: false,
   paid: false,
   signIn: { provider: null as string | null, isReady: true },
+  connection: { isReady: true, isConnected: false },
 }));
 vi.mock("@/hooks/usePlatformPayment", () => ({
   usePlatformPayment: () => source.payment,
@@ -26,6 +27,9 @@ vi.mock("@/services/environment", () => ({
 }));
 vi.mock("../steps/AccessStep/useSignInProvider", () => ({
   useSignInProvider: () => source.signIn,
+}));
+vi.mock("../steps/AccessStep/useSignInConnection", () => ({
+  useSignInConnection: () => source.connection,
 }));
 vi.mock("../usePaidCheckoutStatus", () => ({
   usePaidCheckoutStatus: () => ({
@@ -48,6 +52,7 @@ beforeEach(() => {
   source.local = false;
   source.paid = false;
   source.signIn = { provider: null, isReady: true };
+  source.connection = { isReady: true, isConnected: false };
 });
 describe("onboarding layout", () => {
   it("includes team introductions, brain dump, and the plan + trial step without rollout flags", () => {
@@ -139,6 +144,25 @@ describe("onboarding layout", () => {
     // No paywall configured: the plan stands alone where the paywall was.
     expect(result.current.steps.subscription).toBe(5);
     expect(result.current.steps.hire).toBeUndefined();
+  });
+  it("leaves the access step out once the sign-in connected everything", () => {
+    source.payment = {
+      isPaymentEnabled: false,
+      isResolved: true,
+      isError: false,
+    };
+    source.signIn = { provider: "google", isReady: true };
+    source.connection = { isReady: true, isConnected: true };
+    const { result } = renderHook(useOnboardingLayout, { initialProps });
+    expect(result.current.isReady).toBe(true);
+    expect(result.current.steps.access).toBeUndefined();
+    expect(result.current.steps.team).toBe(1);
+  });
+  it("waits for the sign-in's connection before laying out the steps", () => {
+    source.signIn = { provider: "google", isReady: true };
+    source.connection = { isReady: false, isConnected: false };
+    const { result } = renderHook(useOnboardingLayout, { initialProps });
+    expect(result.current.isReady).toBe(false);
   });
   it("offers a Microsoft sign-up its connection before anything else", () => {
     source.payment = {

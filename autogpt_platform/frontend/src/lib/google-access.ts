@@ -10,8 +10,9 @@ export interface GoogleService {
 }
 
 /**
- * What connecting Google from onboarding asks for, by the service each
- * permission is for. These are the scopes the Google blocks already ask for,
+ * What connecting Google asks for, at sign-in (lib/auth/connect-at-sign-in.ts)
+ * or in onboarding's access step, by the service each permission is for.
+ * These are the scopes the Google blocks already ask for,
  * so one connection covers all of them and Google's consent screen lists
  * nothing the app isn't approved for. Gmail's metadata scope is never asked
  * for: a grant that includes it gets message headers only and no search

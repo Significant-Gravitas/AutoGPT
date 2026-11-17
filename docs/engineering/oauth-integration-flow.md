@@ -341,23 +341,67 @@ stateDiagram-v2
 - **Token Management**: Custom refresh logic with mutex locking
 - **User Experience**: Connect external services to use in workflows
 
+### Connecting at sign-in
+
+With `AUTH_CONNECT_AT_SIGN_IN` naming the provider (`google,microsoft`),
+Continue with Google or Microsoft also asks for the data scopes, so a person
+starts with the connection the Connect flow would make: one `google`
+connection for Gmail, Drive and Calendar, or one `microsoft` connection for
+mail, calendar and files.
+
+- **The request:** `/api/auth/login/with-provider` adds the scopes
+  (`lib/auth/connect-at-sign-in.ts`). Better Auth passes a sign-in's `scopes`
+  straight to the provider, so `hooks.before` refuses any others for Google
+  and Microsoft, and refuses them all while the flag is off.
+- **The tokens:** a wrapped `getUserInfo` keeps the token response of the
+  provider's redirect (`lib/auth/sign-in-connection.ts`); an ID token sent to
+  `/sign-in/social` never counts. Once the sign-in's session exists, the
+  frontend's server hands the tokens to `POST /api/auth/sign-in-connection`
+  with a service token naming the user. The backend
+  (`api/features/integrations/sign_in_connection.py`) keeps them as the
+  account's connection, or widens the one it has. It never adds a second
+  connection for an account, and it never fails the sign-in.
+- **One OAuth client:** a provider renews a refresh token only for the client
+  it was issued to, so login must use the backend's client. Microsoft already
+  does (one Entra app). For Google, `AUTH_GOOGLE_CLIENT_ID`/`SECRET` must be
+  the backend's `GOOGLE_CLIENT_ID`/`SECRET`, with
+  `{site}/api/auth/callback/google` added to that client's redirect URIs. The
+  backend checks the issuing client (Google's tokeninfo, Microsoft's ID token
+  audience) and answers 409 otherwise, so nothing breaks before the switch;
+  the sign-in just connects nothing.
+- **Not in the auth table:** Better Auth would store the provider's tokens in
+  `UserAuthAccount` unencrypted. For Google and Microsoft the account hooks
+  null them before they're written; the tokens live only in the backend's
+  encrypted credential store.
+- **When the permissions are blocked:** a company admin may block them, or
+  the person may decline. A refused sign-in comes back to `/login` with
+  `connect=<provider>`, and one that never came back (a Google Workspace
+  block ends on Google's own error page) was noted in the tab
+  (`lib/auth/connect-attempt.ts`). Either way the login and signup pages offer
+  **Continue with Google (or Microsoft) without connecting**, which asks for
+  name and email only.
+- **Returning users:** each sees the provider's consent screen once, at
+  their next sign-in. Google issues a refresh token only on that screen, so a
+  later sign-in without one can widen an existing connection but not start
+  one.
+
 ### Connecting right after signing up
 
-Signing in with a provider never asks for its data: login asks only for name
-and email, so the consent screen stays short and a company's admin isn't
-asked to approve an app just for someone to log in. Instead, a new account
-that signed up with Microsoft or Google gets an access step in onboarding
-(`onboarding/steps/AccessStep/accessProviders.tsx`) that offers the
-integration connection while the provider's session is still fresh. Skipping
-it is fine; Settings → Integrations connects later. With payments on, the
-step follows the plan step, since connecting needs a plan.
+A new account that signed up with Microsoft or Google gets an access step in
+onboarding (`onboarding/steps/AccessStep/accessProviders.tsx`) that offers the
+integration connection while the provider's session is still fresh. A sign-in
+that already connected everything the step offers skips it
+(`useSignInConnection.ts`). Skipping it is fine; Settings → Integrations
+connects later. With payments on, the step follows the plan step, since
+connecting needs a plan. A connection made at sign-in is stored before the
+plan, and is usable once there is one.
 
 - **Microsoft** offers the `microsoft` connection (mail, calendar, files,
   and for work accounts Teams, Microsoft 365 Copilot and Work IQ); see
   [Microsoft connection and sign-in](microsoft-local-e2e.md).
 - **Google** offers one `google` connection for Gmail, Drive and Calendar. It
   asks for the scopes the Google blocks require (`GOOGLE_SERVICES` in
-  `GoogleAccess/helpers.ts`), so the connection covers all of them. A contract
+  `lib/google-access.ts`), so the connection covers all of them. A contract
   test (`googleAccessScopes.contract.test.ts`) fails if the step asks for a
   scope no block on `dev` requires, since a scope reaches `dev` only once
   Google has approved it. It never asks for `gmail.metadata`: a grant with it

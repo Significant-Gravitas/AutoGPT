@@ -1,8 +1,12 @@
-// "Continue with Microsoft". Signing in only proves who someone is; mail,
-// files and the rest are a separate, optional step afterwards.
+// "Continue with Microsoft". Signing in proves who someone is, and with
+// connecting at sign-in on (connect-at-sign-in.ts) also connects mail,
+// calendar and files. Teams, Copilot and the rest stay a separate step.
 
 import { isWaitlistError } from "@/app/api/auth/utils";
+import { microsoft } from "@better-auth/core/social-providers";
 import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
+import { connectAtSignInScopes } from "./connect-at-sign-in";
+import { keepingSignInTokens } from "./sign-in-connection";
 
 // Microsoft's fixed tenant for personal (consumer) accounts.
 const PERSONAL_TENANT_ID = "9188040d-6c67-4c5b-b112-36a304b66dad";
@@ -215,7 +219,7 @@ export function getMicrosoftLoginProvider() {
   const clientId = process.env.AUTH_MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.AUTH_MICROSOFT_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
-  return {
+  const options = {
     clientId,
     clientSecret,
     tenantId: "common",
@@ -223,8 +227,8 @@ export function getMicrosoftLoginProvider() {
     // person pick which one they mean.
     prompt: "select_account" as const,
     disableDefaultScope: true,
-    // The ID token's claims only. Nothing here calls Graph, and some
-    // organizations limit consent to it.
+    // The ID token's claims. A sign-in that connects Microsoft 365 too asks
+    // for the data scopes in its own request (connect-at-sign-in.ts).
     scope: ["openid", "profile", "email"],
     // Only the redirect flow, which microsoft-sign-up-policy.ts guards, signs
     // in. An ID token handed straight to /sign-in/social would skip it.
@@ -233,6 +237,14 @@ export function getMicrosoftLoginProvider() {
     // every session cookie.
     disableProfilePhoto: true,
     mapProfileToUser: microsoftProfileToUser,
+  };
+  if (!connectAtSignInScopes("microsoft")) return options;
+  const base = microsoft(options);
+  return {
+    ...options,
+    getUserInfo: keepingSignInTokens("microsoft", (tokens) =>
+      base.getUserInfo(tokens),
+    ),
   };
 }
 
