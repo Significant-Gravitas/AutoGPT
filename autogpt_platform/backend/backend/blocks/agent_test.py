@@ -219,10 +219,36 @@ async def test_a_live_end_during_a_pending_catch_up_ends_the_wait(
     assert block.execution_stats.reconciled_cost_delta == 7
 
 
+async def test_an_end_whose_own_catch_up_fails_is_kept_for_the_retry(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The catch-up owed when the end arrives fails too; the child publishes
+    nothing more, so the end must survive until the next attempt, which comes
+    soon rather than after the 60 s quiet recheck."""
+    monkeypatch.setattr(agent, "_CATCH_UP_RETRY_S", 0.05)
+    stream = _Stream()
+    a, b = _output(1, "a"), _output(2, "b")
+    for item in (None, a, None, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        ConnectionError("still unreachable"),
+        _meta(ExecutionStatus.RUNNING),
+        nodes=[],
+        later_nodes=[a, b],
+    )
+
+    outputs, block = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "a"), ("result", "b")]
+    assert block.execution_stats.reconciled_cost_delta == 7
+
+
 async def test_a_failed_catch_up_does_not_end_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(agent, "_QUIET_RECHECK_S", 0.05)
+    monkeypatch.setattr(agent, "_CATCH_UP_RETRY_S", 0.05)
     stream = _Stream()
     stream.items.put_nowait(None)
     db = _db(

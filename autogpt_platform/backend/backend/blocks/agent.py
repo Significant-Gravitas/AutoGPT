@@ -19,6 +19,7 @@ from backend.data.execution import (
     ExecutionEventType,
     ExecutionStatus,
     ExecutionTrigger,
+    GraphExecutionEvent,
     GraphExecutionMeta,
     NodeExecutionResult,
     NodesInputMasks,
@@ -41,6 +42,8 @@ _TERMINAL_STATUSES = (
 # to publish it), so after this long without an event the database is asked.
 # Bounds how long such a miss holds the parent run, which has no timeout.
 _QUIET_RECHECK_S = 60.0
+# How soon a catch-up the stream still owes is retried after it failed.
+_CATCH_UP_RETRY_S = 5.0
 
 NO_WORKFLOW_TO_RUN = (
     "This sub-workflow has no workflow to run: remove it, or add the workflow you "
@@ -198,10 +201,15 @@ class AgentExecutorBlock(Block):
             )
         )
         stale = False  # events may have been missed and not caught up yet
+        # The child's end, seen live while a catch-up was owed: it ends the
+        # wait once that catch-up succeeds, as the child publishes no more.
+        pending_end: GraphExecutionEvent | None = None
         try:
             while True:
                 try:
-                    async with asyncio.timeout(_QUIET_RECHECK_S):
+                    async with asyncio.timeout(
+                        _CATCH_UP_RETRY_S if stale else _QUIET_RECHECK_S
+                    ):
                         event = await events.get()
                     stale = stale or event is None
                 except TimeoutError:
@@ -227,6 +235,8 @@ class AgentExecutorBlock(Block):
                         )
                         self._record_sub_graph_stats(event.stats)
                         return
+                    if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
+                        pending_end = event
                 # A resync, a quiet spell, or an event while events may have
                 # been missed (which must not overtake them): the database has
                 # the rest, in order.
@@ -235,8 +245,8 @@ class AgentExecutorBlock(Block):
                         user_id, graph_exec_id, stale, yielded, log_id, logger
                     )
                 except Exception:
-                    # Like a missed event: the next event, resync or quiet
-                    # spell retries, and nothing newer is yielded meanwhile.
+                    # Like a missed event: retried on the next event, or after
+                    # _CATCH_UP_RETRY_S; nothing newer is yielded meanwhile.
                     logger.warning(f"Execution {log_id} catch-up failed", exc_info=True)
                     continue
                 stale = False
@@ -253,12 +263,12 @@ class AgentExecutorBlock(Block):
                     )
                     self._record_sub_graph_stats(finished.stats)
                     return
-                if event is not None and (
-                    event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE
-                ):
-                    # The live end, which the database hadn't recorded yet.
-                    logger.info(f"Execution {log_id} graph completed: {event.status}")
-                    self._record_sub_graph_stats(event.stats)
+                if pending_end is not None:
+                    # The database hadn't recorded the end yet.
+                    logger.info(
+                        f"Execution {log_id} graph completed: {pending_end.status}"
+                    )
+                    self._record_sub_graph_stats(pending_end.stats)
                     return
         finally:
             reader.cancel()
