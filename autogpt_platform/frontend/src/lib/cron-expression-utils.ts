@@ -34,12 +34,40 @@ export type CronExpressionParams =
         }
       | {
           frequency: "custom";
-          customInterval: { unit: string; value: number };
+          customInterval: { unit: CustomIntervalUnit; value: number };
         }
     ) & {
       minute: number;
       hour: number;
     });
+
+export type CustomIntervalUnit = "minutes" | "hours" | "days";
+
+/**
+ * Largest custom interval per unit. A cron step must be smaller than its
+ * field's range (APScheduler rejects `*\/60` minutes, `*\/24` hours,
+ * `*\/31` days), so 60 minutes and 24 hours are sent as hourly / daily
+ * and days stop at 30.
+ */
+export const CUSTOM_INTERVAL_MAX: Record<CustomIntervalUnit, number> = {
+  minutes: 60,
+  hours: 24,
+  days: 30,
+};
+
+export function parseCustomInterval(text: string): number {
+  const digits = text.trim();
+  return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
+}
+
+export function getCustomIntervalError(
+  unit: CustomIntervalUnit,
+  value: number,
+): string | undefined {
+  const max = CUSTOM_INTERVAL_MAX[unit];
+  if (Number.isInteger(value) && value >= 1 && value <= max) return undefined;
+  return `Enter 1 to ${max} ${unit}`;
+}
 
 export function makeCronExpression(params: CronExpressionParams): string {
   const frequency = params.frequency;
@@ -67,12 +95,14 @@ export function makeCronExpression(params: CronExpressionParams): string {
   }
   if (frequency === "custom") {
     const { minute, hour, customInterval } = params;
-    if (customInterval.unit === "minutes") {
-      return `*/${customInterval.value} * * * *`;
-    } else if (customInterval.unit === "hours") {
-      return `0 */${customInterval.value} * * *`;
+    const { unit, value } = customInterval;
+    if (getCustomIntervalError(unit, value)) return "";
+    if (unit === "minutes") {
+      return value === 60 ? "0 * * * *" : `*/${value} * * * *`;
+    } else if (unit === "hours") {
+      return value === 24 ? "0 0 * * *" : `0 */${value} * * *`;
     } else {
-      return `${minute} ${hour} */${customInterval.value} * *`;
+      return `${minute} ${hour} */${value} * *`;
     }
   }
 
