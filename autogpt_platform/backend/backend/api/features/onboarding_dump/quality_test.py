@@ -389,16 +389,42 @@ async def test_llm_verdict_tolerates_markdown_fence(llm):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "mode,asked,not_asked",
+    "reply,expected",
     [
-        ({}, "mic testing", "keyboard mashing"),
-        ({"input_mode": BrainDumpInputMode.voice}, "mic testing", "keyboard mashing"),
-        ({"input_mode": BrainDumpInputMode.typed}, "keyboard mashing", "mic testing"),
+        ('They name their trade, so "usable": true.', None),
+        ('{"usable": false} {"reason": "only a greeting"}', JUDGED_UNUSABLE),
+    ],
+)
+async def test_a_verdict_inside_prose_still_counts(
+    llm, reply: str, expected: quality.QualityRejection | None
+):
+    # A take can steer the judge into prose; one named verdict is still a verdict.
+    llm(_llm_client(reply))
+    assert await quality.check_transcript_quality("Automate my invoices.") == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode,asked,not_asked,tag",
+    [
+        ({}, "mic testing", "keyboard mashing", "transcript"),
+        (
+            {"input_mode": BrainDumpInputMode.voice},
+            "mic testing",
+            "keyboard mashing",
+            "transcript",
+        ),
+        (
+            {"input_mode": BrainDumpInputMode.typed},
+            "keyboard mashing",
+            "mic testing",
+            "reply",
+        ),
     ],
     ids=["default", "voice", "typed"],
 )
 async def test_typed_text_is_judged_without_the_speech_rules(
-    llm, mode: dict, asked: str, not_asked: str
+    llm, mode: dict, asked: str, not_asked: str, tag: str
 ):
     client = _llm_client('{"usable": true}')
     llm(client)
@@ -407,7 +433,10 @@ async def test_typed_text_is_judged_without_the_speech_rules(
 
     prompt = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
     assert asked in prompt and not_asked not in prompt
-    assert prompt.endswith("I run a bakery.\n")
+    # Fenced, with the output rule after it: a take left last gets answered.
+    before, _, after = prompt.partition("I run a bakery.")
+    assert before.endswith(f"<{tag}>\n") and after.startswith(f"\n</{tag}>")
+    assert '{"usable": true}' in after
 
 
 def test_count_words_skips_tokens_without_a_letter_or_digit():
@@ -455,7 +484,8 @@ async def test_the_judge_asks_for_no_reasoning_and_logs_why_a_verdict_is_missing
     assert rejection is not None and rejection.reason == "judge_malformed"
     kwargs = client.chat.completions.create.await_args.kwargs
     assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
-    assert "judge_malformed (finish_reason=length, 5 chars)" in caplog.text
+    assert "judge_malformed (mode=voice, finish_reason=length, 5 chars)" in caplog.text
+    assert "invoices" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -468,6 +498,10 @@ async def test_the_judge_asks_for_no_reasoning_and_logs_why_a_verdict_is_missing
         (lambda: _llm_client("not json at all"), "judge_malformed"),
         (lambda: _llm_client('{"usable": "yes"}'), "judge_malformed"),
         (lambda: _llm_client("{}"), "judge_malformed"),
+        (
+            lambda: _llm_client('{"usable": true}, or rather {"usable": false}'),
+            "judge_malformed",
+        ),
         (_no_choices_client, "judge_malformed"),
     ],
 )

@@ -1,6 +1,7 @@
 """The brain-dump pipeline's one way of asking a model for a JSON answer."""
 
 import asyncio
+from typing import Callable
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -33,8 +34,9 @@ async def request_json(
     temperature: float,
     max_tokens: int,
     timeout: float,
+    parse: Callable[[str], dict | None] = parse_response_json,
 ) -> StructuredReply:
-    """One JSON-only completion, with reasoning off.
+    """One JSON-only completion, with reasoning off, read by ``parse``.
 
     Raises whatever the client or the timeout raises, so each caller keeps
     its own degradation.
@@ -54,7 +56,7 @@ async def request_json(
     choice = response.choices[0]
     content = choice.message.content or ""
     return StructuredReply(
-        data=parse_response_json(content),
+        data=parse(content),
         finish_reason=str(choice.finish_reason),
         chars=len(content),
     )
