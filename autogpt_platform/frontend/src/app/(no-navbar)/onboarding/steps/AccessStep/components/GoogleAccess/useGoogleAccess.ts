@@ -4,6 +4,7 @@ import {
   GOOGLE_ACCESS_SCOPES,
   GOOGLE_PROVIDER,
   type GoogleService,
+  missingServices,
   pickGoogleCredential,
 } from "./helpers";
 
@@ -26,12 +27,12 @@ export function useGoogleAccess() {
     void oauth.connect();
   }
 
-  // A service left unticked on Google's consent screen is asked for again,
+  // Services left unticked on Google's consent screen are asked for again,
   // added to the same account.
-  function allow(service: GoogleService) {
-    if (!credential) return;
+  function allow(services: readonly GoogleService[]) {
+    if (!credential || services.length === 0) return;
     void oauth.connectWith({
-      scopes: [...service.scopes],
+      scopes: services.flatMap((service) => service.scopes),
       credentialID: credential.id,
     });
   }
@@ -39,7 +40,8 @@ export function useGoogleAccess() {
   return {
     isLoading: saved.isLoading,
     credential,
-    pending: oauth.isPending,
+    missing: credential ? missingServices(credential) : [],
+    isPending: oauth.isPending,
     connect,
     allow,
   };

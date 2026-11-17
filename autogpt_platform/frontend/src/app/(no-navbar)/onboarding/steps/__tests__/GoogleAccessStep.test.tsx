@@ -59,7 +59,7 @@ function googleAccount(granted: string[]) {
 
 // What Google grants when asked, and the connections saved so far.
 let grants: string[] = [];
-let saved: ReturnType<typeof googleAccount>[] = [];
+let saved: Record<string, unknown>[] = [];
 let logins: URL[] = [];
 
 beforeEach(() => {
@@ -190,6 +190,50 @@ describe("Google access step", () => {
     expect(await screen.findByText("pat@company.example")).toBeDefined();
     expect(serviceRow("Google Calendar").getByText("Ready")).toBeDefined();
     expect(screen.getByRole("button", { name: "Continue" })).toBeDefined();
+  });
+
+  it("asks for every service left in one go", async () => {
+    // Connected without allowing anything, e.g. everything unticked.
+    saved = [googleAccount([])];
+    render(<AccessStep />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Allow everything listed" }),
+    );
+
+    await waitFor(() => expect(logins).toHaveLength(1));
+    expect(requested(logins[0])).toEqual(
+      scopes(...GMAIL, ...DRIVE, ...CALENDAR).sort(),
+    );
+    expect(logins[0].searchParams.get("credential_id")).toBe("google-1");
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Allow everything listed" }),
+      ).toBeNull(),
+    );
+    expect(serviceRow("Gmail").getByText("Ready")).toBeDefined();
+  });
+
+  it("never takes another kind of Google credential for the account", async () => {
+    saved = [
+      {
+        id: "key-1",
+        provider: "google",
+        type: "api_key",
+        title: "Old key",
+        username: null,
+        scopes: null,
+      },
+    ];
+    render(<AccessStep />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect Google" }),
+    );
+
+    await waitFor(() => expect(logins).toHaveLength(1));
+    expect(logins[0].searchParams.get("credential_id")).toBeNull();
+    expect(screen.queryByText("Old key")).toBeNull();
   });
 
   it("moves on to the next step when skipped", async () => {

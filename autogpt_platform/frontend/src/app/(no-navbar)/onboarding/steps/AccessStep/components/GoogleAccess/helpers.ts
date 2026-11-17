@@ -56,10 +56,19 @@ export function isAllowed(
   return service.scopes.every((scope) => granted?.includes(scope));
 }
 
+/** The services an account doesn't allow yet. */
+export function missingServices(credential: CredentialsMetaResponse) {
+  return GOOGLE_SERVICES.filter(
+    (service) => !isAllowed(service, credential.scopes),
+  );
+}
+
 /**
  * The connected Google account that already allows the most services. Google
  * lets people untick permissions on its consent screen, so an account can be
- * connected without all of them.
+ * connected without all of them. Only a Google sign-in can be asked for more
+ * permissions, so any other kind of credential saved under the provider is
+ * never the account.
  */
 export function pickGoogleCredential(
   credentials: readonly CredentialsMetaResponse[],
@@ -67,6 +76,7 @@ export function pickGoogleCredential(
   let best: CredentialsMetaResponse | undefined;
   let bestCount = -1;
   for (const credential of credentials) {
+    if (credential.type !== "oauth2") continue;
     const count = GOOGLE_SERVICES.filter((service) =>
       isAllowed(service, credential.scopes),
     ).length;
