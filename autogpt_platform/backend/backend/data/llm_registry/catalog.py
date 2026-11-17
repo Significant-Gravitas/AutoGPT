@@ -1526,6 +1526,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="qwen/qwen4-max",
+                display_name="Qwen 4 Max",
+                provider="open_router",
+                creator="qwen",
+                context_window=1000000,
+                max_output_tokens=393216,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-11-16: $1.50/$4.50 per Mtok,
+                # cache read $0.075/1M, cache write $1.875/1M.
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=675.0,
+                    cache_read_credits_per_1m=11.25,
+                    cache_creation_credits_per_1m=281.25,
+                ),
+            ),
+            CatalogModel(
                 slug="qwen/qwen3-coder",
                 display_name="Qwen 3 Coder",
                 provider="open_router",

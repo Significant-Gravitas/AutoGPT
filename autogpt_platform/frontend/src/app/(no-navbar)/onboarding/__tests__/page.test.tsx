@@ -479,6 +479,13 @@ describe("onboarding before payment", () => {
     render(<OnboardingPage />);
     expect(screen.queryByTestId("step-role")).toBeNull();
     expect(screen.getByRole("status").textContent).toBe("Loading your setup…");
+    const placeholder = screen.getByTestId("onboarding-placeholder");
+    const bones = placeholder.querySelectorAll('[data-slot="skeleton"]');
+    expect(bones.length).toBeGreaterThan(0);
+    // The page's own background is bg-surface-hover, which would hide them.
+    bones.forEach((bone) =>
+      expect(bone.className).not.toContain("bg-surface-hover"),
+    );
     expect(getState).not.toHaveBeenCalled();
   });
 

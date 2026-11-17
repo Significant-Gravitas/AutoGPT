@@ -15,6 +15,20 @@ from backend.data.auth import api_key
 from backend.data.auth.api_key import APIKeyInfoWithHash
 
 
+@pytest.fixture(autouse=True)
+def roles_cover_workflows(mocker) -> AsyncMock:
+    """A key's owner holds a role in its organization that covers workflows and
+    runs unless a test says otherwise, as the paywall is off unless one does
+    (`backend/api/conftest.py`): a mocked database holds no membership rows.
+    `resource_roles_test.py` tests the check itself, and
+    `../resource_roles_db_test.py` all of it against Postgres."""
+    return mocker.patch(
+        "backend.api.external.middleware.resource_role_refusal",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
 @pytest.fixture(scope="module")
 def v1_generated_keys():
     return [api_key.keysmith.generate_key() for _ in range(3)]

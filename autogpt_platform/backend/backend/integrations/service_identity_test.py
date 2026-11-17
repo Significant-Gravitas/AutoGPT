@@ -51,6 +51,15 @@ def test_catalog_entry_with_a_block_provider_uses_that_provider():
     assert identity.icon == entry.mcp_server.icon_id
 
 
+def test_aimlapi_mcp_connection_shares_the_aiml_api_model_provider():
+    url = _entry("mcp_aimlapi").mcp_server.server_url
+    assert url
+    identity = service_for_credential(_mcp_credential(url))
+    assert identity.service == service_for_provider("aiml_api").service
+    assert identity.name == "AI/ML API"
+    assert identity.icon == "aiml_api"
+
+
 def test_catalog_entry_without_a_block_provider_uses_its_slug():
     identity = service_for_catalog_entry(_entry("mcp_sentry"))
     assert identity.service == "sentry"
