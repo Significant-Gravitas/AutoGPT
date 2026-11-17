@@ -2073,7 +2073,10 @@ def _build_catalog() -> CatalogPayload:
                 display_name="GPT-6.2 Astra",
                 provider="openai",
                 creator="openai",
-                context_window=1050000,
+                # Capped at the 272K base-price tier: OpenAI bills prompts
+                # above 272K at $16/$60 and the catalog has no tiered
+                # billing, so a larger window would under-bill.
+                context_window=272000,
                 max_output_tokens=128000,
                 # $8/1M in, $40/1M out, $0.40/1M cache read -- live
                 # OpenRouter rate as of 2026-11-17. Cheaper successor to
