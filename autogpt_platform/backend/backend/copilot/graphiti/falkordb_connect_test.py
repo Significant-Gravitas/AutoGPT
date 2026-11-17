@@ -7,6 +7,7 @@ import threading
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -106,7 +107,10 @@ class TestDeferredFalkorDB:
 
     @staticmethod
     def _abandoned_build(
-        release: threading.Event, real: MagicMock | None = None
+        release: threading.Event,
+        real: MagicMock | None = None,
+        *,
+        failure_message: str = "the server stopped answering",
     ) -> tuple[Any, list[int]]:
         """A build whose first attempt waits for ``release`` and then fails;
         any later attempt returns ``real``."""
@@ -116,27 +120,41 @@ class TestDeferredFalkorDB:
             attempts.append(1)
             if len(attempts) == 1:
                 release.wait(5)
-                raise ConnectionError("the server stopped answering")
+                raise ConnectionError(failure_message)
             assert real is not None
             return real
 
         return build, attempts
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("unrelated_failure", [False, True])
     async def test_a_build_that_fails_after_its_caller_gave_up_is_read(
         self,
+        unrelated_failure: bool,
     ) -> None:
         """The caller gives up, the build then fails with nobody waiting for
         it, and the driver is closed and dropped, as a cancelled request's
         ``finally`` does. The failure was read when the build settled, so the
-        loop's exception handler hears nothing ("Task exception was never
-        retrieved")."""
+        loop's exception handler hears no unretrieved error from this build.
+        Unrelated finalizers can still report their own failures."""
         loop = asyncio.get_running_loop()
         reported: list[dict[str, Any]] = []
         previous = loop.get_exception_handler()
-        loop.set_exception_handler(lambda _loop, context: reported.append(context))
+        failure_message = f"abandoned FalkorDB build {uuid4()}"
+
+        def record_build_failure(
+            event_loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+        ) -> None:
+            if str(context.get("exception")) == failure_message:
+                reported.append(context)
+            elif previous is not None:
+                previous(event_loop, context)
+            else:
+                event_loop.default_exception_handler(context)
+
+        loop.set_exception_handler(record_build_failure)
         release = threading.Event()
-        build, _ = self._abandoned_build(release)
+        build, _ = self._abandoned_build(release, failure_message=failure_message)
         try:
             client = falkordb_connect.DeferredFalkorDB(build)
             with pytest.raises(TimeoutError):
@@ -147,10 +165,20 @@ class TestDeferredFalkorDB:
             release.set()
             await asyncio.wait({building}, timeout=5)
             assert building.done() and client._building is None
+            if unrelated_failure:
+
+                async def unrelated_cleanup() -> None:
+                    raise RuntimeError("unrelated HTTP cleanup failed")
+
+                cleanup = asyncio.create_task(unrelated_cleanup())
+                await asyncio.wait({cleanup}, timeout=5)
+                assert cleanup.done()
+                del cleanup
             del client, building
             gc.collect()
             await asyncio.sleep(0.01)
         finally:
+            release.set()
             loop.set_exception_handler(previous)
 
         assert reported == []
