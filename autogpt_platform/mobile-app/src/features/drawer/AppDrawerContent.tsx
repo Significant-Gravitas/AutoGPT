@@ -1,4 +1,9 @@
-import { Cancel01Icon, PencilEdit02Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  PencilEdit02Icon,
+  Store01Icon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
 import type { DrawerContentComponentProps } from "expo-router/drawer";
 import {
   ActivityIndicator,
@@ -44,6 +49,7 @@ export function AppDrawerContent({ navigation }: Props) {
     openChat,
     newChat,
     openTeam,
+    openMarketplace,
     openAllChats,
     openSettings,
     handleSignOut,
@@ -87,6 +93,7 @@ export function AppDrawerContent({ navigation }: Props) {
         </View>
         <DrawerRow icon={PencilEdit02Icon} label="New chat" onPress={newChat} />
         <DrawerRow icon={UserGroupIcon} label="Your team" onPress={openTeam} />
+        <DrawerRow icon={Store01Icon} label="Marketplace" onPress={openMarketplace} />
       </View>
       {isSearching ? (
         <FlatList

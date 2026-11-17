@@ -59,6 +59,10 @@ export function useTeamScreen() {
     router.navigate("/create-expert");
   }
 
+  function browseMarketplace() {
+    router.navigate("/marketplace");
+  }
+
   return {
     experts: experts.data ?? [],
     isLoading: experts.isPending,
@@ -70,5 +74,6 @@ export function useTeamScreen() {
     openExpert,
     openOtto,
     createExpert,
+    browseMarketplace,
   };
 }
