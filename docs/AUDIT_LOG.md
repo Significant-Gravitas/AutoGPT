@@ -330,6 +330,12 @@ the current directory, with a `-N` suffix if a file of that name exists;
 an `--output` that exists is replaced. The archive is built beside its
 destination and moved into place when it is complete.
 
+An export holds every record as the log has it. The log keeps what ran
+whole: an `EXECUTE_COMMAND`'s `command` and `argv`, and a `launch_app`
+call's arguments, its `additional_arguments` and `launch_path` included.
+A password or token passed on a command line is therefore in the log, and
+in the export. Look through an export before you send it to anyone.
+
 Export bundles all current+rotated files into a `.zip` with an
 embedded `manifest.json` (per-file `name`/`size`/`sha256`) and a
 `manifest.sig` containing HMAC-SHA256 over the manifest using the
