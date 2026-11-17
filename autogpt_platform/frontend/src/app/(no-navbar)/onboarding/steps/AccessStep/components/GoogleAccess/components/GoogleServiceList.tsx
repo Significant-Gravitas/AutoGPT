@@ -32,11 +32,11 @@ export function GoogleServiceList({ credential, pending, onAllow }: Props) {
               <Text variant="small" tone="muted">
                 {service.purpose}
               </Text>
-              {credential && (
-                <Text variant="small" tone="body" aria-live="polite">
-                  {allowed ? "Ready" : "Needs your permission"}
-                </Text>
-              )}
+              {/* Mounted before there's a status, so a screen reader
+                  announces the first one when the account connects. */}
+              <Text variant="small" tone="body" aria-live="polite">
+                {credential && (allowed ? "Ready" : "Needs your permission")}
+              </Text>
             </div>
             {credential && !allowed && (
               <Button
