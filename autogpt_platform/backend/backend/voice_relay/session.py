@@ -1744,9 +1744,10 @@ class Session:
                     reader(self.conversation(), live=True),
                     timeout=self.timing.details_timeout_s,
                 )
-            except Exception:
+            except Exception as error:
                 logger.info(
-                    f"Voice call {self.call_id}: details not read", exc_info=True
+                    f"Voice call {self.call_id}: details not read: "
+                    f"{type(error).__name__}"
                 )
                 read = None
             if read is not None:

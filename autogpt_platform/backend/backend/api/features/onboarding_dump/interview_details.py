@@ -27,6 +27,7 @@ from backend.copilot.onboarding_interview_details import (
 )
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import incr_with_ttl
 from backend.util.settings import Settings
 from backend.voice_relay.config import DETAILS_MODEL, price_of
 
@@ -81,9 +82,7 @@ async def read_interview_details(session: ChatSession) -> InterviewDetails | Non
     if cached is not None:
         return _kept(cached)
     try:
-        reads = await redis.incr(_READS_KEY.format(**keys))
-        if reads == 1:
-            await redis.expire(_READS_KEY.format(**keys), _CACHE_TTL_S)
+        reads = await incr_with_ttl(redis, _READS_KEY.format(**keys), _CACHE_TTL_S)
     except Exception as exc:
         logger.warning(f"Interview details reads uncounted: {type(exc).__name__}")
         return None
@@ -95,6 +94,8 @@ async def read_interview_details(session: ChatSession) -> InterviewDetails | Non
             cache_key,
             json.dumps(details.model_dump(mode="json") if details else None),
             ex=_CACHE_TTL_S if details else _EMPTY_TTL_S,
+            # An empty read never takes the place of one already kept.
+            nx=details is None,
         )
     except Exception as exc:
         logger.warning(f"Interview details not cached: {type(exc).__name__}")

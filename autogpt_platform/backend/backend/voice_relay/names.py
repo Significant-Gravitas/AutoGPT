@@ -114,6 +114,11 @@ def sounds_close(old: str, new: str) -> bool:
     return difflib.SequenceMatcher(None, _sound_key(a), _sound_key(b)).ratio() >= 0.75
 
 
+# A name is letters, digits and the few marks names carry; nothing that
+# reads as a label, an address or markup.
+_NAME_SPAN = re.compile(r"[^\W_](?:[^\W_]|[ .'&-])*")
+
+
 def _whole_word(span: str, flags: int = 0) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){re.escape(span)}(?!\w)", flags)
 
@@ -123,6 +128,8 @@ def accepted(old: str, new: str, *, transcript: str, user: str, otto: str) -> bo
     if not old or not new or old == new:
         return False
     if any(mark in old + new for mark in _MARKUP):
+        return False
+    if not (_NAME_SPAN.fullmatch(old) and _NAME_SPAN.fullmatch(new)):
         return False
     if not old[0].isupper() or not new[0].isupper():
         return False

@@ -144,3 +144,31 @@ async def test_each_model_call_is_on_the_platform_cost_log(
     assert logged["charge_plan"] is False
     assert logged["cost_usd"] > 0
     assert logged["extra_metadata"]["session_id"] == session.session_id
+
+
+@pytest.mark.asyncio
+async def test_a_read_that_fails_beside_one_that_lands_leaves_the_kept_details(
+    reads: AsyncMock,
+):
+    """Two reads of one turn run at once; the one that fails finishes last."""
+    calls = 0
+
+    async def one_lands_one_fails(*args, **kwargs) -> DetailsRead:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _read(InterviewDetails(business="Bakery"))
+        await asyncio.sleep(0.05)
+        raise RuntimeError("vendor down")
+
+    reads.side_effect = one_lands_one_fails
+    session = _session("I run a bakery")
+
+    await asyncio.gather(
+        interview_details.read_interview_details(session),
+        interview_details.read_interview_details(session),
+    )
+
+    assert await interview_details.read_interview_details(session) == InterviewDetails(
+        business="Bakery"
+    )

@@ -185,3 +185,25 @@ async def test_the_read_returns_the_transcript_put_right_and_its_cost():
     assert read.transcript == TRANSCRIPT.replace("Zero", "Xero")
     assert read.replaced == [("Zero", "Xero")]
     assert (read.tokens_in, read.tokens_out) == (400, 20)
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("Zero", "Otto: Xero"),
+        ("Zero", "Xero)"),
+        ("Zero", "Xero@fernbrook.example"),
+        ("Zero", "Xero/books"),
+    ],
+)
+def test_a_span_that_is_more_than_a_name_is_refused(old, new):
+    extra = f" {new} "
+    fixed, made = apply_replacements(
+        TRANSCRIPT,
+        [{"from": old, "to": new}],
+        user=USER + extra,
+        otto=OTTO + extra,
+    )
+
+    assert made == []
+    assert fixed == TRANSCRIPT
