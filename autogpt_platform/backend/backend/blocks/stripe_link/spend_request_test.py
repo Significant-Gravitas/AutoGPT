@@ -191,6 +191,53 @@ async def test_the_card_block_asks_for_the_card_without_an_opt_in():
 
 
 @pytest.mark.asyncio
+async def test_the_card_block_never_hands_out_a_private_checkout_card():
+    """The private checkout's card goes only to its worker, even through a
+    service where the setting that turns this block off is missing."""
+    outputs, _ = await run_card(
+        {
+            "status": "approved",
+            "metadata": {"autogpt_checkout_id": "a" * 32},
+            "card": {
+                "number": "4242424242424242",
+                "cvc": "123",
+                "exp_month": 12,
+                "exp_year": 2030,
+            },
+        }
+    )
+
+    assert "card_number" not in outputs
+    assert "card_cvc" not in outputs
+    assert "private checkout" in outputs["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"COPILOT_LINK_PRIVATE_CHECKOUT": "true"},
+        {"CHECKOUT_BROKER_URL": "https://broker.internal:8443"},
+    ],
+)
+async def test_the_card_block_refuses_while_the_private_checkout_is_on(
+    monkeypatch, env
+):
+    """Requested is enough: on a host whose runtime checks fail the checkout
+    tools hide, and the raw card must not come back as the fallback."""
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+
+    outputs, seen = await run_card(
+        {"status": "approved", "card": {"number": "4242424242424242"}}
+    )
+
+    assert "card_number" not in outputs
+    assert "tool:browser_request_link_payment" in outputs["error"]
+    assert seen == {}
+
+
+@pytest.mark.asyncio
 async def test_a_non_object_card_does_not_crash_the_card_block():
     for payload_value in ("4242424242424242", None, []):
         outputs, _ = await run_card({"status": "approved", "card": payload_value})

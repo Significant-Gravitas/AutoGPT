@@ -271,6 +271,7 @@ def test_connect_integration_offers_ayrshare():
     tool = ConnectIntegrationTool()
     assert tool.parameters["properties"]["provider"]["enum"] == [
         "github",
+        "stripe_link",
         "ayrshare",
     ]
     assert "'ayrshare'" in tool.description

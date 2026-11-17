@@ -10,7 +10,12 @@ import json
 from typing import Any, cast
 
 from backend.copilot.model import ChatSession
-from backend.copilot.providers import SUPPORTED_PROVIDERS, get_provider_auth_types
+from backend.copilot.providers import (
+    CONNECT_ONLY_PROVIDERS,
+    SUPPORTED_PROVIDERS,
+    get_provider_auth_types,
+    setup_card_entry,
+)
 from backend.copilot.tools.models import (
     ErrorResponse,
     ResponseType,
@@ -43,11 +48,11 @@ MANAGED_PROVIDERS: dict[str, str] = {AYRSHARE: "Ayrshare"}
 
 
 def _supported_providers() -> list[str]:
-    return [*SUPPORTED_PROVIDERS, *MANAGED_PROVIDERS]
+    return [*SUPPORTED_PROVIDERS, *CONNECT_ONLY_PROVIDERS, *MANAGED_PROVIDERS]
 
 
 def _merged_scopes(provider: str, extra: list[str]) -> frozenset[str]:
-    entry = SUPPORTED_PROVIDERS.get(provider)
+    entry = setup_card_entry(provider)
     defaults = entry["default_scopes"] if entry else []
     return frozenset(s for s in (*defaults, *extra) if s)
 
@@ -203,7 +208,7 @@ class ConnectIntegrationTool(BaseTool):
             return await _connect_managed(
                 user_id, provider, reason, session_id, session.expert_id
             )
-        entry = SUPPORTED_PROVIDERS.get(provider)
+        entry = setup_card_entry(provider)
         if not entry:
             supported = ", ".join(f"'{p}'" for p in _supported_providers())
             return ErrorResponse(

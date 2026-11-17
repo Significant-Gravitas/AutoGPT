@@ -48,6 +48,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { LinkCheckout } from "./components/LinkCheckout/LinkCheckout";
+import { isLinkCheckoutOutput } from "./components/LinkCheckout/helpers";
 
 interface Props {
   part: ToolUIPart;
@@ -410,6 +412,14 @@ function getBrowserAccordionData(
 ): AccordionData {
   const message = getStringField(output, "message");
   const snapshot = getStringField(output, "snapshot");
+
+  if (isLinkCheckoutOutput(toolName, output)) {
+    return {
+      title: "Link checkout",
+      description: getStringField(output, "merchant_name") ?? undefined,
+      content: <LinkCheckout output={output} />,
+    };
+  }
 
   // Screenshot tool: show the file_id so the user knows it was saved
   if (toolName === "browser_screenshot") {
@@ -819,7 +829,9 @@ export function GenericTool({ part }: Props) {
           title={accordionData.title}
           description={accordionData.description}
           titleClassName={isError ? "text-error" : undefined}
-          defaultExpanded={category === "todo"}
+          defaultExpanded={
+            category === "todo" || isLinkCheckoutOutput(toolName, output)
+          }
         >
           {accordionData.content}
         </ToolAccordion>

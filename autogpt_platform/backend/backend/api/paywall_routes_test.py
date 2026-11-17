@@ -63,6 +63,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
+    # Saying no to a purchase the chat prepared.
+    "POST /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/decline",
     "DELETE /api/memory",
     "GET /api/memory/experts/{expert_id}/facts",
     "DELETE /api/memory/experts/{expert_id}",
@@ -187,6 +189,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/chat/sessions/{session_id}",
     "GET /api/chat/sessions/{session_id}/at-reset",
     "GET /api/chat/sessions/{session_id}/computer",
+    # A Link purchase the chat prepared; deciding on it stores a decision.
+    "GET /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}",
     "GET /api/chat/sessions/{session_id}/messages/pending",
     "GET /api/chat/sessions/{session_id}/share/state",
     "GET /api/chat/sessions/{session_id}/stream",
