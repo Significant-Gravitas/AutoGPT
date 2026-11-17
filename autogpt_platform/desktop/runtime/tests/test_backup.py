@@ -441,6 +441,26 @@ def test_browser_profile_must_be_closed_for_backup_and_restore(populated, marker
     assert not list(root.parent.glob("AutoGPT.before-restore-*"))
 
 
+WINDOWS_ONLY = pytest.mark.skipif(
+    sys.platform != "win32", reason="an ordinary file name outside Windows"
+)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no such names")
+def test_names_only_windows_refuses_survive_a_round_trip(populated):
+    bundle, root, archive, _ = populated
+    names = ("notes: v2.txt", "nul.txt", "trailing.", "back\\slash", "C:/kept")
+    for name in names:
+        path = root / "workspaces" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(name, encoding="utf-8")
+    backup.create_backup(bundle, root, archive, "AutoGPT")
+    previous = backup.restore_backup(bundle, root, archive, "AutoGPT")
+    assert previous and previous.is_dir()
+    for name in names:
+        assert (root / "workspaces" / name).read_text("utf-8") == name
+
+
 def rewrite(path, change):
     with zipfile.ZipFile(path) as archive:
         files = {name: archive.read(name) for name in archive.namelist()}
@@ -456,13 +476,12 @@ def rewrite(path, change):
     "name",
     [
         "../escape",
-        "C:/escape",
-        "a\\escape",
         "/absolute",
         "a/../escape",
-        "a:stream",
-        "nul.txt",
-        "trailing.",
+        *[
+            pytest.param(name, marks=WINDOWS_ONLY)
+            for name in ("C:/escape", "a\\escape", "a:stream", "nul.txt", "trailing.")
+        ],
     ],
 )
 def test_archive_paths_cannot_escape_or_alias_existing_files(populated, name):

@@ -255,23 +255,14 @@ def read_manifest(archive: zipfile.ZipFile) -> dict:
     for name, entry in files.items():
         clean = name.rstrip("/")
         path = PurePosixPath(clean)
-        if (
-            not clean
-            or str(path) != clean
-            or path.is_absolute()
-            or ".." in path.parts
-            or "\\" in name
-            or ":" in name
-        ):
+        if not clean or str(path) != clean or path.is_absolute() or ".." in path.parts:
             raise BackupError("The backup contains an unsafe path.")
-        if any(
-            part.endswith((".", " "))
-            or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", part)
-            for part in path.parts
-        ):
-            raise BackupError(
-                "The backup contains a path that is not safe on supported systems."
-            )
+        # A backup is restored on the system it was made on, and it holds
+        # whatever names that system allowed (inventory): what only Windows
+        # reads as a drive, a stream, a device or another spelling of a name
+        # is an ordinary file name elsewhere, and is refused only there.
+        if sys.platform == "win32" and _unsafe_on_windows(name, path):
+            raise BackupError("The backup contains a path that is not safe on Windows.")
         key = clean.casefold() if sys.platform == "win32" else clean
         if key in folded:
             raise BackupError("The backup contains colliding paths.")
@@ -300,6 +291,18 @@ def read_manifest(archive: zipfile.ZipFile) -> dict:
     if set(names) != expected:
         raise BackupError("The backup contains files outside its inventory.")
     return manifest
+
+
+def _unsafe_on_windows(name: str, path: PurePosixPath) -> bool:
+    return (
+        "\\" in name
+        or ":" in name
+        or any(
+            part.endswith((".", " "))
+            or re.fullmatch(r"(?i)(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?", part)
+            for part in path.parts
+        )
+    )
 
 
 def publish_restore(held: DataLock, stage: Path) -> Path | None:
