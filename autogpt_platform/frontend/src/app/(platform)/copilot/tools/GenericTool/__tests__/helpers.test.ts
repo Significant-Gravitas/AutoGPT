@@ -226,6 +226,12 @@ describe("getAnimationText", () => {
       }),
     });
     expect(getAnimationText(done, "browser")).toBe("Browser action completed");
+    const refused = makePart({
+      type: "tool-desktop_browser",
+      state: "output-available",
+      output: { type: "error", error: "call_refused", message: "Nothing ran" },
+    });
+    expect(getAnimationText(refused, "browser")).toBe("Browser action stopped");
   });
 
   it("shows generic streaming text for bash without input", () => {

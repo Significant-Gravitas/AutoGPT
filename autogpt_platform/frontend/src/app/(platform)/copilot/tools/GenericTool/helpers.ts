@@ -228,6 +228,8 @@ function _desktopBrowserStopped(part: ToolUIPart): boolean {
       return false;
     }
   }
+  // A refused or busy call is an ErrorResponse: nothing in it ran.
+  if ((output as { type?: unknown } | undefined)?.type === "error") return true;
   const receipts = (output as { receipts?: unknown } | undefined)?.receipts;
   return (
     Array.isArray(receipts) &&
