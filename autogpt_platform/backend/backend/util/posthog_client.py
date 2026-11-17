@@ -5,19 +5,30 @@ process is both cheaper and safer than one per module. Emitters send through
 :func:`capture`, which adds the base properties every event carries
 (``environment`` and ``source``, see ``docs/engineering/tracking-plan.md``),
 treats a missing client as "analytics disabled" and never lets tracking
-raise into the request or execution that produced the event. Every client
-built here also stamps ``revision`` on everything it sends (see
+raise into the request or execution that produced the event. An event that
+must not be linked to any person goes through :func:`capture_anonymous`.
+Every client built here also stamps ``revision`` on everything it sends (see
 :func:`revision_properties`).
+
+:func:`capture` also reads who the running work is for. An admin acting as
+the user (``X-Act-As-User-Id``, or a chat turn such an admin started) marks
+every event ``impersonated`` and sends no person properties, so the admin's
+clicks never land in the user's numbers or change their person. A request
+from the browser can name its PostHog session, which every event the request
+sends joins as ``$session_id``. ``api/middleware/analytics.py`` sets both
+for a request, the chat executor the first for a turn.
 """
 
 import asyncio
 import atexit
 import logging
 from collections.abc import Callable, Iterable, Mapping
+from contextvars import ContextVar, Token
+from datetime import datetime
 from functools import cache
 from threading import Lock
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from posthog import Posthog
 
@@ -112,6 +123,36 @@ async def send_each(sends: Iterable[Send]) -> int:
     return len(failed)
 
 
+# Whether an admin acting as the user caused the work running now.
+_impersonated: ContextVar[bool] = ContextVar("posthog_impersonated", default=False)
+# The browser's PostHog session for the request running now.
+_session_id: ContextVar[str | None] = ContextVar("posthog_session_id", default=None)
+
+
+def set_impersonated(impersonated: bool) -> Token[bool]:
+    """Mark the work running now as done by an admin acting as the user, or
+    not. Returns the token that undoes it."""
+    return _impersonated.set(impersonated)
+
+
+def reset_impersonated(token: Token[bool]) -> None:
+    _impersonated.reset(token)
+
+
+def is_impersonated() -> bool:
+    return _impersonated.get()
+
+
+def set_session_id(session_id: str | None) -> Token[str | None]:
+    """Make *session_id* the browser session the running request's events
+    join. Returns the token that undoes it."""
+    return _session_id.set(session_id or None)
+
+
+def reset_session_id(token: Token[str | None]) -> None:
+    _session_id.reset(token)
+
+
 @cache
 def _environment() -> str:
     return Settings().config.app_env.value
@@ -124,6 +165,7 @@ def capture(
     *,
     source: str = "platform",
     dedup_key: str | None = None,
+    timestamp: datetime | None = None,
     client: Posthog | None = None,
 ) -> bool:
     """Send one event for *distinct_id* with the base properties, on
@@ -134,16 +176,28 @@ def capture(
     nobody can merge. The base properties are applied last, so a caller can
     never overwrite ``environment`` or ``source`` by accident.
 
+    Work an admin does as the user is sent with ``impersonated`` true, and its
+    ``$set_person_properties`` events are not sent at all: the person's
+    properties describe the user, not the admin acting for them. A request
+    that named its browser session adds ``$session_id``, unless the caller set
+    one.
+
     ``dedup_key`` is an idempotency key for a redelivery or requeue that can
     send the same event twice; it is carried both as ``$insert_id`` and as a
     deterministic event uuid, because PostHog's ingestion keys on the uuid,
-    which the client otherwise randomises per call.
+    which the client otherwise randomises per call. ``timestamp`` is when the
+    action happened, for an event reported after the fact, such as by a
+    webhook. PostHog only merges duplicates that fall on the same day, so a
+    redelivery needs the sender's own time as well as ``dedup_key``.
     """
     if not distinct_id:
         return False
     event_name = "<unknown>"
     try:
         event_name = event.value
+        impersonated = is_impersonated()
+        if impersonated and event is PostHogEvent.SET_PERSON_PROPERTIES:
+            return False
         if client is None:
             client = get_posthog_client()
         if client is None:
@@ -153,6 +207,10 @@ def capture(
             "environment": _environment(),
             "source": source,
         }
+        if impersonated:
+            payload["impersonated"] = True
+        if session_id := _session_id.get():
+            payload.setdefault("$session_id", session_id)
         event_uuid = None
         if dedup_key is not None:
             payload["$insert_id"] = dedup_key
@@ -166,6 +224,7 @@ def capture(
             event=event_name,
             properties=payload,
             uuid=event_uuid,
+            timestamp=timestamp,
         )
         return queued is not None
     except Exception:
@@ -176,6 +235,48 @@ def capture(
             exc_info=True,
         )
         return False
+
+
+def capture_anonymous(
+    event: PostHogEvent,
+    properties: Mapping[str, Any] | None = None,
+    *,
+    source: str = "platform",
+) -> None:
+    """Send one event that must not be linked to anyone, with the base properties.
+
+    :func:`capture` refuses a synthetic distinct id because it would create a
+    person nobody can merge. This is allowed because no person is created:
+    ``$process_person_profile`` is false, so the fresh random id only groups
+    this one event, and nothing ties that id to an account. It is for counts
+    that must stay anonymous (account deletion feedback), so callers must not
+    put a user id, email or name in *properties*.
+
+    ``$process_person_profile`` and the base properties are applied last, so a
+    caller cannot turn the person profile back on or overwrite ``environment``
+    or ``source``. Failures are logged by event name only, never with the
+    properties, which can hold free text the person typed.
+    """
+    event_name = "<unknown>"
+    try:
+        event_name = event.value
+        client = get_posthog_client()
+        if client is None:
+            return
+        client.capture(
+            distinct_id=str(uuid4()),
+            event=event_name,
+            properties={
+                **(properties or {}),
+                "$process_person_profile": False,
+                "environment": _environment(),
+                "source": source,
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to send anonymous PostHog event {event_name}: {type(e).__name__}"
+        )
 
 
 def _shutdown() -> None:

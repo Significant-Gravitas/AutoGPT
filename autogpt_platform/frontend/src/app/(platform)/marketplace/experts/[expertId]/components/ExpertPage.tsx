@@ -10,23 +10,22 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
+import { useTrackExpertProfileOpened } from "@/services/experts/use-track-funnel-view-once";
+import { useHireFlow } from "@/services/experts/useHireFlow";
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { ReactNode } from "react";
+import { useExpertPage } from "../useExpertPage";
 import { ExpertAbout } from "./ExpertAbout";
 import { ExpertAccess } from "./ExpertAccess";
-import { ExpertComingSoonLabel } from "./ExpertComingSoonLabel";
 import { ExpertDayOne } from "./ExpertDayOne";
 import { ExpertHireActions } from "./ExpertHireActions";
-import { ExpertHeroBand, ExpertHeroIdentity } from "./ExpertPageHeader";
 import { ExpertHireCard } from "./ExpertHireCard";
+import { ExpertHeroBand, ExpertHeroIdentity } from "./ExpertPageHeader";
 import { ExpertProtectedRules } from "./ExpertProtectedRules";
 import { ExpertSkills } from "./ExpertSkills";
 import { ExpertWorkflowList } from "./ExpertWorkflowList";
-import { useExpertPage } from "../useExpertPage";
-import { useHireFlow } from "@/services/experts/useHireFlow";
-import { useTrackExpertProfileOpened } from "@/services/experts/use-track-funnel-view-once";
 
 const MAIN_CLASS =
   "mx-auto flex w-full max-w-[1120px] flex-col px-4 pb-24 pt-8 sm:px-6 md:px-8";
@@ -35,7 +34,7 @@ function BackToMarketplaceLink() {
   return (
     <Link
       href="/marketplace#experts"
-      className="mb-6 inline-flex w-fit items-center gap-1.5 text-[13px] text-zinc-500 transition-colors hover:text-zinc-900"
+      className="mb-6 inline-flex w-fit items-center gap-1.5 text-body-sm leading-inherit text-foreground-tertiary transition-colors hover:text-foreground-strong"
     >
       <Icon icon={ArrowLeft02Icon} size={14} />
       Back to marketplace
@@ -50,7 +49,6 @@ export function ExpertPage() {
     expert,
     hiredExpert,
     isLoggedIn,
-    isHiringOpen,
     isActionReady,
     systemProviders,
     isLoading,
@@ -81,7 +79,7 @@ export function ExpertPage() {
           <Skeleton className="h-9 w-28 rounded-full" />
         </div>
         <Skeleton className="mt-5 h-5 w-3/4" />
-        <div className="mt-8 flex flex-col gap-3 border-t border-zinc-200 pt-8">
+        <div className="mt-8 flex flex-col gap-3 border-t border-border-base pt-8">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-11/12" />
           <Skeleton className="h-4 w-3/4" />
@@ -117,7 +115,7 @@ export function ExpertPage() {
 
   let actions: ReactNode = <Skeleton className="h-9 w-full rounded-full" />;
   if (isActionReady) {
-    actions = isHiringOpen ? (
+    actions = (
       <ExpertHireActions
         expert={expert}
         hiredExpert={hiredExpert}
@@ -125,8 +123,6 @@ export function ExpertPage() {
         isHiring={isHiring}
         onHire={hire}
       />
-    ) : (
-      <ExpertComingSoonLabel />
     );
   }
 
@@ -148,7 +144,6 @@ export function ExpertPage() {
               expert={expert}
               firstName={firstName}
               actions={actions}
-              isHiringOpen={isHiringOpen}
             />
           </div>
         </div>

@@ -1,3 +1,8 @@
+// Chart series colours stay hex: recharts writes them as SVG attributes,
+// where CSS variables do not resolve (ds-colour-exempt.json).
+// The axis fontSize={12} props are Recharts' own API (a number, not a
+// class); 12px is the text-caption size, so they move with the chart tokens.
+
 import {
   CartesianGrid,
   Legend,

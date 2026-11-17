@@ -25,16 +25,19 @@ export function CostsBreakdown({ agents }: Props) {
     <section className="mt-6 flex flex-col gap-4">
       <Button
         variant="ghost"
-        size="small"
+        size="inline"
+        tone="emphasis"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
-        className="w-fit gap-1 px-0 text-neutral-800 hover:bg-transparent"
+        // oxlint-disable-next-line design-system/no-restyle -- no Button variant is a bare text toggle with no hover fill and a 4px gap
+        className="h-9 w-fit gap-1 hover:bg-transparent"
       >
         {isExpanded ? "Hide costs breakdown" : "See costs breakdown"}
         <Icon
           icon={ArrowDown01Icon}
           size={14}
-          className={`transition-transform ${isExpanded ? "rotate-180" : ""}`}
+          motion="transform"
+          className={isExpanded ? "rotate-180" : undefined}
         />
       </Button>
 
@@ -68,7 +71,7 @@ function ExpandedBody({
 }: ExpandedBodyProps) {
   if (isError) {
     return (
-      <Text variant="body" className="text-neutral-500">
+      <Text variant="body" tone="muted">
         Couldn&apos;t load cost breakdown.
       </Text>
     );
@@ -88,7 +91,7 @@ function ExpandedBody({
 
   if (!hasAnySpend) {
     return (
-      <Text variant="body" className="text-neutral-500">
+      <Text variant="body" tone="muted">
         No spend this month yet.
       </Text>
     );
@@ -104,7 +107,7 @@ function ExpandedBody({
 
   return (
     <>
-      <Text variant="small" className="text-neutral-500">
+      <Text variant="small" tone="muted">
         Calendar month so far · {formatMonthRangeLabel()}
       </Text>
       <StatRow
@@ -164,21 +167,23 @@ function StatRow({ items }: { items: StatItem[] }) {
       {items.map((item) => (
         <div
           key={item.label}
-          className="flex flex-col gap-0.5 rounded-medium border border-zinc-100 bg-white p-3"
+          className="flex flex-col gap-0.5 rounded-medium border border-separator bg-surface p-3"
         >
-          <Text variant="small" className="text-neutral-500">
+          <Text variant="small" tone="muted">
             {item.label}
           </Text>
-          <Text
-            variant="body-medium"
-            className={
-              item.tone === "warn"
-                ? "tabular-nums text-orange-600"
-                : "tabular-nums text-neutral-800"
-            }
-          >
-            {item.value}
-          </Text>
+          <div className="tabular-nums">
+            <Text
+              variant="body-medium"
+              tone={item.tone === "warn" ? undefined : "emphasis"}
+              className={
+                // oxlint-disable-next-line design-system/no-restyle -- Text has no orange tone (deferred)
+                item.tone === "warn" ? "text-orange-foreground" : undefined
+              }
+            >
+              {item.value}
+            </Text>
+          </div>
         </div>
       ))}
     </div>

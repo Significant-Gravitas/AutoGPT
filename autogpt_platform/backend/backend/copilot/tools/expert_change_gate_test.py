@@ -30,7 +30,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.trial_cost_context import TrialCostContext
 
-from . import hire_expert, raise_expert, update_soul
+from . import expert_handoff_proposal, update_soul
 from .base import BaseTool
 from .confirm_expert_change import ConfirmExpertChangeTool
 from .expert_change_test import _CHARTER, _USER, _env, _FakeRedis
@@ -94,8 +94,7 @@ def gate():
         ),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
-        patch.object(hire_expert, "uuid", _FIXED_UUID),
-        patch.object(raise_expert, "uuid", _FIXED_UUID),
+        patch.object(expert_handoff_proposal, "uuid", _FIXED_UUID),
         patch.object(update_soul, "uuid", _FIXED_UUID),
         patch.object(
             card_approval, "get_redis_async", AsyncMock(return_value=_Approvals())
@@ -311,7 +310,10 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             patch(f"{_GATE}.held.review_db", return_value=reviews),
             patch(f"{_GATE}.review_store.consume", AsyncMock(return_value=True)),
         ):
-            [row] = await held.resolve_answered(_USER, session)
+            rows: list[Any] = []
+            async for _status in held.resolve_answered(_USER, session, rows.append):
+                pass
+            [row] = rows
 
     assert row.metadata["held_call"]["outcome"] == "approved"
     part = {

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="600" viewBox="0 0 1600 600" role="img" aria-labelledby="title description">
+  <title id="title">AutoGPT: Your AI team. On your infrastructure.</title>
+  <desc id="description">Hire experts, delegate work, and review results. Frankie, Maria, and Max illustrate your AI team.</desc>
+  <defs>
+    <clipPath id="frankie"><rect x="858" y="203" width="216" height="216" rx="28" /></clipPath>
+    <clipPath id="maria"><rect x="1096" y="157" width="216" height="216" rx="28" /></clipPath>
+    <clipPath id="max"><rect x="1334" y="203" width="216" height="216" rx="28" /></clipPath>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#effaf8" />
+      <stop offset="0.55" stop-color="#f5f7ff" />
+      <stop offset="1" stop-color="#ede8ff" />
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="600" rx="28" fill="url(#background)" />
+  <image x="64" y="48" width="188" height="85" xlink:href="../../frontend/public/autogpt-logo-light-bg.png" />
+  <g font-family="DejaVu Sans, sans-serif" fill="#151530">
+    <text x="64" y="246" font-size="70" font-weight="700" letter-spacing="-2">Your AI team.</text>
+    <text x="64" y="328" font-size="54" font-weight="700" letter-spacing="-1.5">On your infrastructure.</text>
+    <text x="66" y="394" font-size="26" fill="#4b4b68">Hire experts. Delegate work. Review results.</text>
+    <text x="66" y="521" font-size="25" fill="#4b4b68">Self-hosted with Docker</text>
+  </g>
+  <g font-family="DejaVu Sans, sans-serif" text-anchor="middle" fill="#151530">
+    <image x="858" y="203" width="216" height="216" clip-path="url(#frankie)" xlink:href="../../frontend/public/autogpt-characters/v2.1/expert-frankie/neutral/256.png" />
+    <text x="966" y="459" font-size="26" font-weight="700">Frankie</text>
+    <image x="1096" y="157" width="216" height="216" clip-path="url(#maria)" xlink:href="../../frontend/public/autogpt-characters/v1.1/expert-maria/neutral/256.png" />
+    <text x="1204" y="413" font-size="26" font-weight="700">Maria</text>
+    <image x="1334" y="203" width="216" height="216" clip-path="url(#max)" xlink:href="../../frontend/public/autogpt-characters/v2.1/expert-max/neutral/256.png" />
+    <text x="1442" y="459" font-size="26" font-weight="700">Max</text>
+  </g>
+</svg>

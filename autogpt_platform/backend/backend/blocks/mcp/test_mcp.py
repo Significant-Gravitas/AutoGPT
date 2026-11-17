@@ -663,6 +663,7 @@ class TestMCPToolBlock:
             refresh_token=SecretStr(""),
             scopes=[],
             title="Test MCP credential",
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
         )
 
         async for _ in block.run(

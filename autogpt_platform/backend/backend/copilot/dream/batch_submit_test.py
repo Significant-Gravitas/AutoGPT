@@ -31,8 +31,8 @@ from backend.copilot.dream.batch_submit import (
 )
 from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.schemas import ConsolidationOutput
-from backend.copilot.dream.structured_output import OUTPUT_TOOL_CALL_ONCE
 from backend.copilot.graphiti.scope import DREAM_LOCK_KEY_PREFIX, MemoryScope
+from backend.copilot.inference.structured_output import OUTPUT_TOOL_CALL_ONCE
 from backend.util.llm.providers import BatchSubmissionRef
 from backend.util.llm.tool_use import (
     auto_tool_choice,

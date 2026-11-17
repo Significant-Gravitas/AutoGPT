@@ -4,17 +4,25 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from backend.util.text_limits import (
+    MAX_DESCRIPTION_LENGTH,
+    MAX_ID_LENGTH,
+    MAX_NAME_LENGTH,
+)
+
 
 class CreateTeamRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: str | None = None
-    join_policy: str = "OPEN"  # OPEN or PRIVATE
+    name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    join_policy: str = Field("OPEN", max_length=MAX_NAME_LENGTH)  # OPEN or PRIVATE
 
 
 class UpdateTeamRequest(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    join_policy: str | None = None  # OPEN or PRIVATE
+    name: str | None = Field(default=None, min_length=1, max_length=MAX_NAME_LENGTH)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LENGTH)
+    join_policy: str | None = Field(
+        default=None, max_length=MAX_NAME_LENGTH
+    )  # OPEN or PRIVATE
 
 
 class TeamResponse(BaseModel):
@@ -66,7 +74,7 @@ class TeamMemberResponse(BaseModel):
 
 
 class AddTeamMemberRequest(BaseModel):
-    user_id: str
+    user_id: str = Field(..., max_length=MAX_ID_LENGTH)
     is_admin: bool = False
     is_billing_manager: bool = False
 

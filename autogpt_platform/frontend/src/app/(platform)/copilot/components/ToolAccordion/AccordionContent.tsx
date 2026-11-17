@@ -30,11 +30,11 @@ export function ContentCard({
   return (
     <div
       className={cn(
-        "min-w-0 rounded-lg bg-gradient-to-r from-purple-500/30 to-blue-500/30 p-[1px]",
+        "min-w-0 rounded-lg bg-gradient-to-r from-brand/30 to-info/30 p-px",
         className,
       )}
     >
-      <div className="rounded-lg bg-neutral-100 p-3">{children}</div>
+      <div className="rounded-lg bg-surface-hover p-3">{children}</div>
     </div>
   );
 }
@@ -59,15 +59,18 @@ export function ContentCardHeader({
 
 export function ContentCardTitle({
   children,
+  size = "default",
   className,
 }: {
   children: React.ReactNode;
+  size?: "default" | "small";
   className?: string;
 }) {
   return (
     <Text
-      variant="body-medium"
-      className={cn("truncate text-zinc-800", className)}
+      variant={size === "small" ? "small-medium-tight" : "body-medium"}
+      tone="emphasis"
+      className={cn("truncate", className)}
     >
       {children}
     </Text>
@@ -84,7 +87,9 @@ export function ContentCardSubtitle({
   return (
     <Text
       variant="small"
-      className={cn("mt-0.5 truncate font-mono text-zinc-800", className)}
+      mono
+      tone="emphasis"
+      className={cn("mt-0.5 truncate", className)}
     >
       {children}
     </Text>
@@ -93,13 +98,19 @@ export function ContentCardSubtitle({
 
 export function ContentCardDescription({
   children,
+  size = "default",
   className,
 }: {
   children: React.ReactNode;
+  size?: "default" | "small";
   className?: string;
 }) {
   return (
-    <Text variant="body" className={cn("mt-2 text-zinc-800", className)}>
+    <Text
+      variant={size === "small" ? "small-tight" : "body"}
+      tone="emphasis"
+      className={cn("mt-2", className)}
+    >
       {children}
     </Text>
   );
@@ -117,7 +128,7 @@ export function ContentMessage({
   className?: string;
 }) {
   return (
-    <Text variant="body" className={cn("text-zinc-800", className)}>
+    <Text variant="body" tone="emphasis" className={className}>
       {children}
     </Text>
   );
@@ -131,7 +142,7 @@ export function ContentHint({
   className?: string;
 }) {
   return (
-    <Text variant="small" className={cn("text-neutral-500", className)}>
+    <Text variant="small" tone="muted" className={className}>
       {children}
     </Text>
   );
@@ -151,7 +162,7 @@ export function ContentCodeBlock({
   return (
     <pre
       className={cn(
-        "whitespace-pre-wrap rounded-lg border bg-neutral-100 p-3 text-xs text-neutral-800",
+        "rounded-lg border bg-surface-hover p-3 text-caption whitespace-pre-wrap text-foreground-emphasis",
         className,
       )}
     >
@@ -176,7 +187,7 @@ export function ContentBadge({
       variant="small"
       as="span"
       className={cn(
-        "shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] text-zinc-800",
+        "shrink-0 rounded-full border bg-surface-hover px-2 py-0.5 text-caption-sm leading-inherit text-foreground-emphasis",
         className,
       )}
     >
@@ -198,7 +209,7 @@ export function ContentLink({
       variant="primary"
       isExternal
       href={href}
-      className={cn("shrink-0 text-xs text-purple-500", className)}
+      className={cn("shrink-0 text-caption text-brand", className)}
       {...rest}
     >
       {children}
@@ -223,7 +234,7 @@ export function ContentSuggestionsList({
   return (
     <ul
       className={cn(
-        "mt-2 list-disc space-y-1 pl-5 font-sans text-[0.75rem] leading-[1.125rem] text-zinc-800",
+        "mt-2 list-disc space-y-1 pl-5 font-sans text-caption leading-4.5 text-foreground-emphasis",
         className,
       )}
     >

@@ -9,27 +9,14 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   postOauthAuthorize,
+  postOauthDenyAuthorization,
   useGetOauthGetOauthAppInfo,
 } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import type { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import { SCOPE_DESCRIPTIONS } from "@/lib/api-key-scopes";
 import { CheckmarkBadge01Icon, Image01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-
-// Human-readable scope descriptions
-const SCOPE_DESCRIPTIONS: { [key in APIKeyPermission]: string } = {
-  IDENTITY: "View your user ID, e-mail, and timezone",
-  EXECUTE_GRAPH: "Run your workflows",
-  READ_GRAPH: "View your workflows and their configurations",
-  WRITE_GRAPH: "Create workflows",
-  WRITE_LIBRARY: "Add workflows to your library",
-  EXECUTE_BLOCK: "Execute individual blocks",
-  READ_BLOCK: "View available blocks",
-  READ_STORE: "Access the Marketplace",
-  USE_TOOLS: "Use tools on your behalf",
-  MANAGE_INTEGRATIONS: "Set up new integrations",
-  READ_INTEGRATIONS: "View your connected integrations",
-  DELETE_INTEGRATIONS: "Remove connected integrations",
-};
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export default function AuthorizePage() {
   const searchParams = useSearchParams();
@@ -53,15 +40,19 @@ export default function AuthorizePage() {
     isLoading,
     error,
     refetch,
-  } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: {
-      enabled: !!clientID,
-      staleTime: Infinity,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
+  } = useGetOauthGetOauthAppInfo(
+    encodeURIComponent(clientID || ""),
+    { redirect_uri: redirectURI },
+    {
+      query: {
+        enabled: !!clientID && !!redirectURI,
+        staleTime: Infinity,
+        refetchOnMount: false,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+      },
     },
-  });
+  );
 
   const appInfo = appInfoResponse?.status === 200 ? appInfoResponse.data : null;
 
@@ -108,14 +99,32 @@ export default function AuthorizePage() {
     }
   }
 
-  function handleDeny() {
-    // Redirect back to client with access_denied error
-    const params = new URLSearchParams({
-      error: "access_denied",
-      error_description: "User denied access",
-      state: state || "",
-    });
-    window.location.href = `${redirectURI}?${params.toString()}`;
+  async function handleDeny() {
+    // appInfo loads only once the backend accepts redirectURI for this client
+    if (!appInfo) return;
+    setIsAuthorizing(true);
+    setAuthorizeError(null);
+
+    try {
+      const response = await postOauthDenyAuthorization({
+        client_id: clientID!,
+        redirect_uri: redirectURI!,
+        state: state!,
+      });
+
+      if (response.status === 200 && response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      } else {
+        setAuthorizeError("Authorization denial failed");
+        setIsAuthorizing(false);
+      }
+    } catch (err) {
+      console.error("Authorization denial error:", err);
+      setAuthorizeError(
+        err instanceof Error ? err.message : "Authorization denial failed",
+      );
+      setIsAuthorizing(false);
+    }
   }
 
   // Show error if missing required parameters
@@ -143,7 +152,7 @@ export default function AuthorizePage() {
         <AuthCard title="Loading...">
           <div className="flex flex-col items-center gap-4 py-8">
             <LoadingSpinner size="large" />
-            <Text variant="body" className="text-center text-slate-500">
+            <Text variant="body" tone="secondary" className="text-center">
               Loading application information...
             </Text>
           </div>
@@ -152,11 +161,14 @@ export default function AuthorizePage() {
     );
   }
 
-  // Show error if app not found
+  // Unknown app or unregistered redirect_uri: never send the user to it
   if (error || !appInfo) {
+    const redirectRejected = error instanceof ApiError && error.status === 400;
     return (
       <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
-        <AuthCard title="Application Not Found">
+        <AuthCard
+          title={redirectRejected ? "Invalid Request" : "Application Not Found"}
+        >
           <ErrorCard
             context="application"
             responseError={
@@ -169,15 +181,6 @@ export default function AuthorizePage() {
             }
             onRetry={refetch}
           />
-          {redirectURI && (
-            <Button
-              variant="secondary"
-              onClick={handleDeny}
-              className="mt-4 w-full"
-            >
-              Return to Application
-            </Button>
-          )}
         </AuthCard>
       </div>
     );
@@ -200,9 +203,16 @@ export default function AuthorizePage() {
             hint="Please contact the administrator of the app that sent you here."
             isOurProblem={false}
           />
+          {authorizeError && (
+            <ErrorCard
+              context="authorization"
+              responseError={{ message: authorizeError }}
+            />
+          )}
           <Button
             variant="secondary"
             onClick={handleDeny}
+            disabled={isAuthorizing}
             className="mt-4 w-full"
           >
             Return to Application
@@ -219,23 +229,23 @@ export default function AuthorizePage() {
           {/* App info */}
           <div className="flex flex-col items-center text-center">
             {/* App logo */}
-            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-slate-100">
+            <div className="mb-4 flex size-16 items-center justify-center overflow-hidden rounded-xl border bg-surface-hover">
               {appInfo.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                // eslint-disable-next-line @next/next/no-img-element -- an OAuth app logo can come from any host, which next/image only loads from listed ones
                 <img
                   src={appInfo.logo_url}
                   alt={`${appInfo.name} logo`}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon icon={Image01Icon} className="h-8 w-8 text-slate-400" />
+                <Icon icon={Image01Icon} tone="subtle" className="h-8 w-8" />
               )}
             </div>
             <Text variant="h4" className="mb-2">
               {appInfo.name}
             </Text>
             {appInfo.description && (
-              <Text variant="body" className="text-slate-600">
+              <Text variant="body" tone="secondary">
                 {appInfo.description}
               </Text>
             )}
@@ -251,7 +261,8 @@ export default function AuthorizePage() {
                 <li key={scopeKey} className="flex items-start gap-3">
                   <Icon
                     icon={CheckmarkBadge01Icon}
-                    className="mt-0.5 text-green-600"
+                    tone="success"
+                    className="mt-0.5"
                   />
                   <Text variant="body">
                     {SCOPE_DESCRIPTIONS[scopeKey as APIKeyPermission] ||
@@ -276,7 +287,8 @@ export default function AuthorizePage() {
               variant="primary"
               onClick={handleApprove}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               {isAuthorizing ? "Authorizing..." : "Authorize"}
             </Button>
@@ -284,14 +296,15 @@ export default function AuthorizePage() {
               variant="secondary"
               onClick={handleDeny}
               disabled={isAuthorizing}
-              className="w-full text-lg"
+              textSize="body-md"
+              className="w-full"
             >
               Deny
             </Button>
           </div>
 
           {/* Warning */}
-          <Text variant="small" className="text-center text-slate-500">
+          <Text variant="small" tone="secondary" className="text-center">
             By authorizing, you allow this application to access your AutoGPT
             account with the permissions listed above.
           </Text>

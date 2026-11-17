@@ -31,7 +31,10 @@ vi.mock("@/lib/autogpt-server-api/context", () => ({
   useBackendAPI: () => fakeAPI,
 }));
 
-import { useExecutionEvents } from "../useExecutionEvents";
+import {
+  MAX_GRAPH_SUBSCRIPTIONS,
+  useExecutionEvents,
+} from "../useExecutionEvents";
 
 function makeExecution(graphID: string, id: string) {
   return { id, graph_id: graphID } as unknown as GraphExecution;
@@ -78,6 +81,21 @@ describe("useExecutionEvents subscriptions", () => {
       ["graph-a"],
       ["graph-b"],
     ]);
+  });
+
+  test("a long graph list subscribes only up to the per-page cap", () => {
+    const graphIds = Array.from(
+      { length: MAX_GRAPH_SUBSCRIPTIONS + 100 },
+      (_, i) => `graph-${i}`,
+    );
+    renderHook(() => useExecutionEvents({ graphIds }));
+
+    expect(subscribeToGraphExecutions).toHaveBeenCalledTimes(
+      MAX_GRAPH_SUBSCRIPTIONS,
+    );
+    expect(subscribeToGraphExecutions).not.toHaveBeenCalledWith(
+      `graph-${MAX_GRAPH_SUBSCRIPTIONS}`,
+    );
   });
 
   test("subscribes again on a new connection after the socket drops", () => {

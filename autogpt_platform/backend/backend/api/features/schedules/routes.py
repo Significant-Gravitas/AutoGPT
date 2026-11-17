@@ -1,8 +1,14 @@
 import logging
 from typing import Annotated, Any
 
-from autogpt_libs.auth import get_request_context, get_user_id, requires_user
+from autogpt_libs.auth import (
+    get_request_context,
+    get_user_id,
+    requires_resource_permission,
+    requires_user,
+)
 from autogpt_libs.auth.models import RequestContext
+from autogpt_libs.auth.permissions import OrgAction, TeamAction
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Security
 from starlette.status import (
     HTTP_400_BAD_REQUEST,
@@ -49,7 +55,16 @@ router = APIRouter(dependencies=[Security(requires_user)])
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
-    ctx: Annotated[RequestContext, Security(get_request_context)],
+    # The schedule is tagged with the request's org and team, so the caller's
+    # role there must allow running workflows.
+    ctx: Annotated[
+        RequestContext,
+        Security(
+            requires_resource_permission(
+                OrgAction.EXECUTE_RESOURCES, TeamAction.EXECUTE_AGENTS
+            )
+        ),
+    ],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:

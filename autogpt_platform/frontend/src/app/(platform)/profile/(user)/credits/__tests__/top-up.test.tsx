@@ -1,6 +1,8 @@
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import type { User } from "@/lib/auth/types";
 import { server } from "@/mocks/mock-server";
 import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
@@ -28,6 +30,19 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   >()),
   useGetFlag: () => true,
 }));
+
+vi.mock("@/hooks/usePlatformPayment", () => ({
+  usePlatformPayment: () => ({ isPaymentEnabled: true, isResolved: true }),
+}));
+
+// Billing calls go out only for a signed-in identity.
+beforeEach(() => {
+  useAuthStore.setState({ user: { id: "user-a" } as User });
+});
+
+afterEach(() => {
+  useAuthStore.setState({ user: null });
+});
 
 describe("legacy credits page top-up", () => {
   test("keeps the top-up and plan buttons disabled while Stripe loads", async () => {

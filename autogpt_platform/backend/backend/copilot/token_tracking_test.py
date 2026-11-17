@@ -413,6 +413,33 @@ class TestPlatformCostLogging:
         entry = mock_log.call_args[0][0]
         assert (entry.graph_exec_id, entry.chat_session_id) == expected
 
+    @pytest.mark.parametrize("expert_id", ["expert-1", None])
+    @pytest.mark.asyncio
+    async def test_the_expert_the_spend_ran_for_reaches_the_row(self, expert_id):
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cost",
+                prompt_tokens=10,
+                completion_tokens=5,
+                cost_usd=0.001,
+                expert_id=expert_id,
+            )
+            await asyncio.sleep(0)
+        assert mock_log.call_args[0][0].expert_id == expert_id
+
     @pytest.mark.parametrize(
         "prompt,completion,cache_read,cache_write",
         [(100, 50, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100), (0, 0, 100, 100)],
@@ -632,6 +659,40 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars == 5000
         assert entry.input_tokens == 0
         assert entry.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_logs_cache_only_tokens_with_no_cost(self):
+        """A fully-cached response nobody could price (no provider cost, no
+        catalog price) still leaves its billed tokens in the ledger."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_cost_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cache-only",
+                prompt_tokens=0,
+                completion_tokens=0,
+                cache_read_tokens=10_000,
+                model="uncatalogued-model",
+                provider="open_router",
+                log_prefix="[dream:consolidate]",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.cost_microdollars is None
+        assert entry.tracking_type == "tokens"
+        assert entry.metadata["cache_read_tokens"] == 10_000
 
     @pytest.mark.asyncio
     async def test_negative_cost_usd_falls_back_to_tokens(self):

@@ -31,7 +31,7 @@ The block accepts either plain text or structured message objects (like those fr
 | error | Error message if the operation failed | str |
 | action | Action of the operation | str |
 | memory | Memory created | str |
-| results | List of all results from the operation | List[Dict[str, str]] |
+| results | List of all results from the operation | List[Dict[str, Any]] |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
@@ -142,7 +142,7 @@ The block is part of the Agent Input family, allowing you to collect structured 
 | value | Date input (YYYY-MM-DD). | str (date) | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 
@@ -181,7 +181,7 @@ This is ideal when you want to constrain user input to a predefined set of choic
 | value | Text selected from a dropdown. | str | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 | options | If provided, renders the input as a dropdown selector restricted to these values. Leave empty for free-text input. | List[Any] | No |
 
 ### Outputs
@@ -221,7 +221,7 @@ By default, the block outputs a file path string that other blocks can use to ac
 | value | Path or reference to an uploaded file. | str (file) | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 | base_64 | Whether to produce output in base64 format (not recommended; you can pass the file reference across blocks). | bool | No |
 
 ### Outputs
@@ -261,7 +261,7 @@ You can configure which file types to display (documents, spreadsheets, presenta
 | value | The selected Google Drive file. | GoogleDriveFile | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 | allowed_views | Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.). | List["DOCS" \| "DOCUMENTS" \| "SPREADSHEETS" \| "PRESENTATIONS" \| "DOCS_IMAGES" \| "FOLDERS"] | No |
 | allow_folder_selection | Whether to allow selecting folders. | bool | No |
 
@@ -300,7 +300,7 @@ It accepts a value from the user, along with metadata such as name and descripti
 | value | The value to be passed as input. | Value | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 
@@ -335,7 +335,7 @@ The block is ideal for collecting longer-form content like messages, description
 | value | Long text input (potentially multi-line). | str (long-text) | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 
@@ -374,7 +374,7 @@ This is useful when you need numeric parameters like quantities, counts, limits,
 | value | Number input. | int | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 
@@ -449,7 +449,7 @@ The input displays as a standard text field and passes the entered text to downs
 | value | Short text input. | str (short-text) | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 
@@ -488,7 +488,7 @@ The table input is ideal for structured data entry where users need to provide m
 | value | The table data as a list of dictionaries. | List[Dict[str, Any]] | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 | column_headers | Column headers for the table. | List[str] | No |
 
 ### Outputs
@@ -528,7 +528,7 @@ The time picker provides a user-friendly interface for selecting times without r
 | value | Time input (HH:MM:SS). | str (time) | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 
@@ -567,7 +567,7 @@ The toggle is ideal for binary choices like enabling features, confirming action
 | value | Boolean toggle input. | bool | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
+| advanced | Whether the input is optional, so a run can leave it blank. | bool | No |
 
 ### Outputs
 

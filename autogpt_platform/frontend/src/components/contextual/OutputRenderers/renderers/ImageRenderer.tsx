@@ -112,11 +112,11 @@ function renderImage(
 
   return (
     <div className="group relative">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- remote URL from any host, which next/image would need configured */}
       <img
         src={imageUrl}
         alt={altText}
-        className="h-auto max-w-full rounded-md border border-gray-200"
+        className="h-auto max-w-full rounded-md border border-border-base"
         loading="lazy"
       />
     </div>

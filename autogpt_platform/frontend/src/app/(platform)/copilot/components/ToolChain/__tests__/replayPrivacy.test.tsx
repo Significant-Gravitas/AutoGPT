@@ -44,7 +44,6 @@ function savedOutput() {
 function expectHiddenFromReplay(text: string) {
   const element = screen.getByText(text, { exact: false });
   expect(element.closest(".ph-no-capture")).not.toBeNull();
-  expect(element.closest(".sentry-block")).not.toBeNull();
 }
 
 describe("ChainRowView - session replay privacy", () => {
@@ -140,6 +139,5 @@ describe("ChainRowView - session replay privacy", () => {
 
     const element = screen.getByText("How to build an agent", { exact: false });
     expect(element.closest(".ph-no-capture")).toBeNull();
-    expect(element.closest(".sentry-block")).toBeNull();
   });
 });

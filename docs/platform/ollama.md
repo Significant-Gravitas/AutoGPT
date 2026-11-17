@@ -6,7 +6,7 @@ Follow these steps to set up and run Ollama with the AutoGPT platform.
 
 ## Prerequisites
 
-1. Make sure you have gone through and completed the [AutoGPT Setup](/platform/getting-started) steps, if not please do so before continuing with this guide.
+1. Make sure you have gone through and completed the [AutoGPT Setup](getting-started.md) steps, if not please do so before continuing with this guide.
 2. Before starting, ensure you have [Ollama installed](https://ollama.com/download) on your machine.
 
 ## Setup Steps
@@ -113,7 +113,7 @@ Now that both Ollama and the AutoGPT platform are running, we can use Ollama wit
    > - `llama3.1:405b`
    > - `dolphin-mistral:latest`
    > 
-   > **Note**: To use other models, follow the "Add Custom Models" step above.
+   > **Note**: To use other models, follow [Add Custom Models (Advanced)](#add-custom-models-advanced) below.
 
 4. **Set your local IP address** in the "Ollama Host" field:
 
@@ -200,6 +200,8 @@ Model definitions are centralized in the LLM catalog — see [Managing LLM Model
    docker compose up -d --build
    ```
 
+   The prebuilt single-container image cannot pick up a new catalog entry; build it from source as described in [Run AutoGPT in One Docker Container](single-container.md#get-an-image).
+
 4. **Pull the model in Ollama**:
    ```bash
    ollama pull your-model-name
@@ -227,7 +229,7 @@ If you encounter any issues, verify that:
   ```bash
   ollama pull llama3.2
   ```
-- If using a custom model, ensure it's added to the model list in `backend/api/model.py`
+- If using a custom model, ensure it's registered in the LLM catalog (`autogpt_platform/backend/backend/data/llm_registry/catalog.py`) and `autogpt_platform/backend/backend/data/llm_registry/llm_models.py` as described in [Add Custom Models (Advanced)](#add-custom-models-advanced) above
 
 #### Docker Issues
 - Ensure Docker daemon is running:

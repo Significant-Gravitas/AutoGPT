@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readLocalProgress, writeLocalProgress } from "../progress";
 import { PAYWALL_LAST_STEPS, useOnboardingWizardStore } from "../store";
 import { useWizardProgress } from "../useWizardProgress";
-import { makeProgress } from "./progress-fixture";
+import { makeProgress as makeBaseProgress } from "./progress-fixture";
 
 const { getState, patchState } = vi.hoisted(() => ({
   getState: vi.fn(),
@@ -19,6 +19,17 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => params,
 }));
 
+function makeProgress(overrides: Parameters<typeof makeBaseProgress>[0] = {}) {
+  const draft = makeBaseProgress(overrides);
+  return {
+    ...draft,
+    completedSteps: [
+      "team",
+      "autopilot",
+      ...draft.completedSteps,
+    ] as typeof draft.completedSteps,
+  };
+}
 function response(progress = makeProgress(), revision = 4, userID = "u1") {
   return {
     status: 200,
@@ -148,6 +159,44 @@ it("acknowledges an uncertain save already present on the server without another
   });
 });
 
+it("keeps saving after a timed-out save that the server applied", async () => {
+  let server = { progress: makeProgress(), revision: 4 };
+  getState.mockImplementation(async () =>
+    response(server.progress, server.revision),
+  );
+  patchState.mockImplementation(
+    ({ wizardProgress, wizardRevision, wizardUserId }) => {
+      if (wizardRevision !== server.revision)
+        return Promise.resolve({ status: 409, data: { detail: "Conflict" } });
+      const answers = server.revision > 4;
+      server = { progress: wizardProgress, revision: server.revision + 1 };
+      if (!answers) return new Promise(() => {});
+      return Promise.resolve({
+        status: 200,
+        data: { userId: wizardUserId, wizardRevision: server.revision },
+      });
+    },
+  );
+  const { result } = mountWizard();
+  await settle();
+  act(() => useOnboardingWizardStore.getState().setRole("Founder"));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10_250);
+  });
+  expect(result.current.error).toMatch(/couldn't save/i);
+  act(() => useOnboardingWizardStore.getState().setOtherRole("Solo"));
+  await settle();
+  const latest = makeProgress({ role: "Founder", otherRole: "Solo" });
+  expect(result.current.conflict).toBe(false);
+  expect(result.current.error).toBeNull();
+  expect(server).toEqual({ progress: latest, revision: 6 });
+  expect(readLocalProgress("u1")).toEqual({
+    progress: latest,
+    revision: 6,
+    pending: false,
+  });
+});
+
 it("keeps a clean offline cache clean and saves subsequent edits", async () => {
   writeLocalProgress("u1", makeProgress(), false, 4);
   getState.mockRejectedValue(new Error("Offline"));
@@ -245,4 +294,86 @@ it("ignores a delayed restore after the account changes", async () => {
   });
   expect(readLocalProgress("u1")).toBeNull();
   expect(patchState).not.toHaveBeenCalled();
+});
+
+it("reads progress before the layout is ready and applies it once it is", async () => {
+  const { result, rerender } = renderHook(
+    ({ ready }) =>
+      useWizardProgress({ userID: "u1", ready, steps: PAYWALL_LAST_STEPS }),
+    { initialProps: { ready: false } },
+  );
+  await settle();
+  expect(getState).toHaveBeenCalledOnce();
+  expect(result.current.isReady).toBe(false);
+  rerender({ ready: true });
+  await settle();
+  expect(result.current.isReady).toBe(true);
+  expect(getState).toHaveBeenCalledOnce();
+  expect(useOnboardingWizardStore.getState().userID).toBe("u1");
+});
+
+it("drops an early read for an account that switched before the layout was ready", async () => {
+  getState.mockResolvedValueOnce(response(makeProgress({ role: "First" })));
+  getState.mockResolvedValueOnce(
+    response(makeProgress({ role: "Second" }), 2, "u2"),
+  );
+  const { result, rerender } = renderHook(
+    ({ userID, ready }) =>
+      useWizardProgress({ userID, ready, steps: PAYWALL_LAST_STEPS }),
+    { initialProps: { userID: "u1", ready: false } },
+  );
+  await settle();
+  rerender({ userID: "u2", ready: false });
+  await settle();
+  rerender({ userID: "u2", ready: true });
+  await settle();
+  expect(result.current.isReady).toBe(true);
+  expect(getState).toHaveBeenCalledTimes(2);
+  expect(useOnboardingWizardStore.getState()).toMatchObject({
+    userID: "u2",
+    role: "Second",
+  });
+});
+
+it("reads again when the layout changes after the early read was used", async () => {
+  const { result, rerender } = renderHook(
+    ({ steps }) => useWizardProgress({ userID: "u1", ready: true, steps }),
+    { initialProps: { steps: PAYWALL_LAST_STEPS } },
+  );
+  await settle();
+  expect(getState).toHaveBeenCalledOnce();
+  rerender({ steps: { ...PAYWALL_LAST_STEPS, preparing: 99 } });
+  await settle();
+  expect(result.current.isReady).toBe(true);
+  expect(getState).toHaveBeenCalledTimes(2);
+});
+
+it("waits for the session to settle before reading, and keeps an applied read across a revalidation", async () => {
+  const { result, rerender } = renderHook(
+    ({ isUserSettled, ready }) =>
+      useWizardProgress({
+        userID: "u1",
+        ready,
+        isUserSettled,
+        steps: PAYWALL_LAST_STEPS,
+      }),
+    { initialProps: { isUserSettled: false, ready: false } },
+  );
+  await settle();
+  expect(getState).not.toHaveBeenCalled();
+  let resolve!: (value: ReturnType<typeof response>) => void;
+  getState.mockReturnValueOnce(
+    new Promise((r) => {
+      resolve = r;
+    }),
+  );
+  rerender({ isUserSettled: true, ready: true });
+  rerender({ isUserSettled: false, ready: true });
+  await act(async () => {
+    resolve(response());
+  });
+  await settle();
+  expect(getState).toHaveBeenCalledOnce();
+  expect(result.current.isReady).toBe(true);
+  expect(result.current.error).toBeNull();
 });

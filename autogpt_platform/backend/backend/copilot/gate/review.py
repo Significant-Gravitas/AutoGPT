@@ -17,15 +17,16 @@ from prisma.enums import ReviewStatus
 from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
+from backend.blocks._preview import ChangePreview
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
 )
 from backend.copilot.model import ChatSession
 
-# Private name on purpose: the alternative is editing sharing/models.py to
-# add an alias, which shifts a docstring the secrets baseline trips on.
-from backend.copilot.sharing.models import _redact_secret_keys
+# The shared-chat redactor's key walk. It leaves strings as written, so the
+# card shows what the call will send.
+from backend.copilot.sharing.redaction import _redact_secret_keys
 from backend.data.db_accessors import review_db
 
 from .classifier import DecidedBy
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 # At least the largest call the supervisor judges whole (25,650 bytes beside a
 # short request, classifier._fit), so a card it opens shows the call entire.
 _MAX_ARG_CHARS = 26_000
+CARD_ARGUMENT_CHARS = _MAX_ARG_CHARS
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
 
@@ -99,6 +101,9 @@ class GateReviewPayload(BaseModel):
     # A money card's estimate, spend so far and ceiling.
     spend: dict[str, int] | None = None
     workflow: WorkflowStep | None = None
+    # What the block will create or change in a connected account; the card
+    # shows it in place of the arguments it covers.
+    preview: ChangePreview | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
@@ -170,14 +175,24 @@ def review_payload(
         reason_kind=reason_kind,
         decided_by=decided_by,
         chat_rules_allowed=_rules_offered(tool_name, subject, spend, reason_kind),
-        headline=(
-            Headline(ask="Run", object=subject.name)
-            if subject is not None
-            else headline_for(tool_name, args, references)
-        ),
+        headline=_headline(tool_name, args, subject, references),
         spend=spend,
         workflow=workflow,
+        preview=subject.preview if subject is not None else None,
     ).model_dump()
+
+
+def _headline(
+    tool_name: str,
+    args: dict[str, Any],
+    subject: "GateSubject | None",
+    references: list[Reference] | None,
+) -> Headline:
+    if subject is None:
+        return headline_for(tool_name, args, references)
+    if subject.preview is not None:
+        return Headline(ask=subject.preview.ask, object=subject.preview.object)
+    return Headline(ask="Run", object=subject.name)
 
 
 def is_spend_card(review: PendingHumanReviewModel) -> bool:
@@ -386,6 +401,14 @@ def _humanize(key: str) -> str:
     words = words.replace("agent", "workflow").replace("graph", "workflow")
     words += "s" if plural else ""
     return words[:1].upper() + words[1:]
+
+
+def card_shows_whole(args: dict[str, Any]) -> bool:
+    """Whether a card would show every one of these arguments without
+    cutting it short, as ``_payload`` builds it."""
+    redacted = _redact_secret_keys(args)
+    shown = _clip_all(redacted, _MAX_ARG_CHARS)
+    return all(shown[key] is redacted[key] for key in shown)
 
 
 def _clip_all(values: dict[str, Any], budget: int) -> dict[str, Any]:

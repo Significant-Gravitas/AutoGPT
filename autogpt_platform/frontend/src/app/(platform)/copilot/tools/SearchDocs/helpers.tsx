@@ -188,13 +188,7 @@ export function ToolIcon({
     <Icon
       icon={toolType === "tool-get_doc_page" ? File02Icon : FileSearchIcon}
       size={14}
-      className={
-        isError
-          ? "text-red-500"
-          : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
-      }
+      tone={isError ? "error" : isStreaming ? "muted" : "subtle"}
     />
   );
 }

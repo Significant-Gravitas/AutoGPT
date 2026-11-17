@@ -22,6 +22,7 @@ from backend.copilot.constants import (
     COPILOT_SYNTHETIC_ID_PREFIX,
 )
 from backend.data.db_accessors import review_db
+from backend.util.json import same_json
 
 COPILOT_MCP_NODE_PREFIX = f"{COPILOT_SYNTHETIC_ID_PREFIX}mcp-"
 
@@ -86,7 +87,7 @@ async def open_mcp_review(
         if (
             review.node_id == node_id
             and review.status.value == "WAITING"
-            and review.payload == data
+            and same_json(review.payload, data)
         ):
             return review.node_exec_id
     review_id = f"{node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"

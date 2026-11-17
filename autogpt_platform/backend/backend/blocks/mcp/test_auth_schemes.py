@@ -19,6 +19,7 @@ from backend.blocks.mcp.helpers import mcp_authorization_header
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.model import OAuth2Credentials
 from backend.executor.utils import _validate_node_input_credentials
+from backend.util.request import HTTPClientError
 
 _AUTH_CASES = json.loads(
     (pathlib.Path(__file__).parent / "mcp_auth_cases.json").read_text()
@@ -215,7 +216,10 @@ async def test_store_rejects_header_injection(client: httpx.AsyncClient) -> None
 
 
 @pytest.mark.asyncio
-async def test_block_uses_the_credential_it_was_given():
+@pytest.mark.parametrize(
+    "server_url", ["https://mcp.example.com/mcp", "https://mcp.example.com/mcp/"]
+)
+async def test_block_uses_the_credential_it_was_given(server_url: str):
     block = MCPToolBlock()
     credentials = OAuth2Credentials(
         provider="mcp",
@@ -228,14 +232,90 @@ async def test_block_uses_the_credential_it_was_given():
         },
     )
 
+    with patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool:
+        call_tool.return_value = "ok"
+        outputs = [
+            output
+            async for output in block.run(
+                MCPToolBlock.Input(
+                    server_url=server_url,
+                    selected_tool="a_tool",
+                    tool_arguments={},
+                ),
+                user_id="test-user-id",
+                credentials=credentials,
+            )
+        ]
+
+    assert call_tool.await_args is not None
+    assert call_tool.await_args.kwargs["authorization"] == "Basic cWE6YmFzaWM="
+    assert ("result", "ok") in outputs
+
+
+@pytest.mark.asyncio
+async def test_block_without_a_selected_credential_sends_no_authorization():
+    block = MCPToolBlock()
+    stored = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: mcp.example.com",
+        access_token=SecretStr("Bearer stored-token"),
+        scopes=[],
+        metadata={
+            "mcp_server_url": "https://mcp.example.com/mcp",
+            "mcp_auth_scheme": "bearer",
+        },
+    )
+
     with (
         patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool,
-        patch(
-            "backend.blocks.mcp.block.auto_lookup_mcp_credential",
-            new_callable=AsyncMock,
-        ) as auto_lookup,
+        patch("backend.blocks.mcp.helpers.IntegrationCredentialsManager") as manager,
     ):
+        manager.return_value.store.get_creds_by_provider = AsyncMock(
+            return_value=[stored]
+        )
         call_tool.return_value = "ok"
+        outputs = [
+            output
+            async for output in block.run(
+                MCPToolBlock.Input(
+                    server_url="https://mcp.example.com/mcp",
+                    selected_tool="a_tool",
+                    tool_arguments={},
+                ),
+                user_id="test-user-id",
+            )
+        ]
+
+    manager.assert_not_called()
+    assert call_tool.await_args is not None
+    assert call_tool.await_args.kwargs["authorization"] is None
+    assert ("result", "ok") in outputs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"mcp_server_url": "https://other.example.com/mcp"},
+        {"mcp_server_url": "https://mcp.example.com/other"},
+        {},
+        {"mcp_server_url": None},
+    ],
+    ids=["other-server", "other-path", "no-server", "null-server"],
+)
+async def test_block_refuses_a_credential_connected_for_another_server(
+    metadata: dict,
+):
+    block = MCPToolBlock()
+    credentials = OAuth2Credentials(
+        provider="mcp",
+        title="MCP: other.example.com",
+        access_token=SecretStr("token"),
+        scopes=[],
+        metadata=metadata,
+    )
+
+    with patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool:
         outputs = [
             output
             async for output in block.run(
@@ -249,7 +329,47 @@ async def test_block_uses_the_credential_it_was_given():
             )
         ]
 
-    auto_lookup.assert_not_awaited()
-    assert call_tool.await_args is not None
-    assert call_tool.await_args.kwargs["authorization"] == "Basic cWE6YmFzaWM="
-    assert ("result", "ok") in outputs
+    call_tool.assert_not_awaited()
+    assert [name for name, _ in outputs] == ["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status, with_credentials, asks_for_credentials",
+    [(401, False, True), (403, False, True), (401, True, False), (404, False, False)],
+    ids=["401", "403", "401-with-credentials", "404"],
+)
+async def test_block_asks_for_credentials_when_the_server_requires_them(
+    status: int, with_credentials: bool, asks_for_credentials: bool
+):
+    block = MCPToolBlock()
+    credentials = (
+        OAuth2Credentials(
+            provider="mcp",
+            title="MCP: mcp.example.com",
+            access_token=SecretStr("token"),
+            scopes=[],
+            metadata={"mcp_server_url": "https://mcp.example.com/mcp"},
+        )
+        if with_credentials
+        else None
+    )
+
+    with patch.object(block, "_call_mcp_tool", new_callable=AsyncMock) as call_tool:
+        call_tool.side_effect = HTTPClientError(f"HTTP {status} Error", status)
+        outputs = [
+            output
+            async for output in block.run(
+                MCPToolBlock.Input(
+                    server_url="https://mcp.example.com/mcp",
+                    selected_tool="a_tool",
+                    tool_arguments={},
+                ),
+                user_id="test-user-id",
+                credentials=credentials,
+            )
+        ]
+
+    [(name, message)] = outputs
+    assert name == "error"
+    assert ("Select credentials for this server" in message) is asks_for_credentials

@@ -25,8 +25,10 @@ function SpendingDashboard({
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">User Spending</h1>
-            <p className="text-gray-500">Manage user spending balances</p>
+            <h1 className="text-heading font-bold">User Spending</h1>
+            <p className="text-foreground-tertiary">
+              Manage user spending balances
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <ExportCreditTransactionsButton />

@@ -9,8 +9,9 @@ import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundar
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { buildConsentDefaultsScript } from "@/services/analytics/consent-mode";
-import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
+import { VercelSpeedInsights } from "@/services/analytics/VercelSpeedInsights";
 import { ConsentWithdrawalReload } from "@/services/consent/ConsentWithdrawalReload";
+import { TrackerCookieCleanup } from "@/services/consent/TrackerCookieCleanup";
 import {
   COOKIEBOT_SCRIPT_ID,
   COOKIEBOT_SCRIPT_URL,
@@ -125,14 +126,11 @@ export default async function RootLayout({
           >
             <SetupAnalytics
               host={host}
-              ga={{
-                gaId:
-                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
-              }}
+              ga={{ gaId: environment.getGAMeasurementID() }}
             />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch supports-[min-height:100dvh]:min-h-dvh">
               {children}
-              <VercelAnalyticsWrapper />
+              <VercelSpeedInsights />
 
               {/* React Query DevTools is only available in development */}
               {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
@@ -143,6 +141,7 @@ export default async function RootLayout({
               )}
             </div>
             <Toaster />
+            <TrackerCookieCleanup />
             <ConsentWithdrawalReload />
           </Providers>
         </ErrorBoundary>

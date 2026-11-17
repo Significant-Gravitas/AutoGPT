@@ -78,6 +78,7 @@ def make_mock_block_with_schema(
     mock.input_schema.jsonschema.return_value = input_schema
     mock.input_schema.get_credentials_fields_info.return_value = {}
     mock.input_schema.get_credentials_fields.return_value = {}
+    mock.input_schema.validate_data.return_value = None
 
     output_schema = {
         "properties": output_properties or {"result": {"type": "string"}},
@@ -119,7 +120,7 @@ class TestRunBlockFiltering:
 
         assert isinstance(response, ErrorResponse)
         assert "cannot be run directly" in response.message
-        assert "designed for use within graphs only" in response.message
+        assert "designed for use within workflows only" in response.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_returns_error(self):
@@ -708,7 +709,12 @@ class TestRunBlockInputValidation:
             )
 
         assert isinstance(response, SetupRequirementsResponse)
-        assert "'spreadsheet'" in response.message
+        # The card shows this line to the user, so it names the field by its
+        # title (the key here, since the schema gives none), never quoted.
+        assert response.message == (
+            "Choose your spreadsheet in the card below. The step runs again "
+            "with your choice."
+        )
         inputs = response.setup_info.requirements["inputs"]
         picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
         assert picker_field is not None
@@ -886,6 +892,80 @@ class TestRunBlockSensitiveAction:
         assert "resume_capability" in response.message
         assert response.block_name == "Delete Branch"
 
+    async def _paused(
+        self, input_data: dict, session=None
+    ) -> tuple[ReviewRequiredResponse, AsyncMock]:
+        """Gmail Send run with a review required: its output, and the mock that
+        opened the review with the input it was given."""
+        mock_block = make_mock_block_with_schema(
+            block_id="gmail-send-id",
+            name="Gmail Send",
+            input_properties={key: {"type": "string"} for key in input_data},
+            required_fields=list(input_data),
+        )
+        mock_block.is_irreversible_action = True
+        mock_block.is_block_exec_need_review = AsyncMock(
+            return_value=(True, input_data)
+        )
+        with (
+            patch("backend.copilot.tools.helpers.get_block", return_value=mock_block),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            response = await RunBlockTool()._execute(
+                user_id=_TEST_USER_ID,
+                session=session or make_session(user_id=_TEST_USER_ID),
+                block_id="gmail-send-id",
+                input_data=input_data,
+                dry_run=False,
+            )
+        assert isinstance(response, ReviewRequiredResponse)
+        return response, mock_block.is_block_exec_need_review
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_review_tells_the_model_where_its_card_is(self):
+        """The reply after a review points to the card in this chat and on
+        Home, never to another chat or a second call to raise it again."""
+        response, _ = await self._paused({"to": "ada@example.com"})
+
+        assert "bottom of this chat" in response.message
+        assert "Needs you on Home" in response.message
+        assert "Never say it is in another chat" in response.message
+        assert "don't repeat this call to raise it again" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_on_a_chat_platform_the_review_points_to_home(self):
+        """A chat platform posts no card for a block review, so the reply must
+        not send the user to the bottom of a chat that has none."""
+        session = make_session(user_id=_TEST_USER_ID)
+        session.metadata = session.metadata.model_copy(
+            update={"source_platform": "discord"}
+        )
+
+        response, _ = await self._paused({"to": "ada@example.com"}, session)
+
+        assert "No approval card is posted on this platform" in response.message
+        assert "Needs you on Home" in response.message
+        assert "bottom of this chat" not in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_review_keeps_the_input_the_stream_previews(self):
+        """The card reads the input from the review, so the review is written
+        with all of it while the tool output carries a preview."""
+        body = "<p>" + "Hello. " * 1_400 + "</p>"
+        input_data = {"to": "ada@example.com", "body": body}
+
+        response, opened = await self._paused(input_data)
+
+        assert opened.await_args.args[0] == input_data
+        assert response.input_data == {
+            "to": "ada@example.com",
+            "body": f"<{len(body):,} chars>",
+        }
+        assert response.input_preview is True
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_sensitive_block_executes_after_approval(self):
         """After approval (should_pause=False), sensitive blocks execute and return outputs."""
@@ -1007,7 +1087,8 @@ class TestExecuteBlockTimeout:
       1. Return an actionable ErrorResponse pointing at run_agent / run_sub_session.
       2. Log a ``copilot_tool_timeout`` warning (SECRT-2247 part 3).
       3. Still charge credits when outputs were produced before the timeout
-         (sentry r3105079148 — cancellation must not leak billing)."""
+         (sentry r3105079148 — cancellation must not leak billing). The run
+         is debited before it starts, so the cancel cannot skip the charge."""
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_timeout_returns_error_and_logs(self, caplog):
@@ -1073,8 +1154,8 @@ class TestExecuteBlockTimeout:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_cancellation_after_output_still_charges_credits(self):
         """Regression for sentry r3105079148 — wait_for's CancelledError
-        bypassed credit charging; fix uses a shielded finally. One output
-        emitted, then timeout: spend_credits must still be called once."""
+        bypassed credit charging. One output emitted, then timeout:
+        spend_credits must still be called once (it ran before the block)."""
         import asyncio
 
         from backend.copilot.tools.helpers import execute_block
@@ -1088,6 +1169,7 @@ class TestExecuteBlockTimeout:
             "required": [],
         }
         mock_block.input_schema.get_credentials_fields.return_value = {}
+        mock_block.input_schema.validate_data.return_value = None
 
         # Generator: emit ONE output (simulating a side-effectful API call),
         # then hang — execute_block's internal wait_for cancels us.
@@ -1155,9 +1237,8 @@ class TestExecuteBlockTimeout:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_double_charge_on_cancellation_during_charge(self):
-        """Regression for sentry r3105216985 — if the caller cancels during
-        the normal-path credit charge, the finally must NOT charge a second
-        time. The fix marks charge_handled BEFORE awaiting spend_credits."""
+        """Regression for sentry r3105216985 — a run must be charged exactly
+        once, never by both a normal path and a recovery path."""
         import asyncio
 
         from backend.copilot.tools.helpers import execute_block
@@ -1171,6 +1252,7 @@ class TestExecuteBlockTimeout:
             "required": [],
         }
         mock_block.input_schema.get_credentials_fields.return_value = {}
+        mock_block.input_schema.validate_data.return_value = None
 
         async def _one_then_done(_input, **_kw):
             yield "result", "done"
@@ -1415,7 +1497,7 @@ class TestExecuteBlockCredentialRejection:
     reconnect card, not a bare "Block execution failed"."""
 
     @staticmethod
-    def _block(exc: Exception):
+    def _block(exc: Exception, output_first: bool = False):
         from backend.data.model import CredentialsFieldInfo
 
         block = MagicMock()
@@ -1435,16 +1517,26 @@ class TestExecuteBlockCredentialRejection:
             )
         }
         block.input_schema.get_required_fields.return_value = {"credentials"}
+        block.input_schema.validate_data.return_value = None
 
         async def _fail(_input, **_kwargs):
+            if output_first:
+                yield "post_id", "posted"
             raise exc
-            yield  # pragma: no cover -- keeps this an async generator
 
         block.execute = _fail
         return block
 
     @staticmethod
-    async def _run(exc: Exception, load_error: Exception | None = None):
+    async def _run(
+        exc: Exception,
+        load_error: Exception | None = None,
+        *,
+        cost: int = 0,
+        credit: MagicMock | None = None,
+        output_first: bool = False,
+        system_credential: bool = False,
+    ):
         from backend.copilot.tools.helpers import execute_block
         from backend.data.model import CredentialsMetaInput
 
@@ -1476,11 +1568,17 @@ class TestExecuteBlockCredentialRejection:
                 return_value=({}, []),
             ),
             patch(
-                "backend.copilot.tools.helpers.block_usage_cost", return_value=(0, {})
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(cost, {}),
+            ),
+            patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
+            patch(
+                "backend.copilot.tools.helpers.is_system_credential",
+                return_value=system_credential,
             ),
         ):
             return await execute_block(
-                block=TestExecuteBlockCredentialRejection._block(exc),
+                block=TestExecuteBlockCredentialRejection._block(exc, output_first),
                 block_id="ayrshare-block-id",
                 input_data={},
                 user_id="u-1",
@@ -1553,6 +1651,70 @@ class TestExecuteBlockCredentialRejection:
         assert "Work Ayrshare key" in response.message
         # The picker must be offered again, or there is no way back.
         assert "credentials" in response.setup_info.user_readiness.missing_credentials
+
+    @staticmethod
+    def _rejected_401():
+        from backend.util.exceptions import BlockUnknownError
+        from backend.util.request import HTTPClientError
+
+        wrapped = BlockUnknownError("failed", "AyrsharePostBlock", "block-id")
+        wrapped.__cause__ = HTTPClientError("HTTP 401 Error", 401)
+        return wrapped
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rejection_before_any_output_is_refunded(self):
+        """The provider refused the credential before doing any work, so the
+        reconnect card stays free: the debit taken before the run is given
+        back."""
+        from .models import SetupRequirementsResponse
+
+        credit = MagicMock(spend_credits=AsyncMock())
+        with (
+            patch(
+                "backend.copilot.tools.helpers.metered_expert_id",
+                AsyncMock(return_value="expert-1"),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
+            ) as weekly_spend,
+        ):
+            response = await self._run(self._rejected_401(), cost=5, credit=credit)
+
+        assert isinstance(response, SetupRequirementsResponse)
+        charges = [c.kwargs for c in credit.spend_credits.await_args_list]
+        assert [c["cost"] for c in charges] == [5, -5]
+        assert charges[1]["metadata"].reason == "copilot_block_execution_refund"
+        # The expert's weekly spend is given back with the credits.
+        assert [c.args for c in weekly_spend.await_args_list] == [
+            ("expert-1", 5),
+            ("expert-1", -5),
+        ]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rejected_platform_credential_keeps_the_charge(self):
+        """Only a credential of the user's own makes a free reconnect card; a
+        rejected platform-managed credential is not theirs to reconnect, so
+        the debit stands."""
+        credit = MagicMock(spend_credits=AsyncMock())
+        await self._run(
+            self._rejected_401(), cost=5, credit=credit, system_credential=True
+        )
+
+        assert [c.kwargs["cost"] for c in credit.spend_credits.await_args_list] == [5]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_a_rejection_after_output_keeps_the_charge(self):
+        """Once the block has produced output the provider has done paid work,
+        so a later rejection does not refund it."""
+        from .models import SetupRequirementsResponse
+
+        credit = MagicMock(spend_credits=AsyncMock())
+        response = await self._run(
+            self._rejected_401(), cost=5, credit=credit, output_first=True
+        )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert [c.kwargs["cost"] for c in credit.spend_credits.await_args_list] == [5]
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_a_scheduled_turn_gets_an_error_naming_the_rejected_credential(
@@ -1720,7 +1882,7 @@ class TestSpendApproval:
         return block
 
     @staticmethod
-    def _patches(block, gate, *, cost: int = 5, flag: bool = True):
+    def _patches(block, gate, *, cost: int = 5, billing_enabled: bool = True):
         credit = MagicMock(
             get_credits=AsyncMock(return_value=1_000), spend_credits=AsyncMock()
         )
@@ -1741,8 +1903,8 @@ class TestSpendApproval:
             patch("backend.copilot.tools.helpers.credit_db", return_value=credit),
             patch("backend.copilot.tools.helpers.workspace_db", return_value=workspace),
             patch(
-                "backend.copilot.tools.helpers.is_feature_enabled",
-                AsyncMock(return_value=flag),
+                "backend.copilot.tools.helpers.Settings",
+                return_value=MagicMock(config=MagicMock(enable_credit=billing_enabled)),
             ),
         ]
 
@@ -1796,11 +1958,11 @@ class TestSpendApproval:
         gate.spend_approval_required.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
-    @pytest.mark.parametrize("flag", [True, False])
-    async def test_below_threshold_meters_only_with_the_flag_but_always_scopes(
-        self, flag
+    @pytest.mark.parametrize("billing_enabled", [True, False])
+    async def test_below_threshold_meters_only_when_billing_enabled_but_always_scopes(
+        self, billing_enabled
     ):
-        """The flag gates who is metered, never whose file scope the block
+        """Billing controls who is metered, never whose file scope the block
         runs in — ``workspace://`` inputs resolve against the session's expert
         either way."""
         session = make_session(user_id=_TEST_USER_ID, expert_id="expert-1")
@@ -1818,12 +1980,14 @@ class TestSpendApproval:
         with patch(
             "backend.copilot.tools.helpers.add_weekly_spend", AsyncMock()
         ) as add_spend:
-            response = await self._run(session, block, gate, flag=flag)
+            response = await self._run(
+                session, block, gate, billing_enabled=billing_enabled
+            )
 
         assert isinstance(response, BlockOutputResponse)
         assert block.executed
         assert captured["ctx"].expert_id == "expert-1"
-        if flag:
+        if billing_enabled:
             add_spend.assert_awaited_once_with("expert-1", 5)
         else:
             add_spend.assert_not_awaited()

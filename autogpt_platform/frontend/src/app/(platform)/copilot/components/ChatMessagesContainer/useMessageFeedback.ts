@@ -4,30 +4,34 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
-import { extractDbSequence } from "../../helpers/convertChatSessionToUiMessages";
+import { getRatedMessageId } from "./helpers";
 
 type Rating = "upvote" | "downvote";
 
 interface Args {
   sessionID: string | null;
   message: UIMessage<unknown, UIDataTypes, UITools>;
+  savedMessageId?: string | null;
 }
 
-export function useMessageFeedback({ sessionID, message }: Args) {
+export function useMessageFeedback({
+  sessionID,
+  message,
+  savedMessageId,
+}: Args) {
   const [feedback, setFeedback] = useState<Rating | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const { mutateAsync: submitFeedback } = usePostV2SubmitMessageFeedback();
 
-  // A reply that just streamed still carries the stream's id until the chat
-  // reloads it with its saved one, and only the saved one can be rated.
-  const canRate = sessionID !== null && extractDbSequence(message) !== null;
+  const ratedMessageId = getRatedMessageId(message, savedMessageId);
+  const canRate = sessionID !== null && ratedMessageId !== null;
 
   async function sendScore(score: Omit<MessageFeedbackRequest, "message_id">) {
-    if (!sessionID) return false;
+    if (!sessionID || !ratedMessageId) return false;
     try {
       await submitFeedback({
         sessionId: sessionID,
-        data: { message_id: message.id, ...score },
+        data: { message_id: ratedMessageId, ...score },
       });
       return true;
     } catch (error) {
@@ -75,14 +79,25 @@ export function useMessageFeedback({ sessionID, message }: Args) {
     if (canRate) void sendScore({ score_name: "copy", score_value: 1 });
   }
 
+  function explainNotRateableYet() {
+    toast({
+      title: "Can't rate this reply yet",
+      description:
+        "It may still be saving. Try again in a moment, or refresh the page.",
+      duration: 3000,
+    });
+  }
+
   function handleUpvote() {
-    if (feedback || !canRate) return;
+    if (feedback) return;
+    if (!canRate) return explainNotRateableYet();
     setFeedback("upvote");
     void saveRating("upvote");
   }
 
   function handleDownvoteClick() {
-    if (feedback || !canRate) return;
+    if (feedback) return;
+    if (!canRate) return explainNotRateableYet();
     setFeedback("downvote");
     setShowFeedbackModal(true);
   }

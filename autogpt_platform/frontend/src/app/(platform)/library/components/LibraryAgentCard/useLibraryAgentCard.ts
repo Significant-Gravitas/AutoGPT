@@ -1,9 +1,12 @@
 "use client";
 
-import { getQueryClient } from "@/lib/react-query/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { usePatchV2UpdateLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
+import {
+  getGetV2ListFavoriteLibraryAgentsQueryKey,
+  usePatchV2UpdateLibraryAgent,
+} from "@/app/api/__generated__/endpoints/library/library";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
@@ -23,7 +26,7 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
   const isFromMarketplace = Boolean(marketplace_listing);
   const [isFavorite, setIsFavorite] = useState(is_favorite);
   const { toast } = useToast();
-  const queryClient = getQueryClient();
+  const queryClient = useQueryClient();
   const { mutateAsync: updateLibraryAgent } = usePatchV2UpdateLibraryAgent();
   const { user, isLoggedIn } = useAuth();
   const logoutInProgress = isLogoutInProgress();
@@ -81,6 +84,10 @@ export function useLibraryAgentCard({ agent, onFavoriteAdd }: Props) {
         title: "Error",
         description: "Failed to update favorite status. Please try again.",
         variant: "destructive",
+      });
+    } finally {
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListFavoriteLibraryAgentsQueryKey(),
       });
     }
   }

@@ -19,12 +19,12 @@ The field is created immediately and becomes available for use in all records. R
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id | The table ID to add field to | str | Yes |
 | field_type | The type of the field to create | "singleLineText" \| "email" \| "url" \| "multilineText" \| "number" \| "percent" \| "currency" \| "singleSelect" \| "multipleSelects" \| "singleCollaborator" \| "multipleCollaborators" \| "multipleRecordLinks" \| "date" \| "dateTime" \| "phoneNumber" \| "multipleAttachments" \| "checkbox" \| "formula" \| "createdTime" \| "rollup" \| "count" \| "lookup" \| "multipleLookupValues" \| "autoNumber" \| "barcode" \| "rating" \| "richText" \| "duration" \| "lastModifiedTime" \| "button" \| "createdBy" \| "lastModifiedBy" \| "externalSyncSource" \| "aiText" | No |
 | name | The name of the field to create | str | Yes |
 | description | The description of the field to create | str | No |
-| options | The options of the field to create | Dict[str, str] | No |
+| options | The options of the field to create | Dict[str, Any] | No |
 
 ### Outputs
 
@@ -61,7 +61,7 @@ The table is created with the defined schema and is immediately ready for use. R
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_name | The name of the table to create | str | Yes |
 | table_fields | Table fields with name, type, and options | List[Dict[str, Any]] | No |
 
@@ -100,7 +100,7 @@ The schema includes field configurations, validation rules, and relationship def
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 
 ### Outputs
 
@@ -137,7 +137,7 @@ Changes take effect immediately across all records and views that use the field.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id | The table ID containing the field | str | Yes |
 | field_id | The field ID to update | str | Yes |
 | name | The name of the field to update | str | No |
@@ -177,7 +177,7 @@ This is useful for maintaining table metadata and organizing your base structure
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id | The table ID to update | str | Yes |
 | table_name | The name of the table to update | str | No |
 | table_description | The description of the table to update | str | No |

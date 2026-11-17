@@ -129,6 +129,22 @@ async def test_unrelated_trial_ledger_cannot_reset(policy_case, changed):
 
 
 @pytest.mark.asyncio
+async def test_paying_early_converts_the_trial_once(policy_case):
+    case = policy_case
+    paid = case.subscription["trial_end"] + 1
+    case.invoice.update(created=paid, billing_reason="subscription_update")
+    case.invoice["status_transitions"]["paid_at"] = paid
+    case.invoice["lines"]["data"][0]["period"]["start"] = paid
+    assert await activation.publish_initial_pro_activation(
+        case.user, case.subscription, "price_pro", case.tx, case.trial
+    )
+    case.tx.paidusageactivation.create.assert_awaited_once()
+    converted = case.tx.subscriptiontrial.update.await_args.kwargs["data"]
+    assert converted["stripeConversionInvoiceId"] == case.invoice["id"]
+    assert converted["convertedAt"].timestamp() == paid
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("plan", ["PRO", "MAX"])
 @pytest.mark.parametrize("chosen_plan", [False, True])
 async def test_consumed_initial_trial_conversion_creates_one_generation(

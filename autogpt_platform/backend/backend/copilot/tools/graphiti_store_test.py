@@ -51,11 +51,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -87,14 +82,19 @@ class TestMemoryStoreTool:
         assert result.session_id == "test-session"
 
     @pytest.mark.asyncio
-    async def test_store_feature_disabled_returns_error(self):
+    async def test_store_does_not_depend_on_a_flag_provider(self):
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=False,
+        with (
+            patch(
+                "backend.util.feature_flag.is_feature_enabled",
+                new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
+            ) as flags,
+            patch(
+                "backend.copilot.tools.graphiti_store.enqueue_episode",
+                new=AsyncMock(return_value=True),
+            ) as enqueue,
         ):
             result = await tool._execute(
                 user_id="user-1",
@@ -103,25 +103,21 @@ class TestMemoryStoreTool:
                 content="likes python",
             )
 
-        assert isinstance(result, ErrorResponse)
-        assert "not enabled" in result.message
+        assert isinstance(result, MemoryStoreResponse)
+        enqueue.assert_awaited_once()
+        flags.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_store_missing_name_returns_error(self):
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await tool._execute(
-                user_id="user-1",
-                session=session,
-                name="",
-                content="likes python",
-            )
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="",
+            content="likes python",
+        )
 
         assert isinstance(result, ErrorResponse)
         assert "'name' and 'content' are required" in result.message
@@ -131,17 +127,12 @@ class TestMemoryStoreTool:
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await tool._execute(
-                user_id="user-1",
-                session=session,
-                name="pref",
-                content="",
-            )
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="pref",
+            content="",
+        )
 
         assert isinstance(result, ErrorResponse)
         assert "'name' and 'content' are required" in result.message
@@ -151,17 +142,12 @@ class TestMemoryStoreTool:
         tool = MemoryStoreTool()
         session = _make_session()
 
-        with patch(
-            "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-            new_callable=AsyncMock,
-            return_value=True,
-        ):
-            result = await tool._execute(
-                user_id="user-1",
-                session=session,
-                name="",
-                content="",
-            )
+        result = await tool._execute(
+            user_id="user-1",
+            session=session,
+            name="",
+            content="",
+        )
 
         assert isinstance(result, ErrorResponse)
         assert "'name' and 'content' are required" in result.message
@@ -174,11 +160,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
@@ -215,11 +196,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -248,11 +224,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -275,11 +246,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock(return_value=True)
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
@@ -305,11 +271,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
@@ -338,11 +299,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -367,11 +323,6 @@ class TestMemoryStoreTool:
         session = _make_session()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 new_callable=AsyncMock,
@@ -404,11 +355,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -439,11 +385,6 @@ class TestMemoryStoreTool:
 
         with (
             patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
-            patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,
             ),
@@ -467,11 +408,6 @@ class TestMemoryStoreTool:
         mock_enqueue = AsyncMock()
 
         with (
-            patch(
-                "backend.copilot.tools.graphiti_store.is_enabled_for_user",
-                new_callable=AsyncMock,
-                return_value=True,
-            ),
             patch(
                 "backend.copilot.tools.graphiti_store.enqueue_episode",
                 mock_enqueue,

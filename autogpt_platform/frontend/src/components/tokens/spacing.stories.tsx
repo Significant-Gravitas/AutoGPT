@@ -1,6 +1,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { SquareArrowOutUpRight } from "lucide-react";
+import { LinkSquare01Icon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
@@ -83,10 +84,10 @@ export function AllVariants() {
       {/* Spacing System Documentation */}
       <div className="space-y-8">
         <div>
-          <Text variant="h1" className="mb-4 text-zinc-800">
+          <Text variant="h1" className="mb-4 text-foreground-emphasis">
             Spacing System
           </Text>
-          <Text variant="large" className="text-zinc-600">
+          <Text variant="large" className="text-foreground-secondary">
             Our spacing system uses a consistent scale based on rem units to
             ensure proper spacing relationships across all components and
             layouts. The spacing tokens are identical for both margin and
@@ -98,48 +99,56 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               Tailwind utilities
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border-base p-4">
                 <a
                   href="https://tailwindcss.com/docs/margin"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Margin Classes{" "}
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
-                <Text variant="body" className="mb-2 text-zinc-600">
+                <Text variant="body" className="mb-2 text-foreground-secondary">
                   Used for external spacing between elements
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-foreground-emphasis">
                   m-4 → margin: 1rem (16px)
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
+              <div className="rounded-lg border border-border-base p-4">
                 <a
                   href="https://tailwindcss.com/docs/padding"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-body-lg font-semibold text-info-foreground hover:underline"
                 >
                   Padding Classes
-                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                  <Icon
+                    aria-hidden
+                    icon={LinkSquare01Icon}
+                    className="inline-block h-3 w-3"
+                  />
                 </a>
 
-                <Text variant="body" className="mb-2 text-zinc-600">
+                <Text variant="body" className="mb-2 text-foreground-secondary">
                   Used for internal spacing within elements (same scale as
                   margin)
                 </Text>
-                <div className="font-mono text-sm text-zinc-800">
+                <div className="font-mono text-body text-foreground-emphasis">
                   p-4 → padding: 1rem (16px)
                 </div>
               </div>
-              <Text variant="body" className="mb-4 text-zinc-600">
+              <Text variant="body" className="mb-4 text-foreground-secondary">
                 We follow Tailwind CSS spacing system, which means you can use
                 any spacing token available in the default Tailwind theme for
                 margins and padding.
@@ -150,23 +159,23 @@ export function AllVariants() {
           <div>
             <Text
               variant="h2"
-              className="mb-2 text-xl font-semibold text-zinc-800"
+              className="mb-2 text-lead font-semibold text-foreground-emphasis"
             >
               FAQ
             </Text>
             <div className="space-y-4">
               <Text
                 variant="h3"
-                className="mb-2 text-base font-semibold text-zinc-800"
+                className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
               >
                 🤔 Why use spacing tokens?
               </Text>
-              <div className="space-y-3 text-zinc-600">
+              <div className="space-y-3 text-foreground-secondary">
                 <Text variant="body">
                   Always use spacing classes instead of arbitrary values.
                   Reasons:
                 </Text>
-                <ul className="ml-4 list-disc space-y-1 text-sm">
+                <ul className="ml-4 list-disc space-y-1 text-body">
                   <li>Ensures consistent spacing relationships</li>
                   <li>Makes responsive design easier with consistent ratios</li>
                   <li>Provides a harmonious visual rhythm</li>
@@ -177,11 +186,11 @@ export function AllVariants() {
               <div>
                 <Text
                   variant="h3"
-                  className="mb-2 text-base font-semibold text-zinc-800"
+                  className="mb-2 text-body-lg font-semibold text-foreground-emphasis"
                 >
                   📏 How to choose spacing values?
                 </Text>
-                <div className="space-y-2 text-zinc-600">
+                <div className="space-y-2 text-foreground-secondary">
                   <Text variant="body">
                     • <strong>1-2:</strong> Tight spacing, form elements
                   </Text>
@@ -206,11 +215,11 @@ export function AllVariants() {
         <div>
           <Text
             variant="h2"
-            className="mb-2 text-xl font-semibold text-zinc-800"
+            className="mb-2 text-lead font-semibold text-foreground-emphasis"
           >
             Complete Spacing Scale
           </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
+          <Text variant="body" className="mb-6 text-foreground-secondary">
             All available spacing values in our design system. Each value works
             for both margin and padding.
           </Text>
@@ -220,24 +229,34 @@ export function AllVariants() {
           {spacingScale.map((space) => (
             <div
               key={space.name}
-              className="flex items-center rounded-lg border border-gray-200 p-4"
+              className="flex items-center rounded-lg border border-border-base p-4"
             >
               <div className="flex w-32 flex-col">
-                <Text variant="body-medium" className="font-mono text-zinc-800">
+                <Text
+                  variant="body-medium"
+                  className="font-mono text-foreground-emphasis"
+                >
                   {space.name}
                 </Text>
-                <Text variant="small" className="font-mono text-zinc-500">
+                <Text
+                  variant="small"
+                  className="font-mono text-foreground-tertiary"
+                >
                   {space.class}
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <p className="font-mono text-xs text-zinc-500">{space.rem}</p>
-                <p className="font-mono text-xs text-zinc-500">{space.px}</p>
+                <p className="font-mono text-caption text-foreground-tertiary">
+                  {space.rem}
+                </p>
+                <p className="font-mono text-caption text-foreground-tertiary">
+                  {space.px}
+                </p>
               </div>
               <div className="ml-8 flex-1">
-                <div className="relative h-6 bg-gray-50">
+                <div className="relative h-6 bg-surface-muted">
                   <div
-                    className="absolute left-0 top-0 h-full bg-blue-500"
+                    className="absolute top-0 left-0 h-full bg-info"
                     style={{ width: space.value }}
                   ></div>
                 </div>

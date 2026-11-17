@@ -64,13 +64,6 @@ export class LibraryPage extends BasePage {
     await assertRunOutputValue(this.page, outputName, expectedValue, timeout);
   }
 
-  async assertFirstRunOutputValue(
-    expectedValue: RegExp | string,
-    timeout = 15000,
-  ): Promise<void> {
-    await assertRunOutputContainsText(this.page, expectedValue, timeout);
-  }
-
   async clickExportAgent(): Promise<void> {
     await clickExportAgent(this.page);
   }
@@ -218,34 +211,8 @@ export class LibraryPage extends BasePage {
     const agentCards = await getId("library-agent-card").all();
 
     for (const card of agentCards) {
-      const name = await getId("library-agent-card-name", card).textContent();
-      const seeRunsLink = getId("library-agent-card-see-runs-link", card);
-      const openInBuilderLink = getId(
-        "library-agent-card-open-in-builder-link",
-        card,
-      );
-
-      const seeRunsUrl = await seeRunsLink.getAttribute("href");
-
-      // Check if the "Open in builder" link exists before getting its href
-      const openInBuilderLinkCount = await openInBuilderLink.count();
-      const openInBuilderUrl =
-        openInBuilderLinkCount > 0
-          ? await openInBuilderLink.getAttribute("href")
-          : null;
-
-      if (name && seeRunsUrl) {
-        const idMatch = seeRunsUrl.match(/\/library\/agents\/([^\/]+)/);
-        const id = idMatch ? idMatch[1] : "";
-
-        agents.push({
-          id,
-          name: name.trim(),
-          description: "", // Description is not currently rendered in the card
-          seeRunsUrl,
-          openInBuilderUrl: openInBuilderUrl || "",
-        });
-      }
+      const agent = await readAgentCard(card);
+      if (agent.name && agent.id) agents.push(agent);
     }
 
     console.log(`found ${agents.length} agents`);
@@ -454,6 +421,24 @@ export class LibraryPage extends BasePage {
     const newAgentsLoaded = await this.scrollAndWaitForNewAgents();
     return newAgentsLoaded > 0;
   }
+}
+
+// "See tasks" and the menu's "Edit agent" are a button and a closed menu, so
+// the card has no hrefs to read; it carries its library agent id instead.
+// The builder link needs the graph id, which only the import flow knows.
+async function readAgentCard(
+  card: Locator,
+  openInBuilderUrl = "",
+): Promise<Agent> {
+  const id = (await card.getAttribute("data-agent-id")) ?? "";
+  const name = await card.getByTestId("library-agent-card-name").textContent();
+  return {
+    id,
+    name: name?.trim() ?? "",
+    description: "",
+    seeRunsUrl: id ? `/library/agents/${id}` : "",
+    openInBuilderUrl,
+  };
 }
 
 function isAgentListResponseFor(
@@ -899,12 +884,10 @@ const RUN_ERROR_RECOVERY_ATTEMPTS = 2;
 /**
  * Assert that a completed run actually produced output.
  *
- * The Library run-detail Output panel renders "No output from this run." when
- * the run object has no `outputs` field. There's a brief window after the run
- * reaches "completed" status where the run object is loaded without outputs,
- * then outputs arrive and the panel re-renders. We poll for up to `timeout`
- * ms waiting for the "No output" placeholder to GO AWAY before concluding
- * the run genuinely produced nothing.
+ * Waits for the Output panel to render the run's outputs (their "Copy all
+ * text outputs" action). The "No output from this run." placeholder being
+ * absent proves nothing on its own: it is also absent while the panel is
+ * still loading or another tab is open.
  *
  * This catches the "agent runs but produces nothing" failure mode
  * (disconnected edges, broken graph, runtime crash before any output node
@@ -920,11 +903,13 @@ export async function assertRunProducedOutput(
   // page reload. Reloading to "rule out stale cache" would mask a real
   // user-visible regression where the frontend only shows output after a
   // manual refresh.
-  const noOutput = page.getByText("No output from this run.", { exact: true });
-  await expect(noOutput, {
-    message:
-      'run completed but produced no output ("No output from this run." still shown) — broken graph, missing output node, or stale React Query cache',
-  }).toBeHidden({ timeout });
+  await expect(
+    page.getByRole("button", { name: "Copy all text outputs" }),
+    "run completed but shows no output — broken graph, missing output node, or stale React Query cache",
+  ).toBeVisible({ timeout });
+  await expect(
+    page.getByText("No output from this run.", { exact: true }),
+  ).toBeHidden();
 }
 
 function escapeRegex(text: string): string {
@@ -974,45 +959,6 @@ export async function assertRunOutputValue(
     outputValue,
     `run output value for "${outputName}" should be "${expectedValue}"`,
   ).toHaveText(expectedValue, { timeout });
-}
-
-export async function assertFirstRunOutputValue(
-  page: Page,
-  expectedValue: RegExp | string,
-  timeout = 15000,
-): Promise<void> {
-  await assertRunOutputContainsText(page, expectedValue, timeout);
-}
-
-export async function assertRunOutputContainsText(
-  page: Page,
-  expectedValue: RegExp | string,
-  timeout = 15000,
-): Promise<void> {
-  await openRunOutputTab(page);
-
-  const outputCard = page
-    .locator("div")
-    .filter({
-      has: page.getByRole("button", { name: "Copy all text outputs" }),
-    })
-    .first();
-  await expect(outputCard, "run output card should be visible").toBeVisible({
-    timeout,
-  });
-
-  if (expectedValue instanceof RegExp) {
-    await expect(
-      outputCard.getByText(expectedValue).first(),
-      `run output should contain text matching ${expectedValue.toString()}`,
-    ).toBeVisible({ timeout });
-    return;
-  }
-
-  await expect(
-    outputCard.getByText(expectedValue, { exact: true }).first(),
-    `run output should contain "${expectedValue}"`,
-  ).toBeVisible({ timeout });
 }
 
 export async function waitForRunToComplete(
@@ -1088,7 +1034,11 @@ export async function importAgentFromFile(
   filePath: string,
   agentName: string,
   description: string = "PR E2E library coverage",
-): Promise<{ libraryPage: LibraryPage; importedAgent: Agent }> {
+): Promise<{
+  libraryPage: LibraryPage;
+  importedAgent: Agent;
+  graphID: string;
+}> {
   const libraryPage = new LibraryPage(page);
   const importDialog = page.getByRole("dialog", { name: "Import" });
 
@@ -1183,7 +1133,10 @@ export async function importAgentFromFile(
       },
     )
     .toBe("build");
-  await expect(page).toHaveURL(/\/build/, { timeout: 15000 });
+  await expect(page).toHaveURL(/\/build\?.*flowID=/, { timeout: 15000 });
+  const builderURL = new URL(page.url());
+  const graphID = builderURL.searchParams.get("flowID") ?? "";
+  const openInBuilderUrl = `${builderURL.pathname}${builderURL.search}`;
 
   // Import should produce a real graph, not an empty canvas. Lazy-import
   // BuildPage locally to avoid a circular dependency between the two
@@ -1215,35 +1168,17 @@ export async function importAgentFromFile(
     `imported agent card "${agentName}" must appear in the library search results`,
   ).toBeVisible({ timeout: 15000 });
 
-  const seeRunsLink = getId("library-agent-card-see-runs-link", importedCard);
-  const seeRunsUrl = (await seeRunsLink.getAttribute("href")) ?? "";
-  const openInBuilderLink = getId(
-    "library-agent-card-open-in-builder-link",
-    importedCard,
-  );
-  const openInBuilderUrl =
-    (await openInBuilderLink.count()) > 0
-      ? ((await openInBuilderLink.getAttribute("href")) ?? "")
-      : "";
-
-  const idMatch = seeRunsUrl.match(/\/library\/agents\/([^/]+)/);
-  const importedAgent: Agent = {
-    id: idMatch ? idMatch[1] : "",
-    name:
-      (
-        await getId("library-agent-card-name", importedCard).textContent()
-      )?.trim() ?? agentName,
-    description: "",
-    seeRunsUrl,
-    openInBuilderUrl,
-  };
-
+  const importedAgent = await readAgentCard(importedCard, openInBuilderUrl);
   expect(
     importedAgent.name,
     "imported agent name should contain the requested name",
   ).toContain(agentName);
+  expect(
+    importedAgent.id,
+    "imported agent card should carry its library agent id",
+  ).not.toBe("");
 
-  return { libraryPage, importedAgent };
+  return { libraryPage, importedAgent, graphID };
 }
 
 export async function openSavedAgentInLibrary(

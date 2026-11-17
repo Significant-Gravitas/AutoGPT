@@ -6,9 +6,14 @@
  * tool call id is the same on both copies, so progress keyed by it survives
  * the swap — and, since it lives in sessionStorage, a reload mid-card too. */
 
+import type {
+  MultiAnswer,
+  QuestionAnswer,
+} from "../../tools/clarifying-questions";
+
 export interface OnboardingProgress {
   step: number;
-  answers: Record<string, string>;
+  answers: Record<string, QuestionAnswer>;
 }
 
 const KEY_PREFIX = "copilot:expert-onboarding-progress:";
@@ -25,6 +30,24 @@ function getStorage(): Storage | null {
   }
 }
 
+function isStringList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+// Progress saved before multi-select questions holds only strings, which
+// still read as single answers.
+function toAnswer(value: unknown): QuestionAnswer | null {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Partial<Record<keyof MultiAnswer, unknown>>;
+  if (!isStringList(record.selected) || typeof record.custom !== "string") {
+    return null;
+  }
+  return { selected: record.selected, custom: record.custom };
+}
+
 function toProgress(value: unknown): OnboardingProgress | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
@@ -32,14 +55,15 @@ function toProgress(value: unknown): OnboardingProgress | null {
     typeof record.step === "number" && Number.isInteger(record.step)
       ? Math.max(record.step, 0)
       : 0;
-  const answers: Record<string, string> = {};
+  const answers: Record<string, QuestionAnswer> = {};
   if (
     record.answers &&
     typeof record.answers === "object" &&
     !Array.isArray(record.answers)
   ) {
-    for (const [keyword, answer] of Object.entries(record.answers)) {
-      if (typeof answer === "string") answers[keyword] = answer;
+    for (const [keyword, raw] of Object.entries(record.answers)) {
+      const answer = toAnswer(raw);
+      if (answer !== null) answers[keyword] = answer;
     }
   }
   return { step, answers };

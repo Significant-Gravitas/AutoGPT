@@ -15,6 +15,13 @@ arrive asynchronously up to ~24h later. This service owns:
     ``callback_namespace`` (e.g. ``"dream_pass"``). Handlers run the
     apply step, write cost-log rows, and update whatever JobStatus
     row the caller cares about.
+  * **Dropping**: a namespace may also register a ``should_dispatch``
+    check, asked before each poll of a due entry, and an ``on_drop`` hook.
+    The check only answers; ``False`` drops the entry unpolled, claimed
+    like a dispatch (tombstone + HDEL) so it never comes back, and only the
+    walker whose claim took it off the queue then runs the hook (the dream
+    pass cancels a stopped pass's batch and ends the pass). A walker that
+    finds the entry already claimed does nothing.
 
 Lives at the same architectural level as ``Scheduler`` — own process,
 own Redis connection, own service-port for health checks. Subscribing
@@ -70,6 +77,11 @@ DISPATCHED_TTL_SECONDS = 7 * 24 * 60 * 60
 # 24h hard ceiling — Anthropic's promised SLA. Beyond this we mark the
 # entry failed even if the provider still says ``processing``.
 MAX_BATCH_LIFETIME_SECONDS = 24 * 60 * 60
+
+# How long a namespace's ``should_dispatch`` check may take before the walk
+# goes on and treats the entry as due (its handler keeps its own checks), and
+# how long its ``on_drop`` hook may take once a drop has been claimed.
+DISPATCH_CHECK_TIMEOUT_SECONDS = 60
 
 # Poll cadence (exponential backoff). The BatchExecutor walks the queue
 # every ``WALK_INTERVAL_SECONDS`` but each individual entry is only
@@ -168,7 +180,8 @@ async def remove_pending(provider_batch_id: str) -> None:
     atomically tombstones + HDELs in one Lua script so concurrent
     walkers (or a crash-replay) can never double-dispatch. The walk
     loop's only callers are the refused-claim zombie cleanups on the
-    ended, failed, and lifetime-timeout paths — clearing a pending row
+    ended, failed, and lifetime-timeout paths, and a drop whose claim
+    another walker already took (``_drop``) — each clearing a pending row
     whose batch already carries a dispatch tombstone.
     """
     from backend.data.redis_client import get_redis_async
@@ -211,23 +224,46 @@ async def _claim_dispatch(provider_batch_id: str) -> bool:
 # It is the handler's responsibility to log costs, update any caller-
 # supplied job status, and decide what to do with errored rows.
 BatchResultHandler = Callable[[PendingEntry, list[BatchResultRow]], Awaitable[None]]
+# A namespace's check before an entry is polled: whether it is still wanted.
+# It only answers; whatever a drop needs done is its drop hook's.
+DispatchCheck = Callable[[PendingEntry], Awaitable[bool]]
+# What a dropped entry needs done, run by the walker whose claim dropped it.
+DropHook = Callable[[PendingEntry], Awaitable[None]]
 
 _HANDLERS: dict[str, BatchResultHandler] = {}
+_DISPATCH_CHECKS: dict[str, DispatchCheck] = {}
+_DROP_HOOKS: dict[str, DropHook] = {}
 
 
-def register_handler(namespace: str, handler: BatchResultHandler) -> None:
-    """Register a result handler for one namespace.
+def register_handler(
+    namespace: str,
+    handler: BatchResultHandler,
+    *,
+    should_dispatch: DispatchCheck | None = None,
+    on_drop: DropHook | None = None,
+) -> None:
+    """Register a result handler for one namespace, and optionally the check
+    asked before each poll of one of its entries (``False`` drops it) and
+    the hook the walker that drops one runs.
 
     Called at module-import time from the caller's ``__init__.py``
     (or from the BatchExecutor's bootstrap). Re-registering a
-    namespace overwrites — last registration wins.
+    namespace overwrites — last registration wins, check and hook included.
     """
     _HANDLERS[namespace] = handler
+    _DISPATCH_CHECKS.pop(namespace, None)
+    _DROP_HOOKS.pop(namespace, None)
+    if should_dispatch is not None:
+        _DISPATCH_CHECKS[namespace] = should_dispatch
+    if on_drop is not None:
+        _DROP_HOOKS[namespace] = on_drop
 
 
 def clear_handlers_for_test() -> None:
     """Used by tests to reset the registry between cases."""
     _HANDLERS.clear()
+    _DISPATCH_CHECKS.clear()
+    _DROP_HOOKS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +313,16 @@ async def _walk_entry(
     api_key_for: Callable[[ProviderLiteral], str | None],
 ) -> None:
     """Process a single pending entry — gates, poll, then dispatch."""
-    if (now - entry.submitted_at).total_seconds() > MAX_BATCH_LIFETIME_SECONDS:
-        await _handle_timeout(entry)
+    timed_out = (now - entry.submitted_at).total_seconds() > MAX_BATCH_LIFETIME_SECONDS
+    if not timed_out and entry.next_poll_at > now:
         return
 
-    if entry.next_poll_at > now:
+    if not await _dispatch_wanted(entry):
+        await _drop(entry)
+        return
+
+    if timed_out:
+        await _handle_timeout(entry)
         return
 
     if entry.callback_namespace not in _HANDLERS:
@@ -401,6 +442,67 @@ async def _handle_timeout(entry: PendingEntry) -> None:
         entry,
         error="exceeded MAX_BATCH_LIFETIME_SECONDS without completion",
     )
+
+
+async def _dispatch_wanted(entry: PendingEntry) -> bool:
+    """The namespace's ``should_dispatch`` answer for a due *entry*; ``True``
+    when it registered none, or when the check raises or takes longer than
+    ``DISPATCH_CHECK_TIMEOUT_SECONDS``: an entry is never dropped on a check
+    that could not answer."""
+    check = _DISPATCH_CHECKS.get(entry.callback_namespace)
+    if check is None:
+        return True
+    try:
+        return await asyncio.wait_for(
+            check(entry), timeout=DISPATCH_CHECK_TIMEOUT_SECONDS
+        )
+    except Exception:
+        logger.warning(
+            "Dispatch check for namespace=%s failed on batch %s — polling it",
+            entry.callback_namespace,
+            entry.provider_batch_id,
+            exc_info=True,
+        )
+        return True
+
+
+async def _drop(entry: PendingEntry) -> None:
+    """Take *entry* off the queue unpolled and undispatched, claimed like a
+    dispatch (tombstone + HDEL) so a re-enqueue never brings it back, then
+    run the namespace's drop hook. Claimed first: of walkers dropping the
+    same entry, only the one whose claim took it runs the hook; one that
+    finds it claimed already only clears the leftover row."""
+    if not await _claim_dispatch(entry.provider_batch_id):
+        await remove_pending(entry.provider_batch_id)
+        logger.info(
+            "Batch %s for namespace=%s already claimed; its drop is the claimant's",
+            entry.provider_batch_id,
+            entry.callback_namespace,
+        )
+        return
+    logger.info(
+        "Batch %s for namespace=%s dropped by its dispatch check",
+        entry.provider_batch_id,
+        entry.callback_namespace,
+    )
+    await _run_drop_hook(entry)
+
+
+async def _run_drop_hook(entry: PendingEntry) -> None:
+    """The namespace's drop hook for a claimed *entry*, bounded by
+    ``DISPATCH_CHECK_TIMEOUT_SECONDS``; a failure is logged, never raised,
+    and not retried: the entry is off the queue."""
+    hook = _DROP_HOOKS.get(entry.callback_namespace)
+    if hook is None:
+        return
+    try:
+        await asyncio.wait_for(hook(entry), timeout=DISPATCH_CHECK_TIMEOUT_SECONDS)
+    except Exception:
+        logger.exception(
+            "Drop hook for namespace=%s failed on batch %s",
+            entry.callback_namespace,
+            entry.provider_batch_id,
+        )
 
 
 async def _push_back(entry: PendingEntry) -> None:

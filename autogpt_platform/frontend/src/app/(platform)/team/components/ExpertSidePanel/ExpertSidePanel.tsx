@@ -5,7 +5,7 @@ import { FullscreenDialog } from "@/components/molecules/FullscreenDialog/Fullsc
 import { Text } from "@/components/atoms/Text/Text";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ReactNode, useEffect, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import { PanelResizeHandle } from "@/app/(platform)/copilot/components/PanelResizeHandle";
 import { useIsMobile } from "@/app/(platform)/copilot/useIsMobile";
 import { IdentityAvatar, PanelIdentity } from "./IdentityAvatar";
@@ -87,7 +87,7 @@ export function ExpertSidePanel({
           animate={{ width: renderedWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
-          className="sticky top-0 h-svh shrink-0 self-start border-l border-l-sidebar-border bg-sidebar"
+          className="sticky top-0 h-svh shrink-0 self-start border-l border-l-border-base bg-surface-muted"
         >
           <PanelResizeHandle
             panelSelector={panelSelector}
@@ -98,8 +98,8 @@ export function ExpertSidePanel({
           />
           <div className="h-full overflow-hidden">
             <div
-              style={{ width: renderedWidth }}
-              className="flex h-full min-h-0 flex-col"
+              style={{ "--panel-width": `${renderedWidth}px` } as CSSProperties}
+              className="flex h-full min-h-0 w-[var(--panel-width)] flex-col"
             >
               <PanelHeader
                 identity={identity}
@@ -158,7 +158,7 @@ function PanelHeader({
   onClose,
 }: HeaderProps) {
   return (
-    <div className="flex h-[53px] shrink-0 items-center gap-2 border-b border-b-sidebar-border px-3">
+    <div className="flex h-[53px] shrink-0 items-center gap-2 border-b border-b-border-base px-3">
       {showIdentity ? (
         <>
           <IdentityAvatar

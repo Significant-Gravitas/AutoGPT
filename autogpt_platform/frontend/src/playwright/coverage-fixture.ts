@@ -1,7 +1,8 @@
 import { test as base } from "@playwright/test";
+import { markChangelogSeen } from "./utils/changelog";
 import { addCoverageReport } from "monocart-reporter";
 
-const test = base.extend<{ autoTestFixture: void }>({
+const test = base.extend<{ autoTestFixture: void; changelogSeen: void }>({
   autoTestFixture: [
     async ({ page }, use) => {
       let hasCoverage = false;
@@ -24,6 +25,13 @@ const test = base.extend<{ autoTestFixture: void }>({
           // Don't let coverage teardown failures mask real test failures
         }
       }
+    },
+    { scope: "test", auto: true },
+  ],
+  changelogSeen: [
+    async ({ context }, use) => {
+      await markChangelogSeen(context);
+      await use();
     },
     { scope: "test", auto: true },
   ],

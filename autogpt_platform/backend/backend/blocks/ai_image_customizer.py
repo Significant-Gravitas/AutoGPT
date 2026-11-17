@@ -1,4 +1,3 @@
-import asyncio
 from enum import Enum
 from typing import Literal
 
@@ -22,7 +21,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFileType, store_media_file
+from backend.util.file import MediaFileType, check_total_file_size, store_media_file
 
 
 class GeminiImageModel(str, Enum):
@@ -143,16 +142,18 @@ class AIImageCustomizerBlock(Block):
     ) -> BlockOutput:
         try:
             # Convert local file paths to Data URIs (base64) so Replicate can access them
-            processed_images = await asyncio.gather(
-                *(
-                    store_media_file(
-                        file=img,
-                        execution_context=execution_context,
-                        return_format="for_external_api",  # Get content for Replicate API
-                    )
-                    for img in input_data.images
+            # One at a time, so the total is checked before the next is loaded.
+            processed_images: list[MediaFileType] = []
+            total_size = 0
+            for img in input_data.images:
+                data_uri = await store_media_file(
+                    file=img,
+                    execution_context=execution_context,
+                    return_format="for_external_api",  # Get content for Replicate API
                 )
-            )
+                total_size += len(data_uri)
+                check_total_file_size(total_size)
+                processed_images.append(data_uri)
 
             result = await self.run_model(
                 api_key=credentials.api_key,

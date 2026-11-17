@@ -43,8 +43,9 @@ def test_the_dry_run_report_counts_reliable_and_skipped(capsys):
     out = capsys.readouterr().out
     assert "Accounts with a role on record: 4" in out
     assert "reliable, kept by the wizard: 1" in out
+    assert "reliable, in the wizard draft: 0" in out
     assert "reliable, an exact option in the understanding: 2" in out
-    assert "skipped, Other's text or an AutoPilot rewrite: 1" in out
+    assert "or a draft not past the role step): 1" in out
     assert "Roles: Marketing=2, Engineering=1" in out
     # PostHog can't be read, so a dry run after a full apply lists them again.
     assert "PostHog: 3 persons ($set_once; PostHog can't be read" in out

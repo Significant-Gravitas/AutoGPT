@@ -219,12 +219,15 @@ class SubscriptionWelcomeData(LifecycleData):
 class PaymentFailedData(LifecycleData):
     amount_display: str
     card: CardDetails
-    next_retry_label: str
+    next_retry_label: str | None = None
 
 
 class PaymentFinalNoticeData(LifecycleData):
     amount_display: str
-    pauses_label: str
+    payment_url: str | None = None
+    last_attempt_label: str | None = None
+    # Transitional: old queued notices carry a renewal date, not an attempt date.
+    pauses_label: str | None = None
 
 
 class SubscriptionCancelledData(LifecycleData):
@@ -245,6 +248,8 @@ class TrialUpdateData(LifecycleData):
     kind: Literal[
         "started",
         "ending",
+        "expiring",
+        "last_call",
         "canceled",
         "resumed",
         "ended",
@@ -252,6 +257,7 @@ class TrialUpdateData(LifecycleData):
         "payment_failed",
     ]
     ends_label: str
+    started_label: str | None = None
     onboarding_credit_amount: int
     offer_version: str
 
@@ -521,7 +527,11 @@ class NotificationPreference(BaseModel):
 
 
 class NotificationPreferenceDTO(BaseModel):
-    email: EmailStr
+    email: EmailStr = Field(
+        description="The account's address, as shown in the form. Ignored on "
+        "update: an account's address changes only through the verified "
+        "change-email flow."
+    )
     briefing_frequency: BriefingFrequency
     alerts_enabled: bool
     store_verdicts_enabled: bool

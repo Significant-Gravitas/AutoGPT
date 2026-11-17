@@ -58,10 +58,21 @@ async def _deliver(
         "review_db",
         lambda: MagicMock(get_reviews_by_node_exec_ids=AsyncMock(return_value={})),
     )
-    monkeypatch.setattr(held, "_outcome", AsyncMock(return_value=("approved", output)))
-    [row] = await held.resolve_answered(
-        "user-1", ChatSession.new(user_id="user-1", dry_run=False), cap=cap
+    # The approved call runs and returns this output.
+    monkeypatch.setattr(
+        held,
+        "_due",
+        MagicMock(return_value=AsyncMock(return_value=("approved", output))),
     )
+    delivered: list[PendingMessage] = []
+    async for _status in held.resolve_answered(
+        "user-1",
+        ChatSession.new(user_id="user-1", dry_run=False),
+        delivered.append,
+        cap=cap,
+    ):
+        pass
+    [row] = delivered
     return row
 
 

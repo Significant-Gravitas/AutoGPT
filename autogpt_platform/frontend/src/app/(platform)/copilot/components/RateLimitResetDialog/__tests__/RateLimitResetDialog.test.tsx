@@ -43,9 +43,6 @@ describe("Usage limit dialog", () => {
       screen.getByText("One allowance for your trial. It doesn’t refresh."),
     ).toBeDefined();
     expect(screen.queryByText(/Wait for reset|Max/)).toBeNull();
-    for (const amount of screen.getAllByText(/\$50/)) {
-      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-    }
     const wait = screen.getByRole("button", { name: "Wait until Oct 12" });
     expect(wait).toBeDefined();
     fireEvent.click(
@@ -254,9 +251,6 @@ describe("Usage limit dialog", () => {
         "Pro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, workflows and results are saved.",
       ),
     ).toBeDefined();
-    for (const amount of screen.getAllByText(/\$50/)) {
-      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
-    }
     const pay = screen.getByRole("link", { name: "Pay $50 now" });
     expect(pay.getAttribute("href")).toBe(
       "https://invoice.stripe.com/i/acct_1/test_inv_1",

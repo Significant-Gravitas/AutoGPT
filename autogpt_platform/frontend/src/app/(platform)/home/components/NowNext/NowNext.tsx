@@ -14,13 +14,13 @@ interface Props {
 // The rail runs through the centre of each row's 36px marker, which sits
 // 16px in from the tile edge.
 const TIMELINE_CLASS =
-  "relative before:absolute before:bottom-5 before:left-[33px] before:top-5 before:w-px before:bg-zinc-200";
+  "relative before:absolute before:bottom-5 before:left-[33px] before:top-5 before:w-px before:bg-surface-active";
 
 export function NowNext({ dashboard, className }: Props) {
   return (
     <HomeTile className={className} icon={Calendar03Icon} title="Now & next">
       {dashboard.active_tasks.length > 0 ? (
-        <div className="border-b border-zinc-100 pb-2">
+        <div className="border-b border-separator pb-2">
           <HomeSectionLabel>Working now</HomeSectionLabel>
           <div className={TIMELINE_CLASS}>
             {dashboard.active_tasks.map((item) => (

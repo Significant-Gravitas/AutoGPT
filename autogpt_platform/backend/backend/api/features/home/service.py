@@ -10,9 +10,6 @@ from pydantic import BaseModel, ValidationError
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts.models import Expert
-from backend.api.features.graph_executions.activity_gate import (
-    hide_activity_summaries_if_disabled,
-)
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.api.features.library import db as library_db
 from backend.copilot import db as chat_db
@@ -25,6 +22,7 @@ from backend.data import briefing as briefing_db
 from backend.data import execution as execution_db
 from backend.data import human_review as review_db
 from backend.data import user as user_db
+from backend.data import workspace as workspace_db
 from backend.data.credit import get_credit_model
 from backend.data.execution import GraphExecutionMeta
 from backend.data.execution_cost_summary import (
@@ -33,11 +31,9 @@ from backend.data.execution_cost_summary import (
 )
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
-from .briefing import without_summaries
 from .compose import compose_home_dashboard
 from .models import HomeDashboardResponse
 
@@ -155,9 +151,7 @@ async def _persisted_briefing(
             record.id,
         )
         return None
-    if await is_feature_enabled(Flag.AI_ACTIVITY_STATUS, user_id):
-        return content
-    return without_summaries(content)
+    return content
 
 
 async def _load_home_source_data(
@@ -213,9 +207,7 @@ async def _load_home_source_data(
     user = user_task.result()
     return HomeSourceData(
         experts=experts_task.result(),
-        executions=await hide_activity_summaries_if_disabled(
-            executions_task.result(), user_id
-        ),
+        executions=executions_task.result(),
         reviews=reviews_task.result(),
         cost_summary=cost_summary_task.result(),
         schedules=schedules_task.result(),
@@ -264,10 +256,6 @@ async def _get_pending_questions(*, user_id: str) -> list[ChatSessionInfo]:
     # Fail-soft like schedules and credits: a chat that was deleted or whose
     # metadata no longer parses must cost the user one row, not the page.
     try:
-        # Question items ship with the expert-team surface; without the flag
-        # the Home page stays exactly what it was.
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-            return []
         return await chat_db.get_sessions_with_pending_question(user_id)
     except Exception:
         logger.warning(
@@ -281,12 +269,9 @@ async def _get_work_events(
     *, user_id: str, since: datetime
 ) -> list[activity_db.ActivityEvent]:
     # Fail-soft like schedules and credits: a broken audit read costs the
-    # Recent work card, not the page. Ships with the expert-team surface,
-    # so it is gated exactly like pending questions.
+    # Recent work card, not the page.
     try:
-        if not await is_feature_enabled(Flag.HIRE_EXPERTS, user_id, default=False):
-            return []
-        return await activity_db.list_activity_events(
+        events = await activity_db.list_activity_events(
             user_id,
             since=since,
             categories=["FILE", "INTEGRATION", "SCHEDULE"],
@@ -297,6 +282,29 @@ async def _get_work_events(
             "Home could not load work events for user %s", user_id[:_LOG_ID_CHARS]
         )
         return []
+    try:
+        return await _without_working_files(user_id, events)
+    except Exception:
+        logger.warning(
+            "Home could not check work files for user %s", user_id[:_LOG_ID_CHARS]
+        )
+        # An unchecked file row may be one of Otto's own; the rest still show.
+        return [event for event in events if event.category != "FILE"]
+
+
+async def _without_working_files(
+    user_id: str, events: list[activity_db.ActivityEvent]
+) -> list[activity_db.ActivityEvent]:
+    """Drop the FILE rows logged for Otto's own working files before writes
+    stopped logging them. The migration marks the files (``isInternal``), not
+    these log rows, so the mark is read through each row's file id."""
+    file_ids = [e.object_id for e in events if e.category == "FILE" and e.object_id]
+    internal = await workspace_db.list_internal_file_ids(user_id, file_ids)
+    return [
+        event
+        for event in events
+        if not (event.category == "FILE" and event.object_id in internal)
+    ]
 
 
 async def _get_session_titles(

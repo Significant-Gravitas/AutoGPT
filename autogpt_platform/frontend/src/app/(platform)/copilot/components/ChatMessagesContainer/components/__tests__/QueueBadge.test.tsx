@@ -36,6 +36,8 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: (...args: unknown[]) => captureExceptionMock(...args),
+  withServerActionInstrumentation: (...args: unknown[]) =>
+    (args.at(-1) as () => unknown)(),
 }));
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => toastMock(...args),

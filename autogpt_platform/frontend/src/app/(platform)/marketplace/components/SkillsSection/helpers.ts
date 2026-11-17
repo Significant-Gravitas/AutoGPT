@@ -1,6 +1,3 @@
-/** Two rows of two; past this the header offers "Browse all skills". */
-export const SHELF_SIZE = 4;
-
 /** One page of the browse-all grid. */
 export const BROWSE_PAGE_SIZE = 20;
 

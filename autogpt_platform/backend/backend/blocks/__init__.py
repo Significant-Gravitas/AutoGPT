@@ -116,6 +116,12 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
         if is_block_auth_configured(block_cls):
             filtered_blocks[block_id] = block_cls
 
+    # Price SDK blocks from their provider's `with_base_cost` here, so every
+    # process that loads blocks bills them, not only the REST API process.
+    from backend.sdk.cost_integration import sync_all_provider_costs
+
+    sync_all_provider_costs(filtered_blocks.values())
+
     return filtered_blocks
 
 
@@ -160,12 +166,3 @@ def get_io_block_ids() -> Sequence[str]:
 @cached(ttl_seconds=3600)
 def get_output_block_ids() -> Sequence[str]:
     return [id for id, B in get_blocks().items() if B().block_type == BlockType.OUTPUT]
-
-
-@cached(ttl_seconds=3600)
-def get_human_in_the_loop_block_ids() -> Sequence[str]:
-    return [
-        id
-        for id, B in get_blocks().items()
-        if B().block_type == BlockType.HUMAN_IN_THE_LOOP
-    ]

@@ -34,6 +34,12 @@ CHECKED_IN_HANDLER = {
 
 OPEN_WHILE_PAYWALLED = {
     # Signing in and managing the account, its organisations and its links.
+    # The paywall offers Delete account, so its routes stay open, and so do
+    # the screen and the button that keep a closed account.
+    "GET /api/account/deletion",
+    "POST /api/account/deletion",
+    "POST /api/account/deletion/feedback",
+    "POST /api/account/deletion/restore",
     "POST /api/analytics/attribution",
     "GET /api/api-keys",
     "POST /api/api-keys",
@@ -49,7 +55,11 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/auth/user/timezone",
     "PUT /api/chat/transports/default",
     "GET /api/experiments/assignments",
-    "POST /api/experiments/assignments",
+    "GET /api/experiments/assignments/{experiment}",
+    # Feedback stays open during onboarding and after a cancelled checkout.
+    "POST /api/feedback-prompts/claim",
+    "PATCH /api/feedback-prompts/{id}",
+    "GET /api/feedback-prompts/{id}",
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
@@ -61,11 +71,14 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/memory/facts",
     "DELETE /api/memory/facts/{fact_uuid}",
     "GET /api/memory/overview",
+    "DELETE /api/memory/understanding",
+    "GET /api/memory/understanding",
     "GET /api/oauth/app/{client_id}",
     "PATCH /api/oauth/apps/{app_id}/logo",
     "PATCH /api/oauth/apps/{app_id}/status",
     "GET /api/oauth/apps/mine",
     "POST /api/oauth/authorize",
+    "POST /api/oauth/authorize/deny",
     "GET /api/orgs",
     "POST /api/orgs",
     "DELETE /api/orgs/{org_id}",
@@ -78,7 +91,6 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/orgs/{org_id}/invitations",
     "DELETE /api/orgs/{org_id}/invitations/{invitation_id}",
     "GET /api/orgs/{org_id}/members",
-    "POST /api/orgs/{org_id}/members",
     "DELETE /api/orgs/{org_id}/members/{uid}",
     "PATCH /api/orgs/{org_id}/members/{uid}",
     "POST /api/orgs/{org_id}/transfer-ownership",
@@ -134,7 +146,10 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/credits/trial/confirm",
     "POST /api/credits/trial/resume",
     "POST /api/credits/{transaction_key}/refund",
-    # Onboarding, which reaches the plan picker only after hiring the team.
+    # Onboarding: the wizard, the brain dump and the plan shown beside the
+    # trial (settled when the step stops waiting), all before anything is
+    # paid for. The plan's hire checks the paywall. POST /api/experts is here from when onboarding hired the
+    # team before the plan picker.
     "POST /api/experts",
     "GET /api/onboarding",
     "PATCH /api/onboarding",
@@ -144,10 +159,14 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/onboarding/brain-dump/intro",
     "POST /api/onboarding/brain-dump/intro/complete",
     "POST /api/onboarding/brain-dump/parts",
+    "GET /api/onboarding/brain-dump/plan",
+    "POST /api/onboarding/brain-dump/plan/settle",
     "GET /api/onboarding/brain-dump/recommended-experts",
     "GET /api/onboarding/brain-dump/recommended-providers",
     "GET /api/onboarding/brain-dump/recording",
     "GET /api/onboarding/brain-dump/status",
+    "GET /api/onboarding/brain-dump/suggested-tasks",
+    "POST /api/onboarding/brain-dump/suggested-tasks",
     "GET /api/onboarding/completed",
     "POST /api/onboarding/profile",
     "POST /api/onboarding/reset",
@@ -163,6 +182,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/builder/suggestions",
     "GET /api/chat/connections",
     "GET /api/chat/model-tiers",
+    "GET /api/chat/session-groups",
     "GET /api/chat/sessions",
     "GET /api/chat/sessions/{session_id}",
     "GET /api/chat/sessions/{session_id}/at-reset",
@@ -173,6 +193,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/chat/suggested-prompts",
     "GET /api/chat/transports",
     "GET /api/chat/usage",
+    "GET /api/copilot/executors",
+    "GET /api/copilot/sessions/{session_id}/executor",
     "GET /api/desktop-preview",
     "GET /api/executions",
     "GET /api/executions/cost-summary",
@@ -217,6 +239,7 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/review/execution/{graph_exec_id}",
     "GET /api/review/pending",
     "GET /api/review/session/{chat_session_id}",
+    "GET /api/review/session/{chat_session_id}/answered",
     "GET /api/schedules",
     "GET /api/schedules/followups",
     "GET /api/schedules/followups/paused",
@@ -243,8 +266,12 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/chat/sessions/{session_id}/cancel",
     "DELETE /api/chat/sessions/{session_id}/share",
     "DELETE /api/chat/sessions/{session_id}/stream",
+    "POST /api/copilot/sessions/{session_id}/executor/recording/stop",
+    "POST /api/copilot/sessions/{session_id}/executor/recording/{recording_id}/review",
     "DELETE /api/executions/{graph_exec_id}",
     "DELETE /api/experts/{expert_id}",
+    # Erases what an expert learned, like DELETE /api/memory; runs nothing.
+    "POST /api/experts/{expert_id}/reset",
     "DELETE /api/experts/{expert_id}/credentials/{credential_id}",
     "DELETE /api/experts/{expert_id}/workflows/{workflow_id}",
     "DELETE /api/graphs/{graph_id}",
@@ -269,6 +296,7 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/chat/sessions/{session_id}/pinned",
     "POST /api/chat/sessions/{session_id}/share",
     "PATCH /api/chat/sessions/{session_id}/title",
+    "POST /api/copilot/sessions/{session_id}/executor/consent",
     "POST /api/experts/pods",
     "PATCH /api/experts/{expert_id}/avatar",
     "PATCH /api/experts/{expert_id}/budget",
@@ -291,13 +319,17 @@ OPEN_WHILE_PAYWALLED = {
     "PATCH /api/workspace/folders/{folder_id}",
     # No signed-in user to check: public pages, provider webhooks and token
     # endpoints. A webhook's runs check their owner (add_graph_execution).
+    "GET /.well-known/oauth-protected-resource/api/v2/mcp",
+    "POST /api/auth/email/ban-record",
     "POST /api/auth/email/send",
+    "POST /api/auth/email/suppression",
     "POST /api/auth/user/preferences/from-email",
     "GET /api/chat/config/ttl",
     "GET /api/chat/schema/tool-responses",
     "POST /api/credits/stripe_webhook",
     "POST /api/email/",
     "POST /api/email/mailerlite/webhook",
+    "GET /api/email/unsubscribe",
     "POST /api/email/unsubscribe",
     "GET /api/experts/templates",
     "GET /api/feature-flags",
@@ -310,6 +342,7 @@ OPEN_WHILE_PAYWALLED = {
     "POST /api/oauth/introspect",
     "POST /api/oauth/revoke",
     "POST /api/oauth/token",
+    "GET /api/platform-config",
     "GET /api/public/shared/chats/{share_token}",
     "GET /api/public/shared/chats/{share_token}/files/{file_id}/download",
     "GET /api/public/shared/chats/{share_token}/messages",
@@ -324,7 +357,6 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/store/listings/versions/{store_listing_version_id}",
     "GET /api/store/listings/versions/{store_listing_version_id}/graph/download",
     "GET /api/store/media/{user_id}/{media_type}/{filename}",
-    "GET /api/store/metrics/cache",
     "GET /api/store/search",
     "GET /api/store/skills",
     "GET /api/store/skills/{slug}",
@@ -337,6 +369,7 @@ CLOSED_SAMPLES = [
     "GET /api/builder/search",
     "POST /api/chat/sessions/s-1/at-reset",
     "POST /api/chat/sessions/s-1/desktop",
+    "POST /api/copilot/executors/m-1/directories",
     "POST /api/experts/avatars/generations",
     "POST /api/experts/raise",
     "POST /api/files/upload",
@@ -389,10 +422,6 @@ def test_the_open_lists_name_only_routes_that_exist():
 def test_an_account_without_a_plan_gets_402_from_a_closed_route(
     call: str, mock_jwt_user, paywalled_user, mocker
 ):
-    mocker.patch(
-        "backend.api.features.store.skill_routes.is_feature_enabled",
-        new=mocker.AsyncMock(return_value=True),
-    )
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     try:
         method, path = call.split(" ", 1)

@@ -1,0 +1,225 @@
+"""Read-only: what the account holds, and what would stop its erasure.
+
+Runs before anything is deleted, so a blocked erasure leaves the account
+exactly as it was.
+"""
+
+from datetime import UTC, datetime, timedelta
+
+from prisma.enums import OrgMemberStatus
+from prisma.models import (
+    AccountDeletionRequest,
+    AuthUser,
+    Expert,
+    OAuthApplication,
+    Organization,
+    OrganizationSubscription,
+    OrgMember,
+    User,
+    UserWorkspace,
+)
+
+from backend.data.account_deletion import GRACE_PERIOD
+from backend.data.account_erasure.deleted_user import DELETED_USER_ID
+from backend.data.account_erasure.models import SAFE_ID, Blocker, Subject
+
+
+async def load_subject(user_id: str, email: str | None = None) -> Subject:
+    user = await User.prisma().find_unique(where={"id": user_id})
+    identity = await AuthUser.prisma().find_unique(where={"id": user_id})
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    apps = await OAuthApplication.prisma().find_many(where={"ownerId": user_id})
+    experts = await Expert.prisma().find_many(where={"ownerUserId": user_id})
+    request = await AccountDeletionRequest.prisma().find_unique(
+        where={"userId": user_id}
+    )
+    sole_orgs, _ = await _orgs(user_id)
+    return Subject(
+        user_id=user_id,
+        email=(user and user.email) or (identity and identity.email) or email,
+        has_user_row=user is not None,
+        has_auth_identity=identity is not None,
+        workspace_id=workspace.id if workspace else None,
+        oauth_app_ids=[app.id for app in apps],
+        sole_org_ids=[org.id for org in sole_orgs],
+        stripe_customer_ids=await _stripe_customers(user, sole_orgs),
+        expert_ids=[expert.id for expert in experts],
+        request_source=request.source if request else None,
+        erase_after=request.eraseAfter if request else None,
+        erase_asked_now=bool(request and _cut_short(request)),
+        confirmation_sent=bool(request and request.confirmationSentAt),
+        confirmation_skipped=bool(request and request.confirmationSkipped),
+        request_completed=bool(request and request.completedAt),
+        banned=bool(identity and identity.banned),
+        ban_expires=identity.banExpires if identity else None,
+    )
+
+
+def _cut_short(request: AccountDeletionRequest) -> bool:
+    """Its 14 days were ended early, or never given, at the owner's request;
+    an hour's leeway for the clocks the two dates were read from."""
+    return request.eraseAfter < request.requestedAt + GRACE_PERIOD - timedelta(hours=1)
+
+
+async def find_blockers(
+    subject: Subject, *, now: datetime | None = None
+) -> list[Blocker]:
+    """What stops the erasure. Only a closed account (one with a deletion
+    request) whose 14 days to keep it are over is erased."""
+    if refused := invalid_id(subject.user_id) or system_account(subject.user_id):
+        return refused
+    blockers: list[Blocker] = []
+    if not subject.has_request:
+        blockers.append(
+            Blocker(
+                name="not_closed",
+                count=0,
+                resolution="This account has no deletion request, so it is "
+                "still open. For a request made by email, run erase-account "
+                "--close to close it the way Settings does; it is erased once "
+                "its 14 days to keep it are over.",
+            )
+        )
+    elif _keep_window_open(subject, now or datetime.now(UTC)):
+        blockers.append(
+            Blocker(
+                name="not_due",
+                count=0,
+                resolution="The owner can still keep this account until "
+                f"{subject.erase_after:%Y-%m-%d %H:%M} UTC. It is erased after "
+                "that, by the job or by running this again.",
+            )
+        )
+    _, solely_owned_shared_orgs = await _orgs(subject.user_id)
+    if solely_owned_shared_orgs:
+        blockers.append(
+            Blocker(
+                name="shared_orgs_without_another_owner",
+                count=len(solely_owned_shared_orgs),
+                resolution="This account is the only owner of an organization "
+                "with other members. Make another member an owner first.",
+            )
+        )
+    if apps_in_use := await _oauth_apps_others_use(subject.user_id):
+        blockers.append(
+            Blocker(
+                name="oauth_apps_in_use",
+                count=apps_in_use,
+                resolution="This account registered OAuth apps that other "
+                "accounts have signed in to and still use. Erasing it deletes "
+                "the apps and cuts those accounts off. They are not handed to "
+                'the "deleted user" account: the developer still holds the '
+                "client secret and controls the redirect URIs, and nobody here "
+                "could manage the app. Move each app to another owner (set "
+                "OAuthApplication.ownerId to their user ID) or, if it should "
+                "stop working, disable it (isActive = false). Then run again.",
+            )
+        )
+    return blockers
+
+
+async def _oauth_apps_others_use(user_id: str) -> int:
+    """Active OAuth apps the account owns that another account holds a live
+    grant to. A disabled app already works for nobody (its tokens fail
+    validation and cannot be refreshed), so it goes with the account."""
+    live = {
+        "userId": {"not": user_id},
+        "revokedAt": None,
+        "expiresAt": {"gt": datetime.now(UTC)},
+    }
+    return await OAuthApplication.prisma().count(
+        where={
+            "ownerId": user_id,
+            "isActive": True,
+            "OR": [
+                {"RefreshTokens": {"some": live}},
+                {"AccessTokens": {"some": live}},
+            ],
+        }
+    )
+
+
+def _keep_window_open(subject: Subject, now: datetime) -> bool:
+    """A finished erasure is past its window whatever the date says."""
+    if subject.request_completed or subject.erase_after is None:
+        return False
+    return subject.erase_after > now
+
+
+# The blockers that refuse the ID itself: no step runs for them, not even
+# in a dry run.
+REFUSED_IDS = ("invalid_account_id", "system_account")
+
+
+def invalid_id(user_id: str) -> list[Blocker]:
+    """An ID that cannot be an account's. Refused before any step runs, so
+    nothing (Stripe, the scheduler, a storage prefix) is ever asked about it."""
+    if SAFE_ID.fullmatch(user_id):
+        return []
+    return [
+        Blocker(
+            name="invalid_account_id",
+            count=1,
+            resolution="This is not an account ID. Pass the user ID or the "
+            "account's email.",
+        )
+    ]
+
+
+def system_account(user_id: str) -> list[Blocker]:
+    """The placeholder that owns deleted creators' shared agents."""
+    if user_id != DELETED_USER_ID:
+        return []
+    return [
+        Blocker(
+            name="system_account",
+            count=1,
+            resolution="This is the account deleted creators' shared agents "
+            "belong to. It is never erased.",
+        )
+    ]
+
+
+async def _orgs(user_id: str) -> tuple[list[Organization], list[Organization]]:
+    """The orgs no one else is an active member of, and the shared orgs no
+    one else actively owns. Invited, suspended and removed members count for
+    neither: an org only they are left in goes with the account, its
+    subscription cancelled. A personal org whose membership row is gone still
+    counts as its own."""
+    memberships = await OrgMember.prisma().find_many(
+        where={"userId": user_id}, include={"Org": True}
+    )
+    owns = {m.orgId for m in memberships if m.isOwner}
+    orgs = {m.orgId: m.Org for m in memberships if m.Org}
+    for org in await Organization.prisma().find_many(
+        where={"isPersonal": True, "bootstrapUserId": user_id}
+    ):
+        orgs.setdefault(org.id, org)
+    sole: list[Organization] = []
+    solely_owned_shared: list[Organization] = []
+    for org in orgs.values():
+        others = await OrgMember.prisma().find_many(
+            where={
+                "orgId": org.id,
+                "userId": {"not": user_id},
+                "status": OrgMemberStatus.ACTIVE,
+            }
+        )
+        if not others:
+            sole.append(org)
+        elif org.id in owns and not any(m.isOwner for m in others):
+            solely_owned_shared.append(org)
+    return sole, solely_owned_shared
+
+
+async def _stripe_customers(user: User | None, orgs: list[Organization]) -> list[str]:
+    """The account's own customer first, then its sole orgs' customers.
+    Closing cancelled the account's own, but a Checkout started in the
+    seconds after the close can still be paid and subscribe it again."""
+    subscriptions = await OrganizationSubscription.prisma().find_many(
+        where={"organizationId": {"in": [org.id for org in orgs]}}
+    )
+    ids = [user.stripeCustomerId if user else None]
+    ids += [org.stripeCustomerId for org in orgs]
+    ids += [sub.stripeCustomerId for sub in subscriptions]
+    return list(dict.fromkeys(i for i in ids if i))

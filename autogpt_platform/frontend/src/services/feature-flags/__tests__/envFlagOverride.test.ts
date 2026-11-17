@@ -1,16 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { envFlagOverride, Flag } from "../use-get-flag";
 
-vi.mock("launchdarkly-react-client-sdk", () => ({
-  useFlags: () => ({}),
-}));
-
 vi.mock("@/app/(platform)/marketplace/components/HeroSection/helpers", () => ({
   DEFAULT_SEARCH_TERMS: [],
-}));
-
-vi.mock("@/services/environment", () => ({
-  environment: { areFeatureFlagsEnabled: () => false },
 }));
 
 const ENV_KEY = "NEXT_PUBLIC_FORCE_FLAG_CHAT_MODE_OPTION";
@@ -57,6 +49,29 @@ describe("envFlagOverride", () => {
   it("returns undefined for an unrecognised string", () => {
     process.env[ENV_KEY] = "banana";
     expect(envFlagOverride(Flag.CHAT_MODE_OPTION)).toBeUndefined();
+  });
+});
+
+describe("Local PC feature overrides", () => {
+  beforeEach(() => {
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR"];
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING"];
+  });
+
+  it.each([
+    [Flag.LOCAL_PC_EXECUTOR, "NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR"],
+    [Flag.WORKFLOW_RECORDING, "NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING"],
+  ] as const)("force-enables %s for local development", (flag, envKey) => {
+    process.env[envKey] = "true";
+    expect(envFlagOverride(flag)).toBe(true);
+  });
+
+  it.each([
+    [Flag.LOCAL_PC_EXECUTOR, "NEXT_PUBLIC_FORCE_FLAG_LOCAL_PC_EXECUTOR"],
+    [Flag.WORKFLOW_RECORDING, "NEXT_PUBLIC_FORCE_FLAG_WORKFLOW_RECORDING"],
+  ] as const)("force-disables %s for QA", (flag, envKey) => {
+    process.env[envKey] = "false";
+    expect(envFlagOverride(flag)).toBe(false);
   });
 });
 

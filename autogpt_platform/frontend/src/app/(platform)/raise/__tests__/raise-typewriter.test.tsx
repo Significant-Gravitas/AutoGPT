@@ -4,30 +4,12 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { saveDraft } from "../helpers";
 import RaisePage from "../page";
 
-const { setFlagStatusMock } = vi.hoisted(() => ({
-  setFlagStatusMock: vi.fn(() => ({ enabled: true, ready: true })),
-}));
-
-vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
-  const actual =
-    await importActual<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return {
-    ...actual,
-    useFlagStatus: (flag: string) =>
-      flag === "hire-experts"
-        ? setFlagStatusMock()
-        : actual.useFlagStatus(flag as never),
-  };
-});
-
 vi.mock("@/lib/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isLoggedIn: true, user: { id: "user-1" } }),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/raise",
   useSearchParams: () => new URLSearchParams(),
   useParams: () => ({}),
@@ -54,7 +36,6 @@ function visibleBubbleText() {
 
 beforeEach(() => {
   window.sessionStorage.clear();
-  setFlagStatusMock.mockReturnValue({ enabled: true, ready: true });
 });
 
 afterEach(() => {

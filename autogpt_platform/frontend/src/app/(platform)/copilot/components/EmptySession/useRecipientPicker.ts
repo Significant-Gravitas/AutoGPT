@@ -1,5 +1,6 @@
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect } from "react";
+import { useAutopilotModeStore } from "../../autopilotModeStore";
 import { useExpertMap } from "../../useExpertMap";
 import type { RecipientOption } from "../ChatInput/components/RecipientChip";
 
@@ -11,10 +12,12 @@ const AUTOPILOT_RECIPIENT: RecipientOption = {
 
 export function useRecipientPicker() {
   const {
+    expertsById,
     activeExperts,
     activeExpertIds,
-    isExpertsEnabled,
     hasExpertsSettled,
+    hasExpertsLoaded,
+    isExpertsError,
   } = useExpertMap();
   const [expertIdParam, setExpertIdParam] = useQueryState(
     "expertId",
@@ -49,6 +52,12 @@ export function useRecipientPicker() {
 
   return {
     options,
+    /** The experts the user can address; who can take a suggested task. */
+    experts: activeExperts,
+    /** Fired experts too: who a started task's chat is with. */
+    expertsById,
+    isRosterLoaded: hasExpertsLoaded,
+    hasRosterFailed: isExpertsError,
     recipient:
       options.find((option) => option.id === expertIdParam) ??
       AUTOPILOT_RECIPIENT,
@@ -57,11 +66,15 @@ export function useRecipientPicker() {
     // fallback is already the right answer. Keyed on "not settled yet" rather
     // than "fetching": an initial query that is pending but paused (offline)
     // reports `isFetching: false` while it still has no roster to resolve
-    // against. Gated on the flag because with experts off the roster never
-    // settles and the Otto fallback is the only correct answer.
-    isLoadingRecipient:
-      isExpertsEnabled && !hasExpertsSettled && !!expertIdParam,
+    // against.
+    isLoadingRecipient: !hasExpertsSettled && !!expertIdParam,
     selectRecipient(id: string | null) {
+      // A mode picked for one recipient must not reach another's new chat.
+      // Cleared now: a task sent on the switch reads it before
+      // useChatSession's own clear runs.
+      if (id !== expertIdParam) {
+        useAutopilotModeStore.getState().clearNewChatChoice();
+      }
       void setExpertIdParam(id);
     },
   };

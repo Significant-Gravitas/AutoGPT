@@ -56,23 +56,3 @@ class ResponseDataSerializer(BaseSerializer):
         if not data:
             return []
         return [cls.serialize_dict(item) for item in data]
-
-
-class ResponseSerializer:
-    @classmethod
-    def serialize(cls, response) -> Dict[str, Any]:
-        """Main serializer that handles both data and includes"""
-        result = {"data": None, "included": {}}
-
-        # Handle response.data
-        if response.data:
-            if isinstance(response.data, list):
-                result["data"] = ResponseDataSerializer.serialize_list(response.data)
-            else:
-                result["data"] = ResponseDataSerializer.serialize_dict(response.data)
-
-        # Handle includes
-        if hasattr(response, "includes") and response.includes:
-            result["included"] = IncludesSerializer.serialize(response.includes)
-
-        return result

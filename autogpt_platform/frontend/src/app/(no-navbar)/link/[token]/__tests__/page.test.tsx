@@ -22,6 +22,14 @@ const mockUseSearchParams = vi.hoisted(() => vi.fn());
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockLogOut = vi.hoisted(() => vi.fn());
 
+const mockToast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  useToast: () => ({ toast: mockToast, dismiss: vi.fn() }),
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: mockUseParams,
   usePathname: () => "/link/token-123",
@@ -120,6 +128,38 @@ describe("PlatformLinkPage", () => {
       screen.getByRole("link", { name: /^sign in$/i }).getAttribute("href"),
     ).toBe("/login?next=%2Flink%2Ftoken-123");
     expect(infoHandler).not.toHaveBeenCalled();
+  });
+
+  test("keeps the Telegram identity through sign-in and sign-up", () => {
+    // A Telegram group link only confirms with the identity Telegram signed
+    // onto the button, so a signed-out admin must come back with it.
+    mockUseAuth.mockReturnValue({
+      user: null,
+      isLoggedIn: false,
+      isUserLoading: false,
+      logOut: mockLogOut,
+    });
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({
+        platform: "TELEGRAM",
+        id: "424242",
+        first_name: "Bently",
+        auth_date: "1750000000",
+        hash: "abc123",
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    const next = encodeURIComponent(
+      "/link/token-123?id=424242&first_name=Bently&auth_date=1750000000&hash=abc123",
+    );
+    expect(
+      screen.getByRole("link", { name: /^sign in$/i }).getAttribute("href"),
+    ).toBe(`/login?next=${next}`);
+    expect(
+      screen.getByRole("link", { name: /^sign up$/i }).getAttribute("href"),
+    ).toBe(`/signup?next=${next}`);
   });
 
   test("loads server link details and confirms the server link", async () => {
@@ -422,5 +462,29 @@ describe("PlatformLinkPage", () => {
       expect(mockLogOut).toHaveBeenCalledTimes(1);
       expect(window.location.href).toBe("/login?next=%2Flink%2Ftoken-123");
     });
+  });
+
+  test("stays put and says so when the sign-out can't reach the server", async () => {
+    mockLogOut.mockRejectedValue(new TypeError("Failed to fetch"));
+    const before = window.location.href;
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "DISCORD",
+        link_type: LinkType.SERVER,
+        server_name: "Builders Guild",
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /not you/i }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Couldn't sign you out" }),
+      ),
+    );
+    expect(mockLogOut).toHaveBeenCalledTimes(1);
+    expect(window.location.href).toBe(before);
   });
 });

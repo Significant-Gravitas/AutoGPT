@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "bad_request",
+    "details": null,
+    "message": "Invalid graph version: -1"
+  }
+}

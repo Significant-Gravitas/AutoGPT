@@ -2,7 +2,7 @@ import json
 import re
 import urllib.parse
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
@@ -12,6 +12,7 @@ import fastapi.testclient
 import httpx
 import pytest
 import pytest_mock
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
 from prisma.actions import UserActions
@@ -130,6 +131,57 @@ def test_get_or_create_user_route_reports_creation(
     assert response.headers["X-AutoGPT-User-Created"] == "true"
 
 
+@pytest.mark.parametrize("was_created", [False, True])
+def test_get_or_create_user_route_flags_an_internal_sign_in(
+    mocker: pytest_mock.MockFixture, test_user_id: str, was_created: bool
+) -> None:
+    """A sign-in sets is_internal again; a new account was sent it already."""
+    mock_user = Mock(id=test_user_id, email="test@example.com")
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {"id": test_user_id}
+    mocker.patch(
+        "backend.api.features.user.routes.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=was_created),
+    )
+    mark = mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
+    mocker.patch("backend.api.features.user.routes.set_tier_on_sign_in")
+
+    assert client.post("/auth/user").status_code == 200
+
+    if was_created:
+        mark.assert_not_called()
+    else:
+        mark.assert_called_once_with(test_user_id, "test@example.com", "user")
+
+
+@pytest.mark.parametrize("was_created", [False, True])
+def test_get_or_create_user_route_sets_the_tier_at_a_sign_in(
+    mocker: pytest_mock.MockFixture, test_user_id: str, was_created: bool
+) -> None:
+    """A sign-in sets the stored tier on the PostHog person (SECRT-3411); a
+    new account gets it from the signup sync."""
+    mock_user = Mock(
+        id=test_user_id,
+        email="test@example.com",
+        subscription_tier=SubscriptionTier.BUSINESS,
+    )
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.model_dump.return_value = {"id": test_user_id}
+    mocker.patch(
+        "backend.api.features.user.routes.get_or_create_user_with_status",
+        return_value=Mock(user=mock_user, was_created=was_created),
+    )
+    mocker.patch("backend.api.features.user.routes.mark_internal_on_sign_in")
+    fill = mocker.patch("backend.api.features.user.routes.set_tier_on_sign_in")
+
+    assert client.post("/auth/user").status_code == 200
+
+    if was_created:
+        fill.assert_not_called()
+    else:
+        fill.assert_called_once_with(test_user_id, SubscriptionTier.BUSINESS)
+
+
 def test_get_or_create_user_route_documents_creation_header() -> None:
     response_schema = app.openapi()["paths"]["/auth/user"]["post"]["responses"]["200"]
 
@@ -137,6 +189,48 @@ def test_get_or_create_user_route_documents_creation_header() -> None:
         "description": "Whether this request created a new user",
         "schema": {"type": "string", "enum": ["true", "false"]},
     }
+
+
+@pytest.fixture
+def closed_account() -> Iterator[str]:
+    """Signed in as an account its owner deleted: a token minted before the
+    close still verifies, so the backend itself must refuse it."""
+    user_id = f"closed-{uuid.uuid4()}"
+    app.dependency_overrides[get_jwt_payload] = lambda: {
+        "sub": user_id,
+        "role": "user",
+        "email": f"{user_id}@example.com",
+    }
+    remember_account_closed(user_id)
+    yield user_id
+    forget_account_state(user_id)
+
+
+@pytest.mark.parametrize(
+    "method,path,provision",
+    [
+        ("POST", "/auth/user", "get_or_create_user_with_status"),
+        ("GET", "/auth/user/timezone", "get_or_create_user"),
+    ],
+)
+def test_a_closed_account_is_refused_and_never_provisioned(
+    mocker: pytest_mock.MockFixture,
+    closed_account: str,
+    method: str,
+    path: str,
+    provision: str,
+) -> None:
+    """Both routes create the User row from the token when it is missing, so
+    after erasure they would bring a deleted account back."""
+    provisioned = mocker.patch(
+        f"backend.api.features.user.routes.{provision}", new_callable=AsyncMock
+    )
+
+    response = client.request(method, path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "This account is closed."}
+    provisioned.assert_not_awaited()
 
 
 def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:

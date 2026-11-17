@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { DefaultStateType } from "../components/NewControlPanel/NewBlockMenu/types";
-import { SearchResponseItemsItem } from "@/app/api/__generated__/models/searchResponseItemsItem";
+import { SearchResponse } from "@/app/api/__generated__/models/searchResponse";
 import { getSearchItemType } from "../components/NewControlPanel/NewBlockMenu/BlockMenuSearchContent/helper";
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import {
@@ -19,7 +19,7 @@ type BlockMenuStore = {
   categoryCounts: CategoryCounts;
 
   setCategoryCounts: (counts: CategoryCounts) => void;
-  setCreatorsList: (searchData: SearchResponseItemsItem[]) => void;
+  setCreatorsList: (searchData: SearchResponse["items"][number][]) => void;
   addCreator: (creator: string) => void;
   setCreators: (creators: string[]) => void;
   removeCreator: (creator: string) => void;

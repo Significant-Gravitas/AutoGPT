@@ -8,9 +8,10 @@ fits the file-length budget.
 Wiring note: warm-context retrieval (``graphiti/context.py``) fires
 ``ratification.try_ratify_on_hit`` for every retrieved edge, which
 both bumps the counter here (via ``record_memory_hit``) and promotes
-tentative edges inline. The nightly ratification sweep therefore
-rarely promotes — it primarily owns grace-period supersession of
-tentatives that never earned a hit.
+tentative edges inline. ``memory_search`` counts its returned edges
+through ``recall.record_hit`` without promoting; the nightly sweep
+promotes those. The sweep otherwise rarely promotes — it primarily
+owns grace-period supersession of tentatives that never earned a hit.
 """
 
 from __future__ import annotations

@@ -167,7 +167,7 @@ async def test_bulk_move_validates_target_folder_ownership(mocker):
 
     await wf.bulk_move_files_to_folder("ws-001", ["f1"], "fld-1")
 
-    guard.assert_awaited_once_with("fld-1", "ws-001")
+    guard.assert_awaited_once_with("fld-1", "ws-001", client=None)
     _, kwargs = file_prisma.update_many.call_args
     assert kwargs["data"] == {"folderId": "fld-1"}
     assert kwargs["where"]["workspaceId"] == "ws-001"
@@ -246,7 +246,7 @@ async def test_move_folder_refuses_a_move_into_its_own_subtree(mocker):
     mocker.patch.object(
         wf,
         "_get_folder_record",
-        mocker.AsyncMock(side_effect=lambda fid, ws: records[fid]),
+        mocker.AsyncMock(side_effect=lambda fid, ws, client: records[fid]),
     )
 
     for destination in ("grandchild", "child", "parent"):

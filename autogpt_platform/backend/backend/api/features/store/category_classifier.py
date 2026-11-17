@@ -4,11 +4,11 @@ Used by the backfill command, so it answers per listing and never raises: an
 unclassifiable listing is left uncategorised rather than mislabelled.
 """
 
-import asyncio
 import logging
 import os
 
 from backend.util.clients import get_openai_client
+from backend.util.llm.providers import call_provider_openai_compat_sync
 
 from .categories import CATEGORY_DESCRIPTIONS, StoreCategory
 
@@ -53,14 +53,13 @@ async def classify_category(
         description=description.strip()[:_MAX_DESCRIPTION_CHARS] or "(none)",
     )
     try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-                max_tokens=16,
-            ),
-            timeout=_TIMEOUT_SECONDS,
+        response = await call_provider_openai_compat_sync(
+            client=client,
+            model=_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=16,
+            timeout_seconds=_TIMEOUT_SECONDS,
         )
     except Exception as e:
         logger.warning("Store category classification failed for %r: %s", name, e)

@@ -8,10 +8,12 @@ the moment it has more to give.  The whole decoded body is never produced
 first and measured after.
 
 The encodings are the ones mitmproxy knows (``mitmproxy.net.encoding``), one
-per message as there.  Anything else cannot be read, which the caller must
-treat as a body it cannot vouch for; so is a stream that is cut short or has
-anything but a further gzip member after its end, since a client may still
-make something of it.
+per message as there, except Brotli: a box can send a ``br`` body to any host,
+and nothing it needs sends one, so the proxy never runs a Brotli decoder on a
+box's bytes.  The proxy asks servers not to send ``br`` (``addon.py``).
+Anything else cannot be read, which the caller must treat as a body it cannot
+vouch for; so is a stream that is cut short or has anything but a further gzip
+member after its end, since a client may still make something of it.
 """
 
 import zlib
@@ -19,7 +21,6 @@ from collections.abc import Callable
 from io import BytesIO
 from typing import Any
 
-import brotli
 import zstandard
 
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -138,18 +139,6 @@ def _deflate(raw: bytes, limit: int) -> bytes:
         return _single(raw, limit, -zlib.MAX_WBITS)
 
 
-def _brotli(raw: bytes, limit: int) -> bytes:
-    decoder = brotli.Decompressor()
-    out = decoder.process(raw, output_buffer_limit=limit + 1)
-    # Output still pending means the limit stopped it, not the end of the data.
-    if len(out) > limit or not decoder.can_accept_more_data():
-        raise DecodedTooLarge
-    # Data after the end is a ``brotli.error`` from ``process`` itself.
-    if not decoder.is_finished():
-        raise Undecodable("truncated brotli stream")
-    return out
-
-
 def _zstd(raw: bytes, limit: int) -> bytes:
     reader = zstandard.ZstdDecompressor().stream_reader(
         BytesIO(raw), read_across_frames=True
@@ -190,10 +179,8 @@ def bounded_decode(raw: bytes, content_encoding: str, limit: int) -> bytes:
             return _gzip(raw, limit)
         if encoding in ("deflate", "deflateraw"):
             return _deflate(raw, limit)
-        if encoding == "br":
-            return _brotli(raw, limit)
         if encoding == "zstd":
             return _zstd(raw, limit)
-    except (zlib.error, brotli.error, zstandard.ZstdError) as e:
+    except (zlib.error, zstandard.ZstdError) as e:
         raise Undecodable(type(e).__name__) from None
     raise Undecodable(f"unsupported content encoding: {encoding[:32]!r}")

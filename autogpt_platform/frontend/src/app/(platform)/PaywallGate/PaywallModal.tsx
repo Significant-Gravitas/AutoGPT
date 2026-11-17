@@ -4,12 +4,16 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCanDeleteAccount } from "@/components/organisms/DeleteAccountFlow/useCanDeleteAccount";
 import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
 import { PaymentRecoveryCard } from "@/components/organisms/UsageExperience/PaymentRecoveryCard";
+import { cn } from "@/lib/utils";
 import { usePaymentRecovery } from "@/services/usageExperience/usePaymentRecovery";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
+import { DeleteAccountButton } from "./components/DeleteAccountButton/DeleteAccountButton";
+import { PausedSchedulesNotice } from "./components/PausedSchedulesNotice";
 import { PaywallPlanChoices } from "./components/PaywallPlanChoices";
 import { PaywallHeader } from "./components/PaywallHeader";
 import { usePaywallModal } from "./usePaywallModal";
@@ -34,7 +38,9 @@ export function PaywallModal() {
     handleClose,
     trial,
     trialOffer,
+    pausedWorkflowSchedules,
   } = usePaywallModal();
+  const canDeleteAccount = useCanDeleteAccount();
   // The gate only opens this modal for accounts without a plan.
   const recovery = usePaymentRecovery("NO_TIER");
 
@@ -54,36 +60,45 @@ export function PaywallModal() {
     >
       <Dialog.Content>
         <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
-          <div className="flex w-full justify-start">
+          <div
+            className={cn(
+              "flex w-full justify-start",
+              canDeleteAccount && "flex-wrap gap-1",
+            )}
+          >
             <Button
-              variant="ghost"
+              variant="ghost-muted"
               size="small"
               onClick={handleLogout}
               leftIcon={<Icon icon={Logout03Icon} size={16} />}
-              className="bg-white/90 text-zinc-500 hover:text-zinc-700"
             >
               Log out
             </Button>
+            {canDeleteAccount ? <DeleteAccountButton /> : null}
           </div>
           {recovery.paymentFailed ? (
-            <PaymentRecoveryCard
-              payment={recovery.payment}
-              fallback="Update your payment method in billing to continue. Your chats, workflows and results are saved."
-            />
+            <>
+              <PaymentRecoveryCard
+                payment={recovery.payment}
+                fallback="Update your payment method in billing to continue. Your chats, workflows and results are saved."
+              />
+              <PausedSchedulesNotice count={pausedWorkflowSchedules} />
+            </>
           ) : (
             <>
               <PaywallHeader />
+              <PausedSchedulesNotice count={pausedWorkflowSchedules} />
 
               <div className="relative mt-2 w-full">
                 {isLoading || trial.isLoading ? (
-                  <div className="grid w-full grid-cols-1 gap-4 px-[1rem] md:grid-cols-3 md:px-0">
+                  <div className="grid w-full grid-cols-1 gap-4 px-4 md:grid-cols-3 md:px-0">
                     <Skeleton className="h-[26rem] rounded-2xl" />
                     <Skeleton className="h-[26rem] rounded-2xl" />
                     <Skeleton className="h-[26rem] rounded-2xl" />
                   </div>
                 ) : plans.length === 0 ? (
                   <div className="flex flex-col items-center gap-3">
-                    <p className="text-center text-sm text-zinc-500">
+                    <p className="text-center text-body text-foreground-tertiary">
                       Subscriptions are temporarily unavailable. Please try
                       again shortly.
                     </p>
@@ -115,7 +130,6 @@ export function PaywallModal() {
                     // The modal renders its own title above, so the organism
                     // contributes only the billing toggle.
                     header={null}
-                    goalSurface="upgrade_modal"
                     plans={plans}
                     country={country}
                     billing={selectedCycle}

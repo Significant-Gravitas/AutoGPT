@@ -16,14 +16,12 @@ vi.mock("../../helpers", () => ({
 }));
 
 describe("queueFollowUpMessage", () => {
-  const originalFetch = global.fetch;
-
   beforeEach(() => {
-    global.fetch = vi.fn();
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -141,5 +139,41 @@ describe("queueFollowUpMessage", () => {
     await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
       /got 429/,
     );
+  });
+
+  it("explains a temporary outage without exposing the endpoint", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "Service unavailable" }), {
+        status: 503,
+        headers: { "Retry-After": "5" },
+      }),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "keep this")).rejects.toThrow(
+      "This conversation is temporarily unavailable; try again shortly",
+    );
+  });
+
+  it("reports a full buffer with guidance to wait for earlier messages", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ detail: "Pending message buffer is full." }),
+        {
+          status: 429,
+          headers: {
+            "X-Error-Code": "pending_buffer_full",
+            "Retry-After": "5",
+          },
+        },
+      ),
+    );
+    await expect(
+      queueFollowUpMessage("sess-1", "keep this"),
+    ).rejects.toMatchObject({
+      name: "QueueFollowUpFullError",
+      message: expect.stringMatching(
+        /too many messages waiting; wait for earlier/,
+      ),
+    });
   });
 });

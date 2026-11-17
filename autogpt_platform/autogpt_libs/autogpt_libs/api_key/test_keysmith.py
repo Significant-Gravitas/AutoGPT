@@ -1,5 +1,8 @@
 import hashlib
 
+import pytest
+
+from autogpt_libs.api_key import keysmith as keysmith_module
 from autogpt_libs.api_key.keysmith import APIKeySmith
 
 
@@ -77,3 +80,18 @@ def test_invalid_salt_format():
 
     # Invalid salt format should fail gracefully
     assert keysmith.verify_key(key.key, key.hash, "invalid_hex") is False
+
+
+def test_a_generated_key_never_starts_like_an_oauth_token(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A key headed like a token would be looked up as one, or cost a hash as both."""
+    bodies = iter(["xt_" + "a" * 40, "rt_" + "b" * 40, "c" * 43])
+    monkeypatch.setattr(
+        keysmith_module.secrets, "token_urlsafe", lambda _nbytes: next(bodies)
+    )
+
+    key = APIKeySmith().generate_key()
+
+    assert key.key == "agpt_" + "c" * 43
+    assert not key.head.startswith(APIKeySmith.RESERVED_PREFIXES)

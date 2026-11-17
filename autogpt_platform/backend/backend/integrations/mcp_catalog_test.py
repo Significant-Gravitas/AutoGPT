@@ -36,6 +36,24 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     )
 
 
+def test_cloudflare_catalog_entry_uses_hosted_authentication():
+    entry = get_mcp_catalog_entry_for_url("https://mcp.cloudflare.com/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_cloudflare"
+    assert entry.display_name == "Cloudflare"
+    assert entry.mcp_server.icon_id == "cloudflare"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    # Its resource asks only for identity and adds scopes through step-up,
+    # which we don't do. A pinned list would break sign-in once Cloudflare
+    # retires one of its scopes, so take whatever it advertises.
+    assert entry.mcp_server.oauth_scopes is None
+    assert entry.mcp_server.oauth_request_all_scopes is True
+    assert "oauth_request_all_scopes" not in entry.mcp_server.model_dump()
+
+
 def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     entry = get_mcp_catalog_entry_for_url("https://app.openseo.so/mcp")
 
@@ -48,6 +66,68 @@ def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
     assert entry.mcp_server.allow_custom_url is True
     assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
     assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
+
+
+def test_aimlapi_catalog_entry_is_filed_under_the_aiml_api_provider():
+    entry = get_mcp_catalog_entry_for_url("https://mcp.aimlapi.com/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_aimlapi"
+    assert entry.display_name == "AI/ML API"
+    assert entry.mcp_server.icon_id == "aiml_api"
+    assert entry.mcp_server.provider == "aiml_api"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert (
+        entry.mcp_server.documentation_url == "https://docs.aimlapi.com/quickstart/mcp"
+    )
+
+
+# Every tool the server listed on 2026-11-12. The billed ones charge the user's
+# AI/ML API balance, so the effect map must make each of them ask first.
+AIMLAPI_FREE_TOOLS = [
+    "account_balance",
+    "account_usage",
+    "job_result",
+    "job_status",
+    "model_get",
+    "models_compare",
+    "models_find_best",
+    "models_list",
+    "models_search",
+    "ping",
+    "tools_inspect",
+    "tools_run_status",
+    "tools_search",
+]
+AIMLAPI_BILLED_TOOLS = [
+    "audio_generate",
+    "embeddings_create",
+    "image_generate",
+    "jev_model_search",
+    "jev_tool_search",
+    "llm_chat",
+    "tools_run",
+    "video_generate",
+]
+
+
+@pytest.mark.parametrize("tool", AIMLAPI_BILLED_TOOLS)
+def test_aimlapi_billed_tools_are_never_mapped_as_reads(tool: str):
+    assert mcp_tool_effect("https://mcp.aimlapi.com/mcp", tool) == "external"
+
+
+@pytest.mark.parametrize("tool", AIMLAPI_FREE_TOOLS)
+def test_aimlapi_free_tools_are_mapped_as_reads(tool: str):
+    assert mcp_tool_effect("https://mcp.aimlapi.com/mcp", tool) == "read"
+
+
+def test_aimlapi_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_aimlapi"]
+    assert sorted(effects.read) == AIMLAPI_FREE_TOOLS
+    assert sorted(effects.external) == AIMLAPI_BILLED_TOOLS
+    assert effects.irreversible == []
 
 
 def test_no_catalogued_server_is_limited_to_read_access():
@@ -139,6 +219,15 @@ def oauth_server_data():
 def test_catalog_rejects_inconsistent_authentication(changes):
     with pytest.raises(ValidationError):
         MCPServerMetadata.model_validate({**oauth_server_data(), **changes})
+
+
+def test_requesting_every_advertised_scope_is_an_oauth_setting():
+    data = {**oauth_server_data(), "oauth_request_all_scopes": True}
+    assert MCPServerMetadata.model_validate(data).oauth_request_all_scopes
+    with pytest.raises(ValidationError, match="require OAuth"):
+        MCPServerMetadata.model_validate({**data, "auth_methods": ["bearer"]})
+    with pytest.raises(ValidationError, match="not both"):
+        MCPServerMetadata.model_validate({**data, "oauth_scopes": ["read"]})
 
 
 @pytest.mark.parametrize("field", ["oauth_scopes", "oauth_write_scopes"])
@@ -255,6 +344,10 @@ def test_a_tool_cannot_carry_two_effects():
             "irreversible",
         ),
         ("https://api.githubcopilot.com/mcp/", "not_published", None),
+        ("https://mcp.cloudflare.com/mcp", "search", "read"),
+        ("https://mcp.cloudflare.com/mcp", "docs", "read"),
+        ("https://mcp.cloudflare.com/mcp", "whoami", "read"),
+        ("https://mcp.cloudflare.com/mcp", "execute", "external"),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )

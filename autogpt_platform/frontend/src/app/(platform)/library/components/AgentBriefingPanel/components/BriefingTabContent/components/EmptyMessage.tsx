@@ -11,7 +11,7 @@ interface Props {
 export function EmptyMessage({ tab }: Props) {
   return (
     <div className="flex items-center justify-center pt-4">
-      <Text variant="body-medium" className="text-zinc-600">
+      <Text variant="body-medium" tone="secondary">
         {getEmptyMessage(tab)}
       </Text>
     </div>

@@ -13,11 +13,9 @@ from backend.util.settings import BehaveAs
 
 
 @pytest.fixture
-def admission(mocker):
+def admission(mocker, set_platform_payment):
     mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.CLOUD)
-    payments = mocker.patch.object(
-        rate_limit, "evaluate_feature_flag", new=AsyncMock(return_value=(True, True))
-    )
+    set_platform_payment(True)
     tier_lookup = mocker.patch.object(
         rate_limit,
         "get_user_subscription_tier",
@@ -28,7 +26,7 @@ def admission(mocker):
     connect = mocker.patch.object(
         rate_limit, "get_redis_async", new=AsyncMock(return_value=redis)
     )
-    return payments, tier_lookup, redis, connect
+    return set_platform_payment, tier_lookup, redis, connect
 
 
 @pytest.mark.asyncio
@@ -64,40 +62,18 @@ async def test_active_plan_does_not_use_budget(admission):
 
 @pytest.mark.asyncio
 async def test_self_host_does_not_read_tier_or_use_budget(admission, mocker):
-    payments, tier_lookup, _, connect = admission
+    _, tier_lookup, _, connect = admission
     mocker.patch.object(rate_limit.settings.config, "behave_as", BehaveAs.LOCAL)
     await rate_limit.enforce_personalization_budget("user-1")
     tier_lookup.assert_not_awaited()
-    payments.assert_not_awaited()
     connect.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_authoritatively_disabled_payments_do_not_use_budget(admission):
-    payments, _, _, connect = admission
-    payments.return_value = (False, True)
+async def test_disabled_payments_do_not_use_budget(admission):
+    set_payment, _, _, connect = admission
+    set_payment(False)
     await rate_limit.enforce_personalization_budget("user-1")
-    connect.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("fallback", [False, True])
-async def test_unavailable_cloud_flag_cannot_bypass_budget(admission, fallback):
-    payments, _, _, connect = admission
-    payments.return_value = (fallback, False)
-    with pytest.raises(HTTPException) as caught:
-        await rate_limit.enforce_personalization_budget("user-1")
-    assert caught.value.status_code == 503
-    connect.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_active_plan_does_not_depend_on_flag_availability(admission):
-    payments, tier_lookup, _, connect = admission
-    tier_lookup.return_value = SubscriptionTier.PRO
-    payments.side_effect = RuntimeError("flag vendor down")
-    await rate_limit.enforce_personalization_budget("user-1")
-    payments.assert_not_awaited()
     connect.assert_not_awaited()
 
 

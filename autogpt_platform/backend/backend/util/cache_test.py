@@ -12,11 +12,17 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
-from backend.util.cache import cached, clear_thread_cache, thread_cached
+from backend.util.cache import (
+    _SCAN_BATCH_SIZE,
+    cached,
+    clear_thread_cache,
+    thread_cached,
+)
 
 
 class TestThreadCached:
@@ -678,6 +684,21 @@ class TestCache:
 
 class TestSharedCache:
     """Tests for shared_cache (Redis-backed) functionality."""
+
+    def test_scans_walk_redis_in_large_batches(self, mocker):
+        redis = mocker.MagicMock()
+        redis.scan_iter.side_effect = lambda *args, **kwargs: iter([])
+        mocker.patch("backend.util.cache._get_redis", return_value=redis)
+
+        @cached(ttl_seconds=30, shared_cache=True)
+        def batched_scan_function() -> int:
+            return 1
+
+        batched_scan_function.cache_info()
+        batched_scan_function.cache_clear()
+
+        batch_sizes = [c.kwargs.get("count") for c in redis.scan_iter.call_args_list]
+        assert batch_sizes == [_SCAN_BATCH_SIZE, _SCAN_BATCH_SIZE]
 
     def test_sync_shared_cache_basic(self):
         """Test basic shared cache functionality with sync function."""
@@ -1343,3 +1364,57 @@ class TestCacheNoneHandling:
         assert call_count == 1
 
         maybe_none_redis.cache_clear()
+
+
+class TestCacheKeyBinding:
+    """The service RPC calls cached functions by keyword while invalidation
+    call sites pass arguments positionally; both must reach one entry."""
+
+    @pytest.mark.parametrize("shared_cache", [False, True])
+    def test_delete_reaches_an_entry_cached_by_another_call_style(
+        self, shared_cache: bool
+    ):
+        call_count = 0
+
+        @cached(ttl_seconds=30, shared_cache=shared_cache)
+        def lookup(user_id: str, include_org: bool = False) -> str:
+            nonlocal call_count
+            call_count += 1
+            return f"{user_id}:{include_org}"
+
+        lookup.cache_clear()
+        lookup(user_id="u1")
+        lookup("u1")
+        lookup("u1", False)
+        assert call_count == 1
+
+        assert lookup.cache_delete("u1") is True
+        lookup(user_id="u1")
+        assert call_count == 2
+
+        assert lookup.cache_delete(user_id="u1", include_org=False) is True
+        lookup("u1")
+        assert call_count == 3
+
+        lookup("u1", include_org=True)
+        assert call_count == 4
+        lookup.cache_clear()
+
+    @pytest.mark.parametrize("shared_cache", [False, True])
+    def test_a_call_that_does_not_bind_raises_instead_of_reading_the_cache(
+        self, shared_cache: bool
+    ):
+        @cached(ttl_seconds=30, shared_cache=shared_cache)
+        def lookup(user_id: str, /) -> str:
+            return user_id
+
+        lookup.cache_clear()
+        assert lookup("u1") == "u1"
+
+        # Keyed by name, this call would match the entry ``lookup("u1")`` stored.
+        by_name: dict[str, Any] = {"user_id": "u1"}
+        with pytest.raises(TypeError):
+            lookup(**by_name)
+        with pytest.raises(TypeError):
+            lookup.cache_delete(**by_name)
+        lookup.cache_clear()

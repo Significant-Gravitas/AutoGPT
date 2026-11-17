@@ -22,23 +22,31 @@ export function WorkGroup({ group, timezone }: Props) {
   const header = (
     <div className="flex min-w-0 items-center gap-2">
       <ActorMark actor={actor} />
-      <Text variant="body-medium" tone="primary" className="truncate leading-5">
+      <Text variant="body-medium-tight" tone="primary" className="truncate">
         {actor.name}
       </Text>
-      <Text
-        variant="small-medium"
-        as="span"
+      <span
         className={cn(
-          "shrink-0 rounded-full border px-1.5 capitalize leading-4",
+          "shrink-0 rounded-full border px-1.5",
+          // oxlint-disable-next-line design-system/require-static-classes -- ACTOR_CHIPS holds whole, static class strings
           chip.className,
         )}
       >
-        {chip.label}
-      </Text>
+        <Text
+          variant="small-medium-tight"
+          as="span"
+          tone="inherit"
+          transform="capitalize"
+          className="block"
+        >
+          {chip.label}
+        </Text>
+      </span>
       <Text
         variant="small"
         tone="muted"
-        className="ml-auto shrink-0 tabular-nums"
+        tabular
+        className="ml-auto shrink-0"
         as="span"
       >
         {formatGroupCounts(group)}
@@ -47,7 +55,9 @@ export function WorkGroup({ group, timezone }: Props) {
         <Icon
           icon={ArrowUpRight01Icon}
           size={14}
-          className="shrink-0 text-zinc-300 transition-colors group-hover:text-zinc-600"
+          tone="disabled"
+          motion="colors"
+          className="shrink-0 group-hover:text-foreground-secondary"
           aria-hidden="true"
         />
       ) : null}
@@ -56,11 +66,11 @@ export function WorkGroup({ group, timezone }: Props) {
 
   return (
     <article aria-label={actor.name}>
-      <div className="bg-zinc-100/80 px-4 py-2">
+      <div className="bg-surface-hover/80 px-4 py-2">
         {actor.link ? (
           <Link
             href={actor.link}
-            className="group block rounded outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+            className="group block rounded outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
           >
             {header}
           </Link>
@@ -69,7 +79,7 @@ export function WorkGroup({ group, timezone }: Props) {
         )}
       </div>
       {runs.length > 0 ? (
-        <div className="divide-y divide-zinc-100 px-4">
+        <div className="divide-y divide-separator px-4">
           {runs.map((run) => (
             <OutcomeRow
               key={run.id}

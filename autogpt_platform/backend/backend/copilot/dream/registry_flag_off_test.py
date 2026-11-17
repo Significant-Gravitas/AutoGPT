@@ -2,8 +2,7 @@
 the scope's recorded crons in place, and pause or wipe removes them. Their
 bodies check the flag at run time and do nothing; the scheduler's tests pin
 that (``TestSkillLearningScopeGate::test_the_flag_off_still_short_circuits``,
-``TestExecuteNightlyBatchSyncRuntimeGate``,
-``TestExecuteCommunityRebuildRuntimeGate``). Cleaning them up on flag-off
+``TestExecuteNightlyBatchSyncRuntimeGate``). Cleaning them up on flag-off
 needs generation-aware intent, which is left for later.
 
 Fakes come from ``registry_fakes_test.py``.
@@ -44,9 +43,7 @@ def env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
 
 @pytest.mark.asyncio
 async def test_turning_learning_off_leaves_its_cron_recorded(env):
-    """A learning-only account: the ensure after the flag went off returns
-    before it reads the row, and the reconcile keeps the cron the row
-    records."""
+    """An ensure with learning off does not erase its recorded cron."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     env.flags[LEARN] = False
 
@@ -79,14 +76,14 @@ async def test_turning_learning_off_with_the_dream_on_leaves_both_recorded(env):
 
 @pytest.mark.asyncio
 async def test_turning_the_dream_off_leaves_an_experts_crons_recorded(env):
-    env.flags = {DREAM: True, Flag.GRAPHITI_COMMUNITIES_ENABLED: True}
+    env.flags = {DREAM: True}
     await registry.ensure_scope_scheduled(EXPERT)
     env.flags = {}
 
     await registry.ensure_scope_scheduled(EXPERT)
 
     row = env.db.rows[EXPERT.scope_key]
-    assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+    assert {row.nightly_job_id} == job_ids(EXPERT)
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
 
@@ -106,7 +103,7 @@ async def test_a_stop_removes_the_crons_of_a_flag_turned_off(env, state):
 
 
 @pytest.mark.asyncio
-async def test_every_flag_off_costs_no_database_call(env):
+async def test_other_flags_off_preserves_learning_when_registry_is_unavailable(env):
     await registry.ensure_scope_scheduled(ACCOUNT)
     env.flags = {}
     env.db.fail = True
@@ -114,7 +111,7 @@ async def test_every_flag_off_costs_no_database_call(env):
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
     assert {r["reason"] for r in result.values()} == {
-        "graphiti_communities_disabled",
+        "registry_unavailable",
         "dream_pass_disabled",
         "skill_learning_disabled",
     }

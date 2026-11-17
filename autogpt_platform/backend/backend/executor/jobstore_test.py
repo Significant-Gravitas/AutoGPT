@@ -2,12 +2,15 @@ import logging
 import os
 import pickle
 import tempfile
+import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from unittest.mock import MagicMock, patch
 
 import pytest
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.util import datetime_to_utc_timestamp
 from sqlalchemy import select
@@ -380,6 +383,48 @@ def test_strip_enums_recurses_through_containers():
 def test_strip_enums_leaves_plain_values_alone():
     payload = {"user_id": "u1", "graph_version": 3, "cron": "0 * * * *"}
     assert _strip_enums(payload) == payload
+
+
+def test_a_held_wake_is_one_job_per_chat_and_runs_after_its_scheduler_is_lost():
+    fd, path = tempfile.mkstemp(suffix=".sqlite")
+    os.close(fd)
+    url = f"sqlite:///{path}"
+    wake = MagicMock()
+    ran = threading.Event()
+    try:
+        lost = _production_like(url)
+        lost.start(paused=True)
+        scheduler = Scheduler.__new__(Scheduler)
+        scheduler.scheduler = lost
+        scheduler.schedule_held_wake("user-1", "chat-1", 0.05)
+        scheduler.schedule_held_wake("user-1", "chat-1", 0.05)
+        assert [job.id for job in lost.get_jobs()] == ["held_wake_chat-1"]
+        lost.shutdown(wait=False)
+        time.sleep(0.3)
+
+        with (
+            patch("backend.copilot.gate.held.wake", wake),
+            patch(f"{_SCHEDULER_PATH}.run_async", side_effect=lambda _: ran.set()),
+        ):
+            restarted = _production_like(url)
+            restarted.start()
+            try:
+                assert ran.wait(5)
+            finally:
+                restarted.shutdown(wait=False)
+        wake.assert_called_once_with("user-1", "chat-1")
+    finally:
+        os.unlink(path)
+
+
+def _production_like(url: str) -> BackgroundScheduler:
+    return BackgroundScheduler(
+        jobstores={
+            Jobstores.EXECUTION.value: ResilientSQLAlchemyJobStore(url=url),
+            Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
+        },
+        job_defaults={"coalesce": True, "misfire_grace_time": None},
+    )
 
 
 @contextmanager

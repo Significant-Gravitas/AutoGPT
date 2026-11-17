@@ -229,7 +229,11 @@ def test_catalog_entry_without_every_usd_price_is_unpriced(monkeypatch, caplog):
 
 @pytest.mark.parametrize(
     "slug,read,write",
-    [("claude-haiku-5-5", 0.01, 0.125), ("claude-fable-5-1", 0.25, 12.5)],
+    [
+        ("claude-haiku-5-5", 0.01, 0.125),
+        ("claude-fable-5-1", 0.25, 12.5),
+        ("claude-fable-5-2", 0.20, 10.0),
+    ],
 )
 def test_new_anthropic_cache_prices(slug, read, write):
     card = price_for(slug)
