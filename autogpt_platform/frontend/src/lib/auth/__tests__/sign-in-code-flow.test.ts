@@ -904,6 +904,33 @@ describe("the code", () => {
     expect((await browser.enterCode(emailedCode())).status).toBe(200);
   });
 
+  it("doesn't renew a sign-in that ran out while its new code was made", async () => {
+    const { browser, db } = await waitingOnCode();
+    ageCode(db, 61_000);
+    // The sign-in runs out just after the resend reads it.
+    dbGate.current = async (method, args) => {
+      if (!writesPendingRow(method, "updateMany", args)) return;
+      for (const row of db.UserAuthVerification) {
+        if (String(row.identifier).startsWith("sign-in-code:")) {
+          row.expiresAt = new Date(Date.now() - 1000);
+        }
+      }
+    };
+
+    const resend = await browser.resendCode();
+    dbGate.current = null;
+
+    expect(await resend.json()).toMatchObject({
+      code: "sign_in_code_expired",
+    });
+    expect(emailsOfType("sign_in_code")).toHaveLength(1);
+    expect(
+      db.UserAuthVerification.filter((row) =>
+        String(row.identifier).startsWith("sign-in-code-email:"),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("gives the hour's slot back when a new code can't be stored", async () => {
     const { browser, db } = await waitingOnCode();
     ageCode(db, 61_000);

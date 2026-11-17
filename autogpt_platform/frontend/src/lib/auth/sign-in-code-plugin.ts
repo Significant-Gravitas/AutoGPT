@@ -1,8 +1,6 @@
 import type { GenericEndpointContext } from "@better-auth/core";
 import type { BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint } from "better-auth/api";
-import { setSessionCookie } from "better-auth/cookies";
-import { handleOAuthUserInfo } from "better-auth/oauth2";
 import * as z from "zod";
 import { limitAttemptsPerIP } from "./attempt-limits";
 import {
@@ -35,12 +33,11 @@ import {
   consumePending,
   findPending,
   MAX_CODE_ATTEMPTS,
-  type PendingRecord,
   replacePending,
   restorePending,
   secondsUntilResend,
 } from "./sign-in-code-store";
-import { findProvider, markConfirmedByCode } from "./sign-in-provider";
+import { finishSignIn } from "./sign-in-code-finish";
 
 // Documented in docs/platform/rate-limits.md: update it with any change here.
 const CODE_CHECKS_PER_IP = { max: 10, windowSeconds: 60 };
@@ -152,9 +149,12 @@ async function resend(ctx: GenericEndpointContext) {
     throw codeEmailRefused(SIGN_IN_CODE_UNSENT);
   });
   if (!stored) {
-    // Another resend got there first, and its code is on its way.
     await releaseCodeEmail(ctx.context, claim.slot);
-    throw tooSoon(SIGN_IN_CODE_RESEND_SECONDS);
+    // Another resend got there first and its code is on its way, or the
+    // sign-in ran out meanwhile.
+    throw (await findPending(ctx))
+      ? tooSoon(SIGN_IN_CODE_RESEND_SECONDS)
+      : expiredError(ctx);
   }
   if (!(await sendCode(ctx.context, record, code, claim.slot))) {
     // The old code still works, as long as it did, and the email can be asked
@@ -164,46 +164,4 @@ async function resend(ctx: GenericEndpointContext) {
   }
   await setPendingCookie(ctx, id);
   return ctx.json({ resendInSeconds: SIGN_IN_CODE_RESEND_SECONDS });
-}
-
-// Better Auth's own sign-in for the provider account the callback saw, with
-// the address now proven. It links that account to the address's account, or
-// creates one, through every database hook, then starts the session. The
-// account row gets no provider tokens: the callback's were never kept, and
-// nothing reads a sign-in account's tokens (`/get-access-token` is off). The
-// provider's next sign-in stores them.
-async function finishSignIn(
-  ctx: GenericEndpointContext,
-  record: PendingRecord,
-) {
-  markConfirmedByCode(ctx, record.providerId);
-  const provider = await findProvider(ctx, record.providerId);
-  if (!provider) throw expiredError(ctx);
-  const result = await handleOAuthUserInfo(ctx, {
-    userInfo: {
-      id: record.accountId,
-      email: record.email,
-      emailVerified: true,
-      name: record.name,
-      image: record.image,
-    },
-    account: { providerId: record.providerId, accountId: record.accountId },
-    // A code only joins an account. If the address's account went away since,
-    // nothing is created in its place.
-    disableSignUp: true,
-    requireExactAccountBinding: true,
-    source: { method: "oauth", oauth: { providerId: record.providerId } },
-  });
-  if (!result.data) {
-    // Better Auth's sign-in errors, as its callback sends them to /login.
-    throw new APIError("FORBIDDEN", {
-      code: result.error.split(" ").join("_"),
-      message: "",
-    });
-  }
-  await setSessionCookie(ctx, result.data);
-  return ctx.json({
-    provider: record.providerId,
-    newUser: result.isRegister === true,
-  });
 }

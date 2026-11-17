@@ -87,8 +87,8 @@ export async function findPending(
 
 /**
  * Puts a new code in place of the one this request read, if it is still
- * there: of two resends at once, one wins. The new version, or null when
- * another request changed the row first.
+ * there and still good: of two resends at once, one wins. The new version, or
+ * null when another request changed the row first or the sign-in ran out.
  */
 export async function replacePending(
   context: AuthEmailContext,
@@ -99,7 +99,11 @@ export async function replacePending(
   const value = JSON.stringify(record);
   const updated = await context.adapter.updateMany({
     model: "verification",
-    where: thisVersion(pending.rowID, pending.value),
+    where: [
+      ...thisVersion(pending.rowID, pending.value),
+      // Not a sign-in that ran out since it was read.
+      { field: "expiresAt", value: new Date(), operator: "gt" },
+    ],
     update: { value, expiresAt, updatedAt: new Date() },
   });
   return Number(updated) > 0 ? value : null;
