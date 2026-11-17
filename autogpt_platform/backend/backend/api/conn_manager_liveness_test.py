@@ -5,14 +5,13 @@ through a TCP proxy the test breaks. Skips when no cluster is reachable."""
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import AsyncExitStack
 from uuid import uuid4
 
 import pytest
 
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import _ShardStream
-from backend.util.testing import TcpProxy, is_tcp_port_reachable
+from backend.util.testing import TcpProxy, is_tcp_port_reachable, redis_shard_proxies
 
 pytestmark = pytest.mark.skipif(
     not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
@@ -28,27 +27,9 @@ _WITHIN_S = 8.0
 async def shard_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[Callable[[str], Awaitable[TcpProxy]]]:
-    """Route a channel's shard-pinned pub/sub connection through a TcpProxy to
-    the shard that really owns it; the cluster client itself goes direct."""
-    monkeypatch.setattr(redis_client, "PUBSUB_PING_AFTER", _PING_AFTER_S, raising=False)
-    monkeypatch.setattr(
-        redis_client, "PUBSUB_PONG_TIMEOUT", _PONG_TIMEOUT_S, raising=False
-    )
-    real_resolve = redis_client.resolve_shard_for_channel
-    routes: dict[str, TcpProxy] = {}
-
-    def resolve(channel: str) -> tuple[str, int]:
-        proxy = routes.get(channel)
-        return proxy.address if proxy else real_resolve(channel)
-
-    monkeypatch.setattr(redis_client, "resolve_shard_for_channel", resolve)
-    async with AsyncExitStack() as stack:
-
-        async def route(channel: str) -> TcpProxy:
-            proxy = TcpProxy(real_resolve(channel))
-            routes[channel] = await stack.enter_async_context(proxy)
-            return proxy
-
+    monkeypatch.setattr(redis_client, "PUBSUB_PING_AFTER", _PING_AFTER_S)
+    monkeypatch.setattr(redis_client, "PUBSUB_PONG_TIMEOUT", _PONG_TIMEOUT_S)
+    async with redis_shard_proxies() as route:
         yield route
     await redis_client.disconnect_async()
 

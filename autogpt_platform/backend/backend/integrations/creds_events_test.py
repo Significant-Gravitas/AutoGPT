@@ -123,16 +123,21 @@ async def test_publish_reaches_a_subscriber_in_another_event_loop():
     redis_client._async_clients.clear()
 
     received: list[CredentialsChangedEvent] = []
+    subscribed = asyncio.Event()
 
     async def consume() -> None:
         async for event in listen_creds_changed():
+            if event is None:
+                subscribed.set()
+                continue
             received.append(event)
             return
 
     task = asyncio.create_task(consume())
-    # Let SSUBSCRIBE settle; races drop the publish otherwise.
-    await asyncio.sleep(0.3)
     try:
+        # The first None marks a confirmed subscription: a publish after it
+        # can't be dropped.
+        await asyncio.wait_for(subscribed.wait(), timeout=5.0)
         await publish_creds_changed(_USER, "github")
         await asyncio.wait_for(task, timeout=5.0)
     finally:

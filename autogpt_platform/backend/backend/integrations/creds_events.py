@@ -30,9 +30,13 @@ async def publish_creds_changed(user_id: str, provider: str) -> None:
     )
 
 
-async def listen_creds_changed() -> AsyncGenerator[CredentialsChangedEvent, None]:
-    """Yield credential-change events published by any process."""
-    async for event in _bus.listen_events(CREDS_CHANGED_CHANNEL):
+async def listen_creds_changed() -> (
+    AsyncGenerator[CredentialsChangedEvent | None, None]
+):
+    """Yield credential-change events published by any process, for as long
+    as the caller iterates. ``None`` means changes may have been missed while
+    the stream was down: drop every cached credential."""
+    async for event in _bus.listen_with_resync(CREDS_CHANGED_CHANNEL):
         yield event
 
 

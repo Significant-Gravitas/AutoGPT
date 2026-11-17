@@ -3,9 +3,13 @@ it on purpose, or prove that reads run side by side."""
 
 import asyncio
 import socket
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AsyncExitStack, asynccontextmanager
 from functools import cache
 from typing import Self, TypeVar
+from unittest.mock import patch
+
+from backend.data import redis_client
 
 T = TypeVar("T")
 
@@ -124,3 +128,27 @@ class TcpProxy:
             pass
         finally:
             sink.close()
+
+
+@asynccontextmanager
+async def redis_shard_proxies() -> AsyncIterator[Callable[[str], Awaitable[TcpProxy]]]:
+    """Yield ``route(channel)``, which sends that channel's shard-pinned
+    pub/sub connections through a new ``TcpProxy`` to the shard that really
+    owns it, and returns the proxy to break. The cluster client and every
+    other channel still go direct."""
+    real_resolve = redis_client.resolve_shard_for_channel
+    routes: dict[str, TcpProxy] = {}
+
+    def resolve(channel: str) -> tuple[str, int]:
+        proxy = routes.get(channel)
+        return proxy.address if proxy else real_resolve(channel)
+
+    async with AsyncExitStack() as stack:
+
+        async def route(channel: str) -> TcpProxy:
+            proxy = TcpProxy(real_resolve(channel))
+            routes[channel] = await stack.enter_async_context(proxy)
+            return proxy
+
+        with patch.object(redis_client, "resolve_shard_for_channel", resolve):
+            yield route

@@ -5,9 +5,6 @@ from collections import Counter
 from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
-from redis.asyncio import Redis as AsyncRedis
-from redis.asyncio.client import PubSub as AsyncPubSub
-from redis.exceptions import RedisError
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
@@ -16,6 +13,7 @@ from backend.data.db_accessors import execution_db
 from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import ExecutionEventType, exec_channel, graph_all_channel
 from backend.data.notification_bus import NotificationEvent
+from backend.data.sharded_pubsub import EventStreamLostError, ShardedSubscription
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -417,8 +415,7 @@ class _ShardStream:
         # full channel → handler
         self.handlers: dict[str, MessageHandler] = {}
         self._on_lost = on_lost
-        self._client: AsyncRedis | None = None
-        self._pubsub: AsyncPubSub | None = None
+        self._subscription: ShardedSubscription | None = None
         self._task: asyncio.Task | None = None
         # SUNSUBSCRIBEs sent per channel whose confirmation is still on its way
         self._unsubscribing: Counter[str] = Counter()
@@ -427,8 +424,8 @@ class _ShardStream:
     async def add(self, channel: str, handler: MessageHandler) -> None:
         _assert_no_wildcard(channel)
         try:
-            pubsub = await asyncio.wait_for(
-                self._open_and_subscribe(channel), _STREAM_OPEN_TIMEOUT_S
+            subscription = await asyncio.wait_for(
+                self._open_or_subscribe(channel), _STREAM_OPEN_TIMEOUT_S
             )
         except BaseException:
             if not self.handlers:
@@ -436,14 +433,16 @@ class _ShardStream:
             raise
         self.handlers[channel] = handler
         if self._task is None:
-            self._task = asyncio.create_task(self._pump(pubsub))
+            self._task = asyncio.create_task(self._pump(subscription))
 
-    async def _open_and_subscribe(self, channel: str) -> AsyncPubSub:
+    async def _open_or_subscribe(self, channel: str) -> ShardedSubscription:
         """``asyncio.wait_for`` bounds this whole call, not just opening the
         connection — SSUBSCRIBE has no socket timeout of its own."""
-        pubsub = self._pubsub or await self._open(channel)
-        await pubsub.ssubscribe(channel)
-        return pubsub
+        if self._subscription is None:
+            self._subscription = await ShardedSubscription.open(channel)
+        else:
+            await self._subscription.add(channel)
+        return self._subscription
 
     async def remove(self, channel: str) -> None:
         if self.handlers.pop(channel, None) is None:
@@ -451,11 +450,11 @@ class _ShardStream:
         if not self.handlers:
             await self.stop()
             return
-        if self._pubsub is None:
+        if self._subscription is None:
             return
         self._unsubscribing[channel] += 1
         try:
-            await self._pubsub.sunsubscribe(channel)
+            await self._subscription.remove(channel)
         except Exception:
             # No confirmation is coming; a stale count would hide a real drop.
             self._unsubscribing[channel] -= 1
@@ -475,39 +474,25 @@ class _ShardStream:
         # Closing the connection drops every SSUBSCRIBE it carried.
         await self._close_quietly()
 
-    async def _open(self, channel: str) -> AsyncPubSub:
-        self._client = await redis.connect_sharded_pubsub_async(channel)
-        self._pubsub = self._client.pubsub()
-        return self._pubsub
-
     async def _close_quietly(self) -> None:
-        if self._pubsub is not None:
-            try:
-                await self._pubsub.aclose()
-            except Exception:
-                pass
-            self._pubsub = None
-        if self._client is not None:
-            try:
-                await self._client.aclose()
-            except Exception:
-                pass
-            self._client = None
+        if self._subscription is not None:
+            await self._subscription.aclose()
+            self._subscription = None
 
-    async def _pump(self, pubsub: AsyncPubSub) -> None:
+    async def _pump(self, subscription: ShardedSubscription) -> None:
         try:
-            await self._forward(pubsub)
+            await self._forward(subscription)
         except asyncio.CancelledError:
             raise
-        except (OSError, RedisError) as e:
-            logger.warning(f"Pubsub stream lost: {type(e).__name__}: {e}")
+        except EventStreamLostError as e:
+            logger.warning(f"Pubsub stream lost: {e}")
         except Exception:
             logger.exception("Pubsub pump crashed")
         if not self._stopping:
             await self._on_lost()
 
-    async def _forward(self, pubsub: AsyncPubSub) -> None:
-        async for message in pubsub.listen():
+    async def _forward(self, subscription: ShardedSubscription) -> None:
+        async for message in subscription.messages():
             msg_type = message.get("type")
             channel = message.get("channel")
             if msg_type == "sunsubscribe":

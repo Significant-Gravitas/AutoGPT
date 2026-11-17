@@ -8,7 +8,6 @@ from typing import (
     Annotated,
     Any,
     AsyncGenerator,
-    Generator,
     Generic,
     Literal,
     Mapping,
@@ -1743,20 +1742,6 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
         # Publisher fans out: per-exec and per-graph watchers.
         super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
         super().publish_event(event, graph_all_channel(user_id, graph_id))
-
-    def listen(
-        self, user_id: str, graph_id: str, graph_exec_id: str
-    ) -> Generator[ExecutionEvent, None, None]:
-        """Stream events for a specific graph execution."""
-        for event in self.listen_events(exec_channel(user_id, graph_id, graph_exec_id)):
-            yield event
-
-    def listen_graph(
-        self, user_id: str, graph_id: str
-    ) -> Generator[ExecutionEvent, None, None]:
-        """Stream every event for every execution of ``graph_id``."""
-        for event in self.listen_events(graph_all_channel(user_id, graph_id)):
-            yield event
 
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):

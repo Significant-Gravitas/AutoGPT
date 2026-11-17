@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, Optional
 
 from backend.blocks._base import (
@@ -10,11 +12,17 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockType,
 )
+from backend.data.db_accessors import execution_db
 from backend.data.execution import (
     ExecutionContext,
+    ExecutionEvent,
+    ExecutionEventType,
     ExecutionStatus,
     ExecutionTrigger,
+    GraphExecutionMeta,
+    NodeExecutionResult,
     NodesInputMasks,
+    exec_channel,
 )
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.retry import func_retry
@@ -23,6 +31,16 @@ if TYPE_CHECKING:
     from backend.executor.utils import LogMetadata
 
 _logger = logging.getLogger(__name__)
+
+_TERMINAL_STATUSES = (
+    ExecutionStatus.COMPLETED,
+    ExecutionStatus.TERMINATED,
+    ExecutionStatus.FAILED,
+)
+# A sub-agent's end can go unheard on a healthy stream too (its executor failed
+# to publish it), so after this long without an event the database is asked.
+# Bounds how long such a miss holds the parent run, which has no timeout.
+_QUIET_RECHECK_S = 60.0
 
 NO_WORKFLOW_TO_RUN = (
     "This sub-workflow has no workflow to run: remove it, or add the workflow you "
@@ -161,81 +179,145 @@ class AgentExecutorBlock(Block):
         user_id: str,
         logger: "LogMetadata",
     ) -> BlockOutput:
-
-        from backend.blocks import get_block
-        from backend.data.execution import ExecutionEventType
         from backend.executor import utils as execution_utils
 
         event_bus = execution_utils.get_async_execution_event_bus()
-
         log_id = f"Graph #{graph_id}-V{graph_version}, exec-id: {graph_exec_id}"
         logger.info(f"Starting execution of {log_id}")
-        yielded_node_exec_ids = set()
-
-        async for event in event_bus.listen(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_exec_id=graph_exec_id,
-        ):
-            if event.status not in [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.TERMINATED,
-                ExecutionStatus.FAILED,
-            ]:
-                logger.info(
-                    f"Execution {log_id} skipping event {event.event_type} status={event.status} "
-                    f"node={getattr(event, 'node_exec_id', '?')}"
-                )
-                continue
-
-            if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
-                # If the graph execution is COMPLETED, TERMINATED, or FAILED,
-                # we can stop listening for further events.
-                logger.info(
-                    f"Execution {log_id} graph completed with status {event.status}, "
-                    f"yielded {len(yielded_node_exec_ids)} outputs"
-                )
-                self.merge_stats(
-                    NodeExecutionStats(
-                        # Sub-graph already debited each of its own nodes; we
-                        # roll up its total so graph_stats.cost reflects the
-                        # full sub-graph spend.
-                        reconciled_cost_delta=(event.stats.cost if event.stats else 0),
-                        extra_steps=event.stats.node_exec_count if event.stats else 0,
-                    )
-                )
-                break
-
-            logger.debug(
-                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+        yielded: set[str] = set()
+        # Pub/sub keeps no history, so the stream is only the fast path: when
+        # it may have missed events, or stays quiet, the database is read.
+        events: asyncio.Queue[ExecutionEvent | None] = asyncio.Queue()
+        reader = asyncio.create_task(
+            _read_into(
+                events,
+                event_bus.listen_with_resync(
+                    exec_channel(user_id, graph_id, graph_exec_id)
+                ),
+                log_id,
             )
+        )
+        stale = False  # events may have been missed and not caught up yet
+        try:
+            while True:
+                try:
+                    async with asyncio.timeout(_QUIET_RECHECK_S):
+                        event = await events.get()
+                    stale = stale or event is None
+                except TimeoutError:
+                    event = None
+                if event is not None:
+                    if event.status not in _TERMINAL_STATUSES:
+                        logger.info(
+                            f"Execution {log_id} skipping event {event.event_type} "
+                            f"status={event.status} "
+                            f"node={getattr(event, 'node_exec_id', '?')}"
+                        )
+                        continue
+                    if event.event_type == ExecutionEventType.NODE_EXEC_UPDATE:
+                        for output in self._outputs_of(event, yielded, log_id, logger):
+                            yield output
+                        continue
+                    if not stale:
+                        logger.info(
+                            f"Execution {log_id} graph completed with status "
+                            f"{event.status}, yielded {len(yielded)} outputs"
+                        )
+                        self._record_sub_graph_stats(event.stats)
+                        return
+                # A resync, a quiet spell, or the end with events possibly
+                # missed: the database has the rest.
+                try:
+                    outputs, finished = await self._catch_up(
+                        user_id, graph_exec_id, stale, yielded, log_id, logger
+                    )
+                except Exception:
+                    # Like a missed event: the next resync or quiet spell retries.
+                    logger.warning(f"Execution {log_id} catch-up failed", exc_info=True)
+                    continue
+                stale = False
+                for output in outputs:
+                    yield output
+                if finished is not None:
+                    logger.info(
+                        f"Execution {log_id} found {finished.status} in the database"
+                    )
+                    self._record_sub_graph_stats(finished.stats)
+                    return
+        finally:
+            reader.cancel()
+            await asyncio.gather(reader, return_exceptions=True)
 
-            if event.node_exec_id in yielded_node_exec_ids:
-                logger.warning(
-                    f"{log_id} received duplicate event for node execution {event.node_exec_id}"
-                )
-                continue
-            else:
-                yielded_node_exec_ids.add(event.node_exec_id)
+    async def _catch_up(
+        self,
+        user_id: str,
+        graph_exec_id: str,
+        stale: bool,
+        yielded: set[str],
+        log_id: str,
+        logger: "LogMetadata",
+    ) -> tuple[list[tuple[str, Any]], GraphExecutionMeta | None]:
+        """Outputs the stream may have missed, oldest first, and the
+        sub-agent's execution if it has finished."""
+        db = execution_db()
+        meta = await db.get_graph_execution_meta(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+        finished = meta if meta and meta.status in _TERMINAL_STATUSES else None
+        if not (stale or finished):
+            return [], None
+        # The execution was read with the user's id above; its nodes are its.
+        nodes = await db.get_node_executions(
+            graph_exec_id=graph_exec_id, statuses=list(_TERMINAL_STATUSES)
+        )
+        nodes.sort(key=lambda node: node.end_time or node.add_time)
+        outputs = [
+            output
+            for node in nodes
+            for output in self._outputs_of(node, yielded, log_id, logger)
+        ]
+        return outputs, finished
 
-            if not event.block_id:
-                logger.warning(f"{log_id} received event without block_id {event}")
-                continue
+    def _outputs_of(
+        self,
+        node: NodeExecutionResult,
+        yielded: set[str],
+        log_id: str,
+        logger: "LogMetadata",
+    ) -> list[tuple[str, Any]]:
+        from backend.blocks import get_block
 
-            block = get_block(event.block_id)
-            if not block or block.block_type != BlockType.OUTPUT:
-                continue
+        if node.node_exec_id in yielded:
+            logger.debug(f"{log_id} already yielded node execution {node.node_exec_id}")
+            return []
+        yielded.add(node.node_exec_id)
 
-            output_name = event.input_data.get("name")
-            if not output_name:
-                logger.warning(f"{log_id} produced an output with no name {event}")
-                continue
+        if not node.block_id:
+            logger.warning(f"{log_id} received event without block_id {node}")
+            return []
 
-            for output_data in event.output_data.get("output", []):
-                logger.debug(
-                    f"Execution {log_id} produced {output_name}: {output_data}"
-                )
-                yield output_name, output_data
+        block = get_block(node.block_id)
+        if not block or block.block_type != BlockType.OUTPUT:
+            return []
+
+        output_name = node.input_data.get("name")
+        if not output_name:
+            logger.warning(f"{log_id} produced an output with no name {node}")
+            return []
+
+        logger.debug(f"Execution {log_id} produced {output_name}")
+        return [(output_name, data) for data in node.output_data.get("output", [])]
+
+    def _record_sub_graph_stats(self, stats: GraphExecutionMeta.Stats | None) -> None:
+        self.merge_stats(
+            NodeExecutionStats(
+                # Sub-graph already debited each of its own nodes; we
+                # roll up its total so graph_stats.cost reflects the
+                # full sub-graph spend.
+                reconciled_cost_delta=(stats.cost if stats else 0),
+                extra_steps=stats.node_exec_count if stats else 0,
+            )
+        )
 
     @func_retry
     async def _stop(
@@ -258,3 +340,16 @@ class AgentExecutorBlock(Block):
             logger.info(f"Execution {log_id} stopped successfully.")
         except TimeoutError as e:
             logger.error(f"Execution {log_id} stop timed out: {e}")
+
+
+async def _read_into(
+    queue: asyncio.Queue[ExecutionEvent | None],
+    events: AsyncIterator[ExecutionEvent | None],
+    log_id: str,
+) -> None:
+    try:
+        async for event in events:
+            queue.put_nowait(event)
+    except Exception:
+        # The quiet-spell recheck still notices the sub-agent's end.
+        _logger.exception(f"{log_id}: event stream failed; polling instead")

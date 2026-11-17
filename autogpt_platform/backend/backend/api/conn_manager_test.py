@@ -24,21 +24,42 @@ from backend.api.conn_manager import (
 )
 from backend.api.model import WSMethod
 from backend.data.execution import GraphExecutionMeta
+from backend.data.sharded_pubsub import EventStreamLostError
 
 
 class _FakePubSub:
+    """redis-py's PubSub as ``ShardedSubscription`` drives it: ``ssubscribe``
+    queues Redis's confirmation, and reads take from the inbox."""
+
     def __init__(self) -> None:
-        self.ssubscribe = AsyncMock()
+        self.ssubscribe = AsyncMock(side_effect=self._confirm)
         self.sunsubscribe = AsyncMock()
+        self.ping = AsyncMock()
         self.aclose = AsyncMock()
+        self.connection: MagicMock | None = None
         self.inbox: asyncio.Queue[Any] = asyncio.Queue()
 
-    async def listen(self):
-        while True:
-            item = await self.inbox.get()
-            if isinstance(item, BaseException):
-                raise item
-            yield item
+    async def connect(self) -> None:
+        self.connection = MagicMock()
+
+    async def _confirm(self, channel: str) -> None:
+        self.inbox.put_nowait({"type": "ssubscribe", "channel": channel, "data": 1})
+
+    async def get_message(self, timeout: float | None = None) -> Any:
+        return await self.parse_response(block=timeout is None, timeout=timeout or 0)
+
+    async def parse_response(self, block: bool = True, timeout: float = 0) -> Any:
+        try:
+            async with asyncio.timeout(None if block else timeout):
+                item = await self.inbox.get()
+        except TimeoutError:
+            return None
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    async def handle_message(self, response: Any) -> Any:
+        return response
 
 
 class _FakeRedis:
@@ -74,6 +95,7 @@ def fake_redis():
             "backend.api.conn_manager.redis.resolve_shard_for_channel",
             side_effect=lambda channel: fake.shard_of(channel),
         ),
+        patch("backend.api.conn_manager.redis.refresh_slot_map"),
     ):
         yield fake
 
@@ -259,9 +281,9 @@ def test_only_the_shard_stream_opens_pubsub_connections() -> None:
     shard per socket."""
     api_dir = Path(__file__).parent
     openers = {
-        "connect_sharded_pubsub_async",
-        "connect_sharded_pubsub",
+        "ShardedSubscription.open",
         "listen_events",
+        "listen_with_resync",
         "wait_for_event",
     }
     callers: set[str] = set()
@@ -269,7 +291,7 @@ def test_only_the_shard_stream_opens_pubsub_connections() -> None:
         if path.name.endswith("_test.py"):
             continue
         callers |= _callers_of(ast.parse(path.read_text()), openers, path.stem)
-    assert callers == {"conn_manager._ShardStream._open"}
+    assert callers == {"conn_manager._ShardStream._open_or_subscribe"}
 
 
 def _callers_of(tree: ast.Module, names: set[str], module: str) -> set[str]:
@@ -285,7 +307,7 @@ def _callers_of(tree: ast.Module, names: set[str], module: str) -> set[str]:
                 name = func.attr if isinstance(func, ast.Attribute) else None
                 if isinstance(func, ast.Name):
                     name = func.id
-                if name in names:
+                if name in names or ast.unparse(func) in names:
                     found.add(".".join([module, *scope]))
             visit(child, inner)
 
@@ -705,7 +727,7 @@ async def test_a_failed_first_subscribe_closes_the_connection(
             "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
             side_effect=connect_then_fail,
         ),
-        pytest.raises(RedisConnectionError),
+        pytest.raises(EventStreamLostError),
     ):
         await stream.add("{u/g}/exec/a", AsyncMock())
 
@@ -786,7 +808,7 @@ async def test_a_failed_subscribe_leaves_no_bookkeeping(
             "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
             side_effect=RedisConnectionError("shard full"),
         ),
-        pytest.raises(RedisConnectionError),
+        pytest.raises(EventStreamLostError),
     ):
         await connection_manager.subscribe_graph_execs(
             user_id="user-1", graph_id="graph-1", websocket=mock_websocket
