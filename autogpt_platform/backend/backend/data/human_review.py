@@ -1043,7 +1043,9 @@ async def delete_review_as_read(
     proposed again opens a fresh card under it), so a caller acting on a row
     it read must not delete a later one in its place. ``createdAt`` tells the
     rows apart, and the single DELETE is the mutex: of the callers that read
-    one row, one deletes it.
+    one row, one deletes it. The column keeps milliseconds, which is enough:
+    a later card under the same id is opened only after the user answered
+    and someone spent the one before it.
 
     Returns:
         1 for the caller that took the row, else 0

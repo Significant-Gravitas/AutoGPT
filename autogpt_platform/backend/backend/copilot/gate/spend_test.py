@@ -22,11 +22,11 @@ from backend.blocks.pinecone import PineconeQueryBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.copilot import tree
 from backend.copilot.context import set_execution_context
-from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action
+from backend.copilot.gate import CEILING_UNIT_MICRODOLLARS, check_action, held
 from backend.copilot.gate import subject as subject_module
 from backend.copilot.gate.headline import Headline
 from backend.copilot.gate.policy import Effect
-from backend.copilot.gate.review import open_review, review_payload
+from backend.copilot.gate.review import open_review, review_id_for, review_payload
 from backend.copilot.gate.subject import Subject, block_subject
 from backend.copilot.model import AutopilotMode, ChatSession, ChatSessionMetadata
 from backend.copilot.tools.gate_subject_test import _graph, _node, _sub
@@ -262,6 +262,25 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
     assert (await _check(_PAID)).allowed
     await charge_turn(turn_2, 1)
     assert not (await _check(_PAID)).allowed
+
+
+async def test_a_money_card_the_fold_spent_buys_the_chat_one_more_dollar(gate, chat):
+    """The fold spends the card before its call runs, and the gate lets that
+    call through on it, so the dollar is bought there, without a lookup.
+    Kills: dropping the raise from the gate's branch for the fold's call."""
+    await _open(chat, ceiling=0)
+    card = SimpleNamespace(status=ReviewStatus.APPROVED, payload={"spend": {}})
+    call = held.HeldCall(
+        review_id=review_id_for(_CHAT, "user-1", "t", {"q": 1}),
+        tool_name="t",
+        tool_call_id="call-1",
+        args={"q": 1},
+    )
+    with held._running(call, card):
+        assert (await _check(_PAID)).allowed
+    gate.find_review.assert_not_awaited()
+    ceiling = (await chat.snapshot(_ledger_id()))["ceiling"]
+    assert ceiling == CEILING_UNIT_MICRODOLLARS
 
 
 async def test_an_approval_of_any_other_card_raises_nothing(gate, chat):

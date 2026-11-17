@@ -1,7 +1,8 @@
 import io
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from PIL import Image
@@ -70,7 +71,13 @@ async def test_approved_action_keeps_image_with_non_json_metadata(monkeypatch, i
     ).with_image(image)
     consume = AsyncMock(return_value=True)
     monkeypatch.setattr(held.review_store, "consume", consume)
-    row = MagicMock()
+    row = SimpleNamespace(
+        node_exec_id=call.review_id,
+        status=ReviewStatus.APPROVED,
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
 
     outcome, output = await held._run("user-1", session, call, row, tool)
 

@@ -211,7 +211,7 @@ async def finish_step_cards(
             finished.failed.append(card.node_exec_id)
             await _reopen(user_id, card.node_exec_id)
             continue
-        await review_store.discard(card, user_id)
+        await review_store.close(card.node_exec_id, user_id)
         if not approved and card.session_id:
             await _ask_from_now_on(user_id, card)
     return finished

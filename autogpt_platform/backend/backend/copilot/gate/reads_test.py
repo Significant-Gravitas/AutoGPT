@@ -63,11 +63,17 @@ class _Rows:
         self.held: list[held.HeldCall] = []
 
     async def find_review(self, review_id, user_id, session_id):
-        return self.rows.get(review_id)
+        row = self.rows.get(review_id)
+        # A copy, as a read is: answering the card later leaves it as read.
+        return SimpleNamespace(**vars(row)) if row else None
 
     async def consume(self, review, user_id):
-        # The row as read: a card replaced since is another row.
-        if self.rows.get(review.node_exec_id) is not review:
+        # The row as read: answered differently or replaced since, it stays.
+        stored = self.rows.get(review.node_exec_id)
+        if stored is None or (stored.status, stored.created_at) != (
+            review.status,
+            review.created_at,
+        ):
             return False
         del self.rows[review.node_exec_id]
         return True

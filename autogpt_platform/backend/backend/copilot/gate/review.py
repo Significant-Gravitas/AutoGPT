@@ -268,8 +268,7 @@ async def discard(review: PendingHumanReviewModel, user_id: str) -> None:
 
 async def close(review_id: str, user_id: str) -> None:
     """Remove a card whatever its state. Only for cards nothing runs on whose
-    id is never reused, such as a workflow step's card once its run page
-    answered the step."""
+    id is never reused: a workflow step's card, once its step has an answer."""
     try:
         await review_db().delete_review_by_node_exec_id(review_id, user_id)
     except Exception:

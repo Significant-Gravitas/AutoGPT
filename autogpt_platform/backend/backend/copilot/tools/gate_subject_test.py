@@ -1484,7 +1484,14 @@ async def test_an_approved_call_replays_the_content_it_was_approved_for(
 
     # The fold spends the card it read, and the gate lets through the call
     # that card's id names: the replay must name the same one, or it asks again.
-    card = SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
+    card = SimpleNamespace(
+        node_exec_id=call.review_id,
+        status=ReviewStatus.APPROVED,
+        payload={},
+        created_at=datetime.now(UTC),
+        updated_at=None,
+        reviewed_at=datetime.now(UTC),
+    )
     await held._run("user-1", _session(), call, card, RunCapabilityTool())
 
     ran.assert_awaited_once()

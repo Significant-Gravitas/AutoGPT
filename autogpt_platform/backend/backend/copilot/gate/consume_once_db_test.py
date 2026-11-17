@@ -12,7 +12,7 @@ import asyncio
 import random
 from contextlib import ExitStack
 from contextvars import ContextVar
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Awaitable, Callable
 from unittest.mock import AsyncMock, patch
 
@@ -109,20 +109,33 @@ class _Interleaving:
         tasks = {n: asyncio.create_task(start(n, a)) for n, a in actors.items()}
         for task in tasks.values():
             task.add_done_callback(lambda _: self._moved.set())
-        await self._settle(lambda: all(n in self._parked for n in tasks))
-        while self._parked:
-            moved = pick({n: label for n, (_, label) in self._parked.items()})
-            before = await self._card()
-            self._parked.pop(moved)[0].set()
-            await self._settle(lambda: moved in self._parked or tasks[moved].done())
-            after = await self._card()
-            if (
-                before is not None
-                and before.status == ReviewStatus.WAITING
-                and (after is None or after.createdAt != before.createdAt)
-            ):
-                self.lost.append(f"{moved} removed a waiting card")
-        return {n: task.result() for n, task in tasks.items()}
+        try:
+            await self._settle(lambda: all(n in self._parked for n in tasks))
+            while self._parked:
+                await self._step(pick, tasks)
+            return {n: task.result() for n, task in tasks.items()}
+        finally:
+            # A step that timed out or failed leaves no actor behind.
+            for task in tasks.values():
+                task.cancel()
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+
+    async def _step(
+        self,
+        pick: Callable[[dict[str, str]], str],
+        tasks: dict[str, "asyncio.Task[Any]"],
+    ) -> None:
+        moved = pick({n: label for n, (_, label) in self._parked.items()})
+        before = await self._card()
+        self._parked.pop(moved)[0].set()
+        await self._settle(lambda: moved in self._parked or tasks[moved].done())
+        after = await self._card()
+        if (
+            before is not None
+            and before.status == ReviewStatus.WAITING
+            and (after is None or after.createdAt != before.createdAt)
+        ):
+            self.lost.append(f"{moved} removed a waiting card")
 
     async def _settle(self, done: Callable[[], bool]) -> None:
         while not done():
@@ -205,14 +218,15 @@ class _Scene:
     def stepping(self) -> ExitStack:
         """Every place the gate reads or writes a card ends a step."""
         stack = ExitStack()
-        for name in ("find_review", "consume", "discard", "open_review_row"):
-            if hasattr(review_store, name):
-                fn = getattr(review_store, name)
-                stack.enter_context(
-                    patch.object(
-                        review_store, name, self.interleaving.stepped(name, fn)
-                    )
-                )
+        for name, fn in (
+            ("find_review", review_store.find_review),
+            ("consume", review_store.consume),
+            ("discard", review_store.discard),
+            ("open_review_row", review_store.open_review_row),
+        ):
+            stack.enter_context(
+                patch.object(review_store, name, self.interleaving.stepped(name, fn))
+            )
         stack.enter_context(
             patch.object(
                 held, "_claim", self.interleaving.stepped("claim", held._claim)
@@ -341,20 +355,32 @@ async def test_a_fold_with_the_gate_off_spends_the_approval_before_it_runs(
 
 
 class _DeletesFail:
-    """The review store's database, with every delete failing."""
+    """The review store's database, with every delete failing; ``committed``
+    deletes the row first, as a delete whose answer was lost would."""
 
-    def __init__(self, real: Any) -> None:
+    def __init__(self, real: Any, committed: bool) -> None:
         self._real = real
+        self._committed = committed
 
     def __getattr__(self, name: str) -> Any:
-        if name.startswith("delete_review"):
-            return AsyncMock(side_effect=ConnectionError("database unreachable"))
-        return getattr(self._real, name)
+        if not name.startswith("delete_review"):
+            return getattr(self._real, name)
+        delete = getattr(self._real, name)
+
+        async def fails(*args: Any, **kwargs: Any) -> int:
+            if self._committed:
+                await delete(*args, **kwargs)
+            raise ConnectionError("database unreachable")
+
+        return fails
 
 
-def _deletes_fail():
+def _deletes_fail(committed: bool = False):
     real = review_db()
-    return patch("backend.copilot.gate.review.review_db", lambda: _DeletesFail(real))
+    return patch(
+        "backend.copilot.gate.review.review_db",
+        lambda: _DeletesFail(real, committed),
+    )
 
 
 @pytest.mark.parametrize("gate", [True, False])
@@ -390,6 +416,86 @@ async def test_a_call_whose_approval_cannot_be_spent_runs_nothing(
         output = await scene.caller(1)()
 
     assert post_tool.runs == []
-    assert "nothing ran" in output.lower() or "already used" in output
+    # The gate's own failure refusal, not a miss reported as "already used".
+    assert "could not be checked" in output and "already used" not in output
     card = await scene.interleaving._card()
     assert card is not None and card.status == ReviewStatus.APPROVED
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_spend_whose_answer_was_lost_says_nothing_ran(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The delete took the card, but its answer never came back. The call did
+    not run, so the chat hears that and is asked to propose it again, not
+    told that it may have run."""
+    scene = await _scene(test_user_id, post_tool)
+    await scene.approve()
+
+    with _deletes_fail(committed=True):
+        [delivered] = await _resolved(test_user_id, scene.session)
+
+    assert post_tool.runs == []
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
+    assert "Nothing ran" in delivered.content
+    assert "may have run" not in delivered.content
+    assert await scene.interleaving._card() is None
+    assert await held.answered(test_user_id, scene.session.session_id) == []
+
+
+class _AnHourLater(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.now(tz) + review_store.APPROVAL_TTL + timedelta(seconds=1)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_approval_that_lapses_while_its_fold_waits_runs_nothing(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The fold reads the card while it is live, then waits at its status
+    line past the hour. The gate that would have caught the lapse lets the
+    fold's spent call through, so the fold checks again before it spends."""
+    scene = await _scene(test_user_id, post_tool)
+    await scene.approve()
+    delivered: list[PendingMessage] = []
+
+    turn = held.resolve_answered(test_user_id, scene.session, delivered.append)
+    await anext(turn)
+    with patch.object(held, "datetime", _AnHourLater):
+        async for _status in turn:
+            pass
+
+    assert post_tool.runs == []
+    [result] = delivered
+    assert result.metadata["held_call"]["outcome"] == "expired"
+    assert await scene.interleaving._card() is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_folds_pass_lets_its_one_call_through_once(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """A second identical call in the same run is gated as any other: with
+    the approval spent, it asks again."""
+    scene = await _scene(test_user_id, post_tool)
+    await scene.approve()
+    sid = scene.session.session_id
+    card = await review_store.find_review(scene.review_id, test_user_id, sid)
+    assert card is not None and await review_store.consume(card, test_user_id)
+    call = held.HeldCall(
+        review_id=scene.review_id, tool_name=_TOOL, tool_call_id="call-0", args=_ARGS
+    )
+
+    async def twice():
+        scene._in_a_turn()
+        with held._running(call, card):
+            return [
+                await check_action(_TOOL, _ARGS, test_user_id, scene.session)
+                for _ in range(2)
+            ]
+
+    first, second = await asyncio.create_task(twice())
+
+    assert first.allowed and first.approved
+    assert not second.allowed and second.review_id == scene.review_id

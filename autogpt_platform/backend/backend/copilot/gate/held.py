@@ -101,12 +101,25 @@ _SPENT = (
     "Nothing ran: this approval was already used by an identical call, or "
     "withdrawn. Do not retry it; tell the user."
 )
+_EXPIRED = (
+    "Nothing ran: the approval expired an hour after it was given. "
+    "Propose the call again if it is still needed."
+)
+_UNCONFIRMED = (
+    "Nothing ran: the approval could not be confirmed before the action ran. "
+    "Tell the user, and propose the call again if it is still needed."
+)
 # The card the fold spent for the held call it is running, by review id. The
 # gate lets exactly that call through, once, so the approval is spent before
 # the call runs whether the gate is on or off.
-_taken: "ContextVar[dict[str, PendingHumanReviewModel] | None]" = ContextVar(
-    "_held_taken", default=None
+_spent: "ContextVar[dict[str, PendingHumanReviewModel] | None]" = ContextVar(
+    "_held_spent", default=None
 )
+
+
+class _UnconfirmedSpend(Exception):
+    """The fold's spend failed before its call ran: the card may be gone or
+    still there, but nothing ran."""
 
 
 def is_answer_row(message: "ChatMessage") -> bool:
@@ -171,9 +184,10 @@ async def remember(session_id: str, call: HeldCall) -> bool:
         return False
 
 
-def taken(review_id: str) -> "PendingHumanReviewModel | None":
-    """The card the fold spent for this call, if the fold is running it; once."""
-    spent = _taken.get()
+def take_spent(review_id: str) -> "PendingHumanReviewModel | None":
+    """The card the fold spent for this call, if the fold is running it. Taken
+    once: a second identical call in the same run is gated as usual."""
+    spent = _spent.get()
     return spent.pop(review_id, None) if spent else None
 
 
@@ -287,9 +301,10 @@ async def resolve_answered(
             continue
         try:
             await _resolve(user_id, session, call, row, run, deliver, cap)
-        except Exception:
+        except Exception as failed:
             logger.warning(f"Held call {call.review_id} not delivered", exc_info=True)
-            for result in await _recover(user_id, session.session_id, call):
+            ran = not isinstance(failed, _UnconfirmedSpend)
+            for result in await _recover(user_id, session.session_id, call, ran):
                 deliver(result)
 
 
@@ -525,10 +540,12 @@ async def _resolve(
 
 
 async def _recover(
-    user_id: str, session_id: str, call: HeldCall
+    user_id: str, session_id: str, call: HeldCall, ran: bool
 ) -> list[PendingMessage]:
-    """``_resolve`` failed. A card still open goes back for the next turn; a
-    spent approval means the call reached the gate, so it may have run."""
+    """``_resolve`` failed. A card still open goes back for the next turn. A
+    spent approval means the call may have run, unless the failure was the
+    spend itself (``ran`` False): then nothing ran, and the call is proposed
+    again rather than retried on an approval that may be gone."""
     try:
         rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
         spent = call.review_id not in rows
@@ -537,6 +554,8 @@ async def _recover(
     if not spent:
         await remember(session_id, call)
         return []
+    if not ran:
+        return [_result_row(call, _UNCONFIRMED, "closed")]
     return [
         _result_row(
             call,
@@ -648,10 +667,7 @@ async def _settled(
         )
     await review_store.discard(row, user_id)
     if _expired(row):
-        return "expired", (
-            "Nothing ran: the approval expired an hour after it was given. "
-            "Propose the call again if it is still needed."
-        )
+        return "expired", _EXPIRED
     if call.lost:
         return "closed", _RESEND
     return "closed", "Nothing ran: this tool no longer exists."
@@ -677,10 +693,8 @@ async def _run(
     row: "PendingHumanReviewModel",
     tool: "BaseTool",
 ) -> tuple[Outcome, str]:
-    # Spent before it runs, with the gate on or off, so one approval buys one
-    # run. A spend that fails raises, and the call waits for the next turn.
-    if not await review_store.consume(row, user_id):
-        return "closed", _SPENT
+    if refusal := await _spend(user_id, row):
+        return refusal
     with _running(call, row), replaying_bound_args(call.args_bound):
         result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
     if result.image is not None:
@@ -701,9 +715,8 @@ async def _run_handler(
     row: "PendingHumanReviewModel",
     handler: McpHandler,
 ) -> tuple[Outcome, str]:
-    # Spent before it runs, as in ``_run``.
-    if not await review_store.consume(row, user_id):
-        return "closed", _SPENT
+    if refusal := await _spend(user_id, row):
+        return refusal
     with _running(call, row):
         result = await handler(call.args)
     blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
@@ -727,15 +740,36 @@ async def _run_handler(
     return "approved", HeldImage(text=text, image=shown).model_dump_json()
 
 
+async def _spend(
+    user_id: str, row: "PendingHumanReviewModel"
+) -> tuple[Outcome, str] | None:
+    """Spend the approval before its call runs, with the gate on or off, so
+    one approval buys one run: None once spent, else what the chat is told.
+    Expiry is checked again here, as the gate's own lookup would, since the
+    fold may have waited since it read the card. A spend that fails raises
+    ``_UnconfirmedSpend``, and nothing runs."""
+    if _expired(row):
+        await review_store.discard(row, user_id)
+        return "expired", _EXPIRED
+    try:
+        spent = await review_store.consume(row, user_id)
+    except Exception as failed:
+        raise _UnconfirmedSpend(row.node_exec_id) from failed
+    return None if spent else ("closed", _SPENT)
+
+
 @contextmanager
 def _running(call: HeldCall, row: "PendingHumanReviewModel") -> Iterator[None]:
     """Run the call on the approval the fold just spent: the gate's seam, the
-    tool's or the MCP handler's, lets this one call through, once."""
-    token = _taken.set({call.review_id: row})
+    tool's or the MCP handler's, lets this one call through, once. Cleared
+    when the run ends, so no task the call left behind can use it."""
+    passes = {call.review_id: row}
+    token = _spent.set(passes)
     try:
         yield
     finally:
-        _taken.reset(token)
+        passes.clear()
+        _spent.reset(token)
 
 
 def _tool_image(block: dict[str, Any]) -> ToolImage | None:

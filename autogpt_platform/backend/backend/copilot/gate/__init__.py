@@ -215,7 +215,7 @@ async def check_action(
     review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
 
     # A held call the fold is running: the fold spent its approval already.
-    review = held.taken(review_id)
+    review = held.take_spent(review_id)
     if review is not None:
         if review_store.is_spend_card(review):
             await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
