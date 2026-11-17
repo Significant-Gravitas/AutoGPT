@@ -170,6 +170,26 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     );
   }, 20_000);
 
+  it("a follow-up still being sent at the Stop loses its chip once the server discards it", async () => {
+    // The re-read at the Stop answers after the cancel, so it can't clear the chip.
+    const { buffer } = await ottoAnswers(1500);
+    let answerTheSend = () => {};
+    buffer.sendGate = new Promise<void>((resolve) => {
+      answerTheSend = resolve;
+    });
+    await sendFollowUp();
+    await waitFor(() => expect(buffer.messages).toEqual([QUEUED]));
+
+    await clickStop();
+    answerTheSend();
+    await screen.findByText("Queued");
+
+    await waitFor(() => expect(composer().value).toBe(QUEUED), {
+      timeout: 5000,
+    });
+    expect(screen.queryByText("Queued")).toBeNull();
+  }, 20_000);
+
   it("a follow-up given back after a switch to another chat stays with the stopped chat", async () => {
     const { buffer, host } = await queueAFollowUpWhileOttoAnswers(0, 1000);
 
@@ -198,6 +218,14 @@ async function queueAFollowUpWhileOttoAnswers(
   peekDelayMs: number,
   cancelDelayMs = 300,
 ) {
+  const { buffer, host } = await ottoAnswers(peekDelayMs, cancelDelayMs);
+  await sendFollowUp();
+  await screen.findByText("Queued");
+  expect(buffer.messages).toEqual([QUEUED]);
+  return { buffer, host };
+}
+
+async function ottoAnswers(peekDelayMs: number, cancelDelayMs = 300) {
   const { hold } = createStreamHold(4);
   server.use(
     http.post(`${SESSION_URL}/stream`, ({ request }) =>
@@ -212,12 +240,13 @@ async function queueAFollowUpWhileOttoAnswers(
 
   await typeAndSend(FIRST);
   await screen.findByText(LIVE_PARTIAL, undefined, { timeout: 5000 });
+  return { buffer, host };
+}
+
+async function sendFollowUp() {
   const user = userEvent.setup();
   await user.type(composer(), QUEUED);
   await user.click(screen.getByRole("button", { name: "Queue message" }));
-  await screen.findByText("Queued");
-  expect(buffer.messages).toEqual([QUEUED]);
-  return { buffer, host };
 }
 
 // The pending buffer as the server holds it. The cancel answers a moment late,
@@ -230,11 +259,15 @@ function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
     cancelsAnswered: 0,
     // False when the cancel's own step failed and it can't say what it took.
     discardsKnown: true,
+    // A follow-up send is answered once this resolves, and the cancel a
+    // moment after it: a test holds it to keep a send in flight at the Stop.
+    sendGate: Promise.resolve(),
   };
   server.use(
     http.post(`${SESSION_URL}/messages/pending`, async ({ request }) => {
       const { message } = (await request.json()) as { message: string };
       buffer.messages = [...buffer.messages, message];
+      await buffer.sendGate;
       return HttpResponse.json({
         buffer_length: buffer.messages.length,
         max_buffer_length: 10,
@@ -248,6 +281,7 @@ function serverPendingBuffer(peekDelayMs: number, cancelDelayMs: number) {
       return HttpResponse.json({ count: messages.length, messages });
     }),
     http.post(`${PROXIED_SESSION_URL}/cancel`, async () => {
+      await buffer.sendGate;
       await delay(cancelDelayMs);
       const discarded = buffer.messages;
       buffer.messages = [];

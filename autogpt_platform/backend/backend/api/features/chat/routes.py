@@ -96,6 +96,7 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
     resolve_attachments_for_http,
     stop_follow_ups,
+    wait_for_next_turn,
     wait_for_stopped_turn,
 )
 from backend.copilot.pending_message_receipts import (
@@ -2127,6 +2128,28 @@ async def stream_chat_post(
     ):
         turn_in_flight = False
 
+    # The text before the files block below: the queue adds its own.
+    follow_up_text = message
+
+    async def queue_as_follow_up() -> bool:
+        try:
+            await queue_pending_for_http(
+                session_id=session_id,
+                user_id=user_id,
+                message=follow_up_text,
+                context=request.context,
+                file_ids=request.file_ids,
+                folder_ids=request.folder_ids,
+                expert_id=session.expert_id,
+                client_message_id=client_message_id,
+            )
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
+            return False
+        return True
+
+    turn_was_ending = False
     if turn_in_flight:
         if request.expert_kickoff:
             if persisted_kickoff_has_reply is not None:
@@ -2138,21 +2161,9 @@ async def stream_chat_post(
         # A turn the user stopped takes no follow-ups: this message is the next
         # turn, or a follow-up again if the Stop's hold lapses with the turn alive.
         for _ in range(2):
-            try:
-                await queue_pending_for_http(
-                    session_id=session_id,
-                    user_id=user_id,
-                    message=message,
-                    context=request.context,
-                    file_ids=request.file_ids,
-                    folder_ids=request.folder_ids,
-                    expert_id=session.expert_id,
-                    client_message_id=client_message_id,
-                )
+            if await queue_as_follow_up():
                 return _empty_ui_message_stream_response(follow_up_queued=True)
-            except HTTPException as exc:
-                if exc.status_code != 409:
-                    raise
+            turn_was_ending = True
             if not await wait_for_stopped_turn(session_id):
                 break
 
@@ -2271,6 +2282,13 @@ async def stream_chat_post(
             )
     except turn_queue.SessionNotIdle as exc:
         await release_client_message_claim()
+        # The turn this message saw ending gave way to another send's: follow it.
+        if (
+            turn_was_ending
+            and await wait_for_next_turn(session_id)
+            and await queue_as_follow_up()
+        ):
+            return _empty_ui_message_stream_response(follow_up_queued=True)
         raise HTTPException(
             status_code=409,
             detail="Another reply started while this message was being sent. "

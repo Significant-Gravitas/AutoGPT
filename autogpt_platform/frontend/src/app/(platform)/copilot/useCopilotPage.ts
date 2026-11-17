@@ -443,7 +443,7 @@ function useCopilotPageChat(
     const queued = queuedMessages;
     const discarded = await stop();
     if (discarded === null) return;
-    dropQueued(queued);
+    dropQueued(queuedOrDiscarded(queued, discarded));
     if (discarded.length === 0) return;
     const text = discarded.join("\n\n");
     stoppedChatDraft.write((current) => restoreFailedDraft(current, text));
@@ -677,4 +677,18 @@ export function useCopilotRuntimePage() {
   const session = useCopilotPageSession();
   const stream = useCopilotRuntimeStream(session.streamArgs);
   return useCopilotPageChat(session, stream);
+}
+
+// A follow-up still being sent at the click has no chip in `queued` yet, but
+// the server may have taken it in before the Stop and discarded it.
+function queuedOrDiscarded(
+  queued: readonly string[],
+  discarded: readonly string[],
+) {
+  const late = [...discarded];
+  for (const text of queued) {
+    const index = late.indexOf(text);
+    if (index !== -1) late.splice(index, 1);
+  }
+  return [...queued, ...late];
 }

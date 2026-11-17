@@ -143,6 +143,7 @@ async def is_turn_in_flight(session_id: str) -> bool:
 # the stopped turn itself; the hold of a cancel that failed lapses with it.
 STOP_HOLD_SECONDS = 10.0
 _STOPPED_TURN_POLL_SECONDS = 0.1
+_NEXT_TURN_WAIT_SECONDS = 5.0
 
 
 async def stop_follow_ups(session_id: str) -> list[PendingMessage]:
@@ -175,6 +176,27 @@ async def wait_for_stopped_turn(session_id: str) -> bool:
             if status != CHAT_STATUS_RUNNING:
                 return True
         held = True
+        await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
+
+
+async def wait_for_next_turn(session_id: str) -> bool:
+    """Wait for the turn another send just started to take follow-ups.
+
+    That send holds the turn slot before it writes its stream meta, so a send
+    that lost the slot to it finds no turn to follow for a moment. Returns
+    whether a running turn took the session within ``_NEXT_TURN_WAIT_SECONDS``.
+    """
+    deadline = time.monotonic() + _NEXT_TURN_WAIT_SECONDS
+    while True:
+        active = await get_active_session_meta(session_id)
+        if (
+            active is not None
+            and active.status == "running"
+            and active.stop_held_until <= time.time()
+        ):
+            return True
+        if time.monotonic() >= deadline:
+            return False
         await asyncio.sleep(_STOPPED_TURN_POLL_SECONDS)
 
 

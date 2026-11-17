@@ -105,6 +105,48 @@ async def test_a_message_sent_while_a_stop_settles_runs_as_the_next_turn(
     assert await peek_pending_messages(session_id) == []
 
 
+async def test_a_message_that_loses_the_next_turn_to_another_send_follows_that_turn(
+    mocker: pytest_mock.MockerFixture, session_id: str, test_user_id: str
+) -> None:
+    stopped_turn = f"stopped-{uuid.uuid4().hex}"
+    await stream_registry.create_session(
+        session_id, test_user_id, "chat_stream", "chat", turn_id=stopped_turn
+    )
+    world = _stub_boundaries(mocker)
+    world.rival = "from the other tab"
+
+    async def executor_confirms_the_stop() -> None:
+        await world.send_reached_gate.wait()
+        await stream_registry.mark_session_completed(
+            session_id,
+            error_message=stream_registry.CANCELLED_MESSAGE,
+            skip_error_publish=True,
+            turn_id=stopped_turn,
+        )
+
+    async with _client() as client:
+        cancel = asyncio.create_task(client.post(f"/sessions/{session_id}/cancel"))
+        await asyncio.wait_for(world.cancel_published.wait(), timeout=10)
+        executor = asyncio.create_task(executor_confirms_the_stop())
+        send = await asyncio.wait_for(
+            client.post(
+                f"/sessions/{session_id}/stream", json={"message": "from this tab"}
+            ),
+            timeout=30,
+        )
+        await asyncio.wait_for(executor, timeout=10)
+        await asyncio.wait_for(cancel, timeout=10)
+    assert world.rival_turn is not None
+    await asyncio.wait_for(world.rival_turn, timeout=10)
+
+    assert send.status_code == 200
+    assert "data-follow-up-queued" in send.text
+    assert world.started == ["from the other tab"]
+    assert [m.content for m in await peek_pending_messages(session_id)] == [
+        "from this tab"
+    ]
+
+
 async def test_the_turn_after_a_stopped_one_takes_follow_ups(
     session_id: str, test_user_id: str
 ) -> None:
@@ -246,14 +288,37 @@ class _World:
         self.cancel_published = asyncio.Event()
         self.send_reached_gate = asyncio.Event()
         self.chat_status = "running"
+        self.started: list[str] = []
+        # Another tab's send, admitted just before this one asks for the slot.
+        self.rival: str | None = None
+        self.rival_turn: asyncio.Task[None] | None = None
         self.schedule = AsyncMock(side_effect=self._admit)
 
     async def _admit(self, **kwargs) -> str:
+        if self.rival is not None:
+            self._take_slot(self.rival)
+            self.rival = None
+            self.rival_turn = asyncio.create_task(self._rival_meta(kwargs))
         # The real slot CAS admits a turn only into an idle session.
         if self.chat_status != "idle":
             raise SessionNotIdle(kwargs["session_id"])
-        self.chat_status = "running"
+        self._take_slot(kwargs["message"])
         return f"next-{uuid.uuid4().hex}"
+
+    def _take_slot(self, message: str) -> None:
+        self.chat_status = "running"
+        self.started.append(message)
+
+    async def _rival_meta(self, kwargs: dict) -> None:
+        # dispatch_turn writes the turn's meta after the message's own writes.
+        await asyncio.sleep(0.5)
+        await stream_registry.create_session(
+            kwargs["session_id"],
+            kwargs["user_id"],
+            "chat_stream",
+            "chat",
+            turn_id=f"rival-{uuid.uuid4().hex}",
+        )
 
 
 def _stub_boundaries(mocker: pytest_mock.MockerFixture) -> _World:
