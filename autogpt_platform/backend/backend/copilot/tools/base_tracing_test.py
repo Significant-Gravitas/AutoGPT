@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import sentry_sdk
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ErrorResponse
@@ -65,3 +66,21 @@ async def test_a_tool_that_raises_fails_its_transaction(sentry_transactions):
     [call] = sentry_transactions
     assert call["contexts"]["trace"]["status"] == "internal_error"
     assert call["tags"]["copilot.tool.success"] == "false"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error, reported",
+    [(ClientNotConnectedError(), True), (RuntimeError("tool crashed"), False)],
+)
+async def test_only_a_query_without_a_connection_is_reported_as_an_error(
+    mocker, error, reported
+):
+    async def body():
+        raise error
+
+    capture = mocker.patch("backend.copilot.tools.base.sentry_sdk.capture_exception")
+    result = await _tool(body).execute("u1", MagicMock(session_id="s1"), "call-3")
+
+    assert result.success is False
+    assert capture.call_args_list == ([mocker.call(error)] if reported else [])

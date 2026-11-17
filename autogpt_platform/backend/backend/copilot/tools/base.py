@@ -5,8 +5,10 @@ import logging
 from collections import deque
 from typing import TYPE_CHECKING, Any, Literal, Sequence
 
+import sentry_sdk
 from openai.types.chat import ChatCompletionToolParam
 from prisma.enums import APIKeyPermission
+from prisma.errors import ClientNotConnectedError
 
 from backend.copilot.ai_spans import mark_tool_failed, mark_tool_raised, tool_span
 from backend.copilot.context import args_already_bound, get_current_envelope
@@ -731,6 +733,10 @@ class BaseTool:
                 remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            # A tool that queried Prisma directly instead of over RPC is a bug
+            # in the tool, not a failed call, so it is reported as an error.
+            if isinstance(e, ClientNotConnectedError):
+                sentry_sdk.capture_exception(e)
             tracing.set_status("internal_error")
             mark_tool_raised(e)
             return StreamToolOutputAvailable(
