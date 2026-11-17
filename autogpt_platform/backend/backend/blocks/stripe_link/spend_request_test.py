@@ -191,6 +191,28 @@ async def test_the_card_block_asks_for_the_card_without_an_opt_in():
 
 
 @pytest.mark.asyncio
+async def test_the_card_block_never_hands_out_a_private_checkout_card():
+    """The private checkout's card goes only to its worker, even through a
+    service where the setting that turns this block off is missing."""
+    outputs, _ = await run_card(
+        {
+            "status": "approved",
+            "metadata": {"autogpt_checkout_id": "a" * 32},
+            "card": {
+                "number": "4242424242424242",
+                "cvc": "123",
+                "exp_month": 12,
+                "exp_year": 2030,
+            },
+        }
+    )
+
+    assert "card_number" not in outputs
+    assert "card_cvc" not in outputs
+    assert "private checkout" in outputs["error"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "env",
     [

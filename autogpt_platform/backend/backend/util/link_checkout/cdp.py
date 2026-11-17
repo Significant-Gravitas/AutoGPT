@@ -22,6 +22,7 @@ from backend.util.link_checkout.refusals import (
     NOT_CARD_FIELDS,
     CheckoutRefused,
 )
+from backend.util.link_checkout.sites import check_frame_site
 
 _logger = logging.getLogger("link_checkout.cdp")
 _logger.addHandler(logging.NullHandler())
@@ -186,6 +187,7 @@ class CDP:
             if len(matches) != 1 or not matches[0].frame.loaderId:
                 raise CheckoutRefused(FIELDS_NOT_READY)
             context = matches[0]
+            check_frame_site(context, frames, plan.checkout_url)
             control = await self.resolve_control(context, role, target.selector)
             pinned = control.binding
             if not capture and pinned not in binding.fields:

@@ -8,6 +8,7 @@ and a changed page stops everything before the card is asked for.
 
 import asyncio
 import json
+import re
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
@@ -15,9 +16,10 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import SecretStr
 
-from backend.util.link_checkout import cdp, network, worker
+from backend.util.link_checkout import cdp, network, sites, worker
 from backend.util.link_checkout.models import Card, WorkerJob
 from backend.util.link_checkout.refusals import (
+    FRAME_ELSEWHERE,
     FRAME_NOT_FOUND,
     INVALID_SELECTOR,
     NOT_CARD_FIELDS,
@@ -60,6 +62,8 @@ class ScriptedBrowser:
         # The tab's address, and its top frame as DevTools describes it.
         self.tab_url = CHECKOUT_URL
         self.top_frame = {"id": "frame", "url": CHECKOUT_URL, "loaderId": "doc"}
+        # The frames inside it, as DevTools' frame tree lists them.
+        self.child_frames: list[dict] = []
         # Calls a frozen page never answers.
         self.unanswered: set[str] = set()
         self.filled: dict[str, str] = {}
@@ -98,7 +102,9 @@ class ScriptedBrowser:
         if method == "Target.attachToTarget":
             return {"sessionId": "session"}
         if method == "Page.getFrameTree":
-            return {"frameTree": {"frame": self.top_frame}}
+            return {
+                "frameTree": {"frame": self.top_frame, "childFrames": self.child_frames}
+            }
         if method == "Page.createIsolatedWorld":
             return {"executionContextId": 1}
         if method == "DOM.describeNode":
@@ -418,3 +424,129 @@ async def test_a_page_that_stops_answering_ends_the_preparation(
         await asyncio.wait_for(
             cdp.prepare_browser("ws://127.0.0.1:9222/x", intent.plan), 30
         )
+
+
+def frame(frame_id: str, url: str, parent: str, *children: dict) -> dict:
+    """One frame of a frame tree, with the frames inside it."""
+    return {
+        "frame": {
+            "id": frame_id,
+            "url": url,
+            "parentId": parent,
+            "loaderId": f"doc-{frame_id}",
+        },
+        "childFrames": list(children),
+    }
+
+
+def card_fields_in(intent, url: str):
+    return intent.plan.model_copy(
+        update={"frame_urls": {role: url for role in ("number", "cvc", "expiry")}}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tree", "url"),
+    [
+        # Someone else's frame on the checkout page: an ad, a chat widget.
+        (
+            [frame("ad", "https://ads.example/slot", "frame")],
+            "https://ads.example/slot",
+        ),
+        # A card processor's frame, embedded by another site's frame for an
+        # account of its own.
+        (
+            [
+                frame(
+                    "ad",
+                    "https://ads.example/slot",
+                    "frame",
+                    frame("card", "https://js.stripe.com/v3/elements", "ad"),
+                )
+            ],
+            "https://js.stripe.com/v3/elements",
+        ),
+        # A frame with no address of its own takes its holder's site.
+        (
+            [
+                frame(
+                    "ad",
+                    "https://ads.example/slot",
+                    "frame",
+                    frame("card", "about:srcdoc", "ad"),
+                )
+            ],
+            "about:srcdoc",
+        ),
+        # A site that only shares a suffix with the checkout's is another site.
+        (
+            [frame("card", "https://shop.example.evil.example/card", "frame")],
+            "https://shop.example.evil.example/card",
+        ),
+    ],
+)
+async def test_card_fields_in_another_sites_frame_are_refused(
+    browser, intent, tree, url
+):
+    browser.child_frames = tree
+
+    with pytest.raises(CheckoutRefused, match=re.escape(FRAME_ELSEWHERE)):
+        await cdp.prepare_browser("ws://127.0.0.1:9222/x", card_fields_in(intent, url))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tree", "url"),
+    [
+        # A card processor's frame on the checkout page.
+        (
+            [frame("card", "https://js.stripe.com/v3/elements", "frame")],
+            "https://js.stripe.com/v3/elements",
+        ),
+        # The merchant's own payment subdomain.
+        (
+            [frame("card", "https://pay.shop.example/card", "frame")],
+            "https://pay.shop.example/card",
+        ),
+        # A processor's frame inside the same processor's checkout frame.
+        (
+            [
+                frame(
+                    "outer",
+                    "https://checkout.stripe.com/c/pay",
+                    "frame",
+                    frame("card", "https://js.stripe.com/v3/card", "outer"),
+                )
+            ],
+            "https://js.stripe.com/v3/card",
+        ),
+        # A frame with no address of its own, written by the checkout page.
+        ([frame("card", "about:srcdoc", "frame")], "about:srcdoc"),
+    ],
+)
+async def test_card_fields_on_the_pages_site_or_in_a_processors_frame_are_pinned(
+    browser, intent, tree, url
+):
+    browser.child_frames = tree
+
+    binding = await cdp.prepare_browser(
+        "ws://127.0.0.1:9222/x", card_fields_in(intent, url)
+    )
+
+    assert {f.frame_id for f in binding.fields if f.role != "submit"} == {"card"}
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://pay.example.co.uk/x", "example.co.uk"),
+        ("https://js.stripe.com/v3", "stripe.com"),
+        ("https://user.github.io/shop", "user.github.io"),
+        ("https://192.168.1.1/pay", "192.168.1.1"),
+        ("https://10.0.1.1/pay", "10.0.1.1"),
+        ("about:blank", ""),
+    ],
+)
+def test_a_site_is_a_registrable_domain_or_a_bare_address(url, expected):
+    assert sites.site(url) == expected

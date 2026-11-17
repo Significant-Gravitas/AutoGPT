@@ -17,8 +17,8 @@ pytestmark = pytest.mark.skipif(
     reason="needs the private browser runtime (Linux, agent-browser, no swap)",
 )
 
-PAGE = """<iframe src="https://processor.example/card"></iframe><button id="pay">Pay</button>
-<script>let ready=false; onmessage=e=>{if(e.origin==='https://processor.example')ready=e.data==='ready'};
+PAGE = """<iframe src="https://js.stripe.com/card"></iframe><button id="pay">Pay</button>
+<script>let ready=false; onmessage=e=>{if(e.origin==='https://js.stripe.com')ready=e.data==='ready'};
 document.querySelector('button').onclick=()=>{if(ready)fetch('/accepted',{method:'POST'})};</script>"""
 FRAME = """<input id="number" autocomplete="cc-number">
 <input id="cvc" autocomplete="cc-csc"><input id="expiry" autocomplete="cc-exp"><script>
@@ -43,7 +43,7 @@ async def serve(socket, accepted):
             url = params["request"]["url"]
             if url == "https://shop.example/accepted":
                 accepted.set()
-            html = FRAME if url == "https://processor.example/card" else PAGE
+            html = FRAME if url == "https://js.stripe.com/card" else PAGE
             commands = [
                 (
                     "Fetch.fulfillRequest",
@@ -82,7 +82,7 @@ async def test_real_cross_process_payment_frame_keeps_field_binding(
     await browse(key, "open", "about:blank")
     endpoint = await browser_endpoint(key)
     plan.frame_urls = {
-        role: "https://processor.example/card" for role in ("number", "cvc", "expiry")
+        role: "https://js.stripe.com/card" for role in ("number", "cvc", "expiry")
     }
     intent.session_id, intent.plan = key, plan
     intent.spend_request_id = "lsrq_fixture"

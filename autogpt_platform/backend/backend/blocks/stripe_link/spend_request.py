@@ -31,6 +31,7 @@ from backend.blocks.stripe_link._auth import (
 )
 from backend.data.model import SchemaField
 from backend.util.link_checkout import engine as link_checkout
+from backend.util.link_checkout.link import CHECKOUT_METADATA_KEY
 from backend.util.settings import BehaveAs, Settings
 
 logger = logging.getLogger(__name__)
@@ -871,6 +872,16 @@ class StripeLinkRetrieveCardBlock(Block):
                 "GET",
                 f"/spend_requests/{quote(input_data.spend_request_id, safe='')}?include=card",
             )
+            metadata = result.get("metadata")
+            if isinstance(metadata, dict) and metadata.get(CHECKOUT_METADATA_KEY):
+                # The private checkout's purchase. Its card goes only to the
+                # checkout's worker, whichever service runs this block and
+                # whatever that service's settings say.
+                yield "error", (
+                    "This purchase belongs to the private checkout, which pays "
+                    "it without handing out the card."
+                )
+                return
 
             status = result["status"]
             yield "status", status
