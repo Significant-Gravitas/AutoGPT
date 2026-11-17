@@ -478,7 +478,7 @@
     "mcp_server": {
       "server_url": "https://mcp.companyenrich.com/mcp",
       "documentation_url": "https://docs.companyenrich.com/docs/mcp-server",
-      "setup_instructions": "Create an account at app.companyenrich.com and copy your API key from the dashboard. Use the API key as the bearer token. Tool calls consume CompanyEnrich credits, and search result counts affect usage.",
+      "setup_instructions": "Create an API key at app.companyenrich.com/access-keys and paste it as the access token. Every lookup except checking your account spends CompanyEnrich credits, and searches are charged per result.",
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
