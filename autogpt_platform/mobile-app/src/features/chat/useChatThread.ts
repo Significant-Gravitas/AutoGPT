@@ -11,7 +11,7 @@ import {
 } from "@/lib/api/chat";
 import { homeKeys } from "@/lib/api/home";
 import { SignedOutError } from "@/lib/auth/errors";
-import { queryClient, sessionGeneration, signOut } from "@/lib/session";
+import { isSessionGone, queryClient, sessionGeneration, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
 import { toUIMessages } from "./convertMessages";
@@ -28,6 +28,7 @@ import { useEarlierMessages } from "./useEarlierMessages";
 
 const RECOVERY_DELAY_MS = 1500;
 const MAX_RECOVERIES = 3;
+const STOP_FAILED_MESSAGE = "Couldn't stop Otto. Check your connection and try again.";
 
 interface Args {
   sessionID: string;
@@ -67,7 +68,12 @@ export function useChatThread({ sessionID, detail, isCached }: Args) {
   const isSyncing = useRef(false);
   const isMounted = useRef(true);
   const recoveries = useRef(0);
-  const isBusy = status === "submitted" || status === "streaming";
+  // Held from Stop until the server has stopped the turn: it drops any
+  // message queued behind a cancelled one, so none may be sent meanwhile.
+  const [isStopping, setIsStopping] = useState(false);
+  const isStoppingRef = useRef(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  const isBusy = status === "submitted" || status === "streaming" || isStopping;
   const earlier = useEarlierMessages({
     sessionID,
     detail,
@@ -96,6 +102,7 @@ export function useChatThread({ sessionID, detail, isCached }: Args) {
     try {
       fresh = await getSession(sessionID);
       if (!isMounted.current || startedIn !== sessionGeneration()) return;
+      if (hasUnsentMessage(fresh)) return;
       queryClient.setQueryData(chatKeys.session(sessionID), fresh);
       await chat.stop();
       if (!isMounted.current) return;
@@ -105,6 +112,16 @@ export function useChatThread({ sessionID, detail, isCached }: Args) {
       isSyncing.current = false;
     }
     if (fresh.active_stream && !isChatBusy()) await resumeTurn();
+  }
+
+  // A message the server never got lives only on the phone (its draft is
+  // already cleared), so it and its error line stay rather than give way to
+  // the server's older copy.
+  function hasUnsentMessage(fresh: SessionDetail) {
+    if (!chat.error && !isChatBusy()) return false;
+    if (!lastMessageIsUser(chat.messages)) return false;
+    const local = messagesInWindow(sessionID, chat.messages, fresh.oldest_sequence);
+    return !turnLanded(fresh.messages, local, fresh.active_stream);
   }
 
   // resumeStream resolves once the replayed stream ends, or at once when the
@@ -187,8 +204,9 @@ export function useChatThread({ sessionID, detail, isCached }: Args) {
 
   // True once the SDK has the message; it keeps it shown if the stream fails.
   function send(text: string, files: { id: string; name: string }[] = []) {
-    if (isSyncing.current || isChatBusy()) return false;
+    if (isSyncing.current || isStoppingRef.current || isChatBusy()) return false;
     recoveries.current = 0;
+    setStopError(null);
     // The ids ride to the server through the transport; the names stay for the bubble.
     const metadata = files.length
       ? {
@@ -205,14 +223,31 @@ export function useChatThread({ sessionID, detail, isCached }: Args) {
   }
 
   async function stop() {
-    await chat.stop();
-    await cancelSession(sessionID).catch(() => undefined);
+    if (isStoppingRef.current) return;
+    isStoppingRef.current = true;
+    setIsStopping(true);
+    setStopError(null);
+    let isStopped = false;
+    try {
+      await chat.stop();
+      isStopped = (await cancelSession(sessionID)).cancelled;
+    } catch (caught) {
+      if (isSessionGone(caught)) void signOut();
+    } finally {
+      isStoppingRef.current = false;
+      if (isMounted.current) setIsStopping(false);
+    }
+    if (isStopped || !isMounted.current) return;
+    // The turn may still be running: say so, and pick its stream up again
+    // so Stop is there to try once more.
+    setStopError(STOP_FAILED_MESSAGE);
+    void syncWithServer().catch(() => undefined);
   }
 
   return {
     messages,
     status,
-    errorMessage: chatErrorMessage(error),
+    errorMessage: stopError ?? chatErrorMessage(error),
     isBusy,
     send,
     stop,
