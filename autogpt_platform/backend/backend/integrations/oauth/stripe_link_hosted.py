@@ -33,6 +33,7 @@ from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.integrations.oauth.refresh_failure import OAuthTokenRequestError
 from backend.integrations.oauth.stripe_link import (
+    HOSTED_FLOW,
     LINK_AUTH_BASE_URL,
     LINK_HTTP_TIMEOUT,
     StripeLinkDeviceAuthHandler,
@@ -50,8 +51,6 @@ STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
     and _secrets.stripe_link_client_secret
     and _secrets.stripe_link_publishable_key
 )
-
-HOSTED_FLOW = "authorization_code"
 
 # What an OAuth error code looks like (RFC 6749 section 5.2).
 _ERROR_CODE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
@@ -137,7 +136,11 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
             title="Stripe Link",
             access_token=SecretStr(access_token),
             refresh_token=SecretStr(data["refresh_token"]),
-            access_token_expires_at=int(time.time()) + int(data["expires_in"]),
+            access_token_expires_at=(
+                int(time.time()) + int(data["expires_in"])
+                if data.get("expires_in") is not None
+                else None
+            ),
             # What the customer granted, which can be a subset of the request;
             # no fallback to the requested scopes (see the device handler).
             scopes=parse_granted_scopes(data.get("scope"), []),
@@ -197,12 +200,17 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
         return True
 
     def _require_own_client(self, credentials: OAuth2Credentials) -> None:
-        # Tokens are bound to the client that issued them; after a client
-        # rotation the old grant cannot be refreshed and must be reconnected.
+        if not is_hosted_link_credential(credentials):
+            # A reconnect through the device client replaced the grant after
+            # this handler was picked. Not a dead grant: the next refresh
+            # picks that client.
+            raise RuntimeError("These Stripe Link credentials are not this client's")
         if not self._owns(credentials):
-            raise RuntimeError(
-                "These Stripe Link credentials were issued to a different "
-                "OAuth client; reconnect Stripe Link"
+            # Issued to a confidential client since rotated or removed, which
+            # nothing here can refresh: a grant "issued to another client" is
+            # RFC 6749's invalid_grant, so the user is asked to reconnect.
+            raise OAuthTokenRequestError(
+                "Stripe Link", status_code=None, error_code="invalid_grant"
             )
 
     def _owns(self, credentials: OAuth2Credentials) -> bool:
@@ -248,6 +256,13 @@ def _oauth_error_code(response: httpx.Response) -> str | None:
         return None
     code = body.get("error") if isinstance(body, dict) else None
     return code if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else None
+
+
+def unconfigured_handler() -> StripeLinkHostedOAuthHandler:
+    """Stands in for the confidential client once it is no longer configured.
+    A grant it issued keeps working while its access token lasts; its refresh
+    then fails as a dead grant, so the user is asked to reconnect."""
+    return StripeLinkHostedOAuthHandler("", "", redirect_uri="")
 
 
 def revocation_handler() -> StripeLinkHostedOAuthHandler:
