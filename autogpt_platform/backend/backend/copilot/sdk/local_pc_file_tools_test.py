@@ -18,6 +18,7 @@ from PIL import Image
 from backend.copilot.context import resolve_executor_path
 from backend.copilot.sdk.e2b_file_tools import (
     _edit_lock,
+    _edit_locks,
     _handle_edit_file,
     _handle_glob,
     _handle_grep,
@@ -437,6 +438,122 @@ class TestLocalPCEditsTakeTurns:
 
         assert first["isError"] is False and second["isError"] is False
         assert stored["/Users/test/ws/notes.txt"] == b"1 2"
+
+
+# The lock map once kept this many files' locks, dropping the oldest for a new
+# file even while an edit held it or waited for it.
+_LOCKS_THE_MAP_KEPT = 1_000
+
+
+class TestAnEditLockInUseIsKept:
+    """An edit of a file whose lock was dropped took a fresh lock and ran
+    beside the edit still holding the old one, so one of the two writes was
+    lost."""
+
+    @pytest.mark.asyncio
+    async def test_an_edit_waits_for_one_that_began_a_thousand_files_ago(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        shim = _shim(allowed_root="/Users/test/ws")
+        held = "/Users/test/ws/notes.txt"
+        stored = {held: b"one two"}
+        first_reading = asyncio.Event()
+        second_read = asyncio.Event()
+        first_may_finish = asyncio.Event()
+
+        async def rpc(op: str, payload: dict, **_kwargs) -> dict:
+            path = payload["path"]
+            if op != "FILE_READ":
+                stored[path] = payload["content"].encode()
+                return {"type": "ACK", "payload": {"ok": True}}
+            data = stored.setdefault(path, b"old")
+            if path == held and first_reading.is_set():
+                second_read.set()
+            elif path == held:
+                first_reading.set()
+                await first_may_finish.wait()
+            return _contents(data)
+
+        shim._rpc = rpc
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: shim
+        )
+
+        first = asyncio.create_task(
+            _handle_edit_file(
+                {"file_path": "notes.txt", "old_string": "one", "new_string": "1"}
+            )
+        )
+        await asyncio.wait_for(first_reading.wait(), 30)
+        for n in range(_LOCKS_THE_MAP_KEPT + 1):
+            other = await _handle_edit_file(
+                {"file_path": f"other-{n}.txt", "old_string": "old", "new_string": "x"}
+            )
+            assert other["isError"] is False
+        second = asyncio.create_task(
+            _handle_edit_file(
+                {"file_path": "notes.txt", "old_string": "two", "new_string": "2"}
+            )
+        )
+        # The second edit's chance to read the file while the first holds it,
+        # which only an edit that doesn't wait takes.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(second_read.wait(), 0.5)
+        first_may_finish.set()
+        results = await asyncio.wait_for(asyncio.gather(first, second), 30)
+
+        assert [result["isError"] for result in results] == [False, False]
+        assert stored[held] == b"1 2"
+
+    @pytest.mark.asyncio
+    async def test_a_lock_an_edit_waits_for_outlives_its_holder(self):
+        """Free for a moment between its holder and the edit waiting for it, a
+        lock is still in use: a third edit must queue on it, not on a new one."""
+        key = "local_pc:machine-1:/Users/test/ws/queued.txt"
+        inside: list[str] = []
+        most_inside = 0
+
+        async def edit(name: str, leave: asyncio.Event) -> None:
+            nonlocal most_inside
+            async with _edit_lock(key):
+                inside.append(name)
+                most_inside = max(most_inside, len(inside))
+                await leave.wait()
+                inside.remove(name)
+
+        first_leaves, others_leave = asyncio.Event(), asyncio.Event()
+        first = asyncio.create_task(edit("first", first_leaves))
+        await asyncio.sleep(0)
+        assert inside == ["first"]
+        waiting = asyncio.create_task(edit("waiting", others_leave))
+        await asyncio.sleep(0)
+        first_leaves.set()
+        await asyncio.wait_for(first, 30)
+        for n in range(_LOCKS_THE_MAP_KEPT + 1):
+            async with _edit_lock(f"local_pc:machine-1:/Users/test/ws/other-{n}.txt"):
+                pass
+        third = asyncio.create_task(edit("third", others_leave))
+        # Their chance to be in the file together, which only a second lock
+        # for it gives them.
+        await asyncio.sleep(0.2)
+        others_leave.set()
+        await asyncio.wait_for(asyncio.gather(waiting, third), 30)
+
+        assert most_inside == 1
+
+    @pytest.mark.asyncio
+    async def test_only_files_being_edited_keep_a_lock(self):
+        """The map can't grow without bound: a file's lock goes with its last
+        edit."""
+        held = "local_pc:machine-1:/Users/test/ws/held.txt"
+
+        async with _edit_lock(held):
+            for n in range(50):
+                async with _edit_lock(f"local_pc:machine-1:/Users/test/ws/{n}.txt"):
+                    pass
+            assert list(_edit_locks) == [held]
+
+        assert not _edit_locks
 
 
 class TestEditsTakeTurnsAcrossWorkers:

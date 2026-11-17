@@ -14,7 +14,6 @@ by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 
 import asyncio
 import base64
-import collections
 import contextlib
 import functools
 import hashlib
@@ -77,11 +76,22 @@ _DEFAULT_READ_LIMIT = 2000
 # two Edit calls on the same file could race through read-modify-write
 # and silently drop one change.  Keyed by the file: its resolved absolute
 # path, or its executor and path there (see _executor_file_key).
-# Bounded to _EDIT_LOCKS_MAX entries (LRU eviction) to prevent unbounded
-# memory growth across long-running server processes.
-_EDIT_LOCKS_MAX = 1_000
+# A file's lock is kept only while an edit holds it or waits for it, so the
+# map is no larger than the edits in flight and never drops a lock in use.
 _EDIT_LOCK_POLL_SECONDS = 0.02
-_edit_locks: collections.OrderedDict[str, threading.Lock] = collections.OrderedDict()
+
+
+class _FileLock:
+    """One file's edit lock, and how many edits hold it or wait for it."""
+
+    __slots__ = ("lock", "users")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
+
+
+_edit_locks: dict[str, _FileLock] = {}
 _edit_locks_guard = threading.Lock()
 
 # Inline content above this threshold triggers a warning — it survived this
@@ -779,28 +789,40 @@ async def _edit_lock(key: str) -> AsyncIterator[None]:
     polled without blocking the loop: an asyncio.Lock binds to the first loop
     that waits on it and refuses every other, and a release from another
     thread doesn't wake its waiter.
+
+    The file keeps one lock from its first waiting edit to its last: an edit
+    handed a new lock while another still held the old one would run beside
+    it.
     """
-    lock = _file_lock(key)
-    while not lock.acquire(blocking=False):
-        await asyncio.sleep(_EDIT_LOCK_POLL_SECONDS)
+    file_lock = _claim_file_lock(key)
     try:
-        yield
+        while not file_lock.lock.acquire(blocking=False):
+            await asyncio.sleep(_EDIT_LOCK_POLL_SECONDS)
+        try:
+            yield
+        finally:
+            file_lock.lock.release()
     finally:
-        lock.release()
+        _release_file_lock(key, file_lock)
 
 
-def _file_lock(key: str) -> threading.Lock:
-    """One file's edit lock. LRU-bounded, so the locks don't grow without
-    limit in a long-running server process."""
+def _claim_file_lock(key: str) -> _FileLock:
+    """The file's edit lock, counted as in use until it is released."""
     with _edit_locks_guard:
-        lock = _edit_locks.get(key)
-        if lock is None:
-            if len(_edit_locks) >= _EDIT_LOCKS_MAX:
-                _edit_locks.popitem(last=False)
-            lock = _edit_locks[key] = threading.Lock()
-        else:
-            _edit_locks.move_to_end(key)
-        return lock
+        file_lock = _edit_locks.get(key)
+        if file_lock is None:
+            file_lock = _edit_locks[key] = _FileLock()
+        file_lock.users += 1
+        return file_lock
+
+
+def _release_file_lock(key: str, file_lock: _FileLock) -> None:
+    """Forget the file's lock once no edit holds it or waits for it, so the
+    locks don't grow without limit in a long-running server process."""
+    with _edit_locks_guard:
+        file_lock.users -= 1
+        if file_lock.users == 0 and _edit_locks.get(key) is file_lock:
+            del _edit_locks[key]
 
 
 def _executor_file_key(sandbox: Any, remote: str) -> str:
