@@ -19,7 +19,13 @@ export function GoogleAccess({ onDone, onSkip }: AccessConnectProps) {
     );
 
   if (access.lookupFailed && !credential)
-    return <GoogleLookupFailed onRetry={access.retry} onSkip={onSkip} />;
+    return (
+      <GoogleLookupFailed
+        error={access.lookupError}
+        onRetry={access.retry}
+        onSkip={onSkip}
+      />
+    );
 
   return (
     <div className="flex flex-col gap-4">

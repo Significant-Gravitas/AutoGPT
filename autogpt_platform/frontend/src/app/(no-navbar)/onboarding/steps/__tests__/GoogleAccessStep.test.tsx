@@ -124,6 +124,10 @@ describe("Google access step", () => {
     expect(
       screen.getByRole("button", { name: "Connect Google" }),
     ).toBeDefined();
+    // Each row's status region exists before there's a status, so a screen
+    // reader announces the first one when the account connects.
+    const list = screen.getByRole("list", { name: "Google services" });
+    expect(list.querySelectorAll('[aria-live="polite"]')).toHaveLength(3);
   });
 
   it("asks Google once for everything the Google blocks use", async () => {
@@ -250,12 +254,14 @@ describe("Google access step", () => {
     render(<AccessStep />);
 
     expect(
-      await screen.findByText("We couldn't check your Google connection."),
+      await screen.findByText(
+        "We had the following error when retrieving your Google connection:",
+      ),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Connect Google" })).toBeNull();
 
     failing = false;
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Try Again" }));
 
     expect(
       await screen.findByRole("button", { name: "Connect Google" }),
