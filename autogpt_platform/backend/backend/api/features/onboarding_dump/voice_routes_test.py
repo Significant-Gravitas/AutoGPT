@@ -32,6 +32,7 @@ from backend.api.features.onboarding_dump import (
     voice,
     voice_handoff,
 )
+from backend.api.features.onboarding_dump.interview import StartOver
 from backend.api.features.onboarding_dump.models import FinalizeResponse
 from backend.copilot.model import (
     INTERVIEW_STAGE_CLOSED,
@@ -406,6 +407,38 @@ async def test_a_person_whose_interview_is_over_cannot_call(
     assert response.status_code == 409
     assert response.json()["detail"] == {"code": "onboarding_interview_closed"}
     voice_on.interview.assert_awaited_once_with(test_user_id)
+
+
+@pytest.mark.parametrize("stage", [INTERVIEW_STAGE_CLOSED, INTERVIEW_STAGE_HANDED_OFF])
+async def test_a_start_over_sets_an_interview_that_is_over_aside_for_the_call(
+    voice_on, test_user_id, stage, mocker: MockerFixture
+):
+    plan = StartOver(session_id="earlier")
+    read = mocker.patch.object(voice, "read_start_over", AsyncMock(return_value=plan))
+    apply = mocker.patch.object(voice, "apply_start_over", AsyncMock())
+    voice_on.interview.return_value = _interview(test_user_id, stage)
+
+    response = await start({"start_over": True})
+
+    assert response.status_code == 200
+    read.assert_awaited_once_with(test_user_id)
+    apply.assert_awaited_once_with(test_user_id, plan)
+    voice_on.interview.assert_not_awaited()
+
+
+async def test_a_start_over_with_voice_off_sets_nothing_aside(
+    voice_on, mocker: MockerFixture
+):
+    mocker.patch.object(
+        voice, "read_start_over", AsyncMock(return_value=StartOver(taken_by="c"))
+    )
+    apply = mocker.patch.object(voice, "apply_start_over", AsyncMock())
+    voice_on.flag.return_value = (False, False)
+
+    response = await start({"start_over": True})
+
+    assert response.status_code == 404
+    apply.assert_not_awaited()
 
 
 @pytest.mark.parametrize("stage", [None, INTERVIEW_STAGE_WRAP_UP_ISSUED])

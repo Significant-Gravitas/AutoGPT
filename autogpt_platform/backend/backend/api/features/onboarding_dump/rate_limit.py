@@ -143,6 +143,13 @@ async def enforce_interview_turn_budget(user_id: str) -> None:
     await _enforce(user_id, _INTERVIEW)
 
 
+async def check_interview_turn_budget(user_id: str) -> None:
+    """Refuse as :func:`enforce_interview_turn_budget` would, counting
+    nothing: for a step that must know a turn would be admitted before it
+    changes anything."""
+    await _enforce(user_id, _INTERVIEW, script=_CHECK)
+
+
 def _voice_start_budget() -> _Budget:
     """A person's starts of an onboarding voice call, counted apart from
     their calls: each start opens a room and a token for it, whether or not

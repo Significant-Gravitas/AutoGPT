@@ -247,12 +247,20 @@ async def start_onboarding_interview(
 
     ``ending_pick`` is a tester's pick of the ending, kept for the interview's
     close while the ending picker is on for them, and ignored otherwise.
+
+    ``start_over`` asks for a fresh interview in place of one that is over,
+    typed or taken by a call: it is set aside and a new typed interview
+    opens, once the turn budget would admit its greeting. A live call still
+    refuses it (409 ``call_in_progress``). An interview that is not over
+    opens as it would without it.
     """
     await interview_endings.keep_text_pick(
         user_id, request.ending_pick if request is not None else None
     )
     try:
-        started = await interview.start_onboarding_interview(user_id)
+        started = await interview.start_onboarding_interview(
+            user_id, start_over=request is not None and request.start_over
+        )
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):
             raise _with_wait_in_body(e) from e
@@ -369,10 +377,16 @@ async def start_onboarding_voice_call(
     ``ending_pick`` is a tester's pick of the call's ending, honoured while
     the ending picker is on for them and the arm fits a call, and ignored
     otherwise.
+
+    ``start_over`` asks for the call to start a fresh interview in place of
+    one that is over: instead of the 409, it is set aside once every other
+    check passes. A live call still refuses it (409 ``call_in_progress``).
     """
     try:
         return await voice.start_voice_call(
-            user_id, request.ending_pick if request is not None else None
+            user_id,
+            request.ending_pick if request is not None else None,
+            start_over=request is not None and request.start_over,
         )
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):

@@ -10,6 +10,7 @@ from prisma.models import User, UserOnboarding
 
 from backend.data.onboarding import (
     claim_onboarding_interview_session_id,
+    forget_onboarding_voice_calls,
     get_onboarding_interview_session_id,
     get_onboarding_voice_call_id,
     get_onboarding_voice_interview_call_id,
@@ -73,3 +74,26 @@ async def test_the_call_that_took_the_interview_stays_when_another_starts(
     await record_onboarding_voice_call(new_user, later)
     assert await get_onboarding_voice_interview_call_id(new_user) == took
     assert await get_onboarding_voice_call_id(new_user) == later
+
+
+async def test_a_start_over_forgets_the_calls_it_read(new_user: str):
+    took = uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, took)
+    await record_onboarding_voice_interview_call(new_user, took)
+
+    await forget_onboarding_voice_calls(new_user, latest=took, taken=took)
+
+    assert await get_onboarding_voice_call_id(new_user) is None
+    assert await get_onboarding_voice_interview_call_id(new_user) is None
+
+
+async def test_a_start_over_keeps_a_call_recorded_after_its_read(new_user: str):
+    took, later = uuid.uuid4().hex, uuid.uuid4().hex
+    await record_onboarding_voice_call(new_user, took)
+    await record_onboarding_voice_interview_call(new_user, took)
+    await record_onboarding_voice_call(new_user, later)
+
+    await forget_onboarding_voice_calls(new_user, latest=took, taken=took)
+
+    assert await get_onboarding_voice_call_id(new_user) == later
+    assert await get_onboarding_voice_interview_call_id(new_user) is None

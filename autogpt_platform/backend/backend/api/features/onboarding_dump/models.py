@@ -495,6 +495,10 @@ class VoiceCallStartRequest(BaseModel):
     """A tester's pick of the call's ending, honoured only while the picker
     is on for them and the arm fits a call; ignored otherwise."""
 
+    start_over: bool = False
+    """The person asked to do their interview over: a closed interview is
+    set aside for this call, instead of refusing it."""
+
 
 class InterviewStartRequest(BaseModel):
     """The typed interview's start."""
@@ -502,6 +506,10 @@ class InterviewStartRequest(BaseModel):
     ending_pick: str | None = Field(default=None, max_length=64)
     """A tester's pick of the interview's ending, honoured only while the
     picker is on for them; ignored otherwise."""
+
+    start_over: bool = False
+    """The person asked to do their interview over: a closed interview is
+    set aside for a fresh typed one, instead of reopening it."""
 
 
 class InterviewFinishRequest(BaseModel):

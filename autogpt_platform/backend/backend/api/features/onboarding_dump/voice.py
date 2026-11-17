@@ -63,9 +63,12 @@ from prometheus_client import Counter
 from backend.api.features.onboarding_dump import quality
 from backend.api.features.onboarding_dump.interview import (
     LaterCallUnsettled,
+    StartOver,
+    apply_start_over,
     call_that_took_the_interview,
     call_words,
     interview_enabled,
+    read_start_over,
     superseded_take,
 )
 from backend.api.features.onboarding_dump.interview_endings import (
@@ -138,7 +141,7 @@ ABANDONED_STARTS = Counter(
 
 
 async def start_voice_call(
-    user_id: str, ending_pick: str | None = None
+    user_id: str, ending_pick: str | None = None, *, start_over: bool = False
 ) -> VoiceCallStartResponse:
     """Start a voice call for *user_id*'s onboarding interview.
 
@@ -146,23 +149,29 @@ async def start_voice_call(
     of the ending experiment's arm only while the picker is on for them and
     the arm fits a call (``interview_endings.honoured_pick``).
 
+    With *start_over*, an interview that is over is no refusal: once every
+    other check passes and the start is counted, it is set aside
+    (``interview.apply_start_over``) and the call starts a fresh one.
+
     Raises:
         HTTPException: 404, 409, 429 or 503, as the module describes.
     """
     with sentry_sdk.start_span(op="voice.call.start", name="Start a voice call"):
-        return await _start_voice_call(user_id, ending_pick)
+        return await _start_voice_call(user_id, ending_pick, start_over)
 
 
 async def _start_voice_call(
-    user_id: str, ending_pick: str | None
+    user_id: str, ending_pick: str | None, start_over: bool = False
 ) -> VoiceCallStartResponse:
     # Read side by side; refused in the module's order.
-    picked, enabled, *refusals = await asyncio.gather(
+    picked, enabled, (plan, refusals) = await asyncio.gather(
         _timed("pick", honoured_pick(user_id, "voice", ending_pick)),
         _timed("flag", _voice_enabled(user_id)),
-        _timed("interview", _refusal(_refuse_if_interview_over(user_id))),
-        _timed("calls", _refusal(_refuse_on_calls(user_id))),
-        _timed("budget", _refusal(enforce_voice_call_budget(user_id))),
+        _refusals(
+            _timed("interview", _interview_read(user_id, start_over)),
+            _timed("calls", _refusal(_refuse_on_calls(user_id))),
+            _timed("budget", _refusal(enforce_voice_call_budget(user_id))),
+        ),
     )
     if not enabled:
         raise HTTPException(status_code=404, detail="Feature not available")
@@ -177,6 +186,8 @@ async def _start_voice_call(
             raise refusal
     # Counted only for a start that is going ahead: each opens a room.
     await _timed("starts", enforce_voice_start_budget(user_id))
+    if plan is not None:
+        await _timed("start_over", apply_start_over(user_id, plan))
     redis = await _bounded(get_redis_async())
     call_id = tokens.new_call_id()
     # The arm is read only for a start that is going ahead, since reading it
@@ -262,6 +273,31 @@ async def _voice_enabled(user_id: str) -> bool:
         logger.warning("Voice interview flag could not be read", exc_info=True)
         return False
     return enabled
+
+
+async def _refusals(
+    interview: Awaitable[tuple[StartOver | None, HTTPException | None]],
+    *checks: Awaitable[HTTPException | None],
+) -> tuple[StartOver | None, list[HTTPException | None]]:
+    """The interview's read, and every refusal in the start's order: the
+    interview's first."""
+    (plan, refused), others = await asyncio.gather(interview, asyncio.gather(*checks))
+    return plan, [refused, *others]
+
+
+async def _interview_read(
+    user_id: str, start_over: bool
+) -> tuple[StartOver | None, HTTPException | None]:
+    """What a start-over sets aside, or None, with the interview's refusal:
+    without *start_over*, an interview that is over refuses the call; with
+    it, only what :func:`read_start_over` refuses does."""
+    try:
+        if start_over:
+            return await read_start_over(user_id), None
+        await _refuse_if_interview_over(user_id)
+    except HTTPException as refusal:
+        return None, refusal
+    return None, None
 
 
 async def _refuse_if_interview_over(user_id: str) -> None:

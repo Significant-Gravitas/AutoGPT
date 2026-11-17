@@ -200,6 +200,25 @@ async def get_onboarding_voice_interview_call_id(user_id: str) -> str | None:
     return onboarding.voiceInterviewCallId if onboarding else None
 
 
+async def forget_onboarding_voice_calls(
+    user_id: str, *, latest: str | None, taken: str | None
+) -> None:
+    """Forget *user_id*'s voice calls on their onboarding row, for an
+    interview started over: *latest* as their latest call and *taken* as the
+    call that took their interview. Each column is cleared only while it
+    still holds the id read, so a call recorded meanwhile is kept."""
+    if latest is not None:
+        await UserOnboarding.prisma().update_many(
+            where={"userId": user_id, "voiceCallId": latest},
+            data={"voiceCallId": None},
+        )
+    if taken is not None:
+        await UserOnboarding.prisma().update_many(
+            where={"userId": user_id, "voiceInterviewCallId": taken},
+            data={"voiceInterviewCallId": None},
+        )
+
+
 def _default_user_onboarding(user_id: str) -> UserOnboarding:
     """An unsaved row mirroring the column defaults in ``schema.prisma``.
 

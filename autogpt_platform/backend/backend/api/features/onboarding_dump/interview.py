@@ -71,6 +71,7 @@ from backend.api.features.onboarding_dump.models import (
     FinalizeResponse,
 )
 from backend.api.features.onboarding_dump.rate_limit import (
+    check_interview_turn_budget,
     enforce_interview_turn_budget,
 )
 from backend.copilot.active_turns import ConcurrentTurnLimitError
@@ -118,6 +119,8 @@ from backend.copilot.service import (
 )
 from backend.data.db_accessors import chat_db
 from backend.data.onboarding import (
+    forget_onboarding_interview_session,
+    forget_onboarding_voice_calls,
     get_onboarding_voice_call_id,
     get_onboarding_voice_interview_call_id,
 )
@@ -193,8 +196,15 @@ class StartedInterview(BaseModel):
     turn_id: str | None
 
 
-async def start_onboarding_interview(user_id: str) -> StartedInterview:
+async def start_onboarding_interview(
+    user_id: str, *, start_over: bool = False
+) -> StartedInterview:
     """Open the user's onboarding interview and have Otto speak first.
+
+    With *start_over*, a closed interview is set aside first
+    (:func:`read_start_over`, :func:`apply_start_over`) and a fresh one
+    opens, once the turn budget would admit its greeting; an interview that
+    is not closed opens as it would without it.
 
     The one call a route makes to start or reopen an interview. The user has
     one interview, so a second call adopts it; an interview the user has
@@ -214,6 +224,11 @@ async def start_onboarding_interview(user_id: str) -> StartedInterview:
             voice call holds the interview, and whatever
             :func:`enforce_onboarding_interview_allowance` raises.
     """
+    if start_over:
+        plan = await read_start_over(user_id)
+        if plan is not None:
+            await check_interview_turn_budget(user_id)
+            await apply_start_over(user_id, plan)
     await refuse_while_a_call_holds_the_interview(user_id)
     session = await get_or_create_onboarding_interview_session(user_id)
     if interview_is_over(session):
@@ -340,6 +355,139 @@ async def call_that_took_the_interview(user_id: str) -> str | None:
     and the row is what is read.
     """
     return await get_onboarding_voice_interview_call_id(user_id)
+
+
+class StartOver(BaseModel):
+    """What starting a closed interview over sets aside, read before anything
+    is written (:func:`read_start_over`)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    # The person's typed interview, retired so the next start opens a new
+    # one.
+    session_id: str | None = None
+    # Their latest call and the call that took the interview, as the
+    # onboarding row names them.
+    latest_call: str | None = None
+    taken_by: str | None = None
+    # Their calls whose words have no claim on the interview yet, so a late
+    # hand-off of one can never take the new interview.
+    unclaimed_calls: tuple[str, ...] = ()
+    # The earlier take on the dump row, given up only while no pipeline has
+    # run it; one the pipeline ran stays what the plan step reads until the
+    # new interview's take replaces it.
+    take: str | None = None
+
+
+async def read_start_over(user_id: str) -> StartOver | None:
+    """What starting the person's interview over would set aside, or None
+    when it is not closed (the typed interview is not over and no call took
+    it), and an ordinary start serves. Writes nothing.
+
+    Raises:
+        HTTPException: 409 ``call_in_progress`` naming a live call of
+            theirs, which a start-over never breaks; 503 while the interview
+            or their calls cannot be read.
+    """
+    try:
+        redis = await get_redis_async()
+        live = await locks.live_call_holding(redis, user_id, time.time())
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: start-over unreadable: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    if live:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": locks.CALL_IN_PROGRESS, "call_id": live},
+        )
+    try:
+        typed = await find_onboarding_interview_session(user_id)
+        taken_by = await call_that_took_the_interview(user_id)
+        latest = await get_onboarding_voice_call_id(user_id)
+        unclaimed = await _unclaimed_calls(redis, user_id, latest)
+        row = await dump_db.get_dump(user_id)
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: start-over unreadable: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    if not ((typed is not None and interview_is_over(typed)) or taken_by):
+        return None
+    take = (
+        row.recordingId
+        if row is not None and row.recordingId.startswith(INTERVIEW_RECORDING_PREFIX)
+        else None
+    )
+    return StartOver(
+        session_id=typed.session_id if typed is not None else None,
+        latest_call=latest,
+        taken_by=taken_by,
+        unclaimed_calls=tuple(unclaimed),
+        take=take,
+    )
+
+
+async def apply_start_over(user_id: str, plan: StartOver) -> None:
+    """Set the person's closed interview aside as *plan* read it: their calls'
+    unclaimed words are superseded, their typed interview is retired (its
+    stage ``handed_off``, so no hand-off of it runs, and forgotten on their
+    onboarding row with any hand-off owed for it), their calls are forgotten
+    on the row, and an earlier take no pipeline has run is given up. The
+    next start opens a fresh interview, typed or spoken.
+
+    Raises:
+        HTTPException: 503 when any of it cannot be written; a retry reads
+            what is left and sets it aside.
+    """
+    try:
+        redis = await get_redis_async()
+        for call_id in plan.unclaimed_calls:
+            await locks.claim_interview(redis, call_id, locks.INTERVIEW_SUPERSEDED)
+        if plan.session_id is not None:
+            await update_session_interview_stage(
+                plan.session_id, user_id, INTERVIEW_STAGE_HANDED_OFF
+            )
+            owed = await _owed_hand_off(user_id)
+            if owed is not None and owed.session_id == plan.session_id:
+                await _forget_the_hand_off(user_id)
+            await forget_onboarding_interview_session(plan.session_id)
+        await forget_onboarding_voice_calls(
+            user_id, latest=plan.latest_call, taken=plan.taken_by
+        )
+        if plan.take is not None:
+            await service.give_up_unrun_take(user_id, plan.take, SUPERSEDED)
+    except Exception as exc:
+        logger.warning(
+            f"Onboarding interview: start-over not written: {type(exc).__name__}"
+        )
+        raise _voice_calls_unreadable() from exc
+    logger.info("Onboarding interview: started over")
+
+
+async def _unclaimed_calls(
+    redis: AsyncRedisClient, user_id: str, latest: str | None
+) -> list[str]:
+    """The person's calls from *latest* back along each record's ``prev``
+    whose words have no claim on the interview, neither taken nor
+    superseded. Stops at a record that expired or is not theirs."""
+    unclaimed: list[str] = []
+    seen: set[str] = set()
+    current = latest
+    while (
+        current is not None
+        and current not in seen
+        and len(seen) < locks.CALL_CHAIN_HOPS
+    ):
+        seen.add(current)
+        record = await locks.read_call(redis, current)
+        if record is None or record.uid != user_id:
+            break
+        if record.interview is None:
+            unclaimed.append(record.call_id)
+        current = record.prev
+    return unclaimed
 
 
 def _voice_calls_unreadable() -> HTTPException:
