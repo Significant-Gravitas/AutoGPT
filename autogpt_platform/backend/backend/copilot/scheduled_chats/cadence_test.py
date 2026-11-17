@@ -264,6 +264,7 @@ def _scheduled(cron: str, start: datetime, end: datetime) -> list[datetime]:
         "0 9 * * 5-2/2",
         "0 9 * * 1-5",
         "0 9 * * 1-5/2",
+        "0 9 * * 1/2",
         "0 9 * * 0-7",
         "0 9 * * 7",
         "0 9 * * sun-thu",

@@ -5,7 +5,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from backend.api.model import CreateGraph
+from backend.data import db
 from backend.executor.scheduler import _build_trigger
+from backend.usecases.sample import create_test_graph, create_test_user
+from backend.util.clients import get_scheduler_client
+from backend.util.test import SpinTestServer
 
 # 2026-10-04 is a Sunday.
 START = datetime(2026, 10, 4, 0, 0, tzinfo=timezone.utc) - timedelta(minutes=1)
@@ -31,6 +36,7 @@ def _fire_weekdays(cron: str, n: int = 7) -> list[str]:
         ("*/3", ["Sun", "Wed", "Sat", "Sun", "Wed", "Sat", "Sun"]),
         ("0-7/2", ["Sun", "Tue", "Thu", "Sat", "Sun", "Tue", "Thu"]),
         ("1/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
+        ("5/2", ["Fri"] * 7),
         ("5-2/2", ["Sun", "Tue", "Fri", "Sun", "Tue", "Fri", "Sun"]),
         ("1-5/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("6-2", ["Sun", "Mon", "Tue", "Sat", "Sun", "Mon", "Tue"]),
@@ -56,3 +62,94 @@ def test_malformed_dow_field_is_rejected(dow):
     being coerced into a schedule that fires on days nobody asked for."""
     with pytest.raises(ValueError):
         _build_trigger(cron=f"0 0 * * {dow}", run_at=None, user_timezone="UTC")
+
+
+# Python weekday numbers (Mon=0..Sun=6) each Unix day-of-week field covers.
+_DOW_FIELD_WEEKDAYS = {
+    "1-5": {0, 1, 2, 3, 4},
+    "0-7": {0, 1, 2, 3, 4, 5, 6},
+    "*/2": {6, 1, 3, 5},
+    "5-1/2": {4, 6},
+    "sun-thu": {6, 0, 1, 2, 3},
+}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dow", list(_DOW_FIELD_WEEKDAYS))
+async def test_schedule_next_run_lands_on_the_cron_weekdays(
+    server: SpinTestServer, dow: str
+):
+    """#15276: a schedule created through the real scheduler service must
+    report a next run on one of the days its Unix day-of-week field names.
+    The hour sits 12 h from now so the reference can't straddle a tick."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+    now = datetime.now(timezone.utc)
+    hour = (now.hour + 12) % 24
+    expected = next(
+        candidate
+        for day in range(8)
+        if (
+            candidate := (now + timedelta(days=day)).replace(
+                hour=hour, minute=0, second=0, microsecond=0
+            )
+        )
+        > now
+        and candidate.weekday() in _DOW_FIELD_WEEKDAYS[dow]
+    )
+
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=test_user.id,
+        graph_version=1,
+        cron=f"0 {hour} * * {dow}",
+        input_data={"input": "data"},
+        input_credentials={},
+        user_timezone="UTC",
+    )
+    try:
+        next_run = datetime.fromisoformat(schedule.next_run_time)
+        assert next_run == expected, (
+            f"{dow!r} next run {next_run:%A %Y-%m-%d %H:%M}, "
+            f"expected {expected:%A %Y-%m-%d %H:%M}"
+        )
+    finally:
+        await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("dow", ["1/", "0-7/"])
+async def test_schedule_with_an_empty_dow_step_is_refused_not_saved(
+    server: SpinTestServer, dow: str
+):
+    """A slash with nothing after it is malformed cron. The scheduler service
+    must refuse it (the API turns the ValueError into a 400) instead of saving
+    a Monday or every-day schedule the user never asked for."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+    scheduler = get_scheduler_client()
+
+    with pytest.raises(ValueError):
+        await scheduler.add_execution_schedule(
+            graph_id=test_graph.id,
+            user_id=test_user.id,
+            graph_version=1,
+            cron=f"0 9 * * {dow}",
+            input_data={"input": "data"},
+            input_credentials={},
+            user_timezone="UTC",
+        )
+
+    saved = await scheduler.get_execution_schedules(
+        graph_id=test_graph.id, user_id=test_user.id
+    )
+    assert saved == []

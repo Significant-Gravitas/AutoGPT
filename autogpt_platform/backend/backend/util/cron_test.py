@@ -48,6 +48,7 @@ def test_validate_cron_accepts_unix_days_apscheduler_alone_refuses(dow: str):
         ("0-7", "0,1,2,3,4,5,6"),
         ("5-2/2", "1,4,6"),
         ("1/2", "0,2,4"),
+        ("5/2", "4"),
         # Names read as Unix days too, so a range through Sunday and a step
         # survive APScheduler, which refuses the one and drops the other.
         ("mon-fri", "0,1,2,3,4"),

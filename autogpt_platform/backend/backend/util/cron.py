@@ -102,7 +102,7 @@ def _unix_days(token: str) -> list[int] | None:
         first = _unix_day(body, token)
         if first is None:
             return None
-        # ``1/2`` steps from its day to the end of the week.
+        # ``1/2`` steps from its day to Saturday, as croniter reads it.
         days = list(range(first, max(first, 6) + 1)) if slash else [first]
     return sorted({day % 7 for day in days[::step]})
 
