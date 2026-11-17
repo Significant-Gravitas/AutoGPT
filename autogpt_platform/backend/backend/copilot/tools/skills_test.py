@@ -283,7 +283,14 @@ class _FakeWorkspaceManager:
         self.scanned[path] = frozenset(scanned_checksums)
 
     async def write_skill_package(
-        self, *, root, files, removed_paths, scanned_checksums=(), config=None
+        self,
+        *,
+        root,
+        files,
+        removed_paths,
+        scanned_checksums=(),
+        config=None,
+        on_change=None,
     ):
         """All or nothing, as the real manager's single transaction is: a
         failure part-way puts every file back as it was."""
@@ -298,6 +305,8 @@ class _FakeWorkspaceManager:
         except Exception:
             self.files, self.metadata, self.scanned = before
             raise
+        if on_change is not None:
+            on_change()
 
     async def _write_package_item(self, item, scanned_checksums):
         await self.write_file(

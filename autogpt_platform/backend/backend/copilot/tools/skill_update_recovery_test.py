@@ -56,7 +56,7 @@ async def test_a_failed_marketplace_update_preserves_baseline_and_retries(
             len(await fake_learning_store.list_versions("user-1", "personal", "checks"))
             == 1
         )
-        invalidate.assert_awaited_once_with("user-1", None)
+        invalidate.assert_not_awaited()
         remember.assert_not_awaited()
         invalidate.reset_mock()
 

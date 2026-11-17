@@ -185,10 +185,8 @@ def skill_folder(expert_id: str | None) -> str:
     return SKILL_FOLDER if expert_id is None else expert_skills_folder(expert_id)
 
 
-# Redis-cached index TTL. Every write that changes an owner's folder drops the
-# owner's entry, so the TTL only bounds what no write announces: a marketplace
-# publish reaching the owner's copies. It outlasts the gaps between a chat's
-# follow-ups, which arrive about two minutes apart.
+# Writes that change an owner's folder drop the entry best-effort, so the TTL
+# mainly bounds marketplace publishes reaching the owner's copies.
 SKILLS_INDEX_CACHE_TTL_S = 15 * 60
 # A rebuild claims its entry with this marker before it reads the folder and
 # writes its result only while the marker is still there. A write that lands
@@ -1276,11 +1274,11 @@ async def store_user_skills(
     # Without the lock they fall back to a best-effort unlocked write.
     lock = await _acquire_skill_write_lock(user_id, expert_id)
     lock_held = lock is not None
-    write_started = False
+    index_changed = False
 
-    def mark_write_started() -> None:
-        nonlocal write_started
-        write_started = True
+    def mark_index_changed() -> None:
+        nonlocal index_changed
+        index_changed = True
 
     try:
         manager = await _get_user_skill_manager(user_id, scope)
@@ -1334,7 +1332,7 @@ async def store_user_skills(
                     owners,
                     copies,
                     config,
-                    before_write=mark_write_started,
+                    on_change=mark_index_changed,
                 )
             except Exception as e:
                 outcomes[index] = e
@@ -1356,7 +1354,7 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
         try:
-            if write_started:
+            if index_changed:
                 await invalidate_skills_index_cache(user_id, expert_id)
         finally:
             if lock is not None and lock_held:
@@ -1651,7 +1649,7 @@ async def _write_skill(
     copies: Mapping[str, ParsedSkill],
     config: Config,
     *,
-    before_write: Callable[[], None] | None = None,
+    on_change: Callable[[], None] | None = None,
 ) -> frozenset[str]:
     """Write one prepared package; return the SHA-256 of every file written.
 
@@ -1717,8 +1715,6 @@ async def _write_skill(
     skill_md = skill.rendered.encode("utf-8")
     # One change for the whole package: a failure leaves the previous
     # package as it was, never new files beside an old SKILL.md.
-    if before_write is not None:
-        before_write()
     await manager.write_skill_package(
         root=SkillPackageFile(
             path=_skill_md_path(name, expert_id),
@@ -1730,6 +1726,7 @@ async def _write_skill(
         removed_paths=sorted(f.path for f in stale if f.path not in written),
         scanned_checksums=skill.scanned_checksums,
         config=config,
+        on_change=on_change,
     )
     checksums.add(compute_file_checksum(skill_md))
     return frozenset(checksums)
