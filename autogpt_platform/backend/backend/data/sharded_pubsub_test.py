@@ -2,6 +2,7 @@
 shard) is covered over a real Redis in ``event_bus_liveness_test``."""
 
 import asyncio
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -85,6 +86,77 @@ async def test_closing_never_raises(fake_shard):
 
     pubsub.aclose.assert_awaited_once()
     client.aclose.assert_awaited_once()
+
+
+async def test_a_stalled_event_loop_is_not_taken_for_a_silent_shard(
+    fake_shard, monkeypatch: pytest.MonkeyPatch
+):
+    """The loop stalls through the whole PONG wait, so the read times out
+    although the reply has arrived; it must get one more look."""
+    monkeypatch.setattr(redis_client, "PUBSUB_PING_AFTER", 0.0)
+    monkeypatch.setattr(redis_client, "PUBSUB_PONG_TIMEOUT", 0.2)
+    pubsub, _, _ = fake_shard
+
+    async def confirm(channel: str) -> None:
+        pubsub.get_message = AsyncMock(
+            return_value={"type": "ssubscribe", "channel": channel, "data": 1}
+        )
+
+    pubsub.ssubscribe.side_effect = confirm
+    pubsub.ping = AsyncMock()
+    reads = iter(["stall", sharded_pubsub._LIVENESS_PING, "stop"])
+
+    async def parse_response(block: bool, timeout: float) -> Any:
+        read = next(reads)
+        if read == "stall":
+            time.sleep(timeout + 0.3)  # the loop itself, not the read, is stuck
+            return None
+        if read == "stop":
+            raise RedisConnectionError("test over")
+        return read
+
+    pubsub.parse_response = parse_response
+    async with await ShardedSubscription.open("chan") as subscription:
+        with pytest.raises(EventStreamLostError, match="test over"):
+            async for _ in subscription.messages():
+                pass
+
+
+async def test_pong_replies_are_not_yielded_in_either_form(fake_shard):
+    """With only sharded subscriptions Redis answers PING with the bare
+    message, which redis-py would hand on as a garbled message."""
+    pubsub, _, _ = fake_shard
+
+    async def confirm(channel: str) -> None:
+        pubsub.get_message = AsyncMock(
+            return_value={"type": "ssubscribe", "channel": channel, "data": 1}
+        )
+
+    pubsub.ssubscribe.side_effect = confirm
+    smessage = ["smessage", "chan", "event"]
+    reads = iter(
+        [
+            sharded_pubsub._LIVENESS_PING,
+            ["pong", sharded_pubsub._LIVENESS_PING],
+            smessage,
+        ]
+    )
+
+    async def parse_response(block: bool, timeout: float) -> Any:
+        return next(reads)
+
+    async def handle_message(response: Any) -> Any:
+        return {"type": response[0], "channel": response[1], "data": response[2]}
+
+    pubsub.parse_response = parse_response
+    pubsub.handle_message = handle_message
+    async with await ShardedSubscription.open("chan") as subscription:
+        messages = aiter(subscription.messages())
+        assert await anext(messages) == {
+            "type": "smessage",
+            "channel": "chan",
+            "data": "event",
+        }
 
 
 def test_the_slot_map_is_refreshed_at_most_every_few_seconds(

@@ -62,11 +62,11 @@ class ShardedSubscription:
                 return await cls._open(channel)
         except MovedError as e:
             redis.follow_moved_slot(e)
-            raise EventStreamLostError(f"{channel} moved: {e!r}") from e
+            raise EventStreamLostError(f"{channel} moved: {_describe(e)}") from e
         except _OPEN_ERRORS as e:
             await _refresh_slot_map()
             raise EventStreamLostError(
-                f"could not subscribe to {channel}: {e!r}"
+                f"could not subscribe to {channel}: {_describe(e)}"
             ) from e
 
     @classmethod
@@ -97,7 +97,7 @@ class ShardedSubscription:
             await self._pubsub.ssubscribe(channel)
         except (OSError, RedisError) as e:
             raise EventStreamLostError(
-                f"could not subscribe to {channel}: {e!r}"
+                f"could not subscribe to {channel}: {_describe(e)}"
             ) from e
 
     async def remove(self, channel: str) -> None:
@@ -105,18 +105,19 @@ class ShardedSubscription:
         try:
             await self._pubsub.sunsubscribe(channel)
         except (OSError, RedisError) as e:
-            raise EventStreamLostError(f"{self._name}: {e!r}") from e
+            raise EventStreamLostError(f"{self._name}: {_describe(e)}") from e
 
     async def messages(self) -> AsyncIterator[dict[str, Any]]:
         """Yield every message (``smessage``, ``ssubscribe``,
         ``sunsubscribe``) until the stream is lost, then raise
-        ``EventStreamLostError``: the connection failed, or a PING sent after
-        ``PUBSUB_PING_AFTER`` quiet seconds got no reply within
-        ``PUBSUB_PONG_TIMEOUT``. Never ends on its own."""
+        ``EventStreamLostError``: the connection failed, or after
+        ``PUBSUB_PING_AFTER`` seconds without a word a PING got no reply
+        within ``PUBSUB_PONG_TIMEOUT``. Never ends on its own."""
         ping_after, pong_timeout = redis.PUBSUB_PING_AFTER, redis.PUBSUB_PONG_TIMEOUT
         loop = asyncio.get_running_loop()
         heard_at = loop.time()
         pinged_at: float | None = None
+        last_look = False
         try:
             while True:
                 if pinged_at is None and loop.time() - heard_at >= ping_after:
@@ -131,20 +132,26 @@ class ShardedSubscription:
                     block=False, timeout=max(due - loop.time(), 0.01)
                 )
                 if response is not None:
-                    heard_at = loop.time()
+                    heard_at, pinged_at, last_look = loop.time(), None, False
                     if response in _PONG_REPLIES:
-                        pinged_at = None
                         continue
-                if pinged_at is not None and loop.time() - pinged_at >= pong_timeout:
-                    raise EventStreamLostError(
-                        f"{self._name}: no reply to a PING in {pong_timeout}s"
-                    )
-                if response is None:
+                    if (
+                        message := await self._pubsub.handle_message(response)
+                    ) is not None:
+                        yield message
                     continue
-                if (message := await self._pubsub.handle_message(response)) is not None:
-                    yield message
+                if pinged_at is None or loop.time() - pinged_at < pong_timeout:
+                    continue
+                if not last_look:
+                    # A reply that came in while the event loop was stalled can
+                    # lose the race against the read's timeout: read once more.
+                    last_look = True
+                    continue
+                raise EventStreamLostError(
+                    f"{self._name}: no reply to a PING in {pong_timeout}s"
+                )
         except (OSError, RedisError) as e:
-            raise EventStreamLostError(f"{self._name}: {e!r}") from e
+            raise EventStreamLostError(f"{self._name}: {_describe(e)}") from e
 
     async def aclose(self) -> None:
         await _close_quietly(self._pubsub, self._client)
@@ -154,6 +161,11 @@ class ShardedSubscription:
 
     async def __aexit__(self, *_exc: object) -> None:
         await self.aclose()
+
+
+def _describe(error: BaseException) -> str:
+    # redis-py's repr drops the message ("network:ConnectionError").
+    return f"{type(error).__name__}: {error}"
 
 
 async def _refresh_slot_map() -> None:
