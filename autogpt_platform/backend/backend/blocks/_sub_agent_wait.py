@@ -47,8 +47,8 @@ Output = tuple[str, Any]
 
 
 class SubAgentRunGoneError(Exception):
-    """The child's run can't be found for the user any more (it was deleted),
-    so nothing will ever finish it."""
+    """The child's run is gone from the database, not just deleted from the
+    user's history, so nothing will ever finish it."""
 
 
 class SubAgentWait:
@@ -166,11 +166,7 @@ class SubAgentWait:
         """Outputs the stream may have missed, oldest first, and the child's
         execution if it has finished."""
         db = execution_db()
-        meta = await db.get_graph_execution_meta(
-            user_id=self._user_id, execution_id=self._graph_exec_id
-        )
-        if meta is None:
-            raise SubAgentRunGoneError(f"{self._log_id}: the run no longer exists")
+        meta = await self._read_run(db)
         finished = meta if meta.status in TERMINAL_STATUSES else None
         if not (self._stale or finished):
             return [], None
@@ -186,6 +182,22 @@ class SubAgentWait:
         nodes = sorted(reversed(nodes), key=lambda node: node.end_time or node.add_time)
         outputs = [output for node in nodes for output in self._outputs_of(node)]
         return outputs, finished
+
+    async def _read_run(self, db: Any) -> GraphExecutionMeta:
+        """The child's run, including one deleted from the user's history:
+        deleting a run doesn't stop it, so it may still be running and
+        publishing. Only a row that's truly absent raises."""
+        meta = await db.get_graph_execution_meta(
+            user_id=self._user_id, execution_id=self._graph_exec_id
+        )
+        if meta is not None:
+            return meta
+        deleted = await db.get_graph_executions(
+            graph_exec_id=self._graph_exec_id, user_id=self._user_id, deleted=True
+        )
+        if not deleted:
+            raise SubAgentRunGoneError(f"{self._log_id}: the run no longer exists")
+        return deleted[0]
 
     def _outputs_of(self, node: NodeExecutionResult) -> list[Output]:
         from backend.blocks import get_block

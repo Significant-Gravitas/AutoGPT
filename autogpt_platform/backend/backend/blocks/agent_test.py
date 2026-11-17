@@ -92,6 +92,7 @@ def _db(
     *metas: GraphExecutionMeta | Exception | None,
     nodes: list,
     later_nodes: list | None = None,
+    deleted_runs: list | None = None,
 ) -> MagicMock:
     """The database: each catch-up reads the next of ``metas`` (the last one
     repeats), then the child's finished node executions, newest first as
@@ -113,6 +114,8 @@ def _db(
 
     db.get_graph_execution_meta = AsyncMock(side_effect=get_meta)
     db.get_node_executions = AsyncMock(side_effect=get_nodes)
+    # Runs deleted from history (soft-deleted); none unless given.
+    db.get_graph_executions = AsyncMock(return_value=deleted_runs or [])
     return db
 
 
@@ -294,16 +297,36 @@ async def test_a_run_gone_after_its_end_was_seen_ends_the_wait(
     assert block.execution_stats.reconciled_cost_delta == 7
 
 
-async def test_a_run_gone_before_its_end_fails_the_wait(
+async def test_a_run_gone_from_the_database_fails_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Nothing will ever finish a deleted run: waiting would hang the parent."""
+    """Nothing will ever finish a run whose row is gone: waiting would hang
+    the parent."""
     stream = _Stream()
     stream.items.put_nowait(None)
     db = _db(None, nodes=[])
 
     with pytest.raises(sub_agent_wait.SubAgentRunGoneError):
         await _run(monkeypatch, stream, db)
+
+
+async def test_a_running_child_deleted_from_history_is_still_waited_on(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Deleting a run from history doesn't stop it: the child keeps running
+    and publishing, so the parent waits for it and gets its outputs."""
+    stream = _Stream()
+    a = _output(1, "a")
+    for item in (None, a, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(None, nodes=[], deleted_runs=[_meta(ExecutionStatus.RUNNING)])
+
+    outputs, block = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "a")]
+    assert block.execution_stats.reconciled_cost_delta == 7
+    deleted_read = db.get_graph_executions.await_args
+    assert deleted_read is not None and deleted_read.kwargs["deleted"] is True
 
 
 async def test_a_database_down_for_good_still_ends_on_a_seen_end(
