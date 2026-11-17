@@ -12,6 +12,7 @@ import { CallFinishing } from "./components/CallFinishing";
 import { CallInProgress } from "./components/CallInProgress";
 import { EndingPicker } from "../Endings/components/EndingPicker";
 import { ProfileCardEnding } from "../Endings/components/ProfileCardEnding";
+import { StartOver } from "../Endings/components/StartOver";
 import { endingArmOf, profileRowsOf, readEndingPick } from "../Endings/helpers";
 import { callStatusCopy, finishingOf, turnsLeftCopy } from "./helpers";
 import type { VoiceCallState } from "./useVoiceCall";
@@ -109,6 +110,17 @@ export function VoiceCall({ call }: Props) {
           endingData={{ firstTask: call.firstTask, details: call.details }}
           isTesterPick={
             call.isEndingPickerOn && !!arm && readEndingPick("voice") === arm
+          }
+          isSettled={call.ending.kind === "team" && call.ending.path === "A"}
+          startOver={
+            <StartOver
+              canCall
+              hasKept
+              isDisabled={call.isLeaving}
+              onOpen={call.openStartOver}
+              onCallAgain={call.startOverByCall}
+              onTypeInstead={() => void call.startOverByTyping()}
+            />
           }
           onConfirm={(corrections) => void call.meetTeam(corrections)}
           onMeetTeam={() => void call.meetTeam()}

@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import type { ReactNode } from "react";
 import { finishFailureCopy, type StartFailure } from "../../../helpers";
 import {
   type EndingData,
@@ -22,6 +23,10 @@ interface Props {
   arm: EndingArm | null;
   endingData: EndingData;
   isTesterPick: boolean;
+  // The call's take is handed off already: the ending asks nothing again.
+  isSettled: boolean;
+  // The way to do the interview over, under a call that took it.
+  startOver: ReactNode;
   onConfirm: (corrections: string | null) => void;
   onMeetTeam: () => void;
   onRetry: () => void;
@@ -40,6 +45,8 @@ export function CallEnded({
   arm,
   endingData,
   isTesterPick,
+  isSettled,
+  startOver,
   onConfirm,
   onMeetTeam,
   onRetry,
@@ -156,8 +163,10 @@ export function CallEnded({
             data={endingData}
             isLeaving={isLeaving}
             isTesterPick={isTesterPick}
+            isSettled={isSettled}
             onConfirm={onConfirm}
             fallback={meetButton}
+            startOver={startOver}
           />
         )}
         {ending.kind === "retry" && (

@@ -182,7 +182,9 @@ const OTHER_SURFACES: Surface[] = [
             arm: null,
             data: { firstTask: null },
             isTesterPick: false,
+            isSettled: false,
           }}
+          startOver={null}
           canFinishEarly={false}
           isLeaving={false}
           finishFailure={null}

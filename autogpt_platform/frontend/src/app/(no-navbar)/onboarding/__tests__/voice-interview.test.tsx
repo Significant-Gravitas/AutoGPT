@@ -3717,3 +3717,180 @@ describe("onboarding interview by voice: the ending screens", () => {
     expect(mintBodies).toEqual([""]);
   });
 });
+
+describe("onboarding interview by voice: starting over", () => {
+  const FIRST_TASK = "Sort the order emails each morning";
+  const DETAILS: InterviewDetails = {
+    business: "Fernbrook Gardens",
+    role: "owner",
+    team: "a crew of six",
+    time_sinks: ["quotes"],
+    tools: ["QuickBooks"],
+    facts: [{ label: "Six-person crew", quote: "a crew of six" }],
+    topics: ["work", "team"],
+    words: ["I own Fernbrook Gardens with a crew of six."],
+  };
+
+  // The person comes back to a call that took their interview.
+  function returnsToTakenCall(overrides: Partial<CallRecord> = {}) {
+    latestCall = callRecord({ interview: "taken", ...overrides });
+    callStates[CALL_ID] = [latestCall];
+  }
+
+  async function openStartOver() {
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Start over" }));
+    return screen.getByRole("group", { name: "Start over" });
+  }
+
+  it("offers Start over under Meet your team after a call, with both ways in place and Never mind back", async () => {
+    returnsToTakenCall();
+    render(<OnboardingPage />);
+
+    const ways = await openStartOver();
+
+    expect(ways.textContent).toContain("This replaces what you told Otto.");
+    expect(screen.getByRole("button", { name: "Call again" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    expect(tracked("ending_action")).toEqual([
+      { mode: "voice", ending: "team", action: "start_over" },
+    ]);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Never mind" }));
+    expect(screen.queryByRole("group", { name: "Start over" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    expect(mints).toBe(0);
+  });
+
+  it("starts a new call that asks the server to start over", async () => {
+    returnsToTakenCall();
+    render(<OnboardingPage />);
+
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Call again" }));
+
+    await waitFor(() => expect(mints).toBe(1));
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({ start_over: true });
+    expect(tracked("ending_action").map((event) => event?.action)).toEqual([
+      "start_over",
+      "call_again",
+    ]);
+  });
+
+  it("opens a fresh typed interview that asks the server to start over", async () => {
+    returnsToTakenCall();
+    const typedBodies: string[] = [];
+    server.use(
+      http.post(
+        "/api/proxy/api/onboarding/brain-dump/interview",
+        async ({ request }) => {
+          typedBodies.push(await request.text());
+          return HttpResponse.json({
+            session_id: SESSION_ID,
+            turn_id: null,
+            stage: null,
+          });
+        },
+      ),
+    );
+    render(<OnboardingPage />);
+
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(
+      await screen.findByPlaceholderText("Type your answer…"),
+    ).toBeDefined();
+    expect(typedBodies.map((body) => JSON.parse(body))).toEqual([
+      { start_over: true },
+    ]);
+    expect(mints).toBe(0);
+  });
+
+  it("starts a call over a typed interview that is over", async () => {
+    server.use(
+      http.get("/api/proxy/api/onboarding/brain-dump/interview", () =>
+        HttpResponse.json({
+          ...NO_INTERVIEW,
+          session_id: SESSION_ID,
+          stage: "handed_off",
+          is_over: true,
+        }),
+      ),
+      getStartOnboardingInterviewMockHandler200(() => ({
+        session_id: SESSION_ID,
+        turn_id: null,
+        stage: "handed_off",
+      })),
+    );
+    typedMessages = [KICKOFF_ROW, GREETING_ROW, TYPED_ANSWER_ROW];
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+    await openStartOver();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Call again" }));
+
+    await waitFor(() => expect(mints).toBe(1));
+    expect(JSON.parse(String(mintBodies[0]))).toEqual({ start_over: true });
+    expect(tracked("ending_action")).toEqual([
+      { mode: "text", ending: "team", action: "start_over" },
+      { mode: "text", ending: "team", action: "call_again" },
+    ]);
+  });
+
+  it.each([
+    ["02-profile-card", "Here's what Otto has", "QuickBooks"],
+    ["03-summary-chips", "Here's what Otto heard", "a crew of six"],
+    [
+      "08-transcript-highlights",
+      "Here's what Otto took from it",
+      "Six-person crew",
+    ],
+    ["09-first-task", "Your team starts here", FIRST_TASK],
+  ])(
+    "returns to a handed-off %s call read-only, and Continue leads on with no finish",
+    async (ending, heading, shown) => {
+      returnsToTakenCall({ ending, details: DETAILS, first_task: FIRST_TASK });
+      render(<OnboardingPage />);
+
+      expect(
+        await screen.findByRole("region", { name: heading }),
+      ).toBeDefined();
+      expect(screen.getByText(shown)).toBeDefined();
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
+      expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "Continue" }));
+
+      await expectPlanStep();
+      expect(finishes).toEqual([]);
+    },
+  );
+
+  it("falls back to Meet your team for a handed-off card whose details are gone", async () => {
+    returnsToTakenCall({ ending: "02-profile-card", details: null });
+    render(<OnboardingPage />);
+
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "Meet your team" }));
+
+    await expectPlanStep();
+    expect(finishes).toEqual([]);
+  });
+});

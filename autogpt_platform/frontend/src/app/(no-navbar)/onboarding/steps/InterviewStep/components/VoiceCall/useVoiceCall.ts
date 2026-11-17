@@ -92,21 +92,25 @@ import {
   type RelayMessage,
 } from "./protocol";
 import { useCallRoom } from "./useCallRoom";
-import { endingPickBody } from "../Endings/helpers";
+import { startBody } from "../Endings/helpers";
 
 type EndingAction =
   | "confirm"
   | "try_again"
   | "call_again"
   | "type_instead"
-  | "skip";
+  | "skip"
+  | "start_over";
 
 interface Args {
   userId: string | null;
   // Whether the step offers calls, so a step opening again reads the
   // person's latest call.
   isOffered: boolean;
-  onTypeInstead: (options: { remember: boolean }) => void;
+  onTypeInstead: (options: {
+    remember: boolean;
+    isStartOver?: boolean;
+  }) => void;
   onLeave: (path: "A" | "B") => Promise<void>;
   onSkip: () => Promise<void>;
   onCallStarted: () => void;
@@ -179,6 +183,8 @@ export function useVoiceCall(args: Args) {
   const [details, setDetails] = useState<InterviewDetails | null>(null);
   // What the person changed on the ending screen, kept for a retry.
   const correctionsRef = useRef<string | null>(null);
+  // The next call's start sets the person's closed interview aside.
+  const isStartOverRef = useRef(false);
   const [finishFailure, setFinishFailure] = useState<StartFailure | null>(null);
   const [held, setHeld] = useState<HeldCall | null>(null);
   const [isLeaving, setIsLeaving] = useState(false);
@@ -395,8 +401,10 @@ export function useVoiceCall(args: Args) {
   async function mintCall(attempt: number) {
     const conn = connRef.current;
     try {
+      const isStartOver = isStartOverRef.current;
+      isStartOverRef.current = false;
       const response = await startOnboardingVoiceCall(
-        endingPickBody(argsRef.current.isEndingPickerOn, "voice"),
+        startBody(argsRef.current.isEndingPickerOn, "voice", isStartOver),
       );
       const named = response.status === 200 ? response.data : null;
       const room = named ? roomPassOf(named.room) : null;
@@ -953,7 +961,9 @@ export function useVoiceCall(args: Args) {
 
   // Leaves the call for the typed interview. A live call is ended first, so
   // its words are kept as a call cut off, and the typed interview opens.
-  async function typeInstead() {
+  async function typeInstead({
+    isStartOver = false,
+  }: { isStartOver?: boolean } = {}) {
     const conn = connRef.current;
     if (phase === "ended") trackEndingAction("type_instead");
     const attempt = ++conn.attempt;
@@ -985,12 +995,28 @@ export function useVoiceCall(args: Args) {
     }
     resetView();
     setPhase("idle");
-    argsRef.current.onTypeInstead({ remember: true });
+    argsRef.current.onTypeInstead({ remember: true, isStartOver });
   }
 
   function callAgain() {
     trackEndingAction("call_again");
     talk();
+  }
+
+  function openStartOver() {
+    trackEndingAction("start_over");
+  }
+
+  // A new call in place of the interview that is over: started on the
+  // click, which its audio needs, from this screen or the typed one.
+  function startOverByCall() {
+    isStartOverRef.current = true;
+    connRef.current.hasChecked = true;
+    callAgain();
+  }
+
+  async function startOverByTyping() {
+    await typeInstead({ isStartOver: true });
   }
 
   async function skip() {
@@ -1424,6 +1450,9 @@ export function useVoiceCall(args: Args) {
     hangUp,
     typeInstead,
     callAgain,
+    openStartOver,
+    startOverByCall,
+    startOverByTyping,
     skip,
     meetTeam,
     retryFinish,

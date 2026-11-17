@@ -5,6 +5,7 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
+import type { ReactNode } from "react";
 import { finishFailureCopy, type StartFailure } from "../helpers";
 import { type EndingData, InterviewEnding } from "./Endings/InterviewEnding";
 import type { EndingArm } from "./Endings/helpers";
@@ -28,7 +29,10 @@ interface Props {
     arm: EndingArm | null;
     data: EndingData;
     isTesterPick: boolean;
+    isSettled: boolean;
   };
+  // The way to do the interview over, under its ending.
+  startOver: ReactNode;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   onFinish: (corrections?: string | null) => Promise<void>;
@@ -48,6 +52,7 @@ export function InterviewChat({
   isLeaving,
   finishFailure,
   ending,
+  startOver,
   onSend,
   onStop,
   onFinish,
@@ -82,6 +87,8 @@ export function InterviewChat({
                 data={ending.data}
                 isLeaving={isLeaving}
                 isTesterPick={ending.isTesterPick}
+                isSettled={ending.isSettled}
+                startOver={startOver}
                 onConfirm={(corrections) => void onFinish(corrections)}
                 fallback={
                   <Button

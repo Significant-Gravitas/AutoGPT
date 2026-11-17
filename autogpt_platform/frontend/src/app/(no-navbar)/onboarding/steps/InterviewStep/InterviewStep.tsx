@@ -7,6 +7,7 @@ import { SkipButton } from "../BrainDumpStep/components/SkipButton";
 import { InterviewChat } from "./components/InterviewChat";
 import { EndingPicker } from "./components/Endings/components/EndingPicker";
 import { LiveEnding } from "./components/Endings/components/LiveEnding";
+import { StartOver } from "./components/Endings/components/StartOver";
 import { VoiceCall } from "./components/VoiceCall/VoiceCall";
 import { startFailureCopy } from "./helpers";
 import { useInterviewStep } from "./useInterviewStep";
@@ -85,6 +86,16 @@ export function InterviewStep() {
                 isLeaving={interview.isLeaving}
                 finishFailure={interview.finishFailure}
                 ending={interview.typedEnding}
+                startOver={
+                  <StartOver
+                    canCall={interview.typedStartOver.canCall}
+                    hasKept={interview.typedStartOver.hasKept}
+                    isDisabled={interview.isLeaving}
+                    onOpen={interview.typedStartOver.onOpen}
+                    onCallAgain={interview.typedStartOver.onCallAgain}
+                    onTypeInstead={interview.typedStartOver.onTypeInstead}
+                  />
+                }
                 onSend={interview.onSend}
                 onStop={interview.stop}
                 onFinish={interview.finish}

@@ -9,6 +9,7 @@ import {
   getGetV2GetPendingMessagesMockHandler200,
   getGetV2GetSessionMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
+import type { InterviewDetails } from "@/app/api/__generated__/models/interviewDetails";
 import type { SessionDetailResponse } from "@/app/api/__generated__/models/sessionDetailResponse";
 import { FrontendFlag } from "@/app/api/__generated__/models/frontendFlag";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
@@ -1196,5 +1197,193 @@ describe("onboarding interview: the ending screens", () => {
 
     expect(await screen.findByText(GREETING)).toBeDefined();
     expect(screen.queryByText("Ending (testers)")).toBeNull();
+  });
+});
+
+describe("onboarding interview: starting over", () => {
+  const SECOND_SESSION_ID = "interview-session-2";
+  const DETAILS: InterviewDetails = {
+    business: "Fernbrook Gardens",
+    role: "owner",
+    team: "a crew of six",
+    time_sinks: ["quotes"],
+    tools: ["QuickBooks"],
+    facts: [{ label: "Six-person crew", quote: "a crew of six" }],
+    topics: ["work", "team"],
+    words: ["I own Fernbrook Gardens with a crew of six."],
+  };
+
+  // The start answers the interview that is over, then, asked to start
+  // over, a fresh one with Otto's greeting; every start's body is kept.
+  function startsOverInto(startBodies: string[]) {
+    server.use(
+      http.post(
+        "/api/proxy/api/onboarding/brain-dump/interview",
+        async ({ request }) => {
+          const body = await request.text();
+          startBodies.push(body);
+          if (body.includes("start_over")) {
+            serverInterview = {
+              messages: [KICKOFF_ROW, GREETING_ROW],
+              stage: null,
+              activeTurn: null,
+            };
+            return HttpResponse.json({
+              session_id: SECOND_SESSION_ID,
+              turn_id: null,
+              stage: null,
+            });
+          }
+          return HttpResponse.json({
+            session_id: SESSION_ID,
+            turn_id: null,
+            stage: serverInterview.stage,
+          });
+        },
+      ),
+    );
+  }
+
+  it("offers Start over under Meet your team, opening the ways in place and closing them on Never mind", async () => {
+    returnsClosed();
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Start over" }));
+    const ways = screen.getByRole("group", { name: "Start over" });
+    expect(ways.textContent).toContain("This replaces what you told Otto.");
+    expect(screen.getByRole("button", { name: "Type instead" })).toBeDefined();
+    // No call is on offer while voice is off for the person.
+    expect(screen.queryByRole("button", { name: "Call again" })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Meet your team" }),
+    ).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Never mind" }));
+
+    expect(screen.queryByRole("group", { name: "Start over" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+    expect(finishCalls).toBe(0);
+  });
+
+  it("says nothing is replaced when the person never answered", async () => {
+    returnsClosed();
+    serverInterview = {
+      ...serverInterview,
+      messages: [KICKOFF_ROW, GREETING_ROW],
+    };
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Start over" }));
+    expect(
+      screen.getByRole("group", { name: "Start over" }).textContent,
+    ).not.toContain("This replaces what you told Otto.");
+  });
+
+  it("opens a fresh typed interview from Type instead, asking the server to start over", async () => {
+    returnsClosed();
+    const startBodies: string[] = [];
+    startsOverInto(startBodies);
+    const user = userEvent.setup();
+
+    render(<OnboardingPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Start over" }));
+    await user.click(screen.getByRole("button", { name: "Type instead" }));
+
+    expect(
+      await screen.findByPlaceholderText("Type your answer…"),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Meet your team" })).toBeNull();
+    expect(startBodies.map((body) => (body ? JSON.parse(body) : null))).toEqual(
+      [null, { start_over: true }],
+    );
+    expect(finishCalls).toBe(0);
+  });
+
+  it("offers Start over under an arm's own ending too", async () => {
+    returnsClosed();
+    serverInterview = {
+      ...serverInterview,
+      ending: "09-first-task",
+      firstTask: "Sort the order emails each morning",
+    };
+
+    render(<OnboardingPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Start this" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+  });
+
+  it.each([
+    ["02-profile-card", "Here's what Otto has", "Fernbrook Gardens, owner"],
+    ["03-summary-chips", "Here's what Otto heard", "QuickBooks"],
+    [
+      "08-transcript-highlights",
+      "Here's what Otto took from it",
+      "Six-person crew",
+    ],
+    [
+      "09-first-task",
+      "Your team starts here",
+      "Sort the order emails each morning",
+    ],
+  ])(
+    "returns to a handed-off %s interview read-only, and goes on with Continue sending nothing again",
+    async (arm, heading, shown) => {
+      returnsClosed("handed_off");
+      serverInterview = {
+        ...serverInterview,
+        ending: arm,
+        firstTask: "Sort the order emails each morning",
+      };
+      server.use(
+        getGetOnboardingInterviewDetailsMockHandler200({ details: DETAILS }),
+      );
+
+      render(<OnboardingPage />);
+
+      const region = await screen.findByRole("region", { name: heading });
+      expect(region.classList.contains("ph-no-capture")).toBe(true);
+      expect(screen.getByText(shown)).toBeDefined();
+      for (const asks of [
+        "That's me",
+        "Build my team",
+        "Looks right",
+        "Start this",
+        "Change it",
+      ]) {
+        expect(screen.queryByRole("button", { name: asks })).toBeNull();
+      }
+      expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
+      expect(screen.queryByRole("textbox")).toBeNull();
+      expect(screen.getByRole("button", { name: "Start over" })).toBeDefined();
+
+      await userEvent
+        .setup()
+        .click(screen.getByRole("button", { name: "Continue" }));
+
+      await expectPlanStep();
+      expect(finishBodies).toEqual([""]);
+    },
+  );
+
+  it("falls back to Meet your team when a handed-off card's details cannot be read", async () => {
+    returnsClosed("handed_off");
+    serverInterview = { ...serverInterview, ending: "02-profile-card" };
+    server.use(
+      getGetOnboardingInterviewDetailsMockHandler200({ details: null }),
+    );
+
+    render(<OnboardingPage />);
+
+    await clickMeetYourTeam();
+    await expectPlanStep();
+    expect(finishBodies).toEqual([""]);
   });
 });

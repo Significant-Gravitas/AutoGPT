@@ -33,6 +33,14 @@ export const MODE_ARMS: Record<EndingMode, EndingArm[]> = {
   ],
 };
 
+// The arms that end on the person's confirm, as the server's CONFIRM_ENDINGS.
+export const CONFIRM_ARMS: ReadonlySet<EndingArm> = new Set<EndingArm>([
+  "02-profile-card",
+  "03-summary-chips",
+  "08-transcript-highlights",
+  "09-first-task",
+]);
+
 export function endingArmOf(value: unknown): EndingArm | null {
   return typeof value === "string" && value in ENDING_NAMES
     ? (value as EndingArm)
@@ -68,6 +76,17 @@ export function saveEndingPick(mode: EndingMode, arm: EndingArm | null) {
 export function endingPickBody(isPickerOn: boolean, mode: EndingMode) {
   const arm = isPickerOn ? readEndingPick(mode) : null;
   return arm ? { ending_pick: arm } : undefined;
+}
+
+// What a start carries: a tester's pick, and whether the person asked to
+// start a closed interview over.
+export function startBody(
+  isPickerOn: boolean,
+  mode: EndingMode,
+  isStartOver: boolean,
+) {
+  const pick = endingPickBody(isPickerOn, mode);
+  return isStartOver ? { ...pick, start_over: true } : pick;
 }
 
 // --- Corrections, in the person's voice -----------------------------------
@@ -204,3 +223,58 @@ export const TOPIC_NAMES: Record<string, string> = {
   first_task: "First thing to hand off",
   tools: "Your tools",
 };
+
+// --- An ending already settled --------------------------------------------
+
+export interface SettledView {
+  heading: string;
+  rows: { label: string; value: string }[];
+  items: string[];
+}
+
+// What a confirm arm's ending shows once the interview is handed off: what
+// was confirmed, said as a statement; null when none of it can be read.
+export function settledViewOf(
+  arm: EndingArm,
+  details: InterviewDetails | null,
+  firstTask: string | null,
+): SettledView | null {
+  switch (arm) {
+    case "02-profile-card": {
+      const rows = profileRowsOf(details);
+      if (rows.length === 0) return null;
+      return {
+        heading: "Here's what Otto has",
+        rows: rows.map(({ label, value }) => ({ label, value })),
+        items: [],
+      };
+    }
+    case "03-summary-chips": {
+      const items = chipsOf(details);
+      if (items.length === 0) return null;
+      return { heading: "Here's what Otto heard", rows: [], items };
+    }
+    case "08-transcript-highlights": {
+      const items = Array.from(
+        new Set(
+          (details?.facts ?? [])
+            .map((fact) => fact.label.trim())
+            .filter((label): label is string => !!label),
+        ),
+      );
+      if (items.length === 0) return null;
+      return { heading: "Here's what Otto took from it", rows: [], items };
+    }
+    case "09-first-task": {
+      const task = firstTask?.trim();
+      if (!task) return null;
+      return {
+        heading: "Your team starts here",
+        rows: [{ label: "First task", value: task }],
+        items: [],
+      };
+    }
+    default:
+      return null;
+  }
+}

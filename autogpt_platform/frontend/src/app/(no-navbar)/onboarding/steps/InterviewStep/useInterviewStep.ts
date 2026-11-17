@@ -34,8 +34,8 @@ import {
 } from "./components/Endings/useInterviewDetails";
 import {
   endingArmOf,
-  endingPickBody,
   readEndingPick,
+  startBody,
 } from "./components/Endings/helpers";
 import {
   finishFailureOf,
@@ -58,6 +58,8 @@ import {
 } from "./helpers";
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
+
+const HANDED_OFF_STAGE = "handed_off";
 
 // How the interview runs on the step: the choice between a call and typing,
 // the call, or the typed chat.
@@ -93,6 +95,8 @@ export function useInterviewStep() {
   const startedRef = useRef(false);
   const startAttemptRef = useRef(0);
   const turnRanRef = useRef(false);
+  // The next typed start sets the person's closed interview aside.
+  const isStartOverRef = useRef(false);
 
   // With the voice flag on, the step opens on the person's latest call,
   // read before anything typed (useVoiceCall); with no call to pick up, the
@@ -244,9 +248,11 @@ export function useInterviewStep() {
 
   async function openInterview() {
     const attempt = ++startAttemptRef.current;
+    const isStartOver = isStartOverRef.current;
+    isStartOverRef.current = false;
     try {
       const response = await startOnboardingInterview(
-        endingPickBody(isEndingPickerOn, "text"),
+        startBody(isEndingPickerOn, "text", isStartOver),
       );
       if (attempt !== startAttemptRef.current) return;
       if (response.status !== 200) {
@@ -306,11 +312,49 @@ export function useInterviewStep() {
   }
 
   // Puts the typed interview on the step, opening it again when a call held
-  // it before.
-  function openTyped({ remember }: { remember: boolean }) {
+  // it before; a start-over opens a fresh one in place of the interview that
+  // is over.
+  function openTyped({
+    remember,
+    isStartOver = false,
+  }: {
+    remember: boolean;
+    isStartOver?: boolean;
+  }) {
     if (remember) rememberTyping(userID);
+    if (isStartOver) {
+      isStartOverRef.current = true;
+      clearTypedInterview();
+    }
     setSurface("type");
     if (startedRef.current) void start();
+  }
+
+  function clearTypedInterview() {
+    setSessionId(null);
+    setStartedStage(null);
+    setReadStage(null);
+    setReadEnding(null);
+    setHasAskedToFinish(false);
+    setFinishFailure(null);
+  }
+
+  function trackTypedEndingAction(action: string) {
+    trackInterview("ending_action", { mode: "text", ending: "team", action });
+  }
+
+  // From the typed interview's ending: a fresh interview, typed or by call.
+  function startOverByTyping() {
+    if (isLeavingRef.current) return;
+    trackTypedEndingAction("type_instead");
+    openTyped({ remember: true, isStartOver: true });
+  }
+
+  function startOverByCall() {
+    if (isLeavingRef.current) return;
+    trackTypedEndingAction("call_again");
+    setSurface("voice");
+    voice.startOverByCall();
   }
 
   function refuseMicrophone(refusal: MicrophoneRefusal) {
@@ -453,7 +497,7 @@ export function useInterviewStep() {
   // the same interview.
   function repickEnding() {
     void startOnboardingInterview(
-      endingPickBody(isEndingPickerOn, "text"),
+      startBody(isEndingPickerOn, "text", false),
     ).catch(() => undefined);
   }
 
@@ -465,6 +509,13 @@ export function useInterviewStep() {
   const knownArm =
     typedArm ?? (isEndingPickerOn ? readEndingPick("text") : null);
   const details = detailsQuery.data;
+  const isTypedSettled =
+    isTypedOver &&
+    [
+      startedStage,
+      readStage,
+      session?.metadata?.onboarding_interview_stage,
+    ].includes(HANDED_OFF_STAGE);
 
   return {
     mode,
@@ -482,6 +533,18 @@ export function useInterviewStep() {
       },
       isTesterPick:
         isEndingPickerOn && !!typedArm && readEndingPick("text") === typedArm,
+      isSettled: isTypedSettled,
+    },
+    typedStartOver: {
+      canCall:
+        voiceFlag.enabled &&
+        !isVoiceUnavailable &&
+        micRefusal === null &&
+        microphone.state !== "denied",
+      hasKept: hasAnswered(messages),
+      onOpen: () => trackTypedEndingAction("start_over"),
+      onCallAgain: startOverByCall,
+      onTypeInstead: startOverByTyping,
     },
     liveEnding: { arm: knownArm, details },
     isMicBlocked:

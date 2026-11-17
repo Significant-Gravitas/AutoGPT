@@ -8,13 +8,16 @@ import { CoverageRing } from "./components/CoverageRing";
 import { FirstTaskEnding } from "./components/FirstTaskEnding";
 import { HighlightsEnding } from "./components/HighlightsEnding";
 import { ProfileCardEnding } from "./components/ProfileCardEnding";
+import { SettledEnding } from "./components/SettledEnding";
 import { SummaryChipsEnding } from "./components/SummaryChipsEnding";
 import { TeamReveal } from "./components/TeamReveal";
 import {
   chipsOf,
+  CONFIRM_ARMS,
   type EndingArm,
   ENDING_NAMES,
   profileRowsOf,
+  settledViewOf,
 } from "./helpers";
 
 export interface EndingData {
@@ -27,10 +30,15 @@ interface Props {
   data: EndingData;
   isLeaving: boolean;
   isTesterPick: boolean;
+  // The interview is handed off already: a confirm arm shows what was
+  // confirmed, and asks nothing again.
+  isSettled?: boolean;
   onConfirm: (corrections: string | null) => void;
   // Today's ending, for anyone not enrolled, an arm with no screen here, and
   // an arm whose data did not come.
   fallback: ReactNode;
+  // The way to do the interview over, under the ending.
+  startOver?: ReactNode;
 }
 
 // How the interview ends on screen, by the person's arm of the ending
@@ -40,13 +48,28 @@ export function InterviewEnding({
   data,
   isLeaving,
   isTesterPick,
+  isSettled = false,
   onConfirm,
   fallback,
+  startOver,
 }: Props) {
-  const screen = armScreen({ arm, data, isLeaving, onConfirm, fallback });
+  const isSettledConfirm = isSettled && !!arm && CONFIRM_ARMS.has(arm);
+  const settled = isSettledConfirm
+    ? settledViewOf(arm, data.details ?? null, data.firstTask)
+    : null;
+  const screen = isSettledConfirm
+    ? settled && (
+        <SettledEnding
+          view={settled}
+          isLeaving={isLeaving}
+          onContinue={() => onConfirm(null)}
+        />
+      )
+    : armScreen({ arm, data, isLeaving, onConfirm, fallback });
   return (
     <div className="flex w-full flex-col items-center gap-3">
       {screen ?? fallback}
+      {startOver}
       {arm && isTesterPick && (
         <Text variant="small" tone="muted" align="center">
           Ending: {ENDING_NAMES[arm]} (tester pick)
@@ -62,7 +85,7 @@ function armScreen({
   isLeaving,
   onConfirm,
   fallback,
-}: Omit<Props, "isTesterPick">) {
+}: Omit<Props, "isTesterPick" | "isSettled" | "startOver">) {
   const details = data.details ?? null;
   switch (arm) {
     case "02-profile-card": {
