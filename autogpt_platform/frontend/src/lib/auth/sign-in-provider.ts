@@ -1,3 +1,5 @@
+import type { GenericEndpointContext } from "@better-auth/core";
+
 // Which provider a sign-in or sign-up came through, for the checks that
 // depend on it. Better Auth hands database hooks the endpoint context that is
 // creating the row: `/callback/:id` names the provider in its params, and
@@ -33,4 +35,49 @@ export function signInProviderOf(ctx: EndpointContext | null | undefined) {
     ctx?.params?.id ??
     (typeof named === "string" ? named : undefined)
   );
+}
+
+interface ProviderEntry {
+  id: string;
+  options?: { disableSignUp?: boolean };
+  accountSubject?: (input: {
+    tokens: object;
+    profile: Record<string, unknown>;
+  }) => unknown;
+}
+
+/** The configured social provider with this id, as Better Auth holds it. */
+export async function findProvider(
+  ctx: GenericEndpointContext,
+  providerId: string,
+) {
+  for (const entry of ctx.context.socialProviders as unknown[]) {
+    const provider = (
+      typeof entry === "function" ? await entry() : entry
+    ) as ProviderEntry;
+    if (provider?.id === providerId) return provider;
+  }
+  return null;
+}
+
+// The account key Better Auth gives the provider's account: the same
+// `accountSubject` its callback uses, so finishing with the code links exactly
+// the account the provider signed in.
+export async function accountIDOf(
+  ctx: GenericEndpointContext,
+  providerId: string,
+  profile: Record<string, unknown> | undefined,
+) {
+  const provider = await findProvider(ctx, providerId);
+  if (!profile || !provider?.accountSubject) return null;
+  try {
+    const subject = await provider.accountSubject({ tokens: {}, profile });
+    const id =
+      typeof subject === "string" || typeof subject === "number"
+        ? String(subject)
+        : "";
+    return id.trim() ? id : null;
+  } catch {
+    return null;
+  }
 }

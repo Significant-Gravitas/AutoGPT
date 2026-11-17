@@ -29,7 +29,7 @@ type SendAuthEmailArgs =
       // change_email only: the address the account is moving to.
       newEmail?: string;
     }
-  // The code that confirms a provider sign-in's address (sign-in-code-plugin.ts).
+  // The code that confirms a provider sign-in's address (require-sign-in-code.ts).
   | {
       to: string;
       type: "sign_in_code";

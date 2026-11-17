@@ -203,7 +203,7 @@ export function microsoftProfileToUser(profile: MicrosoftProfile) {
   // stays the same when the deployment moves to a different Microsoft app.
   return {
     // An unconfirmed address creates an account only after an emailed code
-    // (sign-in-code-plugin.ts). Joining an existing account takes one either
+    // (require-sign-in-code.ts). Joining an existing account takes one either
     // way, unless the account is that Outlook.com mailbox (mailbox-provider.ts).
     emailVerified: isMicrosoftEmailVerified(profile),
     email: profile.email,
@@ -243,7 +243,7 @@ const SIGN_IN_ERRORS: Record<string, string> = {
   // Better Auth's answer when the account that uses the address never
   // verified it, so its owner may not be whoever signed up with it. An
   // address Microsoft didn't confirm is asked for a code instead
-  // (sign-in-code-plugin.ts).
+  // (require-sign-in-code.ts).
   [ACCOUNT_NOT_LINKED_CODE]:
     "We can't sign you in with that Microsoft account. If you already have an AutoGPT account, log in the way you usually do. If not, sign up with your email address. You can connect Microsoft 365 afterwards.",
   access_denied: "Microsoft sign-in was cancelled.",

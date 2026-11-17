@@ -23,12 +23,11 @@ from fastapi import APIRouter, HTTPException, Security, status
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from backend.data.account_erasure.ban_record import is_banned_address
-from backend.notifications.auth import (
+from backend.notifications.auth import AuthLinkEmailType, render_auth_email
+from backend.notifications.sign_in_email import (
     SIGN_IN_CODE_PATTERN,
-    AuthLinkEmailType,
     AuthSignInEmailType,
     SignInProvider,
-    render_auth_email,
 )
 from backend.util.clients import get_notification_manager_client
 from backend.util.exceptions import EmailUndeliverableError

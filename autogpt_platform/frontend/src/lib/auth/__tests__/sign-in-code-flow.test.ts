@@ -26,6 +26,12 @@ vi.mock("pg", () => ({
   },
 }));
 const testDB = vi.hoisted(() => ({ current: {} as Record<string, unknown[]> }));
+// Runs before each database call, so a test can hold calls at a barrier.
+const dbGate = vi.hoisted(() => ({
+  current: null as null | ((method: string, args: unknown[]) => Promise<void>),
+}));
+// What the app hands Next's `after`: its background work, such as emails.
+const backgroundTasks = vi.hoisted(() => [] as Promise<unknown>[]);
 vi.mock("better-auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("better-auth")>();
   const { memoryAdapter } = await import("better-auth/adapters/memory");
@@ -44,6 +50,7 @@ vi.mock("better-auth", async (importOriginal) => {
             return value;
           return async (...args: unknown[]) => {
             await new Promise((resolve) => setTimeout(resolve, 0));
+            await dbGate.current?.(String(key), args);
             return value.apply(target, args);
           };
         },
@@ -63,7 +70,9 @@ vi.mock("better-auth", async (importOriginal) => {
 });
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
-  after: vi.fn(),
+  after: vi.fn((task: Promise<unknown>) => {
+    backgroundTasks.push(task);
+  }),
 }));
 vi.mock("better-auth/next-js", () => ({
   nextCookies: vi.fn(() => ({ id: "next-cookies" })),
@@ -135,10 +144,43 @@ async function createAuth() {
 
 type TestDB = Awaited<ReturnType<typeof createAuth>>["db"];
 
-afterEach(() => {
+afterEach(async () => {
+  vi.useRealTimers();
+  dbGate.current = null;
+  await backgroundTasksDone();
   vi.unstubAllEnvs();
   sendAuthEmail.mockReset();
 });
+
+// Every background task a request started, finished.
+async function backgroundTasksDone() {
+  while (backgroundTasks.length > 0) {
+    await Promise.all(backgroundTasks.splice(0));
+  }
+}
+
+// Holds the database calls `matches` picks until `parties` of them have
+// arrived, so they all pass whatever they checked before any of them acts.
+// Correct code may never let the last one arrive, hence the time limit.
+function barrierAt(
+  matches: (method: string, args: unknown[]) => boolean,
+  parties: number,
+) {
+  let arrived = 0;
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return async (method: string, args: unknown[]) => {
+    if (!matches(method, args)) return;
+    arrived += 1;
+    if (arrived >= parties) release();
+    await Promise.race([
+      released,
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]);
+  };
+}
 
 // One browser: the cookies each response sets, sent with the next request.
 class Browser {
@@ -473,6 +515,16 @@ describe("joining an existing account", () => {
       expect.objectContaining({ userId: "existing-user" }),
     ]);
 
+    // Its owner hears that Google joined the account.
+    await backgroundTasksDone();
+    expect(emailsOfType("sign_in_method_added")).toEqual([
+      {
+        to: "pat@company.example",
+        type: "sign_in_method_added",
+        provider: "google",
+      },
+    ]);
+
     // Next time Google signs straight in.
     sendAuthEmail.mockClear();
     const next = await new Browser(handler).signInWith("google");
@@ -487,15 +539,14 @@ describe("joining an existing account", () => {
 
     await new Browser(handler).signInWith("google");
 
-    await vi.waitFor(() =>
-      expect(emailsOfType("sign_in_method_added")).toEqual([
-        {
-          to: "pat@gmail.com",
-          type: "sign_in_method_added",
-          provider: "google",
-        },
-      ]),
-    );
+    await backgroundTasksDone();
+    expect(emailsOfType("sign_in_method_added")).toEqual([
+      {
+        to: "pat@gmail.com",
+        type: "sign_in_method_added",
+        provider: "google",
+      },
+    ]);
   });
 
   it("still refuses to join an account whose own address was never verified", async () => {
@@ -555,7 +606,7 @@ describe("signing up", () => {
     ]);
     expect(db.UserAuthSession).toHaveLength(1);
     // A sign-up's first sign-in method gets no notice.
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await backgroundTasksDone();
     expect(emailsOfType("sign_in_method_added")).toEqual([]);
   });
 
@@ -628,11 +679,15 @@ describe("the code", () => {
   it("tells /login where it went", async () => {
     const { browser, handler } = await waitingOnCode();
 
-    expect(await browser.pending()).toEqual({
+    const pending = await browser.pending();
+
+    expect(pending).toMatchObject({
       provider: "github",
       email: "pat@company.example",
-      resendInSeconds: 60,
     });
+    // A second may pass on a slow runner.
+    expect(pending.resendInSeconds).toBeGreaterThan(50);
+    expect(pending.resendInSeconds).toBeLessThanOrEqual(60);
     expect(await new Browser(handler).pending()).toBeNull();
   });
 
@@ -679,6 +734,33 @@ describe("the code", () => {
       code: "sign_in_code_expired",
     });
     expect(linkedAccounts(db, "github")).toEqual([]);
+  });
+
+  it("finishes once when the right code is sent twice at once", async () => {
+    const { browser, db } = await waitingOnCode();
+    const code = emailedCode();
+    const tab = browser.copy();
+    // Both checks get past the code before either removes the waiting sign-in.
+    dbGate.current = barrierAt(
+      (method, [query]) =>
+        method === "deleteMany" &&
+        (query as { model?: string }).model === "verification" &&
+        (query as { where?: Array<{ field: string }> }).where?.[0]?.field ===
+          "id",
+      2,
+    );
+
+    const answers = await Promise.all([
+      browser.enterCode(code),
+      tab.enterCode(code),
+    ]);
+    dbGate.current = null;
+
+    expect(answers.map((answer) => answer.status).sort()).toEqual([200, 400]);
+    const loser = answers.find((answer) => answer.status === 400);
+    expect(await loser?.json()).toMatchObject({ code: "sign_in_code_expired" });
+    expect(linkedAccounts(db, "github")).toHaveLength(1);
+    expect(db.UserAuthSession).toHaveLength(1);
   });
 
   it("works once", async () => {
@@ -781,6 +863,9 @@ describe("the code", () => {
   });
 
   it("is emailed at most five times an hour to one address", async () => {
+    // Mid-hour, so the six sign-ins all count in the same hour.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T12:30:00Z"));
     const { handler, db } = await createAuth();
     existingAccount(db, "pat@company.example");
     answerAs("github", { email: "pat@company.example" });
@@ -807,10 +892,37 @@ describe("the code", () => {
 
     expect(landing.searchParams.get("error")).toBe("sign_in_code_unsent");
     expect(browser.has("sign_in_code")).toBe(false);
+    // Neither the waiting sign-in nor the hour's email slot: a code that
+    // never arrived doesn't count toward the five.
     expect(
       db.UserAuthVerification.filter((row) =>
-        String(row.identifier).startsWith("sign-in-code:"),
+        /^sign-in-code(-email)?:/.test(String(row.identifier)),
       ),
     ).toEqual([]);
+  });
+
+  it("refuses the code when the hour's count can't be read", async () => {
+    const { handler, db } = await createAuth();
+    existingAccount(db, "pat@company.example");
+    answerAs("github", { email: "pat@company.example" });
+    // The database fails to record the hour's email slot.
+    dbGate.current = async (method, [query]) => {
+      const { model, data } = query as {
+        model?: string;
+        data?: { identifier?: unknown };
+      };
+      if (
+        method === "create" &&
+        model === "verification" &&
+        String(data?.identifier).startsWith("sign-in-code-email:")
+      ) {
+        throw new Error("database unavailable");
+      }
+    };
+
+    const landing = await new Browser(handler).signInWith("github");
+
+    expect(landing.searchParams.get("error")).toBe("sign_in_code_unsent");
+    expect(emailsOfType("sign_in_code")).toEqual([]);
   });
 });

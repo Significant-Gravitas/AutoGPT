@@ -52,11 +52,10 @@ import {
 } from "./reset-link-address";
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
 import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
-import {
-  alertNewSignInMethod,
-  requireSignInCode,
-  signInCode,
-} from "./sign-in-code-plugin";
+import { requireSignInCode } from "./require-sign-in-code";
+import { alertNewSignInMethod } from "./sign-in-code-emails";
+import { signInCode } from "./sign-in-code-plugin";
+import { CODE_PROVIDER_IDS } from "./sign-in-code-store";
 import { JWKS_ALG } from "./service-token";
 import {
   isSignupAllowed,
@@ -302,7 +301,7 @@ export const auth = betterAuth({
       },
     },
     // A sign-in provider that joins an account it didn't create emails the
-    // account's owner (sign-in-code-plugin.ts), alongside the response.
+    // account's owner (sign-in-code-emails.ts), alongside the response.
     account: {
       create: {
         after: async (account: { userId: string; providerId: string }) => {
@@ -382,8 +381,8 @@ export const auth = betterAuth({
       // address whenever the provider says it verified the address. These
       // providers leave that to validateUserInfo below, which links at once
       // only when the provider runs the mailbox and otherwise emails a code.
-      // Apple keeps Better Auth's rule (sign-in-code-plugin.ts).
-      trustedProviders: ["google", "microsoft", "github", "discord"],
+      // Apple keeps Better Auth's rule (require-sign-in-code.ts).
+      trustedProviders: [...CODE_PROVIDER_IDS],
     },
   },
   verification: {

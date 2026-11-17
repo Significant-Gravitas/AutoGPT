@@ -11,6 +11,7 @@ import {
   SIGN_IN_CODE_TOO_SOON,
   SIGN_IN_CODE_UNSENT,
 } from "@/lib/auth/sign-in-code";
+import type { LoginProvider } from "@/types/auth";
 
 // Focused when the screen replaces the form: on a phone that opens the number
 // keyboard, which offers the emailed code.
@@ -27,7 +28,7 @@ export const SIGN_IN_CODE_COPY = {
 } as const;
 
 export type SignInCodeOutcome =
-  | { kind: "signed-in"; provider: string }
+  | { kind: "signed-in"; provider: LoginProvider }
   | { kind: "invalid" }
   | { kind: "expired" }
   | { kind: "waitlisted" }
@@ -63,7 +64,9 @@ export async function submitSignInCode(
     provider?: unknown;
   };
   if (response.ok) {
-    return { kind: "signed-in", provider: String(body.provider) };
+    return isLoginProvider(body.provider)
+      ? { kind: "signed-in", provider: body.provider }
+      : { kind: "refused", message: SIGN_IN_CODE_COPY.failed };
   }
   const errorCode = typeof body.code === "string" ? body.code : null;
   if (errorCode === SIGN_IN_CODE_INVALID) return { kind: "invalid" };
@@ -109,6 +112,18 @@ export async function resendSignInCode(): Promise<ResendOutcome> {
             : SIGN_IN_CODE_COPY.failed,
       };
   }
+}
+
+const LOGIN_PROVIDERS: readonly LoginProvider[] = [
+  "google",
+  "github",
+  "discord",
+  "apple",
+  "microsoft",
+];
+
+function isLoginProvider(value: unknown): value is LoginProvider {
+  return LOGIN_PROVIDERS.some((provider) => provider === value);
 }
 
 function post(path: string, body: object) {

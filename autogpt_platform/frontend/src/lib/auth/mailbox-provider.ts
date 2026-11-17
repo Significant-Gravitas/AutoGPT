@@ -23,7 +23,7 @@ interface Claim {
  * failed before (Google's Workspace verification was bypassed in 2024; in
  * 2026 a sign-in provider vouched for addresses it never verified and opened
  * thousands of Dropbox accounts), so those sign-ins join an existing account
- * only through a code emailed to the address (sign-in-code-plugin.ts).
+ * only through a code emailed to the address (require-sign-in-code.ts).
  */
 export function providerRunsMailbox(providerId: string, claim: Claim) {
   switch (providerId) {

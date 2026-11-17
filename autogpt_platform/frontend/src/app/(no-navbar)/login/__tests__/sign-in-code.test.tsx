@@ -77,6 +77,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   Object.defineProperty(window, "location", {
     configurable: true,
     writable: true,
@@ -242,6 +243,21 @@ describe("LoginPage while a sign-in waits on its emailed code", () => {
     expect(resent).toBe(true);
     expect(
       screen.getByRole("button", { name: /Send a new code in \d+s/ }),
+    ).toBeDefined();
+  });
+
+  test("counts time the tab slept toward the next code", async () => {
+    answerStatus(PENDING);
+    openLogin(WAITING);
+    await screen.findByRole("button", { name: /Send a new code in \d+s/ });
+
+    // The tab sleeps 90 seconds: the clock moves on, and no timer runs in
+    // between.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 90_000);
+
+    expect(
+      await screen.findByRole("button", { name: "Send a new code" }),
     ).toBeDefined();
   });
 

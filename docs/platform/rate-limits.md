@@ -232,7 +232,7 @@ When a sign-in provider such as Google or Microsoft can't vouch for an email add
 | 5 tries per code                                                | sign-in       | After the fifth wrong code the sign-in ends: sign in again for a new code                                 |
 | 10 code checks a minute                                         | IP address    | `429`, with "Too many attempts. Please try again in 1 minute." — the wait named in seconds under a minute |
 
-- A code expires after 10 minutes, works once, and only in the browser that started the sign-in.
+- A code expires after 10 minutes, works once, and only in the browser that started the sign-in. A code that couldn't be sent doesn't count toward the five an hour.
 - The hour and the minute start on the clock. None of these are configurable.
 
 ### The authentication API

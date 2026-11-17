@@ -8,7 +8,7 @@ import { isTeamEmail } from "./team-email";
  * address Microsoft confirmed (isMicrosoftEmailVerified, its `emailVerified`).
  * For any other address, whoever holds the Microsoft account might not hold
  * the mailbox, so the sign-up first emails the address a code, typed into the
- * page that started it (sign-in-code-plugin.ts). A link to click would not do:
+ * page that started it (require-sign-in-code.ts). A link to click would not do:
  * the mailbox's owner could open it for someone else's sign-up, and that
  * person's Microsoft login would then sign in to the account.
  *

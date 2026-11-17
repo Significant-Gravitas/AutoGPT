@@ -1,10 +1,10 @@
 // A provider sign-in that can't vouch for its address ends with a code
-// emailed there, typed into /login (sign-in-code-plugin.ts). What the page
+// emailed there, typed into /login (require-sign-in-code.ts). What the page
 // and the server share; no server imports.
 
 export const SIGN_IN_CODE_LENGTH = 6;
 // Must match the email's "The code expires in 10 minutes" (backend
-// notifications/auth.py).
+// notifications/sign_in_email.py).
 export const SIGN_IN_CODE_TTL_SECONDS = 10 * 60;
 // Documented in docs/platform/rate-limits.md: update it with any change here.
 export const SIGN_IN_CODE_RESEND_SECONDS = 60;

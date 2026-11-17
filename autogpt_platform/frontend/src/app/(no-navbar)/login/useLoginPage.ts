@@ -70,7 +70,7 @@ export function useLoginPage() {
     searchParams.get("provider"),
   );
   // A provider sign-in that can't vouch for its address waits on a code
-  // emailed there (sign-in-code-plugin.ts).
+  // emailed there (require-sign-in-code.ts).
   const isWaitingOnCode = searchParams.get("error") === SIGN_IN_CODE_SENT;
   const showBannedNotice = isBannedNotice(searchParams);
 

@@ -84,9 +84,10 @@ calendar, files, Teams and Work IQ tools follow it.
   own Outlook.com, Hotmail, Live or MSN address, or a work address with
   `xms_edov`. A guest's address is never trusted: a guest signs in through
   an organization that isn't its own, which vouches for addresses it never
-  verified. Such an address creates an account straight away; any other
-  one creates an account only once the code emailed there is typed into
-  /login (`sign-in-code-plugin.ts`). Joining an existing account takes that
+  verified. An address Microsoft vouches for creates an account straight
+  away; any other one, a guest's included, creates an account only once the
+  code emailed there is typed into /login (`require-sign-in-code.ts`).
+  Joining an existing account takes that
   code too, unless the Microsoft account is that Outlook.com mailbox
   (`mailbox-provider.ts`): an organization vouching for its domain doesn't
   run the mailbox. Every provider follows the same rule, and the redirect

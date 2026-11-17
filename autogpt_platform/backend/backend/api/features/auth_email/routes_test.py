@@ -325,6 +325,9 @@ def test_sign_in_code_email_sends_without_a_link(send_mock):
     assert subject == "Your AutoGPT sign-in code"
     assert "042917" in body and "042917" in text
     assert "Microsoft" in text
+    assert send_mock.call_args.kwargs == {
+        "reply_to": auth_email_routes.settings.config.billing_reply_to_email
+    }
 
 
 def test_sign_in_method_added_email_sends_without_a_link(send_mock):
