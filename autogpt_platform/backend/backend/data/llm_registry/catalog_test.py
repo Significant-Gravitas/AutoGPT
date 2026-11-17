@@ -456,6 +456,27 @@ def test_gemini_4_hydrogen_bills_at_authored_rates():
     assert entry.supports_reasoning is True
 
 
+def test_gemini_4_carbon_bills_at_authored_rates():
+    """Gemini 4 Carbon (OpenRouter, $2/$10 per 1M, $0.10/1M cached read,
+    $0.1875/1M cache write) must match the authored catalog entry."""
+    carbon = LLMModel("google/gemini-4-carbon")
+    assert carbon is LLMModel.GEMINI_4_CARBON
+    assert MODEL_COST[carbon] == 5
+    assert TOKEN_COST[carbon].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 28.125,
+    }
+    assert MODEL_METADATA[carbon].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-carbon")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_gemini_3_8_flash_bills_at_authored_rates():
     """Gemini 3.8 Flash (OpenRouter, live rate $0.825/$4.125
     per 1M as of 2026-10-17) — flat tier and per-1M projections must
@@ -666,6 +687,27 @@ def test_qwen3_8_max_0902_bills_at_authored_rates():
     )
     assert qwen_max_entry.price_tier == 2
     assert qwen_max_entry.context_window == 262144
+
+
+def test_qwen4_max_bills_at_authored_rates():
+    """Qwen 4 Max (OpenRouter, $1.50/$4.50 per 1M, $0.075/1M cached read,
+    $1.875/1M cache write) must match the authored catalog entry."""
+    qwen = LLMModel("qwen/qwen4-max")
+    assert qwen is LLMModel.QWEN4_MAX
+    assert MODEL_COST[qwen] == 4
+    assert TOKEN_COST[qwen].model_dump() == {
+        "input": 225.0,
+        "output": 675.0,
+        "cache_read": 11.25,
+        "cache_creation": 281.25,
+    }
+    assert MODEL_METADATA[qwen].max_output_tokens == 393216
+    entry = next(m for m in CATALOG.models if m.slug == "qwen/qwen4-max")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1000000
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
 
 
 def test_qwen3_8_flash_bills_at_authored_rates():

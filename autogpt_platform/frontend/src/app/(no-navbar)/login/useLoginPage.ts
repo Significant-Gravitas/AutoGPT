@@ -61,7 +61,10 @@ export function useLoginPage() {
   const verificationNotice = getEmailVerificationNotice(
     searchParams.get(EMAIL_VERIFICATION_NOTICE_PARAM),
   );
-  const signInErrorNotice = getSignInErrorNotice(searchParams.get("error"));
+  const signInErrorNotice = getSignInErrorNotice(
+    searchParams.get("error"),
+    searchParams.get("provider"),
+  );
   const showBannedNotice = isBannedNotice(searchParams);
 
   // Only honour explicit `?next=` deep links here. Generic "already logged in

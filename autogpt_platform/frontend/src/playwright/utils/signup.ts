@@ -39,8 +39,6 @@ export async function signupTestUser(
     await expect(emailInput).toHaveValue(userEmail);
     const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
-    const confirmPasswordInput = page.locator("#confirmPassword");
-    await confirmPasswordInput.fill(userPassword);
 
     const signupButton = getButton("Sign up");
     await signupButton.click();

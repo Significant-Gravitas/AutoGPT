@@ -2,7 +2,6 @@ import {
   ImpersonationState,
   setImpersonationViewer,
 } from "@/lib/impersonation";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   mockAccountDeletionAPI,
   recordDeletion,
@@ -21,7 +20,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { PaywallModal } from "../PaywallModal";
 
 const mocks = vi.hoisted(() => ({
-  useGetFlag: vi.fn(),
   logOut: vi.fn(),
   replace: vi.fn(),
 }));
@@ -70,20 +68,6 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({}),
 }));
 
-vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@/services/feature-flags/use-get-flag")
-    >();
-  return { ...actual, useGetFlag: mocks.useGetFlag };
-});
-
-function setAccountDeletionFlag(enabled: boolean) {
-  mocks.useGetFlag.mockImplementation(
-    (flag: Flag) => enabled && flag === Flag.SELF_SERVE_ACCOUNT_DELETION,
-  );
-}
-
 async function openDeleteFlow() {
   const user = userEvent.setup();
   render(<PaywallModal />);
@@ -102,7 +86,6 @@ beforeEach(() => {
   viewport.isLarge = true;
   mocks.logOut.mockReset().mockResolvedValue(undefined);
   mocks.replace.mockReset();
-  setAccountDeletionFlag(true);
   mockAccountDeletionAPI();
 });
 
@@ -112,15 +95,6 @@ afterEach(() => {
 });
 
 describe("PaywallModal — delete account", () => {
-  test("shows no Delete account button while the flag is off", () => {
-    setAccountDeletionFlag(false);
-
-    render(<PaywallModal />);
-
-    expect(screen.getByRole("button", { name: "Log out" })).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Delete account" })).toBeNull();
-  });
-
   test("shows no Delete account button while an admin is impersonating the user", () => {
     ImpersonationState.set("user-1", "admin-1");
     setImpersonationViewer({ id: "admin-1", role: "admin" });

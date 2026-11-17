@@ -34,6 +34,14 @@ LINK_API_BASE_URL = "https://api.link.com"
 # as long as it likes. Bound them all.
 LINK_HTTP_TIMEOUT = 15.0
 LINK_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk"
+# Which client issued a grant, recorded the way hosted grants record theirs.
+# Reconnecting a wallet merges into its existing credential and keeps keys the
+# new grant lacks, so a device grant states its own flow: otherwise one that
+# replaces a hosted grant would still read as hosted.
+DEVICE_GRANT_METADATA = {
+    "link_oauth_flow": "device_code",
+    "link_client_id": LINK_CLIENT_ID,
+}
 LINK_CLIENT_NAME = "AutoGPT"
 
 
@@ -182,6 +190,7 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
                 # Lets `_merge_or_create_credential` recognise a re-auth of the
                 # same wallet instead of stacking a second credential for it.
                 username=await fetch_link_username(data["access_token"]),
+                metadata=dict(DEVICE_GRANT_METADATA),
             )
             return DeviceAuthPollResult(status="approved", credentials=credentials)
 

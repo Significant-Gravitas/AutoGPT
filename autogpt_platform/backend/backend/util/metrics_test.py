@@ -16,6 +16,7 @@ import time
 import pytest
 import sentry_sdk
 from sentry_sdk.consts import DEFAULT_OPTIONS
+from sentry_sdk.profiler.transaction_profiler import has_profiling_enabled
 from sentry_sdk.serializer import serialize
 from sentry_sdk.utils import event_from_exception, json_dumps
 
@@ -526,6 +527,19 @@ def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> Non
     metrics.sentry_init()
 
     assert calls[0]["trace_propagation_targets"] == []
+
+
+def test_sentry_init_profiles_continuously_not_per_transaction(monkeypatch) -> None:
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    options = {**DEFAULT_OPTIONS, **calls[0]}
+    assert not has_profiling_enabled(options)
+    assert options["profile_session_sample_rate"] == 1.0
+    assert options["profile_lifecycle"] == "trace"
 
 
 def test_sentry_init_cuts_long_values_before_they_are_scrubbed(monkeypatch) -> None:

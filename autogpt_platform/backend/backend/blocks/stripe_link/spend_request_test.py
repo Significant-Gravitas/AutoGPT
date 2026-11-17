@@ -7,6 +7,7 @@ are split along that line — card create/retrieve are gated, while everything
 the Shared Payment Token flow needs stays available on every deployment.
 """
 
+import logging
 from typing import Any
 
 import httpx
@@ -414,6 +415,33 @@ async def test_link_error_falls_back_when_the_body_is_not_json(monkeypatch):
 
     with pytest.raises(Exception, match="400"):
         await sr.link_api_request(TEST_CREDENTIALS, "GET", "/spend_requests/x")
+
+
+@pytest.mark.asyncio
+async def test_an_unexplained_error_body_stays_out_of_the_logs(monkeypatch, caplog):
+    """An upstream body can carry wallet or account data; only the status is
+    logged."""
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def request(self, **kwargs):
+            return _Resp(None, text="balance 1234.56 for acct_canary")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: _Client())
+
+    with (
+        caplog.at_level(logging.DEBUG, logger=_auth.logger.name),
+        pytest.raises(RuntimeError),
+    ):
+        await _auth.link_api_request(TEST_CREDENTIALS, "GET", "/balances")
+
+    assert "400" in caplog.text
+    assert "acct_canary" not in caplog.text
 
 
 @pytest.mark.asyncio

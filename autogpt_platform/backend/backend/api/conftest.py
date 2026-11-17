@@ -19,6 +19,7 @@ from backend.data.user import is_user_refused as _REAL_IS_USER_REFUSED
 # Every module that imports the check by name.
 _PAYWALL_CHECK_SITES = (
     "backend.copilot.rate_limit.is_user_paywalled",
+    "backend.api.features.chat.routes.is_user_paywalled",
     "backend.executor.utils.is_user_paywalled",
     "backend.api.features.integrations.router.is_user_paywalled",
     "backend.api.external.v2.mcp_calls.is_user_paywalled",
