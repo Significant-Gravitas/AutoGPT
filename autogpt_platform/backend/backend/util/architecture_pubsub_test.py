@@ -63,6 +63,8 @@ def test_redis_pubsub_is_read_only_through_sharded_subscription():
         ('await conn.execute_command("subscribe", channel)', True),
         ("async for message in self._pubsub.listen():\n    pass", True),
         ("message = await pubsub.get_message(timeout=1.0)", True),
+        ("ps = redis.asyncio.client.PubSub(pool)", True),
+        ('ps = getattr(client, "pubsub")()', True),
         # Not pub/sub: the event bus API and other APIs' message reads.
         ("async for e in event_bus.listen(user_id=u, graph_id=g):\n    pass", False),
         ("await client.get_message(message_id)", False),
@@ -88,8 +90,10 @@ def _raw_pubsub_uses(tree: ast.Module) -> list[tuple[int, str]]:
         if not isinstance(node, ast.Call):
             continue
         name = _called_name(node.func)
-        if name == "pubsub":
+        if name == "pubsub" or _getattr_of(node) == "pubsub":
             found.append((node.lineno, "opens a redis-py pubsub"))
+        elif name in _PUBSUB_CLASSES:
+            found.append((node.lineno, f"constructs a `{name}`"))
         elif name in _PUBSUB_OPENERS:
             found.append((node.lineno, f"calls `{name}`"))
         elif name == "execute_command" and _first_string(node) in _SUBSCRIBE_COMMANDS:
@@ -104,6 +108,15 @@ def _called_name(func: ast.expr) -> str | None:
         return func.attr
     if isinstance(func, ast.Name):
         return func.id
+    return None
+
+
+def _getattr_of(call: ast.Call) -> str | None:
+    """The attribute name a ``getattr(obj, "name")`` call reads."""
+    if _called_name(call.func) == "getattr" and len(call.args) >= 2:
+        name = call.args[1]
+        if isinstance(name, ast.Constant) and isinstance(name.value, str):
+            return name.value
     return None
 
 

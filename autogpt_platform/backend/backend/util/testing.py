@@ -78,7 +78,9 @@ class TcpProxy:
         self.address: tuple[str, int] = ("127.0.0.1", 0)
         self._server: asyncio.Server | None = None
         self._writers: set[asyncio.StreamWriter] = set()
-        self._pipes: set[asyncio.Task] = set()
+        # Accept handlers and pipes, so leaving the context stops them all.
+        self._tasks: set[asyncio.Task] = set()
+        self._closed = False
 
     async def __aenter__(self) -> Self:
         self._server = await asyncio.start_server(self._accept, "127.0.0.1", 0)
@@ -86,12 +88,14 @@ class TcpProxy:
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
+        self._closed = True
         if self._server is not None:
             self._server.close()
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         self.drop()
-        for pipe in list(self._pipes):
-            pipe.cancel()
-        await asyncio.gather(*self._pipes, return_exceptions=True)
         if self._server is not None:
             async with asyncio.timeout(5):
                 await self._server.wait_closed()
@@ -104,16 +108,30 @@ class TcpProxy:
     async def _accept(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        # Registered first, so drop() closes it even if this is cancelled.
+        self._writers.add(writer)
+        if self._closed:
+            writer.close()
+            return
+        self._track(asyncio.current_task())
         try:
             up_reader, up_writer = await asyncio.open_connection(*self.upstream)
         except OSError:
             writer.close()
             return
-        self._writers |= {writer, up_writer}
+        if self._closed:  # left the context while connecting
+            writer.close()
+            up_writer.close()
+            return
+        self._writers.add(up_writer)
         for source, sink in ((reader, up_writer), (up_reader, writer)):
-            pipe = asyncio.create_task(self._pipe(source, sink))
-            self._pipes.add(pipe)
-            pipe.add_done_callback(self._pipes.discard)
+            self._track(asyncio.create_task(self._pipe(source, sink)))
+
+    def _track(self, task: asyncio.Task | None) -> None:
+        if task is None:
+            return
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _pipe(
         self, source: asyncio.StreamReader, sink: asyncio.StreamWriter

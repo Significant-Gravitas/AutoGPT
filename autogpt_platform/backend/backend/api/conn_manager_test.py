@@ -1045,21 +1045,29 @@ async def test_start_notification_subscription_stores_channel(
 
 
 @pytest.mark.asyncio
-async def test_start_notification_subscription_swallows_start_errors(
+async def test_a_socket_whose_notification_stream_fails_to_open_is_closed(
     connection_manager: ConnectionManager,
     mock_websocket: AsyncMock,
     fake_redis: _FakeRedis,
 ) -> None:
-    """A failed SSUBSCRIBE must not crash connect — the WS stays usable."""
+    """Kept open, it would never receive a notification and nothing would
+    retry; closed with 1011, the client reconnects and refetches."""
     with patch(
         "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
-        side_effect=RuntimeError("SSUBSCRIBE failed"),
+        side_effect=RedisConnectionError("shard gone before the confirmation"),
     ):
-        await connection_manager._start_notification_subscription(
+        accepted = await connection_manager.connect_socket(
             mock_websocket, user_id="user-1"
         )
-    # On failure the channel must NOT be stored (bookkeeping clean).
+
+    assert accepted is False
+    mock_websocket.close.assert_awaited_once_with(
+        code=WS_CLOSE_EVENT_STREAM_LOST, reason="Event stream interrupted"
+    )
+    assert mock_websocket not in connection_manager.active_connections
     assert mock_websocket not in connection_manager._ws_notifications
+    assert mock_websocket not in connection_manager._ws_streams
+    assert "user-1" not in connection_manager._user_sockets
 
 
 @pytest.mark.asyncio

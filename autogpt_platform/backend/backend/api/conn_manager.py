@@ -97,9 +97,10 @@ class ConnectionManager:
         self._user_streams: Counter[tuple[str, Shard]] = Counter()
 
     async def connect_socket(self, websocket: WebSocket, *, user_id: str) -> bool:
-        """Accept the socket, or close it with 1013 and return False when the
+        """Accept the socket, or close it and return False: with 1013 when the
         user holds ``MAX_SOCKETS_PER_USER`` here or a shard has no room left
-        for the user's streams."""
+        for the user's streams, and with 1011 when the notification stream
+        can't be opened."""
         held = len(self._user_sockets.get(user_id, ()))
         if held >= MAX_SOCKETS_PER_USER or self._a_shard_is_full(user_id):
             await self._refuse(websocket, user_id)
@@ -112,19 +113,39 @@ class ConnectionManager:
             raise
         self.active_connections.add(websocket)
         self._ws_subs.setdefault(websocket, {})
+        # Don't hand back a socket that will never receive a notification.
         try:
             await self._start_notification_subscription(websocket, user_id=user_id)
         except _StreamCapacityError:
-            # Capacity moved between admission and here; don't hand back a
-            # socket that will never receive a notification.
-            try:
-                await websocket.close(
-                    code=WS_CLOSE_TRY_AGAIN_LATER, reason="Try again later"
-                )
-            finally:
-                await self.disconnect_socket(websocket, user_id=user_id)
+            # Capacity moved between admission and here.
+            await self._turn_away(
+                websocket, user_id, WS_CLOSE_TRY_AGAIN_LATER, "Try again later"
+            )
+            return False
+        except Exception:
+            # Redis is unreachable, or the stream was lost before Redis
+            # confirmed it: the client reconnects and refetches.
+            logger.warning(
+                f"Closing WebSocket for user #{user_id}: its notification "
+                "stream could not be opened",
+                exc_info=True,
+            )
+            await self._turn_away(
+                websocket,
+                user_id,
+                WS_CLOSE_EVENT_STREAM_LOST,
+                "Event stream interrupted",
+            )
             return False
         return True
+
+    async def _turn_away(
+        self, websocket: WebSocket, user_id: str, code: int, reason: str
+    ) -> None:
+        try:
+            await websocket.close(code=code, reason=reason)
+        finally:
+            await self.disconnect_socket(websocket, user_id=user_id)
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
         self.active_connections.discard(websocket)
@@ -353,13 +374,7 @@ class ConnectionManager:
         async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_notification(websocket, user_id, data)
 
-        try:
-            await self._subscribe(user_id, websocket, full_channel, on_message)
-        except _StreamCapacityError:
-            raise
-        except Exception:
-            logger.exception(f"Failed to open notification SSUBSCRIBE for {user_id}")
-            return
+        await self._subscribe(user_id, websocket, full_channel, on_message)
         self._ws_notifications[websocket] = full_channel
 
     async def _forward_notification(

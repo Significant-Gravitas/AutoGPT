@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.util.testing import Rendezvous, is_tcp_port_reachable
+from backend.util.testing import Rendezvous, TcpProxy, is_tcp_port_reachable
 
 
 @pytest.fixture(autouse=True)
@@ -72,3 +72,30 @@ async def test_rendezvous_fails_callers_awaited_one_after_another() -> None:
 
     with pytest.raises(TimeoutError):
         await meeting.returning("a")()
+
+
+async def test_leaving_a_proxy_stops_a_connection_it_was_still_setting_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A connection still waiting on its upstream when the test leaves the
+    proxy must not outlive it, or it starts pipes and sockets nobody closes."""
+    real_open_connection = asyncio.open_connection
+    upstream = ("127.0.0.1", 9)
+    connecting = asyncio.Event()
+
+    async def open_connection(host: str, port: int, *args, **kwargs):
+        if (host, port) == upstream:
+            connecting.set()
+            await asyncio.Event().wait()
+        return await real_open_connection(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "open_connection", open_connection)
+    async with TcpProxy(upstream) as proxy:
+        reader, writer = await real_open_connection(*proxy.address)
+        async with asyncio.timeout(5):
+            await connecting.wait()
+    try:
+        async with asyncio.timeout(5):
+            assert await reader.read() == b""
+    finally:
+        writer.close()

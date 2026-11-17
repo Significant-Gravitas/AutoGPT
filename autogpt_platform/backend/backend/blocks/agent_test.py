@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-import backend.blocks.agent as agent
+import backend.blocks._sub_agent_wait as sub_agent_wait
 import backend.data.event_bus as event_bus
 import backend.data.redis_client as redis_client
 from backend.blocks.agent import AgentExecutorBlock
@@ -89,7 +89,9 @@ class _Stream:
 
 
 def _db(
-    *metas: GraphExecutionMeta | Exception, nodes: list, later_nodes: list | None = None
+    *metas: GraphExecutionMeta | Exception | None,
+    nodes: list,
+    later_nodes: list | None = None,
 ) -> MagicMock:
     """The database: each catch-up reads the next of ``metas`` (the last one
     repeats), then the child's finished node executions, newest first as
@@ -99,7 +101,7 @@ def _db(
     metas_left = list(metas)
     node_reads = [nodes] if later_nodes is None else [nodes, later_nodes]
 
-    async def get_meta(**_kwargs: Any) -> GraphExecutionMeta:
+    async def get_meta(**_kwargs: Any) -> GraphExecutionMeta | None:
         answer = metas_left.pop(0) if len(metas_left) > 1 else metas_left[0]
         if isinstance(answer, Exception):
             raise answer
@@ -120,7 +122,7 @@ async def _run(
     monkeypatch.setattr(
         "backend.executor.utils.get_async_execution_event_bus", lambda: bus
     )
-    monkeypatch.setattr(agent, "execution_db", lambda: db)
+    monkeypatch.setattr(sub_agent_wait, "execution_db", lambda: db)
     block = AgentExecutorBlock()
     outputs: list[tuple[str, Any]] = []
     async with asyncio.timeout(_WITHIN_S):
@@ -225,7 +227,7 @@ async def test_an_end_whose_own_catch_up_fails_is_kept_for_the_retry(
     """The catch-up owed when the end arrives fails too; the child publishes
     nothing more, so the end must survive until the next attempt, which comes
     soon rather than after the 60 s quiet recheck."""
-    monkeypatch.setattr(agent, "_CATCH_UP_RETRY_S", 0.05)
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.05)
     stream = _Stream()
     a, b = _output(1, "a"), _output(2, "b")
     for item in (None, a, None, _finished_event()):
@@ -245,10 +247,106 @@ async def test_an_end_whose_own_catch_up_fails_is_kept_for_the_retry(
     assert block.execution_stats.reconciled_cost_delta == 7
 
 
+async def test_a_live_end_after_a_failed_quiet_recheck_is_caught_up_first(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The quiet-spell recheck fails, so whether the stream missed anything is
+    unknown: the end that then arrives live must not finish the wait before a
+    catch-up has read what the database holds."""
+    monkeypatch.setattr(sub_agent_wait, "QUIET_RECHECK_S", 0.05)
+    stream = _Stream()
+    stream.items.put_nowait(None)
+    b = _output(2, "b")  # never published: only the database has it
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        _meta(ExecutionStatus.RUNNING),
+        nodes=[],
+        later_nodes=[b],
+    )
+    asyncio.get_running_loop().call_later(
+        0.5, stream.items.put_nowait, _finished_event()
+    )
+
+    outputs, block = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "b")]
+    assert block.execution_stats.reconciled_cost_delta == 7
+
+
+async def test_a_run_gone_after_its_end_was_seen_ends_the_wait(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    stream = _Stream()
+    a = _output(1, "a")
+    for item in (None, a, None, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        None,
+        nodes=[],
+    )
+
+    outputs, block = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "a")]
+    assert block.execution_stats.reconciled_cost_delta == 7
+
+
+async def test_a_run_gone_before_its_end_fails_the_wait(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Nothing will ever finish a deleted run: waiting would hang the parent."""
+    stream = _Stream()
+    stream.items.put_nowait(None)
+    db = _db(None, nodes=[])
+
+    with pytest.raises(sub_agent_wait.SubAgentRunGoneError):
+        await _run(monkeypatch, stream, db)
+
+
+async def test_a_database_down_for_good_still_ends_on_a_seen_end(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.01)
+    stream = _Stream()
+    a = _output(1, "a")
+    for item in (None, a, None, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        nodes=[],
+    )
+
+    outputs, block = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "a")]
+    assert block.execution_stats.reconciled_cost_delta == 7
+
+
+async def test_failed_catch_ups_back_off(monkeypatch: pytest.MonkeyPatch):
+    """At a fixed interval a long database outage would be read every few
+    seconds by every waiting parent."""
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.05)
+    stream = _Stream()
+    stream.items.put_nowait(None)
+    db = _db(ConnectionError("database manager unreachable"), nodes=[])
+
+    waiting = asyncio.create_task(_run(monkeypatch, stream, db))
+    await asyncio.sleep(1.0)
+    waiting.cancel()
+    await asyncio.gather(waiting, return_exceptions=True)
+
+    # 0.05, 0.1, 0.2, 0.4 s apart: about five reads, not twenty.
+    assert db.get_graph_execution_meta.await_count <= 8
+
+
 async def test_a_failed_catch_up_does_not_end_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setattr(agent, "_CATCH_UP_RETRY_S", 0.05)
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.05)
     stream = _Stream()
     stream.items.put_nowait(None)
     db = _db(
@@ -267,7 +365,7 @@ async def test_an_end_that_was_never_published_is_found_by_the_quiet_recheck(
 ):
     """The stream is healthy, but the child's executor failed to publish its
     end: only asking the database ends the wait."""
-    monkeypatch.setattr(agent, "_QUIET_RECHECK_S", 0.05)
+    monkeypatch.setattr(sub_agent_wait, "QUIET_RECHECK_S", 0.05)
     stream = _Stream()
     stream.items.put_nowait(None)
     db = _db(
@@ -307,7 +405,7 @@ async def test_a_child_that_ends_while_redis_is_dropped_still_ends_the_wait(
             "backend.executor.utils.get_async_execution_event_bus",
             lambda: AsyncRedisExecutionEventBus(),
         )
-        monkeypatch.setattr(agent, "execution_db", lambda: db)
+        monkeypatch.setattr(sub_agent_wait, "execution_db", lambda: db)
 
         async def run_block() -> None:
             async for output in AgentExecutorBlock()._run(
