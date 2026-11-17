@@ -102,24 +102,21 @@ def test_failed_execution_is_not_continued():
     db_client.update_graph_execution_start_time.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "status",
-    [ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE],
-)
-def test_admin_requeue_message_does_not_resume_a_parked_run(status: ExecutionStatus):
-    """The original message of a run an admin requeued may not have been lost.
-    If that run went on to park for review, the admin's duplicate must not
-    resume it."""
+def test_a_delivery_leaves_a_run_waiting_for_review_parked():
+    """Only the answer to a review resumes the run waiting for it, by queueing
+    the run again with its current settings. A delivery that finds the run in
+    REVIEW is a late duplicate, such as the original message of a run an
+    admin requeued, and the safe modes it carries may be stale: it must not
+    take the run any further."""
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
         graph_id="graph-1",
         graph_version=1,
-        admin_requeue=True,
     )
     db_client = MagicMock()
     db_client.get_graph_execution_meta.return_value = SimpleNamespace(
-        status=status, stats=None
+        status=ExecutionStatus.REVIEW, stats=None
     )
     processor = ExecutionProcessor()
     processor._on_graph_execution = MagicMock()
@@ -135,26 +132,15 @@ def test_admin_requeue_message_does_not_resume_a_parked_run(status: ExecutionSta
     update.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    "admin_requeue, status",
-    [
-        (False, ExecutionStatus.RUNNING),
-        (True, ExecutionStatus.QUEUED),
-        (True, ExecutionStatus.RUNNING),
-    ],
-)
-def test_redelivered_running_run_continues(
-    admin_requeue: bool, status: ExecutionStatus
-):
-    """A RUNNING run whose pod died comes back as a redelivery and must carry
-    on, whether its message was the original or an admin requeue. QUEUED is
-    the run the admin recovered."""
+@pytest.mark.parametrize("status", [ExecutionStatus.QUEUED, ExecutionStatus.RUNNING])
+def test_a_queued_or_redelivered_running_run_goes_on(status: ExecutionStatus):
+    """A QUEUED run starts. A RUNNING run whose pod died comes back as a
+    redelivery and carries on."""
     execution = GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id="exec-1",
         graph_id="graph-1",
         graph_version=1,
-        admin_requeue=admin_requeue,
     )
     db_client = MagicMock()
     db_client.get_graph_execution_meta.return_value = SimpleNamespace(

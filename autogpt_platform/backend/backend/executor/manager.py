@@ -1514,19 +1514,6 @@ class ExecutionProcessor:
             )
             return
 
-        # An admin requeue starts a QUEUED run, or continues the RUNNING one it
-        # started when a dead pod's delivery comes back. It never resumes a
-        # run that went on to REVIEW under the original message.
-        if graph_exec.admin_requeue and exec_meta.status not in (
-            ExecutionStatus.QUEUED,
-            ExecutionStatus.RUNNING,
-        ):
-            log_metadata.warning(
-                f"Skipped admin requeue of graph execution "
-                f"{graph_exec.graph_exec_id}: it is `{exec_meta.status}`."
-            )
-            return
-
         if exec_meta.status in [ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE]:
             log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
@@ -1538,14 +1525,15 @@ class ExecutionProcessor:
                 f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
         elif exec_meta.status == ExecutionStatus.REVIEW:
-            exec_meta.status = ExecutionStatus.RUNNING
+            # Only the answer to its review resumes a run waiting for one: it
+            # moves the run to QUEUED and publishes it again with the run's
+            # current settings. A delivery that finds the run in REVIEW is a
+            # duplicate of one that already took it there (a late original
+            # after an admin requeue, a dead pod's redelivery), and the safe
+            # modes it carries may be stale: resuming from it could let the
+            # waiting step through without the user's answer.
             log_metadata.info(
-                f"⚙️ Graph execution #{graph_exec.graph_exec_id} was waiting for review, resuming execution."
-            )
-            update_graph_execution_state(
-                db_client=db_client,
-                graph_exec_id=graph_exec.graph_exec_id,
-                status=ExecutionStatus.RUNNING,
+                f"Left graph execution #{graph_exec.graph_exec_id} waiting for review."
             )
         else:
             log_metadata.warning(
@@ -1571,6 +1559,8 @@ class ExecutionProcessor:
             _stop_outside_its_org(
                 db_client, graph_exec, exec_meta, exec_stats, log_metadata
             )
+            return
+        if exec_meta.status == ExecutionStatus.REVIEW:
             return
 
         timing_info, status = self._on_graph_execution(
