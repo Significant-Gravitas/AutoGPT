@@ -965,10 +965,12 @@ def held_call_handlers(
 ) -> dict[str, McpHandler]:
     """The MCP tools outside ``TOOL_REGISTRY`` that the gate can hold and this
     turn offers, wrapped as :func:`create_copilot_mcp_server` registers them,
-    so an approved held call replays through the same seam, which spends its
-    approval. A call of a tool the turn doesn't offer (computer use turned off
-    since, a permission taken away) has no handler here, so it doesn't run.
-    Each handler also re-checks its Local PC executor, capability and consent."""
+    so an approved held call replays through the same seam. The fold has
+    spent the approval already, and the seam lets that one call through
+    (``spent_approval.take_spent``). A call of a tool the turn doesn't offer
+    (computer use turned off since, a permission taken away) has no handler
+    here, so it doesn't run. Each handler also re-checks its Local PC
+    executor, capability and consent."""
     return {
         name: _make_truncating_wrapper(handler, name, gate_subject=subject)
         for name, _desc, _schema, handler, subject in _offered_local_pc_tools(

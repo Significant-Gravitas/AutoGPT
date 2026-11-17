@@ -680,6 +680,24 @@ async def test_a_late_read_whose_spend_fails_is_not_reported_as_delivered(rows):
             await reads.answered_read("user-1", review)
 
 
+async def test_a_re_read_whose_spend_fails_refuses_and_releases_nothing(rows):
+    """The spend raising is no miss: the read refuses as unchecked, and the
+    approved bytes stay unreleased for the card's own answer."""
+    tool = _Fetch(_MARKER)
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await tool.execute("user-1", _session(), "call-7", url="u")
+    rows.answer(ReviewStatus.APPROVED)
+
+    with patch.object(
+        review_store, "consume", AsyncMock(side_effect=ConnectionError("db"))
+    ):
+        again = await _call(tool, _session())
+
+    assert "could not be checked" in json.loads(again.output)["message"]
+    assert _MARKER not in again.output
+    assert len(rows.rows) == 1
+
+
 async def test_a_re_read_that_loses_the_race_is_not_told_the_user_declined(rows):
     tool = _Fetch(_MARKER)
     with patch(f"{_READS}.judge_content", _judge(_HELD)):

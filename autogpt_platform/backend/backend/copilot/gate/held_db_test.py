@@ -626,18 +626,21 @@ async def test_a_failed_cap_still_delivers_the_real_outcome(
 async def test_a_failure_after_the_approval_was_spent_says_it_may_have_run(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Re-storing it would report "no longer open" for a call that reached the gate."""
+    """Re-storing it would report "no longer open" for a call that reached the gate.
+    The fold spends the card and the call runs, then raises."""
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "spent")
     await _answer(review_id, ReviewStatus.APPROVED)
 
-    async def spend_then_fail(user_id, _session, _call, row, _tool):
-        await review_store.consume(row, user_id)
+    async def runs_then_fails(*_args, **_kwargs):
+        post_tool.runs.append({"text": "spent"})
         raise RuntimeError("lost after the gate")
 
-    with patch.object(held, "_run", spend_then_fail):
+    with patch.object(post_tool, "execute", runs_then_fails):
         [delivered] = await _resolved(test_user_id, session)
 
+    assert post_tool.runs == [{"text": "spent"}]
+    assert await _row(review_id, test_user_id) is None
     assert "may have run" in delivered.content
     assert delivered.metadata["held_call"]["outcome"] == "unknown"
     assert await held.answered(test_user_id, session.session_id) == []

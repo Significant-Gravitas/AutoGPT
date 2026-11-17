@@ -8,10 +8,10 @@ any card still waiting for the user that went missing.
 """
 
 import asyncio
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Iterator, Literal
 from unittest.mock import AsyncMock, patch
 
 from prisma.enums import ReviewStatus
@@ -267,41 +267,54 @@ def scripted(steps: list[tuple[str, str | None]]) -> Callable[[dict[str, str]], 
     return pick
 
 
-class DeletesFail:
-    """The review store's database, with every delete failing; ``committed``
-    deletes the row first, as a delete whose answer was lost would, and
-    ``then_reads_fail`` fails every read after that delete too."""
+Deletes = Literal["ok", "fail", "commit_then_fail"]
 
-    def __init__(self, real: Any, committed: bool, then_reads_fail: bool) -> None:
+
+class FaultyReviews:
+    """The review store's database, with faults: ``deletes`` that fail, or
+    that delete the row and then fail (as a delete whose answer was lost),
+    and every read failing once ``reads_fail`` is set, which
+    ``reads_fail_after_delete`` sets on the first delete."""
+
+    def __init__(self, real: Any, deletes: Deletes, reads_fail_after_delete: bool):
+        self.reads_fail = False
         self._real = real
-        self._committed = committed
-        self._then_reads_fail = then_reads_fail
-        self._deleted = False
+        self._deletes = deletes
+        self._reads_fail_after_delete = reads_fail_after_delete
 
     def __getattr__(self, name: str) -> Any:
-        if name.startswith("get_") and self._deleted and self._then_reads_fail:
+        if name.startswith("get_") and self.reads_fail:
             return AsyncMock(side_effect=ConnectionError("database unreachable"))
+        found = getattr(self._real, name)
         if not name.startswith("delete_review"):
-            return getattr(self._real, name)
-        delete = getattr(self._real, name)
+            return found
 
-        async def fails(*args: Any, **kwargs: Any) -> int:
-            if self._committed:
-                await delete(*args, **kwargs)
-            self._deleted = True
-            raise ConnectionError("database unreachable")
+        async def delete(*args: Any, **kwargs: Any) -> int:
+            try:
+                if self._deletes == "fail":
+                    raise ConnectionError("database unreachable")
+                deleted = await found(*args, **kwargs)
+                if self._deletes == "commit_then_fail":
+                    raise ConnectionError("database unreachable")
+                return deleted
+            finally:
+                if self._reads_fail_after_delete:
+                    self.reads_fail = True
 
-        return fails
+        return delete
 
 
-def deletes_fail(committed: bool = False, then_reads_fail: bool = False) -> ExitStack:
-    database = DeletesFail(review_db(), committed, then_reads_fail)
-    stack = ExitStack()
-    for module in ("review", "held"):
-        stack.enter_context(
-            patch(f"backend.copilot.gate.{module}.review_db", lambda: database)
-        )
-    return stack
+@contextmanager
+def faulty_reviews(
+    deletes: Deletes = "ok", reads_fail_after_delete: bool = False
+) -> Iterator[FaultyReviews]:
+    database = FaultyReviews(review_db(), deletes, reads_fail_after_delete)
+    with ExitStack() as stack:
+        for module in ("review", "held"):
+            stack.enter_context(
+                patch(f"backend.copilot.gate.{module}.review_db", lambda: database)
+            )
+        yield database
 
 
 class AnHourLater(datetime):

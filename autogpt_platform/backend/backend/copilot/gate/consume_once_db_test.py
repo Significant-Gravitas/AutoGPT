@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.copilot.gate import check_action, held
+from backend.copilot.gate import chat_rules, check_action, held
 from backend.copilot.gate import review as review_store
 from backend.copilot.gate import spent_approval
 from backend.copilot.gate.consume_once_harness_test import (
@@ -21,7 +21,7 @@ from backend.copilot.gate.consume_once_harness_test import (
     TOOL,
     AnHourLater,
     PostStub,
-    deletes_fail,
+    faulty_reviews,
     new_scene,
     resolved,
     scripted,
@@ -44,29 +44,47 @@ def post_tool():
         yield tool
 
 
+@pytest.mark.parametrize(
+    "c_card", [ReviewStatus.WAITING, ReviewStatus.APPROVED], ids=["waiting", "approved"]
+)
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_stale_approval_never_takes_the_card_an_identical_call_opened_after(
-    setup_test_user, test_user_id, gate_on, post_tool
+    setup_test_user, test_user_id, gate_on, post_tool, c_card
 ):
     """A and B read one approval; B spends it and runs; C, the same call
     again, opens a fresh card under the same id. A's spend must miss C's card:
-    A refuses, and C's card waits for the user."""
+    A refuses, and C's card stays. Approved before A resumes, C's card
+    matches A's read in everything but its creation time."""
     scene = await new_scene(test_user_id, post_tool)
     await scene.approve()
     first = await scene.interleaving.card()
     assert first is not None
+    answers = [c_card] if c_card == ReviewStatus.APPROVED else []
 
     with scene.stepping():
         outputs = await scene.interleaving.run(
-            {"A": scene.caller(1), "B": scene.caller(2), "C": scene.caller(3)},
-            scripted([("A", "consume"), ("B", None), ("C", None), ("A", None)]),
+            {
+                "A": scene.caller(1),
+                "B": scene.caller(2),
+                "C": scene.caller(3),
+                "user": scene.user(answers),
+            },
+            scripted(
+                [
+                    ("A", "consume"),
+                    ("B", None),
+                    ("C", None),
+                    ("user", None),
+                    ("A", None),
+                ]
+            ),
         )
 
     assert post_tool.runs == [ARGS]
     assert "already used" in outputs["A"]
     assert scene.review_id in outputs["C"]
     card = await scene.interleaving.card()
-    assert card is not None and card.status == ReviewStatus.WAITING
+    assert card is not None and card.status == c_card
     assert card.createdAt > first.createdAt
     assert scene.interleaving.lost == []
 
@@ -132,7 +150,7 @@ async def test_a_fold_that_cannot_spend_the_approval_runs_nothing(
         "backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=gate)
     )
 
-    with deletes_fail(), gate_state:
+    with faulty_reviews(deletes="fail"), gate_state:
         [delivered] = await resolved(test_user_id, scene.session)
 
     assert post_tool.runs == []
@@ -154,7 +172,7 @@ async def test_a_call_whose_approval_cannot_be_spent_runs_nothing(
     scene = await new_scene(test_user_id, post_tool)
     await scene.approve()
 
-    with deletes_fail():
+    with faulty_reviews(deletes="fail"):
         output = await scene.caller(1)()
 
     assert post_tool.runs == []
@@ -177,7 +195,7 @@ async def test_a_spend_whose_answer_was_lost_says_nothing_ran(
     scene = await new_scene(test_user_id, post_tool)
     await scene.approve()
 
-    with deletes_fail(committed=True, then_reads_fail=then_reads_fail):
+    with faulty_reviews("commit_then_fail", reads_fail_after_delete=then_reads_fail):
         [delivered] = await resolved(test_user_id, scene.session)
 
     assert post_tool.runs == []
@@ -264,3 +282,113 @@ async def test_the_folds_pass_lets_its_one_call_through_once(
 
     assert first.allowed and first.approved
     assert not second.allowed and second.review_id == scene.review_id
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_rejection_whose_card_cannot_be_removed_still_lands(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Removing a rejected card is housekeeping: when its delete fails, the
+    call still refuses, the chat asks from then on, and the card is left for
+    the next look."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.user([ReviewStatus.REJECTED])()
+
+    with faulty_reviews(deletes="fail"):
+        output = await scene.caller(1)()
+
+    assert post_tool.runs == []
+    assert "declined" in output
+    card = await scene.interleaving.card()
+    assert card is not None and card.status == ReviewStatus.REJECTED
+    rule = await chat_rules.rule_for(scene.session.session_id, TOOL, test_user_id, None)
+    assert rule is not None and rule.rule == "ask"
+
+
+# What recovery tells the chat when a fold fails, by the fold's spend state
+# and what a lookup of the card then finds. The PR description has the table.
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_spent_call_that_fails_while_lookups_fail_says_it_may_have_run(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Spent, lookup fails. The fold spent the card and the call ran, then
+    failed; the card can't be read back. Held again, the call would never be
+    answered, since its card is gone; the chat hears it may have run."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+
+    async def runs_then_fails(*_args, **_kwargs):
+        post_tool.runs.append(ARGS)
+        raise RuntimeError("lost after the run")
+
+    with (
+        faulty_reviews(reads_fail_after_delete=True),
+        patch.object(post_tool, "execute", runs_then_fails),
+    ):
+        [delivered] = await resolved(test_user_id, scene.session)
+
+    assert post_tool.runs == [ARGS]
+    assert delivered.metadata["held_call"]["outcome"] == "unknown"
+    assert "may have run" in delivered.content
+    assert await scene.interleaving.card() is None
+    assert await held.answered(test_user_id, scene.session.session_id) == []
+    assert scene.review_id not in await held._held(scene.session.session_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_fold_that_fails_before_spending_while_lookups_fail_says_nothing_ran(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Unspent, lookup fails. Nothing ran, but whether the card still stands
+    is unknown, so the chat is asked to propose the call again rather than
+    the call being held where no turn may ever pick it up."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+
+    with faulty_reviews() as database:
+
+        async def fails_before_spending(*_args):
+            database.reads_fail = True
+            raise RuntimeError("failed before the spend")
+
+        with patch.object(held, "_run", fails_before_spending):
+            [delivered] = await resolved(test_user_id, scene.session)
+
+    assert post_tool.runs == []
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
+    assert "Nothing ran" in delivered.content
+    assert scene.review_id not in await held._held(scene.session.session_id)
+    card = await scene.interleaving.card()
+    assert card is not None and card.status == ReviewStatus.APPROVED
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_fold_that_fails_before_spending_leaves_a_later_card_to_its_call(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Unspent, lookup finds a later card. Before the fold spends A's card,
+    B, the same call, spends it and runs, and C opens a fresh card; then the
+    fold fails. Nothing ran for A, and C's card and held call stay C's."""
+    scene = await new_scene(test_user_id, post_tool)
+    await scene.approve()
+    first = await scene.interleaving.card()
+    assert first is not None
+
+    async def b_runs_c_parks_then_fails(*_args):
+        await scene.caller(2)()
+        await scene.park(tool_call_id="call-C")
+        raise RuntimeError("failed before the spend")
+
+    with patch.object(held, "_run", b_runs_c_parks_then_fails):
+        [delivered] = await resolved(test_user_id, scene.session)
+
+    assert post_tool.runs == [ARGS]
+    assert delivered.metadata["held_call"]["outcome"] == "closed"
+    assert "Nothing ran" in delivered.content
+    card = await scene.interleaving.card()
+    assert card is not None and card.status == ReviewStatus.WAITING
+    assert card.createdAt > first.createdAt
+    kept = await held._held(scene.session.session_id)
+    assert kept[scene.review_id].tool_call_id == "call-C"

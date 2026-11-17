@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
@@ -68,11 +69,7 @@ async def test_unreachable_tcp_endpoints_names_only_the_one_that_is_down() -> No
     probed on its own, so a slow runner can only slow the listening probe
     within its long window, never turn it into a miss."""
     listening = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
-    closed = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
     up = listening.sockets[0].getsockname()[1]
-    down = closed.sockets[0].getsockname()[1]
-    closed.close()
-    await closed.wait_closed()
     try:
         reached = await unreachable_tcp_endpoints(
             {"Postgres": ("127.0.0.1", up)}, within=30
@@ -80,9 +77,13 @@ async def test_unreachable_tcp_endpoints_names_only_the_one_that_is_down() -> No
     finally:
         listening.close()
         await listening.wait_closed()
-    missing = await unreachable_tcp_endpoints(
-        {"Redis": ("127.0.0.1", down)}, within=0.2
-    )
+    # Bound but never listening: it refuses, and nothing else can take it.
+    with socket.socket() as reserved:
+        reserved.bind(("127.0.0.1", 0))
+        down = reserved.getsockname()[1]
+        missing = await unreachable_tcp_endpoints(
+            {"Redis": ("127.0.0.1", down)}, within=0.2
+        )
 
     assert reached == []
     assert missing == [f"Redis at 127.0.0.1:{down}"]

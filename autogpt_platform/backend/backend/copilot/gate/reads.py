@@ -233,7 +233,7 @@ async def answered_read(
     try:
         consumed = await review_store.consume(review, user_id)
     except Exception as failed:
-        # Nothing was delivered: the fold says so rather than "it may have run".
+        # Nothing was delivered; UnconfirmedSpend tells the fold so.
         raise UnconfirmedSpend(review.node_exec_id) from failed
     if not consumed:
         # An identical re-read already received the released bytes.

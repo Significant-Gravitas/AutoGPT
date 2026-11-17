@@ -25,8 +25,8 @@ EXPIRED = (
     "Propose the call again if it is still needed."
 )
 UNCONFIRMED = (
-    "Nothing ran: the approval could not be confirmed before the action ran. "
-    "Tell the user, and propose the call again if it is still needed."
+    "Nothing ran: the approval could not be confirmed, so the action was not "
+    "started. Tell the user, and propose the call again if it is still needed."
 )
 
 # The card the fold spent for the call it is running, by review id.
@@ -38,6 +38,11 @@ _spent: ContextVar[dict[str, PendingHumanReviewModel] | None] = ContextVar(
 class UnconfirmedSpend(Exception):
     """A spend failed before its call ran: the card may be spent or may still
     stand, but nothing ran on it."""
+
+
+class SpentThenFailed(Exception):
+    """The approval was spent, then the call or its delivery failed: the call
+    may have run."""
 
 
 def take_spent(review_id: str) -> PendingHumanReviewModel | None:
@@ -79,6 +84,8 @@ def running(review_id: str, row: PendingHumanReviewModel) -> Iterator[None]:
     """Run the call on the approval the fold just spent: the gate's seam, the
     tool's or the MCP handler's, lets this one call through, once. Cleared
     when the run ends, so no task the call left behind can use it."""
+    # One dict, deliberately shared by reference with any task the call
+    # starts: whichever reaches the gate first takes the pass.
     passes = {review_id: row}
     token = _spent.set(passes)
     try:

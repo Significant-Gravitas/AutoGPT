@@ -50,7 +50,7 @@ from backend.copilot.google_data_redaction import (
 from backend.copilot.limit_tracking import track_turn_cap
 from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
-from backend.copilot.response_model import StreamStatus
+from backend.copilot.response_model import StreamStatus, StreamToolOutputAvailable
 from backend.copilot.tool_image import HeldImage, ToolImage, parse_held_image
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
 from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
@@ -65,6 +65,7 @@ from .policy import PARKABLE, effect_for
 from .spent_approval import (
     EXPIRED,
     UNCONFIRMED,
+    SpentThenFailed,
     UnconfirmedSpend,
     expired,
     running,
@@ -101,6 +102,11 @@ _RESULT_KEY = "held_call"
 _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
+)
+_NO_LONGER_OPEN = "Nothing ran: this card is no longer open."
+_MAY_HAVE_RUN = (
+    "The approved action may have run, but its result was lost before it "
+    "reached you. Tell the user, and check the outcome before relying on it."
 )
 
 
@@ -483,6 +489,23 @@ async def _resolve(
             outcome, output = await run()
         else:
             outcome, output = await _settled(user_id, session, call, row)
+    try:
+        _deliver(call, row, outcome, output, deliver, cap)
+    except Exception as failed:
+        # Only a run on a spent approval, or a released read, is approved.
+        if outcome == "approved":
+            raise SpentThenFailed(call.review_id) from failed
+        raise
+
+
+def _deliver(
+    call: HeldCall,
+    row: "PendingHumanReviewModel | None",
+    outcome: Outcome,
+    output: str,
+    deliver: Callable[[PendingMessage], None],
+    cap: Callable[[str], str],
+) -> None:
     shown = _card_copy(row)
     google_data = is_google_call(call.args) or is_google_output(output)
     image_result = parse_held_image(output) if outcome == "approved" else None
@@ -522,42 +545,36 @@ async def _recover(
     row: "PendingHumanReviewModel | None",
     failed: Exception,
 ) -> list[PendingMessage]:
-    """``_resolve`` failed.
+    """``_resolve`` failed. What the chat hears goes by how far the fold got
+    with the approval, never by a guess from the card alone:
 
-    When the spend itself failed, nothing ran, but the card may be spent or
-    may still stand. The call is proposed again rather than held: proposed
-    again, it runs on an approval that still stands, or asks afresh, and a
-    held call whose card is gone would never be answered.
+    - spent (``SpentThenFailed``): the call may have run, whatever a lookup
+      would find;
+    - spend unconfirmed (``UnconfirmedSpend``): nothing ran; the call is
+      proposed again, which runs it on an approval that still stands or asks
+      afresh;
+    - not spent: nothing ran. Only the card the fold read, still standing,
+      puts the call back for the next turn; gone or replaced by a later card
+      (the same call proposed again since), the card is no longer this
+      call's; unreadable, the call is proposed again.
 
-    Otherwise the card the fold read, still standing, means it was never
-    spent, so the call goes back for the next turn. Gone, or replaced by a
-    later card under the same id (the same call proposed again since), it was
-    spent, so the call may have run.
+    A call is held again only where a later turn will find it: a held call
+    whose card is gone is never answered.
     """
+    if isinstance(failed, SpentThenFailed):
+        return [_result_row(call, _MAY_HAVE_RUN, "unknown")]
     if isinstance(failed, UnconfirmedSpend):
         return [_result_row(call, UNCONFIRMED, "closed")]
     try:
         rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
-        current = rows.get(call.review_id)
-        unspent = (
-            current is not None
-            and row is not None
-            and current.created_at == row.created_at
-        )
     except Exception:
-        unspent = True
-    if unspent:
-        await remember(session_id, call)
+        return [_result_row(call, UNCONFIRMED, "closed")]
+    current = rows.get(call.review_id)
+    if current is None or row is None or current.created_at != row.created_at:
+        return [_result_row(call, _NO_LONGER_OPEN, "closed")]
+    if await remember(session_id, call):
         return []
-    return [
-        _result_row(
-            call,
-            "The approved action may have run, but its result was lost before it "
-            "reached you. Tell the user, and check the outcome before relying "
-            "on it.",
-            "unknown",
-        )
-    ]
+    return [_result_row(call, UNCONFIRMED, "closed")]
 
 
 def _result_row(
@@ -643,7 +660,7 @@ async def _settled(
     from .reads import answered_read, is_held_read
 
     if row is None or row.status == ReviewStatus.WAITING:
-        return "closed", "Nothing ran: this card is no longer open."
+        return "closed", _NO_LONGER_OPEN
     if is_held_read(call.review_id):
         return await answered_read(user_id, row)
     if row.status == ReviewStatus.REJECTED:
@@ -683,8 +700,17 @@ async def _run(
 ) -> tuple[Outcome, str]:
     if refusal := await spend(user_id, row):
         return refusal
-    with running(call.review_id, row), replaying_bound_args(call.args_bound):
-        result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    try:
+        with running(call.review_id, row), replaying_bound_args(call.args_bound):
+            result = await tool.execute(
+                user_id, session, call.tool_call_id, **call.args
+            )
+        return _tool_outcome(result)
+    except Exception as failed:
+        raise SpentThenFailed(call.review_id) from failed
+
+
+def _tool_outcome(result: StreamToolOutputAvailable) -> tuple[Outcome, str]:
     if result.image is not None:
         text = (
             result.output
@@ -705,8 +731,15 @@ async def _run_handler(
 ) -> tuple[Outcome, str]:
     if refusal := await spend(user_id, row):
         return refusal
-    with running(call.review_id, row):
-        result = await handler(call.args)
+    try:
+        with running(call.review_id, row):
+            result = await handler(call.args)
+        return _handler_outcome(result)
+    except Exception as failed:
+        raise SpentThenFailed(call.review_id) from failed
+
+
+def _handler_outcome(result: dict[str, Any]) -> tuple[Outcome, str]:
     blocks = [b for b in result.get("content") or () if isinstance(b, dict)]
     text = "\n".join(str(b.get("text", "")) for b in blocks if b.get("type") == "text")
     images = [b for b in blocks if b.get("type") == "image" and b.get("data")]
