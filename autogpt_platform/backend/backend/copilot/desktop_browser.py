@@ -25,9 +25,12 @@ keeps credentials out of the page is the swap proxy, whose placeholders a
 later version will let the model type into login forms.
 """
 
+import asyncio
+import contextlib
 import json
 import re
 import secrets
+from collections.abc import AsyncIterator
 from typing import Any, Literal, Optional
 
 from e2b import AsyncSandbox
@@ -59,6 +62,15 @@ MAX_WAIT_MS = 60_000
 MAX_CALL_SECONDS = 180
 
 _REF_SCOPE_TTL_SECONDS = 3600
+# One call at a time per box, from reading the scope to issuing the next:
+# an expert's turns share a box, and a call checked against a snapshot must
+# not run after another has replaced it.
+_LOCK_WAIT_SECONDS = 30
+_LOCK_POLL_SECONDS = 0.25
+_UNLOCK_SCRIPT = (
+    'if redis.call("get", KEYS[1]) == ARGV[1] then '
+    'return redis.call("del", KEYS[1]) else return 0 end'
+)
 _REF_RE = re.compile(r"^@?(e[0-9]{1,6})$")
 _KEY_RE = re.compile(r"^[A-Za-z0-9+_ -]{1,64}$")
 _NAVIGATIONS = frozenset({"goto", "back", "forward", "reload"})
@@ -461,6 +473,30 @@ async def issue_scope(sandbox_id: str, refs: list[str]) -> str:
         ex=_REF_SCOPE_TTL_SECONDS,
     )
     return token
+
+
+class BrowserBusy(RuntimeError):
+    """Another desktop_browser call holds the box's browser."""
+
+
+@contextlib.asynccontextmanager
+async def call_lock(sandbox_id: str, hold_seconds: int) -> AsyncIterator[None]:
+    """Hold the box's browser for one call. Its expiry outlasts the call's
+    own limits, so only a holder that died lets it lapse."""
+    redis = await get_redis_async()
+    key = f"copilot:desktop-browser:lock:{sandbox_id}"
+    token = secrets.token_hex(8)
+    waited = 0.0
+    while not await redis.set(key, token, nx=True, ex=hold_seconds):
+        if waited >= _LOCK_WAIT_SECONDS:
+            raise BrowserBusy("another desktop_browser call is still running")
+        await asyncio.sleep(_LOCK_POLL_SECONDS)
+        waited += _LOCK_POLL_SECONDS
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            await redis.eval(_UNLOCK_SCRIPT, 1, key, token)
 
 
 # ---------------------------------------------------------------- the box

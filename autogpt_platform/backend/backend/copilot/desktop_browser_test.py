@@ -255,3 +255,59 @@ def test_batch_output_parses_lists_and_error_objects():
     ) == [{"error": "All CDP discovery methods failed", "success": False}]
     assert parse_batch("not json")[0]["success"] is False
     assert parse_batch("") == []
+
+
+class _LockRedis:
+    def __init__(self):
+        self.data: dict[str, str] = {}
+
+    async def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.data:
+            return None
+        self.data[key] = value
+        return True
+
+    async def eval(self, script, numkeys, key, token):
+        if self.data.get(key) == token:
+            del self.data[key]
+
+
+@pytest.mark.asyncio
+async def test_calls_on_one_box_take_turns(monkeypatch):
+    """A second call waits for the first, so it is checked against the
+    snapshot the first one leaves, never one it replaced."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    redis = _LockRedis()
+    monkeypatch.setattr(driver, "get_redis_async", AsyncMock(return_value=redis))
+    monkeypatch.setattr(driver, "_LOCK_POLL_SECONDS", 0.01)
+    order: list[str] = []
+
+    async def call(name: str):
+        async with driver.call_lock("sb-1", 60):
+            order.append(f"{name} in")
+            await asyncio.sleep(0.05)
+            order.append(f"{name} out")
+
+    await asyncio.gather(call("a"), call("b"))
+    assert order in (
+        ["a in", "a out", "b in", "b out"],
+        ["b in", "b out", "a in", "a out"],
+    )
+    assert redis.data == {}
+
+
+@pytest.mark.asyncio
+async def test_a_box_held_too_long_is_reported_busy(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    redis = _LockRedis()
+    redis.data["copilot:desktop-browser:lock:sb-1"] = "someone"
+    monkeypatch.setattr(driver, "get_redis_async", AsyncMock(return_value=redis))
+    monkeypatch.setattr(driver, "_LOCK_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(driver, "_LOCK_POLL_SECONDS", 0.01)
+    with pytest.raises(driver.BrowserBusy):
+        async with driver.call_lock("sb-1", 60):
+            pass
+    assert redis.data == {"copilot:desktop-browser:lock:sb-1": "someone"}
