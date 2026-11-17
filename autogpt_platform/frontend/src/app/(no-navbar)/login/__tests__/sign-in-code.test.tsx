@@ -274,11 +274,14 @@ describe("LoginPage while a sign-in waits on its emailed code", () => {
   });
 
   test("holds the new code until a minute after the last one", async () => {
+    // A still clock, so the countdown reads what the server said.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T12:30:00Z"));
     answerStatus(PENDING);
     openLogin(WAITING);
 
     expect(
-      await screen.findByText(/You can ask for another in (59|60)s/),
+      await screen.findByText("You can ask for another in 60s."),
     ).toBeDefined();
     // One name throughout, so a screen reader doesn't announce it each second.
     const resend = screen.getByRole("button", { name: "Send a new code" });
