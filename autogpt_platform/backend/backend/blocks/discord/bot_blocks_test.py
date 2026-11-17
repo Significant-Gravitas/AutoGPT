@@ -124,6 +124,7 @@ async def test_send_rejects_empty_content_without_logging_in(mocker, content):
         ("x" * 2000 + "\n", ["x" * 2000]),
         ("x" * 4000 + "\n\n", ["x" * 2000, "x" * 2000]),
     ],
+    ids=["2000-plus-newline", "4000-plus-two-newlines"],
 )
 async def test_send_skips_trailing_whitespace_only_chunks(
     mocker, content: str, expected_chunks: list[str]
