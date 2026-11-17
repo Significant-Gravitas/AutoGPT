@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   useGetV1GetUserCredits,
@@ -31,6 +31,9 @@ export function useBalanceCard() {
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
+  // `isAdding` is state, so it changes only after a re-render: both clicks of
+  // a double-click would read it as false and start two checkouts.
+  const submittingRef = useRef(false);
   const numericAmount = Number.parseFloat(amount);
   // Backend `top_up_intent` rejects non-whole-dollar amounts
   // (`amount % 100 != 0`), so gate decimals client-side to surface the
@@ -41,7 +44,14 @@ export function useBalanceCard() {
     numericAmount >= 5;
 
   async function handleSubmit() {
-    if (!isValid || isAdding || checkoutRedirect.isRedirecting) return;
+    if (
+      !isValid ||
+      isAdding ||
+      checkoutRedirect.isRedirecting ||
+      submittingRef.current
+    )
+      return;
+    submittingRef.current = true;
     try {
       const result = await requestTopUp({
         data: {
@@ -86,6 +96,8 @@ export function useBalanceCard() {
             : "Something went wrong contacting Stripe. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      submittingRef.current = false;
     }
   }
 

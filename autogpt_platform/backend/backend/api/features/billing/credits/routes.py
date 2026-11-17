@@ -12,6 +12,7 @@ from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, Header, HTTPException, Query, Response, Security
 
 from backend.api.features.billing.client_country import ClientCountry
+from backend.api.features.billing.credits.auto_top_up_lock import auto_top_up_setup_lock
 from backend.api.model import RequestTopUp
 from backend.data.account_deletion import refuse_closed_account
 from backend.data.checkout_audience import schedule_checkout_opened
@@ -22,6 +23,7 @@ from backend.data.credit import (
     InvoiceListItem,
     RefundRequest,
     TransactionHistory,
+    UserCreditBase,
     get_auto_top_up,
     get_credit_model,
     set_auto_top_up,
@@ -150,6 +152,25 @@ async def configure_user_auto_top_up(
     # Past the auth cache, before a charge: closing switched auto top-up off.
     await refuse_closed_account(user_id)
     credit_model = await get_credit_model(user_id, ctx.org_id)
+    async with auto_top_up_setup_lock(user_id) as held:
+        if not held:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Your auto top-up settings couldn't be saved right now."
+                    " Nothing was charged; please try again in a moment."
+                ),
+            )
+        await _charge_and_save_auto_top_up(user_id, request, credit_model)
+    return "Auto top-up settings updated"
+
+
+async def _charge_and_save_auto_top_up(
+    user_id: str, request: AutoTopUpConfig, credit_model: UserCreditBase
+) -> None:
+    """Charge now if the balance is under the new threshold, then save the
+    settings. Callers hold ``auto_top_up_setup_lock`` so the balance read here
+    already includes any charge an earlier save made."""
     current_balance = await credit_model.get_credits(user_id)
 
     try:
@@ -206,7 +227,6 @@ async def configure_user_auto_top_up(
     except HTTPException:
         await set_auto_top_up(user_id, AutoTopUpConfig(threshold=0, amount=0))
         raise
-    return "Auto top-up settings updated"
 
 
 @router.get(

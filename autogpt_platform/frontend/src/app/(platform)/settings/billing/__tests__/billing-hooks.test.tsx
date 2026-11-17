@@ -128,6 +128,39 @@ describe("useBalanceCard", () => {
     expect(capturedBody).toEqual({ credit_amount: 2500, surface: "billing" });
   });
 
+  it("a double-click on handleSubmit starts one checkout", async () => {
+    let posts = 0;
+    let finishRequest: () => void = () => {};
+    server.use(
+      jsonHandler("get", "/api/credits", { credits: 1000 }),
+      http.post("*/api/credits", async () => {
+        posts += 1;
+        await new Promise<void>((resolve) => {
+          finishRequest = resolve;
+        });
+        return HttpResponse.json({ checkout_url: null });
+      }),
+    );
+
+    const { result } = renderHook(() => useBalanceCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setAmount("20"));
+
+    act(() => {
+      result.current.handleSubmit();
+      result.current.handleSubmit();
+    });
+
+    await waitFor(() => expect(posts).toBe(1));
+    act(() => finishRequest());
+    await waitFor(() => expect(result.current.isAdding).toBe(false));
+    expect(posts).toBe(1);
+  });
+
   it("handleSubmit catches API failures and stops the spinner", async () => {
     server.use(
       jsonHandler("get", "/api/credits", { credits: 1000 }),
@@ -287,6 +320,46 @@ describe("useAutoRefillCard", () => {
 
     await waitFor(() => expect(result.current.isSaving).toBe(false));
     expect(capturedBody).toEqual({ amount: 0, threshold: 0 });
+  });
+
+  it("a double-click on save() sends one request, since a save can charge the card", async () => {
+    let posts = 0;
+    let finishSave: () => void = () => {};
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 0,
+        threshold: 0,
+      }),
+      http.post("*/api/credits/auto-top-up", async () => {
+        posts += 1;
+        await new Promise<void>((resolve) => {
+          finishSave = resolve;
+        });
+        return HttpResponse.json({});
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      result.current.setThreshold("5");
+      result.current.setRefillAmount("10");
+    });
+
+    act(() => {
+      result.current.save();
+      result.current.save();
+      result.current.disable();
+    });
+
+    await waitFor(() => expect(posts).toBe(1));
+    act(() => finishSave());
+    await waitFor(() => expect(result.current.isSaving).toBe(false));
+    expect(posts).toBe(1);
   });
 
   it("save() catches mutation failures and stops the spinner", async () => {
