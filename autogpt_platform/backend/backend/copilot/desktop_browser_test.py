@@ -85,6 +85,8 @@ class TestTheCall:
             parse_call(call, None, _LIVE)
         with pytest.raises(CallRefused, match="newest snapshot's"):
             parse_call(call, "an-older-token", _LIVE)
+        with pytest.raises(CallRefused, match="newest snapshot's"):
+            parse_call(call, "tök-ünïcode", _LIVE)
         with pytest.raises(CallRefused, match="not in the newest snapshot"):
             parse_call([{"action": "click", "ref": "@e7"}], "tok", _LIVE)
 

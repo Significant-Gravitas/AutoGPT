@@ -270,8 +270,9 @@ def _check_ref(i: int, action: Action, ref_scope: Any, live: Optional[dict]) -> 
             f"action {i} ({action.name}) names {action.ref}, but there is no "
             "snapshot yet. Take one first."
         )
+    # Compared as bytes: compare_digest refuses a non-ASCII str outright.
     if not isinstance(ref_scope, str) or not secrets.compare_digest(
-        ref_scope, live["token"]
+        ref_scope.encode(), str(live["token"]).encode()
     ):
         raise CallRefused(
             f"action {i} ({action.name}): ref_scope is missing or not the newest "
