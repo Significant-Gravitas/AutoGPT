@@ -177,6 +177,29 @@ describe("handleStreamError", () => {
     expect(onReconnect).not.toHaveBeenCalled();
   });
 
+  it("says a Local PC chat's folder has changed, not that Otto ran into a problem", () => {
+    const onRateLimit = vi.fn();
+    const onReconnect = vi.fn();
+    handleStreamError({
+      error: new Error(
+        "[code:local_pc_folder_changed] The folder this chat uses on your computer was moved or replaced, or can't be reached, so Otto can't work in it. Start a new chat and pick the folder again.",
+      ),
+      onRateLimit,
+      onReconnect,
+      isUserStoppingRef: makeRef(false),
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "This chat's folder has changed",
+        description:
+          "The folder this chat uses on your computer was moved or replaced, or can't be reached, so Otto can't work in it. Start a new chat and pick the folder again.",
+      }),
+    );
+    expect(onRateLimit).not.toHaveBeenCalled();
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
   it("names a platform provider outage without routing it to a usage limit", () => {
     const onRateLimit = vi.fn();
     handleStreamError({

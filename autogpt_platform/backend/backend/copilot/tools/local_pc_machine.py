@@ -49,6 +49,12 @@ class MachineConnectionStaleError(MachineControlError):
     pass
 
 
+class MachineRootGrantRefusedError(MachineControlError):
+    """The computer answered, and will not honour a session's folder grant:
+    the folder was moved or replaced, or cannot be reached there, or the grant
+    is not that computer's own. Reconnecting does not change the answer."""
+
+
 class MachineSessionBinding(BaseModel):
     session_id: str
     allowed_root: str = Field(min_length=1, max_length=32_767)
@@ -260,11 +266,20 @@ async def restore_machine_session(
     presence: RelayPresence,
     binding: MachineSessionBinding,
 ) -> MachineSessionBinding:
-    message = await machine_rpc(
-        presence,
-        "RESTORE_SESSION",
-        {"session_id": binding.session_id, "root_grant": binding.root_grant},
-    )
+    try:
+        message = await machine_rpc(
+            presence,
+            "RESTORE_SESSION",
+            {"session_id": binding.session_id, "root_grant": binding.root_grant},
+        )
+    except MachineControlError as exc:
+        # The companion's own code for a grant it refuses. Only its ERROR reply
+        # says so: a request it never answered says nothing about the folder.
+        if exc.refused and exc.code == "ROOT_GRANT_INVALID":
+            raise MachineRootGrantRefusedError(
+                exc.code, str(exc), details=exc.details, refused=True
+            ) from exc
+        raise
     return _validate_binding_response(message["payload"], binding.session_id)
 
 
