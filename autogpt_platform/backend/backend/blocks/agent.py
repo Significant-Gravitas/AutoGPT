@@ -263,10 +263,12 @@ class AgentExecutorBlock(Block):
         meta = await db.get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
-        finished = meta if meta and meta.status in _TERMINAL_STATUSES else None
+        if meta is None:
+            return [], None
+        finished = meta if meta.status in _TERMINAL_STATUSES else None
         if not (stale or finished):
             return [], None
-        # The execution was read with the user's id above; its nodes are its.
+        # Read with the user's id just above, so these nodes are the user's.
         nodes = await db.get_node_executions(
             graph_exec_id=graph_exec_id, statuses=list(_TERMINAL_STATUSES)
         )
