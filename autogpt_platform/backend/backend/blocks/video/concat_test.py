@@ -4,7 +4,7 @@ from backend.blocks.video.concat import VideoConcatBlock
 from backend.util import json
 
 
-def test_total_duration_survives_output_serialisation(tmp_path):
+async def test_total_duration_survives_output_serialisation(tmp_path):
     """moviepy reports the joined duration as a numpy.float64, which every block
     output must survive on its way through `to_dict` and `dumps` in the executor."""
     clips = []
@@ -15,7 +15,7 @@ def test_total_duration_survives_output_serialisation(tmp_path):
         )
         clips.append(path)
 
-    total_duration = VideoConcatBlock()._concat_videos(
+    total_duration = await VideoConcatBlock()._concat_videos(
         clips, str(tmp_path / "joined.mp4"), "none", 0
     )
 

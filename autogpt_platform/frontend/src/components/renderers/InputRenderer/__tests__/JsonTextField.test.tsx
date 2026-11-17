@@ -1,6 +1,6 @@
 import type { IChangeEvent } from "@rjsf/core";
 import type { RJSFSchema } from "@rjsf/utils";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
@@ -55,6 +55,8 @@ function RowsForm({ rows }: { rows: Record<string, unknown>[] }) {
   );
 }
 
+const LONG_NUMBER_HINT = /put them in quotes to keep every digit/i;
+
 function getJsonField() {
   return screen.getByPlaceholderText('{"key": "value"}') as HTMLTextAreaElement;
 }
@@ -88,5 +90,52 @@ describe("JsonTextField", () => {
     render(<RowsForm rows={[{}]} />);
 
     await expectTypingKept(getJsonField(), '"a":-0.5', 1);
+  });
+
+  it("tells the user to quote a whole number too long to keep exactly", async () => {
+    render(<RowsForm rows={[{}]} />);
+    const field = getJsonField();
+    expect(screen.queryByText(LONG_NUMBER_HINT)).toBeNull();
+
+    await expectTypingKept(field, '"channel_id": 12345678901234', 1);
+    expect(screen.queryByText(LONG_NUMBER_HINT)).toBeNull();
+
+    fireEvent.change(field, {
+      target: { value: '{"channel_id": 1234567890123456789}' },
+    });
+
+    const hint = await screen.findByText(LONG_NUMBER_HINT);
+    expect(field.getAttribute("aria-describedby")?.split(" ")).toContain(
+      hint.id,
+    );
+  });
+
+  it("shows no hint for a long number in quotes or a safe one", () => {
+    render(<RowsForm rows={[{}]} />);
+    const field = getJsonField();
+
+    fireEvent.change(field, {
+      target: { value: '{"channel_id": "1234567890123456789"}' },
+    });
+    expect(screen.queryByText(LONG_NUMBER_HINT)).toBeNull();
+
+    fireEvent.change(field, {
+      target: { value: '{"channel_id": 9007199254740991}' },
+    });
+    expect(screen.queryByText(LONG_NUMBER_HINT)).toBeNull();
+  });
+
+  it("shows the hint in the expanded editor too", async () => {
+    render(<RowsForm rows={[{}]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand JSON input" }));
+    const dialog = await screen.findByRole("dialog");
+    const editor = within(dialog).getByRole("textbox");
+
+    fireEvent.change(editor, { target: { value: "[1234567890123456789]" } });
+    expect(within(dialog).getByText(LONG_NUMBER_HINT)).toBeDefined();
+
+    fireEvent.change(editor, { target: { value: '["1234567890123456789"]' } });
+    expect(within(dialog).queryByText(LONG_NUMBER_HINT)).toBeNull();
   });
 });

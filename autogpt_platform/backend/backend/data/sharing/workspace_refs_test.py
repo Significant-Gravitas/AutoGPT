@@ -10,6 +10,8 @@ new patterns and the cross-pattern de-dup behaviour.
 
 from __future__ import annotations
 
+import pytest
+
 from backend.data.sharing.workspace_refs import (
     cut_lands_inside_artifact_link,
     extract_artifact_links,
@@ -116,7 +118,7 @@ class TestExtractArtifactLinks:
         text, artifacts = extract_artifact_links(
             "Here's your result: [chart.png](workspace://abc-123#image/png)"
         )
-        assert text == "Here's your result:"
+        assert text == "Here's your result: `chart.png`"
         assert len(artifacts) == 1
         assert artifacts[0].file_id == "abc-123"
         assert artifacts[0].display_name == "chart.png"
@@ -134,7 +136,7 @@ class TestExtractArtifactLinks:
         text, artifacts = extract_artifact_links(
             "Result: ![chart](workspace://abc-123#image/png)"
         )
-        assert text == "Result:"
+        assert text == "Result: `chart`"
         assert "!" not in text
         assert artifacts[0].file_id == "abc-123"
         assert artifacts[0].display_name == "chart"
@@ -147,6 +149,48 @@ class TestExtractArtifactLinks:
         )
         assert "workspace://" not in text
         assert [a.file_id for a in artifacts] == ["1", "2"]
+
+    def test_keeps_each_file_name_where_its_link_was(self):
+        # A sentence naming saved files used to be posted as
+        # "I saved the evidence and raw dates:  · ." with both names gone.
+        text, artifacts = extract_artifact_links(
+            "I saved the evidence and raw dates: "
+            "[evidence.md](workspace://1#text/markdown) · "
+            "[raw-dates.csv](workspace://2#text/csv)."
+        )
+        assert text == (
+            "I saved the evidence and raw dates: `evidence.md` · `raw-dates.csv`."
+        )
+        assert [a.display_name for a in artifacts] == ["evidence.md", "raw-dates.csv"]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "[doc.pdf](workspace://xyz)",
+            "[a.png](workspace://1) · [b.csv](workspace://2).",
+            "\n![chart](workspace://abc#image/png)\n",
+        ],
+    )
+    def test_text_of_only_links_posts_no_message(self, text):
+        # The delivered files are the whole message; a line of bare names
+        # would only repeat them.
+        stripped, artifacts = extract_artifact_links(text)
+        assert stripped == ""
+        assert artifacts
+
+    @pytest.mark.parametrize("text", ["👍", "✅", "..."])
+    def test_a_reply_without_links_is_kept_even_with_no_letters(self, text):
+        assert extract_artifact_links(text) == (text, [])
+
+    def test_an_emoji_beside_a_link_is_kept(self):
+        text, artifacts = extract_artifact_links("👍 [file.pdf](workspace://1)")
+        assert text == "👍 `file.pdf`"
+        assert artifacts[0].file_id == "1"
+
+    def test_a_backtick_in_a_name_cannot_break_out_of_the_code_span(self):
+        text, artifacts = extract_artifact_links("See [a`b.txt](workspace://1) now")
+        assert text == "See `ab.txt` now"
+        assert artifacts[0].display_name == "a`b.txt"
 
     def test_collapses_blank_lines_left_behind(self):
         text, _ = extract_artifact_links(

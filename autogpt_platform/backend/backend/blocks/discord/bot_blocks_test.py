@@ -1,17 +1,23 @@
 """Regression tests for #15301 (send hangs when channel.send raises) and
-#15302 (empty content reported as 'Message sent')."""
+#15302 (empty content reported as 'Message sent'), and for how much of a text
+attachment ReadDiscordMessagesBlock adds to the message."""
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from aiohttp import web
 
 from backend.blocks.discord.bot_blocks import (
+    MAX_TEXT_ATTACHMENT_BYTES,
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    ReadDiscordMessagesBlock,
     SendDiscordMessageBlock,
 )
+from backend.util.request import Requests
 
 
 class _FakeClient:
@@ -151,3 +157,125 @@ async def test_cancelled_later_chunk_still_closes_the_client(mocker):
     _FakeClient.instances[0].close.assert_awaited_once()
     assert result["message_id"] == "111"
     assert "earlier chunks were already sent" in result["status"]
+
+
+class _FakeReadClient:
+    """Mimics discord.Client once logged in: start() delivers one message to
+    the on_message handler."""
+
+    def __init__(self, *, message, **kwargs):
+        self._message = message
+        self._handlers = {}
+        self.user = "bot"
+        self.close = AsyncMock()
+
+    def event(self, fn):
+        self._handlers[fn.__name__] = fn
+        return fn
+
+    async def start(self, _token):
+        await self._handlers["on_message"](self._message)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [b"the notes", b"a" * MAX_TEXT_ATTACHMENT_BYTES],
+    ids=["short", "at-the-cap"],
+)
+async def test_read_adds_a_text_attachment_within_the_cap_whole(mocker, body: bytes):
+    async def serve(_request: web.Request) -> web.Response:
+        return web.Response(body=body, content_type="text/plain", charset="utf-8")
+
+    content = await _read_message_with_attachment(mocker, serve)
+
+    assert content == _with_file(body.decode())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "configured_limit",
+    [None, MAX_TEXT_ATTACHMENT_BYTES],
+    ids=["default-file-size-limit", "file-size-limit-at-the-cap"],
+)
+async def test_read_cuts_a_longer_text_attachment_at_the_cap(
+    mocker, configured_limit: int | None
+):
+    async def serve_long_file(request: web.Request) -> web.StreamResponse:
+        response = web.StreamResponse(
+            headers={"Content-Type": "text/plain; charset=utf-8"}
+        )
+        await response.prepare(request)
+        await response.write(b"a" * MAX_TEXT_ATTACHMENT_BYTES)
+        try:
+            while True:
+                await response.write(b"b" * 65536)
+        except ConnectionResetError:
+            return response
+
+    content = await _read_message_with_attachment(
+        mocker, serve_long_file, configured_limit
+    )
+
+    assert content == _with_file(
+        "a" * MAX_TEXT_ATTACHMENT_BYTES
+        + f"\n[File truncated to its first {MAX_TEXT_ATTACHMENT_BYTES} bytes.]"
+    )
+
+
+def _with_file(file_content: str) -> str:
+    return f"see the file\n\nFile from user: notes.txt\nContent: {file_content}"
+
+
+async def _read_message_with_attachment(
+    mocker, handler, configured_limit: int | None = None
+) -> str:
+    """Runs the block on one message whose notes.txt is served by ``handler``,
+    through the real HTTP client, and returns its message_content.
+
+    ``configured_limit`` stands in for a ``max_file_size_mb`` setting, which a
+    limit the block passes itself overrides."""
+    app = web.Application()
+    app.router.add_get("/notes.txt", handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    port = runner.addresses[0][1]
+
+    message = SimpleNamespace(
+        content="see the file",
+        id=1,
+        channel=SimpleNamespace(id=2, name="general"),
+        author=SimpleNamespace(id=3, name="member"),
+        attachments=[
+            SimpleNamespace(
+                filename="notes.txt", url=f"http://127.0.0.1:{port}/notes.txt"
+            )
+        ],
+    )
+    mocker.patch(
+        "backend.blocks.discord.bot_blocks.discord.Client",
+        side_effect=lambda **kw: _FakeReadClient(message=message, **kw),
+    )
+    # Only the loopback host is let through; the read itself is the real one.
+    configured = (
+        {} if configured_limit is None else {"max_response_bytes": configured_limit}
+    )
+    mocker.patch(
+        "backend.blocks.discord.bot_blocks.Requests",
+        side_effect=lambda **kw: Requests(
+            trusted_origins=["127.0.0.1"], **(configured | kw)
+        ),
+    )
+
+    block = ReadDiscordMessagesBlock()
+    input_data = block.Input.model_validate({"credentials": TEST_CREDENTIALS_INPUT})
+    try:
+        async with asyncio.timeout(60):
+            outputs = [
+                output
+                async for output in block.run(input_data, credentials=TEST_CREDENTIALS)
+            ]
+    finally:
+        await runner.cleanup()
+    return dict(outputs)["message_content"]

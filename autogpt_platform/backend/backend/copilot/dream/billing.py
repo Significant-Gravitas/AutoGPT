@@ -40,6 +40,7 @@ from typing import Literal
 from backend.copilot.config import ChatConfig
 from backend.copilot.inference.context import InferenceContext, InferenceUsage
 from backend.copilot.inference.record import price, record
+from backend.copilot.limit_tracking import track_limit_exceeded
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
     RateLimitUnavailable,
@@ -116,6 +117,7 @@ async def check_dream_budget(
             expected_tier=_tier,
         )
     except RateLimitExceeded as exc:
+        track_limit_exceeded(user_id, exc, surface="background")
         logger.info(
             "dream billing: user=%s over %s cap, skipping", user_id[:8], exc.window
         )
