@@ -29,6 +29,9 @@ const TEXT_MIMES = new Set([
 ]);
 
 export const TEXT_DISPLAY_LIMIT = 200 * 1024;
+
+/** Past this, a file the preview route refuses is not downloaded whole: the viewer says it is too large. */
+export const FULL_TEXT_LIMIT = 2 * 1024 * 1024;
 // How much of a larger text file the preview route sends.
 export const PREVIEW_BYTES = 131072;
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import {
+  answerFor,
   buildAnswersMessage,
   isAnswered,
   pickOption,
@@ -22,9 +23,9 @@ export function useOnboardingCard({ steps, onSend }: Args) {
   const [sentText, setSentText] = useState<string | null>(null);
 
   const step = steps[current];
-  const answer = answers[step.keyword];
+  const answer = answerFor(answers, step.keyword);
   const isLast = current === steps.length - 1;
-  const answeredCount = steps.filter((s) => isAnswered(answers[s.keyword])).length;
+  const answeredCount = steps.filter((s) => isAnswered(answerFor(answers, s.keyword))).length;
 
   function update(next: StepAnswer) {
     setAnswers((previous) => ({ ...previous, [step.keyword]: next }));

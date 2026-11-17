@@ -1,4 +1,5 @@
 import {
+  answerFor,
   buildAnswersMessage,
   formatAnswer,
   optionLetter,
@@ -102,6 +103,19 @@ describe("buildAnswersMessage", () => {
         "> Which outcome should I start with?\n\nPricing\n\n" +
         "> Which services do you use?\n\n- Gmail\n- Slack\n\n" +
         "Please proceed.",
+    );
+  });
+
+  it("does not read an inherited property as the answer to a step", () => {
+    const step = {
+      question: "What should I build?",
+      keyword: "constructor",
+      options: [],
+      allowMultiple: false,
+    };
+    expect(answerFor({}, "constructor")).toBeUndefined();
+    expect(buildAnswersMessage([step], {})).toBe(
+      "**Here are my answers:**\n\n\n\nPlease proceed.",
     );
   });
 });

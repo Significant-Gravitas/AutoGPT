@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
+import { isUploading } from "@/features/chat/attachmentHelpers";
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
 import { useAttachments } from "@/features/chat/useAttachments";
 import { chatKeys, getSuggestedPrompts } from "@/lib/api/chat";
@@ -71,6 +72,11 @@ export function useHomeScreen() {
 
   async function submit(text: string) {
     if (isStartingRef.current) return false;
+    // A starter row skips the composer's own check, and the send would leave the file behind.
+    if (isUploading(files.attachments)) {
+      setError("Wait for your files to finish uploading.");
+      return false;
+    }
     isStartingRef.current = true;
     setIsStarting(true);
     setError(null);

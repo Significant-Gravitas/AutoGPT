@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { Appearance } from "react-native";
+import { Appearance, Platform } from "react-native";
 
 export type AppearanceChoice = "system" | "light" | "dark";
 
@@ -20,6 +20,8 @@ export function readAppearance(): AppearanceChoice {
 
 /** Overrides the scheme `useColorScheme` reports, app-wide; "system" follows the phone. */
 export function applyAppearance(choice: AppearanceChoice) {
+  // react-native-web has no setColorScheme; the browser's own setting holds there.
+  if (Platform.OS === "web") return;
   Appearance.setColorScheme(choice === "system" ? "unspecified" : choice);
 }
 

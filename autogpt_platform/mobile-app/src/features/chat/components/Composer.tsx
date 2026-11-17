@@ -63,10 +63,12 @@ export function Composer({
     if (!canSend || isSendingRef.current) return;
     isSendingRef.current = true;
     setIsSending(true);
+    const sent = text.trim();
     try {
-      if (await onSend(text.trim())) {
+      if (await onSend(sent)) {
         tapSend();
-        setText("");
+        // Text typed while the send was being accepted stays in the field.
+        setText((current) => (current.trim() === sent ? "" : current));
       }
     } finally {
       isSendingRef.current = false;

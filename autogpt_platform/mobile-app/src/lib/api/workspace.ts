@@ -1,5 +1,6 @@
 import {
   decodeUtf8,
+  FULL_TEXT_LIMIT,
   isPreviewed,
   PREVIEW_BYTES,
   trimPartialUtf8,
@@ -73,6 +74,10 @@ export async function downloadFileText(
       const bytes = new Uint8Array(await response.arrayBuffer());
       return { text: decodeUtf8(trimPartialUtf8(bytes)), isPreview: true };
     }
+  }
+  // The whole file is read into memory, so a large one is refused first.
+  if (file.size_bytes > FULL_TEXT_LIMIT) {
+    throw new ApiError(413, "Too large to show");
   }
   const response = await fetchWithFreshToken(fileDownloadURL(file.id));
   ensureOk(response);
