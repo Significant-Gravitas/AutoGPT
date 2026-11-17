@@ -108,6 +108,33 @@ async def test_a_live_subscriptions_period_is_copied(sync: Sync):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status,copied", [("active", True), ("trialing", False)])
+async def test_a_trial_that_converts_gets_its_billing_clock_from_its_webhook(
+    sync: Sync, monkeypatch: pytest.MonkeyPatch, status: str, copied: bool
+):
+    """The conversion keeps the subscription and its trial metadata; from the
+    moment it is active it is a paid plan on that subscription's period. While
+    it is still a trial, its windows are the trial's own."""
+    sync.subscription = _subscription(
+        status, metadata={"trial_enrollment_id": "enrolment-1"}
+    )
+    tier = SubscriptionTier.PRO if copied else SubscriptionTier.TRIAL
+    monkeypatch.setattr(
+        credit.subscription_trial_stripe,
+        "reconcile_trial_subscription",
+        AsyncMock(return_value=(sync.subscription, tier)),
+    )
+    monkeypatch.setattr(credit, "invalidate_subscription_caches", MagicMock())
+
+    await sync.run()
+
+    if copied:
+        sync.save_clock.assert_awaited_once_with("user-1", sync.subscription)
+    else:
+        sync.save_clock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_a_renewal_is_copied_before_its_invoice_is_paid(sync: Sync):
     """Stripe charges a renewal about an hour after the period starts. The
     new month's allowance starts with the period: the unpaid draft invoice

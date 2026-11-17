@@ -1,3 +1,5 @@
+import { v4 as uuidv4 } from "uuid";
+
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 const WHOLE_DOLLARS = new Intl.NumberFormat("en-US", {
@@ -21,9 +23,10 @@ export function formatResetPrice(credits: number) {
   return formatter.format(credits / 100);
 }
 
-/** One key per purchase: sent again on a retry, it buys nothing more. */
+/** One key per purchase: sent again on a retry, it buys nothing more.
+ *  `crypto.randomUUID` is missing on plain-HTTP origins and older browsers. */
 export function newPurchaseKey() {
-  return crypto.randomUUID();
+  return uuidv4({});
 }
 
 /** What a reset gives, with the weekly reset it lasts until when known. */
@@ -54,25 +57,33 @@ export function grantedMessage(resetsAt: string | null) {
 export const RESET_REPLACES =
   "This replaces what’s left of this week’s usage with a full fresh week.";
 
-/** The price, or the way it would be paid, is no longer what the offer
- *  showed: the offer on screen is stale. */
-export function isOfferChanged(error: unknown) {
-  if (!(error instanceof ApiError) || error.status !== 409) return false;
+/** Why the server refused the purchase (a 409), as its code and the words
+ *  it sends for a person; null for any other failure. */
+export function purchaseRefusal(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
   const detail = error.response?.detail;
-  return detail === "price_changed" || detail === "payment_changed";
+  if (typeof detail !== "object" || detail === null) return { message: "" };
+  const { code, message } = detail as { code?: unknown; message?: unknown };
+  return {
+    code: typeof code === "string" ? code : undefined,
+    message: typeof message === "string" ? message : "",
+  };
+}
+
+/** The server refused: nothing was charged, and whatever the dialog shows
+ *  (price, way of paying, that a limit is reached) is out of date. */
+export function isOfferStale(error: unknown) {
+  return purchaseRefusal(error) !== null;
 }
 
 export function describePurchaseFailure(error: unknown) {
-  if (error instanceof ApiError && error.status === 409) {
-    if (error.response?.detail === "price_changed")
-      return "The price has changed. Check the new price, then reset your limits.";
-    if (error.response?.detail === "payment_changed")
-      return "Your credit balance now covers this, so it would be paid with credits. Check the offer, then reset your limits. Nothing was charged.";
-  }
-  if (error instanceof ApiError && error.status === 409) {
-    const detail = error.response?.detail;
-    const reason = typeof detail === "string" ? `${detail} ` : "";
-    return `${reason}Nothing was charged.`;
+  const refusal = purchaseRefusal(error);
+  if (refusal) {
+    if (refusal.code === "price_changed")
+      return "The price has changed. Check the new price, then reset your limits. Nothing was charged.";
+    if (refusal.code === "payment_changed")
+      return "The way this would be paid has changed. Check the offer, then reset your limits. Nothing was charged.";
+    return `${refusal.message ? `${refusal.message} ` : ""}Nothing was charged.`;
   }
   // A server or network failure doesn't say whether the purchase went
   // through. Trying again repeats the same purchase, so it can't be charged

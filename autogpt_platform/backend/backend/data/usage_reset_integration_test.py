@@ -30,6 +30,7 @@ from backend.data.usage_reset import (
 )
 from backend.data.usage_reset_card import (
     CheckoutUnsettled,
+    card_reset_outcome,
     fulfill_card_reset,
     start_card_reset,
 )
@@ -160,10 +161,22 @@ async def test_too_few_credits_buy_nothing(billing_user):
 
 
 @pytest.mark.asyncio
-async def test_two_purchases_racing_for_the_same_reset_charge_once(billing_user):
+async def test_two_purchases_racing_for_the_same_reset_charge_once(
+    billing_user, monkeypatch: pytest.MonkeyPatch
+):
     """Two tabs, two keys, one limit reached: only one of them is the
     window's next reset. The other is refused and keeps its credits."""
     await UserCredit().grant_credits(billing_user, 5_000, "test balance")
+    # Both must be past their last check, each believing it is the window's
+    # first reset, before either charges.
+    both_checked = asyncio.Barrier(2)
+    check = usage_reset._still_in_window
+
+    async def checked_together(*args):
+        await check(*args)
+        await asyncio.wait_for(both_checked.wait(), timeout=30)
+
+    monkeypatch.setattr(usage_reset, "_still_in_window", checked_together)
 
     results = await asyncio.gather(
         _buy(billing_user, "key-tab-a"),
@@ -240,6 +253,7 @@ class Stripe:
         self.sessions: dict[str, dict] = {}
         self.created: list[dict] = []
         self.both_creating: asyncio.Barrier | None = None
+        self.all_reading: asyncio.Barrier | None = None
         monkeypatch.setattr(usage_reset_card, "stripe_call", self._call)
         monkeypatch.setattr(
             usage_reset_card,
@@ -254,6 +268,8 @@ class Stripe:
             self.expires(args[0])
             return self.sessions[args[0]]
         if args:
+            if self.all_reading is not None:
+                await asyncio.wait_for(self.all_reading.wait(), timeout=30)
             return self.sessions[args[0]]
         if self.both_creating is not None:
             # Hold each request at Stripe until the other has arrived too.
@@ -359,7 +375,7 @@ async def test_an_unpaid_checkout_is_never_granted(billing_user, stripe_side: St
     session_id = checkout.purchase.checkout_session_id
     assert session_id
 
-    assert await fulfill_card_reset(session_id, NOW + 60) is None
+    assert await card_reset_outcome(session_id, NOW + 60) == (None, "not_paid")
     stripe_side.expires(session_id)
     assert await fulfill_card_reset(session_id, NOW + 3600) is None
 
@@ -377,9 +393,15 @@ async def test_a_paid_checkout_is_granted_once_however_often_stripe_says_so(
     assert session_id
     stripe_side.pays(session_id)
 
+    # Every delivery must have read the purchase as pending and be asking
+    # Stripe before any of them grants: the order in which an unconditional
+    # update would grant six times.
+    stripe_side.all_reading = asyncio.Barrier(6)
+
     grants = await asyncio.gather(
         *(fulfill_card_reset(session_id, NOW + 90) for _ in range(6))
     )
+    stripe_side.all_reading = None
     late = await fulfill_card_reset(session_id, NOW + 5_000)
 
     assert all(grant is not None for grant in grants)
@@ -409,7 +431,10 @@ async def test_a_session_that_is_not_a_reset_or_not_the_buyers_is_ignored(
     stripe_side.pays(session_id)
 
     # A top-up's or a subscription's session: no purchase has it.
-    assert await fulfill_card_reset("cs_test_something_else", NOW) is None
+    assert await card_reset_outcome("cs_test_something_else", NOW) == (
+        None,
+        "unknown_session",
+    )
     # Someone else returning with this session id.
     assert await fulfill_card_reset(session_id, NOW, user_id="another-user") is None
     assert await _resets_now(billing_user) == (None, 0)
@@ -684,7 +709,7 @@ async def test_a_checkout_paid_after_changing_plan_is_not_granted(
     )
     stripe_side.pays(session_id)
 
-    assert await fulfill_card_reset(session_id, NOW + 120) is None
+    assert await card_reset_outcome(session_id, NOW + 120) == (None, "plan_changed")
 
     assert await _resets_now(billing_user) == (None, 0)
     assert (await list_reset_purchases(billing_user))[0].status == "pending"

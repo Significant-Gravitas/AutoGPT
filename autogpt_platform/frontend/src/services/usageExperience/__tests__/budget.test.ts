@@ -136,6 +136,16 @@ describe("budget copy", () => {
     );
   });
 
+  it("takes the weekday from the rounded-up minute, like the clock", () => {
+    // Tuesday 11:59:30 PM is shown as 12:00 AM, which is Wednesday.
+    expect(
+      budgetResetSentence(
+        { window: "weekly", resetsAt: new Date(2026, 9, 13, 23, 59, 30) },
+        NOW,
+      ),
+    ).toMatch(/^It resets Wednesday at 12:00 AM, /);
+  });
+
   it("says when today's budget resets, by the clock", () => {
     expect(
       budgetResetSentence({ window: "daily", resetsAt: TONIGHT_1AM }, NOW),

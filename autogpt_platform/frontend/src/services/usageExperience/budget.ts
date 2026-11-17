@@ -101,10 +101,13 @@ export function formatCountdown(date: Date, now = new Date()) {
 }
 
 function formatResetMoment(wait: ResetWait, now: Date) {
-  const clock = formatResetClock(wait.resetsAt);
-  const day = needsDate(wait.resetsAt, now)
-    ? formatWeekdayDate(wait.resetsAt)
-    : formatWeekday(wait.resetsAt);
+  // The day comes from the same rounded-up minute as the clock: a reset at
+  // Thu 23:59:30 is "Friday at 12:00 AM", not Thursday.
+  const shown = ceilToMinute(wait.resetsAt);
+  const clock = formatResetClock(shown);
+  const day = needsDate(shown, now)
+    ? formatWeekdayDate(shown)
+    : formatWeekday(shown);
   const when = wait.window === "weekly" ? `${day} at ${clock}` : `at ${clock}`;
   return `${when}, ${formatCountdown(wait.resetsAt, now)}`;
 }

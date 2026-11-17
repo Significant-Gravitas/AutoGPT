@@ -20,6 +20,13 @@ describe("scheduledSendLabel", () => {
     );
   });
 
+  it("takes the day from the rounded-up minute, like the clock", () => {
+    // 11:59:30 PM today is shown as 12:00 AM, which is tomorrow.
+    expect(scheduledSendLabel(new Date(2026, 9, 11, 23, 59, 30), NOW)).toBe(
+      "Sends Monday at 12:00 AM",
+    );
+  });
+
   it("names the day for a send on another day", () => {
     expect(scheduledSendLabel(new Date(2026, 9, 12, 1, 7), NOW)).toBe(
       "Sends Monday at 1:07 AM",

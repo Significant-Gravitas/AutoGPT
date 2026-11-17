@@ -12,11 +12,7 @@ from prisma.enums import SubscriptionTier as PrismaTier
 from prisma.errors import UniqueViolationError
 
 from backend.api.features.chat import usage_reset as routes
-from backend.api.features.chat.usage_reset import (
-    buy_usage_reset,
-    confirm_usage_reset,
-    settle_card_reset,
-)
+from backend.api.features.chat.usage_reset import buy_usage_reset, confirm_usage_reset
 from backend.api.features.chat.usage_reset_models import (
     UsageResetConfirmRequest,
     UsageResetRequest,
@@ -28,7 +24,8 @@ from backend.copilot.rate_limit import (
     UsageWindow,
 )
 from backend.data.usage_reset import CreditReset, ResetPurchase, ResetWindowChanged
-from backend.data.usage_reset_card import CardCheckout, CardGrant, CheckoutUnsettled
+from backend.data.usage_reset_card import CardCheckout, CheckoutUnsettled
+from backend.data.usage_reset_settlement import CardSettlement
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.posthog_events import PostHogEvent
 
@@ -93,7 +90,7 @@ class Shop:
                 purchase=_purchase("pending", "card"), url=CHECKOUT_URL
             )
         )
-        self.fulfill = AsyncMock(return_value=None)
+        self.settle = AsyncMock(return_value=CardSettlement(ungranted="not_paid"))
         self.events = MagicMock()
         monkeypatch.setattr(routes, "billing_clock_live", self.live)
         monkeypatch.setattr(routes, "now_seconds", lambda: NOW)
@@ -105,7 +102,7 @@ class Shop:
         )
         monkeypatch.setattr(routes, "buy_reset_with_credits", self.buy)
         monkeypatch.setattr(routes, "start_card_reset", self.checkout)
-        monkeypatch.setattr(routes, "fulfill_card_reset", self.fulfill)
+        monkeypatch.setattr(routes, "settle_card_reset", self.settle)
         monkeypatch.setattr(routes.posthog_client, "capture", self.events)
         monkeypatch.setattr(routes.settings.config, "enable_credit", True)
 
@@ -124,6 +121,11 @@ class Shop:
 @pytest.fixture
 def shop(monkeypatch: pytest.MonkeyPatch) -> Shop:
     return Shop(monkeypatch)
+
+
+def _code(refused: HTTPException) -> str:
+    assert isinstance(refused.detail, dict)
+    return refused.detail["code"]
 
 
 async def _refused_after_trying_credits(shop: Shop) -> HTTPException:
@@ -255,8 +257,44 @@ async def test_credits_are_not_taken_from_a_customer_who_confirmed_a_card_paymen
 
     refused = await _refused(shop, by_card)
 
-    assert (refused.status_code, refused.detail) == (409, "payment_changed")
+    assert refused.status_code == 409
+    assert _code(refused) == "payment_changed"
     assert shop.event()[1]["reason"] == "payment_changed"
+
+
+@pytest.mark.asyncio
+async def test_the_card_is_not_asked_of_a_customer_who_confirmed_paying_with_credits(
+    shop: Shop,
+):
+    """They were shown "pay with credits"; the balance no longer covers it.
+    They are not sent to a card page they did not agree to: it is refused,
+    and the app shows the offer again, now by card."""
+    shop.balance(7_999)
+    with_credits = UsageResetRequest(
+        purchase_key=KEY, price_credits=8_000, pay_with="credits"
+    )
+
+    refused = await _refused(shop, with_credits)
+
+    assert refused.status_code == 409 and _code(refused) == "payment_changed"
+
+
+@pytest.mark.asyncio
+async def test_credits_spent_as_the_charge_began_do_not_turn_into_a_card_payment(
+    shop: Shop,
+):
+    shop.buy.side_effect = InsufficientBalanceError(
+        message="spent", user_id="user-1", balance=10, amount=8_000
+    )
+    with_credits = UsageResetRequest(
+        purchase_key=KEY, price_credits=8_000, pay_with="credits"
+    )
+
+    with pytest.raises(HTTPException) as changed:
+        await buy_usage_reset(with_credits, "user-1")
+
+    assert _code(changed.value) == "payment_changed"
+    shop.checkout.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -447,7 +485,9 @@ async def test_a_price_other_than_the_one_shown_is_refused(shop: Shop):
 
     refused = await _refused(shop, shown_before)
 
-    assert (refused.status_code, refused.detail) == (409, "price_changed")
+    assert refused.status_code == 409 and _code(refused) == "price_changed"
+    # A code for the app, and words a person can be shown.
+    assert isinstance(refused.detail, dict) and refused.detail["message"]
 
 
 @pytest.mark.asyncio
@@ -484,53 +524,35 @@ async def test_a_checkout_that_cannot_be_opened_is_an_error_not_a_grant(shop: Sh
 
 @pytest.mark.asyncio
 async def test_returning_from_a_paid_checkout_grants_the_reset(shop: Shop):
-    shop.fulfill.return_value = CardGrant(
-        purchase=_purchase("granted", "card"), granted_now=True
-    )
+    shop.settle.return_value = CardSettlement(purchase=_purchase("granted", "card"))
 
     response = await confirm_usage_reset(
         UsageResetConfirmRequest(session_id=SESSION), "user-1"
     )
 
     # Only the returning customer's own session counts.
-    shop.fulfill.assert_awaited_once_with(SESSION, NOW, user_id="user-1")
+    shop.settle.assert_awaited_once_with(SESSION, user_id="user-1")
     assert response.status == "granted"
     assert response.resets_at == datetime.fromtimestamp(WEEK_END, UTC)
-    assert shop.event() == (
-        PostHogEvent.USAGE_RESET_PURCHASED,
-        {"tier": "MAX", "price_credits": 8_000, "paid_with": "card"},
-    )
 
 
 @pytest.mark.asyncio
-async def test_returning_without_having_paid_grants_nothing(shop: Shop):
-    """Declined, abandoned, 3-D Secure not finished, or not their session."""
+@pytest.mark.parametrize("why", ["not_paid", "unknown_session", "plan_changed"])
+async def test_returning_without_a_grant_resets_nothing(shop: Shop, why: str):
+    """Declined, abandoned, 3-D Secure not finished, not their session, or
+    paid after changing plan."""
+    shop.settle.return_value = CardSettlement.model_validate({"ungranted": why})
+
     response = await confirm_usage_reset(
         UsageResetConfirmRequest(session_id=SESSION), "user-1"
     )
 
     assert response.status == "pending" and response.usage is None
-    shop.events.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_a_grant_the_webhook_already_made_is_not_counted_twice(shop: Shop):
-    shop.fulfill.return_value = CardGrant(
-        purchase=_purchase("granted", "card"), granted_now=False
-    )
-
-    purchase = await settle_card_reset(SESSION)
-
-    assert purchase is not None and purchase.status == "granted"
-    shop.fulfill.assert_awaited_once_with(SESSION, NOW, user_id=None)
-    shop.events.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_a_confirmed_grant_stands_when_limits_cannot_be_read(shop: Shop):
-    shop.fulfill.return_value = CardGrant(
-        purchase=_purchase("granted", "card"), granted_now=True
-    )
+    shop.settle.return_value = CardSettlement(purchase=_purchase("granted", "card"))
     shop.limits.side_effect = RateLimitUnavailable("down")
 
     response = await confirm_usage_reset(

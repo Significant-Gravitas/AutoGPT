@@ -8,6 +8,7 @@ passes. See ``usage_reset`` for what a reset is.
 """
 
 import logging
+from typing import Literal
 
 import stripe
 from prisma.enums import SubscriptionTier
@@ -38,6 +39,12 @@ _GRANT_ATTEMPTS = 5
 # How many of the buyer's latest unpaid purchases are looked at for a
 # checkout that is still open.
 _OTHER_CHECKOUTS_CHECKED = 3
+
+
+# Why a session granted nothing: no purchase has it (or not this user's);
+# Stripe doesn't report it paid in full for this purchase; or the buyer
+# changed plan between opening the checkout and paying it.
+Ungranted = Literal["unknown_session", "not_paid", "plan_changed"]
 
 
 class CardGrant(BaseModel):
@@ -127,22 +134,29 @@ async def fulfill_card_reset(
 ) -> CardGrant | None:
     """Grant the reset a paid Checkout session bought, once.
 
-    Called from Stripe's webhook for a completed Checkout session and when
-    the buyer returns from Checkout (then with ``user_id``: only their own
-    session counts). Returns the purchase when the session is one of ours
-    and paid, granted now or earlier; None when no purchase has that session
-    or it isn't paid. Safe to call any number of times.
+    Called for a completed Checkout session and when the buyer returns from
+    Checkout (then with ``user_id``: only their own session counts). Returns
+    the purchase when the session is one of ours and paid, granted now or
+    earlier; None when nothing was granted. Safe to call any number of times.
     """
+    grant, _ = await card_reset_outcome(session_id, now, user_id=user_id)
+    return grant
+
+
+async def card_reset_outcome(
+    session_id: str, now: int, *, user_id: str | None = None
+) -> tuple[CardGrant | None, Ungranted | None]:
+    """``fulfill_card_reset``, with why nothing was granted when nothing was."""
     row = await UsageReset.prisma().find_first(
         where={"stripeCheckoutSessionId": session_id}
     )
     if row is None or (user_id is not None and row.userId != user_id):
-        return None
+        return None, "unknown_session"
     if row.status == "granted":
-        return CardGrant(purchase=ResetPurchase.from_db(row), granted_now=False)
+        return CardGrant(purchase=ResetPurchase.from_db(row), granted_now=False), None
     session = await stripe_call(stripe.checkout.Session.retrieve_async, session_id)
     if not _pays_for(session, row):
-        return None
+        return None, "not_paid"
     state = await get_usage_activation_state(row.userId)
     if state.tier.value != SubscriptionTier(row.tier).value:
         # Paid at one plan's price after moving to another plan: that price
@@ -152,7 +166,7 @@ async def fulfill_card_reset(
             "A paid usage reset was not granted: the plan changed between "
             "opening its checkout and paying it"
         )
-        return None
+        return None, "plan_changed"
     clock = clock_from_state(state, now)
     if clock is None:
         raise RuntimeError("No billing clock to grant a paid usage reset in")
@@ -164,7 +178,8 @@ async def fulfill_card_reset(
         logger.info("A usage reset paid by card was granted")
         await announce_reset(row.userId)
     current = await UsageReset.prisma().find_unique_or_raise(where={"id": row.id})
-    return CardGrant(purchase=ResetPurchase.from_db(current), granted_now=granted_now)
+    purchase = ResetPurchase.from_db(current)
+    return CardGrant(purchase=purchase, granted_now=granted_now), None
 
 
 async def _grant_paid(

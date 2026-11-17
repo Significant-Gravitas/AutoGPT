@@ -13,8 +13,8 @@ class UsageActivationState(BaseModel):
     tier: SubscriptionTier
     ready: bool
     # The billing clock (backend/copilot/usage_clock.py), all Unix seconds in
-    # UTC. Optional with defaults so a process on the previous release, on
-    # either side of the database manager's RPC, still validates the state.
+    # UTC. Optional with defaults: the database manager's RPC must accept a
+    # state from a process that doesn't send these fields.
     created_at: int | None = None
     has_stripe_customer: bool = False
     # The Stripe billing period last copied from Stripe, if any.

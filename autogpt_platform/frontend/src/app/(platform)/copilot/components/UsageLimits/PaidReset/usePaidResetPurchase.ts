@@ -14,7 +14,7 @@ import { formatExactReset } from "@/services/usageExperience/resetTime";
 import {
   describePurchaseFailure,
   grantedMessage,
-  isOfferChanged,
+  isOfferStale,
   newPurchaseKey,
 } from "./helpers";
 
@@ -28,7 +28,7 @@ interface Args {
   goToCheckout?: (url: string) => void;
 }
 
-type Outcome = "bought" | "checkout" | "offer_changed" | "failed";
+type Outcome = "bought" | "checkout" | "refused" | "failed";
 
 function leaveForCheckout(url: string) {
   window.location.assign(url);
@@ -61,8 +61,10 @@ async function attemptPurchase(
       variant: "destructive",
     });
     return (
-      isOfferChanged(error) ? "offer_changed" : "failed"
-    ) satisfies Outcome;
+      // Refused: the dialog's offer is stale. Anything else (the network,
+      // a server error) may be retried as it stands, with the same key.
+      (isOfferStale(error) ? "refused" : "failed") satisfies Outcome
+    );
   }
 }
 
@@ -109,11 +111,11 @@ export function usePaidResetPurchase({
       return;
     }
     setIsOpen(false);
-    // Bought, or the offer moved: either way the offer on screen is stale.
+    // Bought or refused: either way the offer on screen is stale.
     void queryClient.invalidateQueries({
       queryKey: getGetV2GetCopilotUsageQueryKey(),
     });
-    if (outcome === "offer_changed") return;
+    if (outcome === "refused") return;
     // Credits may have paid for it: the balance shown elsewhere is stale too.
     void queryClient.invalidateQueries({
       queryKey: getGetV1GetUserCreditsQueryKey(),

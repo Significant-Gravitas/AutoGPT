@@ -23,6 +23,7 @@ from backend.data.credit import (
 )
 from backend.data.notifications import NotificationResult, PassWorkEvent, PassWorkKind
 from backend.data.subscription_payment_failure import PaymentFailureOutcome
+from backend.data.usage_reset_settlement import CardSettlement
 from backend.util.test import SpinTestServer
 
 from .billing.subscriptions.routes import (
@@ -47,7 +48,7 @@ def settle_reset(mocker: pytest_mock.MockFixture) -> AsyncMock:
     return mocker.patch(
         "backend.api.features.billing.subscriptions.routes.settle_card_reset",
         new_callable=AsyncMock,
-        return_value=None,
+        return_value=CardSettlement(ungranted="unknown_session"),
     )
 
 
@@ -213,16 +214,28 @@ def test_a_subscription_or_top_up_checkout_never_reaches_the_usage_reset(
     settle_reset.assert_not_awaited()
 
 
-@pytest.mark.parametrize("paid,logged", [("paid", True), ("unpaid", False)])
+@pytest.mark.parametrize(
+    "paid,why,logged",
+    [
+        ("paid", "unknown_session", True),
+        ("paid", "not_paid", True),
+        ("unpaid", "unknown_session", False),
+        # Found and logged where it happens, in its own words: saying here
+        # that no purchase matches the session would be false.
+        ("paid", "plan_changed", False),
+    ],
+)
 def test_a_paid_usage_reset_with_no_purchase_to_grant_is_an_error_someone_sees(
     mocker: pytest_mock.MockFixture,
     settle_reset: AsyncMock,
     caplog: pytest.LogCaptureFixture,
     paid: str,
+    why: str,
     logged: bool,
 ) -> None:
     """Stripe took the money and nothing was granted: retrying can't fix it,
     so it is acknowledged, but at ERROR, which raises a Sentry event."""
+    settle_reset.return_value = CardSettlement.model_validate({"ungranted": why})
     event = _make_checkout_event("payment")
     event["data"]["object"]["metadata"] = {"usage_reset": "1"}
     event["data"]["object"]["payment_status"] = paid

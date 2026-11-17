@@ -21,7 +21,11 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.data.db import query_raw_with_schema
 from backend.data.stripe_client import stripe_call, stripe_list_items
-from backend.data.usage_clock import billing_period, save_billing_clock
+from backend.data.usage_clock import (
+    billing_period,
+    is_running_trial,
+    save_billing_clock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +67,7 @@ async def _copy_one(
     user_id = users.get(str(subscription.get("customer") or ""))
     if (
         user_id is None
-        or metadata.get("trial_enrollment_id")
+        or is_running_trial(subscription)
         or metadata.get("user_id", user_id) != user_id
         or billing_period(subscription) is None
     ):

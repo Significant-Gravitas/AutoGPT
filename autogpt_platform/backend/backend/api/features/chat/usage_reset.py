@@ -51,11 +51,8 @@ from backend.data.usage_reset import (
     buy_reset_with_credits,
     find_reset_purchase,
 )
-from backend.data.usage_reset_card import (
-    CheckoutUnsettled,
-    fulfill_card_reset,
-    start_card_reset,
-)
+from backend.data.usage_reset_card import CheckoutUnsettled, start_card_reset
+from backend.data.usage_reset_settlement import settle_card_reset
 from backend.util import posthog_client
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.posthog_events import PostHogEvent
@@ -81,8 +78,9 @@ _REFUSALS: dict[RefusalReason, str] = {
     "not_eligible": "A usage reset isn't available for this account.",
     "not_limited": "You haven't reached a usage limit, so there is nothing to reset.",
     "resets_soon": "Your limits reset shortly anyway, so a reset can't be bought now.",
-    "price_changed": "price_changed",
-    "payment_changed": "payment_changed",
+    "price_changed": "The price has changed. Check the new price and try again.",
+    "payment_changed": "The way this would be paid has changed. Check the "
+    "offer and try again.",
     "window_changed": "Your usage window has just changed. Check your usage "
     "and try again.",
 }
@@ -139,11 +137,13 @@ async def buy_usage_reset(
             usage = await _usage_now(user_id, daily, weekly, tier)
             return _granted(bought_meanwhile, 0, usage)
     _refuse_unless_sold(user_id, request, status)
-    if earlier is None and await _balance_covers(user_id, status.reset_price):
-        if request.pay_with == "card":
-            # They confirmed a card payment; the balance covers it by now.
-            # Credits aren't taken on a confirmation that named the card.
-            _refuse(user_id, "payment_changed", status.tier.value)
+    covered = earlier is None and await _balance_covers(user_id, status.reset_price)
+    if earlier is None and request.pay_with not in (None, _payer(covered)):
+        # They confirmed one way of paying and it would now be the other
+        # (a top-up landed, or the balance was spent). Neither credits nor
+        # the card is charged on a confirmation that named the other.
+        _refuse(user_id, "payment_changed", status.tier.value)
+    if covered:
         bought = await _pay_with_credits(user_id, request, status, now)
         if bought is not None:
             return _granted(
@@ -155,7 +155,13 @@ async def buy_usage_reset(
         # this window: check again that there is still one to sell.
         status = await _status_again(user_id, daily, weekly, tier)
         _refuse_unless_sold(user_id, request, status)
+        if request.pay_with == "credits":
+            _refuse(user_id, "payment_changed", status.tier.value)
     return await _pay_by_card(user_id, request, status, now, (daily, weekly))
+
+
+def _payer(covered: bool) -> Literal["credits", "card"]:
+    return "credits" if covered else "card"
 
 
 async def _status_again(
@@ -181,7 +187,8 @@ async def confirm_usage_reset(
 ) -> UsageResetConfirmResponse:
     """Called when the customer returns from paying by card: grants the reset
     if Stripe says the payment went through and its webhook hasn't yet."""
-    purchase = await settle_card_reset(request.session_id, user_id=user_id)
+    settled = await settle_card_reset(request.session_id, user_id=user_id)
+    purchase = settled.purchase
     if purchase is None:
         return UsageResetConfirmResponse(status="pending")
     try:
@@ -197,30 +204,6 @@ async def confirm_usage_reset(
         resets_at=_ends_at(purchase),
         usage=await _usage_now(user_id, daily, weekly, tier),
     )
-
-
-async def settle_card_reset(
-    session_id: str, *, user_id: str | None = None
-) -> ResetPurchase | None:
-    """Grant the reset a Checkout session paid for, once, whoever asks first:
-    Stripe's webhook (for a completed session that says it is a reset's) or
-    the customer returning (``user_id``: only their own).
-    Returns the granted purchase, or None when there is none to grant."""
-    grant = await fulfill_card_reset(session_id, now_seconds(), user_id=user_id)
-    if grant is None:
-        return None
-    if grant.granted_now:
-        purchase = grant.purchase
-        posthog_client.capture(
-            purchase.user_id,
-            PostHogEvent.USAGE_RESET_PURCHASED,
-            {
-                "tier": purchase.tier,
-                "price_credits": purchase.price_credits,
-                "paid_with": "card",
-            },
-        )
-    return grant.purchase
 
 
 def _refuse_unless_sold(
@@ -381,4 +364,7 @@ def _refuse(user_id: str, reason: RefusalReason, tier: str | None = None) -> NoR
     posthog_client.capture(
         user_id, PostHogEvent.USAGE_RESET_REFUSED, {"reason": reason, "tier": tier}
     )
-    raise HTTPException(status_code=409, detail=_REFUSALS[reason])
+    # The code is for the app; the message is what a person can be shown.
+    raise HTTPException(
+        status_code=409, detail={"code": reason, "message": _REFUSALS[reason]}
+    )

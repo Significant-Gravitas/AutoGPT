@@ -24,7 +24,6 @@ from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
     enforce_subscription_status_rate_limit,
 )
-from backend.api.features.chat.usage_reset import settle_card_reset
 from backend.copilot.rate_limit import get_tier_multipliers
 from backend.copilot.usage_mode import billing_clock_live
 from backend.data import checkout_audience
@@ -84,6 +83,7 @@ from backend.data.subscription_upgrade_models import (
 from backend.data.subscription_wallet_payment import (
     reconcile_wallet_payment_on_paid_invoice,
 )
+from backend.data.usage_reset_settlement import settle_card_reset
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
@@ -1047,12 +1047,15 @@ async def stripe_webhook(request: Request):
             if _is_usage_reset_checkout(data_object):
                 # Grants the reset this session paid for, once. The grant
                 # re-reads the session from Stripe: the event only routes.
-                granted = await settle_card_reset(session_id)
-                if granted is None and data_object.get("payment_status") == "paid":
+                settled = await settle_card_reset(session_id)
+                unmatched = settled.ungranted in ("unknown_session", "not_paid")
+                if unmatched and data_object.get("payment_status") == "paid":
                     # Paid, yet no pending purchase has this session, or the
                     # session isn't what the purchase asked for. Retrying
                     # can't change that: it needs a person. ERROR reaches
                     # Sentry; the payment is found in Stripe by this event.
+                    # (A plan changed before payment is logged where it is
+                    # found, with its own words.)
                     logger.error(
                         "stripe_webhook: %s for a paid usage reset was not "
                         "granted: no pending purchase matches its session",

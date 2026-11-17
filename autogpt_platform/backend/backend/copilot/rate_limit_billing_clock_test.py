@@ -66,6 +66,14 @@ class Account:
             AsyncMock(side_effect=lambda *_: self.live),
         )
         monkeypatch.setattr(rate_limit, "now_seconds", lambda: self.now)
+        # The base limits these tests assume, whatever this machine's
+        # environment sets.
+        monkeypatch.setattr(
+            rate_limit._chat_config, "daily_cost_limit_microdollars", BASE_DAILY
+        )
+        monkeypatch.setattr(
+            rate_limit._chat_config, "weekly_cost_limit_microdollars", BASE_WEEKLY
+        )
         monkeypatch.setattr(
             rate_limit, "get_ready_usage_state", AsyncMock(side_effect=self._read)
         )

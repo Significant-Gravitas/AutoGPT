@@ -12,6 +12,7 @@ from backend.data import usage_clock, usage_clock_backfill
 from backend.data.usage_clock import (
     BillingPeriod,
     billing_period,
+    is_running_trial,
     refresh_billing_clock,
     save_billing_clock,
 )
@@ -180,7 +181,11 @@ async def test_no_live_subscription_is_an_answer_not_an_error(stripe_account: St
     [
         _subscription(metadata={"user_id": "someone-else"}),
         _subscription(customer="cus_other"),
-        _subscription(metadata={"user_id": "user-1", "trial_enrollment_id": "t1"}),
+        # A card trial that is still running: its windows are the trial's.
+        _subscription(
+            status="trialing",
+            metadata={"user_id": "user-1", "trial_enrollment_id": "t1"},
+        ),
     ],
 )
 async def test_a_subscription_that_is_not_this_users_plan_is_never_copied(
@@ -191,6 +196,42 @@ async def test_a_subscription_that_is_not_this_users_plan_is_never_copied(
     assert await refresh_billing_clock("user-1") == "no_subscription"
 
     stripe_account.save.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_plan_that_began_as_a_card_trial_gets_its_billing_clock(
+    stripe_account: Stripe,
+):
+    """A trial that converts stays the same subscription, now active, and
+    Stripe keeps the trial's enrolment id in its metadata. It is a paid plan
+    like any other: skipping it would leave every converted customer on the
+    account-creation clock."""
+    converted = _subscription(
+        status="active",
+        metadata={"user_id": "user-1", "trial_enrollment_id": "t1"},
+    )
+    stripe_account.by_status["active"] = [converted]
+
+    assert await refresh_billing_clock("user-1") == "saved"
+
+    stripe_account.save.assert_awaited_once_with("user-1", converted)
+
+
+@pytest.mark.parametrize(
+    "status,metadata,running",
+    [
+        ("trialing", {"trial_enrollment_id": "t1"}, True),
+        ("active", {"trial_enrollment_id": "t1"}, False),
+        ("trialing", {}, False),
+        ("active", None, False),
+    ],
+)
+def test_only_a_trial_that_has_not_converted_is_a_running_trial(
+    status: str, metadata: dict | None, running: bool
+):
+    subscription = _subscription(status=status, metadata=metadata)
+
+    assert is_running_trial(subscription) is running
 
 
 @pytest.mark.asyncio
@@ -248,8 +289,18 @@ class Listing:
             _subscription(id="sub_b", customer="cus_b", metadata={}),
             _subscription(id="sub_nobody", customer="cus_gone", metadata={}),
             _subscription(id="sub_other", customer="cus_a", metadata={"user_id": "x"}),
+            # A card trial still running: skipped. One that converted, with
+            # the enrolment id still in its metadata: a paid plan, copied.
             _subscription(
-                id="sub_trial", customer="cus_b", metadata={"trial_enrollment_id": "t"}
+                id="sub_trial",
+                customer="cus_b",
+                status="trialing",
+                metadata={"trial_enrollment_id": "t"},
+            ),
+            _subscription(
+                id="sub_converted",
+                customer="cus_c",
+                metadata={"trial_enrollment_id": "t2"},
             ),
             _subscription(id="sub_broken", customer="cus_a", current_period_end=None),
         ]
@@ -258,6 +309,7 @@ class Listing:
             return_value=[
                 {"id": "user-a", "customer": "cus_a"},
                 {"id": "user-b", "customer": "cus_b"},
+                {"id": "user-c", "customer": "cus_c"},
             ]
         )
         monkeypatch.setattr(usage_clock_backfill, "save_billing_clock", self.save)
@@ -278,15 +330,18 @@ def listing(monkeypatch: pytest.MonkeyPatch) -> Listing:
 
 @pytest.mark.asyncio
 async def test_the_backfill_copies_each_owned_plan_and_skips_the_rest(listing: Listing):
-    listing.save.side_effect = [True, False]
+    listing.save.side_effect = [True, False, True]
 
     summary = await backfill_billing_clocks()
 
+    # The converted trial is counted and copied like any paid plan.
     assert [call.args[0] for call in listing.save.await_args_list] == [
         "user-a",
         "user-b",
+        "user-c",
     ]
-    assert (summary.subscriptions, summary.saved, summary.unchanged) == (6, 1, 1)
+    assert listing.save.await_args_list[2].args[1]["id"] == "sub_converted"
+    assert (summary.subscriptions, summary.saved, summary.unchanged) == (7, 2, 1)
     assert (summary.skipped, summary.failed) == (4, 0)
     # Admin-managed accounts are left out, as in the tier sweep.
     assert "<> 'ENTERPRISE'" in listing.users.await_args.args[0]
@@ -296,17 +351,17 @@ async def test_the_backfill_copies_each_owned_plan_and_skips_the_rest(listing: L
 async def test_a_dry_run_counts_without_writing(listing: Listing):
     summary = await backfill_billing_clocks(dry_run=True)
 
-    assert summary.saved == 2
+    assert summary.saved == 3
     listing.save.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_one_failed_save_does_not_stop_the_rest(listing: Listing):
-    listing.save.side_effect = [RuntimeError("database"), True]
+    listing.save.side_effect = [RuntimeError("database"), True, True]
 
     summary = await backfill_billing_clocks()
 
-    assert (summary.saved, summary.failed) == (1, 1)
+    assert (summary.saved, summary.failed) == (2, 1)
 
 
 @pytest.mark.asyncio
@@ -319,7 +374,7 @@ async def test_the_command_connects_runs_and_disconnects(
 
     summary = await usage_clock_backfill._run(dry_run=True)
 
-    assert summary.saved == 2
+    assert summary.saved == 3
     connect.assert_awaited_once()
     disconnect.assert_awaited_once()
     listing.save.assert_not_awaited()

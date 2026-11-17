@@ -54,6 +54,8 @@ def _no_recent_states():
 def redis():
     client = MagicMock()
     client.set = AsyncMock(return_value=True)
+    # What a held gate says: by default, that a re-read is still running.
+    client.get = AsyncMock(return_value=b"reading")
     client.expire = AsyncMock()
     with patch.object(usage_clock, "get_redis_async", AsyncMock(return_value=client)):
         yield client
@@ -211,6 +213,47 @@ async def test_stripe_is_read_at_most_once_a_minute_per_user(redis, stripe_read)
     gate = redis.set.await_args
     assert gate.args[0] == "usage:clock_refresh:u1"
     assert gate.kwargs == {"nx": True, "ex": REFRESH_RETRY_SECONDS}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "settled,state_reads",
+    [
+        # A re-read that found nothing to save left the stored state as it
+        # was: for as long as its gate lasts (six hours when Stripe has no
+        # subscription) no check pays for reading the state again.
+        (b"no_subscription", 0),
+        (b"unchanged", 0),
+        (b"stripe_error", 0),
+        ("not_stripe_billed", 0),
+        # One still running, or one that saved a newer period, may have.
+        (b"reading", 1),
+        (b"saved", 1),
+    ],
+)
+async def test_a_held_gate_only_costs_a_state_read_when_something_may_have_changed(
+    redis, stripe_read, settled, state_reads: int
+):
+    redis.set.return_value = None
+    redis.get.return_value = settled
+    read_again = AsyncMock(return_value=_state())
+    with patch.object(usage_clock, "get_ready_usage_state", read_again):
+        await resolve_clock(_state(), END + 5)
+
+    assert read_again.await_count == state_reads
+    stripe_read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_gate_remembers_how_its_re_read_ended(redis, stripe_read, events):
+    stripe_read.return_value = "no_subscription"
+
+    await resolve_clock(_state(), END + 5)
+
+    noted = redis.set.await_args_list[1]
+    assert noted.args == ("usage:clock_refresh:u1", "no_subscription")
+    # Only an existing gate, and without touching how long it lasts.
+    assert noted.kwargs == {"xx": True, "keepttl": True}
 
 
 @pytest.mark.asyncio

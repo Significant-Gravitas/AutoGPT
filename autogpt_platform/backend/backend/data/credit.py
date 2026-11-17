@@ -3393,6 +3393,10 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         stripe_subscription, trial_tier = trial_result
         status = stripe_subscription.get("status", "")
         if trial_tier is not None:
+            if status == "active":
+                # The trial has converted: it is a paid plan from here, on
+                # this subscription's billing period.
+                await _copy_billing_clock(user.id, stripe_subscription)
             invalidate_subscription_caches(user.id)
             return
     price_id = ""

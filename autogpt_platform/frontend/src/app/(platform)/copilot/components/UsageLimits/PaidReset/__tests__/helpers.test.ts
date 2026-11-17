@@ -5,9 +5,10 @@ import {
   describePurchaseFailure,
   formatResetPrice,
   grantedMessage,
-  isOfferChanged,
+  isOfferStale,
   newPurchaseKey,
   payLabel,
+  purchaseRefusal,
   resetPromise,
 } from "../helpers";
 
@@ -69,12 +70,16 @@ describe("how a reset is paid", () => {
   });
 });
 
+function refusal(code: string, message: string) {
+  return new ApiError("no", 409, { detail: { code, message } });
+}
+
 describe("a refused purchase", () => {
   it("passes on why, and that nothing was charged", () => {
-    const refused = new ApiError("no", 409, {
-      detail:
-        "Your limits reset shortly anyway, so a reset can't be bought now.",
-    });
+    const refused = refusal(
+      "resets_soon",
+      "Your limits reset shortly anyway, so a reset can't be bought now.",
+    );
 
     expect(describePurchaseFailure(refused)).toBe(
       "Your limits reset shortly anyway, so a reset can't be bought now. Nothing was charged.",
@@ -84,22 +89,35 @@ describe("a refused purchase", () => {
     );
   });
 
-  it("knows a changed offer from any other refusal", () => {
-    const changed = new ApiError("no", 409, { detail: "price_changed" });
-    const payment = new ApiError("no", 409, { detail: "payment_changed" });
+  it("has its own words when the price or the way of paying changed", () => {
+    expect(describePurchaseFailure(refusal("price_changed", "x"))).toBe(
+      "The price has changed. Check the new price, then reset your limits. Nothing was charged.",
+    );
+    expect(describePurchaseFailure(refusal("payment_changed", "x"))).toBe(
+      "The way this would be paid has changed. Check the offer, then reset your limits. Nothing was charged.",
+    );
+  });
 
-    expect(isOfferChanged(changed)).toBe(true);
-    expect(isOfferChanged(payment)).toBe(true);
-    expect(isOfferChanged(new ApiError("no", 409, { detail: "other" }))).toBe(
-      false,
-    );
-    expect(isOfferChanged(new Error("offline"))).toBe(false);
-    expect(describePurchaseFailure(payment)).toBe(
-      "Your credit balance now covers this, so it would be paid with credits. Check the offer, then reset your limits. Nothing was charged.",
-    );
-    expect(describePurchaseFailure(changed)).toBe(
-      "The price has changed. Check the new price, then reset your limits.",
-    );
+  it("makes the offer on screen stale, whatever the reason", () => {
+    for (const code of [
+      "price_changed",
+      "payment_changed",
+      "window_changed",
+      "not_limited",
+      "resets_soon",
+    ])
+      expect(isOfferStale(refusal(code, "why"))).toBe(true);
+    expect(isOfferStale(new ApiError("no", 409, { detail: "old" }))).toBe(true);
+  });
+
+  it("is not what a lost answer or a server error is", () => {
+    expect(isOfferStale(new ApiError("down", 503, {}))).toBe(false);
+    expect(isOfferStale(new Error("offline"))).toBe(false);
+    expect(purchaseRefusal(new Error("offline"))).toBeNull();
+    expect(purchaseRefusal(refusal("not_limited", "why"))).toEqual({
+      code: "not_limited",
+      message: "why",
+    });
   });
 
   it("says a retry is safe when the answer was lost", () => {

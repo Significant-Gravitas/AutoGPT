@@ -86,8 +86,8 @@ async def read_counters(
     """``(day_used, week_used)``; a missing counter is a fresh window."""
     redis = await get_redis_async()
     day_key, week_key = counter_keys(user_id, generation, windows, resets)
-    day_raw = await redis.get(day_key)
-    week_raw = await redis.get(week_key)
+    # One round trip: the two keys share a cluster slot.
+    day_raw, week_raw = await redis.mget(day_key, week_key)
     return int(day_raw or 0), int(week_raw or 0)
 
 

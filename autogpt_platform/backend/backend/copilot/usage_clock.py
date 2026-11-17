@@ -156,8 +156,12 @@ async def _refresh_once(
     gate = f"{REFRESH_GATE_PREFIX}:{user_id}"
     try:
         redis = await get_redis_async()
-        if not await redis.set(gate, "1", nx=True, ex=REFRESH_RETRY_SECONDS):
-            return "busy"
+        if not await redis.set(gate, _READING, nx=True, ex=REFRESH_RETRY_SECONDS):
+            # A re-read that already found nothing to save can't have changed
+            # the stored state: only one still running, or one that saved, is
+            # worth reading the state again for.
+            settled = _text(await redis.get(gate))
+            return "unconfirmed" if settled in _NOTHING_SAVED else "busy"
     except Exception:
         # No gate, no Stripe read: the check that follows fails closed on the
         # same Redis outage anyway.
@@ -174,6 +178,10 @@ async def _refresh_once(
         )
         outcome = "stripe_error"
     logger.info(f"Billing clock re-read for user {user_id[:8]}: {outcome}")
+    try:
+        await redis.set(gate, outcome, xx=True, keepttl=True)
+    except Exception:
+        logger.warning("Could not note the billing clock re-read's outcome")
     if outcome == "saved":
         return "saved"
     if outcome in ("no_subscription", "not_stripe_billed"):
@@ -183,6 +191,18 @@ async def _refresh_once(
             logger.warning("Could not extend the billing clock re-read gate")
     _track_unconfirmed(state, now, outcome)
     return "unconfirmed"
+
+
+# What the gate holds while a re-read runs, and the outcomes after which the
+# stored state is what it was before.
+_READING = "reading"
+_NOTHING_SAVED = frozenset(
+    {"unchanged", "no_subscription", "not_stripe_billed", "stripe_error"}
+)
+
+
+def _text(value: object) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value or "")
 
 
 def _track_unconfirmed(state: UsageActivationState, now: int, outcome: str) -> None:

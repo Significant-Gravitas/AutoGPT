@@ -204,7 +204,10 @@ describe("buying a usage reset", () => {
 
   it("closes without buying when credits would now pay what was confirmed for the card", async () => {
     const keys = onPurchase(() =>
-      HttpResponse.json({ detail: "payment_changed" }, { status: 409 }),
+      HttpResponse.json(
+        { detail: { code: "payment_changed", message: "Changed." } },
+        { status: 409 },
+      ),
     );
     const { onBought, goToCheckout } = renderOffer(BY_CARD);
 
@@ -221,9 +224,36 @@ describe("buying a usage reset", () => {
     expect(goToCheckout).not.toHaveBeenCalled();
   });
 
+  it.each(["window_changed", "not_limited", "resets_soon"])(
+    "closes on a %s refusal instead of offering the same purchase again",
+    async (code) => {
+      const keys = onPurchase(() =>
+        HttpResponse.json(
+          { detail: { code, message: "Not now." } },
+          { status: 409 },
+        ),
+      );
+      const { onBought, goToCheckout } = renderOffer();
+
+      await openAndPay();
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: "Pay $80 with credits" }),
+        ).toBeNull(),
+      );
+      expect(keys).toHaveLength(1);
+      expect(onBought).not.toHaveBeenCalled();
+      expect(goToCheckout).not.toHaveBeenCalled();
+    },
+  );
+
   it("closes without buying when the price is no longer the one shown", async () => {
     const keys = onPurchase(() =>
-      HttpResponse.json({ detail: "price_changed" }, { status: 409 }),
+      HttpResponse.json(
+        { detail: { code: "price_changed", message: "Changed." } },
+        { status: 409 },
+      ),
     );
     const { onBought, goToCheckout } = renderOffer();
 

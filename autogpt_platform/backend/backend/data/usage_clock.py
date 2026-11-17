@@ -171,7 +171,9 @@ async def refresh_billing_clock(user_id: str) -> RefreshOutcome:
 
 async def _live_plan(customer_id: str, user_id: str) -> dict[str, Any] | None:
     """The customer's active (else trialing) plan that belongs to this user.
-    A trial enrolment isn't one: a trial's windows run on the trial's own dates."""
+    A trial that is still running isn't one: its windows run on the trial's
+    own dates. One that converted is: it is the same subscription, now
+    active, and keeps the enrolment id in its metadata."""
     for status in ("active", "trialing"):
         page = await stripe_call(
             stripe.Subscription.list_async,
@@ -186,10 +188,20 @@ async def _live_plan(customer_id: str, user_id: str) -> dict[str, Any] | None:
                 continue
             if metadata.get("user_id", user_id) != user_id:
                 continue
-            if metadata.get("trial_enrollment_id"):
+            if is_running_trial(subscription):
                 continue
             return subscription
     return None
+
+
+def is_running_trial(subscription: Mapping[str, Any]) -> bool:
+    """Whether the subscription is a card trial that hasn't converted yet.
+    The enrolment id alone doesn't say: Stripe keeps it on the paid plan the
+    trial becomes."""
+    metadata = subscription.get("metadata") or {}
+    return bool(metadata.get("trial_enrollment_id")) and (
+        subscription.get("status") == "trialing"
+    )
 
 
 def _second(value: Any) -> int | None:

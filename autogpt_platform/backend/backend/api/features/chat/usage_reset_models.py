@@ -24,8 +24,8 @@ class UsageResetRequest(BaseModel):
     pay_with: Literal["credits", "card"] | None = Field(
         default=None,
         description="How the customer was told it would be paid, from the "
-        "same reset_offer. Credits are never taken from a customer who "
-        "confirmed a card payment: that is refused, to be confirmed again.",
+        "same reset_offer. If it would now be paid the other way, nothing "
+        "is charged: that is refused, to be confirmed again.",
     )
 
 

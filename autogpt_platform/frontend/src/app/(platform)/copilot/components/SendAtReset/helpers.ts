@@ -5,6 +5,7 @@ import {
   formatWeekday,
 } from "@/services/usageExperience/budget";
 import {
+  ceilToMinute,
   formatWeekdayDate,
   needsDate,
 } from "@/services/usageExperience/resetTime";
@@ -62,7 +63,8 @@ export function isJoinedSendTooLong(error: unknown) {
 }
 
 export function scheduledSendLabel(runAt: Date | string, now = new Date()) {
-  const date = new Date(runAt);
+  // Rounded up once, so the day and the clock are of the same minute.
+  const date = ceilToMinute(new Date(runAt));
   const clock = formatResetClock(date);
   if (date.toDateString() === now.toDateString()) return `Sends at ${clock}`;
   const day = needsDate(date, now)
