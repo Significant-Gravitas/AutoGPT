@@ -21,6 +21,7 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhere
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.account_deletion import is_account_closed
+from backend.data.auth.ban import is_ban_active
 from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.db_accessors import user_db
 from backend.data.model import (
@@ -326,9 +327,9 @@ async def is_auth_user_banned(user_id: str) -> bool:
     """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
     and a missing auth row are not bans."""
     user = await AuthUser.prisma().find_unique(where={"id": user_id})
-    if user is None or not user.banned:
+    if user is None:
         return False
-    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
+    return is_ban_active(user.banned, user.banExpires, datetime.now(timezone.utc))
 
 
 class OrphanedAuthIdentity(BaseModel):

@@ -52,6 +52,21 @@ async def test_the_ip_the_frontend_signed_is_the_client(frontend_key):
 
 
 @pytest.mark.asyncio
+async def test_key_outage_uses_socket_address_then_recovers(frontend_key, monkeypatch):
+    token = _ip_token(frontend_key, "203.0.113.7")
+    headers = {"X-Client-IP-Token": token, **CLAIMED_ADDRESS}
+
+    def unavailable(_client):
+        raise jwt.PyJWKClientConnectionError("JWKS unavailable")
+
+    with monkeypatch.context() as outage:
+        outage.setattr(jwt.PyJWKClient, "fetch_data", unavailable)
+        assert await _client_of(headers) == SOCKET_IP
+
+    assert await _client_of(headers) == "203.0.113.7"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "forge",
     [

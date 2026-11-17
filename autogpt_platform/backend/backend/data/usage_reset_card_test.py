@@ -70,6 +70,9 @@ def table(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
         usage_reset_card, "stripe_call", AsyncMock(return_value=_paid_session())
     )
     monkeypatch.setattr(usage_reset_card, "announce_reset", AsyncMock())
+    # The account is open: neither closed-account guard stops a checkout.
+    monkeypatch.setattr(usage_reset_card, "refuse_closed_account", AsyncMock())
+    monkeypatch.setattr(usage_reset_card, "expire_if_account_closed", AsyncMock())
     return table
 
 

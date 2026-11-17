@@ -71,6 +71,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -137,6 +139,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -193,6 +197,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -215,7 +221,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        uses: ./.github/actions/generate-prisma-client
+        uses: $/.github/actions/generate-prisma-client
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
@@ -232,7 +238,7 @@ jobs:
     name: test (${{ matrix.python-version }}, ${{ matrix.test-shard }})
     permissions:
       contents: read
-    # Each Python leg preserves the complete suite while its four disjoint path
+    # Each Python leg preserves the complete suite while its five disjoint path
     # groups run on separate standard runners. The cap is a hang guard, not a
     # performance budget: on merge_group a cancelled job reads as a failed
     # check and ejects the PR from the queue, so keep it well above p99.
@@ -241,7 +247,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-        test-shard: [data, copilot, util-executor, remainder]
+        test-shard: [data, copilot, copilot-sdk, util-executor, remainder]
     runs-on: ubuntu-latest
 
     services:
@@ -265,14 +271,17 @@ jobs:
           --health-retries 5
           --health-start-period 10s
       clamav:
-        image: clamav/clamav-debian:latest
+        image: clamav/clamav-debian:1.5.4
         ports:
           - 3310:3310
         env:
           CLAMAV_NO_FRESHCLAMD: false
-          CLAMD_CONF_StreamMaxLength: 50M
-          CLAMD_CONF_MaxFileSize: 100M
-          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_StreamMaxLength: 256M
+          CLAMD_CONF_MaxFileSize: 256M
+          CLAMD_CONF_MaxScanSize: 1024M
+          CLAMD_CONF_PCREMaxFileSize: 256M
+          CLAMD_CONF_AlertExceedsMax: "yes"
+          CLAMD_CONF_MaxScanTime: 300000
           CLAMD_CONF_MaxThreads: 4
           CLAMD_CONF_ReadTimeout: 300
         options: >-
@@ -328,6 +337,7 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           submodules: true
+          persist-credentials: false
 
       - name: Checkout skills catalog
         # The expert roster and the marketplace skills live in a separate
@@ -338,6 +348,7 @@ jobs:
         with:
           repository: Significant-Gravitas/skills-catalog
           path: skills-catalog
+          persist-credentials: false
 
       - name: Configure test shard
         shell: bash
@@ -354,8 +365,8 @@ jobs:
             copilot|remainder)
               database_name="ci_${MATRIX_TEST_SHARD}"
               ;;
-            util-executor)
-              database_name="ci_util_executor"
+            util-executor|copilot-sdk)
+              database_name="ci_${MATRIX_TEST_SHARD//-/_}"
               ;;
             *)
               echo "Unknown backend test shard: $MATRIX_TEST_SHARD" >&2
@@ -558,7 +569,7 @@ jobs:
         run: poetry install
 
       - name: Generate Prisma Client
-        uses: ./.github/actions/generate-prisma-client
+        uses: $/.github/actions/generate-prisma-client
 
       - name: Wait for isolated stateful services
         wait: stateful-services

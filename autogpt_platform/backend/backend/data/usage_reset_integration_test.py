@@ -9,11 +9,13 @@ from uuid import uuid4
 
 import pytest
 import stripe
+from fastapi import HTTPException
 from prisma.enums import SubscriptionTier
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditTransaction, UsageReset, User
 
 from backend.copilot.usage_clock import clock_from_state
+from backend.data import account_deletion
 from backend.data import usage_clock_integration_fixtures as fixtures
 from backend.data import usage_reset, usage_reset_card
 from backend.data.credit import UserCredit
@@ -327,6 +329,25 @@ async def test_opening_a_checkout_grants_nothing(billing_user, stripe_side: Stri
     # It can only be paid while the weekly window it was opened in lasts.
     assert asked["expires_at"] == NOW + usage_reset_card.CHECKOUT_LIFETIME_SECONDS
     assert "session_id={CHECKOUT_SESSION_ID}" in asked["success_url"]
+
+
+@pytest.mark.asyncio
+async def test_a_closed_account_gets_no_checkout(
+    billing_user, stripe_side: Stripe, monkeypatch: pytest.MonkeyPatch
+):
+    """Closing an account expires its open Checkouts; it must get no new one,
+    also for the moments a token from before the close still works."""
+    await save_billing_clock(billing_user, PERIOD)
+    monkeypatch.setattr(
+        account_deletion, "is_account_closed", AsyncMock(return_value=True)
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        await _open(billing_user)
+
+    assert refused.value.status_code == 401
+    assert stripe_side.created == []
+    assert await UsageReset.prisma().count(where={"userId": billing_user}) == 0
 
 
 @pytest.mark.asyncio

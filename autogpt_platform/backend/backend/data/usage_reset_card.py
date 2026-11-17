@@ -16,10 +16,12 @@ from prisma.models import UsageReset
 from pydantic import BaseModel
 
 from backend.copilot.usage_clock import clock_from_state
+from backend.data.account_deletion import refuse_closed_account
 from backend.data.credit import get_stripe_customer_id
 from backend.data.pro_activation import get_usage_activation_state
 from backend.data.stripe_client import stripe_call
 from backend.data.stripe_invoice_payments import stripe_id
+from backend.data.subscription_checkout import expire_if_account_closed
 from backend.data.usage_reset import ResetPurchase, announce_reset, find_reset_purchase
 from backend.util.settings import Settings
 
@@ -305,7 +307,10 @@ async def _create_checkout(
         "purchase_key": purchase_key,
         "tier": tier.value,
     }
-    return await stripe_call(
+    # Past the auth cache, before a Stripe customer is made: closing expires
+    # the open Checkouts, and a closed account must get none.
+    await refuse_closed_account(user_id)
+    session = await stripe_call(
         stripe.checkout.Session.create_async,
         customer=await get_stripe_customer_id(user_id),
         line_items=[
@@ -341,6 +346,8 @@ async def _create_checkout(
         customer_update={"address": "auto"},
         metadata=metadata,
     )
+    await expire_if_account_closed(user_id, session.id)
+    return session
 
 
 def _pays_for(session: stripe.checkout.Session, row: UsageReset) -> bool:

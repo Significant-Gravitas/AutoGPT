@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install requests pyyaml
       - name: Test status checker
         run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
       - name: Check PR Status
@@ -36,3 +36,30 @@ jobs:
           python .github/workflows/scripts/check_actions_status.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The job above runs only the base branch's scripts, so a pull request can't
+  # change the check that gates it. A pull request's own workflows and scripts
+  # still need testing: a new release workflow without a tag check would
+  # otherwise pass and then fail every later pull request. This job runs that
+  # pull-request code on its own runner with no token, so it can't reach the
+  # gate's files; the gate fails if this job does.
+  head-script-tests:
+    name: Test workflow scripts (PR head)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pyyaml
+      - name: Test the pull request's workflows and scripts
+        run: python -m unittest discover -s .github/workflows/scripts -p "test_*.py"
