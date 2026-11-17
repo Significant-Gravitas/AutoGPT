@@ -41,6 +41,10 @@ class DesktopBrowserTool(BaseTool):
     """Act in the desktop's browser, the one the user watches, by refs from
     its accessibility snapshot."""
 
+    # ``look`` writes a screenshot to the workspace, which another call in the
+    # same message may list or read.
+    writes_files = True
+
     @property
     def name(self) -> str:
         return "desktop_browser"
@@ -116,9 +120,7 @@ class DesktopBrowserTool(BaseTool):
                 session_id=session_id,
             )
         try:
-            async with driver.call_lock(
-                sandbox.sandbox_id, driver.MAX_CALL_SECONDS + 120
-            ):
+            async with driver.call_lock(sandbox.sandbox_id, driver.LOCK_HOLD_SECONDS):
                 # Checked under the lock: the snapshot it is checked against
                 # is still the newest when the call runs.
                 parsed = driver.parse_call(
@@ -156,6 +158,12 @@ class DesktopBrowserTool(BaseTool):
         groups = [driver.commands_for(a, look_path) for a in actions]
         receipts = await self._act(sandbox, session_name, actions, groups)
         observation = await self._observe(sandbox, session_name)
+        if observation is None:
+            # A snapshot-only call ran no command of its own: it did what it
+            # was asked only if the snapshot came back.
+            for receipt in receipts:
+                if receipt.action == "snapshot" and receipt.status == "completed":
+                    receipt.status, receipt.reason = "unknown", "no_snapshot"
         # Every older ref_scope is void now, whether or not this one came back.
         token = await driver.issue_scope(
             sandbox.sandbox_id, observation.refs if observation else []
@@ -259,7 +267,14 @@ class DesktopBrowserTool(BaseTool):
         )
         if look is None:
             return None
-        data = await driver.read_screenshot(sandbox, look_path)
+        try:
+            data = await driver.read_screenshot(sandbox, look_path)
+        except Exception:
+            logger.warning(
+                "[desktop_browser] could not read the screenshot", exc_info=True
+            )
+            look.result["error"] = "the screenshot could not be read"
+            return None
         if data is None:
             look.result["error"] = "screenshot over the size limit"
             return None
@@ -269,16 +284,20 @@ class DesktopBrowserTool(BaseTool):
         filename = (
             f"desktop-{datetime.now(UTC):%Y%m%d-%H%M%S}-{secrets.token_hex(3)}.png"
         )
-        written = await WriteWorkspaceFileTool()._execute(
-            user_id=user_id,
-            session=session,
-            filename=filename,
-            content_base64=base64.b64encode(data).decode(),
-        )
-        if not isinstance(written, WorkspaceWriteResponse):
-            logger.warning(
-                "[desktop_browser] could not save %s: %s", filename, written.message
+        try:
+            written = await WriteWorkspaceFileTool()._execute(
+                user_id=user_id,
+                session=session,
+                filename=filename,
+                content_base64=base64.b64encode(data).decode(),
             )
+        except Exception:
+            logger.warning(
+                "[desktop_browser] could not save %s", filename, exc_info=True
+            )
+            written = None
+        if not isinstance(written, WorkspaceWriteResponse):
+            logger.warning("[desktop_browser] could not save %s", filename)
             look.result["error"] = "screenshot could not be saved to the workspace"
             return None
         look.result["file_id"] = written.file_id

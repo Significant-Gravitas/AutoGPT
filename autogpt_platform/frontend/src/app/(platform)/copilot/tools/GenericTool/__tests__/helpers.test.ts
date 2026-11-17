@@ -207,6 +207,27 @@ describe("getAnimationText", () => {
     expect(getAnimationText(part, "bash")).toBe("Running: ls -la");
   });
 
+  it("shows a stopped desktop_browser call as stopped, a full one as completed", () => {
+    const stopped = makePart({
+      type: "tool-desktop_browser",
+      state: "output-available",
+      output: {
+        receipts: [
+          { action: "click", status: "not_started", reason: "stale_ref" },
+        ],
+      },
+    });
+    expect(getAnimationText(stopped, "browser")).toBe("Browser action stopped");
+    const done = makePart({
+      type: "tool-desktop_browser",
+      state: "output-available",
+      output: JSON.stringify({
+        receipts: [{ action: "goto", status: "completed" }],
+      }),
+    });
+    expect(getAnimationText(done, "browser")).toBe("Browser action completed");
+  });
+
   it("shows generic streaming text for bash without input", () => {
     const part = makePart({
       type: "tool-bash_exec",

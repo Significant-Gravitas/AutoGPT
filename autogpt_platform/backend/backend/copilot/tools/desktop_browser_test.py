@@ -229,3 +229,32 @@ async def test_a_busy_browser_runs_nothing():
     result = await _call(patches, actions=[{"action": "state"}])
     assert isinstance(result, ErrorResponse) and result.error == "browser_busy"
     batch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_snapshot_that_did_not_come_back_is_not_completed():
+    # A snapshot-only call runs no command of its own; the observation fails.
+    patches, _ = _patched(batches=[[], TimeoutError()])
+    result = await _call(patches, actions=[{"action": "snapshot"}])
+    assert isinstance(result, DesktopBrowserResponse)
+    assert (result.receipts[0]["status"], result.receipts[0]["reason"]) == (
+        "unknown",
+        "no_snapshot",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_screenshot_that_cannot_be_read_keeps_the_receipts():
+    patches, _ = _patched(batches=[[_ok({"path": "/tmp/x.png"})], _OBSERVED])
+    patches.append(
+        patch(f"{_D}.read_screenshot", AsyncMock(side_effect=RuntimeError("gone")))
+    )
+    result = await _call(patches, actions=[{"action": "look"}])
+    assert isinstance(result, DesktopBrowserResponse)
+    assert result.receipts[0]["status"] == "completed"
+    assert result.receipts[0]["result"]["error"] == "the screenshot could not be read"
+    assert result.screenshot_file_id is None and result.ref_scope == "new-scope"
+
+
+def test_it_runs_on_its_own_in_a_message_because_look_writes_a_file():
+    assert DesktopBrowserTool.writes_files is True
