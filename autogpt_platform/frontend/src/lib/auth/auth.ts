@@ -58,7 +58,6 @@ import {
   readSignupGateConfig,
   SIGN_UP_NOT_ALLOWED_CODE,
 } from "./signup-gate";
-import { getMobileAppConfig, mobileAppOrigin } from "./mobile-app-origin";
 import { supabaseBridge } from "./supabase-bridge";
 import { getMicrosoftLoginProvider } from "./microsoft-login";
 import { assertMicrosoftSignUpAllowed } from "./microsoft-sign-up-policy";
@@ -133,8 +132,6 @@ function getRequestIP(ctx: HookContext) {
   if (!headers || !ctx?.context) return null;
   return getTrustedClientIP(getIP(headers, ctx.context.options));
 }
-
-const mobileAppConfig = getMobileAppConfig();
 
 export const auth = betterAuth({
   baseURL,
@@ -515,7 +512,6 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
-    ...(mobileAppConfig ? [mobileAppOrigin(mobileAppConfig, baseURL)] : []),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],

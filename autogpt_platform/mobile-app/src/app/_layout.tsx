@@ -9,16 +9,15 @@ import {
   type Theme,
 } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { applyAppearance, readAppearance } from "@/lib/appearance";
-import { authClient } from "@/lib/auth/client";
+import { useSession } from "@/lib/auth/nativeSession";
 import { CachePersistence } from "@/components/CachePersistence";
-import { queryClient } from "@/lib/session";
+import { queryClient, signOutIfSessionEnded } from "@/lib/session";
 import { createStyles, useColors, useScheme, type Colors, type Scheme } from "@/lib/theme";
+import { useMountEffect } from "@/lib/useMountEffect";
 
 // Before the first render, so the app opens in the scheme picked last time.
 applyAppearance(readAppearance());
@@ -43,6 +42,9 @@ export default function RootLayout() {
   const styles = useStyles();
   const scheme = useScheme();
   const colors = useColors();
+  useMountEffect(() => {
+    void signOutIfSessionEnded();
+  });
   return (
     <GestureHandlerRootView style={styles.root}>
       <KeyboardProvider>
@@ -58,15 +60,8 @@ export default function RootLayout() {
 }
 
 function RootStack() {
-  const styles = useStyles();
-  const { data: session, isPending } = authClient.useSession();
-  const [hasSettled, setHasSettled] = useState(false);
-
-  // Every refetch (e.g. on app focus) reports isPending again while signed
-  // out; only the first one may blank the screen, or typed login text is lost.
-  if (!isPending && !hasSettled) setHasSettled(true);
-  if (!hasSettled) return <View style={styles.root} />;
-
+  // Read from the phone, so the first render already knows who is signed in.
+  const session = useSession();
   const userID = session?.user.id;
   return (
     <>

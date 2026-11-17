@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Linking } from "react-native";
 import type { WebView } from "react-native-webview";
@@ -7,7 +6,8 @@ import type {
   WebViewNavigation,
 } from "react-native-webview/lib/WebViewTypes";
 
-import { authClient } from "@/lib/auth/client";
+import { useSession } from "@/lib/auth/nativeSession";
+import { sessionCookieHeader } from "@/lib/auth/sessionHelpers";
 import { FRONTEND_URL } from "@/lib/env";
 
 import {
@@ -18,12 +18,10 @@ import {
 } from "./helpers";
 
 export function useSettingsScreen() {
-  const cookie = useQuery({
-    queryKey: ["auth", "cookie"],
-    queryFn: () => authClient.getCookie(),
-    staleTime: 0,
-    gcTime: 0,
-  });
+  const session = useSession();
+  const cookie = session
+    ? sessionCookieHeader(session.token, FRONTEND_URL)
+    : "";
   const webViewRef = useRef<WebView<object>>(null);
   // One page change can report several states; go back only once for it.
   const isGoingBack = useRef(false);
@@ -72,15 +70,12 @@ export function useSettingsScreen() {
     setIsBlocked(false);
     hasShownSettings.current = false;
     setWebViewKey((key) => key + 1);
-    void cookie.refetch();
   }
 
   return {
     settingsURL: `${FRONTEND_URL}/settings`,
-    cookie: cookie.data,
-    script:
-      cookie.data === undefined ? "" : cookieScript(cookie.data, FRONTEND_URL),
-    isError: cookie.isError,
+    cookie,
+    script: cookieScript(cookie, FRONTEND_URL),
     isBlocked,
     webViewKey,
     retry,

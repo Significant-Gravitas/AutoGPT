@@ -1,5 +1,5 @@
-import { authClient } from "./client";
 import { SignedOutError } from "./errors";
+import { authRequest, hasSession } from "./nativeSession";
 
 const REFRESH_MARGIN_MS = 60_000;
 const FALLBACK_LIFETIME_MS = 50 * 60_000;
@@ -38,15 +38,21 @@ export function clearAccessToken() {
 async function mintAccessToken() {
   const startedIn = generation;
   cached = null;
-  const { data, error } = await authClient.$fetch<{ token: string }>("/token");
-  if (error && error.status !== 401 && error.status !== 403) {
-    // Not a dead session (a 5xx, say), so stay signed in. A plain Error,
-    // since ApiError's module imports this one.
+  if (!hasSession()) throw new SignedOutError();
+  const response = await authRequest("/token").catch(() => null);
+  const isDeadSession = response?.status === 401 || response?.status === 403;
+  if (!response || (!response.ok && !isDeadSession)) {
+    // Not a dead session (offline, or a 503 while the auth service is
+    // down), so stay signed in. A plain Error, since ApiError's module
+    // imports this one.
     throw new Error(
       "Can't reach AutoGPT. Check your connection and try again.",
     );
   }
-  if (error || !data?.token) throw new SignedOutError();
+  const data = isDeadSession
+    ? null
+    : ((await response.json().catch(() => null)) as { token?: unknown } | null);
+  if (typeof data?.token !== "string") throw new SignedOutError();
   if (generation === startedIn) {
     cached = { token: data.token, expiresAt: readExpiry(data.token) };
   }

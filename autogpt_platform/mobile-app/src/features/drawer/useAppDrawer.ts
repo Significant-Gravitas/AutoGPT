@@ -10,14 +10,14 @@ import {
 } from "@/features/drawer/helpers";
 import { chatKeys, listSessionsPage } from "@/lib/api/chat";
 import { expertKeys, listExperts } from "@/lib/api/experts";
-import { authClient } from "@/lib/auth/client";
+import { useSession } from "@/lib/auth/nativeSession";
 import { signOut } from "@/lib/session";
 
 const CHAT_PATH_PREFIX = "/chat/";
 
 export function useAppDrawer(navigation: DrawerContentComponentProps["navigation"]) {
   const pathname = usePathname();
-  const { data: session } = authClient.useSession();
+  const session = useSession();
   const [query, setQuery] = useState("");
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: chatKeys.sessions,
@@ -57,8 +57,8 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     navigation.closeDrawer();
   }
 
+  // No closeDrawer: signing out takes this drawer off the screen at once.
   function handleSignOut() {
-    navigation.closeDrawer();
     void signOut();
   }
 

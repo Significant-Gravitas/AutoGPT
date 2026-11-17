@@ -22,7 +22,7 @@ Sign-up, onboarding, billing and paywalls, social login, connecting integrations
 
 ## Run it
 
-1. In `autogpt_platform/frontend/.env` set `AUTH_MOBILE_APP_SCHEME=autogpt-app`, then run the frontend and backend as usual.
+1. Run the frontend and backend as usual. Sign-in needs no extra setting.
 2. In this folder:
 
    ```sh
@@ -33,13 +33,17 @@ Sign-up, onboarding, billing and paywalls, social login, connecting integrations
 
 3. Press `i` for the iOS simulator or `a` for the Android emulator, or scan the QR code with Expo Go.
 
-Expo Go sends an `exp://` origin, which the web app accepts only when it runs with `NODE_ENV=development` (`pnpm dev`). Against the docker compose frontend, sign-in from Expo Go fails.
-
 `localhost` only works on the iOS simulator. On the Android emulator use `10.0.2.2` in `.env.local`; on a phone use your computer's address on the local network.
 
-### How sign-in works on the server
+### How sign-in works
 
-With `AUTH_MOBILE_APP_SCHEME=autogpt-app`, the web app's auth accepts a request whose `expo-origin` header is exactly `autogpt-app://` (and, in development only, any `exp://` origin from Expo Go) as if it came from the site itself. The app scheme is never trusted as a redirect or callback URL, so the app sends no `callbackURL`. Without the variable, auth works as before.
+The app follows the auth service's contract for installed apps in [`docs/engineering/native-mobile/backend-handoff.md`](../../docs/engineering/native-mobile/backend-handoff.md), so the web app needs no change for it:
+
+- It signs in at `/api/auth/sign-in/email` with the `X-AutoGPT-Native: 1` header and no cookie or Origin. The answer's `set-auth-token` header is the signed session credential, which the app keeps in the phone's key store, one per server.
+- It sends that credential as a bearer to the auth service only: `/api/auth/token` swaps it for the short-lived token the backend takes, `/api/auth/get-session` checks at launch that the session still stands, and `/api/auth/sign-out` ends it.
+- Dictation and Settings use web routes that read a cookie, so for those two the app sends the same credential as the session cookie.
+
+A web app from before that contract answers a sign-in with a cookie only, and the app then says the server can't sign it in yet.
 
 ## Environment
 

@@ -1,18 +1,17 @@
-import { ActivityIndicator, Platform, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { WebView } from "react-native-webview";
 
 import { Button } from "@/components/Button";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useSettingsScreen } from "@/features/settings/useSettingsScreen";
-import { createStyles, spacing, type, useColors } from "@/lib/theme";
+import { createStyles, spacing, type } from "@/lib/theme";
 
 export default function SettingsScreen() {
   const {
     settingsURL,
     cookie,
     script,
-    isError,
     isBlocked,
     webViewKey,
     retry,
@@ -21,7 +20,6 @@ export default function SettingsScreen() {
     handleStateChange,
   } = useSettingsScreen();
   const styles = useStyles();
-  const colors = useColors();
 
   function renderNotice(message: string) {
     return (
@@ -33,19 +31,9 @@ export default function SettingsScreen() {
   }
 
   function renderBody() {
-    if (isError) {
-      return renderNotice("Couldn't open Settings. Try again.");
-    }
     if (isBlocked) {
       return renderNotice(
         "Settings didn't open here. Try again, or open Settings on the web.",
-      );
-    }
-    if (cookie === undefined) {
-      return (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.textTertiary} />
-        </View>
       );
     }
     return (

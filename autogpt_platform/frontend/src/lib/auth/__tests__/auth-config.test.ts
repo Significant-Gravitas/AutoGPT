@@ -15,17 +15,6 @@ vi.mock("better-auth/plugins", () => ({
 vi.mock("../supabase-bridge", () => ({
   supabaseBridge: vi.fn(() => ({ id: "supabase-bridge" })),
 }));
-const mobileAppOriginMock = vi.fn();
-vi.mock("../mobile-app-origin", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../mobile-app-origin")>();
-  return {
-    ...actual,
-    mobileAppOrigin: (...args: Parameters<typeof actual.mobileAppOrigin>) => {
-      mobileAppOriginMock(...args);
-      return actual.mobileAppOrigin(...args);
-    },
-  };
-});
 const sendAuthEmailMock = vi.fn();
 vi.mock("../email", () => ({
   sendAuthEmail: (...args: unknown[]) => sendAuthEmailMock(...args),
@@ -98,12 +87,6 @@ interface CapturedAuthOptions {
   database: { type: string; transaction?: boolean };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
-  trustedOrigins?: unknown;
-}
-
-// Read after loadAuthOptions, so it comes from the same module registry as the config.
-async function appleTrustedOrigins() {
-  return (await import("../apple-provider")).appleTrustedOrigins;
 }
 
 async function loadAuthOptions(): Promise<CapturedAuthOptions> {
@@ -136,11 +119,9 @@ const PROVIDER_ENV_KEYS = [
 beforeEach(() => {
   sendAuthEmailMock.mockReset();
   provisionPlatformUserMock.mockReset();
-  mobileAppOriginMock.mockReset();
   for (const key of PROVIDER_ENV_KEYS) {
     vi.stubEnv(key, "");
   }
-  vi.stubEnv("AUTH_MOBILE_APP_SCHEME", "");
 });
 
 afterEach(() => {
@@ -324,30 +305,6 @@ describe("auth config", () => {
       "supabase-bridge",
       "next-cookies",
     ]);
-    expect(options.trustedOrigins).toBe(await appleTrustedOrigins());
-    expect(mobileAppOriginMock).not.toHaveBeenCalled();
-  });
-
-  it("lets the mobile app pass the origin check without trusting its scheme", async () => {
-    vi.stubEnv("AUTH_MOBILE_APP_SCHEME", "autogpt-app");
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("BETTER_AUTH_URL", "https://platform.example.com");
-    const options = await loadAuthOptions();
-
-    // The scheme is not added to the trusted origins; the plugin vouches for it instead.
-    expect(options.trustedOrigins).toBe(await appleTrustedOrigins());
-    expect(options.plugins.map((plugin) => plugin.id)).toEqual([
-      "admin",
-      "bearer",
-      "jwt",
-      "supabase-bridge",
-      "mobile-app-origin",
-      "next-cookies",
-    ]);
-    expect(mobileAppOriginMock).toHaveBeenCalledWith(
-      { scheme: "autogpt-app", allowExpoGo: false },
-      "https://platform.example.com",
-    );
   });
 });
 

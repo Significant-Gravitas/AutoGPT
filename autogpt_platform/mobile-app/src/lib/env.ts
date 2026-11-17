@@ -9,5 +9,3 @@ export const FRONTEND_URL = withoutTrailingSlash(
 export const API_URL = withoutTrailingSlash(
   process.env.EXPO_PUBLIC_API_URL || "http://localhost:8006",
 );
-
-export const APP_SCHEME = "autogpt-app";

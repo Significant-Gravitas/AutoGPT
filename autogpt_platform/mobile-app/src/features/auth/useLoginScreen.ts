@@ -1,13 +1,11 @@
 import { useState } from "react";
 
-import { authClient } from "@/lib/auth/client";
+import { signInWithEmail } from "@/lib/auth/nativeSession";
+import {
+  NO_APP_SESSION_CODE,
+  type SignInFailure,
+} from "@/lib/auth/sessionHelpers";
 import { whenSignedOut } from "@/lib/session";
-
-interface SignInError {
-  code?: string;
-  message?: string;
-  status?: number;
-}
 
 export function useLoginScreen() {
   const [email, setEmail] = useState("");
@@ -23,13 +21,11 @@ export function useLoginScreen() {
     setError(null);
     setIsSubmitting(true);
     try {
-      // A late reply to the last sign-out would wipe this sign-in's cookie.
+      // The last sign-out clears the cache again when it ends, which would
+      // take this sign-in's data with it.
       await whenSignedOut();
-      const result = await authClient.signIn.email({
-        email: email.trim(),
-        password,
-      });
-      if (result.error) setError(errorCopy(result.error));
+      const failure = await signInWithEmail(email.trim(), password);
+      if (failure) setError(errorCopy(failure));
     } catch {
       setError(errorCopy(null));
     } finally {
@@ -49,7 +45,7 @@ export function useLoginScreen() {
   };
 }
 
-function errorCopy(error: SignInError | null) {
+function errorCopy(error: SignInFailure | null) {
   if (error?.code === "EMAIL_NOT_VERIFIED") {
     return "Verify your email first. Open the link we sent you, then sign in here.";
   }
@@ -57,8 +53,8 @@ function errorCopy(error: SignInError | null) {
     return "Can't reach AutoGPT. Check your connection and try again.";
   }
   if (error.status === 401) return "Wrong email or password.";
-  if (error.code?.endsWith("_ORIGIN")) {
-    return "You can't sign in right now. Try again later.";
+  if (error.code === NO_APP_SESSION_CODE) {
+    return "This server can't sign the app in yet. Update it and try again.";
   }
   return error.message || "You can't sign in right now. Try again later.";
 }
