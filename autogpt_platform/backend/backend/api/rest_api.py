@@ -116,6 +116,7 @@ from .external.v2.mcp_server import (
 )
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .features.integrations.sign_in_connection import sign_in_connection_router
 from .middleware.analytics import AnalyticsContextMiddleware
 from .middleware.body_limit import RequestBodyLimitMiddleware
 from .middleware.compression import BoundedGZipMiddleware
@@ -399,6 +400,11 @@ app.include_router(
     auth_email_routes.auth_email_router,
     prefix="/api/auth/email",
     tags=["auth-email"],
+)
+app.include_router(
+    sign_in_connection_router,
+    prefix="/api/auth",
+    tags=["integrations"],
 )
 app.include_router(
     integrations_router,

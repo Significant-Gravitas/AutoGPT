@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Optional
 
 from google.auth.exceptions import RefreshError
@@ -17,8 +18,16 @@ from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 from .refresh_failure import OAuthTokenRequestError, describe_refresh_failure
+from .sign_in import SignInClientMismatch, SignInConnectionError
 
 logger = logging.getLogger(__name__)
+
+
+def _expires_at(expires_in: object) -> int | None:
+    try:
+        return int(time.time()) + int(str(expires_in))
+    except ValueError:
+        return None
 
 
 class _StatusRecordingRequest(Request):
@@ -50,6 +59,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         "openid",
     ]
     # --8<-- [end:GoogleOAuthHandlerExample]
+    TOKEN_INFO_ENDPOINT = "https://oauth2.googleapis.com/tokeninfo"
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -135,6 +145,44 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
 
         return credentials
+
+    async def credentials_from_sign_in(
+        self,
+        access_token: str,
+        refresh_token: str | None,
+        expires_at: int | None,
+    ) -> OAuth2Credentials:
+        """The connection a Google sign-in's tokens make.
+
+        Google's tokeninfo says which OAuth client issued the token, what it
+        grants and whose it is. Only this handler's own client is accepted:
+        Google renews a refresh token only for the client it was issued to.
+        """
+        # In the body, not the query string, so the token stays out of URLs.
+        response = await Requests(raise_for_status=False, retry_max_attempts=3).post(
+            self.TOKEN_INFO_ENDPOINT,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={"access_token": access_token},
+        )
+        if not response.ok:
+            raise SignInConnectionError("Google didn't accept the sign-in's token.")
+        info = response.json()
+        if self.client_id not in (info.get("azp"), info.get("aud")):
+            raise SignInClientMismatch(
+                "Google sign-in uses a different OAuth client than Google "
+                "connections."
+            )
+        email = info.get("email")
+        return OAuth2Credentials(
+            provider=self.PROVIDER_NAME,
+            title=None,
+            username=email if isinstance(email, str) and email else None,
+            access_token=SecretStr(access_token),
+            refresh_token=SecretStr(refresh_token) if refresh_token else None,
+            access_token_expires_at=expires_at or _expires_at(info.get("expires_in")),
+            refresh_token_expires_at=None,
+            scopes=str(info.get("scope", "")).split(),
+        )
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         # Google's revoke endpoint only needs the token in the request body;

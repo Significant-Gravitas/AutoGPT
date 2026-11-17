@@ -3687,6 +3687,48 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/sign-in-connection": {
+      "post": {
+        "tags": ["integrations"],
+        "summary": "Keep the connection a Google or Microsoft sign-in granted",
+        "operationId": "connectFromSignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInConnectionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not the frontend's sign-in connection token"
+          },
+          "409": {
+            "description": "Login and connections use different OAuth clients"
+          },
+          "422": {
+            "description": "The provider didn't accept the sign-in's tokens"
+          },
+          "501": {
+            "description": "The provider's connections aren't configured"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }]
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -37045,6 +37087,55 @@
         ],
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
+      },
+      "SignInConnectionRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["google", "microsoft"],
+            "title": "Provider"
+          },
+          "access_token": {
+            "type": "string",
+            "format": "password",
+            "title": "Access Token",
+            "writeOnly": true
+          },
+          "refresh_token": {
+            "anyOf": [
+              { "type": "string", "format": "password", "writeOnly": true },
+              { "type": "null" }
+            ],
+            "title": "Refresh Token"
+          },
+          "expires_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Expires At"
+          },
+          "scope": { "type": "string", "title": "Scope", "default": "" },
+          "id_token": {
+            "anyOf": [
+              { "type": "string", "format": "password", "writeOnly": true },
+              { "type": "null" }
+            ],
+            "title": "Id Token"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "access_token"],
+        "title": "SignInConnectionRequest"
+      },
+      "SignInConnectionResponse": {
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["created", "updated", "kept", "skipped"],
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": ["result"],
+        "title": "SignInConnectionResponse"
       },
       "SkillLearningDetail": {
         "properties": {
