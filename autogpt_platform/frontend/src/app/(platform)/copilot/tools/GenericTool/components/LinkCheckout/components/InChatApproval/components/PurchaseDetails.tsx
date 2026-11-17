@@ -5,6 +5,8 @@ interface Props {
   address: string;
   sharedPage: boolean;
   total: string;
+  previousTotal: string;
+  reason: string;
   context: string;
   testMode: boolean;
   assistantName: string;
@@ -15,6 +17,8 @@ export function PurchaseDetails({
   address,
   sharedPage,
   total,
+  previousTotal,
+  reason,
   context,
   testMode,
   assistantName,
@@ -39,6 +43,14 @@ export function PurchaseDetails({
       <dd className="font-medium text-foreground-strong">
         {testMode ? `${total} · test, no charge` : total}
       </dd>
+      {previousTotal && (
+        <>
+          <dt className="text-foreground-tertiary">Raised from</dt>
+          <dd className="text-foreground-body">
+            {reason ? `${previousTotal} · ${reason}` : previousTotal}
+          </dd>
+        </>
+      )}
       <dt className="text-foreground-tertiary">For</dt>
       <dd className="text-foreground-body">{context}</dd>
     </dl>

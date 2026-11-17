@@ -5,6 +5,7 @@ from typing import Literal
 from unittest.mock import AsyncMock
 
 import pytest
+from fakeredis.aioredis import FakeRedis
 
 from backend.util.link_checkout import (
     approval,
@@ -63,25 +64,10 @@ def principal():
     return Principal(user_id="owner", session_id="chat")
 
 
-class FakeRedis:
-    """The two commands the approval store uses."""
-
-    def __init__(self):
-        self.values: dict[str, str] = {}
-
-    async def get(self, key: str) -> str | None:
-        return self.values.get(key)
-
-    async def set(self, key: str, value: str, nx: bool = False, ex: int = 0) -> bool:
-        if nx and key in self.values:
-            return False
-        self.values[key] = value
-        return True
-
-
 @pytest.fixture
 def fake_redis(monkeypatch) -> FakeRedis:
-    redis = FakeRedis()
+    """The approval store's Redis, Lua scripts included."""
+    redis = FakeRedis(decode_responses=True)
     monkeypatch.setattr(approval, "get_redis_async", AsyncMock(return_value=redis))
     return redis
 
@@ -99,14 +85,25 @@ class FakeWorker:
         # Link's refusal of the next create: "link_rejected", "link_duplicate".
         self.create_error: Literal["link_rejected", "link_duplicate"] | None = None
         self.delegated_error: Literal["link_rejected", "link_duplicate"] | None = None
+        self.raise_error: Literal["link_rejected"] | None = None
+        # What Link reports right after raising a request's total.
+        self.raise_status = "pending_approval"
+        # The total each job carried, in order: a raise sends the new one.
+        self.amounts: list[int] = []
         # Link answers a create with a request for another amount.
         self.mismatched_create = False
+        # The next cancel fails, so Link never confirms it.
+        self.cancel_fails = False
+        # Each create gets its own request; a canceled one stays canceled.
+        self.created = 0
+        self.canceled: set[str] = set()
         # Status checks wait here for a second one, for a while: two
         # completions meet past the attempt check unless something holds one.
         self.status_gate: asyncio.Barrier | None = None
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
+        self.amounts.append(job.intent.plan.amount)
         if job.action == "status" and self.status_gate is not None:
             try:
                 async with asyncio.timeout(1):
@@ -124,11 +121,25 @@ class FakeWorker:
             return WorkerResult(error=self.delegated_error)
         if job.action == "create" and self.create_error:
             return WorkerResult(error=self.create_error)
+        if job.action == "cancel" and self.cancel_fails:
+            self.cancel_fails = False
+            return WorkerResult(error="private_checkout_failed")
+        if job.action == "raise" and self.raise_error:
+            return WorkerResult(error=self.raise_error)
         spend = await synthetic_spend(job)
+        if job.action in ("create", "create_delegated"):
+            self.created += 1
+            spend.id = f"lsrq_fixture{self.created}"
         if job.action == "create" and self.mismatched_create:
             spend.amount += 1
         if job.action == "cancel":
             spend.status = "canceled"
+            self.canceled.add(spend.id)
+        elif spend.id in self.canceled:
+            spend.status = "canceled"
+        elif job.action == "raise":
+            # Raised, then waiting for the customer's approval in Link again.
+            spend.status = self.raise_status
         elif job.action != "create":
             spend.status = self.status
         return WorkerResult(spend=spend)

@@ -78,6 +78,7 @@ export function getToolCategory(toolName: string): ToolCategory {
     case "browser_act":
     case "browser_screenshot":
     case "browser_request_link_payment":
+    case "browser_raise_link_payment":
     case "browser_complete_link_payment":
     case "browser_link_payment_status":
     case "browser_reset_after_payment":

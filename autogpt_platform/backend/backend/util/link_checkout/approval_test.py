@@ -9,6 +9,7 @@ from backend.util.link_checkout.approval import (
     decide,
     open_approval,
     read_approval,
+    reopen_approval,
 )
 
 CHECKOUT = "c" * 32
@@ -55,7 +56,7 @@ async def test_approval_waits_for_the_customer_then_records_their_click(fake_red
 async def test_records_are_encrypted_at_rest(fake_redis):
     await open_approval(pending())
     await decide(CHECKOUT, "owner", "chat", approve=True, user_agent="Mozilla/5.0")
-    stored = " ".join(fake_redis.values.values())
+    stored = " ".join(await fake_redis.mget(await fake_redis.keys()))
     assert "Test store" not in stored
     assert "Mozilla" not in stored
 
@@ -93,8 +94,75 @@ async def test_an_expired_purchase_cannot_be_approved(fake_redis):
 
 
 @pytest.mark.asyncio
+async def test_a_purchase_moved_to_link_is_decided_there(fake_redis):
+    """A raise past the chat's policy moves the approval to Link: the card
+    says so, rather than that the request expired, and cannot decide it."""
+    await open_approval(pending())
+    await reopen_approval(
+        pending(amount=250, revision=1, previous_amount=100, in_link=True)
+    )
+
+    assert (await read_approval(CHECKOUT)).state == "in_link"
+    with pytest.raises(ApprovalConflict, match="in Link"):
+        await decide(
+            CHECKOUT, "owner", "chat", approve=True, user_agent=None, revision=1
+        )
+
+
+@pytest.mark.asyncio
 async def test_a_purchase_is_recorded_once(fake_redis):
     await open_approval(pending())
     with pytest.raises(RuntimeError):
         await open_approval(pending(amount=1))
     assert (await read_approval(CHECKOUT)).pending.amount == 100
+
+
+@pytest.mark.asyncio
+async def test_a_raised_total_waits_for_a_decision_of_its_own(fake_redis):
+    await open_approval(pending())
+    await decide(CHECKOUT, "owner", "chat", approve=True, user_agent=None)
+
+    await reopen_approval(
+        pending(amount=250, revision=1, previous_amount=100, reason="Tax added")
+    )
+    raised = await read_approval(CHECKOUT)
+
+    assert raised is not None
+    assert raised.state == "awaiting"
+    assert (raised.pending.amount, raised.pending.previous_amount) == (250, 100)
+    assert raised.pending.reason == "Tax added"
+
+
+@pytest.mark.asyncio
+async def test_of_two_raises_finishing_out_of_order_the_later_one_stands(fake_redis):
+    """The record is rewritten after the broker's lock is released, so two
+    raises can reach it in either order. Were the earlier one to land last,
+    the card would show a total the checkout no longer holds and no click
+    could pay it."""
+    await open_approval(pending())
+
+    assert await reopen_approval(pending(amount=300, revision=2))
+    assert not await reopen_approval(pending(amount=250, revision=1))
+    # A retry of the latest revision changes nothing either.
+    assert not await reopen_approval(pending(amount=300, revision=2, reason="x"))
+
+    view = await read_approval(CHECKOUT)
+    assert view is not None
+    assert (view.pending.revision, view.pending.amount) == (2, 300)
+    assert view.pending.reason == ""
+
+
+@pytest.mark.asyncio
+async def test_a_card_showing_the_old_total_cannot_approve_the_new_one(fake_redis):
+    await open_approval(pending())
+    await reopen_approval(pending(amount=250, revision=1, previous_amount=100))
+
+    with pytest.raises(ApprovalConflict):
+        await decide(CHECKOUT, "owner", "chat", approve=True, user_agent=None)
+    assert (await read_approval(CHECKOUT)).state == "awaiting"
+
+    view = await decide(
+        CHECKOUT, "owner", "chat", approve=True, user_agent=None, revision=1
+    )
+    assert view is not None and view.state == "approved"
+    assert view.pending.amount == 250

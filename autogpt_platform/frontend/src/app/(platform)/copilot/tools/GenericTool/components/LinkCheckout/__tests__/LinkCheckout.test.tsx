@@ -147,6 +147,73 @@ describe("LinkCheckout in-chat approval", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("says the total changed when a raise lands before the click", async () => {
+    let raised = false;
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        raised
+          ? approval("awaiting", { amount: 1499, revision: 1 })
+          : approval("awaiting"),
+      ),
+      http.post("*/link-checkouts/:checkoutId/approve", () => {
+        raised = true;
+        return HttpResponse.json(
+          { detail: "This purchase has a newer total" },
+          { status: 409 },
+        );
+      }),
+    );
+    renderCard();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Approve $12.99" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "The total changed to $14.99. Check the purchase and decide again.",
+      ),
+    ).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: "Approve $14.99" }),
+    ).toBeDefined();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("shows a raised total with what it replaced and why, and approves that revision", async () => {
+    let state: LinkPurchaseApproval["state"] = "awaiting";
+    const raised = {
+      amount: 1499,
+      revision: 1,
+      previous_amount: 1299,
+      reason: "Sales tax was added at the last step.",
+    };
+    const decisions: unknown[] = [];
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        approval(state, raised),
+      ),
+      http.post("*/link-checkouts/:checkoutId/approve", async ({ request }) => {
+        decisions.push(await request.json());
+        state = "approved";
+        return HttpResponse.json(approval(state, raised));
+      }),
+    );
+    renderCard();
+
+    const approve = await screen.findByRole("button", {
+      name: "Approve $14.99",
+    });
+    expect(
+      screen.getByText("$12.99 · Sales tax was added at the last step."),
+    ).toBeDefined();
+    await userEvent.click(approve);
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    // The card names the revision it showed, so it can't approve a later one.
+    expect(decisions).toEqual([{ revision: 1 }]);
+  });
+
   it("shows the purchase as the server recorded it, site included", async () => {
     server.use(
       getGetV2GetALinkPurchaseApprovalMockHandler(() =>
@@ -343,6 +410,27 @@ describe("LinkCheckout in-chat approval", () => {
         "Approved. The payment's progress shows in the chat.",
       ),
     ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+  });
+
+  it("points to Link when a raised total moved the approval there", async () => {
+    server.use(
+      getGetV2GetALinkPurchaseApprovalMockHandler(() =>
+        approval("in_link", {
+          amount: 2499,
+          revision: 1,
+          previous_amount: 1299,
+        }),
+      ),
+    );
+    renderCard();
+
+    expect(
+      await screen.findByText(
+        "The new total is waiting for your approval in Link.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/expired/)).toBeNull();
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
   });
 

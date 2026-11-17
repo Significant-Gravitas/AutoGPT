@@ -13,7 +13,6 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from backend.util.link_checkout.link import LINK_API_BASE_URL, LINK_HTTP_TIMEOUT
-from backend.util.link_checkout.models import CheckoutPlan
 
 logger = logging.getLogger(__name__)
 
@@ -37,20 +36,28 @@ class ApprovalPolicy(BaseModel):
     rules: list[ApprovalRule]
 
 
-async def in_app_approval_allowed(access_token: str, plan: CheckoutPlan) -> bool:
+class Purchase(BaseModel):
+    """What a policy rule is checked against."""
+
+    amount: int
+    currency: str
+    payment_method_id: str
+
+
+async def in_app_approval_allowed(access_token: str, purchase: Purchase) -> bool:
     policy = await _fetch_policy(access_token)
-    return policy is not None and any(_covers(rule, plan) for rule in policy.rules)
+    return policy is not None and any(_covers(rule, purchase) for rule in policy.rules)
 
 
-def _covers(rule: ApprovalRule, plan: CheckoutPlan) -> bool:
+def _covers(rule: ApprovalRule, purchase: Purchase) -> bool:
     limit = rule.limits.per_purchase
     return (
         rule.action == "spend_request_create"
-        and limit.currency.lower() == plan.currency
-        and plan.amount <= limit.amount
+        and limit.currency.lower() == purchase.currency
+        and purchase.amount <= limit.amount
         and (
             not rule.allowed_payment_methods
-            or plan.payment_method_id in rule.allowed_payment_methods
+            or purchase.payment_method_id in rule.allowed_payment_methods
         )
     )
 

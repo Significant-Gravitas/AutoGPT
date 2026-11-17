@@ -11,11 +11,16 @@ import fastapi
 import fastapi.testclient
 import pytest
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from fakeredis.aioredis import FakeRedis
 
 from backend.api.features.chat import link_checkout as routes
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.link_checkout import approval
-from backend.util.link_checkout.approval import PendingApproval, open_approval
+from backend.util.link_checkout.approval import (
+    PendingApproval,
+    open_approval,
+    reopen_approval,
+)
 
 app = fastapi.FastAPI()
 app.include_router(routes.router)
@@ -24,20 +29,6 @@ client = fastapi.testclient.TestClient(app)
 SESSION_ID = "8d2f5c1e-2b7a-4c55-9d0e-3f6a1b2c4d5e"
 CONTEXT = "One paperback from the signed-in cart, shipped to the saved address."
 CHECKOUT_ID = "d" * 32
-
-
-class FakeRedis:
-    def __init__(self):
-        self.values: dict[str, str] = {}
-
-    async def get(self, key: str) -> str | None:
-        return self.values.get(key)
-
-    async def set(self, key: str, value: str, nx: bool = False, ex: int = 0) -> bool:
-        if nx and key in self.values:
-            return False
-        self.values[key] = value
-        return True
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +44,9 @@ def setup_app_auth(mock_jwt_user):
 @pytest.fixture
 def purchase(monkeypatch, test_user_id):
     monkeypatch.setattr(
-        approval, "get_redis_async", AsyncMock(return_value=FakeRedis())
+        approval,
+        "get_redis_async",
+        AsyncMock(return_value=FakeRedis(decode_responses=True)),
     )
 
     async def open_for(user_id: str = test_user_id, expires_in: float = 60):
@@ -97,6 +90,9 @@ async def test_the_card_reads_the_purchase_as_recorded(purchase):
         "currency": "usd",
         "test_mode": True,
         "expires_at": response.json()["expires_at"],
+        "revision": 0,
+        "previous_amount": None,
+        "reason": "",
     }
 
 
@@ -104,8 +100,10 @@ async def test_the_card_reads_the_purchase_as_recorded(purchase):
 async def test_approving_records_the_click_and_is_idempotent(purchase):
     await purchase()
 
-    first = client.post(url("approve"), headers={"User-Agent": "Mozilla/5.0"})
-    again = client.post(url("approve"))
+    first = client.post(
+        url("approve"), json={"revision": 0}, headers={"User-Agent": "Mozilla/5.0"}
+    )
+    again = client.post(url("approve"), json={"revision": 0})
 
     assert first.status_code == again.status_code == 200
     assert first.json()["state"] == "approved"
@@ -118,8 +116,25 @@ async def test_approving_records_the_click_and_is_idempotent(purchase):
 async def test_declined_cannot_be_approved_later(purchase):
     await purchase()
 
-    assert client.post(url("decline")).json()["state"] == "declined"
-    assert client.post(url("approve")).status_code == 409
+    assert client.post(url("decline"), json={"revision": 0}).json()["state"] == (
+        "declined"
+    )
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 409
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("decision", ["approve", "decline"])
+@pytest.mark.parametrize("body", [None, {}])
+async def test_a_decision_must_name_the_revision_the_card_showed(
+    purchase, decision, body
+):
+    """A bodiless POST is the easiest request to forge from another site, so
+    no decision is ever one."""
+    await purchase()
+
+    assert client.post(url(decision), json=body).status_code == 422
+    view = await approval.read_approval(CHECKOUT_ID)
+    assert view is not None and view.state == "awaiting"
 
 
 @pytest.mark.asyncio
@@ -127,7 +142,7 @@ async def test_an_expired_purchase_cannot_be_approved(purchase):
     await purchase(expires_in=-1)
 
     assert client.get(url()).json()["state"] == "expired"
-    assert client.post(url("approve")).status_code == 409
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 409
 
 
 @pytest.mark.asyncio
@@ -135,7 +150,7 @@ async def test_another_users_purchase_is_not_found(purchase):
     await purchase(user_id="someone-else")
 
     assert client.get(url()).status_code == 404
-    assert client.post(url("approve")).status_code == 404
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 404
     view = await approval.read_approval(CHECKOUT_ID)
     assert view is not None and view.state == "awaiting"
 
@@ -145,3 +160,42 @@ def test_a_malformed_checkout_id_is_rejected():
         f"/sessions/{SESSION_ID}/link-checkouts/not-a-checkout/approve"
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_a_raised_purchase_is_decided_on_the_revision_the_card_showed(
+    purchase, test_user_id
+):
+    await purchase()
+    await reopen_approval(
+        PendingApproval(
+            checkout_id=CHECKOUT_ID,
+            user_id=test_user_id,
+            session_id=SESSION_ID,
+            merchant_name="Test store",
+            merchant_url="https://shop.example/checkout",
+            context=CONTEXT,
+            amount=1500,
+            currency="usd",
+            test_mode=True,
+            expires_at=time.time() + 60,
+            revision=1,
+            previous_amount=1250,
+            reason="Sales tax was added on the final step.",
+        )
+    )
+
+    card = client.get(url()).json()
+    assert (card["amount"], card["previous_amount"], card["revision"]) == (
+        1500,
+        1250,
+        1,
+    )
+    assert card["reason"] == "Sales tax was added on the final step."
+    # A card still showing the first total cannot approve the raised one.
+    assert client.post(url("approve"), json={"revision": 0}).status_code == 409
+
+    approved = client.post(url("approve"), json={"revision": 1})
+
+    assert approved.status_code == 200
+    assert approved.json()["state"] == "approved"

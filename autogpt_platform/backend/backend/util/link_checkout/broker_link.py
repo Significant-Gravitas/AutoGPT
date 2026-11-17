@@ -50,6 +50,19 @@ async def create_delegated(
     return _created(result)
 
 
+async def raise_total(intent: CheckoutIntent, token: SecretStr) -> SpendRequest | None:
+    """Raise the checkout's approved Link request to the intent's new total
+    and ask the customer to approve it again in Link (incremental
+    authorization). None when Link won't raise it; the request then stays
+    usable at its old amount."""
+    result = await run_worker(
+        WorkerJob(action="raise", intent=intent, access_token=token)
+    )
+    if result.error == "link_rejected":
+        return None
+    return _created(result)
+
+
 async def status(intent: CheckoutIntent, token: SecretStr) -> SpendRequest:
     result = await run_worker(
         WorkerJob(action="status", intent=intent, access_token=token)

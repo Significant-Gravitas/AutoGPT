@@ -18,15 +18,19 @@ from pydantic import SecretStr
 from websockets.asyncio.server import serve
 
 from backend.util.link_checkout import cdp, network, sites, worker
-from backend.util.link_checkout.models import Card, WorkerJob
+from backend.util.link_checkout.models import Card, CheckoutPlan, WorkerJob
 from backend.util.link_checkout.refusals import (
     FRAME_ELSEWHERE,
     FRAME_NOT_FOUND,
     INVALID_SELECTOR,
     NOT_CARD_FIELDS,
+    PAY_TOKEN_UNAVAILABLE,
     CheckoutRefused,
 )
-from backend.util.link_checkout.synthetic_link import synthetic_spend
+from backend.util.link_checkout.synthetic_link import (
+    SYNTHETIC_PAY_TOKEN,
+    synthetic_spend,
+)
 
 CHECKOUT_URL = "https://shop.example/checkout"
 SELECTORS = {
@@ -37,6 +41,7 @@ SELECTORS = {
     "#note": 15,
     "#month": 16,
     "#year": 17,
+    'input[name="link_pay_token"]': 18,
 }
 
 
@@ -70,6 +75,15 @@ class ScriptedBrowser:
         self.filled: dict[str, str] = {}
         self.clicks = 0
         self.closed = False
+        # Pay buttons the page enables only once the card is in, or never.
+        self.disabled_until_filled: set[str] = set()
+        self.always_disabled: set[str] = set()
+        # A Stripe checkout's "I am an AI agent" option, and what it took.
+        self.steering = False
+        self.steering_ticked = False
+        self.pay_token = ""
+        # The page refuses the token field before setting anything.
+        self.token_refused = False
         self._replies: asyncio.Queue[str] = asyncio.Queue()
 
     async def send(self, raw: str) -> None:
@@ -119,6 +133,20 @@ class ScriptedBrowser:
 
     def _call(self, params: dict) -> dict:
         code = params["functionDeclaration"]
+        if ".AiAgentPaymentSteering').length" in code:
+            return {"value": self.steering}
+        if "box.click()" in code:
+            self.steering_ticked = self.steering
+            return {"value": self.steering}
+        if "data-stripe-merchant-account" in code:
+            return {"value": "acct_test123" if self.steering_ticked else None}
+        if "set.call(el, token)" in code:
+            if self.token_refused:
+                return {"value": False}
+            self.pay_token = params["arguments"][0]["value"]
+            return {"value": True}
+        if "this.name !== 'link_pay_token'" in code:
+            return {"value": "not_ready" if self.pay_token else "ok"}
         if "querySelectorAll" in code:
             selector = params["arguments"][0]["value"]
             if ":visible" in selector:
@@ -145,8 +173,14 @@ class ScriptedBrowser:
     def _check(self, params: dict) -> str:
         selector = params["objectId"].removeprefix("node:")
         names = params["arguments"][0]["value"]
+        allow_disabled = params["arguments"][1]["value"]
         if names is None:
-            return "ok" if selector in self.buttons else "not_card_field"
+            if selector not in self.buttons:
+                return "not_card_field"
+            disabled = selector in self.always_disabled or (
+                selector in self.disabled_until_filled and len(self.filled) < 3
+            )
+            return "not_ready" if disabled and not allow_disabled else "ok"
         if self.autocomplete.get(selector) not in names:
             return "not_card_field"
         return "not_ready" if selector in self.filled else "ok"
@@ -213,8 +247,8 @@ async def test_a_changed_field_stops_before_the_card_is_requested(
 
 @pytest.mark.asyncio
 async def test_an_expired_card_is_never_filled(browser, intent, monkeypatch):
-    async def expired_card(job, include_card=False):
-        spend = await synthetic_spend(job, include_card)
+    async def expired_card(job, include_credential=False):
+        spend = await synthetic_spend(job, include_credential)
         spend.card = Card(
             number=SecretStr("4242424242424242"),
             cvc=SecretStr("987"),
@@ -307,8 +341,8 @@ async def test_a_field_that_changes_after_the_card_is_fetched_leaves_it_unused(
     """Nothing was typed, so the attempt reads as one whose card never reached
     the page, and the broker cancels the unused card."""
 
-    async def fetch_then_change(job, include_card=False):
-        spend = await synthetic_spend(job, include_card)
+    async def fetch_then_change(job, include_credential=False):
+        spend = await synthetic_spend(job, include_credential)
         browser.autocomplete["#number"] = "street-address"
         return spend
 
@@ -382,15 +416,148 @@ async def test_a_selector_the_page_cannot_parse_is_refused_by_name(browser, inte
 
 
 @pytest.mark.asyncio
-async def test_a_frame_url_missing_its_query_is_refused_by_name(browser, intent):
-    """The frame's address is compared whole: a URL without the query string
-    it was loaded with names no frame."""
+async def test_a_frame_url_naming_no_loaded_frame_is_refused_by_name(browser, intent):
     plan = intent.plan.model_copy(
         update={"frame_urls": {"number": "https://shop.example/pay"}}
     )
     with pytest.raises(CheckoutRefused) as refused:
         await cdp.prepare_browser("ws://127.0.0.1:9222/x", plan)
     assert str(refused.value) == FRAME_NOT_FOUND
+
+
+CARD_FRAME = "https://js.stripe.com/v3/elements-inner-card"
+
+
+@pytest.mark.asyncio
+async def test_a_frame_url_without_its_query_finds_the_one_frame_at_that_address(
+    browser, intent, monkeypatch
+):
+    """The agent can rarely read an iframe's full address; the address without
+    its query is enough when only one loaded frame has it."""
+    browser.child_frames = [frame("card", f"{CARD_FRAME}?key=pk_test&id=1", "frame")]
+    intent.plan = intent.plan.model_copy(
+        update={"frame_urls": {"number": CARD_FRAME, "cvc": CARD_FRAME}}
+    )
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "submitted"
+    assert {f.frame_id for f in job.intent.browser.fields if f.role == "number"} == {
+        "card"
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_frame_url_without_its_query_is_refused_when_frames_share_it(
+    browser, intent
+):
+    browser.child_frames = [
+        frame("a", f"{CARD_FRAME}?id=1", "frame"),
+        frame("b", f"{CARD_FRAME}?id=2", "frame"),
+    ]
+    plan = intent.plan.model_copy(update={"frame_urls": {"number": CARD_FRAME}})
+    with pytest.raises(CheckoutRefused) as refused:
+        await cdp.prepare_browser("ws://127.0.0.1:9222/x", plan)
+    assert str(refused.value) == FRAME_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_a_pay_button_enabled_only_once_the_card_is_in_is_clicked_then(
+    browser, intent, monkeypatch
+):
+    browser.disabled_until_filled.add("#pay")
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "submitted"
+    assert browser.clicks == 1
+
+
+@pytest.mark.asyncio
+async def test_a_pay_button_that_never_enables_is_never_clicked(
+    browser, intent, monkeypatch
+):
+    browser.always_disabled.add("#pay")
+    monkeypatch.setattr(worker, "PAY_BUTTON_WAIT_SECONDS", 0.3)
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    # The card was typed, so the outcome stays for Link to settle.
+    assert receipt.status == "outcome_unknown"
+    assert browser.clicks == 0
+    assert browser.closed
+
+
+def pay_token_plan(plan) -> CheckoutPlan:
+    fields = plan.model_dump(exclude={"number", "cvc", "expiry", "exp_month"})
+    return CheckoutPlan.model_validate(
+        {**fields, "execution": "link_pay_token", "test_mode": False}
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_stripe_checkout_gets_the_pay_token_and_never_a_card(
+    browser, intent, monkeypatch
+):
+    browser.steering = True
+    intent.plan = pay_token_plan(intent.plan)
+    requested: list[bool] = []
+
+    async def link(job, include_credential=False):
+        requested.append(include_credential)
+        return await synthetic_spend(job, include_credential)
+
+    monkeypatch.setattr(worker, "request_spend", link)
+    job = await prepared_job(intent)
+
+    assert browser.steering_ticked
+    pay_token = job.intent.browser.pay_token
+    assert pay_token is not None
+    assert pay_token.merchant_account_id == "acct_test123"
+    assert pay_token.frame_url == CHECKOUT_URL
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "submitted"
+    assert requested == [True]
+    assert browser.pay_token == SYNTHETIC_PAY_TOKEN
+    assert browser.filled == {}
+    assert browser.clicks == 1
+    assert browser.closed
+
+
+@pytest.mark.asyncio
+async def test_a_token_field_the_page_refuses_leaves_the_purchase_unused(
+    browser, intent, monkeypatch
+):
+    """Nothing was set, so the token never reached the page: the purchase
+    reads not_submitted, and its Link request can be canceled like any other
+    that never reached the page."""
+    browser.steering = True
+    browser.token_refused = True
+    intent.plan = pay_token_plan(intent.plan)
+    monkeypatch.setattr(worker, "request_spend", synthetic_spend)
+    job = await prepared_job(intent)
+
+    receipt = await worker.pay(job)
+
+    assert receipt.status == "not_submitted"
+    assert browser.pay_token == ""
+    assert browser.clicks == 0
+
+
+@pytest.mark.asyncio
+async def test_a_page_without_the_agent_option_cannot_take_a_pay_token(browser, intent):
+    with pytest.raises(CheckoutRefused) as refused:
+        await cdp.prepare_browser("ws://127.0.0.1:9222/x", pay_token_plan(intent.plan))
+    assert str(refused.value) == PAY_TOKEN_UNAVAILABLE
+    assert not browser.steering_ticked
 
 
 @pytest.mark.asyncio

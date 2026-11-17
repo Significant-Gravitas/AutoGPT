@@ -11,8 +11,17 @@ request that is already approved.
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Security, status
-from pydantic import BaseModel
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Request,
+    Security,
+    status,
+)
+from pydantic import BaseModel, Field
 
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.util.link_checkout.approval import (
@@ -47,6 +56,18 @@ class LinkPurchaseApproval(BaseModel):
     currency: str
     test_mode: bool
     expires_at: float
+    # Bumped each time the agent raised the total; a decision names the
+    # revision it is for. A raise also carries the total it replaced and why.
+    revision: int = 0
+    previous_amount: int | None = None
+    reason: str = ""
+
+
+class LinkPurchaseDecision(BaseModel):
+    """The revision of the purchase the customer decided on, as their card
+    showed it. Required, so a decision is never a bodiless request."""
+
+    revision: int = Field(ge=0)
 
 
 @router.get(
@@ -76,7 +97,7 @@ async def get_link_purchase_approval(
     dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
     responses={
         404: {"description": "No such purchase in the caller's chat"},
-        409: {"description": "Already declined, or expired"},
+        409: {"description": "Already declined, expired, or since raised"},
     },
 )
 async def approve_link_purchase(
@@ -84,9 +105,12 @@ async def approve_link_purchase(
     checkout_id: CheckoutId,
     request: Request,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    decision: Annotated[LinkPurchaseDecision, Body()],
 ) -> LinkPurchaseApproval:
     """Record the customer's approval. Approving twice is idempotent."""
-    return await _decide(session_id, checkout_id, user_id, request, approve=True)
+    return await _decide(
+        session_id, checkout_id, user_id, request, decision, approve=True
+    )
 
 
 @router.post(
@@ -96,7 +120,7 @@ async def approve_link_purchase(
     dependencies=[Security(auth.requires_user)],
     responses={
         404: {"description": "No such purchase in the caller's chat"},
-        409: {"description": "Already approved, or expired"},
+        409: {"description": "Already approved, expired, or since raised"},
     },
 )
 async def decline_link_purchase(
@@ -104,12 +128,21 @@ async def decline_link_purchase(
     checkout_id: CheckoutId,
     request: Request,
     user_id: Annotated[str, Security(auth.get_user_id)],
+    decision: Annotated[LinkPurchaseDecision, Body()],
 ) -> LinkPurchaseApproval:
-    return await _decide(session_id, checkout_id, user_id, request, approve=False)
+    return await _decide(
+        session_id, checkout_id, user_id, request, decision, approve=False
+    )
 
 
 async def _decide(
-    session_id: str, checkout_id: str, user_id: str, request: Request, approve: bool
+    session_id: str,
+    checkout_id: str,
+    user_id: str,
+    request: Request,
+    decision: LinkPurchaseDecision,
+    *,
+    approve: bool,
 ) -> LinkPurchaseApproval:
     try:
         view = await decide(
@@ -118,6 +151,7 @@ async def _decide(
             session_id,
             approve=approve,
             user_agent=request.headers.get("user-agent"),
+            revision=decision.revision,
         )
     except ApprovalConflict as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
@@ -138,4 +172,7 @@ def _approval(view: ApprovalView) -> LinkPurchaseApproval:
         currency=pending.currency,
         test_mode=pending.test_mode,
         expires_at=pending.expires_at,
+        revision=pending.revision,
+        previous_amount=pending.previous_amount,
+        reason=pending.reason,
     )

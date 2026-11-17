@@ -6,7 +6,11 @@ import {
 import { CopilotChatActionsContext } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useContext, useState } from "react";
-import { continueAfterDecision, purchaseDetails } from "../../helpers";
+import {
+  continueAfterDecision,
+  formatTotal,
+  purchaseDetails,
+} from "../../helpers";
 
 interface Args {
   sessionId: string;
@@ -53,13 +57,18 @@ export function useInChatApproval({ sessionId, checkoutId }: Args) {
     if (readOnly || pending) return;
     setError("");
     const mutation = approved ? approve : decline;
+    // The revision this card showed: if the agent has since raised the
+    // total, the server refuses, and the card reloads the new one.
+    const revision = record?.revision ?? 0;
     try {
-      await mutation.mutateAsync({ sessionId, checkoutId });
+      await mutation.mutateAsync({ sessionId, checkoutId, data: { revision } });
     } catch {
+      const { data: latest } = await approval.refetch();
       setError(
-        "Your decision was not recorded. The purchase is shown as it stands.",
+        latest && latest.revision !== revision
+          ? `The total changed to ${formatTotal(latest.amount, latest.currency)}. Check the purchase and decide again.`
+          : "Your decision was not recorded. The purchase is shown as it stands.",
       );
-      await approval.refetch();
       return;
     }
     await approval.refetch();

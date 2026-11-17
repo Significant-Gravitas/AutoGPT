@@ -1,12 +1,19 @@
 import pytest
 from pydantic import ValidationError
 
+from backend.util.link_checkout.cdp import _targets
 from backend.util.link_checkout.checkout_record import (
     consume_intent,
     read_intent,
     save_intent,
 )
-from backend.util.link_checkout.models import CheckoutPlan, SpendRequest, WorkerReceipt
+from backend.util.link_checkout.models import (
+    BrowserBinding,
+    CheckoutPlan,
+    PayToken,
+    SpendRequest,
+    WorkerReceipt,
+)
 
 
 @pytest.mark.parametrize(
@@ -25,15 +32,25 @@ def test_plan_validation_errors_never_echo_the_input(plan):
     assert "4242424242424242" not in str(failure.value)
 
 
-def test_a_plan_too_long_for_the_worker_is_refused_when_it_is_made(plan):
+@pytest.mark.parametrize("execution", ["card", "link_pay_token"])
+def test_a_plan_too_long_for_the_worker_is_refused_when_it_is_made(plan, execution):
     """The worker reads a bounded job. Every field within its own limit can
     still add up to more, and that must be refused before anything is
     recorded, not after the attempt."""
     frame = "https://js.stripe.com/" + "a" * 2000
+    fields = plan.model_dump()
+    if execution == "link_pay_token":
+        fields |= {
+            "number": None,
+            "cvc": None,
+            "expiry": None,
+            "execution": execution,
+            "test_mode": False,
+        }
     with pytest.raises(ValidationError, match="too long"):
         CheckoutPlan.model_validate(
             {
-                **plan.model_dump(),
+                **fields,
                 # Each escapes to six bytes in JSON.
                 "context": "\u0001" * 2000,
                 "frame_urls": {
@@ -89,3 +106,40 @@ def test_consumed_checkout_cannot_be_replayed_after_reload(tmp_path, intent):
     with pytest.raises(RuntimeError):
         read_intent(tmp_path, intent.id, intent.user_id, intent.session_id)
     assert (tmp_path / "sensitive").exists()
+
+
+def test_a_pay_token_plan_names_only_the_pay_button_and_is_live(plan):
+    fields = plan.model_dump(exclude={"number", "cvc", "expiry"})
+    live = {**fields, "execution": "link_pay_token", "test_mode": False}
+    assert CheckoutPlan.model_validate(live).payment_fields()["number"] is None
+
+    for invalid in (
+        {**live, "number": "#number"},
+        {**live, "test_mode": True},
+    ):
+        with pytest.raises(ValidationError):
+            CheckoutPlan.model_validate(invalid)
+
+
+def test_a_card_plan_still_needs_the_card_fields(plan):
+    with pytest.raises(ValidationError):
+        CheckoutPlan.model_validate(plan.model_dump(exclude={"number"}))
+
+
+def test_a_long_stripe_frame_takes_the_pay_token_but_the_agent_stays_capped(plan):
+    """The Pay Token field is rebuilt from what the page reported, which may
+    run past the 2,048 an agent's frame URL is held to."""
+    long_frame = "https://js.stripe.com/v3/inner.html#" + "x" * 3000
+    token = PayToken(frame_url=long_frame, merchant_account_id="acct_merchant")
+    binding = BrowserBinding(
+        endpoint="ws://127.0.0.1:9222/x",
+        target_id="tab",
+        url=plan.checkout_url,
+        pay_token=token,
+    )
+
+    assert _targets(binding, plan)["link_pay_token"].frame_url == long_frame
+    with pytest.raises(ValidationError):
+        CheckoutPlan.model_validate(
+            plan.model_dump() | {"frame_urls": {"number": long_frame}}
+        )

@@ -340,8 +340,16 @@ from ._test_data import make_session
 #     merged tree without them                    83,440 (92 tools)
 #     + four checkout tools          +3,626       87,066 (96 tools)
 #     + headroom                       +300       87,366
+# Raised for browser_raise_link_payment (a total that rose after approval,
+# approved again by the user) and the request tool's ``execution`` argument
+# for Stripe checkouts paid with a Link Pay Token; their descriptions were
+# trimmed first. Measured on #15093 merged with #14927 on dev d318f72d25
+# (2026-11-13):
+#     #14927 merged tree                          87,066 (96 tools)
+#     + raise tool and execution       +893       87,959 (97 tools)
+#     + headroom                       +300       88,259
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 87_366
+_CHAR_BUDGET = 88_259
 
 
 @pytest.fixture(scope="module")
@@ -594,8 +602,13 @@ def test_total_schema_char_budget() -> None:
 #     merged tree without them                    75,411
 #     + four checkout tools          +3,222       78,633
 #     + headroom                       +300       78,933
+# The raise tool and ``execution``, as for ``_CHAR_BUDGET`` above. Measured on
+# #15093 merged with #14927 on dev d318f72d25 (2026-11-13):
+#     #14927 merged tree                          78,633
+#     + raise tool and execution       +811       79,444
+#     + headroom                       +300       79,744
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_SESSION_WIRE_BUDGET = 78_933
+_SESSION_WIRE_BUDGET = 79_744
 
 
 def test_largest_declared_session_wire_budget() -> None:
