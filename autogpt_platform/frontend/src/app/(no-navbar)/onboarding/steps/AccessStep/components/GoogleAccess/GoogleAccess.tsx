@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import type { AccessConnectProps } from "../../accessProviders";
+import { GoogleLookupFailed } from "./components/GoogleLookupFailed";
 import { GoogleServiceList } from "./components/GoogleServiceList";
 import { useGoogleAccess } from "./useGoogleAccess";
 
@@ -16,6 +17,9 @@ export function GoogleAccess({ onDone, onSkip }: AccessConnectProps) {
         Loading…
       </Text>
     );
+
+  if (access.lookupFailed && !credential)
+    return <GoogleLookupFailed onRetry={access.retry} onSkip={onSkip} />;
 
   return (
     <div className="flex flex-col gap-4">
