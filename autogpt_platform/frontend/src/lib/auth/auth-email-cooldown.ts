@@ -15,8 +15,8 @@ export interface WindowLimit {
 
 interface Where {
   field: string;
-  value: string | Date;
-  operator?: "eq" | "gt" | "starts_with" | "ends_with";
+  value: string | string[] | Date;
+  operator?: "eq" | "gt" | "in" | "starts_with" | "ends_with";
 }
 
 /**
@@ -147,9 +147,12 @@ async function claimSlot(
   window: number,
   expiresInSeconds: number,
 ) {
-  for (let index = 0; index < max; index++) {
-    const id = slotID(identifier, window, index);
-    if (await rowExists(context, id)) continue;
+  const ids = Array.from({ length: max }, (_, index) =>
+    slotID(identifier, window, index),
+  );
+  const taken = await existingIDs(context, ids);
+  for (const [index, id] of ids.entries()) {
+    if (taken.has(id)) continue;
     try {
       await createVerification(context, {
         id,
@@ -173,12 +176,17 @@ export async function releaseWindowSlot(context: AuthEmailContext, id: string) {
 }
 
 async function rowExists(context: AuthEmailContext, id: string) {
-  const rows = await context.adapter.findMany({
+  return (await existingIDs(context, [id])).size > 0;
+}
+
+// Which of these rows are there, in one read.
+async function existingIDs(context: AuthEmailContext, ids: string[]) {
+  const rows = (await context.adapter.findMany({
     model: "verification",
-    where: [{ field: "id", value: id }],
-    limit: 1,
-  });
-  return rows.length > 0;
+    where: [{ field: "id", value: ids, operator: "in" }],
+    limit: ids.length,
+  })) as Array<{ id: string }>;
+  return new Set(rows.map((row) => row.id));
 }
 
 export function createVerification(
