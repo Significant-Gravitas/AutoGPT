@@ -427,12 +427,6 @@ async def test_a_seeded_expert_is_looked_up_without_its_workflows(
         "prisma",
         return_value=SimpleNamespace(find_first=find_expert),
     )
-    find_workflows = AsyncMock()
-    mocker.patch.object(
-        prisma.models.ExpertWorkflow,
-        "prisma",
-        return_value=SimpleNamespace(find_many=find_workflows),
-    )
     mocker.patch.object(
         prisma.models.ExpertCredential,
         "prisma",
@@ -444,8 +438,8 @@ async def test_a_seeded_expert_is_looked_up_without_its_workflows(
     allowed = await expert_allowed_credential_ids("user-1", "expert-1")
 
     assert allowed == ["cred-1"]
+    find_expert.assert_awaited_once()
     assert "include" not in find_expert.await_args.kwargs
-    find_workflows.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -461,11 +455,11 @@ async def test_a_pending_seed_derives_from_the_expert_workflows(
         credentialsSeededAt=None,
         Workflows=[workflow] if workflows_loaded else None,
     )
-    find_workflows = AsyncMock(return_value=[workflow])
+    reread = AsyncMock(return_value=expert.model_copy(update={"Workflows": [workflow]}))
     mocker.patch.object(
-        prisma.models.ExpertWorkflow,
+        prisma.models.Expert,
         "prisma",
-        return_value=SimpleNamespace(find_many=find_workflows),
+        return_value=SimpleNamespace(find_first=reread),
     )
     derive = mocker.patch(
         "backend.api.features.experts.credentials._derive_from_workflows",
@@ -476,7 +470,37 @@ async def test_a_pending_seed_derives_from_the_expert_workflows(
     await _seed_if_needed("user-1", expert)
 
     assert derive.await_args.args[1].Workflows == [workflow]
-    assert find_workflows.await_count == (0 if workflows_loaded else 1)
+    assert reread.await_count == (0 if workflows_loaded else 1)
+
+
+@pytest.mark.asyncio
+async def test_a_seed_stamped_since_the_lookup_derives_nothing(
+    mocker: pytest_mock.MockFixture,
+):
+    """``settle_credential_seed`` stamps before the expert installs a workflow.
+    A seed that read the expert as pending just before that must not then load
+    the newly installed workflow and grant what it needs."""
+    expert = prisma.models.Expert.model_construct(
+        id="expert-1", credentialsSeededAt=None
+    )
+    reread = AsyncMock(return_value=None)
+    mocker.patch.object(
+        prisma.models.Expert,
+        "prisma",
+        return_value=SimpleNamespace(find_first=reread),
+    )
+    derive = mocker.patch(
+        "backend.api.features.experts.credentials._derive_from_workflows",
+        AsyncMock(return_value=({}, True)),
+    )
+
+    await _seed_if_needed("user-1", expert)
+
+    assert reread.await_args.kwargs["where"] == {
+        "id": "expert-1",
+        "credentialsSeededAt": None,
+    }
+    derive.assert_not_awaited()
 
 
 def test_refs_carry_the_service_behind_an_mcp_credential():

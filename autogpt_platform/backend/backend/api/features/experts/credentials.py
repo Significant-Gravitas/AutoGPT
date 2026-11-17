@@ -144,11 +144,17 @@ async def _seed_if_needed(user_id: str, expert: prisma.models.Expert) -> None:
         return
     # Only a pending seed reads workflows, so the ownership lookup skips that
     # join; enforcement runs on every expert run and would otherwise pay for it.
+    # The re-read stays conditional on the seed still pending: once
+    # ``settle_credential_seed`` has stamped it, a workflow the expert installs
+    # next must not feed it.
     if expert.Workflows is None:
-        workflows = await prisma.models.ExpertWorkflow.prisma().find_many(
-            where={"expertId": expert.id}, include={"LibraryAgent": True}
+        pending = await prisma.models.Expert.prisma().find_first(
+            where={"id": expert.id, "credentialsSeededAt": None},
+            include={"Workflows": {"include": {"LibraryAgent": True}}},
         )
-        expert = expert.model_copy(update={"Workflows": workflows})
+        if pending is None:
+            return
+        expert = pending
     derived, is_complete = await _derive_from_workflows(user_id, expert)
     if derived:
         await prisma.models.ExpertCredential.prisma().create_many(
