@@ -118,6 +118,9 @@ async def test_link_approval_pays_once_then_waits_for_links_final_status(
         assert created["merchant_url"] == "https://shop.example/checkout"
         reference = {**PRINCIPAL, "checkout_id": created["checkout_id"]}
         authorized = {**reference, "access_token": "synthetic"}
+        # Both completions would meet past the attempt check, and both pay,
+        # if nothing held the second one back.
+        local_broker.status_gate = asyncio.Barrier(2)
 
         first, replay = await asyncio.gather(
             api.post("/v1/checkout/complete", json=authorized),

@@ -21,8 +21,13 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from backend.util.egress_proxy import egress_proxy_url
 from backend.util.link_checkout import ledger
-from backend.util.link_checkout.checkout_record import assert_observable, has_checkout
+from backend.util.link_checkout.checkout_record import (
+    assert_observable,
+    current_intent,
+    has_checkout,
+)
 from backend.util.link_checkout.config import https_proxy
 
 if sys.platform == "linux":
@@ -131,12 +136,15 @@ def browser_env(directory: Path) -> dict[str, str]:
         "AGENT_BROWSER_SCREENSHOT_DIR": str(engine / "screenshots"),
         "AGENT_BROWSER_SOCKET_DIR": str(directory / "socket"),
     }
-    if proxy := https_proxy():
-        environment["AGENT_BROWSER_PROXY"] = proxy
-        environment["AGENT_BROWSER_PROXY_BYPASS"] = "<-loopback>"
-        environment["AGENT_BROWSER_ARGS"] = (
-            "--disable-quic,--force-webrtc-ip-handling-policy=disable_non_proxied_udp"
-        )
+    # Every connection the browser opens goes through a proxy: the checkout's
+    # restricted one when configured, else the one every other Copilot browser
+    # uses, which reaches public addresses only. A proxy that cannot start
+    # stops the browser instead of letting it reach out unchecked.
+    environment["AGENT_BROWSER_PROXY"] = https_proxy() or egress_proxy_url()
+    environment["AGENT_BROWSER_PROXY_BYPASS"] = "<-loopback>"
+    environment["AGENT_BROWSER_ARGS"] = (
+        "--disable-quic,--force-webrtc-ip-handling-policy=disable_non_proxied_udp"
+    )
     return environment
 
 
@@ -198,8 +206,9 @@ async def sweep_idle_browsers(root: Path, now: float) -> None:
 
     They live in memory-backed ``/dev/shm``, and nothing else removes them:
     agent-browser's own idle timeout stops the processes but keeps the files.
-    A chat with a checkout is left to the checkout, which retires its browser.
-    One being used right now holds its lock and is skipped.
+    A chat whose browser a checkout still needs is skipped (see
+    ``_keeps_its_browser``), and so is one being used right now, which holds
+    its lock.
     """
     for directory in root.iterdir():
         lock_path = directory / "operation.lock"
@@ -207,8 +216,7 @@ async def sweep_idle_browsers(root: Path, now: float) -> None:
             not (directory / "engine").exists()
             or not lock_path.exists()
             or now - lock_path.stat().st_mtime < _IDLE_SECONDS
-            or has_checkout(directory)
-            or (directory / "sensitive").exists()
+            or _keeps_its_browser(directory, now)
         ):
             continue
         with lock_path.open("a") as lock:
@@ -224,6 +232,21 @@ async def sweep_idle_browsers(root: Path, now: float) -> None:
                 pass
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _keeps_its_browser(directory: Path, now: float) -> bool:
+    """A browser that held a card is left to the checkout, which retires it,
+    and so is one whose checkout still waits to be paid: its fields are pinned
+    there. A checkout already attempted, or expired, needs it no more."""
+    if (directory / "sensitive").exists():
+        return True
+    if not has_checkout(directory):
+        return False
+    try:
+        intent = current_intent(directory)
+    except (OSError, ValueError):
+        return True
+    return not intent.attempted and intent.expires_at > now
 
 
 def _sweep_now_and_then(root: Path) -> None:
@@ -253,5 +276,6 @@ async def _remove_engine(directory: Path) -> bool:
     engine = directory / "engine"
     if engine.is_symlink() or engine.resolve().parent != directory.resolve():
         return False
-    shutil.rmtree(engine)
+    # A whole browser profile: deleting it can take a while.
+    await asyncio.to_thread(shutil.rmtree, engine)
     return True

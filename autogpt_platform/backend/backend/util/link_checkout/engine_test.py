@@ -6,6 +6,7 @@ from pydantic import SecretStr
 
 from backend.util.link_checkout import broker_checkout, engine
 from backend.util.link_checkout.broker_protocol import AuthorizedCheckout, BrowserOutput
+from backend.util.settings import BehaveAs
 
 VIEW = {
     "checkout_id": "a" * 32,
@@ -38,16 +39,24 @@ def completion() -> AuthorizedCheckout:
 
 
 @pytest.mark.parametrize(
-    "requested,runtime_ready,expected",
-    [(False, True, False), (True, False, False), (True, True, True)],
+    "requested,runtime_ready,behave_as,expected",
+    [
+        (False, True, BehaveAs.LOCAL, False),
+        (True, False, BehaveAs.LOCAL, False),
+        (True, True, BehaveAs.LOCAL, True),
+        # The hosted service browses privately only through a user's broker,
+        # where its checkout tools live; without one, browsing stays ordinary.
+        (True, True, BehaveAs.CLOUD, False),
+    ],
 )
-def test_in_process_private_browsing_needs_a_ready_runtime(
-    monkeypatch, requested, runtime_ready, expected
+def test_in_process_private_browsing_needs_a_ready_self_hosted_runtime(
+    monkeypatch, requested, runtime_ready, behave_as, expected
 ):
     monkeypatch.setenv("COPILOT_LINK_PRIVATE_CHECKOUT", "true" if requested else "")
     for name in ("CHECKOUT_BROKER_URL", "CHECKOUT_BROKER_ROUTES_FILE"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(engine, "local_runtime_ready", lambda: runtime_ready)
+    monkeypatch.setattr(engine._settings.config, "behave_as", behave_as)
     assert engine.enabled() is expected
     assert engine.active_for("owner") is expected
 

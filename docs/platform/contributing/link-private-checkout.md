@@ -77,7 +77,7 @@ The checkout reads its settings from the environment, because the worker and bro
 | --- | --- |
 | `COPILOT_LINK_PRIVATE_CHECKOUT=true` | Turns the tools on with the broker in-process (self-hosted, single host) |
 | `COPILOT_LINK_LIVE_PAYMENTS=true` | Allows live spend requests. A live card is filled only where `CHECKOUT_HTTPS_PROXY` is set too; otherwise only test mode |
-| `CHECKOUT_HTTPS_PROXY` | The restricted egress proxy (`egress.py`) for the payment browser and the worker's Link calls; required for live payments, in-process as well |
+| `CHECKOUT_HTTPS_PROXY` | The restricted egress proxy (`egress.py`) for the payment browser and the worker's Link calls; required for live payments, in-process as well. Without it, the private browser goes through the same public-addresses-only proxy as every other Copilot browser |
 | `COPILOT_LINK_HOSTED_CHECKOUT=true` | Also required on a cloud deployment, with a remote broker and the registered Link client |
 | `CHECKOUT_BROKER_ROUTES_FILE` | Remote brokers, one per user (below) |
 | `CHECKOUT_BROKER_URL`, `_CA`, `_CLIENT_CERT`, `_CLIENT_KEY`, `_SECRET_FILE`, `_USER_ID` | A single remote broker, for the one user it was provisioned for |

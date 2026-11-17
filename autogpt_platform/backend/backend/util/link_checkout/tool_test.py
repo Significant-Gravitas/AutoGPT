@@ -274,6 +274,10 @@ async def test_worker_failure_text_never_reaches_the_tool_output(
 @pytest.mark.asyncio
 async def test_concurrent_completions_attempt_the_checkout_once(tools, plan):
     created = parsed(await run("browser_request_link_payment", **plan.model_dump()))
+    # Each completion checks Link's status after reading that the checkout
+    # was not attempted; both would pass here together, and both pay, if
+    # nothing held the second one back.
+    tools.status_gate = asyncio.Barrier(2)
     results = await asyncio.gather(
         run("browser_complete_link_payment", checkout_id=created.checkout_id),
         run("browser_complete_link_payment", checkout_id=created.checkout_id),

@@ -1,3 +1,4 @@
+import asyncio
 import time
 from pathlib import Path
 from typing import Literal
@@ -100,9 +101,18 @@ class FakeWorker:
         self.delegated_error: Literal["link_rejected", "link_duplicate"] | None = None
         # Link answers a create with a request for another amount.
         self.mismatched_create = False
+        # Status checks wait here for a second one, for a while: two
+        # completions meet past the attempt check unless something holds one.
+        self.status_gate: asyncio.Barrier | None = None
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
+        if job.action == "status" and self.status_gate is not None:
+            try:
+                async with asyncio.timeout(1):
+                    await self.status_gate.wait()
+            except (TimeoutError, asyncio.BrokenBarrierError):
+                pass
         if job.action == "pay":
             directory = runtime.session_home(job.intent.session_id)
             self.sealed_when_paying.append(

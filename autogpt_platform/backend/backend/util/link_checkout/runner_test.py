@@ -37,8 +37,9 @@ async def test_cancelling_kills_the_worker_and_stays_a_cancellation(
 ):
     monkeypatch.setattr(runner, "_ENTRY", "import time; time.sleep(60)")
     task = asyncio.create_task(runner.run_worker(job(intent)))
-    while not spawned:
-        await asyncio.sleep(0.05)
+    async with asyncio.timeout(30):
+        while not spawned:
+            await asyncio.sleep(0.05)
 
     task.cancel()
 
