@@ -1,12 +1,14 @@
 import logging
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Concatenate, ParamSpec, TypeVar, cast
 
 from prisma.enums import ContentType
 
 from backend.api.features.experts import credentials as expert_credentials
 from backend.api.features.experts import experts_db
+from backend.api.features.experts import kickoff as experts_kickoff
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
@@ -82,6 +84,8 @@ from backend.data import skill_reviews as skill_reviews_data
 from backend.data import skill_use as skill_use_data
 from backend.data import skill_versions as skill_versions_data
 from backend.data.account_deletion import is_account_closed
+from backend.data.account_erasure.request import stalled_user_ids
+from backend.data.account_erasure.sweep import start_account_erasure_sweep
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -99,6 +103,7 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.auth.session import is_auth_session_active
 from backend.data.auth_ip_events import delete_expired_ip_events
 from backend.data.block import (
     get_blocks_needing_optimization,
@@ -147,8 +152,10 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
+from backend.data.feedback_prompts import claim_feedback_prompt, count_feedback_prompts
 from backend.data.graph import (
     get_connected_output_nodes,
+    get_copied_graph_ids,
     get_graph,
     get_graph_metadata,
     get_graph_settings,
@@ -389,6 +396,8 @@ class DatabaseManager(AppService):
             f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
+    is_auth_session_active = _(is_auth_session_active)
+
     # ============ Graph Executions ============ #
     get_child_graph_executions = _(get_child_graph_executions)
     get_graph_executions = _(get_graph_executions)
@@ -417,6 +426,7 @@ class DatabaseManager(AppService):
     get_node = _(get_node)
     get_graph = _(get_graph)
     get_connected_output_nodes = _(get_connected_output_nodes)
+    get_copied_graph_ids = _(get_copied_graph_ids)
     get_graph_metadata = _(get_graph_metadata)
     get_graph_settings = _(get_graph_settings)
     get_store_listed_graphs = _(get_store_listed_graphs)
@@ -590,6 +600,10 @@ class DatabaseManager(AppService):
     # ============ Activity Events ============ #
     create_activity_event = _(create_activity_event)
 
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = _(claim_feedback_prompt)
+    count_feedback_prompts = _(count_feedback_prompts)
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription = _(delete_push_subscription)
@@ -607,6 +621,8 @@ class DatabaseManager(AppService):
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
+    start_account_erasure_sweep = _(start_account_erasure_sweep)
+    stalled_account_erasures = _(stalled_user_ids, name="stalled_account_erasures")
     request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
     send_trial_last_calls = _(send_trial_last_calls)
 
@@ -769,6 +785,8 @@ class DatabaseManager(AppService):
     get_template = _(experts_db.get_template)
     with_bundled_skills = _(experts_db.with_bundled_skills)
     hire_expert = _(experts_db.hire_expert)
+    # A hire made in Otto's chat has no page to send its kickoff.
+    start_expert_kickoff = _(experts_kickoff.start_expert_kickoff)
     expert_setup_status = _(experts_db.expert_setup_status)
     create_raised_expert = _(experts_db.create_raised_expert)
     count_active_experts = _(experts_db.count_active_experts)
@@ -818,8 +836,10 @@ class DatabaseManager(AppService):
     update_chat_session = _(chat_db.update_chat_session)
     add_chat_message = _(chat_db.add_chat_message)
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
+    get_chat_messages_by_ids = _(chat_db.get_chat_messages_by_ids)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    get_user_chat_session_groups = _(chat_db.get_user_chat_session_groups)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
     get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
@@ -938,6 +958,8 @@ class DatabaseManagerClient(AppServiceClient):
     get_accuracy_trends_and_alerts = _(d.get_accuracy_trends_and_alerts)
     # Auth identity invariant monitoring
     heal_orphaned_auth_identities = _(d.heal_orphaned_auth_identities)
+    # Account erasures that started and did not finish
+    stalled_account_erasures = _(d.stalled_account_erasures)
     get_frequently_executed_graphs = _(d.get_frequently_executed_graphs)
     get_marketplace_graphs_for_monitoring = _(d.get_marketplace_graphs_for_monitoring)
 
@@ -990,6 +1012,7 @@ class DatabaseManagerClient(AppServiceClient):
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
+    is_auth_session_active = d.is_auth_session_active
 
     @classmethod
     def get_service_type(cls):
@@ -1016,6 +1039,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Graphs ============ #
     get_graph = d.get_graph
+    get_copied_graph_ids = d.get_copied_graph_ids
     get_graph_metadata = d.get_graph_metadata
     get_graph_settings = d.get_graph_settings
     is_graph_version_owner = d.is_graph_version_owner
@@ -1199,6 +1223,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Activity Events ============ #
     create_activity_event = d.create_activity_event
 
+    # ============ Feedback Prompts ============ #
+    claim_feedback_prompt = d.claim_feedback_prompt
+    count_feedback_prompts = d.count_feedback_prompts
+
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
     delete_push_subscription = d.delete_push_subscription
@@ -1209,6 +1237,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
+    start_account_erasure_sweep = d.start_account_erasure_sweep
     request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
     send_trial_last_calls = d.send_trial_last_calls
 
@@ -1349,6 +1378,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_template = d.get_template
     with_bundled_skills = d.with_bundled_skills
     hire_expert = d.hire_expert
+    start_expert_kickoff = d.start_expert_kickoff
     expert_setup_status = d.expert_setup_status
     create_raised_expert = d.create_raised_expert
     count_active_experts = d.count_active_experts
@@ -1378,9 +1408,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_chat_session = d.update_chat_session
     add_chat_message = d.add_chat_message
     add_chat_messages_batch = d.add_chat_messages_batch
+    get_chat_messages_by_ids = d.get_chat_messages_by_ids
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
+    get_user_chat_session_groups = d.get_user_chat_session_groups
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question
     get_sessions_with_pending_question = d.get_sessions_with_pending_question

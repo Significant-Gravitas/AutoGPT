@@ -39,10 +39,10 @@ _EC = "backend.copilot.expert_context"
 
 # SHA-256 of _CACHEABLE_SYSTEM_PROMPT. The prompt cache contract requires this
 # constant to stay byte-identical; re-pin it only for a deliberate prompt edit.
-# Last re-pinned for the say-each-rule-once rewrite (workflow wording, the
-# approval-card fallback and the one-thing greeting).
+# Last re-pinned for the seen-capabilities rule allowing an expand=true
+# describe of a listed id (SECRT-2682).
 _PRE_CHANGE_PROMPT_SHA256 = (
-    "85a26576ca6105b8f115174fc188b32e46b8b43c3b7cda1edf6d399796909897"
+    "c1d92ddf6c428f1557a927d23eb2f17fca3a00dc5dd25b84fb07269e657d213e"
 )
 
 
@@ -222,7 +222,9 @@ class TestBuildExpertIdentitySuffix:
             )
 
         assert "For this session you are Theo" in result
-        mock_db.get_expert.assert_awaited_once()
+        mock_db.get_expert.assert_awaited_once_with(
+            "user-1", "exp-2", include_workflows=False
+        )
         mock_db.resolve_private_expert_tenancy.assert_awaited_once_with(
             "user-1", "exp-2"
         )
@@ -659,9 +661,12 @@ class TestBuildExpertContextPlainSession:
         assert "exp-2" in result
         assert "Blog Writer" in result
         # Plain sessions may delegate to a listed expert (not just suggest
-        # opening their thread) as long as the model discloses it.
+        # chatting with them) as long as the model discloses it.
         assert "delegate_to_expert" in result
         assert "Never delegate silently." in result
+        # A new expert has no thread yet; Otto must not send the user to
+        # one (SECRT-3401).
+        assert "suggest their thread" not in result
 
     @pytest.mark.asyncio
     async def test_team_context_is_byte_identical_regardless_of_metrics(self):

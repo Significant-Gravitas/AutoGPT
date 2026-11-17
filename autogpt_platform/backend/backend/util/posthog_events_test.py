@@ -24,6 +24,7 @@ LIVE_EVENT_NAMES = {
     "writing_style_added",
     "workflow_installed_on_expert",
     "expert_fired",
+    "expert_reset",
     "expert_mode_set_unsupervised",
     "briefing_generated",
     "briefing_delivered",
@@ -66,6 +67,9 @@ LIVE_EVENT_NAMES = {
     "email_clicked",
     "email_bounced",
     "email_complained",
+    "feedback_prompt_shown",
+    "feedback_prompt_answered",
+    "otto_mistake_flagged",
 }
 
 PLANNED_EVENT_NAMES: set[str] = set()

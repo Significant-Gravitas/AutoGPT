@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 DIRECT_BLOCK_EXECUTION_TIMEOUT_SECONDS = 300
 DIRECT_BLOCK_EXECUTION_CANCEL_GRACE_SECONDS = 5
 DIRECT_BLOCK_EXECUTION_WORKERS = 8
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER = 4
 # A held run keeps its user's slot, so one user's runs fill at most
 # DIRECT_BLOCK_EXECUTION_MAX_RUNS_PER_USER of these.

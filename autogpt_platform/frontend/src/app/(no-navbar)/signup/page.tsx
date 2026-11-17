@@ -32,11 +32,13 @@ export default function SignupPage() {
 
   const {
     form,
+    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
     isLoggedIn,
-    hasInitializedAuth,
+    isCheckingSession,
+    isHydrated,
     isLoading,
     isGoogleLoading,
     isMicrosoftLoading,
@@ -52,7 +54,7 @@ export default function SignupPage() {
     handleStartAgain,
   } = useSignupPage();
 
-  if (!hasInitializedAuth || isLoggedIn) {
+  if (isCheckingSession || isLoggedIn) {
     return <LoadingSignup />;
   }
 
@@ -70,8 +72,6 @@ export default function SignupPage() {
     );
   }
 
-  const confirmPasswordError = form.formState.errors.confirmPassword?.message;
-
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
@@ -87,7 +87,11 @@ export default function SignupPage() {
       </div>
 
       <FormProvider {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="flex w-full flex-col gap-1"
+        >
           <FormField
             control={form.control}
             name="email"
@@ -118,25 +122,10 @@ export default function SignupPage() {
               />
             )}
           />
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Confirm Password"
-                placeholder="Confirm your password"
-                type="password"
-                autoComplete="new-password"
-                error={confirmPasswordError}
-                {...field}
-              />
-            )}
-          />
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading || isMicrosoftLoading}
+            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -152,14 +141,14 @@ export default function SignupPage() {
                 <GoogleOAuthButton
                   onClick={() => handleProviderSignup("google")}
                   isLoading={isGoogleLoading}
-                  disabled={isLoading || isMicrosoftLoading}
+                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
                 />
               ) : null}
               {isMicrosoftEnabled ? (
                 <MicrosoftOAuthButton
                   onClick={() => handleProviderSignup("microsoft")}
                   isLoading={isMicrosoftLoading}
-                  disabled={isLoading || isGoogleLoading}
+                  disabled={!isHydrated || isLoading || isGoogleLoading}
                 />
               ) : null}
             </div>

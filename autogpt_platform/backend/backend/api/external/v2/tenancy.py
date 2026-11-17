@@ -18,6 +18,7 @@ membership-verified tenant.
 """
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Literal, Optional, Protocol, TypeVar
 
 from autogpt_libs.auth.dependencies import TEAM_HEADER_NAME
@@ -31,6 +32,7 @@ from backend.api.external import middleware
 from backend.copilot.rate_limit import enforce_payment_paywall
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.db import prisma
+from backend.data.tenancy import resource_role_refusal
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -147,6 +149,68 @@ def require_billing_permission(*permissions: APIKeyPermission):
         return tenant
 
     return check_billing_role
+
+
+# The permissions that reach the organization's workflows, runs, library and
+# schedules. The MCP server holds a tool needing one to the caller's role, as
+# `require_resource_permission` holds the REST routes.
+RESOURCE_PERMISSIONS = frozenset(
+    {
+        APIKeyPermission.EXECUTE_GRAPH,
+        APIKeyPermission.READ_GRAPH,
+        APIKeyPermission.WRITE_GRAPH,
+        APIKeyPermission.READ_LIBRARY,
+        APIKeyPermission.WRITE_LIBRARY,
+        APIKeyPermission.RUN_AGENT,
+        APIKeyPermission.READ_RUN,
+        APIKeyPermission.WRITE_RUN,
+        APIKeyPermission.SHARE_RUN,
+        APIKeyPermission.READ_RUN_REVIEW,
+        APIKeyPermission.WRITE_RUN_REVIEW,
+        APIKeyPermission.READ_SCHEDULE,
+        APIKeyPermission.WRITE_SCHEDULE,
+    }
+)
+
+
+def require_resource_permission(*permissions: APIKeyPermission):
+    """`require_permission`, for the workflows, runs, library and schedules of
+    the organization, and of the team when the request acts in one.
+
+    The web app holds these to the caller's role there: a membership whose only
+    role is billing manager covers spend, not these, and a credential acting
+    there is held to the same. Such a credential keeps reading the
+    organization's credits (`require_billing_permission`).
+    """
+    return _within_resource_role(require_permission(*permissions))
+
+
+def require_paid_resource_permission(*permissions: APIKeyPermission):
+    """`require_resource_permission`, and a 402 for an account without an
+    active plan, as `require_paid_permission`."""
+    return _within_resource_role(require_paid_permission(*permissions))
+
+
+def _within_resource_role(
+    check_permissions: Callable[..., Awaitable[TenantContext]],
+):
+    async def check_resource_role(
+        tenant: TenantContext = Security(check_permissions),
+    ) -> TenantContext:
+        await assert_resource_role(tenant)
+        return tenant
+
+    return check_resource_role
+
+
+async def assert_resource_role(tenant: TenantContext) -> None:
+    """403 when the caller's role in the tenant's organization, or in its team,
+    doesn't cover workflows, runs and the library (see
+    `require_resource_permission`)."""
+    if reason := await resource_role_refusal(
+        tenant.user_id, tenant.organization_id, tenant.team_id
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=reason)
 
 
 async def resolve_tenant(

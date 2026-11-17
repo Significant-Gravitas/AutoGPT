@@ -28,7 +28,7 @@ vi.mock("../server/getServerSession", async (importOriginal) => ({
 }));
 
 vi.mock("@/lib/auth/server/getServerAuthToken", () => ({
-  getServerAuthToken: () => getServerAuthTokenMock(),
+  readServerAuthToken: () => getServerAuthTokenMock(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -223,14 +223,32 @@ describe("getWebSocketToken", () => {
     expect(result).toEqual({ token: "ws-token-123" });
   });
 
-  it("returns a null token and the error message when token retrieval throws", async () => {
+  it("keeps token issuance outages retryable", async () => {
     getServerAuthTokenMock.mockRejectedValue(new Error("jwks unreachable"));
 
     const result = await getWebSocketToken();
 
     expect(result.token).toBeNull();
     expect(result.error).toBe("jwks unreachable");
+    expect(result.retryable).toBe(true);
   });
+
+  it.each([
+    ["UNAUTHORIZED", false],
+    ["FORBIDDEN", false],
+    ["TOO_MANY_REQUESTS", true],
+    ["INTERNAL_SERVER_ERROR", true],
+  ] as const)(
+    "classifies token issuance rejection %s",
+    async (status, retryable) => {
+      getServerAuthTokenMock.mockRejectedValue(new APIError(status));
+
+      expect(await getWebSocketToken()).toMatchObject({
+        token: null,
+        retryable,
+      });
+    },
+  );
 });
 
 describe("serverLogout", () => {

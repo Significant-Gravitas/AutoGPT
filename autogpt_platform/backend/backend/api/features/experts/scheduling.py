@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 _BUDGET_WARN_FRACTION = 0.8
 # Namespace for deterministic post ids: one warning / one pause message per
 # expert per ISO week, deduplicated by append_expert_run_message.

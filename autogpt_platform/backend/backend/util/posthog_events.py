@@ -38,6 +38,8 @@ class PostHogEvent(StrEnum):
     WRITING_STYLE_ADDED = "writing_style_added"
     WORKFLOW_INSTALLED_ON_EXPERT = "workflow_installed_on_expert"
     EXPERT_FIRED = "expert_fired"
+    # backend/api/features/experts/reset.py
+    EXPERT_RESET = "expert_reset"
     EXPERT_MODE_SET_UNSUPERVISED = "expert_mode_set_unsupervised"
     BRIEFING_GENERATED = "briefing_generated"
     BRIEFING_DELIVERED = "briefing_delivered"
@@ -86,6 +88,12 @@ class PostHogEvent(StrEnum):
     # root, and a tool call or expert subtask within it.
     AI_TRACE = "$ai_trace"
     AI_SPAN = "$ai_span"
+
+    # In-app feedback prompts: backend/api/features/feedback_prompts/analytics.py
+    FEEDBACK_PROMPT_SHOWN = "feedback_prompt_shown"
+    FEEDBACK_PROMPT_ANSWERED = "feedback_prompt_answered"
+    # backend/copilot/tools/feedback_prompts.py
+    OTTO_MISTAKE_FLAGGED = "otto_mistake_flagged"
 
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"

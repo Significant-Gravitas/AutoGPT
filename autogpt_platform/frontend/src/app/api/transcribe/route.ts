@@ -1,4 +1,6 @@
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { NextRequest, NextResponse } from "next/server";
 
 const DEFAULT_TRANSCRIPTION_API_BASE_URL = "https://api.openai.com/v1";
@@ -47,7 +49,15 @@ function getExtensionFromMimeType(mimeType: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  const token = await getServerAuthToken();
+  let token: string | null;
+  try {
+    token = await getServerAuthToken();
+  } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      return authTokenUnavailableResponse(error);
+    }
+    throw error;
+  }
 
   if (!token) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

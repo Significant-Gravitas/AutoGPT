@@ -14,8 +14,10 @@ person can close their account but never sign in to reopen it.
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
+from autogpt_libs.auth.closed_accounts import ACCOUNT_CLOSED_DETAIL
+from fastapi import HTTPException
 from prisma import Prisma
-from prisma.enums import AccountDeletionSource
+from prisma.enums import AccountDeletionSource, APIKeyStatus
 from prisma.errors import UniqueViolationError
 from prisma.models import AccountDeletionRequest
 
@@ -45,8 +47,24 @@ async def is_account_closed(user_id: str) -> bool:
     return await get_deletion_request(user_id) is not None
 
 
+async def refuse_closed_account(user_id: str) -> None:
+    """HTTP 401 for a closed account, read from the database.
+
+    Backend auth rejects a closed account through a per-worker cache, so for
+    up to its TTL after the close another worker still lets a token issued
+    before it through. A step that must never run for a closed account, such
+    as starting a Stripe Checkout or making an API key, asks here too.
+    """
+    if await is_account_closed(user_id):
+        raise HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
+
+
 async def close_account(
-    user_id: str, source: AccountDeletionSource
+    user_id: str,
+    source: AccountDeletionSource,
+    *,
+    grace: timedelta = GRACE_PERIOD,
+    confirmation_skipped: bool = False,
 ) -> AccountDeletionRequest | None:
     """Record the deletion request, end every session, take the user's
     Marketplace listings and reviews down, turn off their share links and
@@ -57,7 +75,10 @@ async def close_account(
     with the User. Reopening the account brings none of it back. Returns
     ``None``, having changed nothing, when the account was already closed
     (including by a concurrent call that won the race); the new request when
-    this call closed it.
+    this call closed it. ``grace`` is the time the owner has to keep it: zero
+    only for an owner who asked by email to be erased at once.
+    ``confirmation_skipped`` records that no confirmation email goes out, so
+    the erasure does not send it late either.
     """
     now = datetime.now(timezone.utc)
     try:
@@ -67,7 +88,8 @@ async def close_account(
                     "userId": user_id,
                     "source": source,
                     "requestedAt": now,
-                    "eraseAfter": now + GRACE_PERIOD,
+                    "eraseAfter": now + grace,
+                    "confirmationSkipped": confirmation_skipped,
                 }
             )
             await tx.authsession.delete_many(where={"userId": user_id})
@@ -87,9 +109,13 @@ async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOut
     statement: the routine runs on another server whose clock may differ, so
     the date alone can't keep the two apart.
     Everything closing stopped stays stopped: the plan, connected apps, API
-    keys, schedules, share links and listings. Product email is limited to
-    ``REOPENED_DAILY_EMAIL_LIMIT`` a day again, with every kind still off
-    until the owner switches it back on.
+    keys, schedules, share links and listings. API keys and OAuth grants
+    made in the seconds after the close are revoked in the same transaction,
+    so only the call that reopens it revokes them: a second Keep, or one too
+    late, changes nothing. Not sign-ins: a token issued before the close (up
+    to an hour) and the browser's cached session cookie (up to 5 minutes)
+    work again. Product email is limited to ``REOPENED_DAILY_EMAIL_LIMIT`` a
+    day again, with every kind still off until the owner switches it back on.
     """
     now = now or datetime.now(timezone.utc)
     async with transaction() as tx:
@@ -102,6 +128,7 @@ async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOut
             }
         )
         if reopened:
+            await _revoke_issued_access(tx, user_id, now)
             await tx.user.update_many(
                 where={"id": user_id},
                 data={"maxEmailsPerDay": REOPENED_DAILY_EMAIL_LIMIT},
@@ -111,6 +138,28 @@ async def reopen_account(user_id: str, now: datetime | None = None) -> ReopenOut
     if await is_account_closed(user_id):
         return ReopenOutcome.TOO_LATE
     return ReopenOutcome.NOT_CLOSED
+
+
+async def _revoke_issued_access(tx: Prisma, user_id: str, now: datetime) -> None:
+    """The API keys and OAuth grants made since the close: closing revoked
+    every one (``issued_access.revoke_issued_access``), and none can be made
+    while the account is closed, so one still active was made in the seconds
+    after it, on a worker whose cache still let an old token through. The
+    same statements as ``revoke_user_api_keys`` and
+    ``revoke_user_oauth_tokens``, inside the reopen's transaction."""
+    await tx.apikey.update_many(
+        where={"userId": user_id, "status": {"not": APIKeyStatus.REVOKED}},
+        data={"status": APIKeyStatus.REVOKED, "revokedAt": now},
+    )
+    await tx.oauthauthorizationcode.delete_many(
+        where={"userId": user_id, "usedAt": None}
+    )
+    await tx.oauthrefreshtoken.update_many(
+        where={"userId": user_id, "revokedAt": None}, data={"revokedAt": now}
+    )
+    await tx.oauthaccesstoken.update_many(
+        where={"userId": user_id, "revokedAt": None}, data={"revokedAt": now}
+    )
 
 
 async def mark_confirmation_sent(user_id: str) -> None:

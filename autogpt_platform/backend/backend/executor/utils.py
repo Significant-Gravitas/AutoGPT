@@ -1049,7 +1049,7 @@ async def validate_and_construct_node_execution_input(
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
-    is_sub_graph: bool = False,
+    parent_graph_exec_id: str | None = None,
     dry_run: bool = False,
     trigger_setup: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
@@ -1064,6 +1064,7 @@ async def validate_and_construct_node_execution_input(
         graph_version: The version of the graph to use.
         graph_credentials_inputs: Credentials inputs to use.
         nodes_input_masks: Node inputs to use.
+        parent_graph_exec_id: For a sub-graph, the run whose node starts it.
 
     Returns:
         GraphModel: Full graph object for the given `graph_id`.
@@ -1101,7 +1102,10 @@ async def validate_and_construct_node_execution_input(
         user_id=user_id,
         graph_id=graph.id,
         graph_version=graph.version,
-        is_sub_graph=is_sub_graph,
+        parent_graph_exec_id=parent_graph_exec_id,
+        # For a database manager that predates `parent_graph_exec_id`, which
+        # drops it: it still checks a sub-graph as one.
+        is_sub_graph=parent_graph_exec_id is not None,
     )
 
     nodes_input_masks = _merge_nodes_input_masks(
@@ -1507,8 +1511,9 @@ async def _enforce_expert_credential_scope(
     copilot tool runs alike. Enforcing at creation also means a revoke takes effect
     on the next run instead of only on newly created schedules.
 
-    System credentials (platform LLM keys) carry no grant and are always allowed;
-    filtering them would stop every expert from running an LLM block.
+    The platform's own keys (system LLM keys, and the shared key of a provider
+    such as Firecrawl) carry no grant and are always allowed; filtering them
+    would stop every expert from running an LLM block or a platform-keyed one.
     """
     if not graph_credentials_inputs:
         return
@@ -1851,7 +1856,7 @@ async def _add_graph_execution(
             graph_version=graph_version,
             graph_credentials_inputs=graph_credentials_inputs,
             nodes_input_masks=nodes_input_masks,
-            is_sub_graph=parent_exec_id is not None,
+            parent_graph_exec_id=parent_exec_id,
             dry_run=dry_run,
         )
 

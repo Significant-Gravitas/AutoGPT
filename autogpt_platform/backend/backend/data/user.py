@@ -21,6 +21,7 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhere
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.account_deletion import is_account_closed
+from backend.data.auth.ban import is_ban_active
 from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.db_accessors import user_db
 from backend.data.model import (
@@ -326,9 +327,9 @@ async def is_auth_user_banned(user_id: str) -> bool:
     """The uncached read behind :func:`is_user_banned`. A lapsed temporary ban
     and a missing auth row are not bans."""
     user = await AuthUser.prisma().find_unique(where={"id": user_id})
-    if user is None or not user.banned:
+    if user is None:
         return False
-    return user.banExpires is None or user.banExpires > datetime.now(timezone.utc)
+    return is_ban_active(user.banned, user.banExpires, datetime.now(timezone.utc))
 
 
 class OrphanedAuthIdentity(BaseModel):
@@ -920,7 +921,7 @@ def generate_unsubscribe_link(user_id: str) -> str:
 
 async def unsubscribe_user_by_token(token: str) -> None:
     """Unsubscribe a user from all notifications using the token"""
-    user_id = _verify_unsubscribe_token(token)
+    user_id = verify_unsubscribe_token(token)
     # A deleted user's token gets a forged token's answer, which names no user.
     email = await get_user_email_by_id(user_id)
     if email is None:
@@ -943,7 +944,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
         raise ValueError(_INVALID_UNSUBSCRIBE_TOKEN) from e
 
 
-def _verify_unsubscribe_token(token: str) -> str:
+def verify_unsubscribe_token(token: str) -> str:
     """Return the token's user id; a token we did not issue is a ValueError
     whose message leaves the token out, because the token never expires."""
     try:

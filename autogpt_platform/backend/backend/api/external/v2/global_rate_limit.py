@@ -44,6 +44,7 @@ from .errors import error_response
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+# Documented in docs/platform/rate-limits.md and integrating/api-conventions.md.
 _authenticated_limiter = RateLimiter("v2:global", max_requests=200, window_seconds=60)
 _anonymous_limiter = RateLimiter("v2:global:anon", max_requests=5, window_seconds=60)
 # Above the per-user cap, so a client within its own limit never meets it.
@@ -187,6 +188,7 @@ def app_path(scope: Scope) -> str:
     return path[len(root) :] if root and path.startswith(root) else path
 
 
+# Documented in docs/platform/client-ip.md: update it with any change here.
 def client_ip(scope: Scope) -> str:
     """The caller's address, trusting only the proxies in front of us.
 
