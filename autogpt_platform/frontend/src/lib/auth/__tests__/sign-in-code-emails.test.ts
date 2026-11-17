@@ -72,14 +72,24 @@ describe("sending a sign-in code", () => {
     expect(releaseWindowSlot).toHaveBeenCalledWith(context, "slot");
   });
 
-  it("keeps the slot when the request may have reached the backend", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    // The connection dropped after the request left: the email may be sent.
-    sendAuthEmail.mockRejectedValue(new TypeError("fetch failed"));
+  it.each([
+    // The connection dropped after the request left.
+    ["the connection drops", new TypeError("fetch failed")],
+    // The backend failed after the mail provider may have taken the email.
+    [
+      "the backend answers 5xx",
+      new Error("Backend auth-email send failed (503)"),
+    ],
+  ])(
+    "keeps the slot when %s: the email may still go out",
+    async (_case, error) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      sendAuthEmail.mockRejectedValue(error);
 
-    expect(await sendCode(context, pending, "042917", "slot")).toBe(false);
-    expect(releaseWindowSlot).not.toHaveBeenCalled();
-  });
+      expect(await sendCode(context, pending, "042917", "slot")).toBe(false);
+      expect(releaseWindowSlot).not.toHaveBeenCalled();
+    },
+  );
 
   it("cancels a send the backend hasn't answered in 10 seconds, and keeps its slot", async () => {
     vi.useFakeTimers();

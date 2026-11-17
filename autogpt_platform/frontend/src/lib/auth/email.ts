@@ -78,10 +78,14 @@ export async function sendAuthEmail(
       if (isUndeliverable(response.status, detail)) {
         throw undeliverableEmailError();
       }
-      throw new AuthEmailNotSent(
+      const message =
         `Backend auth-email send failed (${response.status}) for "${type}"` +
-          (detail ? `: ${detail.slice(0, 200)}` : ""),
-      );
+        (detail ? `: ${detail.slice(0, 200)}` : "");
+      // A 4xx refused the request; a 5xx can come after the mail provider
+      // took the email, so it doesn't say the email didn't go out.
+      throw response.status < 500
+        ? new AuthEmailNotSent(message)
+        : new Error(message);
     }
   } catch (error) {
     if (process.env.NODE_ENV === "production" || error instanceof APIError) {

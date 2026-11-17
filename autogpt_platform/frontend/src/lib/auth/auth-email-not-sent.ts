@@ -1,7 +1,8 @@
 /**
- * The backend answered a send and didn't send the email. Any other failure
- * (the request cancelled, or lost after it left) leaves open whether it went
- * out. Its own module so tests that replace `email.ts` still have it.
+ * The backend refused a send (a 4xx), so the email didn't go out. Any other
+ * failure (a 5xx, the request cancelled, or lost after it left) leaves open
+ * whether it went out. Its own module so tests that replace `email.ts` still
+ * have it.
  */
 export class AuthEmailNotSent extends Error {
   override name = "AuthEmailNotSent";

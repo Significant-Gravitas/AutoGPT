@@ -14,6 +14,7 @@ vi.mock("../service-token", () => ({
 
 import { Resolver } from "node:dns/promises";
 import { sendAuthEmail } from "../email";
+import { isAuthEmailNotSent } from "../auth-email-not-sent";
 import { UNDELIVERABLE_EMAIL_CODE } from "../undeliverable-email";
 import { clearMailServerCache } from "../email-deliverability";
 
@@ -90,6 +91,26 @@ describe("sendAuthEmail", () => {
       "Backend auth-email send failed (503)",
     );
   });
+
+  it.each([
+    [400, true],
+    [422, true],
+    [500, false],
+    [503, false],
+  ])(
+    "says a %i means the email surely didn't go out: %s",
+    async (status, notSent) => {
+      vi.stubEnv("NODE_ENV", "production");
+      fetchMock.mockResolvedValue(new Response("refused", { status }));
+
+      const error = await sendAuthEmail(args).catch(
+        (caught: unknown) => caught,
+      );
+
+      // A 5xx can come after the mail provider took the email.
+      expect(isAuthEmailNotSent(error)).toBe(notSent);
+    },
+  );
 
   it("throws in production when minting the service token fails", async () => {
     vi.stubEnv("NODE_ENV", "production");
