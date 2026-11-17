@@ -98,7 +98,12 @@ interface CapturedAuthOptions {
   database: { type: string; transaction?: boolean };
   socialProviders: Record<string, { clientId: string; clientSecret: string }>;
   plugins: Array<{ id: string; opts?: JwtPluginOptions }>;
-  trustedOrigins?: string[];
+  trustedOrigins?: unknown;
+}
+
+// Read after loadAuthOptions, so it comes from the same module registry as the config.
+async function appleTrustedOrigins() {
+  return (await import("../apple-provider")).appleTrustedOrigins;
 }
 
 async function loadAuthOptions(): Promise<CapturedAuthOptions> {
@@ -319,7 +324,7 @@ describe("auth config", () => {
       "supabase-bridge",
       "next-cookies",
     ]);
-    expect(options.trustedOrigins).toBeUndefined();
+    expect(options.trustedOrigins).toBe(await appleTrustedOrigins());
     expect(mobileAppOriginMock).not.toHaveBeenCalled();
   });
 
@@ -329,9 +334,11 @@ describe("auth config", () => {
     vi.stubEnv("BETTER_AUTH_URL", "https://platform.example.com");
     const options = await loadAuthOptions();
 
-    expect(options.trustedOrigins).toBeUndefined();
+    // The scheme is not added to the trusted origins; the plugin vouches for it instead.
+    expect(options.trustedOrigins).toBe(await appleTrustedOrigins());
     expect(options.plugins.map((plugin) => plugin.id)).toEqual([
       "admin",
+      "bearer",
       "jwt",
       "supabase-bridge",
       "mobile-app-origin",
