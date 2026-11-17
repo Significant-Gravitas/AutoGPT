@@ -8,6 +8,9 @@ env:
   BASE_BRANCH: dev
   IMAGE_NAME: auto-gpt
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
@@ -49,7 +54,7 @@ jobs:
           source_url: ${{ format('{0}/tree/{1}', github.event.repository.url, github.sha) }}
           push_forced_label:
 
-          new_commits_json: ${{ null }}
+          new_commits_json: ""
           compare_url_template: ${{ format('/{0}/compare/{{base}}...{{head}}', github.repository) }}
 
           github_context_json: ${{ toJSON(github) }}

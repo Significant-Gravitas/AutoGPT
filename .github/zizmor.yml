@@ -1,0 +1,51 @@
+# zizmor findings we reviewed and accept. Each entry says why it stands, so
+# anything new in the zizmor check is a finding nobody has looked at yet.
+# Add an entry here only with a reason; fix the workflow when you can.
+rules:
+  dangerous-triggers:
+    ignore:
+      # None of these check out or run code from the pull request; they read
+      # its metadata through the API and act on it.
+      #
+      # issue_comment: forwards /batch commands; slash-command-dispatch only
+      # acts for commenters with write access.
+      - batch-command-listener.yml
+      # pull_request_target: sets CLA labels from the PR's commit statuses.
+      - cla-label-sync.yml
+      # issue_comment: !deploy and !undeploy act only for commenters with
+      # write access (checked in the first step).
+      - platform-dev-deploy-event-dispatcher.yml
+      # pull_request_target: moves PRs opened against master (from a branch
+      # other than dev or hotfix/*) or gitbook to dev; its scripts use only
+      # the PR number and fixed text.
+      - repo-pr-enforce-base-branch.yml
+      # pull_request_target: labels PRs (conflicts, size, paths) from metadata.
+      - repo-pr-label.yml
+      # issue_comment: /reapprove acts only for commenters with write access,
+      # and only on PRs a writer already approved.
+      - repo-pr-reapprove-command.yml
+
+  artipacked:
+    ignore:
+      # The batch bot pushes batch and rollup branches with the GitHub App
+      # token that this checkout stores, so it has to keep it.
+      - batch-command-handler.yml
+      - batch-reconcile.yml
+
+  misfeature:
+    ignore:
+      # The Windows installer tests start Windows PowerShell 5.1 and
+      # PowerShell 7 as separate processes from cmd. Each cmd line is a single
+      # fixed command with no expressions, so there is nothing to analyse.
+      - platform-installer-ci.yml
+
+  superfluous-actions:
+    ignore:
+      # Classic's PyPI release; Classic is no longer actively maintained.
+      - classic-benchmark_publish_package.yml
+
+  use-trusted-publishing:
+    ignore:
+      # Classic's PyPI release; Classic is no longer actively maintained.
+      # Trusted publishing needs a PyPI-side setup for agbenchmark.
+      - classic-benchmark_publish_package.yml

@@ -30,6 +30,8 @@ updates:
         # Declared as dev but imported by runtime code.
         exclude-patterns:
           - "httpx*"
+    cooldown:
+      default-days: 7
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -80,6 +82,8 @@ updates:
         exclude-patterns:
           - "httpx*"
           - "requests"
+    cooldown:
+      default-days: 7
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"

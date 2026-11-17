@@ -38,6 +38,11 @@ env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
   BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
 
+# Releases publish images from this workflow, so it never reads or writes the
+# Actions cache (only setup-buildx's binary used it). Image layers come from
+# the GHCR registry cache, which this setting doesn't touch.
+cache-mode: none
+
 jobs:
   authorize-publication:
     name: Evaluate publication eligibility

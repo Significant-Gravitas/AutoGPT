@@ -31,6 +31,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: true
+          persist-credentials: false
 
       # Backend Python/Poetry setup (mirrors platform-backend-ci.yml)
       - name: Set up Python
