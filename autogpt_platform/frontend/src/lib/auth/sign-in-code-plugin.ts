@@ -7,27 +7,32 @@ import * as z from "zod";
 import { limitAttemptsPerIP } from "./attempt-limits";
 import {
   type PendingSignInCode,
-  SIGN_IN_CODE_INVALID,
-  SIGN_IN_CODE_LIMIT,
   SIGN_IN_CODE_PATHS,
   SIGN_IN_CODE_RESEND_SECONDS,
-  SIGN_IN_CODE_TOO_SOON,
   SIGN_IN_CODE_TTL_SECONDS,
   SIGN_IN_CODE_UNSENT,
 } from "./sign-in-code";
 import { codeMatches, hashCode, newCode } from "./sign-in-code-crypto";
-import { claimCodeEmail, sendCode } from "./sign-in-code-emails";
+import {
+  expiredError,
+  forgetPendingCookie,
+  setPendingCookie,
+} from "./sign-in-code-cookie";
+import { codeEmailRefused, tooSoon, wrongCode } from "./sign-in-code-errors";
+import {
+  claimCodeEmail,
+  releaseCodeEmail,
+  sendCode,
+} from "./sign-in-code-emails";
 import {
   claimTry,
-  deletePending,
-  expiredError,
+  consumePending,
   findPending,
-  forgetPendingCookie,
   MAX_CODE_ATTEMPTS,
   type PendingRecord,
-  savePending,
+  replacePending,
+  restorePending,
   secondsUntilResend,
-  setPendingCookie,
 } from "./sign-in-code-store";
 import { findProvider, markConfirmedByCode } from "./sign-in-provider";
 
@@ -83,71 +88,55 @@ async function verify(ctx: GenericEndpointContext, typed: string) {
   const pending = await findPending(ctx);
   if (!pending) throw expiredError(ctx);
   const attempt = await claimTry(ctx.context, pending);
-  const isLastTry = attempt === MAX_CODE_ATTEMPTS - 1;
   const code = typed.replace(/\s+/g, "");
-  const { id, rowID, record } = pending;
+  const { id, record } = pending;
   if (
-    attempt === null ||
-    !codeMatches(ctx.context.secret, id, code, record.codeHash)
+    attempt !== null &&
+    codeMatches(ctx.context.secret, id, code, record.codeHash)
   ) {
-    if (attempt === null || isLastTry) {
-      await deletePending(ctx.context, rowID);
-      throw expiredError(ctx);
+    // One use: of two requests with the right code, one finishes.
+    if (!(await consumePending(ctx.context, pending))) {
+      throw await afterLostVersion(ctx);
     }
-    throw new APIError("BAD_REQUEST", {
-      code: SIGN_IN_CODE_INVALID,
-      message: "That code isn't right.",
-    });
+    forgetPendingCookie(ctx);
+    return finishSignIn(ctx, record);
   }
-  // One use: of two requests with the right code, one finishes.
-  if (!(await deletePending(ctx.context, rowID))) throw expiredError(ctx);
-  forgetPendingCookie(ctx);
-  return finishSignIn(ctx, record);
+  if (attempt !== null && attempt < MAX_CODE_ATTEMPTS - 1) throw wrongCode();
+  // The code's last try: the sign-in ends, unless a new code replaced this one.
+  if (await consumePending(ctx.context, pending)) throw expiredError(ctx);
+  throw await afterLostVersion(ctx);
+}
+
+// A newer code replaced the one this check read, or another request used it
+// up: the sign-in goes on with the newer code, if there is one.
+async function afterLostVersion(ctx: GenericEndpointContext) {
+  return (await findPending(ctx)) ? wrongCode() : expiredError(ctx);
 }
 
 async function resend(ctx: GenericEndpointContext) {
   const pending = await findPending(ctx);
   if (!pending) throw expiredError(ctx);
-  const { id, rowID, record, expiresAt } = pending;
+  const { id, record } = pending;
   const wait = secondsUntilResend(record);
-  if (wait > 0) {
-    throw new APIError(
-      "TOO_MANY_REQUESTS",
-      {
-        code: SIGN_IN_CODE_TOO_SOON,
-        message: `Wait ${wait} seconds before asking for a new code.`,
-      },
-      { "X-Retry-After": String(wait) },
-    );
-  }
+  if (wait > 0) throw tooSoon(wait);
   const claim = await claimCodeEmail(ctx.context, record.email);
-  if ("refusal" in claim) {
-    const limited = claim.refusal === SIGN_IN_CODE_LIMIT;
-    throw new APIError(limited ? "TOO_MANY_REQUESTS" : "SERVICE_UNAVAILABLE", {
-      code: claim.refusal,
-      message: limited
-        ? "Too many codes for this address."
-        : "The code couldn't be sent.",
-    });
-  }
+  if ("refusal" in claim) throw codeEmailRefused(claim.refusal);
   const code = newCode();
   const sentAt = Date.now();
   const codeHash = hashCode(ctx.context.secret, id, code);
   const renewed = new Date(sentAt + SIGN_IN_CODE_TTL_SECONDS * 1000);
-  await savePending(
-    ctx.context,
-    rowID,
-    { ...record, codeHash, sentAt },
-    renewed,
-  );
+  const replaced = { ...record, codeHash, sentAt };
+  const stored = await replacePending(ctx.context, pending, replaced, renewed);
+  if (!stored) {
+    // Another resend got there first, and its code is on its way.
+    await releaseCodeEmail(ctx.context, claim.slot);
+    throw tooSoon(SIGN_IN_CODE_RESEND_SECONDS);
+  }
   if (!(await sendCode(ctx.context, record, code, claim.slot))) {
     // The old code still works, as long as it did, and the email can be asked
     // for again.
-    await savePending(ctx.context, rowID, record, expiresAt);
-    throw new APIError("SERVICE_UNAVAILABLE", {
-      code: SIGN_IN_CODE_UNSENT,
-      message: "The code couldn't be sent.",
-    });
+    await restorePending(ctx.context, pending, stored);
+    throw codeEmailRefused(SIGN_IN_CODE_UNSENT);
   }
   await setPendingCookie(ctx, id);
   return ctx.json({ resendInSeconds: SIGN_IN_CODE_RESEND_SECONDS });

@@ -50,31 +50,47 @@ export async function claimCodeEmail(
   }
 }
 
-/** Sends the code, giving its hourly slot back when it doesn't go out. */
+/**
+ * Sends the code, cancelling the request if the backend takes too long. A
+ * send that failed gives its hourly slot back; one cancelled mid-request keeps
+ * it, since its email may still go out.
+ */
 export async function sendCode(
   context: AuthEmailContext,
   pending: PendingSignIn,
   code: string,
   slot: string,
 ) {
+  const cancel = new AbortController();
+  const timer = setTimeout(() => cancel.abort(), SEND_TIMEOUT_MS);
   try {
-    await withTimeout(
-      sendAuthEmail({
+    await sendAuthEmail(
+      {
         to: pending.email,
         type: "sign_in_code",
         code,
         provider: pending.providerId,
-      }),
-      SEND_TIMEOUT_MS,
+      },
+      { signal: cancel.signal },
     );
     return true;
   } catch (error) {
     logFailure("Failed to send a sign-in code", error);
-    await releaseWindowSlot(context, slot).catch((releaseError: unknown) =>
-      logFailure("Failed to give back a sign-in code's slot", releaseError),
-    );
+    if (!cancel.signal.aborted) await releaseCodeEmail(context, slot);
     return false;
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+/** Gives back an hourly slot whose code never went out. */
+export async function releaseCodeEmail(
+  context: AuthEmailContext,
+  slot: string,
+) {
+  await releaseWindowSlot(context, slot).catch((error: unknown) =>
+    logFailure("Failed to give back a sign-in code's slot", error),
+  );
 }
 
 /**
@@ -104,18 +120,6 @@ export async function alertNewSignInMethod(
     type: "sign_in_method_added",
     provider: account.providerId,
   });
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms: number) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`No answer in ${ms} ms`)), ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function logFailure(message: string, error: unknown) {

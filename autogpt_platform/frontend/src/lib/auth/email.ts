@@ -55,7 +55,11 @@ type SendAuthEmailArgs =
  * and the resend button shows it. Disposable domains still get their email:
  * older accounts on one need it to reset a password or move to a real address.
  */
-export async function sendAuthEmail(args: SendAuthEmailArgs) {
+export async function sendAuthEmail(
+  args: SendAuthEmailArgs,
+  // Cancels the request to the backend, e.g. when a caller stops waiting.
+  { signal }: { signal?: AbortSignal } = {},
+) {
   const { to, type } = args;
   // DNS errors still send.
   await assertEmailHasMailServer(to);
@@ -69,6 +73,7 @@ export async function sendAuthEmail(args: SendAuthEmailArgs) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(requestBody(args)),
+      signal,
     });
 
     if (!response.ok) {

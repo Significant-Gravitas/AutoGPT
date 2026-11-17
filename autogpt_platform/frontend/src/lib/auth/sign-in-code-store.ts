@@ -1,6 +1,4 @@
 import type { GenericEndpointContext } from "@better-auth/core";
-import { APIError } from "better-auth/api";
-import { expireCookie } from "better-auth/cookies";
 import * as z from "zod";
 import {
   type AuthEmailContext,
@@ -8,10 +6,10 @@ import {
   createVerification,
 } from "./auth-email-cooldown";
 import {
-  SIGN_IN_CODE_EXPIRED,
   SIGN_IN_CODE_RESEND_SECONDS,
   SIGN_IN_CODE_TTL_SECONDS,
 } from "./sign-in-code";
+import { pendingCookieName } from "./sign-in-code-cookie";
 
 // A sign-in waiting on its code: a `sign-in-code:<id>` row in Better Auth's
 // verification table until the code expires, and the id in a signed cookie
@@ -32,7 +30,6 @@ export const CODE_PROVIDER_IDS = [
 
 const RECORD_PREFIX = "sign-in-code:";
 const TRY_PREFIX = "sign-in-code-try:";
-const COOKIE_NAME = "sign_in_code";
 
 const pendingSchema = z.object({
   providerId: z.enum(CODE_PROVIDER_IDS),
@@ -51,6 +48,9 @@ export interface Pending {
   rowID: string;
   record: PendingRecord;
   expiresAt: Date;
+  // The row's value as this request read it: the version of the code it saw,
+  // which its later writes require so they can't undo another request's.
+  value: string;
 }
 
 export async function storePending(
@@ -70,7 +70,7 @@ export async function findPending(
   ctx: GenericEndpointContext,
 ): Promise<Pending | null> {
   const id = await ctx.getSignedCookie(
-    pendingCookie(ctx).name,
+    pendingCookieName(ctx),
     ctx.context.secret,
   );
   if (typeof id !== "string" || !id) return null;
@@ -90,34 +90,65 @@ export async function findPending(
     rowID: row.id,
     record: parsed.data,
     expiresAt: new Date(row.expiresAt),
+    value: row.value,
   };
 }
 
-export async function savePending(
+/**
+ * Puts a new code in place of the one this request read, if it is still
+ * there: of two resends at once, one wins. The new version, or null when
+ * another request changed the row first.
+ */
+export async function replacePending(
   context: AuthEmailContext,
-  rowID: string,
+  pending: Pending,
   record: PendingRecord,
-  expiresAt?: Date,
+  expiresAt: Date,
+) {
+  const value = JSON.stringify(record);
+  const updated = await context.adapter.updateMany({
+    model: "verification",
+    where: thisVersion(pending.rowID, pending.value),
+    update: { value, expiresAt, updatedAt: new Date() },
+  });
+  return Number(updated) > 0 ? value : null;
+}
+
+/** Undoes `replacePending` if nothing has changed the row since. */
+export async function restorePending(
+  context: AuthEmailContext,
+  pending: Pending,
+  replacedWith: string,
 ) {
   await context.adapter.updateMany({
     model: "verification",
-    where: [{ field: "id", value: rowID }],
+    where: thisVersion(pending.rowID, replacedWith),
     update: {
-      value: JSON.stringify(record),
+      value: pending.value,
+      expiresAt: pending.expiresAt,
       updatedAt: new Date(),
-      ...(expiresAt ? { expiresAt } : {}),
     },
   });
 }
 
-// Whether this call removed the row, so a second request with the same code
-// can't finish the sign-in again.
-export async function deletePending(context: AuthEmailContext, rowID: string) {
+/**
+ * Removes the version of the waiting sign-in this request checked, while its
+ * code is still good. Whether this call removed it: of two requests with the
+ * right code one finishes, and a check of a code a resend has replaced
+ * removes nothing.
+ */
+export async function consumePending(
+  context: AuthEmailContext,
+  pending: Pending,
+) {
   const deleted = await context.adapter.deleteMany({
     model: "verification",
-    where: [{ field: "id", value: rowID }],
+    where: [
+      ...thisVersion(pending.rowID, pending.value),
+      { field: "expiresAt", value: new Date(), operator: "gt" },
+    ],
   });
-  return typeof deleted !== "number" || deleted > 0;
+  return Number(deleted) > 0;
 }
 
 export async function forgetPending(context: AuthEmailContext, id: string) {
@@ -148,36 +179,11 @@ export function secondsUntilResend(record: PendingRecord) {
   return Math.max(0, Math.ceil((due - Date.now()) / 1000));
 }
 
-export async function setPendingCookie(
-  ctx: GenericEndpointContext,
-  id: string,
-) {
-  const cookie = pendingCookie(ctx);
-  await ctx.setSignedCookie(
-    cookie.name,
-    id,
-    ctx.context.secret,
-    cookie.attributes,
-  );
-}
-
-export function forgetPendingCookie(ctx: GenericEndpointContext) {
-  expireCookie(ctx, pendingCookie(ctx));
-}
-
-/** The refusal when nothing waits on a code here; it drops the cookie too. */
-export function expiredError(ctx: GenericEndpointContext) {
-  forgetPendingCookie(ctx);
-  return new APIError("BAD_REQUEST", {
-    code: SIGN_IN_CODE_EXPIRED,
-    message: "This sign-in has expired. Start again.",
-  });
-}
-
-function pendingCookie(ctx: GenericEndpointContext) {
-  return ctx.context.createAuthCookie(COOKIE_NAME, {
-    maxAge: SIGN_IN_CODE_TTL_SECONDS,
-  });
+function thisVersion(rowID: string, value: string) {
+  return [
+    { field: "id", value: rowID },
+    { field: "value", value },
+  ];
 }
 
 function parseJSON(value: string): unknown {

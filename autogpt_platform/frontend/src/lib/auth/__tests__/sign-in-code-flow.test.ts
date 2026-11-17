@@ -175,11 +175,43 @@ function barrierAt(
     if (!matches(method, args)) return;
     arrived += 1;
     if (arrived >= parties) release();
-    await Promise.race([
-      released,
-      new Promise((resolve) => setTimeout(resolve, 2000)),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        released,
+        new Promise((resolve) => {
+          timer = setTimeout(resolve, 2000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   };
+}
+
+// The database call that writes the waiting sign-in's row by its id: a
+// resend replacing its code (updateMany) or a check using it up (deleteMany).
+function writesPendingRow(method: string, wanted: string, args: unknown[]) {
+  const { model, where } = args[0] as {
+    model?: string;
+    where?: Array<{ field: string }>;
+  };
+  return (
+    method === wanted &&
+    model === "verification" &&
+    where?.[0]?.field === "id" &&
+    where?.[1]?.field === "value"
+  );
+}
+
+// As if the code was sent `ms` ago, so a new one may be asked for.
+function ageCode(db: TestDB, ms: number) {
+  for (const row of db.UserAuthVerification) {
+    if (String(row.identifier).startsWith("sign-in-code:")) {
+      const record = JSON.parse(String(row.value));
+      row.value = JSON.stringify({ ...record, sentAt: record.sentAt - ms });
+    }
+  }
 }
 
 // One browser: the cookies each response sets, sent with the next request.
@@ -677,17 +709,17 @@ describe("the code", () => {
   }
 
   it("tells /login where it went", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T12:30:00Z"));
     const { browser, handler } = await waitingOnCode();
 
-    const pending = await browser.pending();
-
-    expect(pending).toMatchObject({
+    expect(await browser.pending()).toEqual({
       provider: "github",
       email: "pat@company.example",
+      resendInSeconds: 60,
     });
-    // A second may pass on a slow runner.
-    expect(pending.resendInSeconds).toBeGreaterThan(50);
-    expect(pending.resendInSeconds).toBeLessThanOrEqual(60);
+    vi.setSystemTime(new Date("2026-11-17T12:30:45Z"));
+    expect(await browser.pending()).toMatchObject({ resendInSeconds: 15 });
     expect(await new Browser(handler).pending()).toBeNull();
   });
 
@@ -860,6 +892,88 @@ describe("the code", () => {
     expect(resent.status).toBe(503);
     expect(await resent.json()).toMatchObject({ code: "sign_in_code_unsent" });
     expect((await browser.enterCode(first)).status).toBe(200);
+  });
+
+  it("sends one new code when it's asked for twice at once", async () => {
+    const { browser, db } = await waitingOnCode();
+    ageCode(db, 61_000);
+    const tab = browser.copy();
+    // Both resends read the first code before either replaces it.
+    dbGate.current = barrierAt(
+      (method, args) => writesPendingRow(method, "updateMany", args),
+      2,
+    );
+
+    const answers = await Promise.all([browser.resendCode(), tab.resendCode()]);
+    dbGate.current = null;
+
+    expect(answers.map((answer) => answer.status).sort()).toEqual([200, 429]);
+    expect(emailsOfType("sign_in_code")).toHaveLength(2);
+    expect((await browser.enterCode(emailedCode())).status).toBe(200);
+  });
+
+  it("doesn't let a check of a replaced code finish, or end the new one", async () => {
+    const { browser, db } = await waitingOnCode();
+    const first = emailedCode();
+    ageCode(db, 61_000);
+    let reached = () => {};
+    const atUseUp = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let resume = () => {};
+    const resent = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    // The check of the first code waits, about to use it up, while a new
+    // code replaces it.
+    dbGate.current = async (method, args) => {
+      if (!writesPendingRow(method, "deleteMany", args)) return;
+      reached();
+      await resent;
+    };
+
+    const checking = browser.copy().enterCode(first);
+    await atUseUp;
+    const resend = await browser.resendCode();
+    resume();
+    const answer = await checking;
+    dbGate.current = null;
+
+    expect(resend.status).toBe(200);
+    expect(await answer.json()).toMatchObject({
+      code: "sign_in_code_invalid",
+    });
+    expect(db.UserAuthSession).toEqual([]);
+    expect((await browser.enterCode(emailedCode())).status).toBe(200);
+  });
+
+  it("gives the hour's slot back when the waiting sign-in can't be stored", async () => {
+    const { handler, db } = await createAuth();
+    existingAccount(db, "pat@company.example");
+    answerAs("github", { email: "pat@company.example" });
+    dbGate.current = async (method, [query]) => {
+      const { model, data } = query as {
+        model?: string;
+        data?: { identifier?: unknown };
+      };
+      if (
+        method === "create" &&
+        model === "verification" &&
+        String(data?.identifier).startsWith("sign-in-code:")
+      ) {
+        throw new Error("database unavailable");
+      }
+    };
+
+    const landing = await new Browser(handler).signInWith("github");
+
+    expect(landing.searchParams.get("error")).toBe("sign_in_code_unsent");
+    expect(emailsOfType("sign_in_code")).toEqual([]);
+    expect(
+      db.UserAuthVerification.filter((row) =>
+        /^sign-in-code(-email)?:/.test(String(row.identifier)),
+      ),
+    ).toEqual([]);
   });
 
   it("is emailed at most five times an hour to one address", async () => {

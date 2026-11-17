@@ -6,12 +6,16 @@ import type {
 import { providerRunsMailbox } from "./mailbox-provider";
 import { SIGN_IN_CODE_SENT, SIGN_IN_CODE_UNSENT } from "./sign-in-code";
 import { hashCode, newCode, newPendingID } from "./sign-in-code-crypto";
-import { claimCodeEmail, sendCode } from "./sign-in-code-emails";
+import {
+  claimCodeEmail,
+  releaseCodeEmail,
+  sendCode,
+} from "./sign-in-code-emails";
+import { setPendingCookie } from "./sign-in-code-cookie";
 import {
   CODE_PROVIDER_IDS,
   forgetPending,
   type PendingSignIn,
-  setPendingCookie,
   storePending,
 } from "./sign-in-code-store";
 import { accountIDOf, providerConfirmedByCode } from "./sign-in-provider";
@@ -80,11 +84,23 @@ async function startSignInCode(
   if ("refusal" in claim) return { error: claim.refusal };
   const id = newPendingID();
   const code = newCode();
-  await storePending(ctx.context, id, {
+  const stored = await storePending(ctx.context, id, {
     ...pending,
     codeHash: hashCode(ctx.context.secret, id, code),
     sentAt: Date.now(),
-  });
+  }).then(
+    () => true,
+    (error: unknown) => {
+      console.error("Failed to store a waiting sign-in", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    },
+  );
+  if (!stored) {
+    await releaseCodeEmail(ctx.context, claim.slot);
+    return { error: SIGN_IN_CODE_UNSENT };
+  }
   if (!(await sendCode(ctx.context, pending, code, claim.slot))) {
     await forgetPending(ctx.context, id);
     return { error: SIGN_IN_CODE_UNSENT };
