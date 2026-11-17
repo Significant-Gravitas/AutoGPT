@@ -2125,21 +2125,14 @@ async def _add_graph_execution(
         # fail the whole requeue — the exact case the admin fallback serves.
         persist_tenancy = expert_id is not None and organization_id is not None
         if admin_requeue:
-            # QUEUED is not a valid source for the QUEUED compare-and-set
-            # below, so admin recovery publishes directly (#15282). If the
-            # original message was not lost after all, the executor takes the
-            # run's cluster lock and re-reads its status under it, so only one
-            # delivery runs it.
-            if persist_tenancy:
-                await edb.update_graph_execution_stats(
-                    graph_exec_id=graph_exec.id,
-                    update_tenancy=True,
-                    organization_id=organization_id,
-                    team_id=team_id,
-                )
-            # Read again right before the publish: the run may have been
-            # picked up since the read above, and a requeue counted then would
-            # only publish a duplicate.
+            # QUEUED is not a valid source for the QUEUED compare-and-set the
+            # other branch makes, so admin recovery publishes directly
+            # (#15282). If the original message was not lost after all, the
+            # executor takes the run's cluster lock and re-reads its status
+            # under it, so only one delivery runs it.
+            # Read again right before writing and publishing: the run may have
+            # been picked up since the first read, and a requeue counted then
+            # would only publish a duplicate.
             current = await edb.get_graph_execution_meta(
                 user_id=user_id, execution_id=graph_exec.id
             )
@@ -2147,6 +2140,13 @@ async def _add_graph_execution(
                 raise ExecutionNotRequeuedError(
                     f"Execution #{graph_exec.id} was not requeued: it is "
                     f"{current.status if current else 'gone'}, not QUEUED"
+                )
+            if persist_tenancy:
+                await edb.update_graph_execution_stats(
+                    graph_exec_id=graph_exec.id,
+                    update_tenancy=True,
+                    organization_id=organization_id,
+                    team_id=team_id,
                 )
         else:
             # Update execution status to QUEUED BEFORE publishing to prevent race condition
