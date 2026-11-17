@@ -7,7 +7,9 @@ the code under test does with it is never patched out.
 
 import asyncio
 import socket
-from typing import Any, Awaitable, Callable, TypeVar
+import uuid
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Awaitable, Callable, TypeVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +17,7 @@ from autogpt_libs.auth.models import User as AuthUser
 from fastapi import HTTPException
 from prisma.enums import ReviewStatus
 from prisma.models import AgentGraphExecution, PendingHumanReview
+from pydantic import SecretStr
 
 from backend.api.features.admin.diagnostics_admin_routes import (
     RequeueExecutionResponse,
@@ -23,14 +26,20 @@ from backend.api.features.admin.diagnostics_admin_routes import (
 )
 from backend.api.features.graph_executions.review.model import ReviewItem
 from backend.api.features.graph_executions.review.service import process_reviews
+from backend.api.features.library.db import (
+    get_library_agent_by_graph_id,
+    update_library_agent,
+)
 from backend.api.model import CreateGraph
+from backend.blocks.allquiet.incidents import AllQuietCreateIncidentBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.human_in_the_loop import HumanInTheLoopBlock
 from backend.blocks.io import AgentInputBlock
 from backend.data import execution, graph
 from backend.data.execution import ExecutionStatus
+from backend.data.graph import GraphSettings
 from backend.data.human_review import get_pending_reviews_for_execution
-from backend.data.model import User
+from backend.data.model import APIKeyCredentials, User
 from backend.data.onboarding import get_user_onboarding
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor import manager as executor_manager
@@ -41,6 +50,7 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_QUEUE_NAME,
     create_execution_queue_config,
 )
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_async_execution_queue
 from backend.util.test import SpinTestServer, wait_execution
@@ -136,9 +146,9 @@ async def test_a_late_original_delivery_does_not_get_past_a_review(
     server: SpinTestServer,
 ):
     """The admin's requeue ran the run up to a human review; then the original
-    delivery, never lost after all, turns up and takes the run through the
-    review step again. The review still waits, the step after it doesn't run
-    until the user approves, and then it runs once."""
+    delivery, never lost after all, turns up. The review still waits, the
+    step after it doesn't run until the user approves, and then it runs
+    once."""
     user = await create_test_user()
     test_graph = await _create_graph(server, _graph_with_a_review(), user)
     held: list[dict[str, Any]] = []
@@ -147,7 +157,7 @@ async def test_a_late_original_delivery_does_not_get_past_a_review(
     )
 
     assert (await _requeue(run.id)).requeued_count == 1
-    parked = await _wait_for(
+    await _wait_for(
         lambda: _row_in(run.id, ExecutionStatus.REVIEW), "the run to reach review"
     )
     with pytest.raises(HTTPException) as refused:
@@ -155,24 +165,45 @@ async def test_a_late_original_delivery_does_not_get_past_a_review(
     assert refused.value.status_code == 404
 
     await _deliver(held)
-    await _wait_for(
-        lambda: _row_in(run.id, ExecutionStatus.REVIEW, updated_after=parked),
-        "the late delivery to be handled",
-    )
+    await _let_the_executor_catch_up(server, user)
 
-    (review,) = await get_pending_reviews_for_execution(run.id, user.id)
-    stored = await PendingHumanReview.prisma().find_unique(
-        where={"nodeExecId": review.node_exec_id}
+    review = await _assert_waiting_for_review(
+        user, run.id, _node_of(test_graph, StoreValueBlock)
     )
-    assert stored and stored.status == ReviewStatus.WAITING
-    store_node = _node_of(test_graph, StoreValueBlock)
-    assert store_node not in {ne.node_id for ne in await _node_execs(user, run.id)}
-
     await process_reviews(
         user.id, [ReviewItem(node_exec_id=review.node_exec_id, approved=True)]
     )
     await wait_execution(user.id, run.id, 60)
     await _assert_ran_once(user, run.id, test_graph)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "safe_mode", ["human_in_the_loop_safe_mode", "sensitive_action_safe_mode"]
+)
+async def test_a_late_original_delivery_with_a_stale_safe_mode_stays_parked(
+    server: SpinTestServer, safe_mode: str
+):
+    """The run was queued while the user had this safe mode off, and its
+    original message carries that setting. The user turned it on before the
+    admin's requeue, so the requeued run stops for review. The late original
+    must not take the run past the review on its stale setting."""
+    user = await create_test_user()
+    async with _an_api_key(user) as key:
+        test_graph, inputs, gated = await _graph_gated_by(server, user, safe_mode, key)
+        await _set_safe_mode(user, test_graph, safe_mode, on=False)
+        held: list[dict[str, Any]] = []
+        run = await _start_with_delivery_held(server, user, test_graph, inputs, held)
+        await _set_safe_mode(user, test_graph, safe_mode, on=True)
+
+        assert (await _requeue(run.id)).requeued_count == 1
+        await _wait_for(
+            lambda: _row_in(run.id, ExecutionStatus.REVIEW), "the run to reach review"
+        )
+        await _deliver(held)
+        await _let_the_executor_catch_up(server, user)
+
+        await _assert_waiting_for_review(user, run.id, gated)
 
 
 async def _create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
@@ -204,6 +235,118 @@ def _graph_with_a_review() -> graph.Graph:
     return graph.Graph(
         name="ReviewGraph", description="Input, review, store", nodes=nodes, links=links
     )
+
+
+@asynccontextmanager
+async def _an_api_key(user: User) -> AsyncIterator[APIKeyCredentials]:
+    """An All Quiet key the user holds for the test only. It is never used:
+    the step that would use it must not run."""
+    credentials = APIKeyCredentials(
+        id=str(uuid.uuid4()),
+        provider="allquiet",
+        api_key=SecretStr("not-a-real-key"),
+        title="All Quiet",
+        expires_at=None,
+    )
+    store = IntegrationCredentialsStore()
+    await store.add_creds(user.id, credentials)
+    try:
+        yield credentials
+    finally:
+        await store.delete_creds_by_id(user.id, credentials.id)
+
+
+async def _graph_gated_by(
+    server: SpinTestServer, user: User, safe_mode: str, key: APIKeyCredentials
+) -> tuple[graph.Graph, dict[str, Any], str]:
+    """A workflow that stops for review when ``safe_mode`` is on, its inputs,
+    and the step that must not run until the review is answered."""
+    if safe_mode == "human_in_the_loop_safe_mode":
+        test_graph = await _create_graph(server, _graph_with_a_review(), user)
+        return test_graph, {"value": "draft"}, _node_of(test_graph, StoreValueBlock)
+
+    # An irreversible block stops for review before it runs.
+    nodes = [
+        graph.Node(block_id=AgentInputBlock().id, input_default={"name": "title"}),
+        graph.Node(
+            block_id=AllQuietCreateIncidentBlock().id,
+            input_default={
+                "credentials": {
+                    "id": key.id,
+                    "provider": key.provider,
+                    "type": key.type,
+                    "title": key.title,
+                }
+            },
+        ),
+    ]
+    links = [
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="result",
+            sink_name="title",
+        )
+    ]
+    test_graph = await _create_graph(
+        server,
+        graph.Graph(
+            name="IncidentGraph",
+            description="Raise an incident",
+            nodes=nodes,
+            links=links,
+        ),
+        user,
+    )
+    return (
+        test_graph,
+        {"title": "Checkout is down"},
+        _node_of(test_graph, AllQuietCreateIncidentBlock),
+    )
+
+
+async def _set_safe_mode(
+    user: User, test_graph: graph.Graph, safe_mode: str, *, on: bool
+) -> None:
+    library_agent = await get_library_agent_by_graph_id(user.id, test_graph.id)
+    assert library_agent
+    await update_library_agent(
+        library_agent.id, user.id, settings=GraphSettings(**{safe_mode: on})
+    )
+
+
+async def _let_the_executor_catch_up(server: SpinTestServer, user: User) -> None:
+    """Run a workflow queued after the late delivery and wait for it to end:
+    the executor takes deliveries in order, so by then it has handled the
+    late one, which would have moved the run out of REVIEW if it resumed it."""
+    marker_graph = await _create_graph(server, create_test_graph(), user)
+    marker = await server.agent_server.test_execute_graph(
+        user_id=user.id,
+        graph_id=marker_graph.id,
+        graph_version=marker_graph.version,
+        node_input={"input_1": "Hello", "input_2": "World"},
+    )
+    await wait_execution(user.id, marker.id, 60)
+
+
+async def _assert_waiting_for_review(user: User, graph_exec_id: str, gated: str):
+    """The run is still waiting on its one review, and the gated step has not
+    run; returns the review."""
+    assert await _row_in(graph_exec_id, ExecutionStatus.REVIEW)
+    (review,) = await get_pending_reviews_for_execution(graph_exec_id, user.id)
+    stored = await PendingHumanReview.prisma().find_unique(
+        where={"nodeExecId": review.node_exec_id}
+    )
+    assert stored and stored.status == ReviewStatus.WAITING
+    gated_statuses = [
+        ne.status
+        for ne in await _node_execs(user, graph_exec_id)
+        if ne.node_id == gated
+    ]
+    assert all(
+        status == ExecutionStatus.REVIEW for status in gated_statuses
+    ), f"the step behind the review ran: {gated_statuses}"
+    return review
 
 
 async def _start_with_delivery_held(
@@ -318,16 +461,10 @@ async def _run_queues_drained() -> bool:
 
 
 async def _row_in(
-    graph_exec_id: str,
-    status: ExecutionStatus,
-    updated_after: AgentGraphExecution | None = None,
+    graph_exec_id: str, status: ExecutionStatus
 ) -> AgentGraphExecution | None:
     row = await AgentGraphExecution.prisma().find_unique(where={"id": graph_exec_id})
-    if row is None or row.executionStatus != status:
-        return None
-    if updated_after and row.updatedAt == updated_after.updatedAt:
-        return None
-    return row
+    return row if row and row.executionStatus == status else None
 
 
 async def _node_execs(user: User, graph_exec_id: str):
