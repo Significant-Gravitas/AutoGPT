@@ -1,6 +1,6 @@
 // Relative import: jest has no `@/` alias, and this module stays import-light
 // so its tests load without the auth client or the AI SDK runtime.
-import { SignedOutError } from "../../lib/auth/errors";
+import { SessionChangedError, SignedOutError } from "../../lib/auth/errors";
 
 export const OFFLINE_MESSAGE =
   "Can't reach AutoGPT. Check your connection and try again.";
@@ -22,6 +22,7 @@ const KNOWN_MESSAGES = new Set([
   OFFLINE_MESSAGE,
   FALLBACK_MESSAGE,
   new SignedOutError().message,
+  new SessionChangedError().message,
 ]);
 
 /** The sentence for a refused request with this HTTP status. */

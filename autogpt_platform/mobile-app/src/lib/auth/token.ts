@@ -1,7 +1,8 @@
-import { SignedOutError } from "./errors";
-import { authRequest, hasSession } from "./nativeSession";
+import { SessionChangedError, SignedOutError } from "./errors";
+import { authRequest, hasSession, sessionToken } from "./nativeSession";
 
 const REFRESH_MARGIN_MS = 60_000;
+const OFFLINE_MESSAGE = "Can't reach AutoGPT. Check your connection and try again.";
 const FALLBACK_LIFETIME_MS = 50 * 60_000;
 
 interface CachedToken {
@@ -15,18 +16,35 @@ let pending: Promise<string> | null = null;
 // cache the old user's token for the next one.
 let generation = 0;
 
+/** Which session a request starts under; pass it to `assertSameSession` before a retry. */
+export function sessionMark() {
+  return sessionToken();
+}
+
+/**
+ * Throws once the session a request started under has ended, so neither its
+ * token nor a retry of it goes out for whoever signs in next.
+ */
+export function assertSameSession(mark: string | null) {
+  if (sessionToken() !== mark) throw new SessionChangedError();
+}
+
 /** The short-lived token the backend accepts, minted from the stored session. */
 export async function getAccessToken() {
   if (cached && cached.expiresAt - Date.now() > REFRESH_MARGIN_MS) {
     return cached.token;
   }
+  const mark = sessionMark();
   if (!pending) {
     const mint = mintAccessToken().finally(() => {
       if (pending === mint) pending = null;
     });
     pending = mint;
   }
-  return pending;
+  const token = await pending;
+  // A sign-out, or a sign-in as someone else, while the token was minted.
+  assertSameSession(mark);
+  return token;
 }
 
 export function clearAccessToken() {
@@ -45,13 +63,14 @@ async function mintAccessToken() {
     // Not a dead session (offline, or a 503 while the auth service is
     // down), so stay signed in. A plain Error, since ApiError's module
     // imports this one.
-    throw new Error(
-      "Can't reach AutoGPT. Check your connection and try again.",
-    );
+    throw new Error(OFFLINE_MESSAGE);
   }
+  // A body that breaks off mid-read is a dropped connection, not a dead session.
   const data = isDeadSession
     ? null
-    : ((await response.json().catch(() => null)) as { token?: unknown } | null);
+    : ((await response.json().catch(() => {
+        throw new Error(OFFLINE_MESSAGE);
+      })) as { token?: unknown } | null);
   if (typeof data?.token !== "string") throw new SignedOutError();
   if (generation === startedIn) {
     cached = { token: data.token, expiresAt: readExpiry(data.token) };

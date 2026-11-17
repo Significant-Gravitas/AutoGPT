@@ -4,7 +4,7 @@ import {
   PREVIEW_BYTES,
   trimPartialUtf8,
 } from "@/features/files/helpers";
-import { clearAccessToken } from "@/lib/auth/token";
+import { assertSameSession, clearAccessToken, sessionMark } from "@/lib/auth/token";
 
 import { ApiError, apiRequest, apiUrl, authHeaders } from "./client";
 
@@ -156,9 +156,12 @@ async function fetchWithFreshToken(
   url: string,
   init: () => RequestInit = () => ({}),
 ) {
+  const mark = sessionMark();
   let response = await fetch(url, { ...init(), headers: await authHeaders() });
-  // Same as apiRequest: one retry with a fresh token before the session counts as gone.
+  // Same as apiRequest: one retry with a fresh token before the session counts
+  // as gone, and none for an account that signed in after this started.
   if (response.status === 401) {
+    assertSameSession(mark);
     clearAccessToken();
     response = await fetch(url, { ...init(), headers: await authHeaders() });
   }

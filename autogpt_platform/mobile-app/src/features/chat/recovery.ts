@@ -2,12 +2,14 @@ import type { UIMessage } from "ai";
 
 // Relative imports: jest has no `@/` alias, and nothing here may load the
 // auth client, the AI SDK runtime or a native module.
-import { SignedOutError } from "../../lib/auth/errors";
+import { SessionChangedError, SignedOutError } from "../../lib/auth/errors";
 import { isStatusMessage } from "./chatErrors";
 
 /** A network drop or a broken stream; not a dead session or a refusal. */
 export function isRecoverableChatError(error: Error) {
-  if (error instanceof SignedOutError) return false;
+  if (error instanceof SignedOutError || error instanceof SessionChangedError) {
+    return false;
+  }
   return !isStatusMessage(error.message);
 }
 

@@ -1,5 +1,10 @@
 import { API_URL } from "@/lib/env";
-import { clearAccessToken, getAccessToken } from "@/lib/auth/token";
+import {
+  assertSameSession,
+  clearAccessToken,
+  getAccessToken,
+  sessionMark,
+} from "@/lib/auth/token";
 
 export class ApiError extends Error {
   status: number;
@@ -29,8 +34,11 @@ export function apiUrl(path: string, query?: RequestOptions["query"]) {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}) {
+  const mark = sessionMark();
   let response = await send(path, options);
   if (response.status === 401) {
+    // Never replay a request for an account that signed in after it started.
+    assertSameSession(mark);
     clearAccessToken();
     response = await send(path, options);
   }

@@ -54,6 +54,11 @@ export function hasSession() {
   return current !== null;
 }
 
+/** The signed credential, which names the session: a new sign-in gets a new one. */
+export function sessionToken() {
+  return current?.token ?? null;
+}
+
 /** The session as a Cookie header for the web app's own pages and routes. */
 export function getSessionCookie() {
   return current ? sessionCookieHeader(current.token, FRONTEND_URL) : null;

@@ -1,4 +1,4 @@
-import { clearAccessToken } from "@/lib/auth/token";
+import { assertSameSession, clearAccessToken, sessionMark } from "@/lib/auth/token";
 
 import { ApiError, apiRequest, apiUrl, authHeaders } from "./client";
 
@@ -52,8 +52,11 @@ export class CreateExpertError extends ApiError {
 // Not `apiRequest`: its error keeps only a string `detail`, and the limit
 // a 409 hit arrives as `{ code, limit }`.
 export async function createExpert(body: CreateExpertBody) {
+  const mark = sessionMark();
   let response = await postRaise(body);
   if (response.status === 401) {
+    // Never create the expert for an account that signed in after this started.
+    assertSameSession(mark);
     clearAccessToken();
     response = await postRaise(body);
   }

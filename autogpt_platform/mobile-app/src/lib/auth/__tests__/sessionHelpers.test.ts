@@ -18,6 +18,10 @@ describe("storageKey", () => {
     );
   });
 
+  it("keeps origins apart that differ only in a character the key store refuses", () => {
+    expect(storageKey("http://dev:3000")).not.toBe(storageKey("http://dev_3000"));
+  });
+
   it("uses only characters the phone's key store takes", () => {
     expect(storageKey("http://10.0.2.2:3000/")).toMatch(/^[A-Za-z0-9._-]+$/);
   });

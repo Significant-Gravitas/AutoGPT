@@ -26,8 +26,12 @@ const SESSION_COOKIE = "better-auth.session_token";
 
 /** One saved session per server, so switching servers never sends one's credential to another. */
 export function storageKey(serverURL: string) {
-  // SecureStore keys take letters, digits, ".", "-" and "_" only.
-  const server = new URL(serverURL).origin.replace(/[^A-Za-z0-9.-]/g, "_");
+  // SecureStore keys take letters, digits, ".", "-" and "_" only. Hex keeps
+  // every origin apart: replacing ":" with "_" would make http://dev:3000 and
+  // http://dev_3000 share one key.
+  const server = Array.from(new URL(serverURL).origin, (char) =>
+    char.charCodeAt(0).toString(16).padStart(2, "0"),
+  ).join("");
   return `autogpt.session.${server}`;
 }
 
