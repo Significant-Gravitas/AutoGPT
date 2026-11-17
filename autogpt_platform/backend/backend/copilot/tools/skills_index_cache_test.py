@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.api.external.v2 import files
+from backend.api.external.v2.files_test import _auth
+from backend.api.features.workspace import routes
 from backend.copilot.tools import skills
 from backend.copilot.tools.skills import (
     SKILLS_INDEX_CACHE_TTL_S,
@@ -136,9 +139,6 @@ async def test_a_rejected_assigned_copy_still_allows_a_warm_index():
     "error", [None, RuntimeError("cleanup"), asyncio.CancelledError()]
 )
 async def test_external_file_delete_reaches_the_cached_index(expert_id, error):
-    from backend.api.external.v2 import files
-    from backend.api.external.v2.files_test import _auth
-
     fake = _FakeWorkspaceManager()
     path = f"{skills.skill_folder(expert_id)}/brief/SKILL.md"
     fake.files[path] = _skill("brief")
@@ -174,8 +174,6 @@ async def test_external_file_delete_reaches_the_cached_index(expert_id, error):
     "error", [RuntimeError("lost acknowledgement"), asyncio.CancelledError()]
 )
 async def test_a_committed_rename_invalidates_after_failure(error):
-    from backend.api.features.workspace import routes
-
     fake = _FakeWorkspaceManager()
     path = "/skills/brief/SKILL.md"
     fake.files[path] = _skill("brief")
