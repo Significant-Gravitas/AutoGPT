@@ -367,6 +367,20 @@ async def test_a_refused_refresh_reads_as_a_dead_grant(handler, link):
     assert "client-secret" not in str(failure.value)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("code", ["x" * 65, "invalid grant <b>", ""])
+async def test_an_error_code_not_shaped_like_one_is_dropped(handler, link, code):
+    """The code is persisted and shown in messages; Link's text is trusted
+    there only when it is shaped like an OAuth error code."""
+    _, responses = link
+    responses["/auth/token"] = httpx.Response(400, json={"error": code})
+
+    with pytest.raises(OAuthTokenRequestError) as failure:
+        await handler.exchange_code_for_tokens("code", [], "v" * 43)
+
+    assert failure.value.error_code is None
+
+
 def test_device_credentials_are_not_mistaken_for_hosted_ones():
     device = hosted_credentials()
     device.metadata = {}

@@ -236,8 +236,9 @@ def autopilot_session_guard(
             message=(
                 "This session was started by an automation, or predates the "
                 "check that tells them apart, so it cannot hire, raise, or "
-                "edit a teammate. Report what the team would need and let the "
-                "user make the change in a new Otto chat."
+                "edit a teammate, or change which credentials one may use. "
+                "Report what the team would need and let the user make the "
+                "change in a new Otto chat."
             ),
             session_id=session.session_id,
         )

@@ -6,9 +6,10 @@ pending-message admission, Redis scripts, and draining run unchanged.
 
 import asyncio
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -18,7 +19,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from backend.api.features.chat import routes
+from backend.copilot import model as chat_model
 from backend.copilot import pending_messages
+from backend.copilot.executor import utils as executor_utils
 from backend.copilot.expert_kickoff import scoped_client_message_id
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.pending_message_receipts import (
@@ -137,6 +140,64 @@ async def test_separate_pending_sends_can_have_identical_text(
     drained = await drain_pending_messages(session_id)
     assert [message.content for message in drained] == ["Yes", "Yes"]
     assert len({message.id for message in drained}) == 2
+
+
+async def test_identical_text_with_a_new_id_can_retry_after_losing_admission(
+    pending_client: tuple[AsyncClient, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, user_id, session_id = pending_client
+    session = chat_model.ChatSession.new(user_id, dry_run=False)
+    session.messages.append(
+        chat_model.ChatMessage(role="user", content="Yes", id=str(uuid4()))
+    )
+    slot = MagicMock(admitted=False)
+
+    @asynccontextmanager
+    async def acquire(*args, **kwargs):
+        yield slot
+
+    @asynccontextmanager
+    async def held_lock(*args, **kwargs):
+        yield True
+
+    monkeypatch.setattr(routes, "is_turn_in_flight", AsyncMock(return_value=False))
+    monkeypatch.setattr(routes, "enforce_platform_allowance", AsyncMock())
+    monkeypatch.setattr(executor_utils, "acquire_turn_slot", acquire)
+    monkeypatch.setattr(chat_model, "_get_session_lock", held_lock)
+    monkeypatch.setattr(chat_model, "get_chat_session", AsyncMock(return_value=session))
+    append = AsyncMock(return_value=session)
+    dispatch = AsyncMock()
+    monkeypatch.setattr(chat_model, "append_and_save_message", append)
+    monkeypatch.setattr(executor_utils, "dispatch_turn", dispatch)
+    monkeypatch.setattr("backend.copilot.tracking.track_user_message", MagicMock())
+    monkeypatch.setattr(routes.stream_registry, "publish_chunk", AsyncMock())
+    monkeypatch.setattr(
+        routes.stream_registry, "subscribe_to_session", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(routes, "cancel_resume_at_reset_in_background", MagicMock())
+    body = {"message": "Yes", "message_id": str(uuid4())}
+    scoped_id = scoped_client_message_id(user_id, session_id, body["message_id"])
+    redis = await get_redis_async()
+    path = f"/sessions/{session_id}/stream"
+
+    response = await client.post(path, json=body)
+
+    assert response.status_code == 409
+    assert "send this message again" in response.json()["detail"]
+    assert await redis.get(_client_message_key(session_id, scoped_id)) is None
+    assert await drain_pending_messages(session_id) == []
+    append.assert_not_awaited()
+    dispatch.assert_not_awaited()
+
+    slot.admitted = True
+    assert (await client.post(path, json=body)).status_code == 200
+    assert (await client.post(path, json=body)).status_code == 200
+    append.assert_awaited_once()
+    assert append.await_args.args[1].id == scoped_id
+    assert append.await_args.kwargs["dedupe_content"] is False
+    dispatch.assert_awaited_once()
+    assert await drain_pending_messages(session_id) == []
 
 
 @pytest.mark.parametrize("claim_expired", [False, True])

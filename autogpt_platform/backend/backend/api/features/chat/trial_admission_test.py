@@ -6,6 +6,8 @@ the user's tier, the trial row and the Redis spend counters. The turn is
 scheduled no further than the RabbitMQ boundary.
 """
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,12 +23,14 @@ from backend.copilot import rate_limit, usage_activation
 from backend.copilot.billing_e2e.trial_account import active_trial, usage_state_of
 from backend.copilot.briefing import scheduling as briefing_scheduling
 from backend.copilot.model import ChatSession
+from backend.copilot.pending_message_helpers import StreamRegistryUnavailable
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.data.subscription_trial import TrialState
 
 # Kept before the API suite's autouse fixture swaps in a paywall that lets
 # every user through.
 _REAL_IS_USER_PAYWALLED = rate_limit.is_user_paywalled
+_WATCHDOG_SECONDS = 30
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -52,6 +56,7 @@ class RouteTrialAccount:
         self.trial = active_trial(user_id, daily_limit=250_000, weekly_limit=1_000_000)
         self.spent_today = 0
         self.read_error: Exception | None = None
+        self.before_usage_read: Callable[[], Awaitable[None]] | None = None
 
     async def read_trial(self, user_id: str) -> TrialState | None:
         assert user_id == self.user_id
@@ -65,6 +70,8 @@ class RouteTrialAccount:
 
     async def read_usage_state(self, user_id: str):
         assert user_id == self.user_id
+        if self.before_usage_read is not None:
+            await self.before_usage_read()
         return usage_state_of(user_id, self.tier, self.trial)
 
     async def read_counter(self, key: str) -> int | None:
@@ -92,6 +99,7 @@ def setup_app_auth(mock_jwt_user):
 def account(mocker: pytest_mock.MockerFixture, test_user_id: str) -> RouteTrialAccount:
     account = RouteTrialAccount(test_user_id)
     mocker.patch.object(rate_limit, "is_user_paywalled", _REAL_IS_USER_PAYWALLED)
+    mocker.patch.object(chat_routes, "is_user_paywalled", _REAL_IS_USER_PAYWALLED)
     mocker.patch.object(
         rate_limit, "_fetch_user_tier", AsyncMock(side_effect=account.read_tier)
     )
@@ -243,6 +251,220 @@ def test_a_paying_user_is_not_held_to_a_trial_that_ended(
 
     assert response.status_code == 200
     scheduled.assert_awaited_once()
+
+
+def test_the_session_checks_run_beside_the_paywall_and_in_flight_reads(
+    account: RouteTrialAccount,
+    scheduled: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Each read waits until the others have started; one after another, they
+    time out."""
+    started = {
+        name: asyncio.Event() for name in ("session", "usage state", "in flight")
+    }
+
+    async def meet(name: str) -> None:
+        started[name].set()
+        await asyncio.wait_for(
+            asyncio.gather(*(event.wait() for event in started.values())),
+            _WATCHDOG_SECONDS,
+        )
+
+    session = ChatSession.new(test_user_id, dry_run=False)
+
+    async def check_session(*args, **kwargs) -> ChatSession:
+        await meet("session")
+        return session
+
+    async def read_in_flight(session_id: str) -> bool:
+        await meet("in flight")
+        return False
+
+    async def before_usage_read() -> None:
+        await meet("usage state")
+
+    account.before_usage_read = before_usage_read
+    mocker.patch.object(
+        chat_routes, "_validate_and_get_session", AsyncMock(side_effect=check_session)
+    )
+    mocker.patch.object(
+        chat_routes, "is_turn_in_flight", AsyncMock(side_effect=read_in_flight)
+    )
+
+    response = _send_message()
+
+    assert response.status_code == 200
+    scheduled.assert_awaited_once()
+
+
+def test_a_refused_session_is_refused_whatever_the_in_flight_read_found(
+    account: RouteTrialAccount,
+    scheduled: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """The in-flight read fails before the session is refused; awaited, its
+    error would be a 503."""
+    in_flight_failed = asyncio.Event()
+
+    async def read_in_flight(session_id: str) -> bool:
+        in_flight_failed.set()
+        raise StreamRegistryUnavailable("redis down")
+
+    async def refuse_session(*args, **kwargs) -> ChatSession:
+        await asyncio.wait_for(in_flight_failed.wait(), _WATCHDOG_SECONDS)
+        raise fastapi.HTTPException(status_code=404)
+
+    mocker.patch.object(
+        chat_routes, "_validate_and_get_session", AsyncMock(side_effect=refuse_session)
+    )
+    mocker.patch.object(
+        chat_routes, "is_turn_in_flight", AsyncMock(side_effect=read_in_flight)
+    )
+
+    response = _send_message()
+
+    assert response.status_code == 404
+    scheduled.assert_not_awaited()
+
+
+def test_the_in_flight_check_still_answers_for_a_message_sent_mid_turn(
+    account: RouteTrialAccount,
+    scheduled: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch.object(chat_routes, "is_turn_in_flight", AsyncMock(return_value=True))
+    queued = mocker.patch.object(chat_routes, "queue_pending_for_http", AsyncMock())
+
+    response = _send_message()
+
+    assert response.status_code == 200
+    queued.assert_awaited_once()
+    scheduled.assert_not_awaited()
+
+
+def test_a_message_that_is_not_the_users_never_waits_on_the_in_flight_check(
+    account: RouteTrialAccount,
+    scheduled: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    in_flight = mocker.patch.object(
+        chat_routes, "is_turn_in_flight", AsyncMock(return_value=True)
+    )
+    queued = mocker.patch.object(chat_routes, "queue_pending_for_http", AsyncMock())
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello", "is_user_message": False},
+    )
+
+    assert response.status_code == 200
+    in_flight.assert_not_awaited()
+    queued.assert_not_awaited()
+    scheduled.assert_awaited_once()
+
+
+def _hold_early_reads(mocker: pytest_mock.MockerFixture):
+    started = asyncio.Event()
+    owned: list[asyncio.Task] = []
+
+    async def held_read(*args):
+        task = asyncio.current_task()
+        assert task is not None
+        owned.append(task)
+        if len(owned) == 2:
+            started.set()
+        await asyncio.Event().wait()
+
+    mocker.patch.object(chat_routes, "_read_paywall_state", held_read)
+    mocker.patch.object(chat_routes, "is_turn_in_flight", held_read)
+    return started, owned
+
+
+@pytest.mark.parametrize(
+    ("gate", "status"),
+    [
+        ("_validate_and_get_writable_session", 404),
+        ("_apply_autopilot_mode", 402),
+        ("enforce_model_entitlement", 403),
+        ("record_card_decisions", 400),
+    ],
+)
+def test_every_preflight_refusal_drains_the_early_reads(
+    account: RouteTrialAccount,
+    scheduled: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+    gate: str,
+    status: int,
+) -> None:
+    started, owned = _hold_early_reads(mocker)
+
+    async def refuse(*args, **kwargs):
+        await asyncio.wait_for(started.wait(), _WATCHDOG_SECONDS)
+        raise fastapi.HTTPException(status_code=status)
+
+    mocker.patch.object(chat_routes, gate, refuse)
+    with client:
+        assert _send_message().status_code == status
+        assert len(owned) == 2
+        assert all(task.cancelled() for task in owned)
+        scheduled.assert_not_awaited()
+
+
+def test_a_pending_receipt_returns_without_leaving_the_early_reads_running(
+    account: RouteTrialAccount,
+    scheduled: AsyncMock,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    started, owned = _hold_early_reads(mocker)
+
+    async def received(*args):
+        await asyncio.wait_for(started.wait(), _WATCHDOG_SECONDS)
+        return True
+
+    mocker.patch.object(chat_routes, "pending_message_was_received", received)
+    with client:
+        assert _send_message().status_code == 200
+        assert len(owned) == 2
+        assert all(task.cancelled() for task in owned)
+        scheduled.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_cancelling_admission_drains_its_early_reads(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    started, owned = _hold_early_reads(mocker)
+    validation = asyncio.Event()
+
+    async def wait_for_session(*args):
+        validation.set()
+        await asyncio.Event().wait()
+
+    mocker.patch.object(
+        chat_routes, "_validate_and_get_writable_session", wait_for_session
+    )
+    request = asyncio.create_task(
+        chat_routes.stream_chat_post(
+            "sess-1",
+            chat_routes.StreamChatRequest(message="hello"),
+            user_id=test_user_id,
+            ctx=MagicMock(),
+            http_request=MagicMock(),
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), _WATCHDOG_SECONDS)
+        await asyncio.wait_for(validation.wait(), _WATCHDOG_SECONDS)
+        request.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(request, _WATCHDOG_SECONDS)
+        assert len(owned) == 2
+        assert all(task.cancelled() for task in owned)
+    finally:
+        request.cancel()
+        await asyncio.gather(request, return_exceptions=True)
 
 
 def _send_message():

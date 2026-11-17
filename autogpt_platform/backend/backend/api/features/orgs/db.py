@@ -9,6 +9,7 @@ from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.types import OrgMemberWhereInput
 
+from backend.data.auth.api_key import revoke_api_keys
 from backend.data.db import prisma, transaction
 from backend.data.org_credit import forget_personal_org_owner
 from backend.data.org_migration import (
@@ -16,6 +17,7 @@ from backend.data.org_migration import (
     _soft_delete_blocking_orphan,
     create_personal_org,
 )
+from backend.data.tenancy import resource_role_refusal
 from backend.util.exceptions import NotFoundError
 
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
@@ -213,18 +215,26 @@ async def resolve_member_tenancy(
     user's own default. Unlike a request, a team
     the user isn't on doesn't fall back to the org's home: everyone in the org
     sees that, and what was made for a team mustn't spread to the whole org.
+    A membership whose only role is billing manager doesn't count: that role
+    covers spend, not creating or running workflows.
     Nothing to inherit stays ``(None, None)``.
     """
+    if organization_id and await resource_role_refusal(
+        user_id, organization_id, team_id
+    ):
+        return await resolve_default_tenancy(user_id)
     if not organization_id:
         return None, None
-    if await _is_active_member(user_id, organization_id, team_id):
+    if await is_active_member(user_id, organization_id, team_id):
         return organization_id, team_id
     return await resolve_default_tenancy(user_id)
 
 
-async def _is_active_member(
+async def is_active_member(
     user_id: str, organization_id: str, team_id: str | None
 ) -> bool:
+    """Whether the user is an active member of the organization, which isn't
+    deleted, and, when ``team_id`` is given, of that team within it."""
     org_member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": organization_id, "userId": user_id}},
         include={"Org": True},
@@ -644,7 +654,8 @@ async def update_org_member(
 
 
 async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) -> None:
-    """Remove a member from an organization and all its workspaces.
+    """Remove a member from an organization and all its workspaces, and revoke
+    the API keys they made in it.
 
     Guards:
     - Cannot remove the org owner (transfer ownership first)
@@ -693,6 +704,12 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
     await prisma.orgmember.delete(
         where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
     )
+
+    # A key acts in the organization it was made in, so it goes with the
+    # membership. Revoked after the delete: from then on no key can be made
+    # here, so this catches every one that was. Keys for the member's other
+    # organizations are kept.
+    await revoke_api_keys(prisma, {"userId": user_id, "organizationId": org_id})
 
 
 async def transfer_ownership(

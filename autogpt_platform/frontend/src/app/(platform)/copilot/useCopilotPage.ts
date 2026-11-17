@@ -3,6 +3,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useStableCallback } from "@/hooks/useStableCallback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { isValidUUID } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { trackBrainDump } from "@/services/onboarding/brain-dump-analytics";
 import {
   peekGreetingDone,
@@ -94,7 +95,7 @@ function getLatestKickoffAttemptToken(messages: UIMessage[]) {
 
 function useCopilotPageSession() {
   const { user, isUserLoading, isLoggedIn } = useAuth();
-
+  const isLocalPCEnabled = useGetFlag(Flag.LOCAL_PC_EXECUTOR);
   const [expertIdParam] = useQueryState("expertId", parseAsString);
   const [newThreadParam] = useQueryState("new", parseAsString);
   const expertId = expertIdParam;
@@ -133,6 +134,9 @@ function useCopilotPageSession() {
   const copilotLlmModel = useCopilotUIStore((s) => s.copilotLlmModel);
   const isDryRun = useCopilotUIStore((s) => s.isDryRun);
   const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+  const newChatExecutionTarget = useCopilotUIStore(
+    (s) => s.newChatExecutionTarget,
+  );
   const { mutate: completeGreeting } = useCompleteBrainDumpGreeting();
 
   const {
@@ -160,11 +164,13 @@ function useCopilotPageSession() {
     isCreatingSession,
     refetchSession,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
   } = useChatSession({
     dryRun: isDryRun,
+    executionTarget: isLocalPCEnabled ? newChatExecutionTarget : undefined,
     expertId,
     adoptLatestExpertThread: !newThreadParam,
   });
@@ -228,6 +234,7 @@ function useCopilotPageSession() {
     createSession,
     isCreatingSession,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
@@ -275,6 +282,7 @@ function useCopilotPageChat(
     createSession,
     isCreatingSession,
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
@@ -629,6 +637,7 @@ function useCopilotPageChat(
     // used to render the banner. The global `isDryRun` preference (for new
     // sessions) lives in the store and is consumed by the toggle button.
     sessionDryRun,
+    sessionExecutionTarget,
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,

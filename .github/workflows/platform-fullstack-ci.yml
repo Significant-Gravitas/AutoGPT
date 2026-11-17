@@ -307,14 +307,6 @@ jobs:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
-      # Flags that ship off but have an E2E spec. Written before the compose
-      # file is resolved and the images are built, since the frontend inlines
-      # NEXT_PUBLIC_* at build time.
-      - name: Set up Platform - Force on the flags the E2E suite covers
-        run: |
-          echo "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> .env
-          echo "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> ../backend/.env
-
       # The hosted configuration, as far as one compose stack allows. Gaps are
       # listed in src/playwright/journeys/README.md.
       - name: Set up Platform - Configure hosted backend .env
@@ -325,7 +317,7 @@ jobs:
       # A cache that can't be read or written only makes the build cold.
       - name: Set up Platform - Log in to the GHCR build cache
         continue-on-error: true
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
