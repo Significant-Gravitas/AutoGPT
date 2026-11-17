@@ -51,6 +51,7 @@ Known limits:
   placed to present a certificate it signed.
 """
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -168,10 +169,17 @@ async def trust_proxy_ca(
     recorded = await _recorded(sandbox.sandbox_id)
     if recorded[:1] == [want] and "partial" not in recorded:
         return _envs("bundle" in recorded)
-    out = await _install(
-        sandbox, certs, want, guarded=await _guarded(sandbox, fresh, chat)
-    )
+    try:
+        out = await _install(
+            sandbox, certs, want, guarded=await _guarded(sandbox, fresh, chat)
+        )
+    except asyncio.CancelledError:
+        # The script may have written the profile before it was cut off;
+        # left out of the baseline, it would refuse every platform command.
+        await asyncio.shield(_repair_profile(sandbox))
+        raise
     if out is None:
+        await _repair_profile(sandbox)
         return None
     accepted = await _accept_profile(sandbox)
     bundle = "bundle: ok" in out

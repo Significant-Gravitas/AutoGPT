@@ -64,10 +64,6 @@ else
   rm -f "$dir/bundle.pem"
 fi
 
-# The final newline is written here, so the file is byte for byte the profile
-# the baseline takes in however the variable arrived.
-printf '%s\n' "$AGPT_PROFILE" > /etc/profile.d/agpt-egress-proxy-ca.sh || fail profile
-
 for d in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed; do
   mkdir -p "$d" && printf '%s\n' "$AGPT_CHROME_POLICY" > "$d/agpt-egress-proxy.json" ||
     fail chrome-policy
@@ -126,6 +122,11 @@ for path in targets:
     os.replace(path + ".agpt-new", path)
 PY
 fi
+
+# Last of all, so a run cut off earlier leaves no profile the login
+# baseline does not know. The final newline is written here, so the file is
+# byte for byte the profile the baseline takes in however the variable arrived.
+printf '%s\n' "$AGPT_PROFILE" > /etc/profile.d/agpt-egress-proxy-ca.sh || fail profile
 
 if [ -z "$failed" ]; then
   printf '%s\n' "$AGPT_CA_SHA" > "$dir/sha256" && echo "install: complete"

@@ -3,6 +3,7 @@ and when it is skipped or retried.  The script itself was run against real
 intercepting proxies, in Docker and in an E2B desktop box; here it is the
 contract around it."""
 
+import asyncio
 import contextlib
 import datetime
 import json
@@ -282,8 +283,9 @@ class TestTheInstall:
         mocks["run_internal"].side_effect = RuntimeError("stop after the repair")
         with _setting(_PEM), _applied(patches):
             await trust_proxy_ca(box, chat=True)
-        mocks["read_capped"].assert_awaited_once_with(box, PROFILE_FILE)
-        assert mocks["accept_platform_file"].await_count == int(repaired)
+        # Checked before the install, and again after it failed.
+        assert mocks["read_capped"].await_args_list == [((box, PROFILE_FILE),)] * 2
+        assert mocks["accept_platform_file"].await_count == 2 * int(repaired)
 
     @pytest.mark.asyncio
     async def test_a_box_that_trusts_this_set_is_not_touched(self):
@@ -342,6 +344,27 @@ class TestTheInstall:
         with _setting(_PEM), _applied(patches):
             assert await trust_proxy_ca(_box()) is None
         assert store == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure", [RuntimeError("timeout"), "cancel"])
+    async def test_a_profile_left_by_a_cut_off_install_is_still_taken_in(self, failure):
+        """Otherwise the login chain check refuses every platform command in
+        the box until its next reconnect."""
+        box = _box()
+        patches, mocks = _install({})
+        mocks["read_capped"].return_value = PROFILE.encode()
+        mocks["run_sandbox_command"].side_effect = (
+            asyncio.CancelledError() if failure == "cancel" else failure
+        )
+        with _setting(_PEM), _applied(patches):
+            if failure == "cancel":
+                with pytest.raises(asyncio.CancelledError):
+                    await trust_proxy_ca(box, fresh=True)
+            else:
+                assert await trust_proxy_ca(box, fresh=True) is None
+        mocks["accept_platform_file"].assert_awaited_once_with(
+            box, PROFILE_FILE, PROFILE.encode()
+        )
 
     @pytest.mark.asyncio
     async def test_without_redis_it_still_installs(self):
