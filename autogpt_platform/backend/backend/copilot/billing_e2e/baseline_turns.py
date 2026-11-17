@@ -12,7 +12,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from openai import AsyncOpenAI
 
 from backend.copilot import pending_message_helpers
 from backend.copilot.baseline import service as baseline
@@ -22,6 +21,7 @@ from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.tree import root_envelope
 
+from .provider import FakeProvider
 from .wire import TOOL_NAME
 
 
@@ -30,11 +30,12 @@ class BaselineTurns:
         self,
         monkeypatch: pytest.MonkeyPatch,
         config: ChatConfig,
+        provider: FakeProvider,
         *,
-        base_url: str,
+        path: str,
         model: str,
     ) -> None:
-        client = AsyncOpenAI(api_key="sk-billing-e2e", base_url=base_url)
+        client = provider.openai_client(path, api_key="sk-billing-e2e")
         save = AsyncMock(side_effect=lambda session, *_, **__: session)
         stubs: dict[str, Any] = {
             "config": config,

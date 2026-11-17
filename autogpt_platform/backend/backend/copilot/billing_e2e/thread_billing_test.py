@@ -99,7 +99,8 @@ def _turn_runner(
         return BaselineTurns(
             monkeypatch,
             _config(baseline_service.config, scenario, provider),
-            base_url=f"{provider.url}{scenario.client_path}",
+            provider,
+            path=scenario.client_path,
             model=scenario.model,
         )
     config = _config(sdk_service.config, scenario, provider)

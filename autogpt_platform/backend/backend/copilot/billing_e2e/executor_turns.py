@@ -161,11 +161,12 @@ class BaselineTurnsViaExecutor(BaselineTurns):
         monkeypatch: pytest.MonkeyPatch,
         config: ChatConfig,
         executor: Executor,
+        provider: FakeProvider,
         *,
-        base_url: str,
+        path: str,
         model: str,
     ) -> None:
-        super().__init__(monkeypatch, config, base_url=base_url, model=model)
+        super().__init__(monkeypatch, config, provider, path=path, model=model)
         self._executor = executor
         self.user_context = AsyncMock(return_value=None)
         # BaselineTurns stubs it; the trial is what sizes this budget.

@@ -10,6 +10,7 @@ from threading import Thread
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
+import httpx
 import pytest
 import pytest_asyncio
 import sentry_sdk
@@ -22,6 +23,7 @@ from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util import posthog_client
+from backend.util.httpx_client_guard import HttpxClientGuard
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
 from backend.util.tracing import traces_sampler
@@ -131,6 +133,48 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
         ),
         pytrace=False,
     )
+
+
+_HTTPX_CLIENTS = HttpxClientGuard()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def record_httpx_clients() -> Iterator[None]:
+    """Shows ``pytest_runtest_teardown`` the httpx clients each test used."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            httpx.AsyncClient, "send", _HTTPX_CLIENTS.wrap(httpx.AsyncClient.send)
+        )
+        yield
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
+    _HTTPX_CLIENTS.start()
+    return (yield)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item: pytest.Item) -> Iterator[None]:
+    """Fail a test that leaves an httpx client open on its closed event loop,
+    so the test that leaked it fails instead of whichever one runs when the
+    client is garbage-collected (``httpx_client_guard.py``)."""
+    result = yield
+    left_open = _HTTPX_CLIENTS.stop()
+    if left_open:
+        pytest.fail(
+            f"{item.nodeid} left {len(left_open)} httpx client(s) open on an "
+            "event loop that has closed:\n"
+            + "\n".join(f"  {client}" for client in left_open)
+            + "\nTheir pooled connections can no longer be closed, and an OpenAI "
+            "or Anthropic client then fails a later test: garbage-collected, it "
+            "runs aclose() on that test's loop, which raises \"Event loop is "
+            'closed" ("Task exception was never retrieved"). Close each client '
+            "before its loop ends: `async with` it, or close it in the fixture "
+            "that made it.",
+            pytrace=False,
+        )
+    return result
 
 
 @pytest.fixture(autouse=True)

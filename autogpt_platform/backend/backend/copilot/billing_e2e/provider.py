@@ -11,6 +11,7 @@ from functools import partial
 from typing import Literal
 
 from aiohttp import web
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from . import wire
@@ -41,6 +42,7 @@ class FakeProvider:
         self.url = ""
         self._runner: web.AppRunner | None = None
         self._requests_per_turn: dict[int, int] = {}
+        self._clients: list[AsyncOpenAI] = []
 
     async def __aenter__(self) -> "FakeProvider":
         # The test has read everything it checks by the time this server
@@ -53,8 +55,21 @@ class FakeProvider:
         return self
 
     async def __aexit__(self, *_: object) -> None:
+        for client in self._clients:
+            await client.close()
         if self._runner is not None:
             await self._runner.cleanup()
+
+    def openai_client(self, path: str, *, api_key: str) -> AsyncOpenAI:
+        """An OpenAI client of this server at ``path``, closed with it.
+
+        The scenarios run on an event loop of their own. A client left open
+        keeps a connection bound to that loop after it closes, and when the
+        client is garbage-collected, the SDK's ``aclose()`` then fails in
+        whichever test is running ("Event loop is closed")."""
+        client = AsyncOpenAI(api_key=api_key, base_url=f"{self.url}{path}")
+        self._clients.append(client)
+        return client
 
     def calls_in(self, turn: int) -> list[Call]:
         return [call for call in self.calls if call.turn == turn]
