@@ -209,7 +209,7 @@ normal network access. OS isolation and destination approval are future work.
 - The record is changed one step at a time, across processes: a refresh, a
   sign-in and a sign-out each take the record's lock file,
   `.oauth_v1_<digest>.lock` in `AUTOGPT_SHIM_FALLBACK_DIR`, created `0600`
-  and holding no token. Two shim processes for one deployment therefore
+  on POSIX and holding no token. Two shim processes for one deployment therefore
   never send the same refresh token, which the platform would take for
   reuse and answer by revoking the sign-in, and a sign-in or sign-out never
   lands inside a refresh. Where that file can't be made or locked, the shim

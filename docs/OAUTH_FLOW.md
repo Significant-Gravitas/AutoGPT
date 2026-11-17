@@ -238,7 +238,8 @@ the pair that refresh stored, not the one it used up.
 The turn is an exclusive lock on a lock file named for the record,
 `.oauth_v1_<digest>.lock`, in `AUTOGPT_SHIM_FALLBACK_DIR` (default
 `~/.autogpt-local-executor`), beside the audit key's lock. It is created
-`0600`, holds nothing, and stays there. It is in the person's own folder
+`0600` (on Windows it keeps its folder's access, as the audit log does),
+holds nothing, and stays there. It is in the person's own folder
 because every process of the account has to take the same file, whatever
 config file or audit log each was started with.
 
