@@ -1,6 +1,10 @@
 # zizmor findings we reviewed and accept. Each entry says why it stands, so
 # anything new in the zizmor check is a finding nobody has looked at yet.
 # Add an entry here only with a reason; fix the workflow when you can.
+#
+# Classic (the classic-*.yml workflows) is no longer maintained, so we leave
+# its workflows as they are and accept their findings below, marked
+# "Classic". Remove those entries if Classic is maintained again or removed.
 rules:
   dangerous-triggers:
     ignore:
@@ -32,15 +36,53 @@ rules:
       # fixed command with no expressions, so there is nothing to analyse.
       - platform-installer-ci.yml
 
+  # Classic only below this line.
+
+  artipacked:
+    ignore:
+      # Classic
+      - classic-autogpt-ci.yml
+      - classic-autogpt-docker-cache-clean.yml
+      - classic-autogpt-docker-ci.yml
+      - classic-autogpt-docker-release.yml
+      - classic-autogpts-ci.yml
+      - classic-benchmark-ci.yml
+      - classic-benchmark_publish_package.yml
+      - classic-forge-ci.yml
+      - classic-python-checks.yml
+
+  excessive-permissions:
+    ignore:
+      # Classic
+      - classic-autogpt-docker-cache-clean.yml
+      - classic-autogpt-docker-ci.yml
+      - classic-autogpts-ci.yml
+      - classic-benchmark-ci.yml
+
+  obfuscation:
+    ignore:
+      # Classic
+      - classic-autogpt-docker-cache-clean.yml
+
+  self-repository:
+    ignore:
+      # Classic
+      - classic-autogpt-ci.yml
+      - classic-autogpt-docker-ci.yml
+      - classic-forge-ci.yml
+
+  template-injection:
+    ignore:
+      # Classic: the expanded values are the workflows' own env, not event data.
+      - classic-autogpt-docker-ci.yml
+      - classic-autogpt-docker-release.yml
+
   superfluous-actions:
     ignore:
-      # Classic's PyPI release (Classic is no longer actively maintained).
-      # Swapping its release action for `gh release` would change a release
-      # path we can't test without publishing a release.
+      # Classic
       - classic-benchmark_publish_package.yml
 
   use-trusted-publishing:
     ignore:
-      # Classic's PyPI release; Classic is no longer actively maintained.
-      # Trusted publishing needs a PyPI-side setup for agbenchmark.
+      # Classic
       - classic-benchmark_publish_package.yml
