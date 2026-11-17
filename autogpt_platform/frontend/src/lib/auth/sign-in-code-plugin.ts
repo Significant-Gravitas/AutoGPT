@@ -138,7 +138,19 @@ async function resend(ctx: GenericEndpointContext) {
   const codeHash = hashCode(ctx.context.secret, id, code);
   const renewed = new Date(sentAt + SIGN_IN_CODE_TTL_SECONDS * 1000);
   const replaced = { ...record, codeHash, sentAt };
-  const stored = await replacePending(ctx.context, pending, replaced, renewed);
+  const stored = await replacePending(
+    ctx.context,
+    pending,
+    replaced,
+    renewed,
+  ).catch(async (error: unknown) => {
+    console.error("Failed to store a new sign-in code", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // Nothing was replaced or sent, so the slot goes back.
+    await releaseCodeEmail(ctx.context, claim.slot);
+    throw codeEmailRefused(SIGN_IN_CODE_UNSENT);
+  });
   if (!stored) {
     // Another resend got there first, and its code is on its way.
     await releaseCodeEmail(ctx.context, claim.slot);

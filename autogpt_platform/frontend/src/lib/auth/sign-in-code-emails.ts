@@ -57,17 +57,26 @@ export async function sendCode(
   slot: string,
 ) {
   const cancel = new AbortController();
-  const timer = setTimeout(() => cancel.abort(), SEND_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // The whole send, the service token it mints first included, gets the
+  // deadline; the request to the backend is also cancelled when it passes.
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      cancel.abort();
+      reject(new Error(`No answer in ${SEND_TIMEOUT_MS} ms`));
+    }, SEND_TIMEOUT_MS);
+  });
+  const message = {
+    to: pending.email,
+    type: "sign_in_code",
+    code,
+    provider: pending.providerId,
+  } as const;
   try {
-    await sendAuthEmail(
-      {
-        to: pending.email,
-        type: "sign_in_code",
-        code,
-        provider: pending.providerId,
-      },
-      { signal: cancel.signal },
-    );
+    await Promise.race([
+      sendAuthEmail(message, { signal: cancel.signal }),
+      deadline,
+    ]);
     return true;
   } catch (error) {
     logFailure("Failed to send a sign-in code", error);

@@ -29,6 +29,20 @@ afterEach(() => {
 });
 
 describe("sending a sign-in code", () => {
+  it("gives up on a send stuck before its request, and keeps its slot", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Stuck minting the service token, say: it never reaches the request
+    // the abort would cancel.
+    sendAuthEmail.mockImplementation(() => new Promise(() => {}));
+
+    const sending = sendCode(context, pending, "042917", "slot");
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await sending).toBe(false);
+    expect(releaseWindowSlot).not.toHaveBeenCalled();
+  });
+
   it("sends it with a way to cancel the request", async () => {
     sendAuthEmail.mockResolvedValue(undefined);
 

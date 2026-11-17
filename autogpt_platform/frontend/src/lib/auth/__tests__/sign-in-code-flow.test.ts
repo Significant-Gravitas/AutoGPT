@@ -904,6 +904,29 @@ describe("the code", () => {
     expect((await browser.enterCode(emailedCode())).status).toBe(200);
   });
 
+  it("gives the hour's slot back when a new code can't be stored", async () => {
+    const { browser, db } = await waitingOnCode();
+    ageCode(db, 61_000);
+    dbGate.current = async (method, args) => {
+      if (writesPendingRow(method, "updateMany", args)) {
+        throw new Error("database unavailable");
+      }
+    };
+
+    const resend = await browser.resendCode();
+    dbGate.current = null;
+
+    expect(resend.status).toBe(503);
+    expect(await resend.json()).toMatchObject({ code: "sign_in_code_unsent" });
+    expect(emailsOfType("sign_in_code")).toHaveLength(1);
+    // Only the first code's slot is left.
+    expect(
+      db.UserAuthVerification.filter((row) =>
+        String(row.identifier).startsWith("sign-in-code-email:"),
+      ),
+    ).toHaveLength(1);
+  });
+
   it("gives the hour's slot back when the waiting sign-in can't be stored", async () => {
     const { handler, db } = await createAuth();
     existingAccount(db, "pat@company.example");
