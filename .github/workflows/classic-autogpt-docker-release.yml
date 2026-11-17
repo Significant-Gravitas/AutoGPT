@@ -65,7 +65,7 @@ jobs:
           cache-to: type=gha,scope=autogpt-docker-release,mode=max
 
       - name: Push image to Docker Hub
-        run: docker push --all-tags ${DEPLOY_IMAGE_NAME}
+        run: docker push --all-tags "${DEPLOY_IMAGE_NAME}"
 
       - name: Generate build report
         env:

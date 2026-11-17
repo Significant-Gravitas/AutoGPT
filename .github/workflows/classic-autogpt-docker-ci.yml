@@ -166,4 +166,4 @@ jobs:
 
       - if: github.event_name == 'push' && github.ref_name == 'master'
         name: Push image to Docker Hub
-        run: docker push ${DEPLOY_IMAGE_NAME}:${{ env.DEV_IMAGE_TAG }}
+        run: docker push "${DEPLOY_IMAGE_NAME}:${DEV_IMAGE_TAG}"

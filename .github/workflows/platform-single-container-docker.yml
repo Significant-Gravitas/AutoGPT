@@ -40,9 +40,9 @@ env:
 
 # Releases publish images from this workflow, so it never reads or writes the
 # Actions cache: not for setup-buildx's binary, and not for the Trivy
-# vulnerability database, which each scan downloads fresh from mirror.gcr.io
-# (Trivy's default since 0.57). Image layers come from the GHCR registry
-# cache, which this setting doesn't touch.
+# vulnerability database, which each scan downloads fresh from Trivy's
+# default mirror. Image layers come from the GHCR registry cache, which this
+# setting doesn't touch.
 cache-mode: none
 
 jobs:
