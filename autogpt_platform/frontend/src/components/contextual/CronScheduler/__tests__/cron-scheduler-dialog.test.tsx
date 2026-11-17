@@ -48,4 +48,18 @@ describe("CronExpressionDialog", () => {
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith("0 * * * *");
   });
+
+  test("flags a prefilled out-of-range interval when it opens", async () => {
+    render(
+      <CronExpressionDialog
+        open
+        setOpen={vi.fn()}
+        onSubmit={vi.fn()}
+        defaultCronExpression="*/90 * * * *"
+      />,
+    );
+
+    expect(await screen.findByText("Enter 1 to 60 minutes")).toBeDefined();
+    expect(screen.getByRole<HTMLInputElement>("spinbutton").value).toBe("90");
+  });
 });

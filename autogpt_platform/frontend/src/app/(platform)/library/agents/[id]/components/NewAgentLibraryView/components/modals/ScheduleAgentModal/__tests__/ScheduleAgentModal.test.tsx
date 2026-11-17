@@ -127,6 +127,26 @@ describe("ScheduleAgentModal custom interval (#15275)", () => {
     expect(scheduleButton()).toHaveProperty("disabled", true);
   });
 
+  test("flags a prefilled interval that is already out of range", async () => {
+    render(
+      <ScheduleAgentModal
+        isOpen
+        onClose={vi.fn()}
+        agent={{ ...agent, recommended_schedule_cron: "*/90 * * * *" }}
+        inputValues={{}}
+        inputCredentials={{}}
+      />,
+    );
+
+    const field = await screen.findByRole<HTMLInputElement>("spinbutton", {
+      name: "Every",
+    });
+    expect(field.value).toBe("90");
+    expect(await screen.findByText("Enter 1 to 60 minutes")).toBeDefined();
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(scheduleButton()).toHaveProperty("disabled", true);
+  });
+
   test("a unit change re-checks the interval instead of changing it", async () => {
     const user = userEvent.setup();
     const crons = captureSentCrons();

@@ -99,7 +99,10 @@ describe("custom interval field", () => {
     ["", Number.NaN],
     ["  ", Number.NaN],
     ["45", 45],
-    ["1.5", 1.5],
+    ["007", 7],
+    ["1.5", Number.NaN],
+    ["1e1", Number.NaN],
+    ["-3", Number.NaN],
   ])("parses %j as %s", (text, value) => {
     expect(parseCustomInterval(text)).toBe(value);
   });

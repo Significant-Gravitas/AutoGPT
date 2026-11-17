@@ -33,34 +33,32 @@ function isCustomIntervalUnit(unit: string): unit is CustomIntervalUnit {
   return unit === "minutes" || unit === "hours" || unit === "days";
 }
 
-// The field keeps exactly what was typed. A value above the unit's range is
-// flagged at once, since more digits can't fix it; an empty or partial value
-// only once the user leaves the field or changes the unit. An edit that makes
-// it valid clears the message straight away.
+// The field keeps exactly what was typed and any invalid value is flagged,
+// prefilled ones included, except an empty or partial value the user is still
+// typing: that waits until they leave the field or change the unit. A value
+// above the unit's range is flagged at once, since more digits can't fix it.
 export function useCustomIntervalField({ interval, onChange }: Args) {
-  const [isErrorShown, setIsErrorShown] = useState(false);
+  const [isMidEdit, setIsMidEdit] = useState(false);
   const error = errorOf(interval);
 
   function handleValueChange(e: React.ChangeEvent<HTMLInputElement>) {
     const next = { ...interval, value: e.target.value };
-    if (!errorOf(next)) setIsErrorShown(false);
-    else if (isAboveMax(next)) setIsErrorShown(true);
+    setIsMidEdit(errorOf(next) !== undefined && !isAboveMax(next));
     onChange(next);
   }
 
   function handleBlur() {
-    setIsErrorShown(error !== undefined);
+    setIsMidEdit(false);
   }
 
   function handleUnitChange(unit: string) {
     if (!isCustomIntervalUnit(unit)) return;
-    const next = { ...interval, unit };
-    setIsErrorShown(errorOf(next) !== undefined);
-    onChange(next);
+    setIsMidEdit(false);
+    onChange({ ...interval, unit });
   }
 
   return {
-    error: isErrorShown ? error : undefined,
+    error: isMidEdit ? undefined : error,
     handleValueChange,
     handleBlur,
     handleUnitChange,

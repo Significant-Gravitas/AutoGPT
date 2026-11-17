@@ -30,6 +30,7 @@ export function CustomInterval({ value, onChange }: Props) {
         onChange={handleValueChange}
         onBlur={handleBlur}
         error={error}
+        aria-invalid={error ? true : undefined}
         className="max-w-24"
         size="small"
       />

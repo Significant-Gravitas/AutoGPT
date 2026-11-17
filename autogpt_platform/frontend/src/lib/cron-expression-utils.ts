@@ -56,7 +56,8 @@ export const CUSTOM_INTERVAL_MAX: Record<CustomIntervalUnit, number> = {
 };
 
 export function parseCustomInterval(text: string): number {
-  return text.trim() === "" ? Number.NaN : Number(text);
+  const digits = text.trim();
+  return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
 }
 
 export function getCustomIntervalError(
