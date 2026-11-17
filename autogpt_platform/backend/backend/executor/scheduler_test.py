@@ -27,7 +27,6 @@ from backend.executor.scheduler import (
     _build_trigger,
     _execute_graph,
     _memory_scope_may_fire,
-    _normalize_cron_day_of_week,
     _register_dream_pass_jobs,
     execute_dream_pass_reaper,
     execute_dream_pass_retention,
@@ -1582,34 +1581,6 @@ async def test_copilot_turn_schedule_requires_cron_xor_run_at(server: SpinTestSe
     # ValueError from _build_trigger propagates as a RemoteError
     # through the AppService transport; just verify the call rejected.
     assert exc.value is not None
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("*", "*"),
-        ("?", "?"),
-        ("mon-fri", "mon-fri"),
-        ("1-5", "0-4"),
-        ("1,3,5", "0,2,4"),
-        ("0", "6"),
-        ("7", "6"),
-        ("0,6", "6,5"),
-        ("6-7", "5-6"),
-        ("0-4", "6-6,0-3"),
-        ("5-2", "4-6,0-1"),
-        ("*/2", "*/2"),
-        ("1-5/1", "0-4/1"),
-    ],
-)
-def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
-    raw: str, expected: str
-):
-    """Unix-cron uses 0=Sun..6=Sat; APScheduler uses 0=Mon..6=Sun.
-    The numbers must be translated, but named tokens and ``*``/``?`` pass
-    through unchanged. Wrap-around ranges split into two APS ranges."""
-    cron = f"0 9 * * {raw}"
-    assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
 
 
 def test_build_trigger_with_unix_dow_numbers_fires_on_correct_weekday():
