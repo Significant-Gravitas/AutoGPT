@@ -573,17 +573,23 @@ async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: 
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
-async def test_the_driver_starts_in_the_shims_own_folder(
+async def test_a_linux_driver_starts_in_the_persons_home_folder(
     fake_log: Path, tmp_path: Path, monkeypatch, platform: str
 ) -> None:
-    """The Linux driver started in an empty, read-only folder of its own, so
-    that a launch_app name found no file there for the driver to hand to
-    xdg-open. The apps the driver starts inherit its folder: a terminal
-    opened there, and a save dialog could start there. It starts in the
-    shim's folder again, as on macOS and Windows, with the shim's PWD; a
-    launch's name no longer reaches it (the launch tests below)."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("PWD", str(tmp_path))
+    """The apps cua-driver starts on Linux inherit the folder it runs in: a
+    terminal opens there, and a save dialog starts there. It ran in an
+    empty, read-only folder of its own, and then in the shim's, which is the
+    home folder under the systemd service but, for a shim started from a
+    terminal, whatever folder that terminal was in. It starts in the
+    person's home folder now, however the shim was started, with PWD to
+    match. On macOS and Windows it keeps the shim's folder."""
+    home = tmp_path / "home"
+    home.mkdir()
+    started_from = tmp_path / "projects"
+    started_from.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(started_from)
+    monkeypatch.setenv("PWD", str(started_from))
     bridge = _bridge(platform=platform)
     try:
         await bridge.snapshot()
@@ -591,10 +597,138 @@ async def test_the_driver_starts_in_the_shims_own_folder(
     finally:
         await bridge.close()
 
-    assert os.path.samefile(started["cwd"], tmp_path)
-    assert started["env"]["PWD"] == str(tmp_path)
-    # Nothing of the shim's to remove there once the driver has stopped.
-    assert tmp_path.is_dir()
+    folder = home if platform == "linux" else started_from
+    assert os.path.samefile(started["cwd"], folder)
+    assert started["env"]["PWD"] == str(folder)
+
+
+@pytest.mark.parametrize("without", ["no HOME", "an empty HOME"])
+def test_the_home_folder_is_homes_or_else_the_accounts_own(
+    tmp_path: Path, monkeypatch, without: str
+) -> None:
+    """`HOME`, as a shell's `~` is, and without one the account's own home in
+    the user database."""
+    home = tmp_path / "home"
+    home.mkdir()
+    account = tmp_path / "account"
+    account.mkdir()
+    monkeypatch.setattr(driver, "_account_home", lambda: str(account))
+    monkeypatch.setenv("HOME", str(home))
+
+    assert driver.home_folder() == home
+
+    if without == "no HOME":
+        monkeypatch.delenv("HOME")
+    else:
+        monkeypatch.setenv("HOME", "")
+
+    assert driver.home_folder() == account
+
+
+@pytest.mark.parametrize(
+    "unusable", ["none named", "missing", "a file", "a relative path", "not to be entered"]
+)
+def test_a_home_folder_that_cant_be_used_is_none(
+    tmp_path: Path, monkeypatch, unusable: str
+) -> None:
+    """A driver can only start in a folder that is there to enter: an
+    absolute path to one. Anything else is no home folder to start in."""
+    monkeypatch.setattr(driver, "_account_home", lambda: None)
+    monkeypatch.chdir(tmp_path)
+    locked = tmp_path / "locked"
+    if unusable == "none named":
+        monkeypatch.delenv("HOME", raising=False)
+    elif unusable == "missing":
+        monkeypatch.setenv("HOME", str(tmp_path / "gone"))
+    elif unusable == "a file":
+        (tmp_path / "a-file").write_text("", encoding="utf-8")
+        monkeypatch.setenv("HOME", str(tmp_path / "a-file"))
+    elif unusable == "a relative path":
+        # A folder from where the shim is now, and another from elsewhere.
+        (tmp_path / "relative-home").mkdir()
+        monkeypatch.setenv("HOME", "relative-home")
+    else:
+        if os.name == "nt" or os.geteuid() == 0:
+            pytest.skip("needs POSIX permissions, and an account they bind")
+        locked.mkdir(mode=0o600)
+        monkeypatch.setenv("HOME", str(locked))
+
+    try:
+        assert driver.home_folder() is None
+    finally:
+        if locked.exists():
+            locked.chmod(0o700)
+
+
+async def test_a_linux_driver_with_no_home_folder_to_use_starts_in_the_shims_own(
+    fake_log: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A home folder that can't be used doesn't fail the driver's start: it
+    starts in the shim's own folder, with the shim's PWD, as it does on
+    macOS and Windows."""
+    started_from = tmp_path / "projects"
+    started_from.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path / "gone"))
+    monkeypatch.chdir(started_from)
+    monkeypatch.setenv("PWD", str(started_from))
+    bridge = _bridge(platform="linux")
+    try:
+        snapshot = await bridge.snapshot()
+        [started] = _records(fake_log, "initialize")
+    finally:
+        await bridge.close()
+
+    assert snapshot.tools
+    assert os.path.samefile(started["cwd"], started_from)
+    assert started["env"]["PWD"] == str(started_from)
+
+
+async def test_a_home_folder_that_doesnt_answer_cant_hold_the_drivers_start(
+    fake_log: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A home on a mount that isn't answering (NFS, FUSE) holds a look at it
+    for as long as it stalls. The look is made in a worker thread, and a
+    start waits HOME_FOLDER_SECONDS for it at most, then goes on in the
+    shim's own folder. The next start waits for that same look rather than
+    hold another thread in one of its own, and once the mount answers, a
+    start is in the home folder again."""
+    home = tmp_path / "home"
+    home.mkdir()
+    started_from = tmp_path / "projects"
+    started_from.mkdir()
+    monkeypatch.chdir(started_from)
+    monkeypatch.setattr(driver, "HOME_FOLDER_SECONDS", 0.3, raising=False)
+    loop_thread = threading.get_ident()
+    released = threading.Event()
+    looks: list[int] = []
+
+    def stalled() -> Path | None:
+        looks.append(threading.get_ident())
+        released.wait(60)
+        return home
+
+    monkeypatch.setattr(driver, "home_folder", stalled, raising=False)
+    bridge = _bridge(platform="linux")
+    try:
+        await bridge.snapshot()
+        # The driver stops; the next start finds the look still stalled.
+        with pytest.raises(DriverUnavailable, match="stopped during the call"):
+            await bridge.call_tool("drag", {"pid": -3}, timeout=30)
+        await bridge.snapshot()
+        assert len(looks) == 1
+        released.set()
+        with pytest.raises(DriverUnavailable, match="stopped during the call"):
+            await bridge.call_tool("drag", {"pid": -3}, timeout=30)
+        await bridge.snapshot()
+    finally:
+        released.set()
+        await bridge.close()
+
+    first, second, third = (started["cwd"] for started in _records(fake_log, "initialize"))
+    assert os.path.samefile(first, started_from)
+    assert os.path.samefile(second, started_from)
+    assert os.path.samefile(third, home)
+    assert loop_thread not in looks
 
 
 async def test_only_catalog_tools_are_offered(fake_log: Path, monkeypatch) -> None:
@@ -939,7 +1073,9 @@ async def test_a_driver_found_through_a_relative_path_entry_runs_by_its_absolute
 ) -> None:
     """shutil.which keeps a relative PATH entry (`bin`) in the path it
     returns, which names the driver only from the folder the look was made
-    in: the driver runs by its absolute path, the file the shim checked."""
+    in, the shim's. A Linux driver starts in the person's home folder, where
+    `bin/cua-driver` names another file or none, so the driver runs by its
+    absolute path, the file the shim checked."""
     name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
     (tmp_path / "bin").mkdir()
     binary = tmp_path / "bin" / name
@@ -2169,7 +2305,7 @@ async def test_a_linux_launch_by_a_name_no_app_has_never_reaches_the_driver(
 ) -> None:
     """On Linux cua-driver hands a name that no program has and no installed
     app matches to xdg-open when a file or folder of that name is in its
-    working folder, the person's home under systemd: `.bash_history` opened
+    working folder, the person's home folder: `.bash_history` opened
     in an editor, for a screenshot to read, past the path jail and the
     approval `urls` needs. A name is only ever looked for among the
     installed apps: one no app matches, or two do, starts nothing, and a
@@ -2467,17 +2603,17 @@ async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_ref
 async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_runs_it_opens_no_file(
     make_handler, fake_log, monkeypatch, tmp_path
 ) -> None:
-    """The driver runs in the shim's folder, the person's home under
-    systemd, where a launch_app name that matched no app opened a file of
-    that name through xdg-open, past the path jail and the approval `urls`
-    needs: so it did when the app the shim had just found was removed
-    before the driver looked. The driver gets the app's command now, its
-    program an absolute path. Gone, that string matches no app and names no
-    file in the working folder, so the driver fails the call."""
+    """The driver runs in the person's home folder, where a launch_app name
+    that matched no app opened a file of that name through xdg-open, past
+    the path jail and the approval `urls` needs: so it did when the app the
+    shim had just found was removed before the driver looked. The driver
+    gets the app's command now, its program an absolute path. Gone, that
+    string matches no app and names no file in the working folder, so the
+    driver fails the call."""
     home = tmp_path / "home"
     home.mkdir()
     (home / "Zebra Notes").write_text("the person's notes", encoding="utf-8")
-    monkeypatch.chdir(home)
+    monkeypatch.setenv("HOME", str(home))
     _linux_apps(monkeypatch, _ZEBRA)
     _programs_found(monkeypatch)
     monkeypatch.setenv("FAKE_CUA_LINUX_LAUNCH", "1")

@@ -521,8 +521,8 @@ def linux_launch(
     additional_arguments after it. Only if the program doesn't start does it
     go on: to an installed app the whole launch_path matches, and then to
     xdg-open, when the launch_path holds `://` or names an existing path,
-    relative ones from its working folder, the shim's. So what is sent is
-    never that:
+    relative ones from its working folder, the person's home folder. So
+    what is sent is never that:
 
     - The program is an absolute path, so the string names nothing in the
       working folder. It is the path the app's command already gives, or

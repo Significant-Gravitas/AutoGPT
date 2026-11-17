@@ -115,6 +115,12 @@ The service has
 `AUTOGPT_SHIM_SUPERVISOR=systemd` in its unit; an install from before
 2026-11-09 picks it up with `autogpt-shim install`.
 
+Apps the agent opens start in your home folder, as they do from your
+desktop's launcher, whether the shim runs as the service or you started it
+from a terminal in another folder: a terminal the agent opens is in your
+home folder, and a save dialog starts there. See
+[CUA_DRIVER.md](CUA_DRIVER.md#how-the-driver-runs).
+
 The shim doesn't offer computer use under WSL2 at all, not even for Linux
 apps WSLg shows; to drive your apps, run the shim on Windows itself.
 

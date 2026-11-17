@@ -2458,17 +2458,18 @@ class ComputerUseHandler:
         On Linux the driver runs the name as a command line, looks for an
         installed app when no program has its first word, and, when none
         matches, hands the name to xdg-open if a file or folder of that name
-        is in its working folder, the shim's: in the person's home, under
-        systemd, `.bash_history` opened in an editor, for a screenshot to
-        read, past the path jail and the approval `urls` needs. So the
-        driver gets no name to act on. `launch`, looked up before the call
-        took the computer (_linux_launch_by_name), is the matched app's own
-        command, which goes as launch_path in the name's place. cua-driver
-        0.38 reads nothing more from a name beside a launch_path than
-        whether it holds a remote-debugging flag: its result's text, and
-        the windows it looks for, come from the command it ran. So the name
-        is left out. Links to open, and then a launch_path, take precedence
-        over the name, so a call with those keeps it and isn't checked."""
+        is in its working folder, the person's home folder
+        (CuaDriverBridge._working_folder): `.bash_history` opened in an
+        editor, for a screenshot to read, past the path jail and the
+        approval `urls` needs. So the driver gets no name to act on.
+        `launch`, looked up before the call took the computer
+        (_linux_launch_by_name), is the matched app's own command, which
+        goes as launch_path in the name's place. cua-driver 0.38 reads
+        nothing more from a name beside a launch_path than whether it holds
+        a remote-debugging flag: its result's text, and the windows it
+        looks for, come from the command it ran. So the name is left out.
+        Links to open, and then a launch_path, take precedence over the
+        name, so a call with those keeps it and isn't checked."""
         name = arguments.get("name")
         platform = self.driver.platform
         if not isinstance(name, str):

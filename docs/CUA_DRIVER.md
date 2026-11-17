@@ -93,13 +93,26 @@ launches need `DISPLAY`, the session bus and the rest), with these changes:
   telemetry by default; the shim's driver sends none and never checks for
   updates.
 
-**Working folder.** The driver starts in the shim's own folder on every
-OS, and so do the apps it starts. On Linux, under the systemd user service,
-that is the person's home folder, so a terminal opens there and a save
-dialog starts there. cua-driver on Linux looks a `launch_app` `name` up in
-that folder as a last resort, and opens what it finds with `xdg-open`, so
-there the shim sends it no name to look up: a launch by name goes as the
-matched app's own command ([Residual risk](#residual-risk)).
+**Working folder.** On Linux the driver starts in the person's home
+folder, with `PWD` to match, however the shim was started: by the systemd
+user service, or by `autogpt-shim start` in a terminal, whatever folder
+that terminal was in. The apps cua-driver starts on Linux inherit its
+folder, so a terminal opens in the home folder and a save dialog starts
+there, as they do from the desktop's own launcher. The home folder is
+`HOME`, or without one the account's own in the user database. Where it
+can't be used (neither names one, or what is named isn't an absolute path
+to a folder the shim can enter), the driver starts in the shim's own
+folder instead, and the shim's log says so. So it does when looking at the
+home folder takes more than 2 seconds (a home on a mount that isn't
+answering): the look goes on in its worker thread, one look at a time, and
+the driver's next start waits for that look again. On macOS and Windows
+the driver starts in the shim's own folder. A relative path in an approved
+argument is read from the driver's working folder, so give absolute paths.
+
+cua-driver on Linux looks a `launch_app` `name` up in its working folder as
+a last resort, and opens what it finds with `xdg-open`, so there the shim
+sends it no name to look up: a launch by name goes as the matched app's own
+command ([Residual risk](#residual-risk)).
 
 ## What the platform gets
 
@@ -235,8 +248,9 @@ Known gaps:
   there, where none of the shim's launch checks apply: its `launch_path`
   and `urls` start any program and open any file, and on Linux its `name`
   is run as a command line, or, when it matches no installed app, opened
-  with `xdg-open` if a file of that name is in the shim's folder. The one
-  thing the shim checks for a script is that the call was approved.
+  with `xdg-open` if a file of that name is in the driver's working folder,
+  the person's home folder. The one thing the shim checks for a script is
+  that the call was approved.
   cua-driver 0.38's policy can allow a tool but can't forbid one of its
   arguments, and the shim can't see into scripts, so every script needs
   approval instead: a card that shows it, unless the chat runs Unsupervised
@@ -254,10 +268,9 @@ Known gaps:
   argument. On Linux the driver also runs `name` as a command line before
   it looks for an app of that name, and a `name` no installed app matches
   it then hands to `xdg-open` if a file or folder of that name is in its
-  working folder, the shim's (in the person's home, where it runs under
-  systemd, `.bash_history` would open in an editor, for a screenshot to
-  read, past the path jail and the approval `urls` needs). So on Linux the
-  shim sends the driver no name to act on:
+  working folder, the person's home folder (`.bash_history` would open in
+  an editor, for a screenshot to read, past the path jail and the approval
+  `urls` needs). So on Linux the shim sends the driver no name to act on:
   - It refuses a `name` whose first word is a program, a program's own
     name included (`reboot`; an app goes by the name `list_apps` shows,
     such as `Firefox`).
