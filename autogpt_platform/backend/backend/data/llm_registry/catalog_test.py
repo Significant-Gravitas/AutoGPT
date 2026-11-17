@@ -318,7 +318,8 @@ def test_gpt6_2_astra_bills_at_authored_rates():
     assert MODEL_METADATA[astra].max_output_tokens == 128000
     entry = next(m for m in CATALOG.models if m.slug == "gpt-6.2-astra")
     assert entry.price_tier == 3
-    assert entry.context_window == 1050000
+    # Capped at the 272K base-price tier (longer prompts bill at $16/$60).
+    assert entry.context_window == 272000
 
 
 def test_gpt6_sol_bills_at_authored_rates():
