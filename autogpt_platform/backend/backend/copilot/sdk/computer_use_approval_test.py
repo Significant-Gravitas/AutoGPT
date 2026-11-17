@@ -138,14 +138,12 @@ class _Rows:
     async def get_reviews_by_node_exec_ids(self, ids, user_id):
         return {i: self.rows[i] for i in ids if i in self.rows}
 
-    async def open_review_row(
-        self, review_id, user_id, session, payload, message, created_at=None
-    ):
+    async def open_review_row(self, review_id, user_id, session, payload, message):
         self.rows[review_id] = SimpleNamespace(
             node_exec_id=review_id,
             session_id=session.session_id,
             status=ReviewStatus.WAITING,
-            created_at=created_at or datetime.now(UTC),
+            created_at=datetime.now(UTC),
             updated_at=None,
             reviewed_at=None,
             payload=sanitize_json(payload),

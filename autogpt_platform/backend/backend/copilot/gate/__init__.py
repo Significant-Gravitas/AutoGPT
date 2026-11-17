@@ -310,7 +310,7 @@ async def check_action(
         rule_key=rule_key,
         envelope=get_current_envelope(),
         cost_context=await capture_cost_context(user_id),
-        card_created_at=held.card_generation(),
+        generation=held.card_generation(),
     )
     return await _park(
         call,
@@ -329,10 +329,12 @@ async def _on_fold_pass(
 ) -> Decision:
     """A held call the fold is running reached its gate: spend the card the
     fold read here, just before the call runs, with the gate on or off, so a
-    call refused before its gate never spends it."""
+    call refused before its gate never spends it. Whether the gate is on is
+    read first: a read that fails must not leave the approval spent."""
+    active = await gate_active(user_id, session)
     if refusal := await use(fold_pass, user_id):
         return Decision(allowed=False, reason=refusal)
-    if not await gate_active(user_id, session):
+    if not active:
         return ALLOW
     if review_store.is_spend_card(fold_pass.card):
         await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
@@ -420,8 +422,8 @@ async def _park(
     spend: dict[str, int] | None = None,
 ) -> Decision:
     """Cards queue per chat: the call is kept so its answer can finish it,
-    under the card it waits on, which opens with that creation time. If a card
-    was already open under the id, that card's own held call answers it."""
+    under the generation stamped on the card it opens. If an identical call's
+    card was already open under the id, that card's own held call answers it."""
     if not await held.remember(session.session_id, call):
         return Decision(allowed=False, reason=_UNRECORDABLE)
     headline = await review_store.open_review(
@@ -436,11 +438,13 @@ async def _park(
         reason_kind=reason_kind,
         tool_call_id=call.tool_call_id,
         decided_by=decided_by,
-        created_at=call.card_created_at,
+        generation=call.generation,
     )
     if headline is None:
         await held.forget(session.session_id, call)
         return Decision(allowed=False, reason=_UNRECORDABLE)
+    if not await held.kept_for_its_card(user_id, session.session_id, call):
+        return Decision(allowed=False, reason=_ALREADY_HELD, review_id=call.review_id)
     return Decision(
         allowed=False, reason=reason, review_id=call.review_id, headline=headline
     )

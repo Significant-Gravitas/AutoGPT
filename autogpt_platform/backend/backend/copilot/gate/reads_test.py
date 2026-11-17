@@ -97,14 +97,12 @@ class _Rows:
     async def get_reviews_by_node_exec_ids(self, ids, user_id):
         return {i: self.rows[i] for i in ids if i in self.rows}
 
-    async def open_review_row(
-        self, review_id, user_id, session, payload, instructions, created_at=None
-    ):
+    async def open_review_row(self, review_id, user_id, session, payload, instructions):
         self.rows[review_id] = SimpleNamespace(
             node_exec_id=review_id,
             session_id=session.session_id,
             status=ReviewStatus.WAITING,
-            created_at=created_at or datetime.now(UTC),
+            created_at=datetime.now(UTC),
             updated_at=None,
             reviewed_at=None,
             payload=sanitize_json(payload),
@@ -244,6 +242,32 @@ async def test_flagged_content_is_held_and_clean_content_is_not(rows, verdict):
     else:
         assert result.output == _plain_output(_MARKER)
         assert rows.rows == {}
+
+
+async def test_a_read_held_as_an_identical_read_opened_the_card_is_told_it_waits(
+    rows,
+):
+    """Two identical reads both found no card, and the first opened it. The
+    second's held copy would never be answered, so it is dropped and the read
+    is told the content is withheld, as a read a moment later would be."""
+    opened = rows.open_review_row
+
+    async def get_or_create(review_id, *args):
+        return review_id in rows.rows or await opened(review_id, *args)
+
+    with patch(f"{_READS}.judge_content", _judge(_HELD)):
+        await _call(_Fetch(_MARKER), _session())
+        (first,) = rows.held
+        with (
+            patch.object(review_store, "find_review", AsyncMock(return_value=None)),
+            patch.object(review_store, "open_review_row", get_or_create),
+        ):
+            result = await _call(_Fetch(_MARKER), _session())
+
+    assert "withheld while the user reviews it" in json.loads(result.output)["message"]
+    assert rows.held == [first]
+    (row,) = rows.rows.values()
+    assert row.payload[review_store.HELD_GENERATION] == first.generation
 
 
 async def test_a_judge_that_could_not_decide_holds(rows):

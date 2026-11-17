@@ -11,15 +11,17 @@ held call was removed except by the fold that listed it.
 """
 
 import asyncio
+import random
 from collections import Counter
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
-from typing import Any, Awaitable, Callable, Iterator, Literal, NamedTuple
-from unittest.mock import patch
+from typing import Any, Awaitable, Callable, Iterator, Literal
+from unittest.mock import AsyncMock, patch
 
 from prisma.enums import ReviewStatus
 from prisma.models import PendingHumanReview
+from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.copilot.context import set_execution_context
@@ -36,20 +38,36 @@ from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import root_envelope
 from backend.data.db_accessors import review_db
+from backend.data.redis_client import get_redis_async
+from backend.util.encryption import JSONCryptor
+from backend.util.json import SafeJson
 
 TOOL = "post_to_chat_platform"
 ARGS = {"text": "once"}
 _ACTOR: ContextVar[str | None] = ContextVar("_actor", default=None)
 # What a held-store write is for: a park, a fold's recovery, a restore.
 _WRITE: ContextVar[str] = ContextVar("_write", default="park")
+# Set while a fold (an actor's, or a later turn's) runs held calls.
+_FOLDING: ContextVar[bool] = ContextVar("_folding", default=False)
 
 
-class Seen(NamedTuple):
+class Seen(BaseModel):
     """The card and the held calls under its id, between two steps."""
 
-    card: tuple[ReviewStatus, datetime] | None
+    # Status, creation time, the tool call whose park opened it, and when it
+    # was answered.
+    card: tuple[ReviewStatus, datetime, str, datetime | None] | None
     entries: Counter[str]
+    # Each held call under the id, as stored, by its slot.
+    slots: dict[str, str] = {}
     runs: int
+    # Of those, the runs a fold made: each must spend an approval.
+    fold_runs: int = 0
+    # Every result a fold delivered so far, as (tool call, outcome).
+    results: list[tuple[str, str]] = []
+    gate_on: bool = True
+    # Spend faults that have fired so far.
+    faults: int = 0
 
 
 class PostStub(BaseTool):
@@ -57,6 +75,7 @@ class PostStub(BaseTool):
 
     def __init__(self) -> None:
         self.runs: list[dict[str, Any]] = []
+        self.fold_runs = 0
         self.card_at_run: list[bool] = []
         self.review_id = ""
         self.during: Callable[[], Awaitable[None]] | None = None
@@ -75,6 +94,7 @@ class PostStub(BaseTool):
 
     async def _execute(self, user_id, session, **kwargs) -> ToolResponseBase:
         self.runs.append(kwargs)
+        self.fold_runs += _FOLDING.get()
         card = await PendingHumanReview.prisma().find_unique(
             where={"nodeExecId": self.review_id}
         )
@@ -157,7 +177,7 @@ class Interleaving:
             return await seen()
         card = await self.card()
         # Runs aren't counted here, so only a lost waiting card is judged.
-        return Seen(card and (card.status, card.createdAt), Counter(), -1)
+        return Seen(card=_card_seen(card), entries=Counter(), runs=-1)
 
     async def _settle(self, done: Callable[[], bool]) -> None:
         while not done():
@@ -170,21 +190,71 @@ class Interleaving:
         )
 
 
+def _card_seen(
+    card: PendingHumanReview | None,
+) -> tuple[ReviewStatus, datetime, str, datetime | None] | None:
+    if card is None:
+        return None
+    payload = card.payload if isinstance(card.payload, dict) else {}
+    owner = str(payload.get("tool_call_id") or "")
+    return card.status, card.createdAt, owner, card.reviewedAt
+
+
 def _judged(step: str, before: Seen, after: Seen, claimed: list[str]) -> list[str]:
     """What one step did that no actor may do."""
     found = []
+    counted = before.runs >= 0
+    ran = after.runs - before.runs if counted else 0
+    fold_ran = after.fold_runs - before.fold_runs if counted else 0
+    spent = False
     if before.card is not None and (
         after.card is None or after.card[1] != before.card[1]
     ):
-        if before.card[0] == ReviewStatus.WAITING:
+        status, _, owner, answered_at = before.card
+        if status == ReviewStatus.WAITING:
             found.append(f"{step} removed a waiting card")
-        ran = after.runs != before.runs or before.runs < 0
-        if before.card[0] == ReviewStatus.APPROVED and not ran:
-            found.append(f"{step} removed an approved card and nothing ran")
+        if status == ReviewStatus.APPROVED:
+            spent = True
+            lapsed = answered_at is not None and (
+                datetime.now(UTC) - answered_at > review_store.APPROVAL_TTL
+            )
+            # A spend whose answer was lost, or a lapsed card, runs nothing;
+            # nor does a restore's copy of the card (it has no cost context),
+            # whose fold discards the card and says nothing ran.
+            settled_a_copy = any(
+                _restored(before.slots[slot])
+                for slot in before.slots.keys() - after.slots.keys()
+            )
+            excused = (
+                lapsed or after.faults > before.faults or not counted or settled_a_copy
+            )
+            if ran == 0 and not excused:
+                found.append(f"{step} removed an approved card and nothing ran")
+            if ran > 1:
+                found.append(f"{step} ran the call {ran} times on one approval")
+            for tool_call_id, outcome in after.results[len(before.results) :]:
+                if outcome == "approved" and tool_call_id != owner:
+                    found.append(f"{step} ran {tool_call_id}'s call on {owner}'s card")
+    if ran and before.gate_on and not spent:
+        found.append(f"{step} ran the call with the gate on and no approval spent")
+    if fold_ran and not spent:
+        found.append(f"{step} ran a held call without spending its approval")
     for tool_call_id, gone in (before.entries - after.entries).items():
         if gone > claimed.count(tool_call_id):
             found.append(f"{step} removed {tool_call_id}'s held call")
+    for slot in before.slots.keys() & after.slots.keys():
+        was, now = before.slots[slot], after.slots[slot]
+        # Only a restore's copy of the card, which can never run, may give
+        # way, and only to the exact call it stands in for.
+        if was != now and not (_restored(was) and not _restored(now)):
+            found.append(f"{step} overwrote the held call in {slot}")
     return found
+
+
+def _restored(slot: str) -> bool:
+    """Whether a held call is a restore's copy of its card: it carries no
+    cost context, so it never runs."""
+    return held.HeldCall.model_validate_json(slot).cost_context is None
 
 
 class Scene:
@@ -203,13 +273,16 @@ class Scene:
         self.args = args
         self.approvals = 0
         self.delivered: list[PendingMessage] = []
+        # Set by a seeded round: the gate's flag, and the faulty store.
+        self.gate: AsyncMock | None = None
+        self.database: "FaultyReviews | None" = None
+        # The MCP tools a fold replays through, when the tool is one of them.
+        self.handlers: dict[str, held.McpHandler] | None = None
         self.review_id = review_store.review_id_for(
             session.session_id, user_id, TOOL, args
         )
         tool.review_id = self.review_id
         self.interleaving = Interleaving(self.review_id)
-        # The held calls each actor's fold listed, for what its claims meant.
-        self._listed: dict[str, list[held.HeldCall]] = {}
 
     def caller(self, n: int) -> Callable[[], Awaitable[str]]:
         async def call() -> str:
@@ -223,40 +296,167 @@ class Scene:
 
     def fold(self) -> Callable[[], Awaitable[None]]:
         async def fold() -> None:
+            _FOLDING.set(True)
             async for _status in held.resolve_answered(
-                self.user_id, self.session, self.delivered.append
+                self.user_id,
+                self.session,
+                self.delivered.append,
+                mcp_handlers=self.handlers,
             ):
                 pass
 
         return fold
 
-    def restorer(self) -> Callable[[], Awaitable[None]]:
-        """An answer's wake, restoring the held call from its card if gone."""
+    def as_mcp_handler(self) -> None:
+        """Make the tool an MCP tool outside the registry: a fold replays its
+        held call through the handler, whose seam reaches the gate, as
+        ``tool_adapter.held_call_handlers`` does."""
+
+        async def handle(args: dict[str, Any]) -> dict[str, Any]:
+            result = await self.tool.execute(
+                self.user_id, self.session, "replayed", **args
+            )
+            return {"content": [{"type": "text", "text": str(result.output)}]}
+
+        self.handlers = {TOOL: handle}
+
+    def restorer(self, wakes: int = 1) -> Callable[[], Awaitable[None]]:
+        """Answers' wakes, each restoring the held call from its card if gone."""
 
         async def restore() -> None:
-            rows = await review_db().get_reviews_by_node_exec_ids(
-                [self.review_id], self.user_id
-            )
-            answered = [r for r in rows.values() if r.status != ReviewStatus.WAITING]
-            await held._restore(self.user_id, self.session.session_id, answered)
+            for wake in range(wakes):
+                if wake:
+                    await self.interleaving.point("wake")
+                rows = await review_db().get_reviews_by_node_exec_ids(
+                    [self.review_id], self.user_id
+                )
+                answered = [
+                    r for r in rows.values() if r.status != ReviewStatus.WAITING
+                ]
+                await held._restore(self.user_id, self.session.session_id, answered)
 
         return restore
+
+    def flipper(self, flips: int) -> Callable[[], Awaitable[None]]:
+        """The gate switched off and on again between other steps."""
+
+        async def flip() -> None:
+            assert self.gate is not None
+            for _ in range(flips):
+                self.gate.return_value = not self.gate.return_value
+                await self.interleaving.point("flip")
+
+        return flip
+
+    def faulter(self, faults: list["Deletes"]) -> Callable[[], Awaitable[None]]:
+        """The next spend failing, or failing after it committed."""
+
+        async def fault() -> None:
+            assert self.database is not None
+            for mode in faults:
+                self.database.arm(mode)
+                await self.interleaving.point("fault")
+
+        return fault
+
+    def ager(self) -> Callable[[], Awaitable[None]]:
+        """An hour going by on an approved card."""
+
+        async def age() -> None:
+            await PendingHumanReview.prisma().update_many(
+                where={"nodeExecId": self.review_id, "status": ReviewStatus.APPROVED},
+                data={"reviewedAt": datetime.now(UTC) - timedelta(hours=2)},
+            )
+            await self.interleaving.point("age")
+
+        return age
+
+    async def make_legacy(self) -> None:
+        """Turn the parked call into one held before held calls knew their
+        card: its held call keyed by review id alone, its card unstamped."""
+        sid = self.session.session_id
+        redis = await get_redis_async()
+        for field, call in (await held._held(sid)).items():
+            if call.review_id != self.review_id:
+                continue
+            legacy = call.model_copy(update={"generation": None})
+            await redis.hdel(held._key(sid), field)
+            await redis.hset(
+                held._key(sid),
+                self.review_id,
+                JSONCryptor().encrypt(legacy.model_dump(mode="json")),
+            )
+        card = await self.interleaving.card()
+        assert card is not None
+        payload = dict(card.payload) if isinstance(card.payload, dict) else {}
+        payload.pop(review_store.HELD_GENERATION, None)
+        await PendingHumanReview.prisma().update(
+            where={"nodeExecId": self.review_id}, data={"payload": SafeJson(payload)}
+        )
 
     async def seen(self) -> Seen:
         card = await self.interleaving.card()
         calls = await held._held(self.session.session_id)
+        mine = {k: c for k, c in calls.items() if c.review_id == self.review_id}
         return Seen(
-            card and (card.status, card.createdAt),
-            Counter(c.tool_call_id for c in calls.values()),
-            len(self.tool.runs),
+            card=_card_seen(card),
+            entries=Counter(c.tool_call_id for c in mine.values()),
+            slots={k: c.model_dump_json() for k, c in mine.items()},
+            gate_on=bool(self.gate.return_value) if self.gate else True,
+            faults=self.database.fired if self.database else 0,
+            runs=len(self.tool.runs),
+            fold_runs=self.tool.fold_runs,
+            results=[
+                (
+                    m.metadata["held_call"]["tool_call_id"],
+                    m.metadata["held_call"]["outcome"],
+                )
+                for m in self.delivered
+            ],
         )
 
-    async def settle(self) -> None:
-        """Later turns, one at a time, fold whatever is still answered."""
-        for _ in range(3):
-            await resolved(self.user_id, self.session)
+    async def settle(self, propose_again: bool = False) -> None:
+        """Later turns, one at a time, fold whatever is still answered; each
+        is judged as a step is. ``propose_again`` then makes the call once
+        more, as the chat is told to when a spend could not be confirmed, so
+        an approval that still stands is used."""
+        claim = held._claim
+        for turn in range(3):
+            claimed: list[str] = []
+
+            async def claims(session_id: str, entry: held.HeldCall) -> bool:
+                claimed.append(entry.tool_call_id)
+                return await claim(session_id, entry)
+
+            before = await self.seen()
+            folding = _FOLDING.set(True)
+            try:
+                with patch.object(held, "_claim", claims):
+                    async for _status in held.resolve_answered(
+                        self.user_id,
+                        self.session,
+                        self.delivered.append,
+                        mcp_handlers=self.handlers,
+                    ):
+                        pass
+            finally:
+                _FOLDING.reset(folding)
+            after = await self.seen()
+            self.interleaving.lost += _judged(
+                f"later turn {turn + 1}", before, after, claimed
+            )
+        card = await self.interleaving.card()
+        if propose_again and card is not None and card.status == ReviewStatus.APPROVED:
+            before = await self.seen()
+            await self.caller(9)()
+            after = await self.seen()
+            self.interleaving.lost += _judged("proposed again", before, after, [])
 
     def user(self, verdicts: list[ReviewStatus]) -> Callable[[], Awaitable[None]]:
+        """The user's answers, each followed by its wake, which restores the
+        held call from the card as answered if it is gone by then (a fold may
+        have claimed it in between, as a running turn's end can)."""
+
         async def answer() -> None:
             for verdict in verdicts:
                 answered = await PendingHumanReview.prisma().update_many(
@@ -268,7 +468,14 @@ class Scene:
                 )
                 if verdict == ReviewStatus.APPROVED:
                     self.approvals += answered
+                rows = await review_db().get_reviews_by_node_exec_ids(
+                    [self.review_id], self.user_id
+                )
                 await self.interleaving.point("answer")
+                if answered:
+                    await held._restore(
+                        self.user_id, self.session.session_id, rows.values()
+                    )
 
         return answer
 
@@ -318,23 +525,26 @@ class Scene:
         ``pause_after_listing`` also ends a step once a fold has listed its
         answered calls, before it reads each one's card again."""
         interleaving = self.interleaving
-        claim, remember, listed = held._claim, held.remember, held.answered
+        claim, listed = held._claim, held.answered
+        remember, rehold = held.remember, held._rehold
         stack = self.stepping()
         recover, restore = held._recover, held._restore
         run, run_handler = held._run, held._run_handler
 
-        async def claims(session_id: str, entry: Any) -> bool:
+        async def claims(session_id: str, entry: held.HeldCall) -> bool:
             await interleaving.point("claim")
-            interleaving.claimed.append(self._meant(entry))
+            interleaving.claimed.append(entry.tool_call_id)
             return await claim(session_id, entry)
 
-        async def remembers(*args: Any, **kwargs: Any) -> bool:
-            await interleaving.point(f"remember({_WRITE.get()})")
-            return await remember(*args, **kwargs)
+        def a_step(fn: Callable[..., Awaitable[bool]]):
+            async def write(*args: Any, **kwargs: Any) -> bool:
+                await interleaving.point(f"remember({_WRITE.get()})")
+                return await fn(*args, **kwargs)
+
+            return write
 
         async def lists(user_id: str, session_id: str) -> list[held.HeldCall]:
             calls = await listed(user_id, session_id)
-            self._listed[_ACTOR.get() or ""] = calls
             if pause_after_listing:
                 await interleaving.point("listed")
             return calls
@@ -359,7 +569,8 @@ class Scene:
 
         for name, fn in (
             ("_claim", claims),
-            ("remember", remembers),
+            ("remember", a_step(remember)),
+            ("_rehold", a_step(rehold)),
             ("answered", lists),
             ("_recover", writing("recover", recover)),
             ("_restore", writing("restore", restore)),
@@ -369,14 +580,6 @@ class Scene:
             stack.enter_context(patch.object(held, name, fn))
         return stack
 
-    def _meant(self, entry: Any) -> str:
-        """The tool call whose held call a claim meant to take: the call
-        itself, or the one the fold listed under that review id."""
-        if isinstance(entry, held.HeldCall):
-            return entry.tool_call_id
-        listed = self._listed.get(_ACTOR.get() or "", [])
-        return next((c.tool_call_id for c in listed if c.review_id == entry), "")
-
 
 async def resolved(user_id: str, session: ChatSession) -> list[PendingMessage]:
     delivered: list[PendingMessage] = []
@@ -385,14 +588,99 @@ async def resolved(user_id: str, session: ChatSession) -> list[PendingMessage]:
     return delivered
 
 
-async def new_scene(user_id: str, tool: PostStub, args: dict[str, Any] = ARGS) -> Scene:
+async def new_scene(
+    user_id: str, tool: PostStub, args: dict[str, Any] = ARGS, parked: bool = True
+) -> Scene:
     session = await upsert_chat_session(ChatSession.new(user_id=user_id, dry_run=False))
     await update_session_autopilot_mode(session.session_id, user_id, "auto")
     reloaded = await get_chat_session(session.session_id, user_id)
     assert reloaded is not None
     scene = Scene(user_id, reloaded, tool, args)
-    await scene.park()
+    if parked:
+        await scene.park()
     return scene
+
+
+class SameMillisecond(datetime):
+    """Every park in one instant: the gate's clock, stopped."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 11, 17, 12, 0, 0, 123000, tzinfo=tz)
+
+
+async def seeded_round(user_id: str, tool: PostStub, seed: int) -> list[str]:
+    """One seeded schedule over one review id: identical calls (each a
+    replacement once the card before it is spent), two folds, a fold that
+    fails before it spends and so recovers, a restore from the card and the
+    user's answers. Drawn per seed: a cold start (no call parked first, so
+    the first parks race), a call held before held calls knew their card,
+    the gate's clock stopped (every park in one instant), a timestamp among
+    the arguments, the tool reached as an MCP handler (so folds replay
+    through the handler's seam), the gate flipping off and on, spends failing
+    (before or after they commit), and an approval lapsing. Then later turns settle
+    what is left, proposing the call again if an approval still stands.
+    What any step did that no actor may do, and what the settle left."""
+    rng = random.Random(seed)
+    tool.runs.clear()
+    tool.fold_runs = 0
+    cold = rng.random() < 0.3
+    legacy = not cold and rng.random() < 0.3
+    same_instant = rng.random() < 0.3
+    stamped = rng.random() < 0.3
+    through_a_handler = rng.random() < 0.3
+    args = (
+        {**ARGS, "when": datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)} if stamped else ARGS
+    )
+    verdicts = [
+        rng.choice([ReviewStatus.APPROVED] * 3 + [ReviewStatus.REJECTED])
+        for _ in range(3)
+    ]
+    gate = AsyncMock(return_value=True)
+    with ExitStack() as stack:
+        stack.enter_context(patch("backend.copilot.gate.is_feature_enabled", gate))
+        if same_instant:
+            stack.enter_context(patch.object(held, "datetime", SameMillisecond))
+        if through_a_handler:
+            stack.enter_context(
+                patch("backend.copilot.tools.get_tool", return_value=None)
+            )
+        database = stack.enter_context(faulty_reviews())
+        scene = await new_scene(user_id, tool, args, parked=not cold)
+        scene.gate, scene.database = gate, database
+        if through_a_handler:
+            scene.as_mcp_handler()
+        if legacy:
+            await scene.make_legacy()
+        # A cold start or a stopped clock gets a fourth call, so two parks
+        # can follow a spent card.
+        callers = (1, 2, 3, 4) if cold or same_instant else (1, 2, 3)
+        actors = {f"call-{n}": scene.caller(n) for n in callers}
+        actors |= {"fold-1": scene.fold(), "fold-2": scene.fold()}
+        actors |= {
+            "failing-fold": scene.fold(),
+            "restorer": scene.restorer(rng.choice([1, 2, 3])),
+        }
+        actors["user"] = scene.user(verdicts)
+        if rng.random() < 0.4:
+            actors["flipper"] = scene.flipper(rng.choice([1, 2, 3]))
+        if rng.random() < 0.4:
+            modes: list[Deletes] = ["fail", "commit_then_fail"]
+            actors["faulter"] = scene.faulter([rng.choice(modes) for _ in range(2)])
+        if rng.random() < 0.25:
+            actors["ager"] = scene.ager()
+        with scene.stepping_the_held_store():
+            await scene.interleaving.run(
+                actors, lambda parked: rng.choice(sorted(parked)), scene.seen
+            )
+        gate.return_value = True
+        database.arm(None)
+        await scene.settle(propose_again=True)
+    found = list(scene.interleaving.lost)
+    card = await scene.interleaving.card()
+    if card is not None and card.status == ReviewStatus.APPROVED:
+        found.append("an approved call was never run")
+    return found
 
 
 def scripted(steps: list[tuple[str, str | None]]) -> Callable[[dict[str, str]], str]:
@@ -423,9 +711,15 @@ class FaultyReviews:
 
     def __init__(self, real: Any, deletes: Deletes, reads_fail_after_delete: bool):
         self.reads_fail = False
+        # Faults that have fired, and the one the next delete takes, if armed.
+        self.fired = 0
+        self._armed: Deletes | None = None
         self._real = real
         self._deletes = deletes
         self._reads_fail_after_delete = reads_fail_after_delete
+
+    def arm(self, mode: Deletes | None) -> None:
+        self._armed = mode
 
     async def get_reviews_by_node_exec_ids(
         self, node_exec_ids: list[str], user_id: str
@@ -458,11 +752,13 @@ class FaultyReviews:
         return getattr(self._real, name)
 
     async def _deleting(self, delete: Callable[[], Awaitable[int]]) -> int:
+        mode, self._armed = self._armed or self._deletes, None
+        self.fired += mode != "ok"
         try:
-            if self._deletes == "fail":
+            if mode == "fail":
                 raise ConnectionError("database unreachable")
             deleted = await delete()
-            if self._deletes == "commit_then_fail":
+            if mode == "commit_then_fail":
                 raise ConnectionError("database unreachable")
             return deleted
         finally:

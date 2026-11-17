@@ -132,6 +132,7 @@ def gate(redis):
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
     ):
         yield store

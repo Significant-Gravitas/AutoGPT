@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.blocks._preview import ChangePreview
@@ -45,6 +46,8 @@ _MAX_ARG_CHARS = 26_000
 CARD_ARGUMENT_CHARS = _MAX_ARG_CHARS
 
 GATE_NODE_PREFIX = f"{COPILOT_NODE_PREFIX}gate-"
+# Where a held call's card carries the generation of the park that opened it.
+HELD_GENERATION = "held_generation"
 
 ReasonKind = Literal["mode", "subject", "supervisor", "rule", "spend", "content"]
 
@@ -127,7 +130,10 @@ def review_id_for(
     otherwise share one row, and across users the second caller would upsert
     onto the first's row and then be unable to read it back, wedging the gate.
     """
-    canonical = json.dumps(args, sort_keys=True, default=str)
+    # As a held call keeps them: its arguments come back from Redis as JSON
+    # (a datetime as ISO text, a set as a list), and its replay must name the
+    # same approval. Plain JSON arguments hash exactly as they always have.
+    canonical = json.dumps(to_jsonable_python(args, fallback=str), sort_keys=True)
     digest = hashlib.sha256(
         "\x00".join((session_id, user_id, tool_name, canonical)).encode()
     ).hexdigest()[:16]
@@ -287,10 +293,10 @@ async def open_review(
     reason_kind: ReasonKind = "mode",
     tool_call_id: str = "",
     decided_by: DecidedBy | None = None,
-    created_at: datetime | None = None,
+    generation: str | None = None,
 ) -> Headline | None:
     """Park the call for approval; the card's headline, or None if nothing was
-    recorded. ``created_at`` names a new card, as its held call does."""
+    recorded. ``generation`` is stamped on a new card, as its held call has it."""
     try:
         references = await resolve_references(tool_name, args, user_id, session)
         payload = review_payload(
@@ -314,9 +320,9 @@ async def open_review(
         )
         return None
     headline = Headline.model_validate(payload["headline"])
-    if not await open_review_row(
-        review_id, user_id, session, payload, headline.text, created_at
-    ):
+    if generation is not None:
+        payload[HELD_GENERATION] = generation
+    if not await open_review_row(review_id, user_id, session, payload, headline.text):
         return None
     return headline
 
@@ -327,7 +333,6 @@ async def open_review_row(
     session: ChatSession,
     payload: dict[str, Any],
     message: str,
-    created_at: datetime | None = None,
 ) -> bool:
     try:
         await review_db().get_or_create_human_review(
@@ -339,7 +344,6 @@ async def open_review_row(
             editable=False,
             organization_id=session.organization_id,
             team_id=session.team_id,
-            created_at=created_at,
         )
         return True
     except Exception:

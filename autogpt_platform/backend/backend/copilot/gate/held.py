@@ -149,47 +149,67 @@ class HeldCall(BaseModel):
     # tree; a call rebuilt from its card has none and is not woken.
     envelope: TurnEnvelope | None = None
     cost_context: TrialCostContext | None = None
-    # The card it waits on, by that card's creation time. A card's id is
-    # reused once the card is gone, so a later card under the same id is
-    # another call's. None on a record written before this was kept.
-    card_created_at: datetime | None = None
+    # The card it waits on: the generation stamped on that card by the park
+    # that opened it. A card's id is reused once the card is gone, so a card
+    # of another generation is another call's. None on a record (and a card)
+    # from before generations were kept.
+    generation: str | None = None
 
 
-def card_generation() -> datetime:
-    """A new card's creation time, chosen before the card exists so its held
-    call can be stored under it first; whole milliseconds, as the column keeps."""
-    now = datetime.now(UTC)
-    return now.replace(microsecond=now.microsecond // 1000 * 1000)
+def card_generation() -> str:
+    """A new park's generation, unique to it: identical calls parked at once,
+    or one parked just after an earlier card under the id was spent, never
+    share one."""
+    return uuid.uuid4().hex
+
+
+def _generation_of(row: "PendingHumanReviewModel") -> str | None:
+    payload = row.payload if isinstance(row.payload, dict) else {}
+    generation = payload.get(review_store.HELD_GENERATION)
+    return generation if isinstance(generation, str) else None
 
 
 def _of_card(call: HeldCall, row: "PendingHumanReviewModel") -> bool:
-    """Whether the held call is the one this card answers."""
-    return call.card_created_at is None or call.card_created_at == row.created_at
+    """Whether the held call is the one this card answers: the same
+    generation. A record from before generations were kept pairs only with a
+    card from before them too, never with a later card under the same id."""
+    return call.generation == _generation_of(row)
 
 
 def _field(call: HeldCall) -> str:
-    """Where the call is held: its review id and its card, so a held call for
-    another card under the same id never shares the slot."""
-    if call.card_created_at is None:
+    """Where the call is held: its review id and its card's generation, so a
+    held call for another card under the same id never shares the slot."""
+    if call.generation is None:
         return call.review_id
-    created = call.card_created_at.astimezone(UTC).isoformat(timespec="milliseconds")
-    return f"{call.review_id}@{created}"
+    return f"{call.review_id}@{call.generation}"
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
     """Hold the call under its card. Only ever adds: a call already held for
     that card stays as it is, and one held for another card is another
     call's. False means it could not be stored, so the call must not park."""
+    return await _store(session_id, call, replace=False)
+
+
+async def _rehold(session_id: str, call: HeldCall) -> bool:
+    """Put back a call this fold claimed. Its slot is its park's alone, so
+    all that can have been written there since the claim is a restore's copy
+    of the card, which never runs (it has no cost context): the exact call
+    replaces it."""
+    return await _store(session_id, call, replace=True)
+
+
+async def _store(session_id: str, call: HeldCall, *, replace: bool) -> bool:
     try:
         redis = await get_redis_async()
+        # Encrypted: the arguments can hold a credential, and must stay exact
+        # to match the approval, so they cannot be redacted like the card's.
+        held = JSONCryptor().encrypt(call.model_dump(mode="json"))
         async with redis.pipeline(transaction=True) as pipe:
-            # Encrypted: the arguments can hold a credential, and must stay exact
-            # to match the approval, so they cannot be redacted like the card's.
-            pipe.hsetnx(
-                _key(session_id),
-                _field(call),
-                JSONCryptor().encrypt(call.model_dump(mode="json")),
-            )
+            if replace:
+                pipe.hset(_key(session_id), _field(call), held)
+            else:
+                pipe.hsetnx(_key(session_id), _field(call), held)
             pipe.expire(_key(session_id), _TTL_SECONDS)
             await pipe.execute()
         return True
@@ -227,6 +247,23 @@ async def subject_keys(session_id: str, review_ids: list[str]) -> dict[str, str]
         and call.rule_key
         and (call.rule_key != call.tool_name or effect_for(call.tool_name) in PARKABLE)
     }
+
+
+async def kept_for_its_card(user_id: str, session_id: str, call: HeldCall) -> bool:
+    """Whether the card now open under the call's id is the one it was stored
+    under. An identical call parked a moment before may have opened the card
+    first, so this call's slot would never be answered: it is dropped, and
+    the caller says the call is already waiting. Unreadable, it is kept."""
+    try:
+        rows = await review_db().get_reviews_by_node_exec_ids([call.review_id], user_id)
+    except Exception:
+        logger.warning(f"Gate could not read back review {call.review_id}")
+        return True
+    card = rows.get(call.review_id)
+    if card is None or _of_card(call, card):
+        return True
+    await forget(session_id, call)
+    return False
 
 
 async def forget(session_id: str, call: HeldCall) -> None:
@@ -615,7 +652,7 @@ async def _recover(
     current = rows.get(call.review_id)
     if current is None or row is None or current.created_at != row.created_at:
         return [_result_row(call, _NO_LONGER_OPEN, "closed")]
-    if await remember(session_id, call):
+    if await _rehold(session_id, call):
         return []
     return [_result_row(call, UNCONFIRMED, "closed")]
 
@@ -875,7 +912,7 @@ def _from_row(
         args=args if intact else {},
         held_at=row.created_at,
         lost=not intact,
-        card_created_at=row.created_at,
+        generation=_generation_of(row),
     )
 
 

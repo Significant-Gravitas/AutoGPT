@@ -80,6 +80,7 @@ def gate():
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.review_store.discard", store.discard),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.supervise", store.classify),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),

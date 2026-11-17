@@ -307,7 +307,7 @@ async def screen_read(
             args=args,
             envelope=get_current_envelope(),
             cost_context=await capture_cost_context(user_id),
-            card_created_at=held.card_generation(),
+            generation=held.card_generation(),
         )
         return await _hold(
             call,
@@ -653,6 +653,7 @@ async def _hold(
         "passage": passage,
         "judged": judged,
         "success": success,
+        review_store.HELD_GENERATION: call.generation,
         # Both seams hand over JSON-encoded text, whose control characters are
         # escaped, so the column's sanitiser leaves it byte-identical.
         "content": output,
@@ -663,9 +664,10 @@ async def _hold(
         session,
         payload,
         headline.text,
-        call.card_created_at,
     ):
         return _stub(tool_name, source, _UNRECORDABLE, session)
+    if not await held.kept_for_its_card(user_id, session.session_id, call):
+        return _stub(tool_name, source, _WAITING, session)
     return _stub(tool_name, source, _HELD, session, call.review_id)
 
 

@@ -54,6 +54,7 @@ def workspace_read(monkeypatch):
     )
     monkeypatch.setattr(review_store, "open_review_row", AsyncMock(return_value=True))
     monkeypatch.setattr(held, "remember", AsyncMock(return_value=True))
+    monkeypatch.setattr(held, "kept_for_its_card", AsyncMock(return_value=True))
 
     async def judge(**kwargs):
         text = kwargs["text"]

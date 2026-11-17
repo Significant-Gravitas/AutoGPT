@@ -110,6 +110,7 @@ def gate():
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.review_store.discard", store.discard),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
@@ -1479,7 +1480,10 @@ async def test_an_approved_call_replays_the_content_it_was_approved_for(
     files["name.txt"] = "Orders (see @@agptfile:/home/user/old_notes.txt )"
     payload = {**_FROM_FILE, "table_name": "@@agptfile:/home/user/name.txt"}
     remember = AsyncMock(return_value=True)
-    with patch(f"{_GATE}.held.remember", remember):
+    with (
+        patch(f"{_GATE}.held.remember", remember),
+        patch(f"{_GATE}.held.kept_for_its_card", AsyncMock(return_value=True)),
+    ):
         held_result = await _run_capability(_session(), _BLOCK, payload)
     assert _is_held(held_result)
     call = remember.await_args.args[1]
