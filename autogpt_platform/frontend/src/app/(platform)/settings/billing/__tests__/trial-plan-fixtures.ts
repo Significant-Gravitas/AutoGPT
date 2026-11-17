@@ -32,7 +32,7 @@ export function returnURLs(plan: string, cycle: string) {
   const page = `${window.location.origin}${window.location.pathname}`;
   return {
     success_url: `${page}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${plan}&cycle=${cycle}`,
-    cancel_url: `${page}?subscription=cancelled`,
+    cancel_url: `${page}?subscription=cancelled&plan=${plan}&cycle=${cycle}`,
   };
 }
 

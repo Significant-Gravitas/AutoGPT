@@ -323,6 +323,43 @@ def test_a_system_credential_is_used_when_the_user_has_none_of_their_own():
     assert _find([own, openai_credentials], ask=True, field=field) is own
 
 
+def _exa_field() -> CredentialsFieldInfo:
+    return CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["exa"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_a_refused_sdk_default_is_never_picked_over_the_system_credential(ask):
+    # get_all_creds lists the system credential first and the SDK default
+    # after it. exa-default can't run (Exa isn't a runnable SDK default
+    # provider), so the system credential must be picked, watched or not.
+    from backend.integrations.credentials_store import exa_credentials
+
+    exa_default = _key_cred("exa-default", provider="exa")
+    picked = _find([exa_credentials, exa_default], ask=ask, field=_exa_field())
+    assert picked is exa_credentials
+    assert _find([exa_default], ask=ask, field=_exa_field()) is None
+
+
+def test_a_refused_sdk_default_does_not_stop_the_users_own_key_being_used():
+    own = _key_cred("own-exa", provider="exa")
+    exa_default = _key_cred("exa-default", provider="exa")
+    assert _find([own, exa_default], ask=True, field=_exa_field()) is own
+    assert _find([exa_default, own], field=_exa_field()) is own
+
+
+@pytest.mark.parametrize("ask", [True, False], ids=["watched", "unattended"])
+def test_a_runnable_sdk_default_still_counts_as_a_usable_credential(ask):
+    field = CredentialsFieldInfo.model_validate(
+        {"credentials_provider": ["tavily"], "credentials_types": ["api_key"]},
+        by_alias=True,
+    )
+    tavily_default = _key_cred("tavily-default", provider="tavily")
+    assert _find([tavily_default], ask=ask, field=field) is tavily_default
+
+
 # ---------------------------------------------------------------------------
 # A scheduled turn keeps to the account its schedule pinned (SECRT-2804)
 # ---------------------------------------------------------------------------

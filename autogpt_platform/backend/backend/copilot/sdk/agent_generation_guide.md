@@ -213,6 +213,11 @@ descriptions; read and follow those when `find_capability` surfaces a match.
   (e.g. `ExecuteCodeBlock`, `ConditionBlock`) instead of an LLM. Reserve AI
   for what genuinely needs it (open-ended reasoning, summarization, generation).
   Don't spend the user's money on AI for work plain logic can do.
+- **AI block model**: leave `model` out of `input_default` unless the user
+  names a model, even though the block's schema lists the options. The
+  platform then fills in the default: the recommended model on LLM blocks such
+  as `AITextGeneratorBlock`, and its own default on `OrchestratorBlock`. When
+  editing, keep a node's existing `model` unless the user asks to change it.
 - **Name & description**: Include `name` and `description` in the agent JSON
   when creating a new agent, or when editing and the agent's purpose changed.
   Without these the agent gets a generic default name.

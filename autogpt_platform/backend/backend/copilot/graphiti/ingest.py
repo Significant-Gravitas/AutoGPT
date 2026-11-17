@@ -862,7 +862,8 @@ async def _enqueue_payload(scope: MemoryScope, payload: dict) -> bool:
     work onto a queue after its worker has unregistered it.
 
     Creating a group's queue also registers the scope's own dream-system
-    crons (community rebuild + nightly batch): an expert group registers the
+    crons (the flag-gated nightly ones) and claims its registry row, which
+    the hourly community sweep reads: an expert group registers the
     expert's scope, not the account's. That happens on the group's first
     write in this process and again each time its queue comes back after
     retiring (``_WORKER_IDLE_TIMEOUT`` idle). Fire-and-forget, flag-gated

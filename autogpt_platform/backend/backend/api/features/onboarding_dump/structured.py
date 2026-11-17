@@ -7,9 +7,10 @@ from pydantic import BaseModel
 
 from backend.api.features.onboarding_dump.parsing import parse_response_json
 
-# Haiku 5.5 thinks adaptively, and the thinking counts against max_tokens: on
-# a real brain dump it spent the whole cap and the JSON came back cut off.
-_NO_REASONING = {"reasoning": {"enabled": False}}
+# Claude 5 models think adaptively, and the thinking counts against max_tokens:
+# on a real brain dump Haiku spent the whole cap and the JSON came back cut off.
+# The greeting sends it too (``intro``): the plan step waits on that call.
+NO_REASONING = {"reasoning": {"enabled": False}}
 
 
 class StructuredReply(BaseModel):
@@ -44,7 +45,7 @@ async def request_json(
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
-            extra_body=_NO_REASONING,
+            extra_body=NO_REASONING,
         ),
         timeout=timeout,
     )

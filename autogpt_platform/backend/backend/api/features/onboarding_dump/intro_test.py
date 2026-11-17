@@ -124,11 +124,26 @@ async def test_an_over_long_greeting_keeps_most_of_itself(
     assert long_greeting.startswith(kept) and long_greeting[len(kept)] == " "
 
 
+@pytest.mark.asyncio
+async def test_the_greeting_is_written_without_thinking_first(client: MagicMock):
+    """The plan step waits on this call, so the model answers straight away
+    rather than thinking before its first token."""
+    await intro.generate_intro(TRANSCRIPT)
+
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["extra_body"] == {"reasoning": {"enabled": False}}
+
+
 def test_both_copies_of_the_instructions_ask_for_the_same_length():
     """The fallback instructions must not cap the greeting below what the
     system message allows, and the clip must sit above both."""
+    # The optional ``why`` clause under each prompt has its own, shorter cap.
+    why_limit = str(intro.MAX_WHY_CHARS)
     for text in (intro._LOCAL_PROMPT, intro.COVERAGE_CONTRACT):
-        assert re.findall(r"(\d+) characters", text) == [str(intro.GREETING_CHAR_LIMIT)]
+        lengths = re.findall(r"(\d+) characters", text)
+        assert [n for n in lengths if n != why_limit] == [
+            str(intro.GREETING_CHAR_LIMIT)
+        ]
     assert intro.GREETING_CHAR_LIMIT < intro.MAX_GREETING_CHARS
 
 
@@ -173,3 +188,86 @@ def test_the_fallback_greeting_names_nobody():
 def _sent(client: MagicMock, role: str) -> str:
     messages = client.chat.completions.create.await_args.kwargs["messages"]
     return next(m["content"] for m in messages if m["role"] == role)
+
+
+def test_the_local_prompt_offers_an_optional_why_per_prompt():
+    assert '"why" (optional)' in intro._LOCAL_PROMPT
+    assert f"at most {intro.MAX_WHY_CHARS} characters" in intro._LOCAL_PROMPT
+
+
+def test_a_prompt_keeps_its_why_and_one_without_still_parses():
+    at_cap = "x" * intro.MAX_WHY_CHARS
+    prompts = intro._parse_prompts(
+        [
+            {
+                "title": "Rewrite listings",
+                "prompt": "Do it.",
+                "why": " Listings  eat your evenings. ",
+            },
+            {"title": "Find shops", "prompt": "Do it."},
+            {"title": "Answer reviews", "prompt": "Do it.", "why": at_cap},
+            {"title": "Track orders", "prompt": "Do it.", "why": at_cap + "x"},
+            {"title": "Plan a drop", "prompt": "Do it.", "why": 7},
+        ]
+    )
+
+    assert [p.why for p in prompts] == [
+        "Listings eat your evenings.",
+        None,
+        at_cap,
+        None,  # too long to read as one clause
+        None,
+    ]
+    assert all(p.expert_template_id is None for p in prompts)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_sonnet_call_gets_the_greeting_from_the_backup(
+    client: MagicMock,
+):
+    # On a deploy where the Sonnet call fails, the user still gets tasks
+    # written from what they said, not the role's starters.
+    completion = client.chat.completions.create.return_value
+    client.chat.completions.create.side_effect = [
+        RuntimeError("model not available"),
+        completion,
+    ]
+
+    greeting, prompts = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == GENERATION["greeting"]
+    assert [p.title for p in prompts] == [p["title"] for p in GENERATION["prompts"]]
+    models = [c.kwargs["model"] for c in client.chat.completions.create.await_args_list]
+    assert models == [intro._MODEL, intro._BACKUP_MODEL]
+
+
+@pytest.mark.asyncio
+async def test_when_both_models_fail_the_template_answers(client: MagicMock):
+    client.chat.completions.create.side_effect = RuntimeError("gateway down")
+
+    assert await intro.generate_intro(TRANSCRIPT) == intro.fallback_intro(TRANSCRIPT)
+    assert client.chat.completions.create.await_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        # A choice with no message, as OpenRouter sends with finish_reason
+        # "error".
+        SimpleNamespace(choices=[SimpleNamespace(message=None, finish_reason="error")]),
+        # A 2xx HTML error page, which the SDK hands back as a plain string.
+        "<html>Bad gateway</html>",
+    ],
+    ids=["no message", "html body"],
+)
+async def test_a_malformed_sonnet_reply_still_gets_the_backup_s_greeting(
+    client: MagicMock, malformed: object
+):
+    completion = client.chat.completions.create.return_value
+    client.chat.completions.create.side_effect = [malformed, completion]
+
+    greeting, _ = await intro.generate_intro(TRANSCRIPT)
+
+    assert greeting == GENERATION["greeting"]
+    assert client.chat.completions.create.await_count == 2

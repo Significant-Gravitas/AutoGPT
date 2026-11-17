@@ -2,11 +2,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.blocks.video._utils import (
-    MAX_VIDEO_FRAME_PIXELS,
-    VideoMediaStorage,
-    check_video_frame_size,
-)
+from backend.blocks.video._render import MAX_VIDEO_FRAME_PIXELS
+from backend.blocks.video._utils import VideoMediaStorage, check_video_frame_size
 from backend.data.execution import ExecutionContext
 from backend.util.exceptions import BlockExecutionError
 from backend.util.file import MediaFileType
@@ -71,7 +68,7 @@ def _infos(*video_sizes: tuple[int, int]) -> dict:
 )
 def test_frame_size_check_accepts_frames_within_limit(sizes):
     with patch(
-        "backend.blocks.video._utils.ffmpeg_parse_infos", return_value=_infos(*sizes)
+        "backend.blocks.video._render.ffmpeg_parse_infos", return_value=_infos(*sizes)
     ) as probe:
         check_video_frame_size("video.mp4", block_name="b", block_id="id")
 
@@ -102,7 +99,7 @@ def test_frame_size_check_refuses_frames_over_limit(sizes, shown):
     assert width * height > MAX_VIDEO_FRAME_PIXELS
     with (
         patch(
-            "backend.blocks.video._utils.ffmpeg_parse_infos",
+            "backend.blocks.video._render.ffmpeg_parse_infos",
             return_value=_infos(*sizes),
         ),
         pytest.raises(BlockExecutionError, match=f"{shown} is over the limit"),

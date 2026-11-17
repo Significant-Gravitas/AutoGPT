@@ -106,7 +106,36 @@ describe("fetchUser", () => {
       hasLoadedUser: true,
       isUserLoading: false,
     });
+    expect(console.error).toHaveBeenCalledWith(
+      "Get user error:",
+      expect.any(Error),
+    );
   });
+
+  // A login reloads the page, which cuts off a check still in flight. That is
+  // a warning, not an error: the journeys guard fails any run on console.error.
+  it.each([
+    new TypeError("Failed to fetch"),
+    new DOMException("The operation was aborted.", "AbortError"),
+  ])(
+    "reports a check cut off by navigation (%s) as a warning",
+    async (error) => {
+      const warn = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
+      getCurrentUserMock.mockRejectedValue(error);
+
+      const result = await fetchUser();
+
+      expect(result).toEqual({
+        user: null,
+        hasLoadedUser: true,
+        isUserLoading: false,
+      });
+      expect(warn).toHaveBeenCalledWith("Get user deferred:", error);
+      expect(console.error).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("validateSession", () => {

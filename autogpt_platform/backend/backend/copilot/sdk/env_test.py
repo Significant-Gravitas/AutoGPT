@@ -1,5 +1,6 @@
 """Tests for build_sdk_env() — the SDK subprocess environment builder."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -46,6 +47,44 @@ def _make_config(**overrides) -> ChatConfig:
 
 class TestBuildSdkEnvSubscription:
     """When ``use_claude_code_subscription`` is True, keys are blanked."""
+
+    @pytest.mark.parametrize(
+        "source",
+        ["constructor", "dotenv", "prefixed", "alias", "both", "empty-prefixed"],
+    )
+    def test_passes_effective_cli_setting_to_subscription_validation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+    ):
+        for name in ("CHAT_CLAUDE_AGENT_CLI_PATH", "CLAUDE_AGENT_CLI_PATH"):
+            monkeypatch.delenv(name, raising=False)
+        cli = tmp_path / "2.1.284.exe"
+        cli.write_bytes(b"stand-in executable")
+        cli.chmod(0o755)
+        options = {"use_claude_code_subscription": True, "_env_file": None}
+        if source == "constructor":
+            options["claude_agent_cli_path"] = str(cli)
+        elif source == "dotenv":
+            dotenv = tmp_path / ".env"
+            dotenv.write_text(f"CHAT_CLAUDE_AGENT_CLI_PATH={cli}\n", encoding="utf-8")
+            options["_env_file"] = dotenv
+        elif source == "prefixed":
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", str(cli))
+        elif source == "alias":
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
+        elif source == "both":
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", str(cli))
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "missing-alias")
+        else:
+            monkeypatch.setenv("CHAT_CLAUDE_AGENT_CLI_PATH", "")
+            monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(cli))
+        cfg = _make_config(**options)
+        assert cfg.claude_agent_cli_path == str(cli)
+        with (
+            patch("backend.copilot.sdk.env.config", cfg),
+            patch("backend.copilot.sdk.env.validate_subscription") as validate,
+        ):
+            build_sdk_env()
+        validate.assert_called_once_with(str(cli))
 
     @patch("backend.copilot.sdk.env.validate_subscription")
     def test_returns_blanked_keys(self, mock_validate):
@@ -572,6 +611,121 @@ class TestAutocompactPctOverrideConfigurable:
             result = build_sdk_env(model=None)
 
         assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+
+# ---------------------------------------------------------------------------
+# enable_computer_use_beta — LocalPC computer-use CLI opt-in
+# ---------------------------------------------------------------------------
+
+
+class TestComputerUseBetaEnablement:
+    """``enable_computer_use_beta=True`` opts the CLI into
+    ``computer-use-2025-11-24`` via ``ANTHROPIC_BETAS`` and drops the strip
+    flag — but ONLY when the transport isn't OpenRouter, which always
+    rejects Anthropic beta headers."""
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_subscription_with_openrouter_settings_still_enables_beta(self, _mock):
+        cfg = _make_config(
+            use_claude_code_subscription=True,
+            use_openrouter=True,
+            api_key="sk-or-test-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        assert result["ANTHROPIC_BASE_URL"] == ""
+        assert result.get("ANTHROPIC_BETAS") == "computer-use-2025-11-24"
+        assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" not in result
+
+    def test_codex_gateway_never_enables_anthropic_computer_beta(self):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                enable_computer_use_beta=True,
+                codex_gateway_url="http://127.0.0.1:43210",
+                codex_gateway_token="loopback-capability",
+            )
+
+        assert result["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] == "1"
+        assert "ANTHROPIC_BETAS" not in result
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_stand_in_model_never_enables_anthropic_computer_beta(self, _mock):
+        """A load-test turn's scripted model answers in Anthropic's place, so
+        it gets the same betas as on dev: none."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(
+                enable_computer_use_beta=True,
+                stand_in_model_url="http://scripted-model:4010/api/v1",
+            )
+
+        assert result["ANTHROPIC_BASE_URL"] == "http://scripted-model:4010/api"
+        assert result["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] == "1"
+        assert "ANTHROPIC_BETAS" not in result
+
+    def test_default_keeps_strip_and_omits_betas(self):
+        """No opt-in => the existing OpenRouter-safe behaviour persists."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert "ANTHROPIC_BETAS" not in result
+
+    def test_anthropic_direct_enables_beta_when_opted_in(self):
+        """Direct-Anthropic + opt-in => strip dropped, ANTHROPIC_BETAS set."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" not in result
+        assert result.get("ANTHROPIC_BETAS") == "computer-use-2025-11-24"
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_subscription_enables_beta_when_opted_in(self, _mock):
+        """Subscription auth path still gets the beta via ANTHROPIC_BETAS,
+        which the docs confirm works under all auth methods (not just
+        ``--betas`` which is API-key-only)."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS" not in result
+        assert result.get("ANTHROPIC_BETAS") == "computer-use-2025-11-24"
+
+    def test_openrouter_strips_betas_even_when_opted_in(self):
+        """OpenRouter rejects Anthropic-beta headers — the strip flag must
+        win regardless of caller intent, otherwise every OpenRouter request
+        4xxs once the platform turns the feature on for a user."""
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test-key",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(enable_computer_use_beta=True)
+
+        # Strip stays on — OpenRouter rejects the beta header.
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        # And the beta env var is NOT set on the OpenRouter path.
+        assert "ANTHROPIC_BETAS" not in result
 
 
 # ---------------------------------------------------------------------------

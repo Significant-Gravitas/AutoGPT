@@ -8,6 +8,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { LockIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
+import { environment } from "@/services/environment";
 import { cn } from "@/lib/utils";
 import { ExpertSidePanel } from "../ExpertSidePanel/ExpertSidePanel";
 import { LearnedNotes } from "./components/LearnedNotes/LearnedNotes";
@@ -68,7 +69,9 @@ function SoulPanelBody({ expert, onClose }: BodyProps) {
             A living document that shapes every reply.
           </Text>
           <SoulFields soul={soul} updateField={updateField} />
-          <LearnedNotes expertId={expert.id} />
+          {environment.isGraphMemoryAvailable() ? (
+            <LearnedNotes expertId={expert.id} />
+          ) : null}
           <ProtectedRules rules={expert.protected_soul_rules} />
         </div>
         <div

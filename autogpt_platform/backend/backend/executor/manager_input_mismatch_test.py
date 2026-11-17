@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
+from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.anysearch.search import AnySearchBlock
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.blocks.orchestrator import OrchestratorBlock
@@ -48,6 +48,24 @@ def _llm_node(*linked_pins: str, static: frozenset[str] = frozenset()) -> Node:
                 source_name=f"{pin}_out",
                 sink_name=pin,
                 is_static=pin in static,
+            )
+            for pin in linked_pins
+        ],
+    )
+
+
+def _image_node(*linked_pins: str, **input_default: Any) -> Node:
+    """A block whose credentials are required, unlike the LLM node's defaults."""
+    return Node(
+        id="image-node",
+        block_id=AIImageGeneratorBlock().id,
+        input_default=input_default,
+        input_links=[
+            Link(
+                source_id="source-node",
+                sink_id="image-node",
+                source_name=f"{pin}_out",
+                sink_name=pin,
             )
             for pin in linked_pins
         ],
@@ -238,7 +256,10 @@ def _db_client(target: Node, incomplete: list[Any] | None = None) -> MagicMock:
 
 
 async def _route(
-    target: Node, outputs: list[tuple[str, Any]], db: MagicMock
+    target: Node,
+    outputs: list[tuple[str, Any]],
+    db: MagicMock,
+    dry_run: bool = False,
 ) -> list[NodeExecutionEntry]:
     source = _source_node(target)
     queued: list[NodeExecutionEntry] = []
@@ -258,7 +279,7 @@ async def _route(
                 graph_version=1,
                 log_metadata=MagicMock(),
                 nodes_input_masks=None,
-                execution_context=ExecutionContext(),
+                execution_context=ExecutionContext(dry_run=dry_run),
             )
     return queued
 
@@ -500,9 +521,9 @@ async def test_running_a_node_still_missing_input_yields_the_error_as_before():
     assert "missing input" in outputs[0][1]
 
 
-@pytest.mark.asyncio
-async def test_the_node_ends_failed_with_the_input_error():
-    node = _llm_node("model", "prompt")
+async def _run_queued(
+    node: Node, entry: NodeExecutionEntry
+) -> tuple[ExecutionStatus, MagicMock]:
     db = MagicMock()
     db.upsert_execution_output = AsyncMock()
     db.get_node_execution = AsyncMock(return_value=None)
@@ -512,18 +533,106 @@ async def test_the_node_ends_failed_with_the_input_error():
     with patch(f"{_MOD}.async_update_node_execution_status", new=AsyncMock()):
         _, status = await processor._on_node_execution(
             node=node,
-            node_exec=_entry(dict(_QUEUED_INPUT)),
+            node_exec=entry,
             node_exec_progress=NodeExecutionProgress(),
             stats=NodeExecutionStats(),
             db_client=db,
             log_metadata=MagicMock(),
         )
+    return status, db
+
+
+@pytest.mark.asyncio
+async def test_the_node_ends_failed_with_the_input_error():
+    status, db = await _run_queued(
+        _llm_node("model", "prompt"), _entry(dict(_QUEUED_INPUT))
+    )
 
     assert status == ExecutionStatus.FAILED
     output = db.upsert_execution_output.await_args.kwargs
     assert output["output_name"] == "error"
     assert "`model`" in output["output_data"]
     assert _BAD_MODEL in output["output_data"]
+
+
+_IMAGE_CREDENTIALS = {"id": "c", "provider": "replicate", "type": "api_key"}
+_with_and_without_credentials = pytest.mark.parametrize(
+    "configured",
+    [{}, {"credentials": _IMAGE_CREDENTIALS}],
+    ids=["no credentials set", "credentials set"],
+)
+
+
+@pytest.mark.asyncio
+@_with_and_without_credentials
+async def test_a_dry_run_of_a_block_needing_credentials_ends_failed_on_a_bad_value(
+    configured: dict[str, Any],
+):
+    """A dry run queues required credentials as a None placeholder, and running
+    the node validates that queued input again. The placeholder isn't a None
+    that arrived on purpose, so the node still ends FAILED rather than skipped."""
+    target = _image_node("model", prompt="a cat", **configured)
+
+    queued = await _route(
+        target, [("model_out", _BAD_MODEL)], _db_client(target), dry_run=True
+    )
+
+    assert len(queued) == 1
+    assert queued[0].input_error and "`model`" in queued[0].input_error
+    assert queued[0].inputs["credentials"] is None
+
+    status, db = await _run_queued(target, queued[0])
+
+    assert status == ExecutionStatus.FAILED
+    output = db.upsert_execution_output.await_args.kwargs
+    assert output["output_name"] == "error"
+    assert "`model`" in output["output_data"]
+    assert _BAD_MODEL in output["output_data"]
+
+
+@pytest.mark.asyncio
+@_with_and_without_credentials
+async def test_a_dry_run_of_a_block_needing_credentials_still_simulates_good_input(
+    configured: dict[str, Any],
+):
+    target = _image_node("model", prompt="a cat", **configured)
+
+    queued = await _route(
+        target,
+        [("model_out", ImageGenModel.FLUX.value)],
+        _db_client(target),
+        dry_run=True,
+    )
+
+    assert len(queued) == 1
+    assert queued[0].input_error is None
+
+    async def simulated(*_args: Any, **_kwargs: Any):
+        yield "image_url", "https://example.com/simulated.png"
+
+    with patch(f"{_MOD}.simulate_block", new=simulated):
+        status, db = await _run_queued(target, queued[0])
+
+    assert status == ExecutionStatus.COMPLETED
+    output = db.upsert_execution_output.await_args.kwargs
+    assert output["output_name"] == "image_url"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pin", ["prompt", "credentials"])
+async def test_a_dry_run_skips_a_required_input_that_arrives_as_none(pin: str):
+    """Only the credentials placeholder is exempt: a None a linked block really
+    sent still skips the node, even next to a value that can't be converted."""
+    target = _image_node("model", pin, prompt="a cat")
+
+    queued = await _route(
+        target,
+        [("model_out", _BAD_MODEL), (f"{pin}_out", None)],
+        _db_client(target),
+        dry_run=True,
+    )
+
+    assert queued == []
 
 
 @pytest.mark.asyncio
