@@ -47,6 +47,11 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     navigation.closeDrawer();
   }
 
+  function openMarketplace() {
+    router.navigate("/marketplace");
+    navigation.closeDrawer();
+  }
+
   function openAllChats() {
     router.navigate("/chats");
     navigation.closeDrawer();
@@ -86,6 +91,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     openChat,
     newChat,
     openTeam,
+    openMarketplace,
     openAllChats,
     openSettings,
     handleSignOut,

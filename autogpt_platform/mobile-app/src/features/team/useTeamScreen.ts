@@ -3,22 +3,10 @@ import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
 
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
-import { chatKeys, createSession, listSessions } from "@/lib/api/chat";
+import { latestOrNewSession } from "@/features/marketplace/openExpertChat";
 import { ApiError } from "@/lib/api/client";
 import { type Expert, expertKeys, listExperts } from "@/lib/api/experts";
-import { isSessionGone, queryClient, signOut } from "@/lib/session";
-
-async function latestOrNewSession(expertID: string) {
-  const [latest] = await listSessions({
-    expertID,
-    limit: 1,
-    pinnedFirst: false,
-  });
-  if (latest) return latest.id;
-  const { id } = await createSession(expertID);
-  void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
-  return id;
-}
+import { isSessionGone, signOut } from "@/lib/session";
 
 export function useTeamScreen() {
   const experts = useQuery({ queryKey: expertKeys.list, queryFn: listExperts });
@@ -71,6 +59,10 @@ export function useTeamScreen() {
     router.navigate("/create-expert");
   }
 
+  function browseMarketplace() {
+    router.navigate("/marketplace");
+  }
+
   return {
     experts: experts.data ?? [],
     isLoading: experts.isPending,
@@ -82,5 +74,6 @@ export function useTeamScreen() {
     openExpert,
     openOtto,
     createExpert,
+    browseMarketplace,
   };
 }

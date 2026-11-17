@@ -45,7 +45,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
     assertSameSession(mark);
   }
   if (!response.ok) {
-    throw new ApiError(response.status, await readErrorMessage(response));
+    const message = await readErrorMessage(response);
+    // Reading the body can outlast the session; a stale 401 must not reach
+    // a handler that signs out whoever signed in meanwhile.
+    assertSameSession(mark);
+    throw new ApiError(response.status, message);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
