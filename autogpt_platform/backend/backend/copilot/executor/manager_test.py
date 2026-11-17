@@ -14,8 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from backend.copilot import after_turn
+from backend.copilot.active_turns import SessionNotIdle
 from backend.copilot.engine_switch import CONTINUATION_MESSAGE, SwitchRequest
-from backend.copilot.executor.utils import COPILOT_CANCEL_QUEUE_PREFIX
+from backend.copilot.executor.utils import (
+    COPILOT_CANCEL_QUEUE_PREFIX,
+    CancelCoPilotEvent,
+)
 
 from . import cli_warmup, manager
 from .manager import (
@@ -103,14 +107,16 @@ async def test_dispatch_retries_until_success(mock_dispatch_sleep):
     assert mock_dispatch_sleep.await_args_list == [call(1), call(2)]
 
 
+@pytest.mark.parametrize("error", [RuntimeError("rmq down"), SessionNotIdle("sess-1")])
 async def test_dispatch_gives_up_after_bounded_attempts_with_user_visible_marker(
     mock_dispatch_sleep,
+    error: Exception,
 ):
     with (
         patch(
             "backend.copilot.executor.manager.schedule_turn",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("rmq down"),
+            side_effect=error,
         ) as mock_schedule,
         patch(
             "backend.copilot.executor.manager._persist_switch_failure_marker",
@@ -278,6 +284,32 @@ def test_cancel_consumer_consumes_the_queue_it_just_declared():
     declared = channel.queue_declare.call_args.kwargs["queue"]
     assert declared.startswith(COPILOT_CANCEL_QUEUE_PREFIX)
     assert channel.basic_consume.call_args.kwargs["queue"] == declared
+
+
+@pytest.mark.parametrize(
+    "named_turn, stops",
+    [(None, True), ("turn-1", True), ("turn-2", False)],
+)
+def test_a_cancel_that_names_a_turn_stops_only_that_turn(
+    named_turn: str | None, stops: bool
+):
+    """A scheduler stopping expired background work names its turn, so the
+    newer turn a user started in the same chat meanwhile keeps running."""
+    executor = CoPilotExecutor()
+    cancel_event = threading.Event()
+    executor.active_tasks["sess-1"] = (MagicMock(), cancel_event)
+    executor._active_turn_ids["sess-1"] = "turn-1"
+
+    executor._handle_cancel_message(
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        CancelCoPilotEvent(session_id="sess-1", turn_id=named_turn)
+        .model_dump_json()
+        .encode(),
+    )
+
+    assert cancel_event.is_set() is stops
 
 
 class _Started(Exception):

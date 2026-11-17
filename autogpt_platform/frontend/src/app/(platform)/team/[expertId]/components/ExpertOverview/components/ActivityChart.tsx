@@ -32,9 +32,10 @@ export function ActivityChart({ days }: Props) {
             <span
               aria-hidden
               className="size-2.5 rounded-sm"
+              // oxlint-disable-next-line design-system/no-inline-styles -- the series colour is shared with the Recharts fill prop, which needs a literal
               style={{ backgroundColor: SERIES_COLORS[series.key] }}
             />
-            <Text variant="small" className="!text-foreground-secondary">
+            <Text variant="small" tone="secondary">
               {series.label}
             </Text>
           </li>
@@ -46,17 +47,14 @@ export function ActivityChart({ days }: Props) {
             data={days}
             margin={{ top: 4, right: 4, bottom: 0, left: -24 }}
           >
-            <CartesianGrid
-              // TODO(tokens): no exact role: literal #F0F0EF; recharts writes it as an SVG attribute, where var() does not resolve
-              vertical={false}
-              stroke="#f0f0ef"
-            />
+            {/* Hex throughout: recharts writes these colours as SVG attributes,
+                where CSS variables do not resolve (ds-colour-exempt.json). */}
+            <CartesianGrid vertical={false} stroke="#f0f0ef" />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
               interval={6}
-              // TODO(tokens): no fitting role for literal #71717A; #71717A is muted-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               tick={{ fontSize: 11, fill: "#71717a" }}
             />
             <YAxis
@@ -64,20 +62,14 @@ export function ActivityChart({ days }: Props) {
               tickLine={false}
               axisLine={false}
               width={48}
-              // TODO(tokens): no fitting role for literal #71717A; #71717A is muted-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               tick={{ fontSize: 11, fill: "#71717a" }}
             />
-            <Tooltip
-              // TODO(tokens): no fitting role for literal #F4F4F5; #F4F4F5 is secondary (a surface fill), muted (a surface fill), sidebar-accent (a surface fill); recharts writes it as an SVG attribute, where var() does not resolve
-              cursor={{ fill: "#f4f4f5" }}
-              content={<ChartTooltip />}
-            />
+            <Tooltip cursor={{ fill: "#f4f4f5" }} content={<ChartTooltip />} />
             <Bar
               dataKey="sessions"
               name="Conversations"
               stackId="activity"
               fill={SERIES_COLORS.sessions}
-              // TODO(tokens): no fitting role for literal #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               stroke="#ffffff"
               strokeWidth={2}
               maxBarSize={16}
@@ -87,7 +79,6 @@ export function ActivityChart({ days }: Props) {
               name="Workflow runs"
               stackId="activity"
               fill={SERIES_COLORS.runs}
-              // TODO(tokens): no fitting role for literal #FFFFFF; #FFFFFF is card (a surface fill), popover (a surface fill), accent-foreground (a text colour); recharts writes it as an SVG attribute, where var() does not resolve
               stroke="#ffffff"
               strokeWidth={2}
               radius={[4, 4, 0, 0]}
@@ -110,16 +101,14 @@ function ChartTooltip({ active, payload }: TooltipProps) {
   if (!day) return null;
 
   return (
-    <div
-      // TODO(tokens): no fitting role for text-zinc-50 #F9F9FA; #F9F9FA is surface-muted (a surface fill)
-      className="rounded-md bg-action-hover px-3 py-2 text-xs text-zinc-50 shadow-sm"
-    >
+    <div className="rounded-md bg-action-hover px-3 py-2 text-caption text-action-foreground shadow-sm">
       <p className="mb-1 font-medium">{day.label}</p>
       {SERIES.map((series) => (
         <p key={series.key} className="flex items-center gap-1.5 tabular-nums">
           <span
             aria-hidden
             className="size-2 rounded-sm"
+            // oxlint-disable-next-line design-system/no-inline-styles -- the series colour is shared with the Recharts fill prop, which needs a literal
             style={{ backgroundColor: SERIES_COLORS[series.key] }}
           />
           {series.label}: {day[series.key]}

@@ -93,9 +93,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             <Dialog.Trigger>
               <Button
                 variant="secondary"
-                size="small"
-                // TODO(tokens): no exact role: hover:text-slate-900 #2A313A
-                className="h-fit min-w-0 gap-1.5 border border-border-base p-2 text-foreground-base hover:text-slate-900"
+                size="icon-sm"
+                shape="pill"
+                tone="base"
               >
                 <Icon
                   icon={ArrowExpand01Icon}
@@ -113,38 +113,26 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Text
-                // TODO(tokens): no exact role: text-slate-900 #2A313A
-                variant="large-medium"
-                className="text-slate-900"
-              >
+              <Text variant="large-medium" tone="primary">
                 Full {dataType === "input" ? "Input" : "Output"} Preview
               </Text>
             </div>
-            <Text
-              variant="small-medium-tight"
-              as="div"
-              // TODO(tokens): no exact role: border-slate-300 #B8BFCA, bg-slate-100 #EFF1F4
-              className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1.5"
-            >
-              {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
-              item
-              {shouldGroupExecutions
-                ? totalGroupedItems !== 1
-                  ? "s"
-                  : ""
-                : dataArray.length !== 1
-                  ? "s"
-                  : ""}{" "}
-              total
-            </Text>
+            <div className="rounded-full border border-border-strong bg-surface-hover px-3 py-1.5">
+              <Text variant="small-medium-tight" as="div">
+                {shouldGroupExecutions ? totalGroupedItems : dataArray.length}{" "}
+                item
+                {shouldGroupExecutions
+                  ? totalGroupedItems !== 1
+                    ? "s"
+                    : ""
+                  : dataArray.length !== 1
+                    ? "s"
+                    : ""}{" "}
+                total
+              </Text>
+            </div>
           </div>
-          <Text
-            variant="body-tight"
-            as="div"
-            // TODO(tokens): no exact role: text-gray-600 #4B5563
-            className="text-gray-600"
-          >
+          <Text variant="body-tight" tone="secondary" as="div">
             {shouldGroupExecutions ? (
               <div>
                 Pin:{" "}
@@ -155,26 +143,19 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
             ) : (
               <>
                 <div className="flex items-center gap-2">
-                  <Text
-                    // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                    variant="body"
-                    className="text-slate-600"
-                  >
+                  <Text variant="body" tone="secondary">
                     Execution ID:
                   </Text>
-                  <Text
-                    variant="small-medium-mono-tight"
-                    as="p"
-                    // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                    className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1"
-                  >
-                    {execId}
-                  </Text>
+                  <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                    <Text variant="small-medium-mono-tight" as="p">
+                      {execId}
+                    </Text>
+                  </div>
                   <Button
                     variant="ghost"
-                    size="small"
+                    size="icon-2xs"
+                    shape="pill"
                     onClick={copyExecutionId}
-                    className="h-6 w-6 min-w-0 p-0"
                   >
                     <Icon icon={Copy01Icon} size={14} />
                   </Button>
@@ -197,25 +178,17 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 {groupedExecutions.map((execution) => (
                   <div
                     key={execution.execId}
-                    // TODO(tokens): no fitting role for border-slate-200 #CFD4DB; #CFD4DB is node-border (the builder node ring), node-selected (the selected builder node ring)
-                    className="rounded-3xl border border-slate-200 bg-surface p-4 shadow-sm"
+                    className="rounded-3xl border border-node-border bg-surface p-4 shadow-sm"
                   >
                     <div className="flex items-center gap-2">
-                      <Text
-                        // TODO(tokens): no exact role: text-slate-600 #5B6A7E
-                        variant="body"
-                        className="text-slate-600"
-                      >
+                      <Text variant="body" tone="secondary">
                         Execution ID:
                       </Text>
-                      <Text
-                        variant="small-medium-mono-tight"
-                        as="p"
-                        // TODO(tokens): no exact role: border-gray-300 #D1D5DB, bg-gray-50 #F9FAFB
-                        className="rounded-full border border-gray-300 bg-gray-50 px-2 py-1"
-                      >
-                        {execution.execId}
-                      </Text>
+                      <div className="rounded-full border border-border-strong bg-surface-muted px-2 py-1">
+                        <Text variant="small-medium-mono-tight" as="p">
+                          {execution.execId}
+                        </Text>
+                      </div>
                     </div>
                     <div className="mt-2 space-y-4">
                       {execution.outputItems.length > 0 ? (
@@ -229,8 +202,9 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                             <div className="mt-2 flex gap-3">
                               <Button
                                 variant="secondary"
-                                className="min-w-0 p-1"
-                                size="icon"
+                                size="icon-xs"
+                                shape="pill"
+                                withTooltip={false}
                                 onClick={() =>
                                   handleCopyGroupedItem(
                                     execution.execId,
@@ -244,35 +218,36 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                                 `${execution.execId}-${index}` ? (
                                   <Icon
                                     icon={Tick02Icon}
-                                    className="size-4 text-success"
+                                    tone="success"
+                                    className="size-4"
                                   />
                                 ) : (
                                   <Icon
                                     icon={Copy01Icon}
-                                    className="size-4 text-foreground-base"
+                                    tone="base"
+                                    className="size-4"
                                   />
                                 )}
                               </Button>
                               <Button
                                 variant="secondary"
-                                size="icon"
-                                className="min-w-0 p-1"
+                                size="icon-xs"
+                                shape="pill"
+                                withTooltip={false}
                                 onClick={() => handleDownloadGroupedItem(item)}
                                 aria-label="Download item"
                               >
                                 <Icon
                                   icon={Download04Icon}
-                                  className="size-4 text-foreground-base"
+                                  tone="base"
+                                  className="size-4"
                                 />
                               </Button>
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div
-                          // TODO(tokens): no exact role: text-gray-500 #6B7280
-                          className="py-4 text-center text-gray-500"
-                        >
+                        <div className="py-4 text-center text-foreground-tertiary">
                           No data available
                         </div>
                       )}
@@ -292,33 +267,38 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                     <div className="mt-2 flex gap-3">
                       <Button
                         variant="secondary"
-                        className="min-w-0 p-1"
-                        size="icon"
+                        size="icon-xs"
+                        shape="pill"
+                        withTooltip={false}
                         onClick={() => handleCopyItem(index)}
                         aria-label="Copy item"
                       >
                         {copiedIndex === index ? (
                           <Icon
                             icon={Tick02Icon}
-                            className="size-4 text-success"
+                            tone="success"
+                            className="size-4"
                           />
                         ) : (
                           <Icon
                             icon={Copy01Icon}
-                            className="size-4 text-foreground-base"
+                            tone="base"
+                            className="size-4"
                           />
                         )}
                       </Button>
                       <Button
                         variant="secondary"
-                        size="icon"
-                        className="min-w-0 p-1"
+                        size="icon-xs"
+                        shape="pill"
+                        withTooltip={false}
                         onClick={() => handleDownloadItem(index)}
                         aria-label="Download item"
                       >
                         <Icon
                           icon={Download04Icon}
-                          className="size-4 text-foreground-base"
+                          tone="base"
+                          className="size-4"
                         />
                       </Button>
                     </div>
@@ -326,10 +306,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
                 ))}
               </div>
             ) : (
-              <div
-                // TODO(tokens): no exact role: text-gray-500 #6B7280
-                className="py-8 text-center text-gray-500"
-              >
+              <div className="py-8 text-center text-foreground-tertiary">
                 No data available
               </div>
             )}

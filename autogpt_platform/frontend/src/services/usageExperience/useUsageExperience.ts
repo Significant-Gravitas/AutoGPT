@@ -3,7 +3,7 @@
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import { useCopilotUsage } from "@/app/(platform)/copilot/components/UsageLimits/useCopilotUsage";
 import { useTrialStatus } from "@/services/trials/useTrialStatus";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { getUsageBudget } from "./budget";
 import { getUsageExperience } from "./helpers";
 
@@ -21,7 +21,7 @@ export function useUsageExperience() {
         response.status === 200 ? response.data : undefined,
     },
   });
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled: isBillingEnabled } = usePlatformPayment();
   const experience = getUsageExperience(
     usage.data,
     trial.data,

@@ -30,14 +30,6 @@ def workspace(mocker):
         "backend.api.features.workspace.service.get_or_create_workspace",
         return_value=workspace,
     )
-    mocker.patch(
-        "backend.api.features.workspace.service.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.service.get_workspace_storage_limit_bytes",
-        return_value=250 * 1024 * 1024,
-    )
     return workspace
 
 

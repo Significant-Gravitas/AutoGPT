@@ -225,13 +225,12 @@ export function ToolIcon({
   isError?: boolean;
 }) {
   if (isError) {
-    return <Icon icon={AlertDiamondIcon} size={14} className="text-error" />;
+    return <Icon icon={AlertDiamondIcon} size={14} tone="error" />;
   }
   if (isStreaming) {
     return <ScaleLoader size={14} />;
   }
-  // TODO(tokens): no exact role for neutral-400 #A3A3A3
-  return <Icon icon={PlayIcon} size={14} className="text-neutral-400" />;
+  return <Icon icon={PlayIcon} size={14} tone="subtle" />;
 }
 
 export function AccordionIcon() {
@@ -311,7 +310,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   }
 
   return {
-    icon: <Icon icon={AlertDiamondIcon} size={32} className="text-error" />,
+    icon: <Icon icon={AlertDiamondIcon} size={32} tone="error" />,
     title: "Error",
     titleClassName: "text-error",
   };

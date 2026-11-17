@@ -2,6 +2,10 @@
 You have full access until {{ ends_label }}; after that your {{ plan.name }} plan starts at {{ plan.price_display }} unless you cancel first.
 {% elif kind == 'ending' %}Your AutoGPT trial ends on {{ ends_label }}
 Unless you cancel before then, your saved card will be charged for your {{ plan.name }} plan at {{ plan.price_display }}.
+{% elif kind == 'expiring' %}Your AutoGPT trial ends in 3 days
+It's set not to renew, so your access stops then unless you resume.
+{% elif kind == 'last_call' %}Your AutoGPT access ends tomorrow
+It's set not to renew, so your access ends on {{ ends_label }} unless you resume.
 {% elif kind == 'canceled' %}Your AutoGPT trial cancellation is confirmed
 Your card won't be charged.
 {% elif kind == 'resumed' %}Your AutoGPT trial will continue into your plan

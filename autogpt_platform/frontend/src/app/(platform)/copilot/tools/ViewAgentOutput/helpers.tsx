@@ -134,14 +134,7 @@ export function ToolIcon({
     <Icon
       icon={EyeIcon}
       size={14}
-      // TODO(tokens): no exact role for neutral-500 #737373, neutral-400 #A3A3A3
-      className={
-        isError
-          ? "text-error"
-          : isStreaming
-            ? "text-neutral-500"
-            : "text-neutral-400"
-      }
+      tone={isError ? "error" : isStreaming ? "muted" : "subtle"}
     />
   );
 }

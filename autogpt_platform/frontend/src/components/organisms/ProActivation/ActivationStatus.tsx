@@ -52,15 +52,11 @@ export function ActivationStatus({
                 : Loading03Icon
           }
           size={24}
-          className={
-            !isReady && !payment && !failed && !notApplicable
-              ? // TODO(tokens): no role for violet-600 (accent-strong is
-                // violet-700).
-                "mb-4 animate-spin text-violet-600"
-              : "mb-4 text-violet-600"
-          }
+          tone="brand"
+          spin={!isReady && !payment && !failed && !notApplicable}
+          className="mb-4"
         />
-        <Text variant="body" className="text-foreground-body">
+        <Text variant="body" tone="body">
           {isReady
             ? hasFreshUsage
               ? `Your ${plan} plan is active with fresh daily and weekly allowances. Your conversations and work are right where you left them.`

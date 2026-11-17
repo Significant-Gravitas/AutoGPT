@@ -5,16 +5,18 @@ interface Props {
   errorMessage: string;
   context: string;
   hint?: string;
+  textSize?: "body" | "body-md";
 }
 
-export function ErrorMessage({ errorMessage, context, hint }: Props) {
+export function ErrorMessage({
+  errorMessage,
+  context,
+  hint,
+  textSize = "body",
+}: Props) {
   return (
     <div data-slot="error-card-message" className="space-y-2">
-      <Text
-        variant="body"
-        data-slot="error-card-context"
-        className="text-foreground-body"
-      >
+      <Text variant={textSize} data-slot="error-card-context" tone="body">
         We had the following error when retrieving {context ?? "your data"}:
       </Text>
       <div
@@ -22,20 +24,16 @@ export function ErrorMessage({ errorMessage, context, hint }: Props) {
         className="rounded-lg border border-separator bg-surface-muted p-3"
       >
         <Text
-          variant="body"
+          variant={textSize}
           data-slot="error-card-detail-text"
-          className="!text-error-foreground"
+          tone="error-strong"
         >
           {errorMessage}
         </Text>
       </div>
       {hint && (
         <div data-slot="error-card-hint" className="!mt-4">
-          <Text
-            variant="body"
-            data-slot="error-card-hint-text"
-            className="text-foreground-body"
-          >
+          <Text variant={textSize} data-slot="error-card-hint-text" tone="body">
             {hint}
           </Text>
         </div>

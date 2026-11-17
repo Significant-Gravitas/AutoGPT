@@ -14,6 +14,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 
 from backend.copilot.db import get_chat_session_metadata
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import transaction
 from backend.data.workspace import get_workspace, get_workspace_file
 from backend.data.workspace_scope import (
@@ -41,6 +42,7 @@ from .models import (
     LinkTokenResponse,
     LinkTokenStatusResponse,
     LinkType,
+    Platform,
     PlatformLinkInfo,
     PlatformUserLinkInfo,
     ResolveResponse,
@@ -62,14 +64,21 @@ def _link_base_url() -> str:
 # by AppService's result validator.
 
 
-async def find_server_link_owner(platform: str, platform_server_id: str) -> str | None:
+async def find_server_link_owner(
+    platform: str, platform_server_id: str, *, open_only: bool = False
+) -> str | None:
+    """The user who linked the server; with *open_only*, None for a closed
+    account, checked in the same call so the bot pays no extra round trip."""
     link = await PlatformLink.prisma().find_first(
         where={"platform": platform, "platformServerId": platform_server_id}
     )
-    return link.userId if link else None
+    return await _owner(link.userId if link else None, open_only)
 
 
-async def find_user_link_owner(platform: str, platform_user_id: str) -> str | None:
+async def find_user_link_owner(
+    platform: str, platform_user_id: str, *, open_only: bool = False
+) -> str | None:
+    """The user who linked the DMs; *open_only* as in find_server_link_owner."""
     link = await PlatformUserLink.prisma().find_unique(
         where={
             "platform_platformUserId": {
@@ -78,7 +87,13 @@ async def find_user_link_owner(platform: str, platform_user_id: str) -> str | No
             }
         }
     )
-    return link.userId if link else None
+    return await _owner(link.userId if link else None, open_only)
+
+
+async def _owner(user_id: str | None, open_only: bool) -> str | None:
+    if user_id is None or not open_only:
+        return user_id
+    return None if await is_account_closed(user_id) else user_id
 
 
 async def resolve_server_link(
@@ -304,6 +319,17 @@ async def confirm_server_link(
         raise LinkTokenExpiredError("This link has expired.")
     if not link_token.platformServerId:
         raise LinkFlowMismatchError("Server token missing server ID.")
+    if (
+        link_token.platform == Platform.TELEGRAM.value
+        and verified_platform_user_id is None
+    ):
+        # The bot posts a group's link in the group itself, so only the
+        # identity Telegram signs onto the button tells the admin who ran
+        # /setup apart from any other member who opens it.
+        raise NotAuthorizedError(
+            "Open this link with the button in your Telegram group, so "
+            "Telegram can confirm it's you."
+        )
     _enforce_verified_identity(link_token.platformUserId, verified_platform_user_id)
 
     owner = await find_server_link_owner(

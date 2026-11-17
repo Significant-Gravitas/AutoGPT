@@ -10,7 +10,8 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { Plus, Trash2 } from "lucide-react";
+import { Delete02Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import { useTable, RowData } from "./useTable";
 import { formatColumnTitle, formatPlaceholder } from "./helpers";
@@ -61,7 +62,7 @@ export function Table({
                 <TableHead
                   key={column}
                   data-slot="table-head"
-                  className="h-10 px-3 text-body font-medium leading-5 text-foreground-secondary"
+                  className="h-10 px-3 text-body leading-5 font-medium text-foreground-secondary"
                 >
                   {formatColumnTitle(column)}
                 </TableHead>
@@ -85,13 +86,15 @@ export function Table({
                     className="p-2"
                   >
                     {readOnly ? (
-                      <Text
-                        variant="body"
-                        data-slot="table-cell-text"
-                        className="px-3 py-2 text-body leading-5 text-foreground-emphasis"
-                      >
-                        {row[column] || "-"}
-                      </Text>
+                      <div className="px-3 py-2">
+                        <Text
+                          variant="body-tight"
+                          data-slot="table-cell-text"
+                          tone="emphasis"
+                        >
+                          {row[column] || "-"}
+                        </Text>
+                      </div>
                     ) : (
                       <Input
                         id={`table-${rowIndex}-${column}`}
@@ -117,9 +120,12 @@ export function Table({
                       onClick={() => handleDeleteRow(rowIndex)}
                       aria-label="Delete row"
                       data-slot="table-delete-row"
-                      className="text-foreground-subtle transition-colors hover:text-error"
+                      tone="subtle"
+                      className="hover:text-error"
                     >
-                      <Trash2
+                      <Icon
+                        aria-hidden
+                        icon={Delete02Icon}
                         data-slot="table-delete-row-icon"
                         className="h-4 w-4"
                       />
@@ -141,7 +147,9 @@ export function Table({
                     onClick={handleAddRow}
                     data-slot="table-add-row"
                     leftIcon={
-                      <Plus
+                      <Icon
+                        aria-hidden
+                        icon={PlusSignIcon}
                         data-slot="table-add-row-icon"
                         className="h-4 w-4"
                       />

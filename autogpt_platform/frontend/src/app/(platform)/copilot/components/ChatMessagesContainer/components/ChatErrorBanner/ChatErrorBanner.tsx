@@ -5,6 +5,7 @@ import {
   describeChatError,
   type ChatErrorAction,
 } from "../../../../chatErrorGuidance";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
   error: Error;
@@ -24,19 +25,18 @@ export function ChatErrorBanner({ error }: Props) {
   return (
     <div
       data-testid="chat-error-banner"
-      className="rounded-lg bg-error-surface p-4 text-sm text-error-foreground"
+      className="rounded-lg bg-error-surface p-4 text-body text-error-foreground"
     >
       <details>
         <summary className="cursor-pointer font-medium">{title}</summary>
-        <pre
-          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover (a fill and line colour)
-          className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600"
-        >
+        <pre className="mt-2 max-h-40 overflow-auto text-caption break-words whitespace-pre-wrap text-error-foreground">
           {error.message}
         </pre>
       </details>
       {note ? (
-        <p className="mt-1 text-xs text-foreground-tertiary">{note}</p>
+        <Text variant="small-tight" tone="muted" className="mt-1">
+          {note}
+        </Text>
       ) : null}
       {action ? (
         <Button

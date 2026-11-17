@@ -31,15 +31,16 @@ def _bypass_paywall(mocker):
 
 @pytest.fixture(autouse=True)
 def _no_bans(mocker):
-    """No owner is banned unless a test says so. Without this the lookup goes
-    to a DatabaseManager these tests don't run, and waits out its retries."""
+    """No owner is banned or closed unless a test says so. Without this the
+    lookup goes to a DatabaseManager these tests don't run, and waits out its
+    retries."""
     for module in (
         "backend.executor.utils",
         "backend.executor.scheduler",
         "backend.copilot.turn_queue",
     ):
         mocker.patch(
-            f"{module}.is_user_banned", new=mocker.AsyncMock(return_value=False)
+            f"{module}.is_user_refused", new=mocker.AsyncMock(return_value=False)
         )
 
 
@@ -78,3 +79,15 @@ def _runners_belong_to_their_org(mocker):
             side_effect=lambda user_id, org_id, team_id: (org_id, team_id)
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def _orgs_are_not_personal(mocker):
+    """Treat every org a run is given as a team org, whose balance pays.
+
+    ``add_graph_execution`` reads the org's personal owner to decide which
+    ledger the run bills. Tests of a run in its user's personal org override it.
+    """
+    lookup = mocker.MagicMock()
+    lookup.get_personal_org_owner = mocker.AsyncMock(return_value=None)
+    return mocker.patch("backend.executor.utils.credit_db", return_value=lookup)

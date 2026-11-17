@@ -76,7 +76,7 @@ export function InstallWorkflowPicker({
             <Text
               variant="body"
               data-slot="install-workflow-picker-empty"
-              className="text-foreground-tertiary"
+              tone="muted"
             >
               No hired experts yet.
             </Text>
@@ -120,7 +120,7 @@ export function InstallWorkflowPicker({
                     <Text
                       variant="small"
                       data-slot="install-workflow-picker-option-subtitle"
-                      className="!text-foreground-tertiary"
+                      tone="muted"
                     >
                       {expert.role}
                     </Text>
@@ -179,23 +179,29 @@ export function InstallWorkflowPicker({
               data-slot="install-workflow-picker-search"
             />
             {isSearching ? (
-              <Text
-                variant="small"
-                data-slot="install-workflow-picker-status"
-                className="py-2 text-center !text-foreground-tertiary"
-              >
-                Searching…
-              </Text>
+              <div className="py-2">
+                <Text
+                  variant="small"
+                  data-slot="install-workflow-picker-status"
+                  tone="muted"
+                  align="center"
+                >
+                  Searching…
+                </Text>
+              </div>
             ) : isEmpty ? (
-              <Text
-                variant="small"
-                data-slot="install-workflow-picker-empty"
-                className="py-2 text-center !text-foreground-tertiary"
-              >
-                {source === "library"
-                  ? "No workflows in your library."
-                  : "No workflows found."}
-              </Text>
+              <div className="py-2">
+                <Text
+                  variant="small"
+                  data-slot="install-workflow-picker-empty"
+                  tone="muted"
+                  align="center"
+                >
+                  {source === "library"
+                    ? "No workflows in your library."
+                    : "No workflows found."}
+                </Text>
+              </div>
             ) : (
               <div
                 data-slot="install-workflow-picker-list"
@@ -224,7 +230,8 @@ export function InstallWorkflowPicker({
                           <Text
                             variant="small"
                             data-slot="install-workflow-picker-option-subtitle"
-                            className="truncate !text-foreground-tertiary"
+                            tone="muted"
+                            className="truncate"
                           >
                             {workflowSubtitle(agent.description)}
                           </Text>
@@ -262,7 +269,7 @@ export function InstallWorkflowPicker({
                           <Text
                             variant="small"
                             data-slot="install-workflow-picker-option-subtitle"
-                            className="!text-foreground-tertiary"
+                            tone="muted"
                           >
                             by {agent.creator}
                           </Text>

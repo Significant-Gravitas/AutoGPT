@@ -1,4 +1,6 @@
-import { isForwardedForTrusted } from "./client-ip";
+import { getIPFromHeader } from "@better-auth/core/utils/ip";
+
+import { isForwardedForTrusted, trustedProxies } from "./client-ip";
 import { mintServiceToken } from "./service-token";
 
 export const CLIENT_IP_SCOPE = "client-ip";
@@ -16,6 +18,7 @@ const minted = new Map<string, { token: string; mintedAt: number }>();
  * visitor by it. Null when no trusted proxy reports the address, when it is not
  * usable, or when signing fails; the backend then keys on its own peer address.
  */
+// Documented in docs/platform/client-ip.md: update it with any change here.
 export async function getClientIPToken(requestHeaders: Headers) {
   const ip = readClientIP(requestHeaders);
   if (!ip) return null;
@@ -32,8 +35,12 @@ export async function getClientIPToken(requestHeaders: Headers) {
   }
 }
 
+// Through Better Auth's own resolver, so the backend counts a visitor by the same
+// address the sign-in log and the auth limits use: the first hop from the right
+// that TRUSTED_PROXIES does not list.
 function readClientIP(requestHeaders: Headers) {
   if (!isForwardedForTrusted()) return null;
-  const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return ip && /^[0-9A-Fa-f:.]{2,45}$/.test(ip) ? ip : null;
+  const forwarded = requestHeaders.get("x-forwarded-for");
+  if (!forwarded) return null;
+  return getIPFromHeader(forwarded, { trustedProxies: trustedProxies() });
 }

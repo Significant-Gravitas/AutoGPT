@@ -51,7 +51,7 @@ export function HeldTag({ state, read }: { state: HeldState; read?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-px text-xs font-medium",
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-px text-caption font-medium",
         tag.className,
       )}
     >
@@ -92,7 +92,7 @@ export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
     el?.focus({ preventScroll: true });
   }
   return (
-    <div className="flex flex-col items-start gap-1 rounded-lg border border-border-base px-3 py-2 text-sm text-foreground-secondary">
+    <div className="flex flex-col items-start gap-1 rounded-lg border border-border-base px-3 py-2 text-body text-foreground-secondary">
       {held.state !== "approved" && (
         <p>{(held.read && READ_DETAIL[held.state]) || DETAIL[held.state]}</p>
       )}
@@ -107,12 +107,7 @@ export function HeldCallDetail({ held, showArgs = true }: HeldCallDetailProps) {
         </div>
       )}
       {held.state === "waiting" && reviewId && (
-        <Button
-          variant="link"
-          size="small"
-          className="h-auto min-w-0 px-0 py-0 text-sm"
-          onClick={goToApproval}
-        >
+        <Button variant="link" size="inline" onClick={goToApproval}>
           Go to the approval
         </Button>
       )}

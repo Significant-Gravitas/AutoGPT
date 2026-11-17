@@ -11,9 +11,10 @@ export function CardWrapper({ children, className = "" }: CardWrapperProps) {
       data-slot="error-card"
       className={`relative my-6 overflow-hidden rounded-xl ${className}`}
     >
-      {/* Purple gradient border */}
+      {/* Gradient border */}
       <div
         data-slot="error-card-border"
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- 135deg sRGB gradient border; bg-linear-135 would mix in oklab
         className="absolute inset-0 rounded-xl bg-[linear-gradient(135deg,rgb(var(--color-surface-hover)),rgb(var(--color-surface-active)),rgb(var(--color-surface-hover)))] p-px"
       >
         <div

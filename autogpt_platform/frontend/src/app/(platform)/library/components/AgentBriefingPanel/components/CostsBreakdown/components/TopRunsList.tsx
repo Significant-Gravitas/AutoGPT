@@ -23,12 +23,8 @@ export function TopRunsList({ runs, agentLookup }: Props) {
   const hasMore = runs.length > INITIAL_VISIBLE;
 
   return (
-    <section className="flex flex-col gap-2 lg:mt-[1rem]">
-      <Text
-        // TODO(tokens): no exact role for text-neutral-800 (#262626)
-        variant="body-medium"
-        className="text-neutral-800 lg:mb-[.5rem]"
-      >
+    <section className="flex flex-col gap-2 lg:mt-4">
+      <Text variant="body-medium" tone="emphasis" className="lg:mb-2">
         Most expensive tasks
       </Text>
       <ul className="flex flex-col divide-y divide-separator rounded-medium border border-separator bg-surface">
@@ -42,31 +38,21 @@ export function TopRunsList({ runs, agentLookup }: Props) {
           const row = (
             <div className="flex items-center justify-between gap-3 px-3 py-2">
               <div className="min-w-0 flex-1">
-                <Text
-                  // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                  variant="body"
-                  className="truncate text-neutral-800"
-                >
+                <Text variant="body" tone="emphasis" className="truncate">
                   {label}
                 </Text>
-                <Text
-                  // TODO(tokens): no exact role for text-neutral-400 (#A3A3A3)
-                  variant="small"
-                  className="text-neutral-400"
-                >
+                <Text variant="small" tone="subtle">
                   {formatRelativeDate(run.started_at)}
                   {run.node_error_count > 0
                     ? ` · ${run.node_error_count} error${run.node_error_count === 1 ? "" : "s"}`
                     : ""}
                 </Text>
               </div>
-              <Text
-                variant="body-medium"
-                // TODO(tokens): no exact role for text-neutral-800 (#262626)
-                className="tabular-nums text-neutral-800"
-              >
-                {formatCents(run.cost_cents)}
-              </Text>
+              <div className="tabular-nums">
+                <Text variant="body-medium" tone="emphasis">
+                  {formatCents(run.cost_cents)}
+                </Text>
+              </div>
             </div>
           );
 

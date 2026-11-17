@@ -22,9 +22,9 @@ export function MaxUpgradeReview({ review }: Props) {
       {review.error && (
         <div
           role="alert"
-          // TODO(tokens): no exact role (border-orange-200 #FFC88A, bg-orange-50 #FFF3E6)
-          className="rounded-xl border border-orange-200 bg-orange-50 p-4"
+          className="rounded-xl border border-warning-border bg-warning-surface p-4"
         >
+          {/* oxlint-disable-next-line design-system/no-restyle -- caption copy at a 24px line height; no Text variant has it */}
           <Text variant="small" className="mb-3 leading-6">
             {review.error}
           </Text>

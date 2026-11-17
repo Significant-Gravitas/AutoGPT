@@ -18,7 +18,8 @@ import { useExperiment } from "../useExperiment";
 const posthogJS = vi.hoisted(() => ({
   __loaded: true,
   capturing: true,
-  capture: vi.fn(),
+  // posthog-js returns the event it takes, and nothing when it drops one.
+  capture: vi.fn((event: string) => ({ event })),
   is_capturing() {
     return this.capturing;
   },

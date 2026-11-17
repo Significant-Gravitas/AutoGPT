@@ -268,3 +268,8 @@ export function ensurePathExists(
 
   return modified;
 }
+
+export function isPromptValuesEntry(handleId: unknown) {
+  if (typeof handleId !== "string") return false;
+  return parseHandleIdToPath(handleId)[0]?.key === "prompt_values";
+}

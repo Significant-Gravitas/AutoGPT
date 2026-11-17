@@ -25,15 +25,15 @@ interface Props {
 
 // Soft top wash per featured slot — same treatment as the expert cards so
 // the two families read as one system. Body stays white.
+/* oxlint-disable design-system/no-arbitrary-values -- the card washes are radial gradients with no token */
 const WASHES: Record<string, string> = {
   violet:
-    // TODO(tokens): no exact role: bg-[…] #8B5CF6
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(139,92,246,0.10),transparent_70%)]",
   blue: "bg-[radial-gradient(120%_100%_at_50%_0%,rgb(var(--color-info)/0.10),transparent_70%)]",
   green:
-    // TODO(tokens): no exact role: bg-[…] #22C55E
     "bg-[radial-gradient(120%_100%_at_50%_0%,rgba(34,197,94,0.10),transparent_70%)]",
 };
+/* oxlint-enable design-system/no-arbitrary-values */
 
 function getWash(bg: string) {
   if (bg.includes("violet")) return WASHES.violet;
@@ -55,8 +55,8 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
 
   return (
     <div
-      // TODO(tokens): no exact role: shadow-[…] #101828, hover:shadow-[…] #101828
-      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
+      // oxlint-disable-next-line design-system/no-arbitrary-values -- the card's hover lift shadow has no shadow token
+      className="group relative flex h-full w-full max-w-md cursor-pointer flex-col items-start overflow-hidden rounded-2xl border border-border-base/80 bg-surface p-5 shadow-message-table transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-[0_16px_40px_-16px_rgba(16,24,40,0.18)]"
       data-testid="featured-store-card"
     >
       <div
@@ -65,10 +65,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           getWash(backgroundColor),
         )}
       />
-      <div
-        // TODO(tokens): no fitting role for ring-black/5 #141414; #141414 is foreground-base (a text colour)
-        className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-black/5 md:aspect-[2.17/1]"
-      >
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-xl ring-1 ring-foreground-base/5 md:aspect-[2.17/1]">
         {agent.agent_image && !imageError ? (
           <>
             {!imageLoaded && (
@@ -85,10 +82,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             />
           </>
         ) : (
-          <div
-            // TODO(tokens): no exact role: bg-violet-100 #EDE9FE
-            className="absolute inset-0 rounded-xl bg-violet-100"
-          />
+          <div className="absolute inset-0 rounded-xl bg-brand/10" />
         )}
       </div>
 
@@ -99,7 +93,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
               <span
                 ref={titleRef}
                 onPointerEnter={checkTitleOverflow}
-                className="line-clamp-1 block min-w-0 font-sans text-lg font-semibold tracking-title text-foreground-strong"
+                className="line-clamp-1 block min-w-0 font-sans text-lead font-semibold tracking-title text-foreground-strong"
               >
                 {agent.agent_name}
               </span>
@@ -127,20 +121,20 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             </span>
           </div>
         )}
-        <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground-secondary">
+        <p className="mt-3 line-clamp-3 text-body leading-relaxed text-foreground-secondary">
           {agent.description}
         </p>
       </div>
 
       <div className="relative mt-auto flex w-full items-center pt-3">
-        <span className="text-xs text-foreground-tertiary">
+        <span className="text-caption text-foreground-tertiary">
           {agent.runs === 0
             ? "No runs"
             : `${(agent.runs ?? 0).toLocaleString()} runs`}
         </span>
       </div>
       {agent.creator && agent.slug && agent.agent_graph_id && (
-        <div className="absolute bottom-4 right-4">
+        <div className="absolute right-4 bottom-4">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}

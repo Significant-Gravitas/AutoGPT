@@ -103,11 +103,7 @@ export function SelectedTemplateActions({
           {isSaving ? (
             <LoadingSpinner size="small" />
           ) : (
-            <Icon
-              icon={FloppyDiskIcon}
-              size={18}
-              className="text-foreground-body"
-            />
+            <Icon icon={FloppyDiskIcon} size={18} />
           )}
         </Button>
         {onStartTask && (

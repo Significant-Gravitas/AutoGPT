@@ -8,6 +8,7 @@ const mockNotFound = vi.hoisted(() =>
   }),
 );
 const mockGetServerUser = vi.hoisted(() => vi.fn());
+const mockPrefetchSpecificAgent = vi.hoisted(() => vi.fn());
 const mockPrefetchLibrary = vi.hoisted(() => vi.fn());
 const mockPrefetchStoreAgents = vi.hoisted(() => vi.fn());
 const mockGetClientIPToken = vi.hoisted(() => vi.fn());
@@ -18,7 +19,7 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@/app/api/__generated__/endpoints/store/store", () => ({
   getV2GetSpecificAgent: mockGetSpecificAgent,
-  prefetchGetV2GetSpecificAgentQuery: vi.fn(),
+  prefetchGetV2GetSpecificAgentQuery: mockPrefetchSpecificAgent,
   prefetchGetV2ListStoreAgentsQuery: mockPrefetchStoreAgents,
 }));
 
@@ -46,6 +47,7 @@ describe("generateMetadata", () => {
   beforeEach(() => {
     mockGetSpecificAgent.mockReset();
     mockGetServerUser.mockResolvedValue({ user: null });
+    mockPrefetchSpecificAgent.mockReset();
     mockNotFound.mockClear();
     mockPrefetchLibrary.mockClear();
     mockPrefetchStoreAgents.mockClear();
@@ -97,6 +99,25 @@ describe("generateMetadata", () => {
       "version-1",
       { query: { enabled: true } },
     );
+  });
+
+  test("reads the visitor's session while the listing is prefetched", async () => {
+    let sessionRead = () => {};
+    const sessionBeingRead = new Promise<void>((resolve) => {
+      sessionRead = resolve;
+    });
+    mockGetServerUser.mockImplementation(async () => {
+      sessionRead();
+      return { user: null };
+    });
+    // The listing settles only once the session read has started, so a page
+    // that reads the session after its prefetches never finishes.
+    mockPrefetchSpecificAgent.mockReturnValue(sessionBeingRead);
+    mockGetSpecificAgent.mockResolvedValue({ status: 200, data: {} });
+
+    await MarketplaceAgentPage({ params: Promise.resolve(params) });
+
+    expect(mockPrefetchLibrary).not.toHaveBeenCalled();
   });
 
   test("searches for similar agents as the visitor, by their signed IP", async () => {

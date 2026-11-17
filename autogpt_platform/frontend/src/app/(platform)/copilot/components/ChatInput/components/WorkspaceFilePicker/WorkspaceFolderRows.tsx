@@ -54,8 +54,7 @@ export function WorkspaceFolderRows({
             className={cn(
               "flex w-full items-center gap-3 rounded-2xl border bg-surface p-3 transition-colors",
               isSelected
-                ? // TODO(tokens): no exact role for border-violet-300, ring-violet-200
-                  "border-violet-300 ring-1 ring-violet-200"
+                ? "border-brand/40 ring-1 ring-brand/20"
                 : "border-border-base hover:border-border-strong",
             )}
           >
@@ -68,8 +67,7 @@ export function WorkspaceFolderRows({
                 e.preventDefault();
                 onOpen(folder.id);
               }}
-              // TODO(tokens): no exact role for focus-visible:ring-violet-300
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none"
             >
               <div
                 className={cn(
@@ -85,13 +83,14 @@ export function WorkspaceFolderRows({
               </div>
               <div className="flex min-w-0 flex-1 flex-col">
                 <Text
+                  tone="primary"
                   variant="body-medium"
-                  className="truncate text-foreground-strong"
+                  className="truncate"
                   title={folder.name}
                 >
                   {folder.name}
                 </Text>
-                <Text variant="small" className="text-foreground-tertiary">
+                <Text tone="muted" variant="small">
                   {folderSummary(folder.file_count ?? 0, subfolderCount)}
                 </Text>
               </div>
@@ -105,12 +104,10 @@ export function WorkspaceFolderRows({
                 onToggleAttach(folder, subfolderCount);
               }}
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-sm transition-colors",
-                // TODO(tokens): no exact role for focus-visible:ring-violet-300
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300",
+                "flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-body transition-colors",
+                "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none",
                 isSelected
-                  ? // TODO(tokens): no exact role for text-violet-600
-                    "text-violet-600"
+                  ? "text-brand"
                   : "text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body",
               )}
             >
@@ -123,7 +120,8 @@ export function WorkspaceFolderRows({
             <Icon
               icon={ArrowRight01Icon}
               size={16}
-              className="shrink-0 text-foreground-subtle"
+              tone="subtle"
+              className="shrink-0"
               aria-hidden
             />
           </li>

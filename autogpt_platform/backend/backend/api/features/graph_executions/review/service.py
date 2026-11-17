@@ -12,7 +12,9 @@ from fastapi import HTTPException, status
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field
 
+from backend.api.features.chat.removed_chat import chat_removed_error
 from backend.copilot.constants import parse_node_id_from_exec_id
+from backend.copilot.db import get_chat_session_metadata
 from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
 from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
@@ -96,6 +98,8 @@ async def process_reviews(
         )
 
     graph_exec_id, chat_session_id = _one_scope(reviews_map.values(), graph_exec_id)
+    if chat_session_id is not None:
+        await _refuse_removed_chat(user_id, chat_session_id)
     # A run still running would finish its pass with nothing waiting, the step
     # unrun; a queued or ended run is safe to answer.
     for review in reviews_map.values():
@@ -229,6 +233,16 @@ def _one_scope(
     return next(iter(scopes))
 
 
+async def _refuse_removed_chat(user_id: str, chat_session_id: str) -> None:
+    """A card left in a chat its expert's reset removed: an answer would run
+    the held call in a chat that never opens again, so say why instead."""
+    session = await get_chat_session_metadata(chat_session_id)
+    if session is None or session.user_id != user_id:
+        return
+    if session.archived_at is not None:
+        raise await chat_removed_error(session)
+
+
 async def _assert_awaiting_review(user_id: str, graph_exec_id: str) -> None:
     graph_exec_meta = await get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
@@ -357,9 +371,12 @@ async def _resume(
     and find their answers."""
     try:
         assert graph_id and graph_version is not None
-        user = await get_user_by_id(user_id)
-        settings = await get_graph_settings(
-            user_id=user_id, graph_id=graph_id, graph_version=graph_version
+        # The workspace may be created, so it waits until both reads succeed.
+        user, settings = await asyncio.gather(
+            get_user_by_id(user_id),
+            get_graph_settings(
+                user_id=user_id, graph_id=graph_id, graph_version=graph_version
+            ),
         )
         workspace = await get_or_create_workspace(user_id)
         await add_graph_execution(

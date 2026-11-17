@@ -8,8 +8,7 @@
 /* Target the scrollable div created by react-window */
 .scrollContainer div[style*="overflow"] {
   scrollbar-width: thin;
-  /* TODO(tokens): no exact role for gray-300 rgb(209, 213, 219) #D1D5DB */
-  scrollbar-color: rgb(209, 213, 219) rgb(var(--color-popover));
+  scrollbar-color: rgb(var(--color-border-strong)) rgb(var(--color-surface));
 }
 
 /* Webkit scrollbar styles */
@@ -18,19 +17,17 @@
 }
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-track {
-  background: rgb(var(--color-popover));
+  background: rgb(var(--color-surface));
   border-radius: 4px;
 }
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-thumb {
-  /* TODO(tokens): no exact role for gray-300 #D1D5DB */
-  background: rgb(209, 213, 219); /* gray-300 */
+  background: rgb(var(--color-border-strong));
   border-radius: 4px;
 }
 
 .scrollContainer div[style*="overflow"]::-webkit-scrollbar-thumb:hover {
-  /* TODO(tokens): no exact role for gray-400 #9CA3AF */
-  background: rgb(156, 163, 175); /* gray-400 */
+  background: rgb(var(--color-foreground-subtle));
 }
 
 /* Search Animation Styles */

@@ -8,11 +8,6 @@ import { cn } from "@/lib/utils";
 /** The two sizes the home surfaces draw: a row bullet and a task marker. */
 type WorkflowAvatarSize = 18 | 36;
 
-const SIZE_CLASS: Record<WorkflowAvatarSize, string> = {
-  18: "size-[18px]",
-  36: "size-9",
-};
-
 interface Props {
   name: string;
   imageUrl: string | null | undefined;
@@ -34,7 +29,12 @@ export function WorkflowAvatar({
   return (
     <Avatar
       data-slot="workflow-avatar"
-      className={cn("shrink-0", SIZE_CLASS[size], className)}
+      className={cn(
+        "shrink-0",
+        size === 18 && "size-[18px]",
+        size === 36 && "size-9",
+        className,
+      )}
     >
       {imageUrl ? (
         <AvatarImage

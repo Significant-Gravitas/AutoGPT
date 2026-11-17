@@ -94,18 +94,12 @@ export function CredentialRow({
             : readOnly
               ? "w-fit"
               : "",
+        (showCaret || asSelectTrigger) && "cursor-pointer",
+        readOnly && !showCaret && !asSelectTrigger && "cursor-default",
       )}
       onClick={readOnly || showCaret || asSelectTrigger ? undefined : onSelect}
-      style={
-        readOnly || showCaret || asSelectTrigger
-          ? { cursor: showCaret || asSelectTrigger ? "pointer" : "default" }
-          : undefined
-      }
     >
-      <div
-        // TODO(tokens): no exact role for bg-gray-900 #111827
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-900"
-      >
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-hover">
         <ProviderIcon className="h-3 w-3 text-action-foreground" />
       </div>
       <TypeIcon className="h-5 w-5 shrink-0 text-foreground-emphasis" />
@@ -118,15 +112,16 @@ export function CredentialRow({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Text
             variant="body"
+            tracking="tight"
             className={cn(
-              "min-w-0 shrink tracking-tight",
+              "min-w-0 shrink",
               isNodeVariant ? "truncate" : "line-clamp-1 text-ellipsis",
             )}
           >
             {getCredentialDisplayName(credential, displayName)}
           </Text>
           {isRealCredentialType && (
-            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny font-medium leading-tight text-foreground-tertiary">
+            <span className="shrink-0 rounded bg-surface-hover px-1.5 py-0.5 text-tiny leading-tight font-medium text-foreground-tertiary">
               {getCredentialTypeLabel(credType)}
             </span>
           )}
@@ -134,8 +129,10 @@ export function CredentialRow({
         {!(asSelectTrigger && isNodeVariant) && showMaskedKey && (
           <Text
             variant="large"
+            mono
+            tracking="tight"
             className={cn(
-              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap font-mono tracking-tight",
+              "absolute top-[65%] -translate-y-1/2 overflow-hidden whitespace-nowrap",
               asSelectTrigger ? "right-0" : "right-6",
             )}
           >
@@ -146,23 +143,18 @@ export function CredentialRow({
       {(showCaret || (asSelectTrigger && !readOnly)) && (
         <Icon
           icon={ArrowDown01Icon}
-          // TODO(tokens): no exact role for text-gray-400 #9ca3af
-          className="h-4 w-4 shrink-0 text-gray-400"
+          tone="subtle"
+          className="h-4 w-4 shrink-0"
         />
       )}
       {!readOnly && !showCaret && !asSelectTrigger && onDelete && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
-              // TODO(tokens): no exact role for hover:bg-gray-100 #f3f4f6
-              className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+              className="ml-auto shrink-0 rounded p-1 hover:bg-surface-hover"
               onClick={(e) => e.stopPropagation()}
             >
-              <Icon
-                // TODO(tokens): no exact role for text-gray-400 #9ca3af
-                icon={MoreVerticalIcon}
-                className="h-5 w-5 text-gray-400"
-              />
+              <Icon icon={MoreVerticalIcon} tone="subtle" className="h-5 w-5" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

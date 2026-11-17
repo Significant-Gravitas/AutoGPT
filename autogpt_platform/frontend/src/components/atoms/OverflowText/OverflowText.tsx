@@ -13,7 +13,12 @@ interface Props extends Omit<TextProps, "children"> {
   value: string | ReactNode;
 }
 
-export function OverflowText(props: Props) {
+export function OverflowText({
+  value,
+  className,
+  variant = "body",
+  ...restProps
+}: Props) {
   const elementRef = useRef<HTMLSpanElement | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
 
@@ -62,13 +67,11 @@ export function OverflowText(props: Props) {
   }
 
   useEffect(() => {
-    if (typeof props.value === "string") updateTruncation();
-  }, [props.value]);
+    if (typeof value === "string") updateTruncation();
+  }, [value]);
 
   useEffect(setupResizeListener, []);
   useEffect(setupObserver, []);
-
-  const { value, className, variant = "body", ...restProps } = props;
 
   const content = (
     <span

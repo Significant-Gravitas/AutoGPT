@@ -17,8 +17,8 @@ const TOUR_START_SESSION_KEY = "tour_start_tracked";
 const POSTHOG_TOUR_START_KEY = "posthog_tour_started";
 
 export function trackTourStart() {
-  // PostHog's guard is marked only once the event is sent or dropped for lack
-  // of consent, not while it waits for the answer.
+  // PostHog's guard is marked only once the event is sent, never while it
+  // waits for the answer or when it is dropped for lack of consent.
   capturePostHogEvent(
     TourEvent.TOUR_STARTED,
     {},

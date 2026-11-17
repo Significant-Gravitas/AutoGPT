@@ -10,6 +10,7 @@ import AuthFeedback from "@/components/auth/AuthFeedback";
 import { CheckYourInbox } from "@/components/auth/CheckYourInbox/CheckYourInbox";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { MicrosoftOAuthButton } from "@/components/auth/MicrosoftOAuthButton";
 import { AuthDivider } from "@/components/auth/AuthSplitLayout/AuthDivider";
 import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout/AuthSplitLayout";
 import { MobileWarningBanner } from "@/components/auth/MobileWarningBanner";
@@ -31,13 +32,17 @@ export default function SignupPage() {
 
   const {
     form,
+    formRef,
     feedback,
     nextUrl: safeNextUrl,
     verificationEmail,
     isLoggedIn,
-    hasInitializedAuth,
+    isCheckingSession,
+    isHydrated,
     isLoading,
     isGoogleLoading,
+    isMicrosoftLoading,
+    isMicrosoftEnabled,
     isSigningUp,
     isCloudEnv,
     showNotAllowedModal,
@@ -49,7 +54,7 @@ export default function SignupPage() {
     handleStartAgain,
   } = useSignupPage();
 
-  if (!hasInitializedAuth || isLoggedIn) {
+  if (isCheckingSession || isLoggedIn) {
     return <LoadingSignup />;
   }
 
@@ -67,15 +72,13 @@ export default function SignupPage() {
     );
   }
 
-  const confirmPasswordError = form.formState.errors.confirmPassword?.message;
-
   return (
     <AuthSplitLayout marketing={<SignupMarketingPanel />}>
       <div className="mb-8">
-        <Text variant="h3" as="h1" className="!text-foreground-strong">
+        <Text variant="h3" as="h1" tone="primary">
           Create your account
         </Text>
-        <Text variant="body" className="mt-1 !text-foreground-tertiary">
+        <Text variant="body" tone="muted" className="mt-1">
           Already a member?{" "}
           <Link href={loginHref} variant="secondary">
             Log in
@@ -84,7 +87,11 @@ export default function SignupPage() {
       </div>
 
       <FormProvider {...form}>
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="flex w-full flex-col gap-1"
+        >
           <FormField
             control={form.control}
             name="email"
@@ -115,25 +122,10 @@ export default function SignupPage() {
               />
             )}
           />
-          <FormField
-            control={form.control}
-            name="confirmPassword"
-            render={({ field }) => (
-              <Input
-                id={field.name}
-                label="Confirm Password"
-                placeholder="Confirm your password"
-                type="password"
-                autoComplete="new-password"
-                error={confirmPasswordError}
-                {...field}
-              />
-            )}
-          />
           <Button
             variant="primary"
             loading={isLoading}
-            disabled={isGoogleLoading}
+            disabled={!isHydrated || isGoogleLoading || isMicrosoftLoading}
             type="submit"
             className="mt-6 w-full"
           >
@@ -141,14 +133,25 @@ export default function SignupPage() {
           </Button>
         </form>
 
-        {isCloudEnv ? (
+        {isCloudEnv || isMicrosoftEnabled ? (
           <>
             <AuthDivider />
-            <GoogleOAuthButton
-              onClick={() => handleProviderSignup("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
-            />
+            <div className="flex w-full flex-col gap-3">
+              {isCloudEnv ? (
+                <GoogleOAuthButton
+                  onClick={() => handleProviderSignup("google")}
+                  isLoading={isGoogleLoading}
+                  disabled={!isHydrated || isLoading || isMicrosoftLoading}
+                />
+              ) : null}
+              {isMicrosoftEnabled ? (
+                <MicrosoftOAuthButton
+                  onClick={() => handleProviderSignup("microsoft")}
+                  isLoading={isMicrosoftLoading}
+                  disabled={!isHydrated || isLoading || isGoogleLoading}
+                />
+              ) : null}
+            </div>
           </>
         ) : null}
 

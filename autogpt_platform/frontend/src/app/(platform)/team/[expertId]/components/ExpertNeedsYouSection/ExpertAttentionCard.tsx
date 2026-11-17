@@ -54,42 +54,31 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
             size={32}
-            // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
-            className="rounded-full border border-[#e3e3e3]"
+            // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar has no bordered variant (src/components is P9's)
+            className="rounded-full border border-border-base"
           />
         ) : (
-          <Icon
-            icon={ICONS[item.kind]}
-            size={18}
-            className="shrink-0 text-foreground-tertiary"
-            aria-hidden="true"
-          />
+          <span className="inline-flex shrink-0 text-foreground-tertiary">
+            <Icon icon={ICONS[item.kind]} size={18} aria-hidden="true" />
+          </span>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2">
             <Text
               variant="body-medium"
               as="span"
-              className="break-words !text-foreground-emphasis"
+              tone="emphasis"
+              className="break-words"
             >
               {item.title}
             </Text>
             {item.priority === "high" ? (
-              <Text
-                variant="small-medium"
-                as="span"
-                // TODO(tokens): no exact role: ring-amber-600/10 #D97706
-                className="rounded bg-warning-surface px-1.5 py-px text-warning-foreground ring-1 ring-inset ring-amber-600/10"
-              >
+              <span className="rounded bg-warning-surface px-1.5 py-px font-sans text-caption font-medium text-warning-foreground ring-1 ring-warning-foreground/10 ring-inset">
                 Waiting
-              </Text>
+              </span>
             ) : null}
           </div>
-          <Text
-            variant="small"
-            as="span"
-            className="break-words !text-foreground-subtle"
-          >
+          <Text variant="small" as="span" tone="subtle" className="break-words">
             {reason?.line ?? item.description}
           </Text>
           {reason?.passage ? (

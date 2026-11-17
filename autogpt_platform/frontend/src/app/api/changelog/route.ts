@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
-
-const PUBLISHED_CHANGELOG_INDEX =
-  "https://agpt.co/docs/platform/changelog/changelog.md";
+import {
+  CHANGELOG_CACHE_CONTROL,
+  CHANGELOG_FETCH_INIT,
+  PUBLISHED_CHANGELOG_INDEX,
+} from "./helpers";
 
 export async function GET() {
   try {
-    const upstream = await fetch(PUBLISHED_CHANGELOG_INDEX, {
-      headers: { Accept: "text/plain, text/markdown, */*" },
-      next: { revalidate: 3600 },
-    });
+    const upstream = await fetch(
+      PUBLISHED_CHANGELOG_INDEX,
+      CHANGELOG_FETCH_INIT,
+    );
 
     if (!upstream.ok) {
       return NextResponse.json(
@@ -22,7 +24,7 @@ export async function GET() {
       status: 200,
       headers: {
         "Content-Type": "text/markdown; charset=utf-8",
-        "Cache-Control": "public, max-age=300, s-maxage=3600",
+        "Cache-Control": CHANGELOG_CACHE_CONTROL,
       },
     });
   } catch {

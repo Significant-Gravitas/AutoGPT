@@ -30,8 +30,7 @@ interface Props {
 }
 
 const CHIP_CLASSNAME =
-  // TODO(tokens): no exact role for border-neutral-200
-  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-neutral-200 bg-surface pl-1.5 pr-2 text-sm font-medium text-foreground-body shadow-sm";
+  "ml-2 inline-flex h-9 items-center gap-1.5 rounded-2xl border border-border-base bg-surface pl-1.5 pr-2 text-body font-medium text-foreground-body shadow-sm";
 
 export function RecipientChip({
   recipient,
@@ -60,14 +59,16 @@ export function RecipientChip({
           aria-label={`Sending to ${recipient.name} — change recipient`}
           className={cn(
             CHIP_CLASSNAME,
-            "group transition-colors hover:bg-background",
+            "group transition-colors hover:bg-canvas",
           )}
         >
           <RecipientAvatar option={recipient} />
           {recipient.name}
           <Icon
             icon={ArrowDown01Icon}
-            className="size-3.5 text-foreground-secondary transition-transform duration-150 group-data-[state=open]:rotate-180"
+            tone="secondary"
+            motion="transform"
+            className="size-3.5 group-data-[state=open]:rotate-180"
           />
         </button>
       </DropdownMenuTrigger>

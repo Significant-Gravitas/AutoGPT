@@ -107,6 +107,29 @@ export function hasActiveBackendStream(result: { data?: unknown }): boolean {
 }
 
 /**
+ * The chat's status as the copilot reads it, which AI SDK 7 reports later
+ * than the copilot needs:
+ * - a resume is "submitted" from the moment it is asked for, not only once
+ *   its GET has returned a stream;
+ * - a turn is "streaming" once its `start` chunk has added the reply's
+ *   assistant message, which is when the turn has a name and a Stop can reach
+ *   it, not only at its first content chunk, which would hide Stop for as
+ *   long as the model takes to say anything.
+ */
+export function getEffectiveChatStatus<Status extends string>(
+  status: Status,
+  messages: UIMessage[],
+  isResumePending: boolean,
+): Status | "submitted" | "streaming" {
+  if (isResumePending && (status === "ready" || status === "error")) {
+    return "submitted";
+  }
+  return status === "submitted" && messages.at(-1)?.role === "assistant"
+    ? "streaming"
+    : status;
+}
+
+/**
  * Whether the trailing assistant message has at least one part the UI
  * would visibly render: text with non-empty content, reasoning with
  * non-empty content, any tool part (tool cards render regardless of
@@ -139,8 +162,18 @@ export function resolveInProgressTools(
       "state" in part &&
       (part.state === "input-streaming" || part.state === "input-available")
         ? outcome === "cancelled"
-          ? { ...part, state: "output-error" as const, errorText: "Cancelled" }
-          : { ...part, state: "output-available" as const, output: "" }
+          ? {
+              ...part,
+              state: "output-error" as const,
+              input: part.input,
+              errorText: "Cancelled",
+            }
+          : {
+              ...part,
+              state: "output-available" as const,
+              input: part.input,
+              output: "",
+            }
         : part,
     ),
   }));
@@ -198,6 +231,7 @@ export function resolveInterruptedMessage(messages: UIMessage[]): UIMessage[] {
       return {
         ...part,
         state: "output-error" as const,
+        input: part.input,
         errorText: "Interrupted",
       };
     }

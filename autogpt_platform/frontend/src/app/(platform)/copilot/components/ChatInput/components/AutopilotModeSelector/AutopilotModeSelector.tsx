@@ -50,16 +50,14 @@ export function AutopilotModeSelector({
             aria-label={`Approval mode: ${current.label}. Change mode`}
             title={`Approval mode: ${current.label}`}
             className={cn(
-              // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour)
-              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400",
+              "inline-flex h-8 items-center justify-center gap-1 rounded-full text-caption font-medium transition-colors focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:outline-none",
               isDefault
                 ? "w-8 text-foreground-tertiary hover:bg-surface-hover hover:text-foreground-body"
                 : "px-2.5",
               mode === "ask_first" &&
                 "bg-surface-hover text-foreground-body hover:bg-surface-active",
               mode === "unsupervised" &&
-                // TODO(tokens): no exact role for hover:bg-amber-100
-                "bg-warning-surface text-warning-foreground hover:bg-amber-100",
+                "bg-warning-surface text-warning-foreground hover:bg-warning-border/40",
               disabled && "opacity-40",
             )}
           >
@@ -68,7 +66,7 @@ export function AutopilotModeSelector({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel className="text-xs font-medium text-foreground-tertiary">
+          <DropdownMenuLabel className="text-caption font-medium text-foreground-tertiary">
             Approvals in this chat
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={mode} onValueChange={selectMode}>
@@ -82,7 +80,7 @@ export function AutopilotModeSelector({
                   <span className="font-medium text-foreground-strong">
                     {option.label}
                   </span>
-                  <span className="text-xs text-foreground-tertiary">
+                  <span className="text-caption text-foreground-tertiary">
                     {option.description}
                   </span>
                 </span>

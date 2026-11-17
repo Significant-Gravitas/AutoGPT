@@ -1,4 +1,3 @@
-import { getGetV2ListSessionsMockHandler200 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { getListExpertIdentitiesMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import { SidebarProvider } from "@/components/molecules/Sidebar/Sidebar";
 import { server } from "@/mocks/mock-server";
@@ -7,6 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RecentChats } from "../RecentChats";
+import { sidebarBackend } from "./sidebarBackend";
 
 // Every link reports a navigation in flight, as it does right after a click.
 vi.mock("next/link", () => ({
@@ -35,19 +35,7 @@ afterEach(() => {
 describe("RecentChats — new chat link while navigating", () => {
   it("swaps the + for a spinner while the new chat opens", async () => {
     server.use(
-      getGetV2ListSessionsMockHandler200({
-        sessions: [
-          {
-            id: "autopilot-1",
-            title: "Otto chat",
-            is_processing: false,
-            created_at: "2026-06-30T10:00:00",
-            updated_at: "2026-06-30T10:00:00",
-            expert_id: null,
-          },
-        ],
-        total: 1,
-      }),
+      ...sidebarBackend(() => [{ id: "autopilot-1", title: "Otto chat" }]),
       getListExpertIdentitiesMockHandler([]),
     );
     render(

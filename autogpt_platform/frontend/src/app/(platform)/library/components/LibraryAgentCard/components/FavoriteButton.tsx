@@ -42,6 +42,9 @@ export function FavoriteButton({
         "rounded-full p-2 transition-all duration-200",
         "hover:scale-110 active:scale-95",
         !isFavorite && "opacity-0 group-hover:opacity-100",
+        isFavorite
+          ? "text-error"
+          : "text-foreground-secondary hover:text-error",
         className,
       )}
       aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -54,15 +57,7 @@ export function FavoriteButton({
           exit={{ scale: 0.5, opacity: 0 }}
           transition={{ type: "spring", damping: 15, stiffness: 300 }}
         >
-          <Icon
-            icon={FavouriteIcon}
-            size={20}
-            className={cn(
-              "transition-colors duration-200",
-              // TODO(tokens): no exact role for text-gray-600 (#4B5563)
-              isFavorite ? "text-error" : "text-gray-600 hover:text-error",
-            )}
-          />
+          <Icon icon={FavouriteIcon} size={20} />
         </motion.div>
       </AnimatePresence>
     </button>

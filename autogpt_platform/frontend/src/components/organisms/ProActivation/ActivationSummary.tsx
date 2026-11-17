@@ -29,11 +29,11 @@ export function ActivationSummary({ terms }: Props) {
       >
         <p
           data-slot="activation-summary-plan"
-          className="text-sm text-foreground-tertiary"
+          className="text-body text-foreground-tertiary"
         >
           <span
             data-slot="activation-summary-plan-name"
-            className="text-base font-semibold text-foreground-strong"
+            className="text-body-lg font-semibold text-foreground-strong"
           >
             {plan}
           </span>{" "}
@@ -44,7 +44,7 @@ export function ActivationSummary({ terms }: Props) {
         </p>
         <p
           data-slot="activation-summary-price"
-          className="text-sm tabular-nums text-foreground-secondary"
+          className="text-body text-foreground-secondary tabular-nums"
         >
           {formatAmount(terms.renewal_unit_amount, terms.currency)} /{" "}
           {intervalLabel(
@@ -55,7 +55,7 @@ export function ActivationSummary({ terms }: Props) {
       </div>
       <dl
         data-slot="activation-summary-lines"
-        className="space-y-3.5 p-4 text-sm text-foreground-secondary"
+        className="space-y-3.5 p-4 text-body text-foreground-secondary"
       >
         <div
           data-slot="activation-summary-line"
@@ -105,7 +105,7 @@ export function ActivationSummary({ terms }: Props) {
         </div>
         <div
           data-slot="activation-summary-total"
-          className="flex items-baseline justify-between gap-4 border-t border-border-base pt-3.5 text-base font-semibold text-foreground-strong"
+          className="flex items-baseline justify-between gap-4 border-t border-border-base pt-3.5 text-body-lg font-semibold text-foreground-strong"
         >
           <dt data-slot="activation-summary-total-label">Due today</dt>
           <dd

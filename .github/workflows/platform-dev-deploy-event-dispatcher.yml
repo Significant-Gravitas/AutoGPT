@@ -110,13 +110,15 @@ jobs:
       - name: Post deploy success comment
         if: steps.check_status.outputs.should_deploy == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
         with:
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `🚀 **Deploying PR #${{ steps.pr_details.outputs.pr_number }}** to development environment...`
+              body: `🚀 **Deploying PR #${process.env.PR_NUMBER}** to development environment...`
             });
 
       - name: Dispatch Undeploy Event (from comment)
@@ -138,13 +140,15 @@ jobs:
       - name: Post undeploy success comment
         if: steps.check_status.outputs.should_undeploy == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
         with:
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `🗑️ **Undeploying PR #${{ steps.pr_details.outputs.pr_number }}** from development environment...`
+              body: `🗑️ **Undeploying PR #${process.env.PR_NUMBER}** from development environment...`
             });
 
       - name: Check deployment status on PR close
@@ -163,10 +167,20 @@ jobs:
               per_page: 100
             });
 
+            // Same trust gate as the comment handler: only commands it would have acted on count.
+            const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];
+            const isTrusted = (comment) => (
+              ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association) ||
+              BOT_ALLOWLIST.includes(comment.user?.login)
+            );
+
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
             comments.forEach((comment, index) => {
+              if (!isTrusted(comment)) {
+                return;
+              }
               if (comment.body.trim() === '!deploy') {
                 lastDeployIndex = index;
               } else if (comment.body.trim() === '!undeploy') {
@@ -240,10 +254,9 @@ jobs:
             let lastDeployIndex = -1;
             let lastUndeployIndex = -1;
 
-            // Unlike the close/undeploy scan, this path TRIGGERS a deploy, so
-            // only commands from authorized authors count — otherwise a
-            // drive-by !deploy comment (ignored by the comment handler's
-            // permission gate) would arm auto-redeploy for the next push.
+            // Only commands from authorized authors count: a drive-by !deploy,
+            // ignored by the comment handler's permission gate, would otherwise
+            // arm auto-redeploy for the next push.
             const allowed = ['OWNER', 'MEMBER', 'COLLABORATOR'];
             // Trusted bots comment as 'NONE'; allowlist by login (see comment handler).
             const BOT_ALLOWLIST = ['autogpt-batch-bot[bot]'];

@@ -36,22 +36,17 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
 
   // Determine which icon to show with proper animation
   const renderIcon = () => {
-    const iconClass = cn(
-      "size-4 transition-transform duration-200 ease-out",
-      !isLoading && "group-hover:scale-110",
-    );
+    const iconClass = cn("size-4", !isLoading && "group-hover:scale-110");
 
     if (isLoading) {
-      return (
-        <Icon icon={Loading03Icon} className={cn(iconClass, "animate-spin")} />
-      );
+      return <Icon icon={Loading03Icon} spin className={iconClass} />;
     }
 
     if (isGraphRunning) {
-      return <Icon icon={StopIcon} className={iconClass} />;
+      return <Icon icon={StopIcon} motion="transform" className={iconClass} />;
     }
 
-    return <Icon icon={PlayIcon} className={iconClass} />;
+    return <Icon icon={PlayIcon} motion="transform" className={iconClass} />;
   };
 
   return (
@@ -62,16 +57,16 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           <TooltipTrigger asChild>
             <Button
               size="icon"
-              variant="ghost"
+              variant="ghost-warning"
               data-id="simulate-graph-button"
               onClick={() => void handleRunGraph({ dryRun: true })}
               disabled={!flowID || isLoading}
-              // TODO(tokens): no exact role: text-amber-600 #D97706; no fitting role for hover:bg-amber-50 #FFFBEB and hover:text-amber-700 #B45309: they are warning-surface and warning-foreground (status colours), and amber is this dry-run button's own colour, not a warning (QUALITY 41(c))
-              className="group text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+              className="group"
             >
               <Icon
                 icon={FlaskConicalIcon}
-                className="size-4 transition-transform duration-200 ease-out group-hover:scale-110"
+                motion="transform"
+                className="size-4 group-hover:scale-110"
               />
             </Button>
           </TooltipTrigger>

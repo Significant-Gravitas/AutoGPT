@@ -55,7 +55,7 @@ export function Emoji({ text, size = 24 }: Props) {
   return (
     <span
       data-slot="emoji"
-      className="h-(--emoji-size) w-(--emoji-size) inline-flex items-center"
+      className="inline-flex h-(--emoji-size) w-(--emoji-size) items-center"
       style={{ "--emoji-size": `${size}px` } as React.CSSProperties}
       dangerouslySetInnerHTML={{ __html: html }}
     />

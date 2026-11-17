@@ -2,7 +2,6 @@
 
 import { ExpertWorkflowChainItem } from "@/app/api/__generated__/models/expertWorkflowChainItem";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
-import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
 import { toDisplayName } from "@/components/renderers/InputRenderer/custom/CredentialField/helpers";
@@ -54,8 +53,7 @@ export function WorkflowCredentialStack({ providers }: Props) {
           key={provider}
           role="listitem"
           className={cn(
-            // TODO(tokens): no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a surface fill), action-foreground (a text colour)
-            "flex size-7 items-center justify-center rounded-full border border-border-base bg-surface ring-2 ring-white",
+            "flex size-7 items-center justify-center rounded-full border border-border-base bg-surface ring-2 ring-surface",
             index > 0 && "-ml-2",
             ["z-30", "z-20", "z-10"][index],
           )}
@@ -68,17 +66,13 @@ export function WorkflowCredentialStack({ providers }: Props) {
         </span>
       ))}
       {hidden > 0 ? (
-        <Text
-          variant="small-medium"
-          as="span"
-          tone="secondary"
+        <span
           role="listitem"
-          // TODO(tokens): no fitting role for ring-white #FEFEFE; #FEFEFE is surface (a surface fill), action-foreground (a text colour)
-          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-border-base bg-surface-hover ring-2 ring-white"
+          className="-ml-2 flex size-7 items-center justify-center rounded-full border border-border-base bg-surface-hover font-sans text-caption font-medium text-foreground-secondary ring-2 ring-surface"
           aria-label={`${hidden} more`}
         >
           +{hidden}
-        </Text>
+        </span>
       ) : null}
     </div>
   );

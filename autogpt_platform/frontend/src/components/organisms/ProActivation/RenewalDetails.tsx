@@ -35,16 +35,15 @@ export function RenewalDetails({ terms }: Props) {
       ))}
       <details
         data-slot="renewal-details-terms"
-        className="group text-sm text-foreground-tertiary"
+        className="group text-body text-foreground-tertiary"
       >
         <summary
           data-slot="renewal-details-terms-toggle"
-          // TODO(tokens): no role for the violet-500 focus outline.
-          className="w-fit cursor-pointer rounded-small underline decoration-border-strong underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
+          className="w-fit cursor-pointer rounded-small underline decoration-border-strong underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
         >
           Full renewal terms
         </summary>
-        <Text variant="small" tone="secondary" className="mt-3 leading-relaxed">
+        <Text variant="small-relaxed" tone="secondary" className="mt-3">
           {terms.renewal_terms}
         </Text>
         {terms.renewal_tax?.rates?.map((rate, index) => (

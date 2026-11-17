@@ -154,7 +154,12 @@ async def test_describe_expert_asks_only_for_what_the_id_does_not_carry(team):
 
     assert isinstance(result, CapabilityDetailsResponse)
     assert "calls hire_expert" in result.message
-    assert set(result.parameters["properties"]) == {"name"}
+    # The task a hire is for is not carried by the id either (SECRT-3138).
+    assert set(result.parameters["properties"]) == {
+        "name",
+        "handoff_title",
+        "handoff_task",
+    }
     assert result.parameters["required"] == []
 
 

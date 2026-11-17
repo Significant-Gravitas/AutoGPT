@@ -108,7 +108,7 @@ async def commit_version(
         if review is not None:
             await _require_committable_source(tx, user_id, review)
             await _require_no_terminal_review(tx, user_id, review)
-        number = await next_version_number(head.id)
+        number = await next_version_number(head.id, client=tx)
         try:
             row = await tx.skillversion.create(
                 data={

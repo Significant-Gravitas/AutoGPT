@@ -48,11 +48,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
       <PopoverContent align={align} className="z-[80] w-72 p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
-            <Text
-              // TODO(tokens): no exact role for text-neutral-800
-              variant="body-medium"
-              className="text-neutral-800"
-            >
+            <Text tone="emphasis" variant="body-medium">
               Usage limits
             </Text>
             {tierLabel && (
@@ -104,7 +100,7 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
           {isBillingEnabled && (
             <Link
               href="/settings/billing"
-              className="text-sm text-info-foreground hover:underline"
+              className="text-body text-info-foreground hover:underline"
             >
               Manage billing
             </Link>

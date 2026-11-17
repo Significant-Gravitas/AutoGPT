@@ -18,12 +18,12 @@ export function ExpertTeamCardSkeleton() {
             <Skeleton className="h-4 w-full rounded-sm" />
           </div>
         </div>
-        <div className="mt-2 flex w-full flex-col items-start gap-2 pl-5 pr-2">
+        <div className="mt-2 flex w-full flex-col items-start gap-2 pr-2 pl-5">
           <Skeleton className="h-5 w-2/5 rounded-full" />
           <Skeleton className="h-4 w-1/2 rounded-full" />
         </div>
 
-        <div className="mx-2 mt-3 flex rounded-lg bg-surface-muted px-2 py-2 ring-1 ring-inset ring-separator">
+        <div className="mx-2 mt-3 flex rounded-lg bg-surface-muted px-2 py-2 ring-1 ring-separator ring-inset">
           {[0, 1, 2, 3].map((stat) => (
             <div
               key={stat}

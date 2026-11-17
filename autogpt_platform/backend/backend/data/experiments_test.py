@@ -17,7 +17,6 @@ from backend.util.feature_flag import (
     evaluate_experiment_variant,
     get_feature_flag_value,
 )
-from backend.util.settings import FeatureFlagBackend
 
 PRICING = Experiment.SUBSCRIPTION_PRICING.value
 ARMS = ("control", "yearly-pro")
@@ -72,9 +71,6 @@ async def test_no_server_read_of_an_experiment_reports_its_exposure(
 ):
     """The browser reports it, consent-gated; a server event would double it and
     skip consent, whichever read made it."""
-    mocker.patch.object(
-        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
-    )
     capture = mocker.spy(posthog_client, "capture")
     _remote_flags_request(mocker)
 

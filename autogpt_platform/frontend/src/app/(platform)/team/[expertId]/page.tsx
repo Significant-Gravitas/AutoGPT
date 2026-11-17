@@ -29,6 +29,7 @@ import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
+import { ExpertResetSection } from "./components/ExpertResetSection/ExpertResetSection";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
 import {
   getExpertCover,
@@ -144,8 +145,8 @@ export default function ExpertDetailPage() {
         />
 
         {isPaused ? (
-          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-inset ring-warning-border">
-            <Text variant="small" className="text-warning-foreground">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-warning-surface px-4 py-2.5 ring-1 ring-warning-border ring-inset">
+            <Text variant="small" tone="warning">
               Schedules paused
             </Text>
             <Button
@@ -161,14 +162,17 @@ export default function ExpertDetailPage() {
 
         <ExpertNeedsYouSection expert={expert} />
 
-        <TabsLine data-profile-tabs variant="compact" defaultValue={initialTab}>
+        <TabsLine variant="compact" defaultValue={initialTab}>
           <TabsLineList
             flush={false}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
             className={PROFILE_TABS_LIST_CLASS}
+            // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
             indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
           >
             {TABS.map((tab) => (
               <TabsLineTrigger
+                // oxlint-disable-next-line design-system/require-static-classes -- the pill tabs share their classes with team/autopilot; TabsLine has no pill variant (src/components is P9's)
                 className={PROFILE_TABS_TRIGGER_CLASS}
                 key={tab.value}
                 value={tab.value}
@@ -254,6 +258,7 @@ export default function ExpertDetailPage() {
           <TabsLineContent value="settings">
             <div className="flex flex-col gap-4">
               <ExpertModeSection expert={expert} />
+              <ExpertResetSection expert={expert} />
               <ExpertSettingsSection expert={expert} onFire={openFire} />
             </div>
           </TabsLineContent>

@@ -68,19 +68,13 @@ function EarnCreditsHeader({
       <CollapsibleTrigger asChild>
         <button
           type="button"
-          // TODO(tokens): no fitting role for focus-visible:ring-zinc-400 #ADADB3; #ADADB3 is foreground-subtle (a text colour), not a focus ring
-          className="flex w-full flex-col gap-1 px-5 py-3 text-left outline-none transition-colors hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400"
+          className="flex w-full flex-col gap-1 px-5 py-3 text-left transition-colors outline-none hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-foreground-subtle focus-visible:ring-inset"
         >
           <span className="flex w-full items-baseline justify-between gap-3">
             <Text as="span" variant="large-medium" tone="primary">
               Earn credits
             </Text>
-            <Text
-              as="span"
-              variant="small"
-              tone="secondary"
-              className="tabular-nums"
-            >
+            <Text as="span" variant="small" tone="secondary" tabular>
               {available > 0
                 ? `$${available.toFixed(2)} available`
                 : "All claimed"}
@@ -94,10 +88,9 @@ function EarnCreditsHeader({
               icon={ArrowDown01Icon}
               size={16}
               aria-hidden
-              className={cn(
-                "shrink-0 text-foreground-tertiary transition-transform motion-reduce:transition-none",
-                open && "rotate-180",
-              )}
+              tone="muted"
+              motion="transform"
+              className={cn("shrink-0", open && "rotate-180")}
             />
           </span>
         </button>
@@ -123,10 +116,9 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
           <Icon
             icon={ArrowDown01Icon}
             size={14}
-            className={cn(
-              "mt-1 shrink-0 text-foreground-subtle transition-transform duration-200",
-              open && "rotate-180",
-            )}
+            tone="subtle"
+            motion="transform"
+            className={cn("mt-1 shrink-0", open && "rotate-180")}
           />
         </span>
         <Text variant="body-tight" as="span" tone="muted" className="shrink-0">
@@ -141,7 +133,7 @@ function EarnGroupSection({ group }: { group: EarnGroup }) {
 
 function EarnTaskRow({ row }: { row: EarnRow }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-1.5 pl-8 pr-3">
+    <div className="flex items-start justify-between gap-3 py-1.5 pr-3 pl-8">
       <div className="flex min-w-0 items-start gap-2.5">
         <StatusIcon done={row.done} />
         <Text variant="body">{row.label}</Text>
@@ -160,17 +152,11 @@ function StatusIcon({ done }: { done: boolean }) {
         <Icon
           icon={CheckmarkBadge01Icon}
           size={18}
-          // TODO(tokens): no exact role for text-[#00a656] (#00A656)
-          className="text-[#00a656]"
+          tone="success"
           aria-label="completed"
         />
       ) : (
-        <Icon
-          icon={CircleIcon}
-          size={16}
-          className="text-foreground-subtle"
-          aria-label="pending"
-        />
+        <Icon icon={CircleIcon} size={16} tone="subtle" aria-label="pending" />
       )}
     </span>
   );

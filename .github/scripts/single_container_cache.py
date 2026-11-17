@@ -16,9 +16,15 @@ def cache_settings(event: str, ref: str, image: str, arch: str) -> list[str]:
         imports.insert(0, export)
     elif event == "push" and ref == "refs/heads/dev":
         export = shared
+    # Only single-container reads the cache. Its build already contains the
+    # backend-server-base and backend-server stages, so their layers still come
+    # from the cache. If those helper targets read it too, the first build to
+    # load a shared stage owns its cache import, and the layers it later pulls
+    # authenticate through that build's session. The helper builds finish
+    # within a minute, and once their registry token expires the pulls fail
+    # with "no active session".
     settings = [
-        f"{target}.cache-from=type=registry,ref={cache_ref}"
-        for target in ("backend-server-base", "backend-server", "single-container")
+        f"single-container.cache-from=type=registry,ref={cache_ref}"
         for cache_ref in imports
     ]
     if export:

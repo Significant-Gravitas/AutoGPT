@@ -49,7 +49,7 @@ export function OfferActions(props: Props) {
         <p
           role="alert"
           data-slot="offer-actions-error"
-          className="text-sm text-destructive"
+          className="text-body text-error"
         >
           {props.trialError}
         </p>
@@ -75,12 +75,9 @@ function PaidPlanAction({
     <Button
       type="button"
       variant={inline ? "link" : plan.highlighted ? "primary" : "secondary"}
-      size="small"
-      className={
-        inline
-          ? "h-auto min-w-0 p-0 text-xs text-foreground-tertiary"
-          : "w-full"
-      }
+      size={inline ? "inline-xs" : "small"}
+      tone={inline ? "muted" : undefined}
+      className={inline ? undefined : "w-full"}
       loading={isUpdatingTier && selectedPlan === plan.key}
       disabled={isUpdatingTier || isStartingTrial}
       onClick={handleSelect}
@@ -99,7 +96,8 @@ function TrialActionDetails(props: Props) {
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-foreground-tertiary"
+        size="inline-xs"
+        tone="muted"
         onClick={props.onTrialDetails}
       >
         Trial details
@@ -127,7 +125,8 @@ function AlternativeTrial({
       <Button
         type="button"
         variant="link"
-        className="h-auto min-w-0 p-0 text-xs text-brand"
+        size="inline-xs"
+        tone="brand"
         disabled={isStartingTrial}
         onClick={handleSwitchCycle}
       >

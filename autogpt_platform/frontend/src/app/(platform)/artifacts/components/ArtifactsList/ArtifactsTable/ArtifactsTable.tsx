@@ -12,7 +12,7 @@ import { SelectionBar } from "../SelectionBar/SelectionBar";
 import { FileRow } from "./FileRow";
 import { FolderRows } from "./FolderRows";
 import { SkeletonRow } from "./SkeletonRow";
-import { DATE_CELL_CLASS, ROW_GRID_CLASS, SIZE_CELL_CLASS } from "./row-layout";
+import { ROW_GRID_CLASS } from "./row-layout";
 import { useFileSelection } from "./useFileSelection";
 
 interface Props {
@@ -59,20 +59,22 @@ export function ArtifactsTable({
         />
       ) : (
         <div className={cn(ROW_GRID_CLASS, "px-2 pb-2")}>
-          <Text variant="body" as="span" className="text-foreground-tertiary">
+          <Text variant="body" as="span" tone="muted">
             Name
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(DATE_CELL_CLASS, "text-foreground-tertiary")}
+            tone="muted"
+            className="hidden truncate sm:block"
           >
             Modified
           </Text>
           <Text
             variant="body"
             as="span"
-            className={cn(SIZE_CELL_CLASS, "text-foreground-tertiary")}
+            tone="muted"
+            className="hidden md:block"
           >
             Size
           </Text>

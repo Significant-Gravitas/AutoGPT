@@ -22,6 +22,7 @@ from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
 )
+from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
 from backend.util.exceptions import (
@@ -125,17 +126,18 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
 async def _handle_validation_error(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
+    errors: Sequence | str
+    if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
+        errors = bounded_validation_errors(exc)
+    else:
+        errors = str(exc)
+
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
         redact_url(request.url.path),
-        exc,
+        errors,
     )
-    errors: Sequence | str
-    if isinstance(exc, (RequestValidationError, pydantic.ValidationError)):
-        errors = exc.errors()
-    else:
-        errors = str(exc)
 
     response_content = {
         "message": f"Invalid data for {request.method} {request.url.path}",

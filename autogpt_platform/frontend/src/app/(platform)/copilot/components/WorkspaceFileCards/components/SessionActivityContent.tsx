@@ -13,29 +13,35 @@ import Link from "next/link";
 import { useGetV2GetLibraryAgent } from "@/app/api/__generated__/endpoints/library/library";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { cn } from "@/lib/utils";
 import { formatWhen } from "../../ToolChain/resultHelpers";
 import type { SessionRun, SessionSchedule } from "../helpers";
+import { Text } from "@/components/atoms/Text/Text";
+import type { Tone } from "@/components/styles/tones";
 
-const RUN_STATUS: Record<
-  string,
-  { icon: IconSvgElement; className: string; spin: boolean }
-> = {
+interface RunStatus {
+  icon: IconSvgElement;
+  tone: Tone;
+  spin: boolean;
+}
+
+const RUN_STATUS: Record<string, RunStatus> = {
   COMPLETED: {
     icon: CheckmarkCircle02Icon,
-    className: "text-success",
+    tone: "success",
     spin: false,
   },
-  FAILED: { icon: CancelCircleIcon, className: "text-error", spin: false },
-  // TODO(tokens): no fitting role for text-purple-600 #6C2EDF; #6C2EDF is brand-hover (a fill)
-  RUNNING: { icon: Loading03Icon, className: "text-purple-600", spin: true },
-  // TODO(tokens): no exact role for text-amber-600
-  QUEUED: { icon: ClockIcon, className: "text-amber-600", spin: false },
+  FAILED: { icon: CancelCircleIcon, tone: "error", spin: false },
+  RUNNING: { icon: Loading03Icon, tone: "brand-strong", spin: true },
+  QUEUED: {
+    icon: ClockIcon,
+    tone: "warning",
+    spin: false,
+  },
 };
 
-const FALLBACK_STATUS = {
+const FALLBACK_STATUS: RunStatus = {
   icon: PlayIcon,
-  className: "text-foreground-subtle",
+  tone: "subtle",
   spin: false,
 };
 
@@ -88,16 +94,18 @@ function RunRow({ run }: { run: SessionRun }) {
         icon={status.icon}
         size={16}
         aria-label={run.status?.toLowerCase()}
-        className={cn(
-          "shrink-0",
-          status.className,
-          status.spin && "animate-spin motion-reduce:animate-none",
-        )}
+        tone={status.tone}
+        spin={status.spin}
+        className="shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground-emphasis">{name}</p>
+        <Text variant="body-tight" tone="emphasis" className="truncate">
+          {name}
+        </Text>
         {meta && (
-          <p className="truncate text-xs text-foreground-subtle">{meta}</p>
+          <Text variant="small-tight" tone="subtle" className="truncate">
+            {meta}
+          </Text>
         )}
       </div>
     </>
@@ -131,19 +139,20 @@ function ScheduleRow({ schedule }: { schedule: SessionSchedule }) {
       <Icon
         icon={schedule.isRecurring ? RepeatIcon : ClockIcon}
         size={16}
-        className="mt-0.5 shrink-0 text-foreground-body"
+        tone="body"
+        className="mt-0.5 shrink-0"
       />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-foreground-emphasis">
+        <Text variant="body-tight" tone="emphasis" className="truncate">
           {schedule.name}
-        </p>
+        </Text>
         {schedule.detail && (
-          <p className="line-clamp-2 text-xs text-foreground-tertiary">
+          <Text variant="small-tight" tone="muted" className="line-clamp-2">
             {schedule.detail}
-          </p>
+          </Text>
         )}
         {(when || schedule.cron) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs text-foreground-subtle">
+          <p className="flex min-w-0 items-center gap-1.5 text-caption text-foreground-subtle">
             {when && <span className="truncate">{when}</span>}
             {when && schedule.cron && <span aria-hidden>·</span>}
             {schedule.cron && (

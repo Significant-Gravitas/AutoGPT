@@ -5,8 +5,8 @@ Walks a user's recent memory window through the consolidate → recombine
 (clamped by ``clamp.py``) to Graphiti + Postgres.
 
 Each phase here is one ``inference.complete.structured_complete`` call
-on the chat transport's provider, traced and recorded through the
-inference package. When ``routing.resolve_dream_execution_path``
+on the chat transport's provider, recorded through the inference
+package. When ``routing.resolve_dream_execution_path``
 picks ``anthropic_batch``, ``batch_handoff.submit_dream_pass_batch``
 submits the first phase to Anthropic's Message Batches API instead and
 ``batch_callbacks`` runs the later phases and the apply step as the
@@ -45,7 +45,6 @@ from backend.copilot.inference.context import (
     InferenceScope,
 )
 from backend.copilot.inference.routing import resolve_route
-from backend.copilot.inference.trace import trace
 from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -284,28 +283,26 @@ async def _run_phase(
     max_output_tokens: int,
     timeout_seconds: float,
 ) -> tuple[_Output, PhaseUsage]:
-    """One phase's call on the pass's route, traced, with its cost recorded.
+    """One phase's call on the pass's route, with its cost recorded.
 
     The usage comes back priced: the provider's cost when it reported one
     (OpenRouter's ``usage.cost``, what we were billed), else the model's
     catalog list rate; unknown when the response reported no usage at all.
 
     Raises ``InferenceError`` when the phase got no usable answer. Failed
-    phases are absorbed; their usage remains on the error for tracing.
+    phases are absorbed; their usage remains on the error.
     """
     job = phase_job(phase, run.pass_id, timeout_seconds=timeout_seconds)
     route = resolve_route(run.scope, job, config=run.config)
     ctx = InferenceContext(scope=run.scope, job=job, route=route)
-    async with trace(ctx) as call:
-        completion = await structured_complete(
-            call.ctx,
-            messages,
-            response_model,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-        )
-        usage = await record_phase_cost(call.ctx, completion.usage)
-        call.usage = usage
+    completion = await structured_complete(
+        ctx,
+        messages,
+        response_model,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
+    usage = await record_phase_cost(ctx, completion.usage)
     return completion.value, phase_usage(phase, usage)
 
 

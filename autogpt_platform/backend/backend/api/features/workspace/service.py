@@ -11,14 +11,9 @@ import fastapi
 from fastapi import UploadFile
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
-from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
-from backend.data.workspace import (
-    WorkspaceFile,
-    get_or_create_workspace,
-    get_workspace_total_size,
-)
+from backend.data.workspace import WorkspaceFile, get_or_create_workspace
 from backend.util.settings import Config
-from backend.util.workspace import WorkspaceManager, format_bytes
+from backend.util.workspace import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +37,7 @@ async def store_workspace_upload(
     workspace = await get_or_create_workspace(user_id)
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     try:
-        workspace_file = await manager.write_file(
+        return await manager.write_file(
             content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
         )
     except VirusDetectedError as e:
@@ -61,9 +56,6 @@ async def store_workspace_upload(
         if message.startswith(("File too large", "Storage limit exceeded")):
             raise fastapi.HTTPException(status_code=413, detail=message) from e
         raise fastapi.HTTPException(status_code=409, detail=message) from e
-
-    await _undo_if_over_quota(manager, workspace_file, user_id, workspace.id)
-    return workspace_file
 
 
 def _sanitized_filename(file: UploadFile) -> str:
@@ -88,35 +80,3 @@ async def read_within_size_limit(file: UploadFile, max_size_mb: int) -> bytes:
             raise too_large
         chunks.append(chunk)
     return b"".join(chunks)
-
-
-async def _undo_if_over_quota(
-    manager: WorkspaceManager,
-    workspace_file: WorkspaceFile,
-    user_id: str,
-    workspace_id: str,
-) -> None:
-    """Post-write quota check — eliminates the TOCTOU race a pre-check leaves."""
-    storage_limit_bytes = await get_workspace_storage_limit_bytes(user_id)
-    new_total = await get_workspace_total_size(workspace_id)
-    if not storage_limit_bytes or new_total <= storage_limit_bytes:
-        return
-
-    try:
-        # Route through WorkspaceManager so the storage backend blob is
-        # removed too — soft_delete_workspace_file alone leaks the blob.
-        await manager.delete_file(workspace_file.id)
-    except Exception as e:
-        logger.warning(
-            f"Failed to delete over-quota file {workspace_file.id} "
-            f"in workspace {workspace_id}: {e}"
-        )
-    raise fastapi.HTTPException(
-        status_code=413,
-        detail=(
-            f"Storage limit exceeded. "
-            f"You've used {format_bytes(new_total)} of your "
-            f"{format_bytes(storage_limit_bytes)} quota. "
-            f"Delete some files or upgrade your plan for more storage."
-        ),
-    )

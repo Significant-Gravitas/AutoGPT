@@ -24,14 +24,14 @@ export function ExpertAvatarButton({ expert }: Props) {
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label={`Change ${expert.name}'s appearance`}
-        className="size-24 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring"
+        className="size-24 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-focus"
       >
         <ExpertAvatar
           name={expert.name}
           avatarUrl={expert.avatar_url}
           size={96}
-          // TODO(tokens): no exact role: border-[#e3e3e3] #E3E3E3
-          className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
+          // oxlint-disable-next-line design-system/no-restyle -- ExpertAvatar has no bordered variant (src/components is P9's)
+          className="rounded-full border border-border-base ring-4 ring-canvas"
           backgroundColor={getExpertTopicHex({
             avatarUrl: expert.avatar_url,
             categories: expert.categories,

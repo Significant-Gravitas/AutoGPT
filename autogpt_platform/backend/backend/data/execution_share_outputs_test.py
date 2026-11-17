@@ -20,6 +20,7 @@ from backend.data.execution import (
     get_graph_execution,
     get_graph_execution_by_share_token,
 )
+from backend.data.includes import MAX_NODE_EXECUTIONS_FETCH
 
 OUTPUT_BLOCK_ID = AgentOutputBlock().id
 INPUT_BLOCK_ID = AgentInputBlock().id
@@ -150,11 +151,21 @@ def _execution() -> prisma.models.AgentGraphExecution:
 
 @pytest.fixture
 def exec_client(mocker):
+    execution = _execution()
     client = mocker.AsyncMock()
-    client.find_first.return_value = _execution()
+    client.find_first.return_value = execution
     mocker.patch.object(
         prisma.models.AgentGraphExecution, "prisma", return_value=client
     )
+    # The share read loads the nodes in a query of their own, so the rows it
+    # would get back are the same ones this fixture puts on the executions.
+    node_client = mocker.AsyncMock()
+    node_client.find_many.return_value = [
+        node_exec.Node
+        for node_exec in (execution.NodeExecutions or [])
+        if node_exec.Node
+    ]
+    mocker.patch.object(prisma.models.AgentNode, "prisma", return_value=node_client)
     return client
 
 
@@ -186,7 +197,13 @@ async def test_shared_outputs_hide_moderated_original_value(exec_client):
 
 @pytest.mark.asyncio
 async def test_share_query_uses_owner_node_execution_window(exec_client):
-    await get_graph_execution("owner-1", "ge-1", include_node_executions=True)
+    """The share read's window is the owner's own read of the same outputs.
+
+    Not the owner's `include_node_executions=True` window, which is every node
+    execution of the run: this route serves one page of outputs, so that page
+    is what it loads.
+    """
+    await get_graph_execution("owner-1", "ge-1")
     owner_nodes = exec_client.find_first.call_args.kwargs["include"]["NodeExecutions"]
     await get_graph_execution_by_share_token("tok-1")
 
@@ -194,7 +211,22 @@ async def test_share_query_uses_owner_node_execution_window(exec_client):
     node_execs = include["NodeExecutions"]
     assert include["AgentGraph"] is True
     assert "Input" in node_execs["include"]
-    assert node_execs == owner_nodes
+    # The same rows as the owner's read, minus the node this one reads once
+    # for the whole run (`execution_share_node_reads_test`).
+    assert node_execs["where"] == owner_nodes["where"]
+    assert node_execs["order_by"] == owner_nodes["order_by"]
+    assert node_execs["include"] == {
+        key: value for key, value in owner_nodes["include"].items() if key != "Node"
+    }
+    # The window itself: a bounded number of rows, output blocks only, and
+    # nothing that never started.
+    assert node_execs["take"] == MAX_NODE_EXECUTIONS_FETCH
+    assert AgentExecutionStatus.INCOMPLETE in [
+        clause["executionStatus"] for clause in node_execs["where"]["NOT"]
+    ]
+    assert OUTPUT_BLOCK_ID in (
+        node_execs["where"]["Node"]["is"]["AgentBlock"]["is"]["id"]["in"]
+    )
 
 
 @pytest.mark.asyncio

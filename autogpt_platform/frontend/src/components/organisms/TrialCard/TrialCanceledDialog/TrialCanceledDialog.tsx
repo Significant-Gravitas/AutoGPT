@@ -39,7 +39,7 @@ export function TrialCanceledDialog({
           data-slot="trial-canceled-dialog-body"
           className="flex flex-col gap-4"
         >
-          <Text variant="body" className="!text-foreground-emphasis">
+          <Text variant="body" tone="emphasis">
             Your card won&apos;t be charged.{" "}
             <TrialTimeLeft endsAt={trial.ends_at} />
           </Text>

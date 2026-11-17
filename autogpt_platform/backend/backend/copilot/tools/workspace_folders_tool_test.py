@@ -123,6 +123,24 @@ async def test_an_empty_folder_id_is_refused_rather_than_listing_everything(db):
     db.list_workspace_files.assert_not_awaited()
 
 
+async def test_a_current_chat_listing_points_to_the_users_other_files(db):
+    """A routine or a new chat has no files of its own, so a bare listing comes
+    back empty while the user's upload sits in another chat or on the Files
+    page (SECRT-3188). The listing has to say where else to look."""
+    result = await _list(db)
+
+    assert "list again with include_all_sessions=true" in result.message
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"include_all_sessions": True}, {"folder_id": "invoices"}]
+)
+async def test_a_workspace_wide_listing_needs_no_pointer(db, kwargs):
+    result = await _list(db, **kwargs)
+
+    assert "include_all_sessions=true" not in result.message
+
+
 async def test_recursive_is_ignored_without_a_folder(db):
     await _list(db, recursive=True)
     assert db.list_workspace_files.call_args.kwargs["folder_id"] is None

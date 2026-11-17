@@ -26,8 +26,10 @@ const { captureException, recorderState } = vi.hoisted(() => ({
     audioStream: null as MediaStream | null,
     hasSpoken: false,
     permissionDenied: false,
+    micUnavailable: false,
     recordingId: null as string | null,
     mimeType: "audio/webm",
+    clearPermissionDenied: vi.fn(),
     start: vi.fn(),
     stop: vi.fn(),
     flushUploads: vi.fn(),
@@ -67,6 +69,9 @@ vi.mock("@/services/onboarding/brain-dump-analytics", () => ({
 }));
 
 vi.mock("@sentry/nextjs", () => ({ captureException }));
+
+// A wide screen: the live prompt is hidden at rest, beside the ambient cards.
+vi.mock("../useIsWideLayout", () => ({ useIsWideLayout: () => true }));
 
 import { useOnboardingWizardStore } from "../../../store";
 import { useBrainDumpStep } from "../useBrainDumpStep";
@@ -133,10 +138,14 @@ beforeEach(() => {
     audioStream: null,
     hasSpoken: false,
     permissionDenied: false,
+    micUnavailable: false,
     recordingId: null,
     mimeType: "audio/webm",
   });
   recorderState.start.mockResolvedValue(true);
+  recorderState.clearPermissionDenied.mockImplementation(() => {
+    recorderState.permissionDenied = false;
+  });
   recorderState.stop.mockResolvedValue(0);
   recorderState.flushUploads.mockResolvedValue(true);
   recorderState.findRecoverable.mockResolvedValue(null);
@@ -430,6 +439,9 @@ describe("useBrainDumpStep — finishing a take", () => {
       duration_secs: 65,
       input_mode: "voice",
       finalize_latency_ms: expect.any(Number),
+      // No role was picked, and the take never reached a screen with a prompt.
+      prompt_set: "Other",
+      prompts_seen: 0,
     });
     // The finalize round trip rides on the outcome, not on an event of its own.
     expect(trackBrainDump).not.toHaveBeenCalledWith(
@@ -745,6 +757,344 @@ describe("useBrainDumpStep — insufficient content", () => {
   });
 });
 
+describe("useBrainDumpStep — Otto replies", () => {
+  function rejected(code: string, preview?: string, replyKind?: string) {
+    return {
+      status: 200,
+      data: {
+        status: "failed",
+        error_code: code,
+        ...(preview === undefined ? {} : { transcript_preview: preview }),
+        ...(replyKind === undefined ? {} : { otto_reply_kind: replyKind }),
+      },
+    };
+  }
+
+  async function rejectVoiceTake(
+    code: string,
+    preview?: string,
+    replyKind?: string,
+  ) {
+    recorderState.recordingId = "rec-1";
+    finalizeBrainDump.mockResolvedValueOnce(rejected(code, preview, replyKind));
+    const view = await renderStep();
+    await act(async () => {
+      await view.result.current.handleDone();
+    });
+    return view;
+  }
+
+  async function rejectTypedText(
+    text: string,
+    code = "insufficient_content",
+    replyKind?: string,
+  ) {
+    finalizeBrainDump.mockResolvedValueOnce(
+      rejected(code, undefined, replyKind),
+    );
+    const view = await renderStep();
+    act(() => {
+      view.result.current.showTyping();
+    });
+    act(() => {
+      view.result.current.setTypedText(text);
+    });
+    await act(async () => {
+      await view.result.current.handleSubmitTyped();
+    });
+    return view;
+  }
+
+  function shown() {
+    return trackBrainDump.mock.calls.filter(
+      ([name]) => name === "brain_dump_insufficient_shown",
+    );
+  }
+
+  it("shows what Otto heard from a voice take", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      "Um, okay. Hi. Is this working?",
+    );
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.insufficientMode).toBe("voice");
+    expect(result.current.heardText).toBe("Um, okay. Hi. Is this working?");
+    expect(shown()).toEqual([
+      [
+        "brain_dump_insufficient_shown",
+        {
+          mode: "voice",
+          error_code: "insufficient_content",
+          heard: true,
+          reply_kind: null,
+          prompt_set: "Other",
+        },
+      ],
+    ]);
+    // Voice rejects keep their existing event exactly as it was.
+    expect(trackBrainDump).toHaveBeenCalledWith("transcription_failed", {
+      error_code: "insufficient_content",
+      finalize_latency_ms: expect.any(Number),
+    });
+  });
+
+  it.each([
+    { code: "no_usable_speech", preview: undefined },
+    { code: "insufficient_content", preview: undefined },
+    { code: "insufficient_content", preview: "" },
+  ])(
+    "shows no words for $code with preview $preview",
+    async ({ code, preview }) => {
+      const { result } = await rejectVoiceTake(code, preview);
+
+      expect(result.current.screen).toBe("insufficient");
+      expect(result.current.heardText).toBeNull();
+      expect(shown()).toEqual([
+        [
+          "brain_dump_insufficient_shown",
+          {
+            mode: "voice",
+            error_code: code,
+            heard: false,
+            reply_kind: null,
+            prompt_set: "Other",
+          },
+        ],
+      ]);
+    },
+  );
+
+  it("shows the typed text from a typed reject", async () => {
+    useOnboardingWizardStore.getState().setRole("Marketing");
+    const { result } = await rejectTypedText("  idk  ", "no_usable_speech");
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.insufficientMode).toBe("typed");
+    expect(result.current.heardText).toBe("idk");
+    expect(result.current.typedText).toBe("  idk  ");
+    expect(shown()).toEqual([
+      [
+        "brain_dump_insufficient_shown",
+        {
+          mode: "typed",
+          error_code: "no_usable_speech",
+          heard: true,
+          reply_kind: null,
+          prompt_set: "Marketing",
+        },
+      ],
+    ]);
+  });
+
+  it("keeps the line picked for a voice take and says which", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      "I don't want to do this.",
+      "reluctant",
+    );
+
+    expect(result.current.replyKind).toBe("reluctant");
+    expect(shown()).toEqual([
+      [
+        "brain_dump_insufficient_shown",
+        {
+          mode: "voice",
+          error_code: "insufficient_content",
+          heard: true,
+          reply_kind: "reluctant",
+          prompt_set: "Other",
+        },
+      ],
+    ]);
+  });
+
+  it("keeps the line picked for typed text", async () => {
+    const { result } = await rejectTypedText(
+      "skip",
+      "insufficient_content",
+      "wants_to_skip",
+    );
+
+    expect(result.current.replyKind).toBe("wants_to_skip");
+    expect(shown()[0]?.[1]).toMatchObject({
+      mode: "typed",
+      reply_kind: "wants_to_skip",
+    });
+  });
+
+  it("says when no kind fit, apart from when there was no pick", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      "I like pizza.",
+      "other",
+    );
+
+    expect(result.current.replyKind).toBe("other");
+    expect(shown()[0]?.[1]).toMatchObject({ heard: true, reply_kind: "other" });
+  });
+
+  it("drops a pick when no words came through", async () => {
+    const { result } = await rejectVoiceTake(
+      "insufficient_content",
+      undefined,
+      "mic_check",
+    );
+
+    expect(result.current.heardText).toBeNull();
+    expect(result.current.replyKind).toBeNull();
+    expect(shown()[0]?.[1]).toMatchObject({ heard: false, reply_kind: null });
+  });
+
+  it("is not a follow-up until the person leaves the screen to talk or write", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    expect(result.current.isFollowUp).toBe(false);
+  });
+
+  it("talks again from the screen as a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+
+    expect(result.current.screen).toBe("recording");
+    expect(result.current.isFollowUp).toBe(true);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_restarted", {
+      from: "insufficient",
+    });
+  });
+
+  it("writes from the screen as a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+
+    act(() => {
+      result.current.showTyping();
+    });
+
+    expect(result.current.screen).toBe("typing");
+    expect(result.current.isFollowUp).toBe(true);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: "Other",
+      from: "insufficient",
+    });
+    expect(result.current.typingPlaceholder).toBe(
+      "Like: The reminders and invoices for my students.",
+    );
+  });
+
+  it("continues without it from the screen, ending a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    finalizeBrainDump.mockResolvedValueOnce(
+      rejected("insufficient_content", "Hello?"),
+    );
+    await act(async () => {
+      await result.current.handleDone();
+    });
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.isFollowUp).toBe(true);
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    expect(result.current.isFollowUp).toBe(false);
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
+      prompt_set: "Other",
+      prompts_seen: expect.any(Number),
+      from: "insufficient",
+    });
+  });
+
+  it("marks a voice take sent after the screen as a follow-up", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    recorderState.recordingId = "rec-2";
+    recorderState.stop.mockResolvedValue(30);
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+      duration_secs: 30,
+      input_mode: "voice",
+      finalize_latency_ms: expect.any(Number),
+      prompt_set: "Other",
+      prompts_seen: expect.any(Number),
+      follow_up: true,
+    });
+    expect(result.current.isFollowUp).toBe(false);
+  });
+
+  it("marks text written after the screen as a follow-up", async () => {
+    const { result } = await rejectTypedText("idk");
+    act(() => {
+      result.current.showTyping();
+    });
+    act(() => {
+      result.current.setTypedText("Chasing invoices every Friday.");
+    });
+
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+      input_mode: "typed",
+      chars: "Chasing invoices every Friday.".length,
+      prompt_set: "Other",
+      prompts_seen: expect.any(Number),
+      follow_up: true,
+    });
+  });
+
+  it("shows the screen again with the new text after a second reject", async () => {
+    const { result } = await rejectVoiceTake("insufficient_content", "Hi");
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    finalizeBrainDump.mockResolvedValueOnce(
+      rejected("insufficient_content", "Hello? Can you hear me?"),
+    );
+
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(result.current.screen).toBe("insufficient");
+    expect(result.current.heardText).toBe("Hello? Can you hear me?");
+    expect(shown()).toHaveLength(2);
+  });
+
+  it("keeps every event outside the screen as it was", async () => {
+    recorderState.recordingId = "rec-old";
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleRestart();
+    });
+    act(() => {
+      result.current.showTyping();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_restarted");
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: "Other",
+    });
+    expect(result.current.isFollowUp).toBe(false);
+    expect(result.current.typingPlaceholder).toBeUndefined();
+  });
+});
+
 describe("useBrainDumpStep — restart", () => {
   it("throws away the old take locally and on the server before listening again", async () => {
     recorderState.recordingId = "rec-old";
@@ -911,6 +1261,7 @@ describe("useBrainDumpStep — typing", () => {
     expect(result.current.isMicBlocked).toBe(true);
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
       reason: "permission_denied",
+      prompt_set: "Other",
     });
   });
 
@@ -923,6 +1274,7 @@ describe("useBrainDumpStep — typing", () => {
     expect(result.current.screen).toBe("typing");
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
       reason: "chose_to_type",
+      prompt_set: "Other",
     });
 
     act(() => {
@@ -964,6 +1316,8 @@ describe("useBrainDumpStep — typing", () => {
     expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
       input_mode: "typed",
       chars: "invoices every friday".length,
+      prompt_set: "Other",
+      prompts_seen: 0,
     });
     expect(window.sessionStorage.getItem(INTRO_PATH_KEY)).toBe("A");
     expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
@@ -981,6 +1335,27 @@ describe("useBrainDumpStep — typing", () => {
     });
 
     expect(finalizeBody()).toMatchObject({ recording_id: "rec-1" });
+  });
+
+  it("submits typed text where crypto.randomUUID is missing", async () => {
+    const originalCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto),
+    });
+    const { result } = await renderStep();
+
+    act(() => {
+      result.current.setTypedText("notes");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(finalizeBody()).toMatchObject({
+      recording_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      input_mode: "typed",
+    });
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
   });
 
   it("fails on a typed dump the pipeline could not process", async () => {
@@ -1013,6 +1388,353 @@ describe("useBrainDumpStep — typing", () => {
     });
 
     expect(result.current.screen).toBe("failed");
+  });
+});
+
+describe("useBrainDumpStep — prompts", () => {
+  it("reports the role's prompt set and the prompts seen with a voice take", async () => {
+    useOnboardingWizardStore.getState().setRole("Operations");
+    recorderState.recordingId = "rec-1";
+    recorderState.stop.mockResolvedValue(42);
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleStart();
+    });
+    act(() => {
+      result.current.prompt.advance("click");
+    });
+    await act(async () => {
+      await result.current.handleDone();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+      duration_secs: 42,
+      input_mode: "voice",
+      finalize_latency_ms: expect.any(Number),
+      prompt_set: "Operations",
+      prompts_seen: 2,
+    });
+  });
+
+  it("reports the prompt set and the prompts seen with a typed dump", async () => {
+    useOnboardingWizardStore.getState().setRole("Marketing");
+    const { result } = await renderStep();
+
+    act(() => {
+      result.current.showTyping();
+      result.current.setTypedText("the newsletter never ships");
+    });
+    await act(async () => {
+      await result.current.handleSubmitTyped();
+    });
+
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_typed_fallback", {
+      reason: "chose_to_type",
+      prompt_set: "Marketing",
+    });
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_completed", {
+      input_mode: "typed",
+      chars: "the newsletter never ships".length,
+      prompt_set: "Marketing",
+      prompts_seen: 1,
+    });
+  });
+
+  it("reports the prompt set and the prompts seen with a skip", async () => {
+    useOnboardingWizardStore.getState().setRole("HR/People");
+    const { result } = await renderStep();
+
+    await act(async () => {
+      await result.current.handleSkip();
+    });
+
+    // A wide screen never shows the live prompt at rest.
+    expect(trackBrainDump).toHaveBeenCalledWith("brain_dump_skipped", {
+      prompt_set: "HR/People",
+      prompts_seen: 0,
+    });
+  });
+
+  it("matches Other by its id and never by the text typed beside it", async () => {
+    useOnboardingWizardStore.getState().setRole("Other");
+    useOnboardingWizardStore.getState().setOtherRole("Engineering");
+    const { result } = await renderStep();
+
+    expect(result.current.prompt.promptSet).toBe("Other");
+  });
+});
+
+describe("useBrainDumpStep — a refused microphone", () => {
+  function answerWith(answer: "granted" | "denied" | "unavailable") {
+    recorderState.start.mockImplementation(
+      async (options?: { onMicAnswer?: (answer: string) => void }) => {
+        options?.onMicAnswer?.(answer);
+        if (answer === "denied") recorderState.permissionDenied = true;
+        return answer === "granted";
+      },
+    );
+  }
+
+  async function renderRefused() {
+    recorderState.permissionDenied = true;
+    const view = await renderStep();
+    expect(view.result.current.screen).toBe("typing");
+    expect(view.result.current.isMicBlocked).toBe(true);
+    return view;
+  }
+
+  function trackedCount(event: string) {
+    return events().filter((name) => name === event).length;
+  }
+
+  // No Permissions API unless a test brings one: happy-dom answers
+  // "granted" for everything.
+  beforeEach(() => {
+    vi.stubGlobal("navigator", { ...navigator, permissions: undefined });
+  });
+
+  it("starts recording when a retry is allowed", async () => {
+    answerWith("granted");
+    const { result } = await renderRefused();
+
+    await act(async () => {
+      await result.current.handleRetryMicrophone();
+    });
+
+    expect(recorderState.clearPermissionDenied).toHaveBeenCalled();
+    expect(result.current.screen).toBe("recording");
+    expect(result.current.isMicBlocked).toBe(false);
+    // No Permissions API in this browser.
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      {
+        result: "granted",
+        permission_state: "unknown",
+        via: "retry_link",
+      },
+    );
+  });
+
+  it("stays on typing and counts one fallback when refused again", async () => {
+    answerWith("denied");
+    const { result } = await renderRefused();
+
+    await act(async () => {
+      await result.current.handleRecordInstead();
+    });
+
+    expect(result.current.screen).toBe("typing");
+    expect(result.current.isMicBlocked).toBe(true);
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      {
+        result: "denied",
+        permission_state: "unknown",
+        via: "record_instead",
+      },
+    );
+    expect(trackedCount("brain_dump_typed_fallback")).toBe(1);
+  });
+
+  it("drops the blocked notice when the retry finds no microphone", async () => {
+    answerWith("unavailable");
+    const { result, rerender } = await renderRefused();
+
+    await act(async () => {
+      await result.current.handleRetryMicrophone();
+    });
+    // The real recorder clears its refusal with a state update; this
+    // snapshot double needs the render that update would cause.
+    rerender();
+
+    expect(result.current.screen).toBe("typing");
+    expect(result.current.isMicBlocked).toBe(false);
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      expect.objectContaining({ result: "unavailable" }),
+    );
+  });
+
+  it("asks the browser once per click, however fast the clicks come", async () => {
+    let answer!: (started: boolean) => void;
+    recorderState.start.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const { result } = await renderRefused();
+
+    await act(async () => {
+      void result.current.handleRetryMicrophone();
+      void result.current.handleRetryMicrophone();
+      answer(true);
+    });
+
+    expect(recorderState.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the microphone go when it is allowed after the typed text was sent", async () => {
+    let allow!: () => void;
+    let started: boolean | undefined;
+    recorderState.start.mockImplementation(
+      (options?: { shouldRecord?: () => boolean }) =>
+        new Promise<boolean>((resolve) => {
+          allow = () => {
+            started = options?.shouldRecord?.() !== false;
+            resolve(started);
+          };
+        }),
+    );
+    finalizeBrainDump.mockReturnValue(
+      deferred<ReturnType<typeof completed>>().promise,
+    );
+    const { result } = await renderRefused();
+
+    act(() => {
+      void result.current.handleRetryMicrophone();
+      result.current.setTypedText("I run a bakery.");
+    });
+    act(() => {
+      void result.current.handleSubmitTyped();
+    });
+    await waitFor(() => expect(result.current.screen).toBe("processing"));
+
+    await act(async () => {
+      allow();
+    });
+
+    expect(started).toBe(false);
+    expect(result.current.screen).toBe("processing");
+  });
+
+  it("keeps the typed text on its way when a retry is refused meanwhile", async () => {
+    let refuse!: () => void;
+    recorderState.start.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          refuse = () => {
+            recorderState.permissionDenied = true;
+            resolve(false);
+          };
+        }),
+    );
+    finalizeBrainDump.mockReturnValue(
+      deferred<ReturnType<typeof completed>>().promise,
+    );
+    const { result, rerender } = await renderRefused();
+
+    act(() => {
+      void result.current.handleRetryMicrophone();
+      result.current.setTypedText("I run a bakery.");
+    });
+    act(() => {
+      void result.current.handleSubmitTyped();
+    });
+    await waitFor(() => expect(result.current.screen).toBe("processing"));
+
+    await act(async () => {
+      refuse();
+    });
+    rerender();
+
+    expect(result.current.screen).toBe("processing");
+  });
+
+  it("sends the typed text once however fast it is submitted", async () => {
+    finalizeBrainDump.mockReturnValue(
+      deferred<ReturnType<typeof completed>>().promise,
+    );
+    const { result } = await renderRefused();
+    act(() => {
+      result.current.setTypedText("I run a bakery.");
+    });
+
+    act(() => {
+      void result.current.handleSubmitTyped();
+      void result.current.handleSubmitTyped();
+    });
+
+    await waitFor(() => expect(finalizeBrainDump).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps the unavailable notice, not the blocked one, while that retry runs", async () => {
+    recorderState.permissionDenied = false;
+    recorderState.micUnavailable = true;
+    recorderState.start.mockReturnValue(new Promise<boolean>(() => {}));
+    const { result } = await renderStep();
+    act(() => {
+      result.current.showTyping();
+    });
+
+    act(() => {
+      void result.current.handleRetryMicrophone();
+    });
+
+    expect(result.current.isMicBlocked).toBe(false);
+    expect(result.current.isMicUnavailable).toBe(true);
+  });
+
+  it("goes back to the orb from record instead when nothing was refused", async () => {
+    const { result } = await renderStep();
+    act(() => {
+      result.current.showTyping();
+    });
+
+    act(() => {
+      result.current.handleRecordInstead();
+    });
+
+    expect(result.current.screen).toBe("rest");
+    expect(recorderState.start).not.toHaveBeenCalled();
+  });
+
+  it("clears the blocked state when the site is allowed", async () => {
+    const status = Object.assign(new EventTarget(), {
+      state: "denied" as PermissionState,
+    });
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      permissions: { query: vi.fn().mockResolvedValue(status) },
+    });
+    const { result } = await renderRefused();
+    await waitFor(() => expect(result.current.micPermission).toBe("denied"));
+
+    act(() => {
+      status.state = "granted";
+      status.dispatchEvent(new Event("change"));
+    });
+
+    expect(result.current.isMicBlocked).toBe(false);
+    expect(result.current.screen).toBe("typing");
+    expect(trackBrainDump).toHaveBeenCalledWith(
+      "brain_dump_permission_retried",
+      {
+        result: "granted",
+        permission_state: "granted",
+        via: "permission_change",
+      },
+    );
+  });
+
+  it("clears it without a retry event when the block is only reset", async () => {
+    const status = Object.assign(new EventTarget(), {
+      state: "denied" as PermissionState,
+    });
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      permissions: { query: vi.fn().mockResolvedValue(status) },
+    });
+    const { result } = await renderRefused();
+    await waitFor(() => expect(result.current.micPermission).toBe("denied"));
+
+    act(() => {
+      status.state = "prompt";
+      status.dispatchEvent(new Event("change"));
+    });
+
+    expect(result.current.isMicBlocked).toBe(false);
+    expect(trackedCount("brain_dump_permission_retried")).toBe(0);
   });
 });
 

@@ -53,7 +53,7 @@ export function TokenDevtoolBadge({ sessionId, className }: Props) {
         side="top"
         align="end"
         sideOffset={8}
-        // TODO(tokens): no exact role for shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]
+        // oxlint-disable-next-line design-system/no-arbitrary-values -- the floating card lift shadow; no shadow token has it
         className="w-80 rounded-2xl border-border-base/70 p-3 shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]"
       >
         <TokenDevtoolPanel {...devtool} />

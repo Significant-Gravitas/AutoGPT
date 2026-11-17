@@ -32,7 +32,8 @@ export function HomeTileFilter({
         <Button
           variant="ghost"
           size="small"
-          className="gap-1 px-2.5 text-foreground-secondary hover:bg-surface-hover hover:text-foreground-strong"
+          tone="secondary"
+          className="hover:text-foreground-strong"
           leadingIcon={FilterHorizontalIcon}
           aria-label={`${ariaLabelPrefix}: ${activeLabel}`}
         >

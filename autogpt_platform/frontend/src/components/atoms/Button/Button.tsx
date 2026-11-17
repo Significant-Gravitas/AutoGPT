@@ -11,19 +11,22 @@ import {
   ButtonProps,
   extendedButtonVariants,
   ICON_ONLY_SIZES,
-  isLegacyButton,
 } from "./helpers";
-import { LegacyButton } from "./LegacyButton";
+import { CompactButtonProps, isCompactButton } from "./compact-variants";
+import { CompactButton } from "./CompactButton";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-export function Button(props: ButtonProps) {
-  if (isLegacyButton(props)) return <LegacyButton {...props} />;
+export function Button(props: ButtonProps | CompactButtonProps) {
+  if (isCompactButton(props)) return <CompactButton {...props} />;
 
   const {
-    className,
+    className: callerClassName,
+    textSize = "body",
     variant,
     size,
+    shape,
+    tone,
     loading = false,
     withTooltip = true,
     leadingIcon,
@@ -34,6 +37,10 @@ export function Button(props: ButtonProps) {
     asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
+  const className =
+    textSize === "body-md"
+      ? cn(callerClassName, "text-body-md")
+      : callerClassName;
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
@@ -77,7 +84,8 @@ export function Button(props: ButtonProps) {
         <Icon
           data-slot="button-spinner"
           icon={Loading03Icon}
-          className="h-4 w-4 animate-spin"
+          spin
+          className="h-4 w-4"
         />
       )}
       {!loading && resolvedLeftIcon}
@@ -99,7 +107,13 @@ export function Button(props: ButtonProps) {
       <button
         data-slot="button"
         className={cn(
-          extendedButtonVariants({ variant: "link", className }),
+          extendedButtonVariants({
+            variant: "link",
+            size,
+            shape,
+            tone,
+            className,
+          }),
           loading && "pointer-events-none opacity-60",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -114,16 +128,20 @@ export function Button(props: ButtonProps) {
   }
 
   if (loading) {
-    const loadingClassName =
-      variant === "ghost"
-        ? cn(
-            extendedButtonVariants({ variant, size, className }),
-            "pointer-events-none",
-          )
-        : cn(
-            extendedButtonVariants({ variant: "primary", size, className }),
-            "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
-          );
+    const loadingClassName = variant?.startsWith("ghost")
+      ? cn(
+          extendedButtonVariants({ variant, size, shape, tone, className }),
+          "pointer-events-none",
+        )
+      : cn(
+          extendedButtonVariants({
+            variant: "primary",
+            size,
+            shape,
+            className,
+          }),
+          "pointer-events-none border-foreground-tertiary bg-foreground-tertiary text-action-foreground",
+        );
 
     if (as === "NextLink") {
       return (
@@ -162,7 +180,7 @@ export function Button(props: ButtonProps) {
         data-slot="button"
         {...(restProps as LinkProps)}
         className={cn(
-          extendedButtonVariants({ variant, size, className }),
+          extendedButtonVariants({ variant, size, shape, tone, className }),
           loading && "pointer-events-none",
           isDisabled && "pointer-events-none opacity-50",
         )}
@@ -179,7 +197,7 @@ export function Button(props: ButtonProps) {
     <button
       data-slot="button"
       className={cn(
-        extendedButtonVariants({ variant, size, className }),
+        extendedButtonVariants({ variant, size, shape, tone, className }),
         loading && "pointer-events-none",
       )}
       disabled={isDisabled}

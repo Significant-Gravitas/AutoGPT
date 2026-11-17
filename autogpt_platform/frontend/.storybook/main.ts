@@ -12,7 +12,12 @@ const config: StorybookConfig = {
     "../src/components/renderers/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/copilot/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/layout/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]platform[)]/library/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]platform[)]/build/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]platform[)]/profile/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/app/[(]platform[)]/marketplace/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]no-navbar[)]/onboarding/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [
     "@storybook/addon-a11y",

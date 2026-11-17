@@ -1,4 +1,5 @@
 import type { CredentialField } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
+import { credentialHosts } from "@/components/contextual/CredentialsInput/service-identity";
 import { putV2RecordCredentialPicksForThisChat } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CredentialRejection } from "@/app/api/__generated__/models/credentialRejection";
 import type { RJSFSchema } from "@rjsf/utils";
@@ -353,17 +354,25 @@ export function isRejectedCredentialSelected(
   );
 }
 
-/** `{provider: credentialId}` for every credential chosen on the card. */
+/** The chosen credentials, with host-scoped picks kept per host. */
 export function buildCredentialSelections(
   inputCredentials: Record<
     string,
     { id?: string; provider?: string } | undefined
   >,
+  fields: CredentialField[] = [],
 ): Record<string, string> {
   const selections: Record<string, string> = {};
-  for (const credential of Object.values(inputCredentials)) {
+  const schemas = new Map(fields);
+  for (const [field, credential] of Object.entries(inputCredentials)) {
     if (credential?.id && credential.provider) {
-      selections[credential.provider] = credential.id;
+      const schema = schemas.get(field);
+      const hosts = schema ? credentialHosts(schema) : [];
+      const key =
+        hosts.length === 1
+          ? `${credential.provider}:${hosts[0]}`
+          : credential.provider;
+      selections[key] = credential.id;
     }
   }
   return selections;
@@ -383,8 +392,9 @@ export async function reportCredentialPicks(
     string,
     { id?: string; provider?: string } | undefined
   >,
+  fields: CredentialField[] = [],
 ): Promise<void> {
-  const selections = buildCredentialSelections(inputCredentials);
+  const selections = buildCredentialSelections(inputCredentials, fields);
   if (!sessionID || Object.keys(selections).length === 0) return;
   try {
     await putV2RecordCredentialPicksForThisChat(sessionID, { selections });

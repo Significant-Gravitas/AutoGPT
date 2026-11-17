@@ -41,16 +41,17 @@ export function WorkspaceFileRow({
         <FileThumbnail file={item} />
         <span className="flex min-w-0 flex-col">
           <Text
+            tone="primary"
             variant="body-medium"
             as="span"
-            className="truncate text-foreground-strong"
+            className="truncate"
           >
             {item.name}
           </Text>
           <Text
+            tone="muted"
             variant="small"
             as="span"
-            className="text-foreground-tertiary"
             title={formatFullDate(item.created_at)}
           >
             {dayLabel} · {formatFileSize(item.size_bytes)}

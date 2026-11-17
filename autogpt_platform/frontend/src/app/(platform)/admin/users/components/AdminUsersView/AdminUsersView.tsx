@@ -31,7 +31,7 @@ export function AdminUsersView() {
 
   return (
     <div className="flex w-full max-w-[1120px] flex-col gap-6">
-      <Text variant="h4" as="h1" className="leading-7 text-textBlack">
+      <Text variant="h4" as="h1">
         Users
       </Text>
       <TabsLine
@@ -40,6 +40,7 @@ export function AdminUsersView() {
           void setTab(value === BLOCKS_TAB ? BLOCKS_TAB : null)
         }
       >
+        {/* oxlint-disable-next-line design-system/no-restyle -- TabsLine has no neutral-indicator variant at the default size (src/components is P9's) */}
         <TabsLineList flush indicatorClassName="bg-action">
           <TabsLineTrigger value={LOOKUP_TAB} icon={UserSearch01Icon}>
             Lookup
@@ -60,7 +61,7 @@ export function AdminUsersView() {
         </TabsLineContent>
         <TabsLineContent value={BLOCKS_TAB} className="mt-4">
           <div className="flex flex-col gap-6">
-            <Text variant="body" className="max-w-[600px] text-foreground-body">
+            <Text variant="body" className="max-w-[600px]" tone="body">
               IP addresses refused at sign-up and sign-in, and email domains
               refused at sign-up.
             </Text>
@@ -86,7 +87,7 @@ function LookupTab() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Text variant="body" className="max-w-[600px] text-foreground-body">
+      <Text variant="body" className="max-w-[600px]" tone="body">
         Look up an account by ID or email to inspect it, limit it, or act as the
         user.
       </Text>

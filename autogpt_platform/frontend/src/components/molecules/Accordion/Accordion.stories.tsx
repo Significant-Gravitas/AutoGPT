@@ -191,7 +191,7 @@ export function CustomStyled() {
         </AccordionContent>
       </AccordionItem>
       <AccordionItem value="item-2" className="mt-2 border-none">
-        <AccordionTrigger className="rounded-lg bg-info-surface px-4 text-blue-700 hover:bg-blue-100 hover:no-underline">
+        <AccordionTrigger className="rounded-lg bg-info-surface px-4 text-info-foreground hover:bg-info-surface hover:no-underline">
           Blue themed
         </AccordionTrigger>
         <AccordionContent className="px-4 pt-2 text-info-foreground">

@@ -30,14 +30,10 @@ export function SetupNeeded() {
       data-testid="setup-needed"
     >
       <div className="mb-1.5 flex items-center gap-1.5 px-3.5">
-        <Icon
-          icon={Alert01Icon}
-          size={14}
-          // TODO(tokens): no exact role: text-amber-600 #D97706
-          className="text-amber-600"
-          aria-hidden
-        />
-        <Text variant="small-medium" as="h2" className="!text-foreground-body">
+        <span className="flex text-warning-foreground">
+          <Icon icon={Alert01Icon} size={14} aria-hidden />
+        </span>
+        <Text variant="small-medium" as="h2" tone="body">
           Setup needed ({items.length})
         </Text>
       </div>

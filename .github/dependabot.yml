@@ -30,6 +30,8 @@ updates:
         # Declared as dev but imported by runtime code.
         exclude-patterns:
           - "httpx*"
+    cooldown:
+      default-days: 7
 
   # backend (Poetry project)
   - package-ecosystem: "pip"
@@ -80,6 +82,8 @@ updates:
         exclude-patterns:
           - "httpx*"
           - "requests"
+    cooldown:
+      default-days: 7
 
   # frontend (Next.js project)
   - package-ecosystem: "npm"
@@ -186,11 +190,16 @@ updates:
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # "/" covers .github/workflows only; a composite action's pins need its folder.
+    directories:
+      - "/"
+      - ".github/actions/generate-prisma-client"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    cooldown:
+      default-days: 7
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -216,11 +225,16 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    cooldown:
+      default-days: 7
     ignore:
       # frontend/package.json pins `engines.node` to 24.x with engine-strict,
       # so a newer major image fails `pnpm install`. Bump both together by hand.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+      # FalkorDB pins move together with infra's version, by hand (OPEN-3746, #16224).
+      - dependency-name: "falkordb/falkordb"
+      - dependency-name: "falkordb/falkordb-server"
     groups:
       production-dependencies:
         dependency-type: "production"

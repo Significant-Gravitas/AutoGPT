@@ -112,37 +112,37 @@ export function ExportCopilotUsageButton() {
       </Dialog.Trigger>
       <Dialog.Content>
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-body text-foreground-tertiary">
             Aggregates copilot:* spend by user and ISO week and joins each row
             against the user&apos;s tier-derived weekly limit.
           </p>
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="copilot-export-start" className="text-sm">
+              <label htmlFor="copilot-export-start" className="text-body">
                 Start date (UTC)
               </label>
               <input
                 id="copilot-export-start"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
+                className="rounded border px-3 py-1.5 text-body"
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
               />
             </div>
             <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="copilot-export-end" className="text-sm">
+              <label htmlFor="copilot-export-end" className="text-body">
                 End date (UTC)
               </label>
               <input
                 id="copilot-export-end"
                 type="date"
-                className="rounded border px-3 py-1.5 text-sm"
+                className="rounded border px-3 py-1.5 text-body"
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
               />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-caption text-foreground-tertiary">
             Window is capped at 90 days and 100k rows.
           </p>
         </div>

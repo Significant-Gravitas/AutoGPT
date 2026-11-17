@@ -1,3 +1,4 @@
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from ._test_data import make_session
 from .models import WebFetchResponse
 from .web_fetch import (
+    _MAX_CONVERTED_CHARS,
     _MAX_DOWNLOAD_BYTES,
     _MAX_TEXT_CHARS,
     WebFetchTool,
@@ -23,6 +25,33 @@ def test_extract_title_decodes_entities_and_normalizes_whitespace():
 
 def test_extract_title_returns_none_when_missing():
     assert _extract_title("<html><body>No title</body></html>") is None
+
+
+def test_extract_title_reads_the_first_title_whatever_its_case_and_attributes():
+    html = '<HEAD><Title lang="en">Docs</TITLE><title>Second</title></HEAD>'
+    assert _extract_title(html) == "Docs"
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        "<title>Untitled",
+        "<title",
+        "a</title><title",
+        "<p>Hi</p><title>a</titl",
+        "<title></title>",
+    ],
+)
+def test_extract_title_returns_none_without_a_complete_title(html: str):
+    assert _extract_title(html) is None
+
+
+def test_extract_title_scans_unclosed_titles_in_linear_time():
+    html = "<title>" * 20_000
+    started = time.perf_counter()
+    assert _extract_title(html) is None
+    # A pattern that rescans from every <title takes over 10 s on this input.
+    assert time.perf_counter() - started < 1.0
 
 
 def test_is_client_rendered_shell_detects_root_div():
@@ -268,3 +297,12 @@ async def test_execute_handles_text_truncation_only():
     assert f"truncated to {_MAX_TEXT_CHARS:,} chars" in result.message
     assert f"limit of {_MAX_TEXT_CHARS:,} characters reached" in result.content
     assert len(result.content) < _MAX_TEXT_CHARS + 200
+
+
+def test_html_that_expands_when_converted_is_cut_off_while_converting():
+    page = "<p>first words</p>" + "<ul>" * 20_000 + "<pre>" + "\n" * 80_000
+
+    text = _html_to_text(page)
+
+    assert text.startswith("first words")
+    assert len(text) <= _MAX_CONVERTED_CHARS

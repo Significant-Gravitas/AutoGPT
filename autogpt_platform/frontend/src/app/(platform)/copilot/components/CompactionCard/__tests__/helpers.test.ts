@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   barPercent,
+  compactionDetail,
   compactionLabel,
+  DROPPED_LABEL,
   formatTokens,
   parseCompactionOutput,
   phaseProgress,
@@ -154,15 +156,19 @@ describe("barPercent", () => {
   });
 });
 
+const SETTLED_LABEL = "Summarized our earlier messages so I can keep going";
+
 describe("compactionLabel", () => {
-  it("narrates each live phase", () => {
+  it("narrates each live phase in plain words", () => {
     expect(compactionLabel("summarizing", {})).toBe(
-      "Condensing our conversation…",
+      "Summarizing our conversation so far…",
     );
-    expect(compactionLabel("rebuilding", {})).toBe("Reloading context…");
+    expect(compactionLabel("rebuilding", {})).toBe(
+      "Picking up where we left off…",
+    );
   });
 
-  it("celebrates settled rows with real numbers when it has them", () => {
+  it("keeps numbers off the settled headline", () => {
     expect(
       compactionLabel(null, {
         tokensBefore: 128_000,
@@ -170,38 +176,65 @@ describe("compactionLabel", () => {
         messagesBefore: 412,
         messagesAfter: 38,
       }),
-    ).toBe("Condensed 412 messages · 128K → 31K tokens");
+    ).toBe(SETTLED_LABEL);
   });
 
-  it("settles with tokens only when no messages were removed", () => {
+  it("degrades gracefully for legacy rows with no stats", () => {
+    expect(compactionLabel(null, {})).toBe(SETTLED_LABEL);
+  });
+
+  it("reports a dropped history instead of a summary", () => {
+    expect(compactionLabel(null, { dropped: true, messagesBefore: 412 })).toBe(
+      DROPPED_LABEL,
+    );
+  });
+});
+
+describe("compactionDetail", () => {
+  it("gives both measurements when it has them", () => {
     expect(
-      compactionLabel(null, { tokensBefore: 128_000, tokensAfter: 31_000 }),
-    ).toBe("Condensed the conversation · 128K → 31K tokens");
+      compactionDetail({
+        tokensBefore: 128_000,
+        tokensAfter: 31_000,
+        messagesBefore: 412,
+        messagesAfter: 38,
+      }),
+    ).toBe("412 → 38 messages · 128K → 31K tokens");
+  });
+
+  it("gives tokens only when no messages were removed", () => {
+    expect(
+      compactionDetail({ tokensBefore: 128_000, tokensAfter: 31_000 }),
+    ).toBe("128K → 31K tokens");
   });
 
   it("skips the message count when content was summarized in place", () => {
     // Observed in production: 60 messages in, 60 messages out — the rows
-    // survived, only their content shrank. "Condensed 60 messages" would
-    // read as removal that never happened.
+    // survived, only their content shrank.
     expect(
-      compactionLabel(null, {
+      compactionDetail({
         tokensBefore: 128_000,
         tokensAfter: 31_000,
         messagesBefore: 60,
         messagesAfter: 60,
       }),
-    ).toBe("Condensed the conversation · 128K → 31K tokens");
+    ).toBe("128K → 31K tokens");
+  });
+
+  it("gives exact counts when rounding would hide the drop", () => {
+    expect(
+      compactionDetail({ tokensBefore: 128_010, tokensAfter: 128_000 }),
+    ).toBe("128,010 → 128,000 tokens");
   });
 
   it("refuses to advertise an inverted token measurement", () => {
     expect(
-      compactionLabel(null, { tokensBefore: 31_000, tokensAfter: 128_000 }),
-    ).toBe("Condensed the conversation to keep going");
+      compactionDetail({ tokensBefore: 31_000, tokensAfter: 128_000 }),
+    ).toBeNull();
   });
 
-  it("degrades gracefully for legacy rows with no stats", () => {
-    expect(compactionLabel(null, {})).toBe(
-      "Condensed the conversation to keep going",
-    );
+  it("has nothing for legacy rows or a dropped history", () => {
+    expect(compactionDetail({})).toBeNull();
+    expect(compactionDetail({ dropped: true, messagesBefore: 412 })).toBeNull();
   });
 });

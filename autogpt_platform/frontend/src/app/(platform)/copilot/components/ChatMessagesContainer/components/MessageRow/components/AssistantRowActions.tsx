@@ -10,6 +10,7 @@ interface Props {
   readOnly: boolean;
   copyText: string;
   sessionID?: string | null;
+  savedMessageId?: string | null;
 }
 
 const HOVER_REVEAL =
@@ -21,12 +22,14 @@ export function AssistantRowActions({
   readOnly,
   copyText,
   sessionID,
+  savedMessageId,
 }: Props) {
   if (!readOnly) {
     return (
       <AssistantMessageActions
         message={message}
         sessionID={sessionID ?? null}
+        savedMessageId={savedMessageId}
         className={cn(!isLastAssistant && HOVER_REVEAL)}
       />
     );

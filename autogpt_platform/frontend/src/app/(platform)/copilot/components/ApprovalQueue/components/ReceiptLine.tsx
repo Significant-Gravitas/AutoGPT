@@ -19,7 +19,7 @@ export function ReceiptLine({ receipt }: Props) {
         ? [Cancel01Icon, "text-foreground-subtle"]
         : [InformationCircleIcon, "text-foreground-subtle"];
   return (
-    <li className="flex items-center gap-2 px-4 py-2 text-sm text-foreground-secondary">
+    <li className="flex items-center gap-2 px-4 py-2 text-body text-foreground-secondary">
       <Icon icon={icon} size={14} className={tone} aria-hidden />
       <span className="min-w-0 truncate">
         <HeadlineText item={receipt.item} />

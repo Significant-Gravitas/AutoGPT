@@ -43,8 +43,8 @@ Every step is idempotent, so a re-run only picks up what is left.
 What it does not reach:
 
 - Text derived from the block before it was removed: compaction summaries,
-  the assistant's own replies and tool results in the session, and Langfuse
-  traces.
+  the assistant's own replies and tool results in the session, and legacy
+  Langfuse traces (no longer produced; SECRT-2711).
 - A request that loaded an idle session before its row was written and saves
   it after the run's final eviction: it caches the old first message again,
   until the entry expires or is evicted. Model input still reads it without

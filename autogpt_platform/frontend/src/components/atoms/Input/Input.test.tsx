@@ -83,3 +83,46 @@ describe("Input typing", () => {
     },
   );
 });
+
+describe("Input textSize", () => {
+  it("keeps the small size's text-body by default", () => {
+    render(<Input id="q" label="Search" hideLabel size="small" />);
+    const classes = screen.getByRole("textbox").className.split(" ");
+    expect(classes).toContain("text-body");
+    expect(classes).toContain("placeholder:text-body");
+  });
+
+  it("sets the value at text-body-md for body-md, placeholder unchanged", () => {
+    render(
+      <Input id="q" label="Search" hideLabel size="small" textSize="body-md" />,
+    );
+    const classes = screen.getByRole("textbox").className.split(" ");
+    expect(classes).toContain("text-body-md");
+    expect(classes).not.toContain("text-body");
+    expect(classes).toContain("placeholder:text-body");
+  });
+
+  it("leaves a medium input's size unchanged by default", () => {
+    render(<Input id="q" label="Search" hideLabel />);
+    const classes = screen.getByRole("textbox").className.split(" ");
+    expect(classes).not.toContain("text-body-md");
+  });
+
+  it("sets text-body-md on medium text and amount inputs for body-md", () => {
+    render(
+      <>
+        <Input id="q" label="Search" hideLabel textSize="body-md" />
+        <Input
+          id="amount"
+          label="Amount"
+          hideLabel
+          type="amount"
+          textSize="body-md"
+        />
+      </>,
+    );
+    for (const box of screen.getAllByRole("textbox")) {
+      expect(box.className.split(" ")).toContain("text-body-md");
+    }
+  });
+});

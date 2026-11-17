@@ -22,13 +22,7 @@ AuthCard.BottomText = function BottomText({
         "mt-4 inline-flex w-full items-center justify-center gap-1",
       )}
     >
-      <Text
-        variant="body-medium"
-        // TODO(tokens): no exact role for text-slate-950 (#020617)
-        className="text-slate-950"
-      >
-        {text}
-      </Text>
+      <Text variant="body-medium">{text}</Text>
       {link ? (
         <Link href={link.href} variant="secondary">
           {link.text}

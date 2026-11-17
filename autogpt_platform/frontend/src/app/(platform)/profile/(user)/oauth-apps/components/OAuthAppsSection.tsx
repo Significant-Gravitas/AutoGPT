@@ -46,9 +46,9 @@ export function OAuthAppsSection() {
 
   if (oauthApps.length === 0) {
     return (
-      <div className="py-8 text-center text-muted-foreground">
+      <div className="py-8 text-center text-foreground-tertiary">
         <p>You don&apos;t have any OAuth applications.</p>
-        <p className="mt-2 text-sm">
+        <p className="mt-2 text-body">
           OAuth applications can currently <strong>not</strong> be registered
           via the API. Contact the system administrator to request an OAuth app
           registration.
@@ -63,28 +63,25 @@ export function OAuthAppsSection() {
         <div
           key={app.id}
           data-testid="oauth-app-card"
-          className="flex flex-col gap-4 rounded-xl border bg-card p-5"
+          className="flex flex-col gap-4 rounded-xl border bg-surface p-5"
         >
           {/* Header: Logo, Name, Status */}
           <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-surface-hover text-foreground-tertiary">
               {app.logo_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
+                // eslint-disable-next-line @next/next/no-img-element -- the logo URL can be on any host
                 <img
                   src={app.logo_url}
                   alt={`${app.name} logo`}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <Icon
-                  icon={Image01Icon}
-                  className="h-7 w-7 text-muted-foreground"
-                />
+                <Icon icon={Image01Icon} className="h-7 w-7" />
               )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="truncate text-lg font-semibold">{app.name}</h3>
+                <h3 className="truncate text-lead font-semibold">{app.name}</h3>
                 <Badge
                   className="ml-2"
                   variant={app.is_active ? "success" : "error"}
@@ -93,7 +90,7 @@ export function OAuthAppsSection() {
                 </Badge>
               </div>
               {app.description && (
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                <p className="mt-1 line-clamp-2 text-body text-foreground-tertiary">
                   {app.description}
                 </p>
               )}
@@ -102,12 +99,12 @@ export function OAuthAppsSection() {
 
           {/* Client ID */}
           <div>
-            <span className="text-xs font-medium text-muted-foreground">
+            <span className="text-caption font-medium text-foreground-tertiary">
               Client ID
             </span>
             <code
               data-testid="oauth-app-client-id"
-              className="mt-1 block w-full truncate rounded-md border bg-muted px-3 py-2 text-xs"
+              className="mt-1 block w-full truncate rounded-md border bg-surface-hover px-3 py-2 text-caption"
             >
               {app.client_id}
             </code>
@@ -115,7 +112,7 @@ export function OAuthAppsSection() {
 
           {/* Footer: Created date and Actions */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-caption text-foreground-tertiary">
               Created {new Date(app.created_at).toLocaleDateString()}
             </span>
             <div className="flex items-center gap-3">

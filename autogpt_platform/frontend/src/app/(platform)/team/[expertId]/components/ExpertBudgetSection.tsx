@@ -28,19 +28,16 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
       style={
         color
           ? {
-              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-secondary-foreground)))`,
+              // oxlint-disable-next-line design-system/no-inline-styles -- tinted by the expert's own colour, which is runtime data
+              color: `color-mix(in srgb, ${color} 55%, rgb(var(--color-foreground-strong)))`,
             }
           : undefined
       }
       className={cn("flex w-full shrink-0 flex-col gap-1.5", className)}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 tabular-nums">
         <div className="flex items-center gap-1">
-          <Text
-            variant="body-medium"
-            tone="secondary"
-            className={cn(color && "!text-inherit")}
-          >
+          <Text variant="body-medium" tone={color ? "inherit" : "secondary"}>
             Budget
           </Text>
           <Button
@@ -49,15 +46,13 @@ export function ExpertBudgetSection({ expert, color, className }: Props) {
             size="icon-xs"
             leadingIcon={PencilEdit02Icon}
             aria-label="Edit budget"
-            className={cn(color && "text-inherit hover:bg-surface/50")}
+            tone={color ? "inherit" : undefined}
+            // oxlint-disable-next-line design-system/no-restyle -- the ghost Button has no variant with a tinted card's translucent hover
+            className={cn(color && "hover:bg-surface/50")}
             onClick={() => setIsEditOpen(true)}
           />
         </div>
-        <Text
-          variant="body-medium"
-          tone="secondary"
-          className={cn("tabular-nums", color && "!text-inherit")}
-        >
+        <Text variant="body-medium" tone={color ? "inherit" : "secondary"}>
           {weeklySpend
             ? `${creditsToUsdLabel(weeklySpend.spent)} / ${creditsToUsdLabel(weeklySpend.budget)}`
             : "No budget"}

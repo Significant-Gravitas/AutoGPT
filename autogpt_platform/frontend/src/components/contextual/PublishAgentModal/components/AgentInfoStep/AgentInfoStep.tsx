@@ -129,25 +129,16 @@ export function AgentInfoStep({
       <FormProvider {...form}>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5 pb-5">
           {isMarketplaceUpdate && (
-            <section className="rounded-[18px] border border-warning-border bg-warning-surface p-4">
+            <section className="rounded-2xl border border-warning-border bg-warning-surface p-4">
               <div className="mb-4 flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-warning-foreground shadow-subtle">
                   <Icon icon={InformationCircleIcon} size={18} />
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
-                  <Text
-                    variant="body-medium"
-                    as="h3"
-                    // TODO(tokens): no exact role for text-amber-950 #451a03
-                    className="text-amber-950"
-                  >
+                  <Text variant="body-medium" as="h3" tone="warning-strong">
                     Update note
                   </Text>
-                  <Text
-                    // TODO(tokens): no exact role for text-amber-800 #92400e
-                    variant="small"
-                    className="text-amber-800"
-                  >
+                  <Text variant="small" tone="warning">
                     Reviewers use this to understand why the marketplace listing
                     needs a new version.
                   </Text>
@@ -180,38 +171,25 @@ export function AgentInfoStep({
             collapsible
             value={openAccordion}
             onValueChange={setOpenAccordion}
-            className="overflow-hidden rounded-[14px] border border-border-base bg-surface shadow-[0_1px_2px_rgba(15,15,20,0.04)] [&>*+*]:border-t [&>*+*]:border-border-base"
+            className="overflow-hidden rounded-xl border border-border-base bg-surface shadow-subtle [&>*+*]:border-t [&>*+*]:border-border-base"
           >
             <AccordionItem value="basics" className="border-0 px-4">
               <AccordionTrigger className="hover:no-underline">
                 <Text
                   variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 text-textBlack"
+                  className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Store01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Store01Icon} size={18} tone="muted" />
                   Listing basics
                   {basicsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
-                      className="text-rose-500"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : basicsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <div className="grid gap-x-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -297,31 +275,18 @@ export function AgentInfoStep({
                 <Text
                   variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 text-textBlack"
+                  className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={Album01Icon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={Album01Icon} size={18} tone="muted" />
                   Thumbnails
                   {thumbnailsHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
-                      className="text-rose-500"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : thumbnailsComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <ThumbnailImages
                   agentId={agentId}
                   onImagesChange={handleImagesChange}
@@ -337,31 +302,18 @@ export function AgentInfoStep({
                 <Text
                   variant="body-medium-tight"
                   as="span"
-                  className="flex items-center gap-2 text-textBlack"
+                  className="flex items-center gap-2"
                 >
-                  <Icon
-                    icon={SparklesIcon}
-                    size={18}
-                    className="text-foreground-tertiary"
-                  />
+                  <Icon icon={SparklesIcon} size={18} tone="muted" />
                   Experience details
                   {experienceHasError ? (
-                    <Icon
-                      icon={AlertCircleIcon}
-                      size={16}
-                      // TODO(tokens): no exact role for text-rose-500 #f43f5e
-                      className="text-rose-500"
-                    />
+                    <Icon icon={AlertCircleIcon} size={16} tone="error" />
                   ) : experienceComplete ? (
-                    <Icon
-                      icon={CheckmarkCircle02Icon}
-                      size={16}
-                      className="text-brand"
-                    />
+                    <Icon icon={CheckmarkCircle02Icon} size={16} tone="brand" />
                   ) : null}
                 </Text>
               </AccordionTrigger>
-              <AccordionContent className="px-1 pb-4 pt-0">
+              <AccordionContent className="px-1 pt-0 pb-4">
                 <FormField
                   control={form.control}
                   name="description"
@@ -451,11 +403,7 @@ export function AgentInfoStep({
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-1">
-                          <Text
-                            variant="body"
-                            as="span"
-                            className="text-foreground-base"
-                          >
+                          <Text variant="body" as="span">
                             Recommended schedule
                           </Text>
                           <InformationTooltip
@@ -467,13 +415,13 @@ export function AgentInfoStep({
                       <button
                         type="button"
                         onClick={() => setCronScheduleDialogOpen(true)}
-                        // TODO(tokens): no exact role for focus:border-purple-400 #925cf7, focus:ring-purple-400 #925cf7
-                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                        className="flex h-[2.875rem] w-full items-center gap-2 rounded-xl border border-border-base bg-surface px-4 py-2.5 text-left text-foreground-base shadow-none transition-colors hover:border-border-strong focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                       >
                         <Icon
                           icon={Calendar03Icon}
                           size={16}
-                          className="shrink-0 text-foreground-tertiary"
+                          tone="muted"
+                          className="shrink-0"
                         />
                         <Text
                           variant="body-tight"

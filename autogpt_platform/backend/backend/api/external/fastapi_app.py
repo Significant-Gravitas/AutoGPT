@@ -8,6 +8,7 @@ serves v1. The host app mounts v2 at /api/v2 itself.
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
+from backend.api.utils.exceptions import add_exception_handlers
 from backend.monitoring.instrumentation import instrument_fastapi
 
 from .v1.app import v1_app
@@ -33,6 +34,10 @@ async def v1_spec_redirect(request: Request) -> RedirectResponse:
 
 
 external_api.mount("/v1", v1_app)
+
+# A mounted app does not inherit its parent's handlers. These keep a future route
+# on the API's error shape, with a 500 that names no internals, as on v1.
+add_exception_handlers(external_api, server_error_detail=False)
 
 # The REST API process this app is mounted in serves the metrics on their own
 # port, never on this public app.

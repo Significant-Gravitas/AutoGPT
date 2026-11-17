@@ -28,6 +28,7 @@ from typing import Any
 from backend.api.features.experts.models import Expert
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import take_consult_slot
+from backend.copilot.credit_billing import tool_spend_refusal
 from backend.copilot.inference.complete import StructuredCompletion, structured_complete
 from backend.copilot.inference.context import (
     InferenceContext,
@@ -38,7 +39,6 @@ from backend.copilot.inference.context import (
 )
 from backend.copilot.inference.record import record
 from backend.copilot.inference.routing import resolve_route
-from backend.copilot.inference.trace import trace
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -202,6 +202,9 @@ async def _audit_via_provider(
         {"role": "user", "content": audit_material(work, authority, question)},
     ]
     try:
+        # Billed to the platform's key whoever pays for the turn's model.
+        if refusal := await tool_spend_refusal(user_id):
+            return _not_checked(f"{reviewer.name} was not asked: {refusal}")
         completion = await _complete(user_id, session, messages)
     except InferenceError as e:
         logger.warning(f"Consult of {reviewer.id} did not parse: {e}")
@@ -215,7 +218,7 @@ async def _audit_via_provider(
 async def _complete(
     user_id: str, session: ChatSession, messages: list[dict[str, str]]
 ) -> StructuredCompletion[VerdictPayload]:
-    """The audit call, traced as part of the asking chat's turn.
+    """The audit call, made for the asking chat's turn.
 
     On the cheap aux model, not the turn's own. The audit is extraction
     ("what does this promise that the authority list does not cover"), and the
@@ -235,17 +238,15 @@ async def _complete(
     ctx = InferenceContext(
         scope=scope, job=job, route=resolve_route(scope, job, config=config)
     )
-    async with trace(ctx) as call:
-        try:
-            completion = await structured_complete(
-                call.ctx, messages, VerdictPayload, max_output_tokens=MAX_OUTPUT_TOKENS
-            )
-        except InferenceError as e:
-            # A response that arrived but didn't parse was still billed; the
-            # trace reports it as priced, like a call that parsed.
-            call.usage = await _record_spend(call.ctx, session, e.usage)
-            raise
-        call.usage = await _record_spend(call.ctx, session, completion.usage)
+    try:
+        completion = await structured_complete(
+            ctx, messages, VerdictPayload, max_output_tokens=MAX_OUTPUT_TOKENS
+        )
+    except InferenceError as e:
+        # A response that arrived but didn't parse was still billed.
+        await _record_spend(ctx, session, e.usage)
+        raise
+    await _record_spend(ctx, session, completion.usage)
     return completion
 
 

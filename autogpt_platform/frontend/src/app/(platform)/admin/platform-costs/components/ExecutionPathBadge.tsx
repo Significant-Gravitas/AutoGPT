@@ -1,18 +1,16 @@
-// TODO(tokens): no role for these colours yet, so they stay raw:
-// bg-green-500 #16A34A, text-blue-700 #1D4ED8.
-
 function ExecutionPathBadge({
   executionPath,
 }: {
   executionPath: string | null | undefined;
 }) {
-  if (!executionPath) return <span className="text-muted-foreground">—</span>;
+  if (!executionPath)
+    return <span className="text-foreground-tertiary">—</span>;
   const colors: Record<string, string> = {
-    anthropic_batch: "bg-green-500/15 text-success-foreground",
-    openai_batch: "bg-green-500/15 text-success-foreground",
-    flex: "bg-info/15 text-blue-700",
-    sync_baseline: "bg-muted text-muted-foreground",
-    sync: "bg-muted text-muted-foreground",
+    anthropic_batch: "bg-success/15 text-success-foreground",
+    openai_batch: "bg-success/15 text-success-foreground",
+    flex: "bg-info/15 text-info-foreground",
+    sync_baseline: "bg-surface-hover text-foreground-tertiary",
+    sync: "bg-surface-hover text-foreground-tertiary",
   };
   // Shorten the long ``anthropic_batch`` / ``openai_batch`` /
   // ``sync_baseline`` labels so the column doesn't dominate the
@@ -26,7 +24,7 @@ function ExecutionPathBadge({
   return (
     <span
       title={executionPath}
-      className={`inline-block rounded px-1.5 py-0.5 text-tiny font-medium leading-inherit ${colors[executionPath] || colors.sync}`}
+      className={`inline-block rounded px-1.5 py-0.5 text-tiny leading-inherit font-medium ${colors[executionPath] || colors.sync}`}
     >
       {display}
     </span>

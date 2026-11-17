@@ -43,7 +43,7 @@ export const WeekdaySelector: Story = {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">On</span>
+          <span className="text-body font-medium">On</span>
           <MultiToggle
             items={weekdayItems}
             selectedValues={selectedValues}

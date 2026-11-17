@@ -38,7 +38,7 @@ export function FollowupListItem({ followup }: Props) {
   const kindBadgeLabel = followup.session_id ? "Same chat" : "New chat";
   const kindBadge = (
     <span
-      className="rounded-full bg-surface-hover px-2 py-0.5 text-xs text-foreground-secondary"
+      className="rounded-full bg-surface-hover px-2 py-0.5 text-caption text-foreground-secondary"
       data-testid="followup-kind-badge"
     >
       {kindBadgeLabel}
@@ -47,34 +47,23 @@ export function FollowupListItem({ followup }: Props) {
 
   const detailContent = (
     <>
-      <div
-        // TODO(tokens): no exact role for border-slate-50 #F7F8F9, bg-yellow-50 #fef9e6
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-slate-50 bg-yellow-50"
-      >
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-large border border-separator bg-warning-surface">
         <Icon
-          // TODO(tokens): no exact role for text-yellow-700 #ae8800
           icon={Comment01Icon}
           size={18}
-          className="text-yellow-700"
+          className="text-yellow-foreground"
         />
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <Text
-          variant="body-medium"
-          className="block w-full truncate text-ellipsis"
-        >
+        <Text variant="body-medium" className="block w-full text-ellipsis">
           {messagePreview}
         </Text>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <Text
-            variant="small"
-            className="!text-foreground-tertiary"
-            title={nextRunTitle}
-          >
+          <Text variant="small" tone="muted" title={nextRunTitle}>
             {nextRunLabel}
           </Text>
           <span className="text-foreground-disabled">•</span>
-          <Text variant="small" className="!text-foreground-tertiary">
+          <Text variant="small" tone="muted">
             {recurrenceLabel}
           </Text>
           <span className="text-foreground-disabled">•</span>
@@ -138,19 +127,18 @@ export function FollowupListItem({ followup }: Props) {
         <Dialog.Content>
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <Text variant="small" className="!text-foreground-tertiary">
+              <Text variant="small" tone="muted">
                 {nextRunLabel}
               </Text>
               <span className="text-foreground-disabled">•</span>
-              <Text variant="small" className="!text-foreground-tertiary">
+              <Text variant="small" tone="muted">
                 {recurrenceLabel}
               </Text>
               <span className="text-foreground-disabled">•</span>
               {kindBadge}
             </div>
             <pre
-              className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-sm text-foreground-emphasis"
-              style={{ whiteSpace: "pre-wrap" }}
+              className="max-h-[60vh] overflow-auto rounded-medium bg-surface-muted p-3 text-body whitespace-pre-wrap text-foreground-emphasis"
               data-testid="followup-view-body"
             >
               {fullMessage}

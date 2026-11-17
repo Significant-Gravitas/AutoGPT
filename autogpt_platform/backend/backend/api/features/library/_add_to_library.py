@@ -75,6 +75,7 @@ async def resolve_graph_model_for_library(
     user_id: str,
     *,
     admin: bool,
+    tx: prisma.Prisma | None = None,
 ) -> GraphModel:
     """Resolve the graph for an already-validated marketplace version.
 
@@ -83,18 +84,19 @@ async def resolve_graph_model_for_library(
     """
     ag = _require_graph(store_listing_version)
 
-    graph_model = (
-        await graph_db.get_graph_as_admin(
-            graph_id=ag.id, version=ag.version, user_id=user_id
+    if admin:
+        graph_model = await graph_db.get_graph_as_admin(
+            graph_id=ag.id, version=ag.version, user_id=user_id, client=tx
         )
-        if admin
-        else await graph_db.get_graph(
+    elif tx is None:
+        graph_model = await graph_db.get_graph(
             graph_id=ag.id,
             version=ag.version,
             user_id=user_id,
             skip_access_check=True,
         )
-    )
+    else:
+        graph_model = await graph_db.get_graph_at_version(ag.id, ag.version, client=tx)
     if not graph_model:
         raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
     return graph_model
@@ -215,6 +217,9 @@ async def add_graph_to_library(
         user_id, include_nodes=False, include_executions=False
     )
     marketplace = _marketplace_metadata(store_listing_version)
+    # A transactional caller resolves the tenancy before its transaction.
+    if tx is None and organization_id is None:
+        organization_id, team_id = await resolve_default_tenancy(user_id)
     create_data, update_data = await _library_agent_payloads(
         graph_model, user_id, settings_json, marketplace, organization_id, team_id
     )
@@ -248,8 +253,6 @@ async def _library_agent_payloads(
     organization_id: str | None = None,
     team_id: str | None = None,
 ) -> tuple[dict, dict]:
-    if organization_id is None:
-        organization_id, team_id = await resolve_default_tenancy(user_id)
     create_data = {
         "User": {"connect": {"id": user_id}},
         "AgentGraph": {

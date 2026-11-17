@@ -19,7 +19,7 @@ Enable typecast to automatically convert string values to appropriate field type
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id_or_name | Table ID or name | str | Yes |
 | records | Array of records to create (each with 'fields' object) | List[Dict[str, Any]] | Yes |
 | skip_normalization | Skip output normalization to get raw Airtable response (faster but may have missing fields) | bool | No |
@@ -61,7 +61,7 @@ Provide an array of record IDs to delete. Using the table ID instead of the name
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id_or_name | Table ID or name - It's better to use the table ID instead of the name | str | Yes |
 | record_ids | Array of upto 10 record IDs to delete | List[str] | Yes |
 
@@ -99,7 +99,7 @@ Optionally include field metadata for type information and configuration details
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id_or_name | Table ID or name | str | Yes |
 | record_id | The record ID to retrieve | str | Yes |
 | normalize_output | Normalize output to include all fields with proper empty values (disable to skip schema fetch and get raw Airtable response) | bool | No |
@@ -142,7 +142,7 @@ Results can be limited, paginated with offsets, and restricted to specific field
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id_or_name | Table ID or name | str | Yes |
 | filter_formula | Airtable formula to filter records | str | No |
 | view | View ID or name to use | str | No |
@@ -190,7 +190,7 @@ Enable typecast to automatically convert string values to appropriate types. You
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| base_id | The Airtable base ID | str | Yes |
+| base_id | The Airtable base to use: a set of tables, like a spreadsheet file with several sheets. | str (airtable-base-picker) | Yes |
 | table_id_or_name | Table ID or name - It's better to use the table ID instead of the name | str | Yes |
 | records | Array of records to update (each with 'id' and 'fields') | List[Dict[str, Any]] | Yes |
 | typecast | Automatically convert string values to appropriate types | bool | No |

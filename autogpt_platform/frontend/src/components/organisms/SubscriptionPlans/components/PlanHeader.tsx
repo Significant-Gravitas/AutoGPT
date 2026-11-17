@@ -31,8 +31,7 @@ function DefaultHeading() {
         Choose the plan that&apos;s right for{" "}
         <span
           data-slot="plan-header-heading-accent"
-          // TODO(tokens): no role for the indigo-500 gradient stop.
-          className="bg-gradient-to-r from-brand to-indigo-500 bg-clip-text text-transparent"
+          className="bg-gradient-to-r from-brand to-indigo bg-clip-text text-transparent"
         >
           you
         </span>

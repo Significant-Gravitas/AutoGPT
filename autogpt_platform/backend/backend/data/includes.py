@@ -3,11 +3,12 @@ from typing import Sequence, cast
 import prisma.enums
 import prisma.types
 
+# No "AgentBlock": nothing reads it. `AgentNode.agentBlockId` has its id, and
+# the block itself comes from the in-memory registry.
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
     "Webhook": True,
-    "AgentBlock": True,
 }
 
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
@@ -26,13 +27,28 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
 # on pathological cases — `NodeExecutionResult.from_db` rebuilds input/output
 # dicts from these rows, so silently truncating real data would corrupt the
 # result. Matches `MAX_NODE_EXECUTIONS_FETCH` for symmetry.
+# Writes are held to it too, so a stored value always comes back whole.
 MAX_NODE_INPUT_OUTPUT_FETCH = 1000
 
-EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
+# For node executions read under their graph execution: the parent is already
+# at hand, so it isn't attached again to each of them.
+NESTED_EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Node": True,
+}
+
+EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
+    **NESTED_EXECUTION_RESULT_INCLUDE,
     "GraphExecution": True,
+}
+
+# For a caller that reads each node once for the run and attaches it itself.
+# No "GraphExecution" either: these reads are nested under their parent, which
+# `GraphExecution.from_db` hands to each node execution.
+EXECUTION_RESULT_INCLUDE_WITHOUT_NODE: prisma.types.AgentNodeExecutionInclude = {
+    "Input": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
+    "Output": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
 }
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
@@ -46,7 +62,7 @@ MAX_GRAPH_VERSIONS_FETCH = 50
 
 GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "NodeExecutions": {
-        "include": EXECUTION_RESULT_INCLUDE,
+        "include": NESTED_EXECUTION_RESULT_INCLUDE,
         "order_by": EXECUTION_RESULT_ORDER,
         "take": MAX_NODE_EXECUTIONS_FETCH,  # Avoid loading excessive node executions.
     }
@@ -55,12 +71,18 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
 
 def graph_execution_include(
     include_block_ids: Sequence[str],
+    node_execution_include: prisma.types.AgentNodeExecutionInclude | None = None,
 ) -> prisma.types.AgentGraphExecutionInclude:
     return {
         "NodeExecutions": {
             **cast(
                 prisma.types.FindManyAgentNodeExecutionArgsFromAgentGraphExecution,
                 GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],  # type: ignore
+            ),
+            **(
+                {"include": node_execution_include}
+                if node_execution_include is not None
+                else {}
             ),
             "where": {
                 "Node": {
@@ -75,7 +97,7 @@ def graph_execution_include(
 
 
 AGENT_PRESET_INCLUDE: prisma.types.AgentPresetInclude = {
-    "InputPresets": True,
+    "InputPresets": {"order_by": {"time": "asc"}, "take": MAX_NODE_INPUT_OUTPUT_FETCH},
     "Webhook": True,
 }
 

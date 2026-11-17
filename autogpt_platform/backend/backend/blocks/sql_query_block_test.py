@@ -342,13 +342,16 @@ class TestSanitizeError:
 
 
 def _make_credentials(
-    username: str = "user", password: str = "pass"
+    username: str = "user",
+    password: str = "pass",
+    scope: str | None = "postgresql://db.example.com",
 ) -> UserPasswordCredentials:
     return UserPasswordCredentials(
         id="01234567-89ab-cdef-0123-456789abcdef",
         provider="database",
         username=SecretStr(username),
         password=SecretStr(password),
+        scope=scope,
         title="test creds",
     )
 
@@ -482,7 +485,11 @@ class TestSQLQueryBlockRunErrorHandling:
     async def test_connection_error_no_hostname_or_ip_leak(self):
         """Connection error output must not leak hostname, IP, username, or port."""
         block = SQLQueryBlock()
-        creds = _make_credentials(username="postgres", password="secret")
+        creds = _make_credentials(
+            username="postgres",
+            password="secret",
+            scope="postgresql://db.test.supabase.invalid",
+        )
         input_data = _make_input(
             creds, host="db.test.supabase.invalid", port=5432, database="mydb"
         )
@@ -763,7 +770,7 @@ class TestSQLQueryBlockDefaultPort:
     async def test_mysql_default_port_3306(self):
         """MySQL should default to port 3306 when port is None."""
         block = SQLQueryBlock()
-        creds = _make_credentials()
+        creds = _make_credentials(scope="mysql://db.example.com")
         input_data = _make_input(
             creds,
             query="SELECT 1",
@@ -788,7 +795,7 @@ class TestSQLQueryBlockDefaultPort:
     async def test_mssql_default_port_1433(self):
         """MSSQL should default to port 1433 when port is None."""
         block = SQLQueryBlock()
-        creds = _make_credentials()
+        creds = _make_credentials(scope="mssql://db.example.com")
         input_data = _make_input(
             creds,
             query="SELECT 1",
@@ -838,7 +845,7 @@ class TestSQLQueryBlockDefaultPort:
     async def test_explicit_port_overrides_default(self):
         """Explicitly provided port should be used regardless of database_type."""
         block = SQLQueryBlock()
-        creds = _make_credentials()
+        creds = _make_credentials(scope="mysql://db.example.com")
         input_data = _make_input(
             creds,
             query="SELECT 1",
@@ -873,8 +880,8 @@ class TestSQLQueryBlockDNSPinning:
     async def test_connection_uses_resolved_ip(self):
         """The connection string should contain the resolved IP, not the hostname."""
         block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, host="evil.example.com")
+        creds = _make_credentials(scope="postgresql://pinned.example.com")
+        input_data = _make_input(creds, host="pinned.example.com")
         block.check_host_allowed = AsyncMock(return_value=["93.184.216.34"])  # type: ignore[assignment]
         captured_conn_str = {}
 
@@ -889,7 +896,94 @@ class TestSQLQueryBlockDNSPinning:
         assert "error" not in outputs
         # The resolved IP should be in the connection string, not the hostname
         assert "93.184.216.34" in captured_conn_str["value"]
-        assert "evil.example.com" not in captured_conn_str["value"]
+        assert "pinned.example.com" not in captured_conn_str["value"]
+
+
+@pytest.mark.asyncio
+class TestSQLQueryBlockCredentialHostBinding:
+    """A saved login is only sent to the host its scope names; a login with no
+    scope is only used in a graph version the running user saved."""
+
+    @staticmethod
+    def _block_that_would_connect() -> SQLQueryBlock:
+        block = SQLQueryBlock()
+        block.check_host_allowed = AsyncMock(return_value=["203.0.113.7"])  # type: ignore[assignment]
+        block.execute_query = MagicMock(  # type: ignore[assignment]
+            return_value=([{"id": 1}], ["id"], -1, False)
+        )
+        return block
+
+    async def test_login_for_other_host_not_sent(self):
+        block = self._block_that_would_connect()
+        creds = _make_credentials(scope="postgresql://db.example.com")
+        input_data = _make_input(creds, host="203.0.113.7", port=15432)
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "different database host or port" in outputs["error"]
+        assert "so they were not sent" in outputs["error"]
+        assert "add" not in outputs["error"].split()
+        assert "203.0.113.7" not in outputs["error"]
+        block.execute_query.assert_not_called()
+
+    async def test_login_without_scope_not_sent_outside_a_graph(self):
+        block = self._block_that_would_connect()
+        creds = _make_credentials(scope=None)
+        input_data = _make_input(creds, host="db.example.com")
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "saved without a server" in outputs["error"]
+        assert "so they were not sent" in outputs["error"]
+        block.execute_query.assert_not_called()
+
+    async def test_login_pinned_to_other_port_not_sent(self):
+        block = self._block_that_would_connect()
+        creds = _make_credentials(scope="postgresql://db.example.com:5432")
+        input_data = _make_input(creds, host="db.example.com", port=15432)
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "so they were not sent" in outputs["error"]
+        block.execute_query.assert_not_called()
+
+    @pytest.mark.parametrize("owns_graph", [True, False])
+    async def test_login_without_scope_only_used_on_own_graph(self, owns_graph: bool):
+        """A login with no scope is used in a graph version the running user
+        saved, and not in one another user saved."""
+        block = self._block_that_would_connect()
+        creds = _make_credentials(scope=None)
+        input_data = _make_input(creds, host="203.0.113.7", port=15432)
+        db = MagicMock(is_graph_version_owner=AsyncMock(return_value=owns_graph))
+        outputs: dict[str, Any] = {}
+        with patch(
+            "backend.blocks.helpers.host_bound_login.get_database_manager_async_client",
+            return_value=db,
+        ):
+            async for name, value in block.run(
+                input_data,
+                credentials=creds,
+                user_id="user-1",
+                graph_id="graph-1",
+                graph_version=3,
+            ):
+                outputs[name] = value
+        db.is_graph_version_owner.assert_awaited_once_with("graph-1", 3, "user-1")
+        if owns_graph:
+            assert outputs["results"] == [{"id": 1}]
+        else:
+            assert "so they were not sent" in outputs["error"]
+            block.execute_query.assert_not_called()
+
+    async def test_login_for_another_engine_not_sent(self):
+        block = self._block_that_would_connect()
+        creds = _make_credentials(scope="mysql://db.example.com")
+        input_data = _make_input(creds, host="db.example.com", port=5432)
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "so they were not sent" in outputs["error"]
+        block.execute_query.assert_not_called()
+
+    async def test_login_for_this_host_is_used(self):
+        block = self._block_that_would_connect()
+        creds = _make_credentials(scope="postgresql://DB.Example.com:5432")
+        input_data = _make_input(creds, host="db.example.com", port=5432)
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert outputs["results"] == [{"id": 1}]
 
 
 # ---------------------------------------------------------------------------
@@ -1440,7 +1534,7 @@ class TestModuleNotFoundError:
 
     async def test_missing_driver_yields_clean_error(self):
         block = SQLQueryBlock()
-        creds = _make_credentials()
+        creds = _make_credentials(scope="mssql://db.example.com")
         input_data = _make_input(
             creds,
             query="SELECT 1",

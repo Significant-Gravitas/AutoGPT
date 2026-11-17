@@ -2,7 +2,10 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import {
+  getPersistedNotificationBannerDismissed,
+  useCopilotUIStore,
+} from "@/app/(platform)/copilot/store";
 import { NotificationSettingsControls } from "../NotificationSettingsControls";
 import { useNotificationSettings } from "../useNotificationSettings";
 
@@ -73,6 +76,13 @@ describe("NotificationSettingsControls", () => {
     await waitFor(() =>
       expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false),
     );
+    // A deliberate "off" keeps the chat's turn-on banner from coming back.
+    expect(
+      window.localStorage.getItem("copilot-notification-banner-dismissed"),
+    ).toBe("true");
+    expect(useCopilotUIStore.getState().isNotificationBannerDismissed).toBe(
+      true,
+    );
   });
 
   it("asks the browser for permission when switching on", async () => {
@@ -124,6 +134,7 @@ describe("NotificationSettingsControls", () => {
 
   it("switches the flag off when permission is no longer granted", async () => {
     setPermission("denied");
+    window.localStorage.setItem("copilot-notifications-enabled", "true");
     useCopilotUIStore.setState({ isNotificationsEnabled: true });
 
     render(<NotificationSettingsControls />);
@@ -131,6 +142,43 @@ describe("NotificationSettingsControls", () => {
     await waitFor(() =>
       expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(false),
     );
+    // The browser took it away, the user didn't choose "off".
+    expect(
+      window.localStorage.getItem("copilot-notifications-enabled"),
+    ).toBeNull();
+    expect(getPersistedNotificationBannerDismissed()).toBe(false);
+  });
+
+  it("forgets a stored on whose permission was revoked while the app was closed", async () => {
+    setPermission("denied");
+    window.localStorage.setItem("copilot-notifications-enabled", "true");
+    useCopilotUIStore.setState({ isNotificationsEnabled: false });
+
+    render(<NotificationSettingsControls />);
+
+    await waitFor(() =>
+      expect(
+        window.localStorage.getItem("copilot-notifications-enabled"),
+      ).toBeNull(),
+    );
+  });
+
+  it("keeps an old off's banner dismissal when switching on", async () => {
+    setPermission("granted");
+    window.localStorage.setItem("copilot-notifications-enabled", "false");
+    useCopilotUIStore.setState({ isNotificationsEnabled: false });
+    render(<NotificationSettingsControls />);
+
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Notifications" }),
+    );
+
+    await waitFor(() =>
+      expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(true),
+    );
+    expect(
+      window.localStorage.getItem("copilot-notification-banner-dismissed"),
+    ).toBe("true");
   });
 
   it("picks up a permission change made in site settings when the tab regains focus", async () => {

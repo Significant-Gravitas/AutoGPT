@@ -24,7 +24,7 @@ export function VoiceModeButton({
   return (
     <Button
       type="button"
-      variant="icon"
+      variant="tray"
       size="icon"
       aria-label={
         speaking ? "Stop" : isActive ? "Leave voice mode" : "Start voice mode"
@@ -33,9 +33,7 @@ export function VoiceModeButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "border-transparent bg-transparent text-foreground-base shadow-none hover:border-transparent hover:bg-surface-hover hover:text-foreground-base",
         className,
-        disabled && "opacity-40",
         isActive &&
           "bg-action-hover text-action-foreground hover:bg-action hover:text-action-foreground",
       )}

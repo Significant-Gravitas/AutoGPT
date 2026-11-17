@@ -8,7 +8,7 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { usePlatformPayment } from "@/hooks/usePlatformPayment";
 import { getTierLabel } from "./helpers";
 import {
   getSubscriptionValue,
@@ -20,7 +20,7 @@ export type SubscriptionStatus = SubscriptionStatusResponse;
 const TIER_ORDER = ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function useSubscriptionTierSection() {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { isPaymentEnabled } = usePlatformPayment();
   const searchParams = useSearchParams();
   const subscriptionStatus = searchParams.get("subscription");
   const router = useRouter();

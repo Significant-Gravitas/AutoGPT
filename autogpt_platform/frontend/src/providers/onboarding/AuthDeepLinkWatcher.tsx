@@ -1,6 +1,6 @@
 "use client";
 
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { getAuthDeepLink } from "@/lib/auth-redirect";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
@@ -14,7 +14,7 @@ interface Props {
 export function AuthDeepLinkWatcher({ onChange }: Props) {
   const searchParams = useSearchParams();
   const hasPendingAuthDeepLink =
-    sanitizeAuthNext(searchParams.get("next")) !== null;
+    getAuthDeepLink(searchParams.get("next")) !== null;
 
   useEffect(() => {
     onChange(hasPendingAuthDeepLink);

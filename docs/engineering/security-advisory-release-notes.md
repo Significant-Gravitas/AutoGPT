@@ -9,11 +9,17 @@ publish its private advisories.
 
 1. Verify the fix in the release tag, not only on `dev`. Record the first release
    containing the fix. Distinguish a partial mitigation from a complete fix.
+   We don't ship partial mitigations. A release that carries only one, as an older
+   release may, is never an advisory's patched version.
 2. Add a link to that release in the advisory's description text, for example
    under a Fix or Release references heading. The helper searches the API's
-   `description` field; a link only in `references[].url` is insufficient.
+   `description` field, and the repository advisory API has no references field,
+   so the link goes in the description.
    Use numeric versions in package metadata; explain the corresponding Git tag
-   in the description. Do not replace the first fixed version with the latest
+   in the description. Code that never reached a release is the exception: its
+   range is `>= <introducing commit, 7 characters> (unreleased)`, a newline, then
+   `<= <fixing commit, 7 characters>`, and its patched version is the first
+   release whose tag carries the fix. Do not replace the first fixed version with the latest
    release used for validation.
 3. Preserve researcher names, consent and duplicate-report contributions. Use
    GitHub's Credits field and the researcher's chosen handle/profile link. Do not
@@ -58,13 +64,18 @@ The jobs have separate permissions and no shared report artifacts:
 
 1. The read-only job checks out trusted `master` code and passes only a
    snapshot digest and source commit to the writers. Its job summary previews
-   the exact generated security sections and their public target releases.
-   The preview contains no existing release text or raw advisory content.
+   the exact generated security sections and their public target releases, and
+   names any published advisory that no published release lists. That happens when
+   its description doesn't link the release that fixed it, its patched version
+   doesn't match that release, or the release isn't published yet. The credits PR
+   names them too. The preview contains no existing release text or raw advisory
+   content.
 2. The credits job uses that exact code commit, re-fetches anonymous public
    records, and requires the digest to agree. It treats `dev` as data, generates
    the two allowed files, and opens or updates one PR against `dev`. The existing
    bot PR branch is never executed. Both public Git checkouts run without
-   credentials; only the PR action is supplied the write token.
+   credentials. After the files are generated, the job mints a batch-bot App token
+   scoped to contents and pull requests, and only the PR action receives it.
 3. The release job independently re-fetches and compares public records, then
    rechecks the projection after reading release metadata. It reads each target
    release anonymously immediately before updating its managed section. Drafts
@@ -87,13 +98,19 @@ credits PR does not enable or approve release updates. A PR creation failure doe
 not block an independently enabled release writer.
 
 The release writer uses only the repository's short-lived `GITHUB_TOKEN` with
-`contents: write`. The credits writer additionally needs `pull-requests: write`.
-No personal access token or advisory-write credential is used. The authenticated
-transport can only PATCH the body and Latest flag of an existing release; there is no operation
-that creates or publishes an advisory or release. GitHub does not start release
-workflows for release edits made with this token. Do not replace it with a PAT:
-older release tags may retain workflows that build images on `release.edited`.
-The current Classic workflow also limits itself to published Classic tags.
+`contents: write`. Its authenticated transport can only PATCH the body and Latest
+flag of an existing release; there is no operation that creates or publishes an
+advisory or release. GitHub does not start release workflows for release edits
+made with this token. Do not replace it with a PAT or App token: older release
+tags may retain workflows that build images on `release.edited`. The current
+Classic workflow also limits itself to published Classic tags.
+
+The credits writer is the opposite case. A PR opened with `GITHUB_TOKEN` gets its
+CI runs parked until a maintainer approves them, so the credits PR is opened with
+the batch-bot App's token instead (`BATCH_BOT_APP_ID`, `BATCH_BOT_PRIVATE_KEY`,
+as the GitBook sync uses), and its CI runs like any other PR's. The job's own
+`GITHUB_TOKEN` has no permissions. No personal access token or advisory-write
+credential is used.
 
 Public release sections contain advisory links, CVEs and accepted credits, not
 arbitrary report text or titles. When a mapping or published advisory is removed,
@@ -112,9 +129,10 @@ history remain public history; withdrawal cannot erase previously published data
    from the preview and preserved when writing. Local dry runs use the command below.
 3. Set only `PUBLIC_SECURITY_CREDITS_ENABLED=true`, then dispatch with
    `dry_run: false`. This enables the credits PR writer without editing releases.
-4. Review the generated credits PR. GitHub may require a maintainer to approve
-   CI workflows for a PR created with `GITHUB_TOKEN`; this automation does not
-   approve or merge its own PRs. The repository must allow Actions to create PRs.
+4. Review the generated credits PR. The batch-bot App opens it, so its CI runs on
+   its own; it still needs an approving review, and this automation never
+   approves or merges its own PRs. Its body names any published advisory that no
+   published release lists.
 5. After reviewing the public release preview, set
    `PUBLIC_SECURITY_RELEASE_NOTES_ENABLED=true` and dispatch with `dry_run: false`.
    Verify the first applied release sections, preservation of unrelated notes,
@@ -164,15 +182,33 @@ closed record to its canonical advisory and preserve the original evidence and
 discussion. Closing a duplicate does not mean the vulnerability is fixed. Do
 not put private report IDs, attachments or discussion into a public advisory.
 
+## Name the packages
+
+Name the Platform source package `autogpt-platform-beta`. It matches the release
+tags, `autogpt-platform-beta-v<VERSION>`; the releases before 0.2.1 are tagged
+`agpt-platform-beta-v<VERSION>`, and 0.6.44 is tagged `v0.6.44`.
+
+Write each package row with the `other` ecosystem, the one value in the API's
+fixed list that fits. As the last step before publishing, a maintainer names the
+ecosystem in the web UI: Other, then "GitHub release" for the Platform row and
+"Docker" for an image row. GitHub stores its own form of the typed name, so read
+the rows back and use those strings. From then on nothing sends `vulnerabilities`
+through the API: a write that carries the renamed rows fails with 422, while one
+that leaves them out succeeds and keeps the names.
+
 ## Identify Docker distributions
 
 GitHub's [repository advisory API](https://docs.github.com/en/rest/security-advisories/repository-advisories#update-a-repository-security-advisory)
-has no Docker ecosystem option. Use `other` and the image's repository name:
+has no Docker ecosystem option. Write the row with `other` and the image's
+repository name, and name the ecosystem "Docker" before publishing, as above:
 
 | Distribution | Package name | Registry |
 | --- | --- | --- |
 | Platform single-container image | `significantgravitas/autogpt` | [Docker Hub](https://hub.docker.com/r/significantgravitas/autogpt) |
 | Classic image | `significantgravitas/auto-gpt` | [Docker Hub](https://hub.docker.com/r/significantgravitas/auto-gpt) |
+
+The first Platform release with a published image is 0.7.1 (Docker Hub tag
+`v0.7.1`), so an advisory whose affected range ends before 0.7.1 has no image row.
 
 Verify that the affected component ships in the image and that its runtime
 configuration exposes the reported path. Source-based Compose host mappings
@@ -201,11 +237,12 @@ source and its Docker image both patched in 0.9.0, the release link and that
 version are enough. When the rows report different patched versions, for
 example a Classic row and a Platform row fixed in different releases, the
 description needs an explicit package-to-release mapping. Add one comment for
-each patched package, using the exact ecosystem and name from that row,
+each patched package, using the ecosystem and name exactly as the API reads that
+row back,
 alongside the human-readable release link:
 
 ```html
-<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "other", "name": "significantgravitas/autogpt"}} -->
+<!-- security-release: {"tag": "autogpt-platform-beta-v0.9.0", "package": {"ecosystem": "docker", "name": "significantgravitas/autogpt"}} -->
 ```
 
 The helper then requires the mapped row's patched version to match the release.

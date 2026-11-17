@@ -17,11 +17,20 @@ from graphiti_core.llm_client import LLMConfig
 
 from backend.copilot.graphiti import client as client_mod
 from backend.copilot.graphiti.config import GraphitiConfig
+from backend.copilot.graphiti.models import is_luna_model
 from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("model", ["gpt-6-luna", "openai/gpt-6-luna"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "gpt-6-luna",
+        "openai/gpt-6-luna",
+        "gpt-6-luna:nitro",
+        "openai/gpt-6-luna:nitro",
+    ],
+)
 async def test_luna_reranker_disables_reasoning_without_legacy_token_bias(model):
     client, captured = _client_with([_logprob_response("True", -0.1)])
     reranker = CompatOpenAIRerankerClient(
@@ -221,10 +230,32 @@ async def test_rank_uses_configured_model_or_default(model, expected_model):
     assert captured[0]["model"] == expected_model
 
 
+@pytest.mark.parametrize(
+    "model, luna",
+    [
+        ("gpt-6-luna", True),
+        ("openai/gpt-6-luna:nitro", True),
+        ("gpt-6-luna-custom", False),
+        ("gpt-4.1-nano:nitro", False),
+        ("hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M", False),
+    ],
+)
+def test_an_openrouter_variant_of_luna_is_luna(model, luna):
+    assert is_luna_model(model) is luna
+
+
 @pytest.mark.asyncio
-async def test_build_graphiti_uses_compat_reranker(mocker):
+@pytest.mark.parametrize(
+    "base_url, expected_model",
+    [
+        ("https://openrouter.ai/api/v1", "gpt-6-luna:nitro"),
+        ("https://api.openai.com/v1", "gpt-6-luna"),
+    ],
+)
+async def test_build_graphiti_uses_compat_reranker(mocker, base_url, expected_model):
     """client.py must construct the patched reranker, not the stock
-    one — otherwise the 400s come back on the next refactor."""
+    one — otherwise the 400s come back on the next refactor — and send
+    the model as ``resolve_reranker_model`` names it for the endpoint."""
     captured: dict = {}
 
     class _FakeGraphiti:
@@ -235,9 +266,7 @@ async def test_build_graphiti_uses_compat_reranker(mocker):
     mocker.patch.object(
         client_mod,
         "graphiti_config",
-        GraphitiConfig.model_construct(
-            llm_api_key="k", llm_base_url="https://openrouter.ai/api/v1"
-        ),
+        GraphitiConfig.model_construct(llm_api_key="k", llm_base_url=base_url),
     )
 
     client_mod._build_graphiti(
@@ -254,4 +283,5 @@ async def test_build_graphiti_uses_compat_reranker(mocker):
 
     await reranker.rank("query", ["passage"])
 
-    assert requests[0]["model"] == "gpt-6-luna"
+    assert requests[0]["model"] == expected_model
+    assert requests[0]["reasoning_effort"] == "none"

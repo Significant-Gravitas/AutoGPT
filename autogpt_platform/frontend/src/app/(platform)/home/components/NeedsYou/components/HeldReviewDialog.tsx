@@ -52,7 +52,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
         isOpen: carousel.open,
         set: (isOpen) => (isOpen ? undefined : carousel.close()),
       }}
-      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:min-w-0 lg:max-w-[95vw]"
+      className="h-[90vh] p-0 lg:h-[min(720px,85vh)] lg:w-[960px] lg:max-w-[95vw] lg:min-w-0"
     >
       <Dialog.Content>
         <div
@@ -66,7 +66,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
             aria-label="Held call"
             className="flex min-w-0 flex-1 flex-col"
           >
-            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-separator py-3 pl-4 pr-16">
+            <header className="flex min-h-16 shrink-0 items-center gap-2 border-b border-separator py-3 pr-16 pl-4">
               <Button
                 variant="secondary"
                 size="icon-sm"
@@ -84,12 +84,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
                 leadingIcon={ArrowLeft01Icon}
                 onClick={() => carousel.move(-1)}
               />
-              <Text
-                variant="body-medium"
-                as="span"
-                aria-live="polite"
-                className="tabular-nums"
-              >
+              <Text variant="body-medium" as="span" aria-live="polite" tabular>
                 {carousel.position} of {carousel.total}
               </Text>
               <Button
@@ -174,7 +169,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
                     chatLink ? (
                       <Link
                         href={current.item.primary_action.href}
-                        className="rounded-sm text-sm font-medium text-foreground-emphasis underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+                        className="rounded-sm text-body font-medium text-foreground-emphasis underline underline-offset-4 hover:text-foreground-base focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
                       >
                         Open chat
                       </Link>
@@ -185,7 +180,7 @@ export function HeldReviewDialog({ carousel, held, chatLink = true }: Props) {
             ) : null}
           </section>
           {carousel.sheetOpen ? (
-            <div className="absolute inset-x-0 bottom-0 top-16 z-10 flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
+            <div className="absolute inset-x-0 top-16 bottom-0 z-10 flex rounded-t-2xl border-t border-border-base bg-surface shadow-lg lg:hidden">
               <ReviewSidebar carousel={carousel} sheet />
             </div>
           ) : null}
@@ -202,7 +197,7 @@ function Finished({
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
-      <Icon icon={Tick02Icon} size={20} className="text-success" aria-hidden />
+      <Icon icon={Tick02Icon} size={20} tone="success" aria-hidden />
       <Text variant="h4" as="h3" data-pane-focus>
         All {carousel.total} reviewed
       </Text>

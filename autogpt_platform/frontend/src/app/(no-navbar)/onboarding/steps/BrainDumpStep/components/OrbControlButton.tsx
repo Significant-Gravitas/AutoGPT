@@ -27,7 +27,7 @@ export function OrbControlButton({ screen, onClick }: Props) {
       size="icon"
       onClick={onClick}
       aria-label={ariaLabel}
-      className="mt-4 border border-border-base bg-surface hover:border-border-strong hover:bg-surface-muted"
+      className="mt-4"
     >
       <SwapFade swapKey={screen} className="flex items-center justify-center">
         {screen === "failed" ? (

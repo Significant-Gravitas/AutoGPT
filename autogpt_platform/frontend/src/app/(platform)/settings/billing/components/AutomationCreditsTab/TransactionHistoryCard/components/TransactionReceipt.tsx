@@ -40,7 +40,7 @@ export function TransactionReceipt({
       </Text>
       <ReceiptBreakdown transaction={transaction} />
       {note && (
-        <Text variant="small" className="mt-3 text-foreground-secondary">
+        <Text variant="small" tone="secondary" className="mt-3">
           {note}
         </Text>
       )}

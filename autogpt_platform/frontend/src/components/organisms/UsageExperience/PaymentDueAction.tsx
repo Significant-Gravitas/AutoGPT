@@ -43,9 +43,9 @@ export function PaymentDueAction({
         {label}
       </Button>
       <Text
-        variant="small"
+        variant="small-tight"
         tone="muted"
-        className={cn("!text-xs", stacked && "text-center")}
+        align={stacked ? "center" : undefined}
       >
         Opens a secure Stripe page. You can use a different card there.
       </Text>

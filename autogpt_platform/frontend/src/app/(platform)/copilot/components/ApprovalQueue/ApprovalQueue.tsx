@@ -110,7 +110,7 @@ export function ApprovalQueue({
         onShow={null}
       />
       {showModeLine && pending.length > 0 && (
-        <p className="border-b border-separator px-4 py-2 text-sm text-foreground-tertiary">
+        <p className="border-b border-separator px-4 py-2 text-body text-foreground-tertiary">
           {modeLine(mode)}
         </p>
       )}
@@ -120,7 +120,7 @@ export function ApprovalQueue({
             key={item.reviewId}
             id={approvalCardId(item.reviewId)}
             tabIndex={-1}
-            className="scroll-mb-24 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-border-strong"
+            className="scroll-mb-24 outline-none focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:ring-inset"
           >
             {compact &&
             queue.openId !== item.reviewId &&

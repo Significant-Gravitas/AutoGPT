@@ -56,7 +56,7 @@ const TILES: {
     key: "scheduled",
     filter: "scheduled",
     emoji: "📅",
-    color: "text-yellow-600",
+    color: "text-warning",
   },
   {
     label: "Idle",
@@ -102,11 +102,7 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
           >
             <div className="flex min-w-0 items-center gap-1.5">
               <Emoji text={tile.emoji} size={18} />
-              <OverflowText
-                value={tile.label}
-                variant="body"
-                className="text-foreground-emphasis"
-              />
+              <OverflowText value={tile.label} variant="body" tone="emphasis" />
             </div>
             <Text variant="h4">{value}</Text>
           </button>

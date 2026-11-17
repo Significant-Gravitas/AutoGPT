@@ -63,7 +63,7 @@ function ReviewInputField({
         >
           <legend
             data-slot="review-input-field-group-label"
-            className="px-1 text-sm font-medium"
+            className="px-1 text-body font-medium"
           >
             {field.label}
           </legend>
@@ -106,8 +106,9 @@ function StaticField({
     >
       <Text variant="large-medium">{label}</Text>
       <Text
-        variant="body"
-        className={mono ? "whitespace-pre-wrap font-mono text-sm" : undefined}
+        variant={mono ? "body-mono-tight" : "body"}
+        as="p"
+        className={mono ? "whitespace-pre-wrap" : undefined}
       >
         {text}
       </Text>

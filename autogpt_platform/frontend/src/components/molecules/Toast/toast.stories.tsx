@@ -78,7 +78,7 @@ function ToastDemo() {
 
   return (
     <div className="flex flex-col gap-4 p-8">
-      <h2 className="text-2xl font-bold">Toast Examples</h2>
+      <h2 className="text-heading-md font-bold">Toast Examples</h2>
       <div className="flex flex-wrap gap-4">
         <Button onClick={handleDefaultToast}>Default Toast</Button>
         <Button onClick={handleSuccessToast}>Success Toast</Button>

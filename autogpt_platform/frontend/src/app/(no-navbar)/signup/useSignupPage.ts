@@ -1,6 +1,13 @@
+import { useHasSessionCookie } from "@/components/auth/SessionCookieProvider";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCaptureMarketingPrompt } from "@/hooks/useCaptureMarketingPrompt";
-import { sanitizeAuthNext } from "@/lib/auth-redirect";
+import { useServerRenderedForm } from "@/hooks/useServerRenderedForm";
+import {
+  getAuthDeepLink,
+  sanitizeAuthNext,
+  withAuthTracking,
+} from "@/lib/auth-redirect";
+import { providerCallbackPath } from "@/lib/auth/provider-callback";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { setMarketingOptOutFlag } from "@/services/analytics/marketing-opt-out-cookie";
 import { trackSignupMarketingOptOut } from "@/services/analytics/signup-analytics";
@@ -12,11 +19,14 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
+import { isTeamEmail } from "@/lib/auth/team-email";
+import { clearImpersonationEverywhere } from "@/lib/impersonation";
 
 export function useSignupPage() {
   useCaptureMarketingPrompt();
 
   const { user, isUserLoading, isLoggedIn } = useAuth();
+  const hasSessionCookie = useHasSessionCookie();
   const [hasInitializedAuth, setHasInitializedAuth] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const { toast } = useToast();
@@ -24,7 +34,9 @@ export function useSignupPage() {
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider | null>(
+    null,
+  );
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(
     null,
@@ -35,7 +47,11 @@ export function useSignupPage() {
 
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
-  const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+  const rawNext = searchParams.get("next");
+  const nextUrl = getAuthDeepLink(rawNext);
+  // Round trips (Google, the verification email) carry the whole safe `next`;
+  // /auth/callback decides from it, tracking params included.
+  const safeNext = sanitizeAuthNext(rawNext);
 
   useEffect(() => {
     isMounted.current = true;
@@ -71,10 +87,10 @@ export function useSignupPage() {
     defaultValues: {
       email: "",
       password: "",
-      confirmPassword: "",
       marketingOptOut: false,
     },
   });
+  const { formRef, isHydrated } = useServerRenderedForm(form);
 
   function handleToggleMarketingOptOut() {
     if (isSigningUp) return;
@@ -84,15 +100,14 @@ export function useSignupPage() {
   }
 
   async function handleProviderSignup(provider: LoginProvider) {
-    setIsGoogleLoading(true);
+    setLoadingProvider(provider);
     setIsSigningUp(true);
+    // Leftover impersonation (expired admin session, pre-fix cookie) would 403 a non-admin.
+    clearImpersonationEverywhere();
 
     try {
       // Include next URL in OAuth flow if present
-      const callbackUrl = nextUrl
-        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
-        : `/auth/callback`;
-      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+      const fullCallbackUrl = `${window.location.origin}${providerCallbackPath(provider, safeNext)}`;
 
       setMarketingOptOutFlag(form.getValues("marketingOptOut") ?? false);
 
@@ -117,7 +132,7 @@ export function useSignupPage() {
       const { url } = await response.json();
       if (url) window.location.href = url as string;
     } catch (error) {
-      setIsGoogleLoading(false);
+      setLoadingProvider(null);
       setIsSigningUp(false);
       toast({
         title:
@@ -134,7 +149,7 @@ export function useSignupPage() {
     setMarketingOptOutFlag(false);
     setIsLoading(true);
 
-    if (data.email.includes("@agpt.co")) {
+    if (isTeamEmail(data.email)) {
       toast({
         title:
           "Please use Google SSO to create an account using an AutoGPT email.",
@@ -146,14 +161,14 @@ export function useSignupPage() {
     }
 
     setIsSigningUp(true);
+    clearImpersonationEverywhere();
 
     try {
       const result = await signupAction(
         data.email,
         data.password,
-        data.confirmPassword,
         data.marketingOptOut,
-        nextUrl,
+        safeNext,
       );
 
       if (!result.success) {
@@ -187,7 +202,8 @@ export function useSignupPage() {
       }
 
       // Prefer the URL's next parameter, then result.next (for onboarding), then default
-      const redirectTo = nextUrl || result.next || "/";
+      const redirectTo =
+        nextUrl || withAuthTracking(result.next || "/", rawNext);
       router.replace(redirectTo);
     } catch (error) {
       setIsLoading(false);
@@ -217,13 +233,19 @@ export function useSignupPage() {
 
   return {
     form,
+    formRef,
     feedback,
-    nextUrl,
+    nextUrl: safeNext,
     verificationEmail,
     isLoggedIn: !!user,
-    hasInitializedAuth,
+    // Without a session cookie the visitor is signed out, so the form shows at
+    // once; with one, it waits for the session check.
+    isCheckingSession: hasSessionCookie && !hasInitializedAuth,
+    isHydrated,
     isLoading,
-    isGoogleLoading,
+    isGoogleLoading: loadingProvider === "google",
+    isMicrosoftLoading: loadingProvider === "microsoft",
+    isMicrosoftEnabled: environment.isMicrosoftLoginEnabled(),
     isSigningUp,
     isCloudEnv,
     isUserLoading,

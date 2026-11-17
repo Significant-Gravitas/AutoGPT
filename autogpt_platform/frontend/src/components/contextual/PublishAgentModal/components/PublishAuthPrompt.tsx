@@ -10,23 +10,13 @@ export const PublishAuthPrompt = () => {
       <div className="mx-auto inline-flex h-[370px] w-full flex-col items-center justify-center gap-6 px-4 py-5 sm:px-6">
         <div className="flex flex-col items-center gap-4 text-center">
           <Text variant="h3-semibold">Share your AI creations</Text>
-          <Text
-            variant="lead"
-            // TODO(tokens): no exact role for text-neutral-600 #525252
-            className="max-w-[80%] text-neutral-600"
-          >
+          <Text variant="lead" tone="secondary" className="max-w-[80%]">
             Log in or create an account to publish your workflows to the
             marketplace and join a community of creators
           </Text>
         </div>
         <div className="flex flex-col items-center gap-3 sm:flex-row">
-          <Button
-            onClick={() => router.push("/login")}
-            // TODO(tokens): no exact role for bg-neutral-800 #262626, hover:bg-neutral-900 #171717
-            className="bg-neutral-800 text-action-foreground hover:bg-neutral-900"
-          >
-            Log in
-          </Button>
+          <Button onClick={() => router.push("/login")}>Log in</Button>
           <Button onClick={() => router.push("/signup")} variant="secondary">
             Create account
           </Button>

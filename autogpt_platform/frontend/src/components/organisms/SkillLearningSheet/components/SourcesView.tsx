@@ -51,7 +51,7 @@ export function SourcesView({ version, isBusy, onExclude }: Props) {
                     target="_blank"
                     rel="noreferrer"
                     data-slot="skill-learning-sheet-sources-item-link"
-                    className="text-sm text-accent-strong underline"
+                    className="text-body text-accent-strong underline"
                   >
                     Open source
                   </Link>

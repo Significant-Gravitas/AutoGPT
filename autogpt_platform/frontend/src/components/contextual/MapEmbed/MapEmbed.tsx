@@ -16,13 +16,12 @@ function PinLinks({ data }: Props) {
             href={googleMapsPinUrl(pin)}
             target="_blank"
             rel="noreferrer"
-            // TODO(tokens): no link colour role yet; matches chat links
-            className="text-sm text-blue-500 hover:underline"
+            className="text-body text-info hover:underline"
           >
             {pin.name}
           </a>
           {pin.address ? (
-            <Text variant="small" className="text-foreground-tertiary">
+            <Text variant="small" tone="muted">
               {pin.address}
             </Text>
           ) : null}
@@ -41,7 +40,7 @@ export function MapEmbed({ data }: Props) {
       data-testid="map-embed"
     >
       {data.title ? (
-        <figcaption className="border-b border-separator px-3 py-2 text-sm font-medium text-foreground-emphasis">
+        <figcaption className="border-b border-separator px-3 py-2 text-body font-medium text-foreground-emphasis">
           {data.title}
         </figcaption>
       ) : null}

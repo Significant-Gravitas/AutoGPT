@@ -8,8 +8,8 @@ interface Props {
 function UserTable({ data }: Props) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
-        <thead className="border-b text-xs uppercase text-muted-foreground">
+      <table className="w-full text-left text-body">
+        <thead className="border-b text-caption text-foreground-tertiary uppercase">
           <tr>
             <th scope="col" className="px-4 py-3">
               User
@@ -35,11 +35,11 @@ function UserTable({ data }: Props) {
           {data.map((row, idx) => (
             <tr
               key={row.user_id ?? `unknown-${idx}`}
-              className="border-b hover:bg-muted"
+              className="border-b hover:bg-surface-hover"
             >
               <td className="px-4 py-3">
                 <div className="font-medium">{row.email || "Unknown"}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-caption text-foreground-tertiary">
                   {row.user_id}
                 </div>
               </td>
@@ -72,7 +72,7 @@ function UserTable({ data }: Props) {
             <tr>
               <td
                 colSpan={6}
-                className="px-4 py-8 text-center text-muted-foreground"
+                className="px-4 py-8 text-center text-foreground-tertiary"
               >
                 No cost data yet
               </td>

@@ -31,9 +31,9 @@ export function JobTitleStep({
     return (
       <div
         className={cn(
-          "ml-auto rounded-2xl border px-4 py-3 text-body-md leading-relaxed text-foreground",
+          "ml-auto rounded-2xl border px-4 py-3 text-body-md leading-relaxed text-foreground-base",
           "flex w-fit items-center gap-2",
-          bubbleClassFor(color) ?? "border-accent bg-accent/5",
+          bubbleClassFor(color) ?? "border-brand bg-brand/5",
         )}
       >
         <Icon icon={Forward02Icon} size={16} aria-hidden />
@@ -60,10 +60,10 @@ export function JobTitleStep({
               disabled={Boolean(selectedTitle)}
               aria-pressed={selectedTitle ? true : undefined}
               className={cn(
-                "rounded-full border px-5 py-2.5 text-sm font-medium text-foreground transition-colors",
+                "rounded-full border px-5 py-2.5 text-body font-medium text-foreground-base transition-colors",
                 selectedTitle
-                  ? (bubbleClassFor(color) ?? "border-accent bg-accent/5")
-                  : "border-border bg-background hover:border-accent hover:bg-accent/5",
+                  ? (bubbleClassFor(color) ?? "border-brand bg-brand/5")
+                  : "border-border-base bg-canvas hover:border-brand hover:bg-brand/5",
               )}
             >
               {chip}
@@ -74,7 +74,7 @@ export function JobTitleStep({
       {selectedTitle || chips.length === 0 ? null : (
         <span
           aria-hidden
-          className="mr-4 text-xs font-medium uppercase tracking-caps text-muted-foreground"
+          className="mr-4 text-caption font-medium tracking-caps text-foreground-tertiary uppercase"
         >
           or
         </span>
@@ -100,7 +100,8 @@ export function JobTitleStep({
             variant="primary"
             size="small"
             disabled={!trimmed}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Add title
           </Button>
@@ -109,7 +110,8 @@ export function JobTitleStep({
             variant="ghost"
             size="small"
             onClick={onSkip}
-            className="h-[2.625rem] rounded-xl py-3"
+            shape="rounded"
+            className="h-[2.625rem]"
           >
             Skip
           </Button>

@@ -11,6 +11,7 @@ import { BanAllDialog } from "../AccessDialogs/BanAllDialog/BanAllDialog";
 import { ReportError, ReportLoading } from "../ReportStates";
 import { DomainLine } from "./components/DomainLine";
 import { RelatedAccountRow } from "./components/RelatedAccountRow";
+import { getNoRelatedMessage } from "./helpers";
 
 const SHOWN_AT_FIRST = 10;
 
@@ -41,10 +42,8 @@ export function RelatedAccountsSection({ user }: Props) {
         <div className="flex flex-col gap-3">
           <DomainLine report={report} signedInUserId={signedInUser?.id} />
           {report.related.length === 0 ? (
-            <Text variant="small" className="text-foreground-tertiary">
-              {report.ips.length === 0
-                ? "No addresses on record, so related accounts are matched by email domain only: none."
-                : "No other accounts share this account's addresses or email domain."}
+            <Text variant="small" tone="muted">
+              {getNoRelatedMessage(report)}
             </Text>
           ) : (
             <>
@@ -69,7 +68,7 @@ export function RelatedAccountsSection({ user }: Props) {
               ) : null}
               <div className="flex flex-col items-end gap-2 border-t border-border-base pt-3">
                 {report.related_total > report.related.length ? (
-                  <Text variant="small" className="text-foreground-tertiary">
+                  <Text variant="small" tone="muted">
                     Showing {report.related.length.toLocaleString("en-GB")} of{" "}
                     {report.related_total.toLocaleString("en-GB")}. Ban all
                     covers these {report.related.length.toLocaleString("en-GB")}

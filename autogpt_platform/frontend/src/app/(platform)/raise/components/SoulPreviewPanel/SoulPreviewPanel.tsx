@@ -50,7 +50,8 @@ export function SoulPreviewPanel({
 
   return (
     <div className="flex w-full max-w-[19rem] flex-col items-center gap-3">
-      <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border bg-background px-8 py-12 shadow-2xl">
+      {/* oxlint-disable-next-line design-system/no-arbitrary-values -- the 32px radius has no rounded-* step in this theme (3xl is 24px) */}
+      <aside className="flex w-full flex-col items-center gap-8 rounded-[2rem] border border-border-base bg-canvas px-8 py-12 shadow-2xl">
         <div className="size-28 shrink-0 overflow-hidden rounded-full">
           {avatarUrl ? (
             <Image
@@ -69,15 +70,17 @@ export function SoulPreviewPanel({
         <div className="flex flex-col items-center gap-1.5">
           <h2
             className={cn(
-              "text-center text-2xl font-semibold tracking-heading",
-              name ? `text-foreground ${REVEAL}` : "text-muted-foreground/50",
+              "text-center text-heading-md font-semibold tracking-heading",
+              name
+                ? `text-foreground-base ${REVEAL}`
+                : "text-foreground-tertiary/50",
             )}
           >
             {name || "No name yet"}
           </h2>
           {roleLabel ? (
             <p
-              className={`text-sm uppercase tracking-caps text-muted-foreground ${REVEAL}`}
+              className={`text-body tracking-caps text-foreground-tertiary uppercase ${REVEAL}`}
             >
               {roleLabel}
             </p>

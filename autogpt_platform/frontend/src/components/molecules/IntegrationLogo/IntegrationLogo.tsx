@@ -40,7 +40,8 @@ export function IntegrationLogo({
         role="img"
         aria-label={alt ?? provider}
         data-slot="integration-logo"
-        className={cn("text-foreground-subtle", className)}
+        tone="subtle"
+        className={className}
       />
     );
   }

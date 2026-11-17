@@ -43,8 +43,6 @@ const TableBody = React.forwardRef<
 ));
 TableBody.displayName = "TableBody";
 
-// TODO(tokens): no role holds neutral-100 (#F5F5F5). The dark: classes never
-// apply (forcedTheme="light") and are DS6's (SECRT-3116) to delete.
 const TableRow = React.forwardRef<
   HTMLTableRowElement,
   React.HTMLAttributes<HTMLTableRowElement>
@@ -53,7 +51,7 @@ const TableRow = React.forwardRef<
     ref={ref}
     data-slot="table-row"
     className={cn(
-      "border-b transition-colors hover:bg-neutral-100/50 data-[state=selected]:bg-neutral-100 dark:hover:bg-neutral-800/50 dark:data-[state=selected]:bg-neutral-800",
+      "border-b transition-colors hover:bg-surface-hover/50 data-[state=selected]:bg-surface-hover",
       className,
     )}
     {...props}
@@ -61,7 +59,6 @@ const TableRow = React.forwardRef<
 ));
 TableRow.displayName = "TableRow";
 
-// TODO(tokens): no role holds neutral-500 (#737373).
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
   React.ThHTMLAttributes<HTMLTableCellElement>
@@ -70,7 +67,7 @@ const TableHead = React.forwardRef<
     ref={ref}
     data-slot="table-head"
     className={cn(
-      "h-10 px-2 text-left align-middle font-medium text-neutral-500 dark:text-neutral-400 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
+      "h-10 px-2 text-left align-middle font-medium text-foreground-tertiary [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
       className,
     )}
     {...props}

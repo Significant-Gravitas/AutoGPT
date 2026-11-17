@@ -3,18 +3,17 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { useEffect } from "react";
+import { environment } from "@/services/environment";
 
-import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
+import { MemoryLearningSection } from "./components/MemoryLearningSection";
+import { UnavailableMemorySettings } from "./components/UnavailableMemorySettings";
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
-import { LearningHistoryCard } from "./components/LearningHistoryCard";
 import { MemoryChatPanel } from "./components/MemoryChatPanel/MemoryChatPanel";
 import { useMemoryChatPanel } from "./components/MemoryChatPanel/useMemoryChatPanel";
-import { OpenDecisionsCard } from "./components/OpenDecisionsCard";
 import { RecentMemoriesCard } from "./components/RecentMemoriesCard";
 import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
 import { UnderstandingCard } from "./components/UnderstandingCard/UnderstandingCard";
-import { learningSheetScope } from "./helpers";
 import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
 
@@ -23,6 +22,14 @@ export default function SettingsMemoryPage() {
     document.title = "Memory – AutoGPT Platform";
   }, []);
 
+  if (!environment.isGraphMemoryAvailable()) {
+    return <UnavailableMemorySettings />;
+  }
+
+  return <MemorySettings />;
+}
+
+function MemorySettings() {
   const {
     scopeExpertID,
     selectScope,
@@ -46,13 +53,10 @@ export default function SettingsMemoryPage() {
   return (
     <div className="flex flex-col gap-4">
       <header className="flex min-w-0 flex-col pb-2 pl-4">
-        <Text variant="h4" as="h1" className="leading-7 text-textBlack">
+        <Text variant="h4" as="h1">
           Memory
         </Text>
-        <Text
-          variant="body"
-          className="mt-4 max-w-[600px] text-foreground-body"
-        >
+        <Text variant="body" tone="body" className="mt-4 max-w-[600px]">
           {"What AutoGPT remembers about you — and who remembers it."}
         </Text>
       </header>
@@ -87,36 +91,7 @@ export default function SettingsMemoryPage() {
         />
       )}
 
-      {learning.enabled ? (
-        <>
-          <OpenDecisionsCard
-            decisions={learning.decisions}
-            experts={experts}
-            isDeciding={learning.isDeciding}
-            onDecide={learning.decideProposal}
-          />
-          <LearningHistoryCard
-            items={learning.items}
-            isLoading={learning.isLoading}
-            experts={experts}
-            origin={learning.origin}
-            state={learning.state}
-            onOriginChange={learning.setOrigin}
-            onStateChange={learning.setState}
-            onOpen={learning.openRecordFor}
-          />
-          <SkillLearningSheet
-            scope={learningSheetScope(
-              learning.openRecord?.expertId ?? null,
-              experts,
-            )}
-            skillName={learning.openRecord?.skillName ?? null}
-            initialVersionId={learning.openRecord?.versionId ?? null}
-            onChanged={learning.refreshHistory}
-            onClose={learning.closeRecord}
-          />
-        </>
-      ) : null}
+      <MemoryLearningSection learning={learning} experts={experts} />
 
       <EraseMemoryCard
         scopeName={scopeName}
@@ -135,6 +110,7 @@ export default function SettingsMemoryPage() {
         status={chatPanel.status}
         error={chatPanel.error}
         queuedMessages={chatPanel.queuedMessages}
+        isTurnSettling={chatPanel.isTurnSettling}
         onSend={chatPanel.onSend}
         onStop={chatPanel.stop}
         onRetry={chatPanel.retryStart}

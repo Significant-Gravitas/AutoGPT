@@ -9,6 +9,7 @@ owner (personal library or expert): a re-install overwrites that copy and is
 not counted again.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -284,15 +285,17 @@ async def get_marketplace_skills(
     page_size: int = 20,
 ) -> skill_model.MarketplaceSkillsResponse:
     where = _live_version_where(category, search_query)
-    total = await prisma.models.SkillListingVersion.prisma().count(where=where)
-    versions = await prisma.models.SkillListingVersion.prisma().find_many(
-        where=where,
-        include={"ActiveFor": {"include": _LISTING_INCLUDE}},
-        # Seeded versions share a timestamp, and an undefined order between
-        # pages then drops or repeats a row; `id` is the uuid primary key.
-        order=[{"updatedAt": "desc"}, {"id": "desc"}],
-        skip=(page - 1) * page_size,
-        take=page_size,
+    total, versions = await asyncio.gather(
+        prisma.models.SkillListingVersion.prisma().count(where=where),
+        prisma.models.SkillListingVersion.prisma().find_many(
+            where=where,
+            include={"ActiveFor": {"include": _LISTING_INCLUDE}},
+            # Seeded versions share a timestamp, and an undefined order between
+            # pages then drops or repeats a row; `id` is the uuid primary key.
+            order=[{"updatedAt": "desc"}, {"id": "desc"}],
+            skip=(page - 1) * page_size,
+            take=page_size,
+        ),
     )
     listings = [v.ActiveFor for v in versions if v.ActiveFor is not None]
     return skill_model.MarketplaceSkillsResponse(

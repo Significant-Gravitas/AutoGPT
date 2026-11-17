@@ -41,17 +41,13 @@ export function SelectionBar({
       data-testid="artifacts-selection-bar"
     >
       <div className="flex items-center gap-3">
-        <Text
-          variant="body-medium"
-          as="span"
-          className="text-foreground-strong"
-        >
+        <Text variant="body-medium" as="span" tone="primary">
           {count} selected
         </Text>
         {count < totalCount ? (
           <button
             type="button"
-            className="text-sm text-foreground-tertiary underline-offset-2 hover:text-foreground-strong hover:underline"
+            className="text-body text-foreground-tertiary underline-offset-2 hover:text-foreground-strong hover:underline"
             onClick={onSelectAll}
             data-testid="artifacts-select-all"
           >
@@ -74,8 +70,9 @@ export function SelectionBar({
           size="xs"
           disabled={isDeleting}
           onClick={handleDelete}
-          // TODO(tokens): no fitting role for text-red-600 #D93636; #D93636 is error-hover, a hover fill
-          className="text-red-600 hover:bg-error-surface hover:text-error-foreground"
+          tone="danger"
+          // oxlint-disable-next-line design-system/no-restyle -- a red outline action's hover; the destructive variant is a red fill
+          className="hover:bg-error-surface hover:text-error-foreground"
           data-testid="artifacts-selection-delete"
         >
           <Icon icon={Delete02Icon} size={14} />

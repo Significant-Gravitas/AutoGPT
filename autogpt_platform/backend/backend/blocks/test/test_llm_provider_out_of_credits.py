@@ -117,6 +117,7 @@ async def test_llm_call_raises_platform_error_for_orchestrator_callers():
             llm_model=llm.LLMModel("openai/gpt-oss-120b"),
             prompt=[{"role": "user", "content": "hi"}],
             max_tokens=10,
+            on_abandoned=None,
         )
 
     assert "temporarily unavailable" in str(exc_info.value)
@@ -141,4 +142,5 @@ async def test_non_billing_errors_pass_through_untouched():
             llm_model=llm.LLMModel("openai/gpt-oss-120b"),
             prompt=[{"role": "user", "content": "hi"}],
             max_tokens=10,
+            on_abandoned=None,
         )

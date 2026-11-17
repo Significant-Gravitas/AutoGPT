@@ -33,12 +33,12 @@ export function WaitlistErrorContent(props: Props) {
         ) : null}
       </div>
       <div className="flex flex-col gap-2">
-        <Text variant="small" className="text-center text-muted-foreground">
+        <Text variant="small" tone="muted" className="text-center">
           Already joined? Double-check you are using the same email you signed
           up with. Need a hand? Emails us at{" "}
           <a
             href="mailto:contact@agpt.co"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground-base"
           >
             contact@agpt.co
           </a>{" "}
@@ -47,7 +47,7 @@ export function WaitlistErrorContent(props: Props) {
             href="https://discord.gg/autogpt"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground-base"
           >
             message us on Discord
           </a>

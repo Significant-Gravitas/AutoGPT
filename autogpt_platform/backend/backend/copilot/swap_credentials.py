@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from backend.copilot.integration_creds import (
     ProviderTokenUnavailable,
+    expert_allowed_ids,
     get_provider_token,
     granted_to_box,
 )
@@ -110,7 +111,8 @@ async def resolve_swap_credential(
     ``hsurr:<name>:<credential id>`` names.  A chat's box is granted the
     credential the chat would have been handed as a token (its pick, else the
     best match for the requested scopes); another of the user's accounts, or
-    an id typed by hand, resolves to nothing.
+    an id typed by hand, resolves to nothing.  An expert's box resolves only
+    what its expert is granted.
 
     A provider outside the box's ceiling (``providers`` in its record, the
     run's ``CopilotPermissions``) comes back with no host it may be sent to:
@@ -121,11 +123,11 @@ async def resolve_swap_credential(
     still yields a token (disconnected since): in each case the placeholder
     goes out as it is.  :class:`NoLiveBox` if *box* is not a live box of
     *user_id*'s that gets swaps (a revoked or rotated credential, a block's
-    box).  A failure to read the grants, or to look up or refresh every
-    granted token, raises too (``ProviderTokenUnavailable`` for the latter)
-    rather than answering ``None``: the proxy scrubs responses against this
-    answer, so a failure has to reach it as an outage (it refuses what it
-    cannot scrub), not as "nothing to scrub".  One granted credential that
+    box).  A failure to read the box's or the expert's grants, or to look up
+    or refresh every granted token, raises too (``ProviderTokenUnavailable``
+    for the latter) rather than answering ``None``: the proxy scrubs responses
+    against this answer, so a failure has to reach it as an outage (it refuses
+    what it cannot scrub), not as "nothing to scrub".  One granted credential that
     fails while another resolves is left out instead: it is never swapped in,
     so there is no value of it to scrub, and one revoked account must not
     take down the box's others.
@@ -138,6 +140,10 @@ async def resolve_swap_credential(
     permitted = ceiling is None or name in ceiling
     sandbox_id = record.get("sandbox_id")
     granted = await granted_to_box(sandbox_id, name) if sandbox_id else set()
+    kind, _, owner_id = str(record.get("owner") or "").partition(":")
+    allowed_ids = await expert_allowed_ids(
+        user_id, owner_id if kind == "expert" else None
+    )
     values: dict[str, str] = {}
     failure: ProviderTokenUnavailable | None = None
     for credential_id in sorted(granted):
@@ -146,7 +152,12 @@ async def resolve_swap_credential(
         # single-use refresh token, and this service runs on one event loop.
         try:
             token = await get_provider_token(
-                user_id, name, credential_id=credential_id, strict=True, lock=True
+                user_id,
+                name,
+                credential_id=credential_id,
+                allowed_ids=allowed_ids,
+                strict=True,
+                lock=True,
             )
         except ProviderTokenUnavailable as exc:
             failure = exc

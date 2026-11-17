@@ -34,7 +34,7 @@
     gradient change that used to snap would now animate.
   - Scrollbars: Tailwind 4 has its own `scrollbar-thumb-*`,
     `scrollbar-track-*` and `scrollbar-thin` utilities, under the same names
-    as the tailwind-scrollbar classes (tailwind.scrollbar.ts), and they set
+    as the tailwind-scrollbar classes (globals.css), and they set
     `scrollbar-color` directly. Their declarations are dropped. And as
     tailwind-scrollbar did, a `hover:` (`focus:`, `active:`, ...) scrollbar
     colour sets `--scrollbar-thumb-hover` on the element itself, which the

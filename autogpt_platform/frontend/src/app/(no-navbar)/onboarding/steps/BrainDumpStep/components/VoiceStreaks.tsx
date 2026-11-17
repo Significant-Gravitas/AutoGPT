@@ -2,6 +2,7 @@
 
 import type { MotionValue } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 import {
   envelope,
   headAngle,
@@ -89,13 +90,16 @@ export function VoiceStreaks({ field, levels, isActive, layer, store }: Props) {
       ref={canvasRef}
       data-testid={`voice-streaks-${layer}`}
       aria-hidden
-      className="pointer-events-none absolute"
-      style={{
-        inset: -field.pad,
-        width: field.box,
-        height: field.box,
-        zIndex: layer === "front" ? 20 : 0,
-      }}
+      className={cn(
+        "pointer-events-none absolute inset-[var(--streak-inset)] size-[var(--streak-box)]",
+        layer === "front" ? "z-20" : "z-0",
+      )}
+      style={
+        {
+          "--streak-inset": `${-field.pad}px`,
+          "--streak-box": `${field.box}px`,
+        } as React.CSSProperties
+      }
     />
   );
 }

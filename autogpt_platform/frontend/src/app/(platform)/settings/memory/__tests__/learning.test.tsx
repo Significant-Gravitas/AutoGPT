@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetCopilotChatRegistry } from "@/app/(platform)/copilot/copilotChatRegistry";
 import { TEST_BACKEND_BASE_URL } from "@/app/(platform)/copilot/__tests__/sse-helpers";
-import { getListExpertsMockHandler200 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import {
+  getListExpertsMockHandler200,
+  getListExpertsResponseMock200,
+} from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
   getGetMyMemoryOverviewMockHandler200,
   getListMyMemoryFactsMockHandler200,
@@ -92,7 +95,22 @@ const proposal: SkillVersionSummary = {
   blocked_step: null,
 };
 
+const graphRequests: string[] = [];
+function recordGraphRequest({ request }: { request: Request }) {
+  if (/\/api\/memory\/.*(facts|overview)/.test(request.url))
+    graphRequests.push(request.url);
+}
+afterEach(() => {
+  server.events.removeListener("request:start", recordGraphRequest);
+  if (process.env.NEXT_PUBLIC_GRAPH_MEMORY === "disabled")
+    expect(graphRequests).toEqual([]);
+  vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", undefined);
+  graphRequests.length = 0;
+  server.events.on("request:start", recordGraphRequest);
   learningEnabled = true;
   resetCopilotChatRegistry();
   window.history.replaceState({}, "", "/settings/memory");
@@ -382,4 +400,94 @@ describe("Settings memory page — learning", () => {
     const restore = within(panel).getByRole("button", { name: "Restore v2" });
     expect(restore.hasAttribute("disabled")).toBe(true);
   });
+});
+
+it("keeps learning off under its own flag when graph memory is disabled", async () => {
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
+  learningEnabled = false;
+  const history = vi.fn(() => ({ expert_id: null, items: [] }));
+  const decisions = vi.fn(() => ({ items: [] }));
+  server.use(
+    getListSkillLearningHistoryMockHandler200(history),
+    getListSkillLearningDecisionsMockHandler200(decisions),
+  );
+  render(<SettingsMemoryPage />);
+  expect(
+    await screen.findByText(
+      "Long-term memory is unavailable on this installation.",
+    ),
+  ).toBeDefined();
+  expect(screen.queryByText("Learning history")).toBeNull();
+  expect(screen.queryByText("Needs your decision")).toBeNull();
+  expect(history).not.toHaveBeenCalled();
+  expect(decisions).not.toHaveBeenCalled();
+});
+
+it("shows learning history and pending decisions when graph memory is disabled", async () => {
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
+  render(<SettingsMemoryPage />);
+  expect(
+    await screen.findByText(
+      "Long-term memory is unavailable on this installation.",
+    ),
+  ).toBeDefined();
+  expect(await screen.findByText("Learning history")).toBeDefined();
+  expect(
+    await screen.findByText(
+      "Added an encoding check after the previous import failed.",
+    ),
+  ).toBeDefined();
+  expect(await screen.findByText("Needs your decision")).toBeDefined();
+  expect(
+    await screen.findByText(/Added a duplicate column check/),
+  ).toBeDefined();
+});
+
+it("opens an expert skill link without querying graph memory or personal skill data", async () => {
+  vi.stubEnv("NEXT_PUBLIC_GRAPH_MEMORY", "disabled");
+  window.history.replaceState(
+    {},
+    "",
+    "/settings/memory?expert=expert-1&skill=csv-import-checks&version=ver-9",
+  );
+  const requested: string[] = [];
+  server.use(
+    getListExpertsMockHandler200([
+      {
+        ...getListExpertsResponseMock200()[0],
+        id: "expert-1",
+        name: "Maria",
+        is_archived: false,
+      },
+    ]),
+    getGetSkillLearningDetailMockHandler200(({ request }) => {
+      requested.push(request.url);
+      return {
+        skill_name: proposal.skill_name,
+        expert_id: "expert-1",
+        state: "needs_decision",
+        state_label: "Needs your decision",
+        current_version: proposal,
+        open_decision: proposal,
+        versions: [proposal],
+        policy: {
+          auto_improve: true,
+          learning_paused: false,
+          use_paused: false,
+        },
+        use: proposal.use!,
+      };
+    }),
+  );
+  render(<SettingsMemoryPage />);
+  const panel = await screen.findByRole("complementary", {
+    name: "csv-import-checks",
+  });
+  expect(await within(panel).findByTestId("version-state")).toBeDefined();
+  expect(requested.length).toBeGreaterThan(0);
+  expect(
+    requested.every(
+      (url) => new URL(url).searchParams.get("expert_id") === "expert-1",
+    ),
+  ).toBe(true);
 });

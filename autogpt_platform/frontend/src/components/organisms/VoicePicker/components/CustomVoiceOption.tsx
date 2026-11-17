@@ -38,8 +38,8 @@ export function CustomVoiceOption({
         htmlFor={`${textareaId}-choice`}
         data-slot="custom-voice-option-label"
         className={cn(
-          "mb-2 block cursor-pointer text-xs font-semibold uppercase tracking-caps",
-          labelClassName ?? "text-accent",
+          "mb-2 block cursor-pointer text-caption font-semibold tracking-caps uppercase",
+          labelClassName ?? "text-brand",
         )}
       >
         <input
@@ -72,15 +72,17 @@ export function CustomVoiceOption({
         placeholder="Paste a few sentences written the way you'd like this expert to sound."
         data-slot="custom-voice-option-textarea"
         className={cn(
-          "w-full resize-none border bg-background text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+          "w-full resize-none border bg-canvas text-body leading-relaxed text-foreground-base placeholder:text-foreground-tertiary focus:ring-1 focus:ring-focus focus:outline-none",
           compact ? "rounded-md px-3 py-2" : "rounded-xl px-4 py-2.5",
-          isSelected ? "border-ring" : "border-input focus:border-ring",
+          isSelected
+            ? "border-focus"
+            : "border-border-strong focus:border-focus",
         )}
       />
       <p
         id={characterCountId}
         data-slot="custom-voice-option-count"
-        className="mt-1.5 text-right text-xs text-muted-foreground"
+        className="mt-1.5 text-right text-caption text-foreground-tertiary"
       >
         {customText.length.toLocaleString()} /{" "}
         {MAX_CUSTOM_VOICE_SAMPLE_CHARACTERS.toLocaleString()} characters

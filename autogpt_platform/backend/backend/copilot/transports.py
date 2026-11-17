@@ -11,6 +11,7 @@ being an answer the moment a user can link more than one ChatGPT account, and
 this contract is the one the UI will keep.
 """
 
+import asyncio
 import logging
 import time
 from typing import Optional, get_args
@@ -25,8 +26,8 @@ from backend.integrations.codex.access import has_codex_access_for_discovery
 from backend.integrations.codex.auth_bundle import CodexAuthBundleError
 from backend.integrations.codex.credential_codec import bundle_from_credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth.microsoft_365_copilot import (
-    Microsoft365CopilotDeviceAuthHandler,
+from backend.integrations.oauth.microsoft_services import (
+    is_microsoft_365_copilot_credential,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.settings import BehaveAs, Settings
@@ -80,6 +81,23 @@ def is_deployment_chat_available() -> bool:
 
 async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
     """Every transport this user can chat over, one of them marked default."""
+    # A new chat waits for this list before it is created, so the three
+    # reads run side by side. The list answers only once every read has
+    # ended, and a failure is raised in a fixed order (ChatGPT, Microsoft,
+    # the saved default), whichever read fails first.
+    codex, microsoft_365, saved = await asyncio.gather(
+        _valid_codex_credentials(user_id),
+        _valid_microsoft_365_copilot_credentials(user_id),
+        user_db().get_user_default_chat_route(user_id),
+        return_exceptions=True,
+    )
+    if isinstance(codex, BaseException):
+        raise codex
+    if isinstance(microsoft_365, BaseException):
+        raise microsoft_365
+    if isinstance(saved, BaseException):
+        raise saved
+    saved_provider, saved_credential_id = saved
     transports = [
         ChatTransportResponse(
             auth_provider="platform",
@@ -101,7 +119,7 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
             available=True,
             default=False,
         )
-        for credentials in await _valid_codex_credentials(user_id)
+        for credentials in codex
     )
     transports.extend(
         ChatTransportResponse(
@@ -111,11 +129,7 @@ async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:
             available=True,
             default=False,
         )
-        for credentials in await _valid_microsoft_365_copilot_credentials(user_id)
-    )
-
-    saved_provider, saved_credential_id = await user_db().get_user_default_chat_route(
-        user_id
+        for credentials in microsoft_365
     )
     _mark_default(transports, saved_provider, saved_credential_id)
     return transports
@@ -288,9 +302,13 @@ def _is_valid_codex_credentials(credentials: Credentials | None) -> bool:
 async def _valid_microsoft_365_copilot_credentials(
     user_id: str,
 ) -> list[Credentials]:
-    credentials = await credentials_manager.store.get_creds_by_provider(
-        user_id, ProviderName.MICROSOFT_365_COPILOT
-    )
+    credentials = [
+        credential
+        for provider in (ProviderName.MICROSOFT, ProviderName.MICROSOFT_365_COPILOT)
+        for credential in await credentials_manager.store.get_creds_by_provider(
+            user_id, provider
+        )
+    ]
     return [
         credential
         for credential in credentials
@@ -302,11 +320,8 @@ def _is_valid_microsoft_365_copilot_credentials(
     credentials: Credentials | None,
 ) -> bool:
     return (
-        isinstance(credentials, OAuth2Credentials)
-        and credentials.provider == ProviderName.MICROSOFT_365_COPILOT
-        and set(Microsoft365CopilotDeviceAuthHandler.CHAT_SCOPES).issubset(
-            credentials.scopes
-        )
+        is_microsoft_365_copilot_credential(credentials)
+        and isinstance(credentials, OAuth2Credentials)
         and _microsoft_365_copilot_token_usable(credentials)
     )
 

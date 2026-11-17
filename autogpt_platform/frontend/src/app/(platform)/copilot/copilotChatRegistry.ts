@@ -7,6 +7,7 @@ import {
   createCopilotTransport,
   type MutableValue,
 } from "./copilotStreamTransport";
+import { countAnswerTowardStarToast } from "./helpers/githubStarToast";
 import type { CopilotLlmModel } from "./store";
 
 interface CopilotChatRuntime {
@@ -87,6 +88,7 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
       if (args.isDisconnect) {
         markChatRuntimeDisconnected(sessionId);
       }
+      countAnswerTowardStarToast(args);
       return callbacks.onFinish?.(args);
     },
     onError: (error) => {

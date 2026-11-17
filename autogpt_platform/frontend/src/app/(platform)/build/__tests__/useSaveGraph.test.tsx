@@ -21,16 +21,21 @@ vi.mock("nuqs", () => ({
 let mockCurrentGraph: unknown;
 const mockCreate = vi.fn();
 const mockUpdate = vi.fn();
+let mockUpdateOptions: {
+  mutation: {
+    onSuccess: (response: unknown, variables: unknown) => Promise<void>;
+  };
+};
 vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   useGetV1GetSpecificGraph: () => ({ data: mockCurrentGraph }),
   usePostV1CreateNewGraph: () => ({
     mutateAsync: mockCreate,
     isPending: false,
   }),
-  usePutV1UpdateGraphVersion: () => ({
-    mutateAsync: mockUpdate,
-    isPending: false,
-  }),
+  usePutV1UpdateGraphVersion: (options: typeof mockUpdateOptions) => {
+    mockUpdateOptions = options;
+    return { mutateAsync: mockUpdate, isPending: false };
+  },
 }));
 
 const mockSetNodeErrorsForBackendId = vi.fn();
@@ -69,6 +74,7 @@ vi.mock("@/services/builder-draft/draft-service", () => ({
 }));
 
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { draftService } from "@/services/builder-draft/draft-service";
 import { useSaveGraph } from "../hooks/useSaveGraph";
 
 describe("useSaveGraph", () => {
@@ -106,6 +112,25 @@ describe("useSaveGraph", () => {
     });
     expect(mockSetGraphSchemas).toHaveBeenCalled();
     expect(returned).toBe(updated);
+  });
+
+  it("clears the draft under the sent ID when the save answers with a copy", async () => {
+    mockCurrentGraph = { id: "graph-1", name: "Agent", version: 1 };
+    const copy = { id: "graph-2", version: 1 };
+    mockUpdate.mockImplementation(async (variables) => {
+      const response = { data: { graph: copy, skipped_webhook_presets: [] } };
+      await mockUpdateOptions.mutation.onSuccess(response, variables);
+      return response;
+    });
+
+    const { result } = renderHook(() => useSaveGraph({ showToast: false }));
+    await act(async () => {
+      await result.current.saveGraph();
+    });
+
+    expect(
+      vi.mocked(draftService.deleteDraft).mock.calls.flat().sort(),
+    ).toEqual(["graph-1", "graph-2"]);
   });
 
   it("warns the user when a trigger swap leaves webhook presets behind", async () => {

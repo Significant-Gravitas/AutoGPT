@@ -3,16 +3,16 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 const STATUS_CONFIG = {
-  working: { label: "Working", dot: "bg-primary", pulse: true },
-  ready: { label: "Ready", dot: "bg-emerald-500", pulse: false },
+  working: { label: "Working", dot: "bg-action", pulse: true },
+  ready: { label: "Ready", dot: "bg-success", pulse: false },
   needs_setup: { label: "Finish setup", dot: "bg-warning", pulse: false },
-  paused: { label: "Paused", dot: "bg-zinc-400", pulse: false },
+  paused: { label: "Paused", dot: "bg-foreground-subtle", pulse: false },
   failed: { label: "Failed", dot: "bg-error", pulse: false },
 };
 
 const UNKNOWN_STATUS_CONFIG = {
   label: "Unknown",
-  dot: "bg-zinc-300",
+  dot: "bg-border-strong",
   pulse: false,
 };
 

@@ -25,7 +25,7 @@ export function ReferenceLink({ reference, children }: Props) {
       translate="no"
       title={hasCard ? undefined : reference.id}
       data-slot="reference-link"
-      className="underline decoration-border-strong underline-offset-2 hover:decoration-foreground-tertiary focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+      className="underline decoration-border-strong underline-offset-2 hover:decoration-foreground-tertiary focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
     >
       {children}
     </Link>
@@ -38,7 +38,7 @@ export function ReferenceLink({ reference, children }: Props) {
       data-slot="reference-link"
       className={
         hasCard
-          ? "underline decoration-foreground-subtle decoration-dotted underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-strong"
+          ? "underline decoration-foreground-subtle decoration-dotted underline-offset-2 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-border-strong focus-visible:outline-none"
           : undefined
       }
     >
