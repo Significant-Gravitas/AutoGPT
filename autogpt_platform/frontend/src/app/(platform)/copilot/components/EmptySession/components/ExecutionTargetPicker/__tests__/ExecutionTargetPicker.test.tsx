@@ -372,6 +372,23 @@ describe("ExecutionTargetPicker", () => {
     expect(screen.getByRole("button", { name: "Check Again" })).toBeDefined();
   });
 
+  it("shows the setup card as waiting, with nothing on it that looks like success", async () => {
+    const user = userEvent.setup();
+    mockMachines([]);
+
+    render(<ExecutionTargetPicker />);
+    await chooseLocalPC(user);
+
+    const waiting = await screen.findByText(
+      "Waiting for a signed-in executor…",
+    );
+    const card = screen.getByRole("region", { name: "Connect a Computer" });
+    expect(inASuccessColour(card)).toEqual([]);
+    expect(
+      waiting.querySelector('[data-slot="loading-spinner"]'),
+    ).not.toBeNull();
+  });
+
   it("invalidates the folder when a paginated response changes its binding", async () => {
     const user = userEvent.setup();
     mockMachines();
@@ -663,6 +680,14 @@ describe("ExecutionTargetPicker", () => {
     });
   });
 });
+
+// The colour roles are the design system's vocabulary: a success role on an
+// element is what makes it look like success.
+function inASuccessColour(root: HTMLElement) {
+  return Array.from(root.querySelectorAll("*")).filter((element) =>
+    /\bsuccess\b/.test(element.getAttribute("class") ?? ""),
+  );
+}
 
 async function chooseLocalPC(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
