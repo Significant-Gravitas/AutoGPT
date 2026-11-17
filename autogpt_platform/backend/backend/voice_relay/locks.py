@@ -498,6 +498,9 @@ class CallRecord(BaseModel):
     # The person's arm of the voice ending experiment, read by the start route
     # and carried in the start token; None for anyone not enrolled.
     ending: str | None = None
+    # The language the call started in, carried in the start token; None on
+    # a record written before calls had one.
+    language: str | None = None
     # The person's call the onboarding row named before this one, if any.
     prev: str | None = None
     # The task Otto's end tool carried, and what became of his calls of it.

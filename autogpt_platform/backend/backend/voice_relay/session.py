@@ -67,7 +67,11 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.onboarding_interview import MAX_FIRST_TASK_CHARS
 from backend.copilot.onboarding_interview_goals import END_SIGNAL_FIRST_TASK
 from backend.copilot.onboarding_interview_scope import ScopeLabel, scope_verdict
-from backend.copilot.onboarding_interview_voice import voice_interview_kickoff
+from backend.copilot.onboarding_interview_voice import (
+    DEFAULT_CALL_LANGUAGE,
+    language_name,
+    voice_interview_kickoff,
+)
 from backend.voice_relay import tokens, vad
 from backend.voice_relay.config import (
     BURST_S,
@@ -102,6 +106,7 @@ from backend.voice_relay.end_tool import (
     response_for,
     safe_name,
 )
+from backend.voice_relay.language import spoken_language
 from backend.voice_relay.locks import (
     CONNECTING,
     ENDED,
@@ -333,6 +338,7 @@ class Session:
         edge: RoomEdge,
         details_reader: DetailsReader | None = None,
         ending: str | None = None,
+        language: str = DEFAULT_CALL_LANGUAGE,
         first_name: str | None = None,
         read_first_name: Callable[[], Awaitable[str | None]] | None = None,
         caps: Caps = CAPS,
@@ -365,6 +371,10 @@ class Session:
         self.details_reader = details_reader if ending in LIVE_DETAILS_ENDINGS else None
         self._details_task: asyncio.Task | None = None
         self._details_again = False
+        # The language the call started in, and how many of Otto's turns came
+        # out plainly in another one, counted for the call's log.
+        self.language = language
+        self.off_language_turns = 0
         # The person's first name, or how to read it: the read runs beside
         # the call's opening.
         self.first_name = first_name
@@ -671,7 +681,7 @@ class Session:
         take it is dropped, and its replacement opens the call."""
         if live is not self.live or self.reconnecting:
             return
-        opening = voice_interview_kickoff(self.first_name)
+        opening = voice_interview_kickoff(self.first_name, self.language)
         try:
             await bounded(
                 live.send_note(opening, turn_complete=True),
@@ -718,6 +728,12 @@ class Session:
                 vendor_reconnects=self.vendor_reconnects,
                 transcript=self.transcript(),
             )
+            if self.off_language_turns:
+                logger.info(
+                    f"Voice call {self.call_id}: {self.off_language_turns} of "
+                    f"{len(self.turns)} turns of Otto's not in the call's "
+                    f"language ({self.language})"
+                )
             if self.duplex == "probing":
                 logger.info(
                     f"Voice call {self.call_id}: the call ended before the echo "
@@ -1315,11 +1331,12 @@ class Session:
             for line in self.transcript()
         ]
         if not lines:
-            return voice_interview_kickoff(self.first_name)
+            return voice_interview_kickoff(self.first_name, self.language)
         name = f" Their first name is {self.first_name}." if self.first_name else ""
         return (
             SERVER_NOTE
             + "The call's connection dropped for a moment and is back."
+            + f" The call started in {language_name(self.language)}."
             + name
             + " The conversation so far:\n"
             + "\n".join(lines)
@@ -1542,6 +1559,8 @@ class Session:
         turn.index = len(self.turns)
         turn.text = turn.text.strip()
         self.turns.append(turn)
+        if spoken_language(turn.text) not in (None, self.language):
+            self.off_language_turns += 1
         self.cur = AgentTurn()
         self.generating = False
         await self.send_json(

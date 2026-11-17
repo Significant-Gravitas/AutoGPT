@@ -499,6 +499,10 @@ class VoiceCallStartRequest(BaseModel):
     """The person asked to do their interview over: a closed interview is
     set aside for this call, instead of refusing it."""
 
+    language: str | None = Field(default=None, max_length=35)
+    """The browser's language, as a BCP-47 tag such as ``es-MX``: the call
+    starts in it when the call offers it, and in English otherwise."""
+
 
 class InterviewStartRequest(BaseModel):
     """The typed interview's start."""

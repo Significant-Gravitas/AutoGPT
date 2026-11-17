@@ -241,7 +241,8 @@ async def test_otto_greets_the_person_by_the_name_on_their_account(redis):
         await ws.send(json.dumps({"type": "hangup"}))
         await read_until(ws, "ended")
     assert vendor.openings == [
-        "(The user just opened the voice onboarding call. Their first name is Dana.)"
+        "(The user just opened the voice onboarding call. The call is in English. "
+        "Their first name is Dana.)"
     ]
 
 
@@ -724,6 +725,24 @@ async def test_a_call_carries_the_arm_its_token_named_onto_its_record(redis):
         await read_until(ws, "ended")
 
 
+async def test_a_call_opens_in_the_language_its_token_named_and_records_it(redis):
+    call_id = tokens.new_call_id()
+    token = tokens.mint_start(USER, call_id, language="es")
+    vendor = FakeVendor([Reply(text="Hola")])
+    async with running_relay(redis, vendor) as running:
+        ws = await open_socket(running.url)
+        await ws.send(json.dumps({"type": "start", "token": token}))
+        await read_until(ws, "ready")
+
+        record = await locks.read_call(redis, call_id)
+        assert record is not None
+        assert record.language == "es"
+        await until(lambda: bool(vendor.openings))
+        assert "The call is in Spanish." in vendor.openings[0]
+        await ws.send(json.dumps({"type": "hangup"}))
+        await read_until(ws, "ended")
+
+
 async def test_a_call_whose_pod_died_does_not_refuse_the_next_start(redis):
     dead = tokens.new_call_id()
     await locks.take_user_lock(redis, USER, dead)
@@ -816,7 +835,9 @@ async def test_post_call_jobs_give_up_their_claims_before_the_relay_closes_redis
     transcribing = asyncio.Event()
 
     class Hung:
-        async def __call__(self, wav: bytes, *, first_name: str | None):
+        async def __call__(
+            self, wav: bytes, *, first_name: str | None, language: str | None = None
+        ):
             transcribing.set()
             await asyncio.Event().wait()
             raise AssertionError("unreachable")

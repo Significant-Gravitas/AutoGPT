@@ -619,10 +619,15 @@ class ScriptedTranscriber:
         self.calls: list[tuple[int, str | None]] = []
         # Each clip sent, as the WAV it was sent as.
         self.wavs: list[bytes] = []
+        # The call's language each clip was sent with.
+        self.languages: list[str | None] = []
 
-    async def __call__(self, wav: bytes, *, first_name: str | None) -> Transcription:
+    async def __call__(
+        self, wav: bytes, *, first_name: str | None, language: str | None = None
+    ) -> Transcription:
         self.calls.append((len(wav), first_name))
         self.wavs.append(wav)
+        self.languages.append(language)
         text = self.texts.pop(0) if self.texts else "I run a bakery."
         if isinstance(text, Exception):
             raise text

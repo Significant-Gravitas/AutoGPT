@@ -6,7 +6,8 @@ key, so the relay trusts the user a token names without ever seeing the
 platform session:
 
 - a start token, minted by the REST API's start route, names one user, one
-  call and the person's arm of the voice ending experiment, lives
+  call, the person's arm of the voice ending experiment and the language the
+  call starts in, lives
   ``TOKEN_TTL_S``, and is spent by the first socket that presents it
   (:func:`spend`). The relay reads no flags: the arm reaches the call's record
   this way;
@@ -29,6 +30,10 @@ import uuid
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.copilot.onboarding_interview_voice import (
+    DEFAULT_CALL_LANGUAGE,
+    call_language,
+)
 from backend.data.redis_client import AsyncRedisClient
 from backend.util.settings import Settings
 from backend.voice_relay.config import TOKEN_SPENT_TTL_S, TOKEN_TTL_S
@@ -60,6 +65,8 @@ class StartClaims(BaseModel):
     expires_at: float
     # The person's arm of the voice ending experiment; None when not enrolled.
     ending: str | None = None
+    # The language the call starts in, one of ``CALL_LANGUAGES``.
+    language: str = DEFAULT_CALL_LANGUAGE
 
 
 class ResumeClaims(BaseModel):
@@ -91,17 +98,20 @@ def mint_start(
     call_id: str,
     *,
     ending: str | None = None,
+    language: str = DEFAULT_CALL_LANGUAGE,
     ttl_s: float = TOKEN_TTL_S,
     now: float | None = None,
 ) -> str:
     """A start token for *user_id*'s call *call_id*, carrying their arm of
-    the voice ending experiment, *ending*."""
+    the voice ending experiment, *ending*, and the language the call starts
+    in, *language*."""
     issued = time.time() if now is None else now
     claims: dict[str, object] = {
         "kind": _START,
         "uid": user_id,
         "call_id": call_id,
         "exp": issued + ttl_s,
+        "lang": call_language(language),
     }
     if ending is not None:
         claims["ending"] = ending
@@ -130,6 +140,8 @@ def verify_start(token: object, *, now: float | None = None) -> StartClaims:
         call_id=claims["call_id"],
         expires_at=claims["exp"],
         ending=ending,
+        # A language this relay does not offer starts the call in the default.
+        language=call_language(claims.get("lang")),
     )
 
 

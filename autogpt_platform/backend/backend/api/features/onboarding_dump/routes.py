@@ -381,12 +381,16 @@ async def start_onboarding_voice_call(
     ``start_over`` asks for the call to start a fresh interview in place of
     one that is over: instead of the 409, it is set aside once every other
     check passes. A live call still refuses it (409 ``call_in_progress``).
+
+    ``language`` is the browser's language tag: the call starts in it when
+    the call offers it, and in English otherwise.
     """
     try:
         return await voice.start_voice_call(
             user_id,
             request.ending_pick if request is not None else None,
             start_over=request is not None and request.start_over,
+            language=request.language if request is not None else None,
         )
     except fastapi.HTTPException as e:
         if e.status_code in (429, 503):

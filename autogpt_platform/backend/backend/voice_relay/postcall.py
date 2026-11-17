@@ -58,6 +58,7 @@ from prisma.enums import BrainDumpInputMode, BrainDumpStatus
 from pydantic import BaseModel, ConfigDict
 
 from backend.api.features.onboarding_dump.models import FinalizeResponse
+from backend.copilot.onboarding_interview_voice import DEFAULT_CALL_LANGUAGE
 from backend.copilot.service import strip_server_injected_tags
 from backend.data.redis_client import AsyncRedisClient
 from backend.util.gcs_utils import is_not_found_error
@@ -132,14 +133,33 @@ class Transcription(BaseModel):
 
 
 class Transcriber(Protocol):
-    async def __call__(self, wav: bytes, *, first_name: str | None) -> Transcription:
-        """Transcribe one turn of the person's, given as a WAV file."""
+    async def __call__(
+        self, wav: bytes, *, first_name: str | None, language: str | None = None
+    ) -> Transcription:
+        """Transcribe one turn of the person's, given as a WAV file, from a
+        call in *language* (None when the call's record names none)."""
         ...
 
 
 def transcription_prompt(first_name: str | None) -> str:
     prompt = "Transcribe the speech verbatim."
     return f"{prompt} The speaker's name is {first_name}." if first_name else prompt
+
+
+def transcription_config(language: str | None) -> types.GenerateContentConfig | None:
+    """The transcription's config for a call in *language*: the languages the
+    model expects. A short or unclear turn then comes out in one of them,
+    where with none a "yeah" can come out in another language, while a full
+    sentence in any language comes out as it was said. English is expected
+    beside the call's own language: alone, the call's language can turn a
+    short English answer into one of its own words, even one that means the
+    opposite."""
+    if language is None:
+        return None
+    codes = list(dict.fromkeys((language, DEFAULT_CALL_LANGUAGE)))
+    return types.GenerateContentConfig(
+        audio_transcription_config=types.AudioTranscriptionConfig(language_codes=codes)
+    )
 
 
 def transcription_text(response: types.GenerateContentResponse) -> str:
@@ -166,13 +186,16 @@ class GeminiTranscriber:
         self._client = client
         self._model = model
 
-    async def __call__(self, wav: bytes, *, first_name: str | None) -> Transcription:
+    async def __call__(
+        self, wav: bytes, *, first_name: str | None, language: str | None = None
+    ) -> Transcription:
         response = await self._client.aio.models.generate_content(
             model=self._model,
             contents=[
                 types.Part.from_bytes(data=wav, mime_type="audio/wav"),
                 transcription_prompt(first_name),
             ],
+            config=transcription_config(language),
         )
         usage = response.usage_metadata
         return Transcription(
@@ -232,6 +255,7 @@ async def transcribe_turns(
     first_name: str | None,
     meter: CallMeter,
     call_id: str,
+    language: str | None = None,
 ) -> list[str]:
     """Each clip's text, *TRANSCRIBE_CONCURRENCY* at a time; an empty clip is
     not sent. Each transcription is metered on the call's bill. Raises when a
@@ -249,6 +273,7 @@ async def transcribe_turns(
                 first_name,
                 call_id,
                 timeout_s=transcribe_timeout_s(len(clip) / 2 / IN_RATE),
+                language=language,
             )
         await meter.transcription_usage(
             tokens_in=transcription.tokens_in, tokens_out=transcription.tokens_out
@@ -267,11 +292,13 @@ async def _transcribe(
     call_id: str,
     *,
     timeout_s: float,
+    language: str | None = None,
 ) -> Transcription:
     for attempt in range(1, TRANSCRIBE_ATTEMPTS + 1):
         try:
             return await bounded(
-                transcriber(wav, first_name=first_name), timeout=timeout_s
+                transcriber(wav, first_name=first_name, language=language),
+                timeout=timeout_s,
             )
         except Exception as error:
             if attempt == TRANSCRIBE_ATTEMPTS:
@@ -721,6 +748,7 @@ class PostCall:
             first_name=first_name,
             meter=meter,
             call_id=record.call_id,
+            language=record.language,
         )
         await meter.flush()
         return transcript_of_record(texts)

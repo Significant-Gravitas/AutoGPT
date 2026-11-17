@@ -124,6 +124,7 @@ class Rig:
         echo_spans: list[tuple[int, int]] | None = None,
         ending: str | None = None,
         captions: list[dict[str, str]] | None = None,
+        language: str | None = None,
     ) -> str:
         """A call as the relay leaves it on its record: pending, its recording
         uploaded. It started an hour ago unless *started* says otherwise.
@@ -136,6 +137,7 @@ class Rig:
             "started": time.time() - 3600 if started is None else started,
             "end_reason": end_reason,
             "ending": ending,
+            "language": language,
             "transcript": captions,
             "turns": [
                 TurnMark(index=index, at=at).model_dump()
@@ -306,6 +308,33 @@ async def test_the_transcription_prompt_names_the_speaker(first_name, prompt):
     audio, text = request["contents"]
     assert audio.inline_data.mime_type == "audio/wav"
     assert text == prompt
+    # No call language: the model is given no language to expect.
+    assert request["config"] is None
+
+
+async def test_the_transcription_expects_the_calls_language():
+    """A short turn such as "yeah" comes out in the call's language, where
+    without it the model can write it in another one."""
+    client, generate = _gemini(
+        types.GenerateContentResponse(
+            candidates=[
+                types.Candidate(content=types.Content(parts=[types.Part(text="Sí.")]))
+            ]
+        )
+    )
+
+    transcriber = GeminiTranscriber(client)
+    await transcriber(wav_of(tone(0.5)), first_name=None, language="es")
+    await transcriber(wav_of(tone(0.5)), first_name=None, language="en")
+
+    spanish, english = (
+        call.kwargs["config"].audio_transcription_config.language_codes
+        for call in generate.await_args_list
+    )
+    # English beside the call's own language, so a short English answer
+    # is never turned into a word of the call's language.
+    assert spanish == ["es", "en"]
+    assert english == ["en"]
 
 
 def test_server_tags_never_reach_the_transcript_of_record():
@@ -550,6 +579,30 @@ async def test_the_transcription_names_the_speaker_from_the_account(rig: Rig):
     assert [name for _, name in transcriber.calls] == ["Dana"]
 
 
+async def test_each_turn_is_transcribed_in_the_language_the_call_started_in(
+    rig: Rig,
+):
+    pcm, marks = recording_of(answer(), answer())
+    call_id = await rig.call(pcm, marks, language="es")
+    transcriber = ScriptedTranscriber(SAID)
+
+    await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
+
+    assert transcriber.languages == ["es", "es"]
+
+
+async def test_a_call_recorded_without_a_language_is_transcribed_without_one(
+    rig: Rig,
+):
+    pcm, marks = recording_of(answer())
+    call_id = await rig.call(pcm, marks)
+    transcriber = ScriptedTranscriber(SAID[:1])
+
+    await rig.run(rig.postcall(transcriber), call_id, pcm=pcm)
+
+    assert transcriber.languages == [None]
+
+
 async def test_each_transcribed_turn_is_on_the_calls_bill(rig: Rig):
     pcm, marks = recording_of(answer(), answer())
     call_id = await rig.call(pcm, marks)
@@ -762,7 +815,9 @@ async def test_the_sweep_takes_only_as_many_jobs_as_fit(rig: Rig):
     go_on = asyncio.Event()
 
     class Held:
-        async def __call__(self, wav: bytes, *, first_name: str | None):
+        async def __call__(
+            self, wav: bytes, *, first_name: str | None, language: str | None = None
+        ):
             await go_on.wait()
             return Transcription(text=SAID[0])
 
@@ -809,7 +864,9 @@ async def test_a_stalled_transcription_is_given_up_after_its_turns_share(
     class Stalled:
         calls = 0
 
-        async def __call__(self, wav: bytes, *, first_name: str | None):
+        async def __call__(
+            self, wav: bytes, *, first_name: str | None, language: str | None = None
+        ):
             Stalled.calls += 1
             await asyncio.Event().wait()
             raise AssertionError("unreachable")
@@ -834,7 +891,9 @@ async def test_a_job_whose_claim_lapsed_under_it_writes_nothing(rig: Rig):
     go_on = asyncio.Event()
 
     class Held:
-        async def __call__(self, wav: bytes, *, first_name: str | None):
+        async def __call__(
+            self, wav: bytes, *, first_name: str | None, language: str | None = None
+        ):
             transcribing.set()
             await go_on.wait()
             return Transcription(text="Words the first job heard.")

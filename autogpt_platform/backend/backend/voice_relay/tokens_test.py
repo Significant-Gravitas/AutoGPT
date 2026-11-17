@@ -128,3 +128,29 @@ def test_a_token_naming_an_arm_that_is_not_one_starts_an_unenrolled_call(ending)
     claims = tokens.verify_start(token)
 
     assert (claims.user_id, claims.call_id, claims.ending) == (USER, call_id, None)
+
+
+def test_a_start_token_carries_the_language_the_call_starts_in():
+    token = tokens.mint_start(USER, _call_id(), language="es")
+    assert tokens.verify_start(token).language == "es"
+
+
+def test_a_start_token_with_no_language_starts_the_call_in_english():
+    assert tokens.verify_start(tokens.mint_start(USER, _call_id())).language == "en"
+
+
+@pytest.mark.parametrize("lang", ["xx", "es-MX", 7, None, "e" * 40])
+def test_a_language_the_relay_does_not_offer_starts_the_call_in_english(lang):
+    """A token minted with a language claim the relay cannot read, or by a
+    REST API that minted none, still starts its call, in the default."""
+    call_id = _call_id()
+    claims: dict[str, object] = {
+        "kind": "start",
+        "uid": USER,
+        "call_id": call_id,
+        "exp": time.time() + 60,
+    }
+    if lang is not None:
+        claims["lang"] = lang
+    expected = "es" if lang == "es-MX" else "en"
+    assert tokens.verify_start(tokens._sign(claims)).language == expected

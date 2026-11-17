@@ -162,9 +162,11 @@ async def test_sigterm_waits_for_a_calls_transcript_job_before_exiting(redis):
             super().__init__()
             self.release = asyncio.Event()
 
-        async def __call__(self, wav: bytes, *, first_name: str | None):
+        async def __call__(
+            self, wav: bytes, *, first_name: str | None, language: str | None = None
+        ):
             await self.release.wait()
-            return await super().__call__(wav, first_name=first_name)
+            return await super().__call__(wav, first_name=first_name, language=language)
 
     transcriber = HeldTranscriber()
     vendor = FakeVendor(

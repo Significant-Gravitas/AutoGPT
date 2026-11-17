@@ -24,7 +24,10 @@ from backend.voice_relay.fake_vendor import FakeVendor, Reply
 from backend.voice_relay.session import Session
 from backend.voice_relay.session_test import FAST, USER, _session
 
-KICKOFF = "(The user just opened the voice onboarding call. Their first name is Dana.)"
+KICKOFF = (
+    "(The user just opened the voice onboarding call. The call is in English. "
+    "Their first name is Dana.)"
+)
 
 
 class Starting:

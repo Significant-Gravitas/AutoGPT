@@ -426,6 +426,7 @@ async def _start_call(
             classifier=deps.classifier,
             details_reader=deps.details_reader,
             ending=claims.ending,
+            language=claims.language,
             edge=deps.edge,
             # Read beside the call's opening, not before it.
             read_first_name=lambda: _first_name(deps, claims.user_id),
@@ -459,6 +460,7 @@ async def _start_call(
             pod=relay.pod,
             started=round(time.time(), 3),
             ending=claims.ending,
+            language=claims.language,
         )
         await session.run()
     finally:

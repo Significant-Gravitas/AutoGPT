@@ -241,6 +241,30 @@ async def test_a_start_names_its_call_socket_caps_and_a_token_the_relay_trusts(
     assert claims.user_id == test_user_id
     assert claims.call_id == body["call_id"]
     assert claims.ending is None
+    # A start that names no language starts the call in English.
+    assert claims.language == "en"
+
+
+@pytest.mark.parametrize(
+    "language, starts_in",
+    [("es-MX", "es"), ("pt-BR", "pt"), ("en-GB", "en"), ("tlh", "en")],
+)
+async def test_a_start_carries_the_browsers_language_to_the_relay(
+    test_user_id, language: str, starts_in: str
+):
+    """The call starts in the browser's language when a call offers it, and
+    in English otherwise."""
+    body = (await start({"language": language})).json()
+
+    assert tokens.verify_start(body["token"]).language == starts_in
+
+
+async def test_a_start_refuses_a_language_tag_longer_than_any_language(
+    test_user_id,
+):
+    response = await start({"language": "x" * 36})
+
+    assert response.status_code == 422
 
 
 async def test_a_start_names_the_calls_room_and_the_browsers_token_for_it(

@@ -3,16 +3,21 @@
 import ast
 from pathlib import Path
 
+import pytest
+
 from backend.copilot import onboarding_interview_goals, onboarding_interview_voice
 from backend.copilot.onboarding_interview_goals import (
     END_SIGNAL_PARAMETERS,
     ONBOARDING_INTERVIEW_GOALS,
 )
 from backend.copilot.onboarding_interview_voice import (
+    CALL_LANGUAGES,
+    DEFAULT_CALL_LANGUAGE,
     VOICE_INTERVIEW_END_TOOL,
     VOICE_INTERVIEW_END_TOOL_PARAMETERS,
     VOICE_INTERVIEW_KICKOFF,
     VOICE_INTERVIEW_PROMPT,
+    call_language,
     voice_interview_kickoff,
 )
 
@@ -33,7 +38,6 @@ def test_the_call_learns_the_shared_goals_and_holds_the_scope_line() -> None:
 
 def test_the_call_talks_like_a_call() -> None:
     assert "You're on a short voice call" in VOICE_INTERVIEW_PROMPT
-    assert "Speak the language the user speaks" in VOICE_INTERVIEW_PROMPT
     assert "One short question at a time" in VOICE_INTERVIEW_PROMPT
     assert "No lists, no markdown" in VOICE_INTERVIEW_PROMPT
     assert "never read out links" in VOICE_INTERVIEW_PROMPT
@@ -118,7 +122,8 @@ def test_the_kickoff_gives_otto_the_name_so_it_never_asks() -> None:
     account does not, so the kickoff carries it and the prompt says not to
     ask for it."""
     assert voice_interview_kickoff("Dana") == (
-        "(The user just opened the voice onboarding call. " "Their first name is Dana.)"
+        "(The user just opened the voice onboarding call. The call is in "
+        "English. Their first name is Dana.)"
     )
     assert (
         "The call opens with a note from the platform, not from the user. "
@@ -126,12 +131,70 @@ def test_the_kickoff_gives_otto_the_name_so_it_never_asks() -> None:
     ) in VOICE_INTERVIEW_PROMPT
 
 
-def test_a_call_with_no_name_on_the_account_opens_with_the_plain_note() -> None:
-    assert voice_interview_kickoff(None) == VOICE_INTERVIEW_KICKOFF
-    assert voice_interview_kickoff("") == VOICE_INTERVIEW_KICKOFF
+def test_a_call_with_no_name_on_the_account_opens_with_its_language_only() -> None:
+    plain = "(The user just opened the voice onboarding call. The call is in English.)"
+    assert voice_interview_kickoff(None) == plain
+    assert voice_interview_kickoff("") == plain
     assert VOICE_INTERVIEW_KICKOFF == (
         "(The user just opened the voice onboarding call.)"
     )
+
+
+def test_the_kickoff_names_the_language_the_call_starts_in() -> None:
+    assert voice_interview_kickoff("Lucía", "es") == (
+        "(The user just opened the voice onboarding call. The call is in "
+        "Spanish. Their first name is Lucía.)"
+    )
+    # A language no call starts in opens in the default.
+    assert "The call is in English." in voice_interview_kickoff(None, "xx")
+
+
+@pytest.mark.parametrize(
+    "tag, language",
+    [
+        ("en-US", "en"),
+        ("es-MX", "es"),
+        ("pt_BR", "pt"),
+        (" ZH-Hant-TW ", "zh"),
+        ("fr", "fr"),
+        # Languages no call starts in, and tags that are no language at all.
+        ("tlh", "en"),
+        ("", "en"),
+        (None, "en"),
+        (42, "en"),
+        ("es-" + "x" * 40, "en"),
+    ],
+)
+def test_a_browser_tag_maps_to_a_call_language_or_the_default(
+    tag: object, language: str
+) -> None:
+    assert call_language(tag) == language
+
+
+def test_every_call_language_is_a_primary_subtag_and_english_is_the_default() -> None:
+    assert DEFAULT_CALL_LANGUAGE == "en"
+    assert DEFAULT_CALL_LANGUAGE in CALL_LANGUAGES
+    for code in CALL_LANGUAGES:
+        assert code.isalpha() and code.islower() and len(code) == 2
+
+
+def test_otto_stays_in_the_calls_language_unless_the_person_really_switches() -> None:
+    """A short turn the live captions put in another language is most often
+    a misheard one; Otto follows only a switch the person makes."""
+    assert (
+        "The platform's note says which language the call is in. Speak it and "
+        "stay in it."
+    ) in VOICE_INTERVIEW_PROMPT
+    assert (
+        "Switch only when the user asks you to, or speaks full sentences in "
+        "another language two turns running; then switch with them."
+    ) in VOICE_INTERVIEW_PROMPT
+    assert (
+        "Never switch because of one short or unclear turn: a short turn that "
+        "seems to be in another language was most likely misheard, so carry on "
+        "in the call's language."
+    ) in VOICE_INTERVIEW_PROMPT
+    assert "Speak the language the user speaks" not in VOICE_INTERVIEW_PROMPT
 
 
 def _imports(module: object) -> set[str]:

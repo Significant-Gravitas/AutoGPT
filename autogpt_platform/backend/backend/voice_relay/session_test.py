@@ -129,6 +129,7 @@ def _session(
     classifier=None,
     details_reader=None,
     ending: str | None = None,
+    language: str = "en",
     first_name: str | None = None,
     on_end=None,
     edge=None,
@@ -160,6 +161,7 @@ def _session(
         classifier=classifier,
         details_reader=details_reader,
         ending=ending,
+        language=language,
         edge=edge or livekit_edge(FakeMedia()),
         first_name=first_name,
         read_first_name=read_first_name,
@@ -241,7 +243,8 @@ async def test_a_call_ends_finished_once_otto_says_goodbye_after_the_end_tool(re
     # The model is sent the call's opening once the browser has heard ready.
     await until(lambda: bool(vendor.sessions[0].opening))
     assert vendor.openings == [
-        "(The user just opened the voice onboarding call. Their first name is Dana.)"
+        "(The user just opened the voice onboarding call. The call is in "
+        "English. Their first name is Dana.)"
     ]
 
     await call.ws.wait_for("turn_complete")
@@ -662,7 +665,8 @@ async def test_a_dropped_vendor_session_is_replaced_and_the_call_carries_on(redi
     reseed = vendor.sessions[1].opening
     assert reseed.startswith(
         SERVER_NOTE + "The call's connection dropped for a moment and is back. "
-        "Their first name is Dana. The conversation so far:\n"
+        "The call started in English. Their first name is Dana. The "
+        "conversation so far:\n"
     )
     assert "Otto: Hi, I'm Otto, an AI. What do you do?" in reseed
 
@@ -1375,3 +1379,60 @@ async def test_a_vendor_failure_s_log_carries_no_key_and_nothing_said(redis, cap
     )
     record = await locks.read_call_record(redis, session.call_id)
     assert key not in json.dumps(record) and said not in json.dumps(record)
+
+
+async def test_a_call_opens_in_the_language_it_started_in(redis):
+    vendor = FakeVendor([Reply(text="Hola, soy Otto, una IA. ¿A qué te dedicas?")])
+    call = await open_call(redis, vendor, language="es")
+    await until(lambda: bool(vendor.sessions[0].opening))
+    assert vendor.openings == [
+        "(The user just opened the voice onboarding call. The call is in Spanish.)"
+    ]
+    await call.ws.wait_for("turn_complete")
+    # A replacement session hears the language the call started in.
+    assert "The call started in Spanish." in call.session.reseed_text()
+    call.session.end("user_hangup")
+    await call.ended()
+
+
+async def test_otto_turns_in_another_language_are_counted_in_the_calls_log(
+    redis, caplog
+):
+    caplog.set_level(logging.INFO, logger="backend.voice_relay.session")
+    vendor = FakeVendor(
+        [
+            Reply(text="Hi, I'm Otto, an AI. What do you do for work?", audio_s=0.2),
+            Reply(
+                text="Qué bien, y cómo es una semana normal para ti en el trabajo?",
+                audio_s=0.2,
+                heard="yeah",
+            ),
+            Reply(text="Yes.", audio_s=0.2, heard="I run a bakery"),
+        ]
+    )
+    call = await open_call(redis, vendor)
+    for turn in (1, 2, 3):
+        await call.ws.wait_for("turn_complete", count=turn)
+        if turn < 3:
+            await call.answer(speech(0.4))
+    assert call.session.off_language_turns == 1
+    call.session.end("user_hangup")
+    await call.ended()
+    logged = [r.getMessage() for r in caplog.records if "language" in r.getMessage()]
+    assert logged == [
+        f"Voice call {call.session.call_id}: 1 of 3 turns of Otto's not in the "
+        "call's language (en)"
+    ]
+
+
+async def test_a_call_with_every_turn_in_its_language_logs_no_count(redis, caplog):
+    caplog.set_level(logging.INFO, logger="backend.voice_relay.session")
+    vendor = FakeVendor(
+        [Reply(text="Hi, I'm Otto, an AI. What do you do for work?", audio_s=0.2)]
+    )
+    call = await open_call(redis, vendor)
+    await call.ws.wait_for("turn_complete")
+    call.session.end("user_hangup")
+    await call.ended()
+    assert call.session.off_language_turns == 0
+    assert not [r for r in caplog.records if "call's language" in r.getMessage()]

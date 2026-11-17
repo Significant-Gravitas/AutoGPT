@@ -101,6 +101,7 @@ from backend.copilot.onboarding_interview import (
     find_onboarding_interview_session,
     interview_is_over,
 )
+from backend.copilot.onboarding_interview_voice import call_language
 from backend.data.onboarding import get_onboarding_voice_call_id
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.util.background import spawn_background_task
@@ -141,7 +142,11 @@ ABANDONED_STARTS = Counter(
 
 
 async def start_voice_call(
-    user_id: str, ending_pick: str | None = None, *, start_over: bool = False
+    user_id: str,
+    ending_pick: str | None = None,
+    *,
+    start_over: bool = False,
+    language: str | None = None,
 ) -> VoiceCallStartResponse:
     """Start a voice call for *user_id*'s onboarding interview.
 
@@ -153,15 +158,21 @@ async def start_voice_call(
     other check passes and the start is counted, it is set aside
     (``interview.apply_start_over``) and the call starts a fresh one.
 
+    *language* is the browser's language tag; the start token carries the
+    language the call starts in (``onboarding_interview_voice.call_language``).
+
     Raises:
         HTTPException: 404, 409, 429 or 503, as the module describes.
     """
     with sentry_sdk.start_span(op="voice.call.start", name="Start a voice call"):
-        return await _start_voice_call(user_id, ending_pick, start_over)
+        return await _start_voice_call(user_id, ending_pick, start_over, language)
 
 
 async def _start_voice_call(
-    user_id: str, ending_pick: str | None, start_over: bool = False
+    user_id: str,
+    ending_pick: str | None,
+    start_over: bool = False,
+    language: str | None = None,
 ) -> VoiceCallStartResponse:
     # Read side by side; refused in the module's order.
     picked, enabled, (plan, refusals) = await asyncio.gather(
@@ -207,7 +218,9 @@ async def _start_voice_call(
     return VoiceCallStartResponse(
         call_id=call_id,
         relay_url=relay_url,
-        token=tokens.mint_start(user_id, call_id, ending=ending),
+        token=tokens.mint_start(
+            user_id, call_id, ending=ending, language=call_language(language)
+        ),
         expires_in=TOKEN_TTL_S,
         room=VoiceCallRoom(
             url=project.url,

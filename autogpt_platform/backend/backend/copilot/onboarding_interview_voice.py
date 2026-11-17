@@ -17,8 +17,8 @@ The contract with a voice runtime:
   the goodbye has played, and refuses a call made before the person
   answered.
 - Open the call with :func:`voice_interview_kickoff`, which carries the
-  person's first name when their account has one, so Otto never has to ask
-  for it or hear it.
+  call's language (:func:`call_language`) and the person's first name when
+  their account has one, so Otto never has to ask for it or hear it.
 - The profile is built from the call's transcript of record, never from
   anything the live model writes down.
 - When the call ends, the runtime hands the user's side of that transcript,
@@ -39,6 +39,35 @@ VOICE_INTERVIEW_END_TOOL = "finish_onboarding"
 
 VOICE_INTERVIEW_END_TOOL_PARAMETERS = END_SIGNAL_PARAMETERS
 
+# The languages a call can start in, by BCP-47 primary language subtag: ones
+# the live model speaks. A call starts in the person's browser language when
+# it is one of these, and in English otherwise.
+CALL_LANGUAGES: dict[str, str] = {
+    "ar": "Arabic",
+    "de": "German",
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "hi": "Hindi",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "sv": "Swedish",
+    "th": "Thai",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "vi": "Vietnamese",
+    "zh": "Chinese",
+}
+DEFAULT_CALL_LANGUAGE = "en"
+# Longer than any language tag a browser sends.
+MAX_LANGUAGE_TAG_CHARS = 35
+
 # Constant, with no user data or time in it, so every call shares one cache
 # entry at a vendor that caches prompts.
 VOICE_INTERVIEW_PROMPT = f"""\
@@ -46,7 +75,7 @@ You are Otto, the user's Head of AI at AutoGPT. Start your first turn with "Hi, 
 
 The call opens with a note from the platform, not from the user. When it gives their first name, don't ask for their name.
 
-Speak the language the user speaks. If they switch languages, switch with them.
+The platform's note says which language the call is in. Speak it and stay in it. Switch only when the user asks you to, or speaks full sentences in another language two turns running; then switch with them. Never switch because of one short or unclear turn: a short turn that seems to be in another language was most likely misheard, so carry on in the call's language.
 
 {ONBOARDING_INTERVIEW_GOALS}
 
@@ -67,15 +96,35 @@ As soon as you know what they do and one concrete thing their team could start o
 VOICE_INTERVIEW_KICKOFF = "(The user just opened the voice onboarding call.)"
 
 
-def voice_interview_kickoff(first_name: str | None) -> str:
-    """The note that opens a call, naming the person when *first_name* is set.
+def call_language(tag: object) -> str:
+    """The language a call starts in for the BCP-47 tag *tag*, such as a
+    browser's ``es-MX``: its primary subtag when it is one of
+    :data:`CALL_LANGUAGES`, and :data:`DEFAULT_CALL_LANGUAGE` for anything
+    else, including no tag at all."""
+    if not isinstance(tag, str) or len(tag) > MAX_LANGUAGE_TAG_CHARS:
+        return DEFAULT_CALL_LANGUAGE
+    primary = tag.strip().replace("_", "-").split("-", 1)[0].lower()
+    return primary if primary in CALL_LANGUAGES else DEFAULT_CALL_LANGUAGE
+
+
+def language_name(language: str) -> str:
+    """The English name of *language*, one of :data:`CALL_LANGUAGES`."""
+    return CALL_LANGUAGES[call_language(language)]
+
+
+def voice_interview_kickoff(
+    first_name: str | None, language: str = DEFAULT_CALL_LANGUAGE
+) -> str:
+    """The note that opens a call in *language*, naming the person when
+    *first_name* is set.
 
     *first_name* goes into the conversation as it is, so the caller passes a
     cleaned one: a single word of the account's name.
     """
-    if not first_name:
-        return VOICE_INTERVIEW_KICKOFF
-    return (
+    note = (
         f"{VOICE_INTERVIEW_KICKOFF.removesuffix('.)')}. "
-        f"Their first name is {first_name}.)"
+        f"The call is in {language_name(language)}."
     )
+    if first_name:
+        note += f" Their first name is {first_name}."
+    return f"{note})"
