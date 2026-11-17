@@ -823,6 +823,9 @@ def validate_trusted_proxies(value: str) -> str:
         if not entry:
             continue
         try:
+            # ip_network takes a scope id ("%eth0") of any characters, spaces too.
+            if "%" in entry:
+                raise ValueError(entry)
             networks.append(ipaddress.ip_network(entry, strict=False))
         except ValueError as exc:
             raise ValueError(

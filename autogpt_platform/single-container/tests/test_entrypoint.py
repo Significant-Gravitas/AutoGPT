@@ -428,7 +428,14 @@ class TrustedProxiesTest(unittest.TestCase):
                 )
 
     def test_refuses_an_entry_that_is_not_an_address_or_range(self) -> None:
-        for value in ("nginx-proxy", "10.0.0.1; include /etc/passwd", "10.0.0.0/33"):
+        for value in (
+            "nginx-proxy",
+            "10.0.0.1; include /etc/passwd",
+            "10.0.0.0/33",
+            # Not options to the validator: argparse would print its usage and exit 0.
+            "--help",
+            "-h",
+        ):
             with self.subTest(value=value):
                 result = _configure(
                     output="$AUTOGPT_TRUSTED_PROXIES", TRUSTED_PROXIES=value
@@ -496,6 +503,7 @@ def _validate_trusted_proxies(value: str) -> subprocess.CompletedProcess[str]:
             sys.executable,
             str(ASSET_DIR / "runtime_config.py"),
             "validate-trusted-proxies",
+            "--",
             value,
         ],
         check=False,

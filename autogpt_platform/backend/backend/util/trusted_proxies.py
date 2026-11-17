@@ -48,6 +48,9 @@ def parse_trusted_proxies(value: str) -> tuple[IPNetwork, ...]:
     invalid: list[str] = []
     for entry in entries:
         try:
+            # ip_network takes a scope id ("%eth0") of any characters, spaces too.
+            if "%" in entry:
+                raise ValueError(entry)
             networks.append(ipaddress.ip_network(entry, strict=False))
         except ValueError:
             invalid.append(entry)

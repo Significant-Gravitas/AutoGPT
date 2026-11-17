@@ -111,7 +111,7 @@ configure_environment() {
   # The operator's TRUSTED_PROXIES name the proxies in front of the container.
   AUTOGPT_TRUSTED_PROXIES="$(
     "${AUTOGPT_PYTHON}" "${AUTOGPT_ASSET_DIR}/runtime_config.py" \
-      validate-trusted-proxies "${TRUSTED_PROXIES:-}"
+      validate-trusted-proxies -- "${TRUSTED_PROXIES:-}"
   )"
   [[ -z "${AUTOGPT_TRUSTED_PROXIES}" ]] || \
     log "proxies in front of the container: ${AUTOGPT_TRUSTED_PROXIES}"

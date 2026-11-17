@@ -13,6 +13,9 @@
     { "value": "10.0.0.0/33", "unparseable": "10.0.0.0/33" },
     { "value": "nginx-proxy", "unparseable": "nginx-proxy" },
     { "value": "10.0.0.1, [::1]", "unparseable": "[::1]" },
-    { "value": "10.0.0.1:8080", "unparseable": "10.0.0.1:8080" }
+    { "value": "10.0.0.1:8080", "unparseable": "10.0.0.1:8080" },
+    { "value": "fe80::1%eth0", "unparseable": "fe80::1%eth0" },
+    { "value": "fe80::1%eth0/64", "unparseable": "fe80::1%eth0/64" },
+    { "value": "fe80::1%x;deny all", "unparseable": "fe80::1%x;deny all" }
   ]
 }
