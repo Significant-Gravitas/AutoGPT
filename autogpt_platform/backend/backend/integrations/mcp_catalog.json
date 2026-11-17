@@ -1071,6 +1071,21 @@
     }
   },
   {
+    "name": "mcp_supabase",
+    "display_name": "Supabase",
+    "description": "Manage Supabase projects: query databases, apply migrations, deploy edge functions and search the docs.",
+    "mcp_server": {
+      "server_url": "https://mcp.supabase.com/mcp",
+      "documentation_url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "setup_instructions": "Sign in with your Supabase account and choose an organization. Tools can read and change every project and database in it, so choose an organization without production data.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "supabase"
+    }
+  },
+  {
     "name": "mcp_superme",
     "display_name": "SuperMe",
     "description": "Find expert profiles and converse with SuperMe agents.",
