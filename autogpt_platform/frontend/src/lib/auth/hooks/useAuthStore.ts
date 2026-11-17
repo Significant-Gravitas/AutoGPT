@@ -47,7 +47,12 @@ const SIGN_OUT_RETRY_DELAY_MS = 1_000;
 async function refetchEverything(): Promise<void> {
   try {
     const { getQueryClient } = await import("@/lib/react-query/queryClient");
-    await getQueryClient().invalidateQueries();
+    const queryClient = getQueryClient();
+    // A query whose first fetch is still running is not restarted by an
+    // invalidation: React Query hands back the running request, which went
+    // out without the target. Cancel those first so they are sent again.
+    await queryClient.cancelQueries();
+    await queryClient.invalidateQueries();
   } catch (error) {
     console.debug("Couldn't refetch after impersonation resumed:", error);
   }
