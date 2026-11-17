@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import openai
 import pytest
 from PIL import Image
 from pydantic import SecretStr, ValidationError
@@ -44,6 +45,7 @@ def image_size(request):
 
 @pytest.mark.skipif(not OPENAI_API_KEY, reason="OPENAI_API_KEY not set")
 @pytest.mark.xfail(
+    raises=openai.BadRequestError,
     reason="OpenAI's API answers \"The model 'gpt-image-1' does not exist\" (Nov 2026)",
     strict=False,
 )
