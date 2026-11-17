@@ -130,6 +130,63 @@ def test_aimlapi_effect_map_names_exactly_the_published_tools():
     assert effects.irreversible == []
 
 
+# Every tool Supabase's MCP docs listed on 2026-11-17. The reads run without
+# asking. execute_sql both reads and writes, so it asks like the other changes.
+SUPABASE_READ_TOOLS = [
+    "generate_typescript_types",
+    "get_advisors",
+    "get_cost",
+    "get_edge_function",
+    "get_notebook",
+    "get_organization",
+    "get_project",
+    "get_project_url",
+    "get_publishable_keys",
+    "get_storage_config",
+    "list_branches",
+    "list_edge_functions",
+    "list_extensions",
+    "list_migrations",
+    "list_notebooks",
+    "list_organizations",
+    "list_projects",
+    "list_storage_buckets",
+    "list_tables",
+    "query_logs",
+    "search_docs",
+]
+SUPABASE_CHANGE_TOOLS = [
+    "apply_migration",
+    "confirm_cost",
+    "create_branch",
+    "create_edge_function_secret",
+    "create_notebook",
+    "create_project",
+    "deploy_edge_function",
+    "execute_sql",
+    "pause_project",
+    "rebase_branch",
+    "restore_project",
+    "run_notebook",
+    "submit_feedback",
+    "update_storage_config",
+]
+SUPABASE_IRREVERSIBLE_TOOLS = [
+    "delete_branch",
+    "delete_feedback",
+    "delete_notebook",
+    "merge_branch",
+    "reset_branch",
+]
+
+
+def test_supabase_effect_map_names_exactly_the_published_tools():
+    effects = get_mcp_effect_maps()["mcp_supabase"]
+    assert sorted(effects.read) == SUPABASE_READ_TOOLS
+    assert sorted(effects.external) == SUPABASE_CHANGE_TOOLS
+    assert sorted(effects.irreversible) == SUPABASE_IRREVERSIBLE_TOOLS
+
+
 def test_no_catalogued_server_is_limited_to_read_access():
     for entry in get_mcp_catalog():
         server = entry.mcp_server
@@ -348,6 +405,9 @@ def test_a_tool_cannot_carry_two_effects():
         ("https://mcp.cloudflare.com/mcp", "docs", "read"),
         ("https://mcp.cloudflare.com/mcp", "whoami", "read"),
         ("https://mcp.cloudflare.com/mcp", "execute", "external"),
+        ("https://mcp.supabase.com/mcp", "list_tables", "read"),
+        ("https://mcp.supabase.com/mcp", "execute_sql", "external"),
+        ("https://mcp.supabase.com/mcp", "merge_branch", "irreversible"),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )
