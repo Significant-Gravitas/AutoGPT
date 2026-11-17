@@ -140,7 +140,7 @@ _HTTPX_CLIENTS = HttpxClientGuard()
 
 @pytest.fixture(scope="session", autouse=True)
 def record_httpx_clients() -> Iterator[None]:
-    """Shows ``pytest_runtest_teardown`` the httpx clients each test used."""
+    """Shows ``pytest_runtest_teardown`` the LLM SDK clients each test used."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(
             httpx.AsyncClient, "send", _HTTPX_CLIENTS.wrap(httpx.AsyncClient.send)
@@ -156,9 +156,10 @@ def pytest_runtest_setup(item: pytest.Item) -> Iterator[None]:
 
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_teardown(item: pytest.Item) -> Iterator[None]:
-    """Fail a test that leaves an httpx client open on its closed event loop,
-    so the test that leaked it fails instead of whichever one runs when the
-    client is garbage-collected (``httpx_client_guard.py``). When teardown
+    """Fail a test that leaves an OpenAI, Anthropic or Groq client open on its
+    closed event loop, so the test that leaked it fails instead of whichever
+    one runs when the client is garbage-collected (``httpx_client_guard.py``).
+    When teardown
     itself fails, its error stands, with any such clients noted on it."""
     try:
         result = yield

@@ -1,4 +1,4 @@
-"""Tests for the guard that fails a test leaving an httpx client open on its
+"""Tests for the guard that fails a test leaving an LLM SDK client open on its
 closed event loop (``httpx_client_guard.py``)."""
 
 import asyncio
@@ -6,6 +6,7 @@ from functools import partial
 
 import httpx
 import pytest
+from openai._base_client import AsyncHttpxClientWrapper
 
 from .httpx_client_guard import HttpxClientGuard
 
@@ -13,60 +14,63 @@ _RESPONSE = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
 
 
 @pytest.mark.parametrize(
-    "transport, close_client, close_loop, named",
+    "client_kind, close_client, close_loop, named",
     [
-        pytest.param("real", False, True, True, id="left-open-on-a-closed-loop"),
-        pytest.param("real", True, True, False, id="closed-before-its-loop"),
-        pytest.param("real", False, False, False, id="its-loop-still-runs"),
-        pytest.param("mock", False, True, False, id="never-pooled-a-connection"),
+        pytest.param("sdk", False, True, True, id="left-open-on-a-closed-loop"),
+        pytest.param("sdk", True, True, False, id="closed-before-its-loop"),
+        pytest.param("sdk", False, False, False, id="its-loop-still-runs"),
+        pytest.param("sdk-mock", False, True, False, id="never-pooled-a-connection"),
+        pytest.param("plain", False, True, False, id="no-finalizer-to-run-aclose"),
     ],
 )
-def test_names_only_a_client_left_open_with_connections_on_a_closed_loop(
-    transport: str, close_client: bool, close_loop: bool, named: bool
+def test_names_only_an_sdk_client_left_open_with_connections_on_a_closed_loop(
+    client_kind: str, close_client: bool, close_loop: bool, named: bool
 ) -> None:
     guard = HttpxClientGuard()
     guard.start()
     loop = asyncio.new_event_loop()
     client = loop.run_until_complete(
-        _request_once(guard, mock=transport == "mock", close=close_client)
+        _request_once(guard, _client(client_kind), close=close_client)
     )
     if close_loop:
         loop.close()
 
     left_open = guard.stop()
 
-    if not loop.is_closed():
-        loop.run_until_complete(client.aclose())
-        loop.close()
+    _close(client, loop)
     assert len(left_open) == int(named)
     if named:
+        assert left_open[0].startswith("openai client to http://127.0.0.1:")
         assert "httpx_client_guard_test.py" in left_open[0]
-        assert "127.0.0.1" in left_open[0]
 
 
 def test_a_client_is_checked_only_in_the_test_that_sent_through_it() -> None:
     guard = HttpxClientGuard()
     loop = asyncio.new_event_loop()
-    loop.run_until_complete(_request_once(guard, mock=False, close=False))
+    client = loop.run_until_complete(_request_once(guard, _client("sdk"), close=False))
     loop.close()
 
     guard.start()
     assert guard.stop() == []
+    _close(client, loop)
+
+
+def _client(kind: str) -> httpx.AsyncClient:
+    if kind == "sdk-mock":
+        return AsyncHttpxClientWrapper(
+            transport=httpx.MockTransport(lambda _: httpx.Response(200))
+        )
+    return AsyncHttpxClientWrapper() if kind == "sdk" else httpx.AsyncClient()
 
 
 async def _request_once(
-    guard: HttpxClientGuard, *, mock: bool, close: bool
+    guard: HttpxClientGuard, client: httpx.AsyncClient, *, close: bool
 ) -> httpx.AsyncClient:
-    """One request from a fresh client to a local server that keeps the
+    """One request from ``client`` to a local server that keeps the
     connection alive, as a provider does, so the client pools it."""
     connections: list[asyncio.StreamWriter] = []
     server = await asyncio.start_server(partial(_answer, connections), "127.0.0.1", 0)
     host, port = server.sockets[0].getsockname()[:2]
-    client = (
-        httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200)))
-        if mock
-        else httpx.AsyncClient()
-    )
     send = guard.wrap(_send_past_the_session_guard)
     response = await send(client, httpx.Request("GET", f"http://{host}:{port}/"))
     assert response.status_code == 200
@@ -89,6 +93,15 @@ async def _drop_sockets(client: httpx.AsyncClient) -> None:
         return
     for connection in client._transport._pool.connections:
         await connection._connection._network_stream.aclose()
+
+
+def _close(client: httpx.AsyncClient, loop: asyncio.AbstractEventLoop) -> None:
+    """Closes a client left open on purpose, so its finalizer has nothing to
+    do. Its sockets are already gone, so any loop can close it."""
+    if loop.is_closed():
+        loop = asyncio.new_event_loop()
+    loop.run_until_complete(client.aclose())
+    loop.close()
 
 
 async def _send_past_the_session_guard(

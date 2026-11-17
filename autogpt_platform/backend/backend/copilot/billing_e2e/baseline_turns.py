@@ -9,7 +9,7 @@ copilot's tools, which answer the provider's tool call with a canned result.
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -61,6 +61,9 @@ class BaselineTurns:
             "resolve_answered": _no_answered_cards,
             "build_turn_budget_block": AsyncMock(return_value=""),
             "_fetch_graphiti_context": AsyncMock(return_value=""),
+            # A follow-up turn's memory refresh. The baseline binds it by
+            # name, so conftest's patch of context_refresh never reaches it.
+            "start_refresh": MagicMock(return_value=None),
             "_enqueue_graphiti_turn": AsyncMock(),
             "capture_chat_turn": AsyncMock(),
             "build_expert_identity_suffix": AsyncMock(return_value=""),
