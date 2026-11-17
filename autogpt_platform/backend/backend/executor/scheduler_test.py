@@ -27,7 +27,6 @@ from backend.executor.scheduler import (
     _build_trigger,
     _execute_graph,
     _memory_scope_may_fire,
-    _normalize_cron_day_of_week,
     _register_dream_pass_jobs,
     execute_dream_pass_reaper,
     execute_dream_pass_retention,
@@ -239,6 +238,7 @@ _DOW_FIELD_WEEKDAYS = {
     "0-7": {0, 1, 2, 3, 4, 5, 6},
     "*/2": {6, 1, 3, 5},
     "5-1/2": {4, 6},
+    "sun-thu": {6, 0, 1, 2, 3},
 }
 
 
@@ -1672,50 +1672,6 @@ async def test_copilot_turn_schedule_requires_cron_xor_run_at(server: SpinTestSe
     # ValueError from _build_trigger propagates as a RemoteError
     # through the AppService transport; just verify the call rejected.
     assert exc.value is not None
-
-
-@pytest.mark.parametrize(
-    "raw,expected",
-    [
-        ("*", "*"),
-        ("?", "?"),
-        ("mon-fri", "mon-fri"),
-        ("1-5", "0,1,2,3,4"),
-        ("1,3,5", "0,2,4"),
-        ("0", "6"),
-        ("7", "6"),
-        ("0,6", "6,5"),
-        ("6-7", "5,6"),
-        ("0-4", "0,1,2,3,6"),
-        ("5-2", "0,1,4,5,6"),
-        # Numeric tokens expand to their day set before mapping (#15276):
-        # */2 is Sun/Tue/Thu/Sat, 0-7 is every day, wrap+step keeps its phase.
-        ("*/2", "1,3,5,6"),
-        ("1-5/1", "0,1,2,3,4"),
-        ("0-7", "0,1,2,3,4,5,6"),
-        ("5-2/2", "1,4,6"),
-    ],
-)
-def test_normalize_cron_day_of_week_field_translates_unix_to_apscheduler(
-    raw: str, expected: str
-):
-    """Unix-cron uses 0=Sun..6=Sat; APScheduler uses 0=Mon..6=Sun.
-    The numbers must be translated, but named tokens and ``*``/``?`` pass
-    through unchanged. Numeric tokens become explicit APS day lists."""
-    cron = f"0 9 * * {raw}"
-    assert _normalize_cron_day_of_week(cron) == f"0 9 * * {expected}"
-
-
-@pytest.mark.parametrize(
-    "raw", ["*/0", "8", "1-9", "9-2", "0-5/0", "1/", "0-7/", "1,3/"]
-)
-def test_normalize_cron_day_of_week_rejects_what_cron_rejects(raw: str):
-    """A zero step, a day above 7 or a slash with no step is invalid cron.
-    Coercing it (``*/0`` to every day, ``8`` to Monday, ``1/`` to Monday,
-    ``0-7/`` to every day) would save a schedule that fires on days the user
-    never asked for."""
-    with pytest.raises(ValueError):
-        _normalize_cron_day_of_week(f"0 9 * * {raw}")
 
 
 def test_build_trigger_with_unix_dow_numbers_fires_on_correct_weekday():

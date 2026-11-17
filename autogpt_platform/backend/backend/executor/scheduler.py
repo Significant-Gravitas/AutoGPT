@@ -4,7 +4,6 @@ import functools
 import hashlib
 import logging
 import os
-import re
 import tempfile
 import threading
 import time
@@ -141,7 +140,7 @@ from backend.util.clients import (
     get_scheduler_client,
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
-from backend.util.cron import check_cron_fires, check_cron_length
+from backend.util.cron import check_cron_fires, validate_cron
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -2883,94 +2882,6 @@ def _resolve_timezone(user_timezone: str | None, user_id: str) -> str:
     return "UTC"
 
 
-_DOW_DIGIT_RE = re.compile(r"\d")
-
-
-def _unix_dow_to_apscheduler(n: int) -> int:
-    """Map Unix-cron day-of-week (0=Sun..6=Sat, 7=Sun) to APScheduler's
-    (0=Mon..6=Sun). APScheduler's ``CronTrigger.from_crontab`` does NOT
-    perform this translation despite the docstring implying Unix semantics,
-    so numeric day-of-week fields silently fire one day late.
-    """
-    return (n - 1) % 7
-
-
-def _expand_unix_dow(token: str) -> list[int] | None:
-    """Expand a numeric Unix DOW token to the set of days it covers.
-
-    Returns Unix day numbers (0=Sun..6=Sat; 7 is treated as Sun) or ``None``
-    for named tokens (``mon``, ``mon-fri``) that should pass through. Remapping
-    endpoints and then reattaching a step (the old approach) is wrong: ``0-7``
-    became ``6-6``, ``*/2`` stayed APS Mon/Wed/Fri/Sun, and wrap+step produced
-    invalid APS ranges like ``0-1/2``. Expanding the day set first and mapping
-    each day is unambiguous.
-    """
-    body, slash, step_s = token.partition("/")
-    if slash and not step_s:
-        # ``1/`` or ``0-7/``: a slash with nothing after it. APScheduler needs
-        # digits there, so reject it instead of quietly saving a plain ``1``.
-        raise ValueError(f"Missing day-of-week step in {token!r}")
-    if step_s and not step_s.isdigit():
-        return None
-    step = int(step_s) if step_s else 1
-    if step < 1:
-        raise ValueError(f"Invalid day-of-week step in {token!r}")
-
-    if body in ("*", "?"):
-        seq = list(range(7))
-    elif "-" in body:
-        start_s, end_s = body.split("-", 1)
-        if not (start_s.isdigit() and end_s.isdigit()):
-            return None
-        start, end = _unix_dow_day(start_s, token), _unix_dow_day(end_s, token)
-        if start <= end:
-            seq = list(range(start, end + 1))
-        else:
-            seq = list(range(start, 7)) + list(range(0, end + 1))
-    elif body.isdigit():
-        # ``1/2`` means "from 1 every 2 days to the end of the week".
-        start = _unix_dow_day(body, token)
-        seq = list(range(start, max(start, 6) + 1)) if step_s else [start]
-    else:
-        return None
-
-    return sorted({d % 7 for d in seq[::step]})
-
-
-def _unix_dow_day(value: str, token: str) -> int:
-    """Parse one Unix day number, rejecting anything outside 0-7 the way cron
-    does instead of letting ``% 7`` turn ``8`` into Monday."""
-    day = int(value)
-    if day > 7:
-        raise ValueError(f"Day-of-week {day} out of range 0-7 in {token!r}")
-    return day
-
-
-def _convert_dow_token(token: str) -> str:
-    """Convert a single comma-separated token of a day-of-week field from
-    Unix-cron numbering to APScheduler numbering. Handles ``*``, plain
-    numbers, ranges (including wrap-around like ``5-2``), step modifiers,
-    and lets named tokens (``mon-fri``) pass through unchanged."""
-    days = _expand_unix_dow(token)
-    if days is None:
-        return token
-    return ",".join(str(d) for d in sorted({_unix_dow_to_apscheduler(d) for d in days}))
-
-
-def _normalize_cron_day_of_week(cron: str) -> str:
-    """Rewrite the day-of-week field of a 5-field Unix cron string into the
-    numbering APScheduler expects. Leaves the field untouched if it contains
-    no digits (``mon-fri``), is ``*``/``?``, or the cron is malformed."""
-    parts = cron.split()
-    if len(parts) != 5:
-        return cron
-    dow = parts[4]
-    if dow in ("*", "?") or not _DOW_DIGIT_RE.search(dow):
-        return cron
-    parts[4] = ",".join(_convert_dow_token(t) for t in dow.split(","))
-    return " ".join(parts)
-
-
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
 ) -> Union[CronTrigger, DateTrigger]:
@@ -2978,20 +2889,11 @@ def _build_trigger(
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
         if cron is not None:
-            return _build_cron_trigger(cron, user_timezone)
+            return validate_cron(cron, user_timezone)
         return DateTrigger(run_date=run_at, timezone=user_timezone)
     except ZoneInfoNotFoundError as e:
         # A KeyError, which the API would turn into a 500, not a 400.
         raise ValueError(f"Unknown timezone {user_timezone!r}") from e
-
-
-def _build_cron_trigger(cron: str, user_timezone: str) -> CronTrigger:
-    check_cron_length(cron)
-    trigger = CronTrigger.from_crontab(
-        _normalize_cron_day_of_week(cron), timezone=user_timezone
-    )
-    check_cron_fires(trigger, cron)
-    return trigger
 
 
 def _updated_graph_job_args(

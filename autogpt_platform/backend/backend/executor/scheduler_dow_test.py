@@ -28,6 +28,9 @@ def _fire_weekdays(cron: str, n: int = 7) -> list[str]:
     [
         ("0-7", ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]),
         ("*/2", ["Sun", "Tue", "Thu", "Sat", "Sun", "Tue", "Thu"]),
+        ("*/3", ["Sun", "Wed", "Sat", "Sun", "Wed", "Sat", "Sun"]),
+        ("0-7/2", ["Sun", "Tue", "Thu", "Sat", "Sun", "Tue", "Thu"]),
+        ("1/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("5-2/2", ["Sun", "Tue", "Fri", "Sun", "Tue", "Fri", "Sun"]),
         ("1-5/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("6-2", ["Sun", "Mon", "Tue", "Sat", "Sun", "Mon", "Tue"]),
@@ -35,14 +38,19 @@ def _fire_weekdays(cron: str, n: int = 7) -> list[str]:
         ("5-1/2", ["Sun", "Fri", "Sun", "Fri", "Sun", "Fri", "Sun"]),
         ("7", ["Sun"] * 7),
         ("0", ["Sun"] * 7),
+        ("1,3,5", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("mon-fri", ["Mon", "Tue", "Wed", "Thu", "Fri", "Mon", "Tue"]),
+        ("SUN-THU", ["Sun", "Mon", "Tue", "Wed", "Thu", "Sun", "Mon"]),
+        ("mon-fri/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
     ],
 )
 def test_dow_field_keeps_its_days(dow, expected):
     assert _fire_weekdays(f"0 0 * * {dow}") == expected
 
 
-@pytest.mark.parametrize("dow", ["1/", "0-7/", "*/", "1,3/", "*/0", "8"])
+@pytest.mark.parametrize(
+    "dow", ["1/", "0-7/", "*/", "1,3/", "*/0", "8", "mon-fri/", "*/x"]
+)
 def test_malformed_dow_field_is_rejected(dow):
     """A slash with no step, a zero step or a day above 7 must raise instead of
     being coerced into a schedule that fires on days nobody asked for."""
