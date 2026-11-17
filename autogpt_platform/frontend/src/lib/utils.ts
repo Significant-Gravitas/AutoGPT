@@ -104,6 +104,7 @@ const exceptionMap: Record<string, string> = {
   "Tik Tok": "TikTok",
   "All Quiet": "AllQuiet",
   "Any Search": "AnySearch",
+  "Post Once": "PostOnce",
 };
 
 const applyExceptions = (str: string): string => {

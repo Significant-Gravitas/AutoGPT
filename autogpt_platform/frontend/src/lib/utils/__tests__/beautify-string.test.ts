@@ -19,6 +19,9 @@ describe("beautifyString", () => {
     expect(beautifyString("AllQuietGetOnCallBlock")).toBe(
       "AllQuiet Get On Call Block",
     );
+    expect(beautifyString("PostOnceCreatePostBlock")).toBe(
+      "PostOnce Create Post Block",
+    );
   });
 
   it("splits ordinary camel case into words", () => {
