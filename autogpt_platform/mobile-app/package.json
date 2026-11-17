@@ -24,7 +24,6 @@
     "expo-device": "~58.0.5",
     "expo-document-picker": "~58.0.5",
     "expo-font": "~58.0.11",
-    "expo-glass-effect": "~58.0.5",
     "expo-haptics": "~58.0.7",
     "expo-image": "~58.0.18",
     "expo-image-picker": "~58.0.10",
