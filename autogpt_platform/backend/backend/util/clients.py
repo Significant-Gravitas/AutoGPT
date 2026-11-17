@@ -2,14 +2,26 @@
 Centralized service client helpers with thread caching.
 """
 
-from typing import TYPE_CHECKING
+import asyncio
+from time import monotonic
+from typing import TYPE_CHECKING, Awaitable, TypeVar
+
+import httpx
 
 from backend.util.cache import cached, thread_cached
+from backend.util.exceptions import SchedulerUnavailableError
 from backend.util.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 settings = Settings()
+
+T = TypeVar("T")
+
+# A deploy leaves no scheduler for about 1-2.5 min, and at worst about 10: the
+# 300s shutdown grace plus the 300s startup probe. An outage longer than that
+# is not a deploy, and someone should hear about it.
+SCHEDULER_SUSTAINED_OUTAGE_SECONDS = 600.0
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
@@ -62,6 +74,73 @@ def get_scheduler_client(should_retry: bool = False) -> "SchedulerClient":
     from backend.util.service import get_service_client
 
     return get_service_client(SchedulerClient, request_retry=should_retry)
+
+
+async def read_schedules(read: Awaitable[T]) -> T:
+    """Await a schedule list someone is waiting on, failing fast while the
+    scheduler is out.
+
+    The scheduler restarts on every deploy. A read it refuses, drops or leaves
+    unanswered past ``schedule_list_timeout_seconds`` raises
+    ``SchedulerUnavailableError`` (a 503), well inside the 30s frontend proxy
+    and the 300s RPC timeout. A scheduler that answers with an error, its own
+    timeout included, is not out, so that error passes through unchanged.
+    """
+    deadline = asyncio.timeout(settings.config.schedule_list_timeout_seconds)
+    try:
+        async with deadline:
+            schedules = await read
+    except httpx.TransportError as e:
+        raise _scheduler_unavailable(e) from e
+    except TimeoutError as e:
+        if deadline.expired():
+            raise _scheduler_unavailable(e) from e
+        _scheduler_outage.answered()
+        raise
+    except Exception:
+        _scheduler_outage.answered()
+        raise
+    _scheduler_outage.answered()
+    return schedules
+
+
+def _scheduler_unavailable(cause: Exception) -> SchedulerUnavailableError:
+    return SchedulerUnavailableError(
+        f"The scheduler did not answer: {type(cause).__name__} {cause}".rstrip(),
+        outage_seconds=_scheduler_outage.failed(),
+    )
+
+
+class _SchedulerOutage:
+    """This process's current run of failed schedule reads.
+
+    Reads are rare, so failures more than ``SCHEDULER_SUSTAINED_OUTAGE_SECONDS``
+    apart are separate outages, such as two deploys' gaps, as are failures
+    with an answer between them.
+    """
+
+    def __init__(self) -> None:
+        self.started: float | None = None
+        self.last_failure: float | None = None
+
+    def failed(self) -> float:
+        """Count a failed read; return how long the current outage has lasted."""
+        now = monotonic()
+        started = self.started
+        if (
+            started is None
+            or self.last_failure is None
+            or now - self.last_failure > SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+        ):
+            started = now
+        self.started, self.last_failure = started, now
+        return now - started
+
+    def answered(self) -> None:
+        self.started = self.last_failure = None
+
+
+_scheduler_outage = _SchedulerOutage()
 
 
 @thread_cached
