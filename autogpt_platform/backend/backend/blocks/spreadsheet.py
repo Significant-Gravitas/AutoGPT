@@ -17,28 +17,6 @@ from backend.util.file_content_parser import check_xlsx_unpacked_size
 from backend.util.type import MediaFileType
 
 
-def _unique_name(name: str, used: set[str]) -> str:
-    if name not in used:
-        return name
-    n = 2
-    while f"{name}_{n}" in used:
-        n += 1
-    return f"{name}_{n}"
-
-
-def _unique_column_names(header: list[str]) -> list[str]:
-    """Make header names usable as dict keys: blank cells become
-    ``column_<n>`` and repeats get ``_2``, ``_3``… so no column overwrites
-    another."""
-    used: set[str] = set()
-    names = []
-    for i, name in enumerate(header):
-        name = _unique_name(name or f"column_{i + 1}", used)
-        used.add(name)
-        names.append(name)
-    return names
-
-
 class ReadSpreadsheetBlock(Block):
     class Input(BlockSchemaInput):
         contents: str | None = SchemaField(
@@ -217,9 +195,9 @@ class ReadSpreadsheetBlock(Block):
             escapechar=input_data.escapechar,
         )
 
-        # Leading blank lines skipped while finding the header count toward
-        # skip_rows, so the same data rows come out as before. Empty header
-        # cells are still columns; skipping them would discard the first data row.
+        # Blank lines before the header count toward skip_rows. A header whose
+        # cells are all empty is still the header: skipping it would make the
+        # first data row the header and lose its values.
         skip_rows = input_data.skip_rows
         header = None
         if input_data.has_header:
@@ -238,13 +216,19 @@ class ReadSpreadsheetBlock(Block):
             if next(reader, None) is None:
                 break
 
+        header_names = set(header or [])
+        extra_names: dict[int, str] = {}
+
         def column_key(i: int) -> str:
             if not header:
                 return str(i)
             if i < len(header):
                 return header[i]
-            # A row with more fields than the header keeps the extra values.
-            return _unique_name(f"column_{i + 1}", set(header))
+            # A row with more fields than the header keeps the extra values,
+            # under the same key in every row.
+            if i not in extra_names:
+                extra_names[i] = _claim_name(f"column_{i + 1}", header_names, {})
+            return extra_names[i]
 
         def process_row(row):
             data = {}
@@ -261,3 +245,39 @@ class ReadSpreadsheetBlock(Block):
                 yield "row", processed_row
         else:
             yield "rows", rows
+
+
+def _unique_column_names(header: list[str]) -> list[str]:
+    """Turn header cells into distinct dict keys.
+
+    The first cell with a given text keeps it. A blank cell becomes
+    ``column_<position>`` and a repeat gets ``_2``, ``_3``…, skipping every
+    name a header cell has in the file, so no column overwrites another and a
+    key always names the column whose header it is.
+    """
+    taken = {name for name in header if name}
+    suffixes: dict[str, int] = {}
+    seen: set[str] = set()
+    names = []
+    for i, name in enumerate(header):
+        if name and name not in seen:
+            seen.add(name)
+            names.append(name)
+        else:
+            names.append(_claim_name(name or f"column_{i + 1}", taken, suffixes))
+    return names
+
+
+def _claim_name(base: str, taken: set[str], suffixes: dict[str, int]) -> str:
+    """Return ``base``, or ``base_<n>`` with the lowest free n, and mark it taken.
+
+    ``suffixes`` remembers where each base's search stopped. Names are only
+    ever added to ``taken``, so every lower suffix is still taken, and a
+    header of many repeats is named in linear time.
+    """
+    name, n = base, suffixes.get(base, 2)
+    while name in taken:
+        name, n = f"{base}_{n}", n + 1
+    suffixes[base] = n
+    taken.add(name)
+    return name
