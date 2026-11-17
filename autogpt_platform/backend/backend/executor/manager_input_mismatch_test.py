@@ -14,6 +14,7 @@ import pytest
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.anysearch.search import AnySearchBlock
 from backend.blocks.llm import AITextGeneratorBlock
+from backend.blocks.maths import CalculatorBlock, Operation
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data.execution import ExecutionContext, ExecutionStatus, NodeExecutionEntry
 from backend.data.graph import Link, Node
@@ -221,6 +222,26 @@ def test_a_dry_run_still_tolerates_a_schema_mismatch():
     )
 
     assert data is not None
+
+
+def test_an_unparsable_numeric_string_is_an_input_error():
+    node = Node(id="calc-node", block_id=CalculatorBlock().id, input_default={})
+
+    data, error = validate_exec(node, {"operation": Operation.ADD, "a": "abc", "b": 2})
+
+    assert data is None
+    assert "`a`" in error and "can't be converted" in error
+
+
+def test_an_unparsable_numeric_string_fails_a_dry_run_too():
+    node = Node(id="calc-node", block_id=CalculatorBlock().id, input_default={})
+
+    data, error = validate_exec(
+        node, {"operation": Operation.ADD, "a": "abc", "b": 2}, dry_run=True
+    )
+
+    assert data is None
+    assert "`a`" in error
 
 
 def test_a_list_into_a_text_input_is_still_converted():

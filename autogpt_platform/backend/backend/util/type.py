@@ -124,7 +124,11 @@ def __convert_num(value: Any, num_type: Type[NUM]) -> NUM:
                 pass
         try:
             return num_type(float(value))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError) as e:
+            if isinstance(value, str):
+                raise ConversionError(
+                    f"Cannot convert {value!r} to {num_type.__name__}"
+                ) from e
             return num_type(0)  # Fallback conversion
 
 
