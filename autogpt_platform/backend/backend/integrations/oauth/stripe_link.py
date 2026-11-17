@@ -42,6 +42,8 @@ DEVICE_GRANT_METADATA = {
     "link_oauth_flow": "device_code",
     "link_client_id": LINK_CLIENT_ID,
 }
+# How a grant from the registered confidential client is marked.
+HOSTED_FLOW = "authorization_code"
 LINK_CLIENT_NAME = "AutoGPT"
 
 
@@ -231,6 +233,11 @@ class StripeLinkDeviceAuthHandler(BaseDeviceAuthHandler):
     ) -> OAuth2Credentials:
         if not credentials.refresh_token:
             raise RuntimeError("No refresh token available")
+        if credentials.metadata.get("link_oauth_flow") == HOSTED_FLOW:
+            # A reconnect through the confidential client replaced the grant
+            # after this handler was picked. Not a dead grant: the next refresh
+            # picks that client.
+            raise RuntimeError("These Stripe Link credentials are not this client's")
 
         async with httpx.AsyncClient(timeout=LINK_HTTP_TIMEOUT) as client:
             response = await client.post(

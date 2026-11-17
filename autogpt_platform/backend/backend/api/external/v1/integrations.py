@@ -225,6 +225,14 @@ def _get_oauth_handler_for_external(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Connect Microsoft in AutoGPT's Settings, under Integrations.",
         )
+    if provider_name == ProviderName.STRIPE_LINK.value:
+        # Link redirects only to the callbacks registered for AutoGPT's client,
+        # and a reconnect must merge into the wallet's credential and end the
+        # grant it replaces, which only AutoGPT's own connect flow does.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Connect Stripe Link in AutoGPT's Settings, under Integrations.",
+        )
 
     # Check if this provider has custom OAuth credentials
     oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_name)
