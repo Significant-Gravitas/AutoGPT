@@ -40,6 +40,9 @@ export function useTemplatePage(templateID: string) {
   // (the drawer's own back goes to its first screen). Leaving drops any error,
   // so a return visit starts clean.
   useMountEffect(() => {
+    // Set here too: Fast Refresh and Strict Mode rerun this effect after its
+    // cleanup, keeping the ref.
+    isMounted.current = true;
     let backPress: NativeEventSubscription | null = null;
     function handleBackPress() {
       back();
