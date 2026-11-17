@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  CUSTOM_INTERVAL_MAX,
   type CustomIntervalUnit,
   getCustomIntervalError,
   parseCustomInterval,
@@ -22,9 +23,18 @@ function errorOf(interval: CustomIntervalDraft) {
   );
 }
 
-// The field keeps exactly what was typed. An out-of-range value is only
-// flagged once the user leaves the field or changes the unit; an edit that
-// makes it valid clears the message straight away.
+function isAboveMax(interval: CustomIntervalDraft) {
+  return parseCustomInterval(interval.value) > CUSTOM_INTERVAL_MAX[interval.unit];
+}
+
+function isCustomIntervalUnit(unit: string): unit is CustomIntervalUnit {
+  return unit === "minutes" || unit === "hours" || unit === "days";
+}
+
+// The field keeps exactly what was typed. A value above the unit's range is
+// flagged at once, since more digits can't fix it; an empty or partial value
+// only once the user leaves the field or changes the unit. An edit that makes
+// it valid clears the message straight away.
 export function useCustomIntervalField({ interval, onChange }: Args) {
   const [isErrorShown, setIsErrorShown] = useState(false);
   const error = errorOf(interval);
@@ -32,6 +42,7 @@ export function useCustomIntervalField({ interval, onChange }: Args) {
   function handleValueChange(e: React.ChangeEvent<HTMLInputElement>) {
     const next = { ...interval, value: e.target.value };
     if (!errorOf(next)) setIsErrorShown(false);
+    else if (isAboveMax(next)) setIsErrorShown(true);
     onChange(next);
   }
 
@@ -40,7 +51,8 @@ export function useCustomIntervalField({ interval, onChange }: Args) {
   }
 
   function handleUnitChange(unit: string) {
-    const next = { ...interval, unit: unit as CustomIntervalUnit };
+    if (!isCustomIntervalUnit(unit)) return;
+    const next = { ...interval, unit };
     setIsErrorShown(errorOf(next) !== undefined);
     onChange(next);
   }

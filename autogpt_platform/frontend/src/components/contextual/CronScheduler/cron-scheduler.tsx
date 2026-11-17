@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -69,6 +69,7 @@ export function CronScheduler({
     interval: customInterval,
     onChange: setCustomInterval,
   });
+  const intervalErrorId = useId();
 
   // Parse initial cron expression and set state
   useEffect(() => {
@@ -297,6 +298,10 @@ export function CronScheduler({
                 value={customInterval.value}
                 onChange={intervalField.handleValueChange}
                 onBlur={intervalField.handleBlur}
+                aria-invalid={intervalField.error ? true : undefined}
+                aria-describedby={
+                  intervalField.error ? intervalErrorId : undefined
+                }
               />
               <Select
                 value={customInterval.unit}
@@ -313,7 +318,7 @@ export function CronScheduler({
               </Select>
             </div>
             {intervalField.error && (
-              <Text variant="body-tight" tone="error">
+              <Text id={intervalErrorId} variant="body-tight" tone="error">
                 {intervalField.error}
               </Text>
             )}

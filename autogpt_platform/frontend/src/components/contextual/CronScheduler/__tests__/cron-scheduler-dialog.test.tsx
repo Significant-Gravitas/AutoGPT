@@ -17,7 +17,7 @@ describe("CronExpressionDialog", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  test("a custom interval keeps what is typed and submits only once it is in range (#15275)", async () => {
+  test("a custom interval keeps what is typed, is flagged when out of range, and submits only once it is in range (#15275)", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<CronExpressionDialog open setOpen={vi.fn()} onSubmit={onSubmit} />);
@@ -29,13 +29,18 @@ describe("CronExpressionDialog", () => {
 
     await user.clear(field);
     expect(field.value).toBe("");
+    expect(screen.queryByText("Enter 1 to 60 minutes")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(field.getAttribute("aria-describedby")).toBe(
+      screen.getByText("Enter 1 to 60 minutes").id,
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+
     await user.type(field, "90");
     expect(field.value).toBe("90");
-    expect(screen.queryByText("Enter 1 to 60 minutes")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByText("Enter 1 to 60 minutes")).toBeDefined();
-    expect(field.value).toBe("90");
+    await user.click(screen.getByRole("button", { name: "Done" }));
     expect(onSubmit).not.toHaveBeenCalled();
 
     await user.clear(field);

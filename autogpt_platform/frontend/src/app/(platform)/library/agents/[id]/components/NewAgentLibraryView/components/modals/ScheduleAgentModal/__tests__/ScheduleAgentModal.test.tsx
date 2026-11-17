@@ -93,7 +93,7 @@ describe("ScheduleAgentModal custom interval (#15275)", () => {
     await waitFor(() => expect(crons).toEqual(["*/45 * * * *"]));
   });
 
-  test("flags an out-of-range interval on blur without rewriting it, and sends nothing until it is fixed", async () => {
+  test("flags an interval above the unit's range as it is typed, without rewriting it, and sends nothing until it is fixed", async () => {
     const user = userEvent.setup();
     const crons = captureSentCrons();
     const field = await openCustomInterval(user);
@@ -102,12 +102,9 @@ describe("ScheduleAgentModal custom interval (#15275)", () => {
     await user.clear(field);
     await user.type(field, "31");
     expect(field.value).toBe("31");
-    expect(screen.queryByText("Enter 1 to 30 days")).toBeNull();
-
-    await user.tab();
     expect(screen.getByText("Enter 1 to 30 days")).toBeDefined();
-    expect(field.value).toBe("31");
     expect(scheduleButton()).toHaveProperty("disabled", true);
+    await user.click(scheduleButton());
 
     await user.clear(field);
     await user.type(field, "30");
@@ -115,6 +112,19 @@ describe("ScheduleAgentModal custom interval (#15275)", () => {
     await user.click(scheduleButton());
 
     await waitFor(() => expect(crons).toEqual(["0 9 */30 * *"]));
+  });
+
+  test("an emptied field is flagged only once the user leaves it", async () => {
+    const user = userEvent.setup();
+    const field = await openCustomInterval(user);
+
+    await user.clear(field);
+    expect(screen.queryByText("Enter 1 to 60 minutes")).toBeNull();
+    await user.tab();
+
+    expect(screen.getByText("Enter 1 to 60 minutes")).toBeDefined();
+    expect(field.value).toBe("");
+    expect(scheduleButton()).toHaveProperty("disabled", true);
   });
 
   test("a unit change re-checks the interval instead of changing it", async () => {
@@ -130,6 +140,10 @@ describe("ScheduleAgentModal custom interval (#15275)", () => {
     expect(screen.getByText("Enter 1 to 24 hours")).toBeDefined();
     expect(scheduleButton()).toHaveProperty("disabled", true);
     await user.click(scheduleButton());
-    expect(crons).toEqual([]);
+
+    await user.clear(field);
+    await user.type(field, "12");
+    await user.click(scheduleButton());
+    await waitFor(() => expect(crons).toEqual(["0 */12 * * *"]));
   });
 });
