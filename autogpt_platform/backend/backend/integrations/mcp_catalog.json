@@ -1060,7 +1060,7 @@
     "mcp_server": {
       "server_url": "https://mcp.supabase.com/mcp",
       "documentation_url": "https://supabase.com/docs/guides/getting-started/mcp",
-      "setup_instructions": "Sign in with your Supabase account and approve access to your organization. Tools can read and change your projects and databases, so connect a development project rather than production.",
+      "setup_instructions": "Sign in with your Supabase account and choose an organization. Tools can read and change every project and database in it, so choose an organization without production data.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
