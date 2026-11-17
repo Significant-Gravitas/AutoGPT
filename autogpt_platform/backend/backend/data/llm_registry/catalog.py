@@ -1536,14 +1536,14 @@ def _build_catalog() -> CatalogPayload:
                 supports_tools=True,
                 supports_json_output=True,
                 supports_reasoning=True,
-                # Live OpenRouter listing 2026-11-16: $1.50/$4.50 per Mtok,
-                # cache read $0.075/1M, cache write $1.875/1M.
+                # Live OpenRouter listing 2026-11-17: $1.425/$4.275 per Mtok,
+                # cache read $0.07125/1M, cache write $1.78125/1M.
                 cost=CatalogModelCost(
                     run_credits=4,
-                    input_credits_per_1m=225.0,
-                    output_credits_per_1m=675.0,
-                    cache_read_credits_per_1m=11.25,
-                    cache_creation_credits_per_1m=281.25,
+                    input_credits_per_1m=213.75,
+                    output_credits_per_1m=641.25,
+                    cache_read_credits_per_1m=10.6875,
+                    cache_creation_credits_per_1m=267.1875,
                 ),
             ),
             CatalogModel(
