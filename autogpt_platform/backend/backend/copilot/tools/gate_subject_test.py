@@ -1482,11 +1482,10 @@ async def test_an_approved_call_replays_the_content_it_was_approved_for(
     call = remember.await_args.args[1]
     assert call.args["input"]["table_name"] == files["name.txt"]
 
-    with patch(
-        "backend.copilot.gate.review_store.find_review",
-        _approve_only(call.review_id),
-    ):
-        await held._run("user-1", _session(), call, RunCapabilityTool())
+    # The fold spends the card it read, and the gate lets through the call
+    # that card's id names: the replay must name the same one, or it asks again.
+    card = SimpleNamespace(status=ReviewStatus.APPROVED, payload={})
+    await held._run("user-1", _session(), call, card, RunCapabilityTool())
 
     ran.assert_awaited_once()
     assert ran.await_args.args[3]["table_name"] == files["name.txt"]
