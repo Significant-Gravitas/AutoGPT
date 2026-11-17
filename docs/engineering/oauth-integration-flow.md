@@ -341,6 +341,31 @@ stateDiagram-v2
 - **Token Management**: Custom refresh logic with mutex locking
 - **User Experience**: Connect external services to use in workflows
 
+### Connecting right after signing up
+
+Signing in with a provider never asks for its data: login asks only for name
+and email, so the consent screen stays short and a company's admin isn't
+asked to approve an app just for someone to log in. Instead, a new account
+that signed up with Microsoft or Google gets an access step in onboarding
+(`onboarding/steps/AccessStep/accessProviders.tsx`) that offers the
+integration connection while the provider's session is still fresh. Skipping
+it is fine; Settings → Integrations connects later. With payments on, the
+step follows the plan step, since connecting needs a plan.
+
+- **Microsoft** offers the `microsoft` connection (mail, calendar, files,
+  and for work accounts Teams, Microsoft 365 Copilot and Work IQ); see
+  [Microsoft connection and sign-in](microsoft-local-e2e.md).
+- **Google** offers one `google` connection for Gmail, Drive and Calendar. It
+  asks for the scopes the Google blocks require (`GOOGLE_SERVICES` in
+  `GoogleAccess/helpers.ts`), so the connection covers all of them. A contract
+  test (`googleAccessScopes.contract.test.ts`) fails if the step asks for a
+  scope no block on `dev` requires, since a scope reaches `dev` only once
+  Google has approved it. It never asks for `gmail.metadata`: a grant with it
+  gets Gmail headers only and no search. Google lets people untick
+  permissions on its consent screen, so the step shows each service's status
+  afterwards, and **Allow** asks again for just that service's scopes, added
+  to the same connection (`credential_id`).
+
 ## Data Flow and Security
 
 ### 1. State Token Flow
