@@ -10,12 +10,14 @@ own check on each call before relaying it. See docs/CUA_DRIVER.md.
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import string
 import sys
 import unicodedata
-from collections.abc import Callable, Iterable, Mapping
-from typing import Any
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Any, NamedTuple
 
 # The cua-driver release this catalog was reviewed against. A driver of
 # another minor version may add tools or arguments nobody reviewed, so the
@@ -167,7 +169,9 @@ APPROVAL_ARGUMENTS: dict[str, dict[str, str]] = {
     # in the background with no window of their own, and opens links and
     # files with whatever app handles them. A launch that only names an app
     # (`name`, `bundle_id`, `aumid`) needs no approval; check_arguments
-    # holds those to an app's name or id.
+    # holds those to an app's name or id. On Linux the shim then sends the
+    # driver the matched app's own command as `launch_path` (linux_launch):
+    # that one is the shim's, filled in after this check, not the model's.
     "launch_app": {
         "launch_path": "runs this command line",
         "path": "runs this program",
@@ -361,14 +365,16 @@ def _check_app_identity(
                 "names an app by its name or id; a path or a link goes in launch_path, "
                 "path or urls, which the person approves",
             )
-    # On Linux the driver runs `name` as a command line first, split at
+    # On Linux the driver runs a `name` as a command line first, split at
     # spaces, and matches it against the installed apps only if no program
-    # has its first word. A program's own name ("reboot") would run it, in
-    # the background. An app's display name, as list_apps gives it ("Google
-    # Chrome", "Firefox"), starts with no program's name (PATH lookups are
-    # case-sensitive) and so reaches the match. (A name that matches no app
-    # either is checked against the installed apps, which takes the driver:
-    # ComputerUseHandler._check_launch_name.)
+    # has its first word: a program's own name ("reboot") would run it, in
+    # the background. The shim sends the driver no name to run (a launch by
+    # name goes as the matched app's own command, ComputerUseHandler.
+    # _linux_launch_by_name), and refuses such a name all the same: it is a
+    # command line, not an app's name, and nothing then depends on it never
+    # reaching the driver. An app's display name, as list_apps gives it
+    # ("Google Chrome", "Firefox"), starts with no program's name (PATH
+    # lookups are case-sensitive).
     # On Windows the driver launches a bundle_id that is an AUMID as a
     # packaged app and hands any other to ShellExecuteEx as a program name,
     # without looking for an installed app first: `logoff` signs the person
@@ -389,9 +395,9 @@ def _check_app_identity(
         raise ArgumentRefused(
             "launch_app",
             "name",
-            f"the driver would run the program {words[0]!r}{rest}; name the app as "
-            "list_apps shows it, or pass a command line as launch_path, which the "
-            "person approves",
+            f"{words[0]!r} is a program, which cua-driver runs as a command line{rest}; "
+            "name the app as list_apps shows it, or pass a command line as launch_path, "
+            "which the person approves",
         )
 
 
@@ -417,19 +423,135 @@ def windows_app_name_matches(name: str, app_names: Iterable[str]) -> bool:
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 
-def linux_app_name_matches(name: str, apps: Iterable[tuple[str, str | None]]) -> bool:
-    """Whether cua-driver 0.38 on Linux surely launches an installed app for
-    a launch_app `name` that no program has: one that is an app's display
-    name or desktop-file id (`apps` holds each app's pair), ignoring ASCII
-    case, as the driver compares them. Its other matches (a launcher's
-    program, part of a display name no other app has) don't count: the
-    apps listed a moment ago may not be the ones the driver reads, and a
-    name it matches to none it hands to xdg-open whenever a file or folder
-    of that name is in its working folder."""
+class InstalledApp(NamedTuple):
+    """An installed app as cua-driver 0.38's list_apps gives it on Windows
+    and Linux."""
+
+    name: str
+    # On Linux, its desktop-file id.
+    bundle_id: str | None
+    # On Linux, its launcher's command: the .desktop file's Exec, field
+    # codes left out.
+    launch_path: str
+
+
+class LinuxLaunch(NamedTuple):
+    """What the shim sends cua-driver to start an installed app on Linux."""
+
+    # The app's launch command, its program an absolute path.
+    launch_path: str
+    # The command's words from the first that holds `://` on.
+    additional_arguments: tuple[str, ...] = ()
+
+    @property
+    def command(self) -> str:
+        """The whole command line the driver runs."""
+        return " ".join([self.launch_path, *self.additional_arguments])
+
+
+# What cua-driver splits a command line at (Rust's split_whitespace, the
+# Unicode White_Space characters). Python's str.split also splits at U+001C
+# to U+001F, which the driver keeps inside a word.
+_DRIVER_WHITESPACE = re.compile(
+    "[\t\n\x0b\x0c\r \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+"
+)
+
+
+def _driver_words(command: str) -> list[str]:
+    return [word for word in _DRIVER_WHITESPACE.split(command) if word]
+
+
+def _launcher_program_name(launch_path: str) -> str:
+    """cua-driver 0.38's exec_basename: the program a launcher's command
+    runs, without its folder and in ASCII lowercase, past a leading `env`
+    and `NAME=value` words."""
+    for word in _driver_words(launch_path):
+        if word == "env" or ("=" in word and not word.startswith(("/", "-"))):
+            continue
+        cleaned = word.strip("\"'")
+        parts = [part for part in cleaned.split("/") if part and part != "."]
+        # As Rust's Path::file_name: none for a path that ends in `..`.
+        return (parts[-1] if parts and parts[-1] != ".." else cleaned).translate(_ASCII_LOWER)
+    return ""
+
+
+def linux_apps(listed: Iterable[InstalledApp]) -> list[InstalledApp]:
+    """The installed apps of a list_apps listing in the order cua-driver
+    0.38 looks through them (list_installed_apps): by display name,
+    lowercased, each once. list_apps itself puts the running apps first,
+    each once for every process of theirs. The driver's order among apps of
+    one name is no fixed one; here it is the listing's."""
+    return sorted(dict.fromkeys(listed), key=lambda app: app.name.lower())
+
+
+def linux_app_matching(name: str, apps: Sequence[InstalledApp]) -> InstalledApp | None:
+    """The installed app cua-driver 0.38 on Linux starts for a launch_app
+    `name` that no program has (match_installed_app): the first of `apps`,
+    in the driver's order (linux_apps), whose display name, desktop-file id
+    or launcher's program is the name, ignoring ASCII case; else the only
+    one whose display name contains it."""
     query = name.translate(_ASCII_LOWER)
-    return bool(query) and any(
-        query == identity.translate(_ASCII_LOWER) for app in apps for identity in app if identity
-    )
+    if not query:
+        return None
+    for app in apps:
+        if query in (
+            app.name.translate(_ASCII_LOWER),
+            (app.bundle_id or "").translate(_ASCII_LOWER),
+            _launcher_program_name(app.launch_path),
+        ):
+            return app
+    containing = [app for app in apps if query in app.name.translate(_ASCII_LOWER)]
+    return containing[0] if len(containing) == 1 else None
+
+
+def linux_launch(
+    launch_path: str,
+    *,
+    on_path: Callable[[str], str | None] = shutil.which,
+    exists: Callable[[str], bool] = os.path.lexists,
+) -> LinuxLaunch | None:
+    """What to send cua-driver 0.38 to start an installed app whose
+    launcher's command is `launch_path`: the same words, the first of them,
+    the program, as its absolute path. None when the program can't be named
+    that way for certain. `on_path` and `exists` are the machine's
+    (shutil.which, os.path.lexists) unless a test says otherwise; both look
+    at the disk.
+
+    The driver runs a launch_path split at whitespace, with any
+    additional_arguments after it. Only if the program doesn't start does it
+    go on: to an installed app the whole launch_path matches, and then to
+    xdg-open, when the launch_path holds `://` or names an existing path,
+    relative ones from its working folder, the shim's. So what is sent is
+    never that:
+
+    - The program is an absolute path, so the string names nothing in the
+      working folder. It is the path the app's command already gives, or
+      the one a bare name has on PATH, which is where the driver would look
+      it up. A relative path with a folder, a program found through a
+      relative PATH entry, and a path the driver would split at a space are
+      not sent.
+    - The words from the first that holds `://` on go as
+      additional_arguments, which the driver runs but doesn't look at again.
+    - A command with arguments that, as one string, names an existing path
+      is not sent. A program alone is its own file's path: were the file
+      still there and yet not to be started (its execute permission taken
+      away meanwhile, say), the driver would hand that path to xdg-open. It
+      is the app's own launcher, never a path the model chose."""
+    words = _driver_words(launch_path)
+    if not words or "\0" in launch_path:
+        return None
+    program = words[0]
+    if "/" in program and not program.startswith("/"):
+        return None
+    found = on_path(program)
+    if not found or not found.startswith("/") or "://" in found or _driver_words(found) != [found]:
+        return None
+    arguments = words[1:]
+    links = next((at for at, word in enumerate(arguments) if "://" in word), len(arguments))
+    command = " ".join([found, *arguments[:links]])
+    if links and exists(command):
+        return None
+    return LinuxLaunch(command, tuple(arguments[links:]))
 
 
 def linux_launch_uses_name(arguments: Mapping[str, Any]) -> bool:

@@ -573,40 +573,28 @@ async def test_the_policy_file_is_private_and_removed_with_the_bridge(fake_log: 
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin", "win32"])
-async def test_a_linux_driver_runs_in_an_empty_folder_of_its_own(
+async def test_the_driver_starts_in_the_shims_own_folder(
     fake_log: Path, tmp_path: Path, monkeypatch, platform: str
 ) -> None:
-    """On Linux cua-driver hands a launch_app name that matches no installed
-    app to xdg-open when a file or folder of that name is in its working
-    folder, which was the shim's: the person's home, under systemd. There
-    it runs in an empty folder of its own now, made for each start, which
-    nothing is written to, and removed with the bridge. On macOS and
-    Windows, where no name is opened from it, it keeps the shim's."""
-    import stat
-
+    """The Linux driver started in an empty, read-only folder of its own, so
+    that a launch_app name found no file there for the driver to hand to
+    xdg-open. The apps the driver starts inherit its folder: a terminal
+    opened there, and a save dialog could start there. It starts in the
+    shim's folder again, as on macOS and Windows, with the shim's PWD; a
+    launch's name no longer reaches it (the launch tests below)."""
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PWD", str(tmp_path))
     bridge = _bridge(platform=platform)
     try:
         await bridge.snapshot()
         [started] = _records(fake_log, "initialize")
-        folder = Path(started["cwd"])
-        policy_folder = Path(started["env"]["CUA_DRIVER_POLICY_FILE"]).parent
-        if platform == "linux":
-            assert not os.path.samefile(folder, tmp_path)
-            assert not os.path.samefile(folder, policy_folder)
-            assert list(folder.iterdir()) == []
-            assert os.path.samefile(started["env"]["PWD"], folder)
-            if os.name != "nt":
-                assert stat.S_IMODE(folder.stat().st_mode) == 0o500
-                if os.geteuid() != 0:
-                    with pytest.raises(PermissionError):
-                        (folder / "notes.txt").write_text("x", encoding="utf-8")
-        else:
-            assert os.path.samefile(folder, tmp_path)
     finally:
         await bridge.close()
 
-    assert folder.exists() is (platform != "linux")
+    assert os.path.samefile(started["cwd"], tmp_path)
+    assert started["env"]["PWD"] == str(tmp_path)
+    # Nothing of the shim's to remove there once the driver has stopped.
+    assert tmp_path.is_dir()
 
 
 async def test_only_catalog_tools_are_offered(fake_log: Path, monkeypatch) -> None:
@@ -946,13 +934,12 @@ def test_an_explicit_driver_in_the_current_folder_runs_from_there(
     assert Path(driver.driver_argv(found, "direct")[0]).is_absolute()
 
 
-async def test_a_driver_found_through_a_relative_path_entry_starts_in_its_own_folder(
+async def test_a_driver_found_through_a_relative_path_entry_runs_by_its_absolute_path(
     fake_log: Path, tmp_path: Path, monkeypatch
 ) -> None:
     """shutil.which keeps a relative PATH entry (`bin`) in the path it
-    returns, and a Linux driver starts in an empty folder of its own, where
-    `bin/cua-driver` names nothing: its start failed, and HELLO went on
-    without computer use."""
+    returns, which names the driver only from the folder the look was made
+    in: the driver runs by its absolute path, the file the shim checked."""
     name = "cua-driver.exe" if sys.platform == "win32" else "cua-driver"
     (tmp_path / "bin").mkdir()
     binary = tmp_path / "bin" / name
@@ -1826,44 +1813,357 @@ async def test_a_launch_the_name_lookup_doesnt_decide_lists_no_apps(
     assert [call["tool"] for call in _records(fake_log, "call")] == ["launch_app"]
 
 
-_LINUX_APPS = [
-    ("Zebra Notes", "org.example.ZebraNotes"),
-    ("Éditeur", "org.example.Editeur"),
-    ("Mousepad", None),
-]
+_ZEBRA = {
+    "name": "Zebra Notes",
+    "bundle_id": "org.example.ZebraNotes",
+    "launch_path": "/opt/zebra/bin/zebra-notes --new-window",
+}
+_MOUSEPAD = {"name": "Mousepad", "bundle_id": None, "launch_path": "mousepad"}
+# Where the shim finds the tests' programs: each a launch command's first
+# word, a name on PATH or the absolute path itself.
+_PROGRAMS = {
+    "/opt/zebra/bin/zebra-notes": "/opt/zebra/bin/zebra-notes",
+    "mousepad": "/usr/bin/mousepad",
+}
+
+
+def _linux_apps(monkeypatch: pytest.MonkeyPatch, *apps: dict[str, Any]) -> None:
+    monkeypatch.setenv("FAKE_CUA_APPS", json.dumps(list(apps)))
+
+
+def _programs_found(
+    monkeypatch: pytest.MonkeyPatch, programs: dict[str, str] | None = None
+) -> None:
+    """Have the shim find `programs` and no others, whatever is on this
+    machine's PATH and disk: the program a launch's name would run, and the
+    one an installed app's launch command runs."""
+    found = _PROGRAMS if programs is None else programs
+    monkeypatch.setattr(handlers_module, "_program_on_path", found.get)
+
+
+def _app(name: str, bundle_id: str | None, launch_path: str) -> Any:
+    return catalog.InstalledApp(name, bundle_id, launch_path)
 
 
 @pytest.mark.parametrize(
-    ("name", "matches"),
+    ("name", "matched"),
     [
-        ("Zebra Notes", True),
-        ("zebra notes", True),
-        ("ZEBRA NOTES", True),
-        ("org.example.ZebraNotes", True),
-        ("ORG.EXAMPLE.ZEBRANOTES", True),
-        ("ÉDITEUR", True),
-        ("Mousepad", True),
-        # The driver folds ASCII letters only.
-        ("éditeur", False),
-        # Its other matches can change before it looks (part of a name
-        # another app installed meanwhile also has), so they don't count,
-        # and it keeps the spaces.
-        ("Zebra", False),
-        (" Zebra Notes", False),
-        ("invoice.pdf", False),
-        ("..", False),
-        ("", False),
+        ("Zebra Notes", "Zebra Notes"),
+        ("zebra notes", "Zebra Notes"),
+        ("ZEBRA NOTES", "Zebra Notes"),
+        ("org.example.ZebraNotes", "Zebra Notes"),
+        ("ORG.EXAMPLE.ZEBRANOTES", "Zebra Notes"),
+        # A launcher's program, without its folder, past `env` and a setting.
+        ("zebra-notes", "Zebra Notes"),
+        ("XFCE4-Mouse-Settings", "Mouse and Touchpad"),
+        ("ÉDITEUR", "Éditeur"),
+        ("Mousepad", "Mousepad"),
+        # Part of a display name no other app's has.
+        ("Zebra", "Zebra Notes"),
+        ("ra no", "Zebra Notes"),
+        ("touchpad", "Mouse and Touchpad"),
+        # The driver folds ASCII letters only, and keeps the spaces.
+        ("éditeur", None),
+        (" Zebra Notes", None),
+        # Part of two display names.
+        ("Mouse", None),
+        ("invoice.pdf", None),
+        ("..", None),
+        ("", None),
     ],
 )
-def test_a_linux_launch_name_matches_an_app_as_the_driver_always_does(
-    name: str, matches: bool
+def test_a_linux_launch_name_matches_an_app_as_the_driver_matches(
+    name: str, matched: str | None
 ) -> None:
-    """cua-driver 0.38 on Linux, once no program has the name's first word:
-    an installed app's display name or desktop-file id, ignoring ASCII case."""
-    assert catalog.linux_app_name_matches(name, _LINUX_APPS) is matches
+    """cua-driver 0.38 on Linux (match_installed_app): the app whose display
+    name, desktop-file id or launcher's program is the name, ignoring ASCII
+    case, else the only one whose display name contains it."""
+    apps = catalog.linux_apps(
+        [
+            _app("Zebra Notes", "org.example.ZebraNotes", "/opt/zebra/bin/zebra-notes --new"),
+            _app("Éditeur", "org.example.Editeur", "editeur"),
+            _app("Mousepad", None, "mousepad"),
+            _app(
+                "Mouse and Touchpad",
+                "xfce-mouse-settings",
+                "env GDK_BACKEND=x11 xfce4-mouse-settings",
+            ),
+        ]
+    )
+
+    app = catalog.linux_app_matching(name, apps)
+
+    assert (app.name if app is not None else None) == matched
 
 
-@pytest.mark.parametrize("name", ["invoice.pdf", ".bash_history", "..", "Zebra", "logoff"])
+def test_a_linux_launch_name_matches_the_first_app_in_the_drivers_order() -> None:
+    """The driver takes the first app that matches by name, id or launcher,
+    in its list's order: by display name, lowercased. list_apps puts the
+    running apps first, each once for every process of theirs, so the shim
+    puts them back in that order, each once."""
+    listed = [
+        # Running, twice: list_apps lists it first.
+        _app("Zeta", "zeta-app", "zeta-bin"),
+        _app("Zeta", "zeta-app", "zeta-bin"),
+        _app("beta", "beta-app", "zeta"),
+        _app("Alpha", "alpha-app", "alpha"),
+    ]
+
+    apps = catalog.linux_apps(listed)
+
+    assert [app.name for app in apps] == ["Alpha", "beta", "Zeta"]
+    # "beta" comes first of the two it matches: by its launcher's program.
+    assert catalog.linux_app_matching("zeta", apps) == listed[2]
+    # Once each, "Zeta" is the only app whose name holds "zet".
+    assert catalog.linux_app_matching("zet", apps) == listed[0]
+
+
+@pytest.mark.parametrize(
+    ("launch_path", "sent"),
+    [
+        ("zebra-notes", ("/usr/bin/zebra-notes", ())),
+        ("zebra-notes --new-window", ("/usr/bin/zebra-notes --new-window", ())),
+        ("/opt/zebra/bin/zebra-notes --new", ("/opt/zebra/bin/zebra-notes --new", ())),
+        # Split at whitespace, as the driver splits it.
+        ("  zebra-notes \t --a  --b ", ("/usr/bin/zebra-notes --a --b", ())),
+        # A wrapper is the program: what it starts is its own to find.
+        (
+            "env GDK_BACKEND=x11 zebra-notes",
+            ("/usr/bin/env GDK_BACKEND=x11 zebra-notes", ()),
+        ),
+        (
+            "flatpak run --branch=stable --command=zebra org.example.ZebraNotes @@u @@",
+            (
+                "/usr/bin/flatpak run --branch=stable --command=zebra org.example.ZebraNotes @@u @@",
+                (),
+            ),
+        ),
+        # The driver hands a command that holds `://` to xdg-open when its
+        # program doesn't start, so those words go as additional arguments.
+        (
+            "steam -silent steam://rungameid/620 -applaunch",
+            ("/usr/games/steam -silent", ("steam://rungameid/620", "-applaunch")),
+        ),
+        ("steam steam://rungameid/620", ("/usr/games/steam", ("steam://rungameid/620",))),
+        # No such program, or none the shim can name for certain.
+        ("not-installed --flag", None),
+        ("/opt/gone/bin/gone", None),
+        ("bin/zebra-notes", None),
+        ("./zebra-notes", None),
+        ("through-a-relative-entry", None),
+        ("in-a-folder-with-a-space", None),
+        ("zebra-notes\x00", None),
+        ("", None),
+        ("   ", None),
+    ],
+)
+def test_an_apps_launch_command_is_sent_with_its_program_as_an_absolute_path(
+    launch_path: str, sent: tuple[str, tuple[str, ...]] | None
+) -> None:
+    """The driver runs a launch_path split at whitespace, its first word the
+    program, which it looks up on PATH. The shim looks it up first and sends
+    its absolute path, so that a program gone by the time the driver runs
+    it leaves the driver a string that matches no app and names no path."""
+    programs = {
+        "zebra-notes": "/usr/bin/zebra-notes",
+        "/opt/zebra/bin/zebra-notes": "/opt/zebra/bin/zebra-notes",
+        "env": "/usr/bin/env",
+        "flatpak": "/usr/bin/flatpak",
+        "steam": "/usr/games/steam",
+        # shutil.which keeps a relative PATH entry in what it returns.
+        "through-a-relative-entry": "bin/through-a-relative-entry",
+        # The driver would split this path at its space.
+        "in-a-folder-with-a-space": "/opt/My Apps/in-a-folder-with-a-space",
+        # Found, but the shim sends only an absolute path as it is written.
+        "bin/zebra-notes": "bin/zebra-notes",
+        "./zebra-notes": "./zebra-notes",
+    }
+
+    launch = catalog.linux_launch(launch_path, on_path=programs.get, exists=lambda _path: False)
+
+    assert (tuple(launch) if launch is not None else None) == sent
+
+
+def test_a_launch_command_that_names_a_file_as_a_whole_is_not_sent() -> None:
+    """When a launch_path's program doesn't start and no app matches it, the
+    driver hands the whole string to xdg-open if it names an existing path.
+    A command with arguments that does is not sent."""
+    programs = {"zebra-notes": "/usr/bin/zebra-notes"}
+    looked_at: list[str] = []
+
+    def exists(path: str) -> bool:
+        looked_at.append(path)
+        return True
+
+    launch = catalog.linux_launch("zebra-notes --new", on_path=programs.get, exists=exists)
+    alone = catalog.linux_launch("zebra-notes", on_path=programs.get, exists=exists)
+
+    assert launch is None
+    assert looked_at == ["/usr/bin/zebra-notes --new"]
+    # A program on its own is the file itself.
+    assert alone is not None and alone.launch_path == "/usr/bin/zebra-notes"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="launch commands are POSIX command lines")
+def test_an_apps_program_is_looked_up_as_the_driver_would_run_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """With this machine's PATH and disk: a name on PATH, an absolute path,
+    and what isn't a program to run."""
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    program = folder / "zebra-notes"
+    program.write_text("#!/bin/sh\n", encoding="utf-8")
+    program.chmod(0o755)
+    (folder / "not-executable").write_text("", encoding="utf-8")
+    (folder / "a-folder").mkdir()
+    monkeypatch.setenv("PATH", str(folder))
+
+    def sent(launch_path: str) -> str | None:
+        launch = handlers_module._linux_launch(launch_path)
+        return launch.launch_path if launch is not None else None
+
+    assert sent("zebra-notes --new") == f"{program} --new"
+    assert sent(f"{program} --new") == f"{program} --new"
+    assert sent("not-executable") is None
+    assert sent(str(folder / "not-executable")) is None
+    assert sent(str(folder / "a-folder")) is None
+    assert sent(str(folder / "missing")) is None
+    # A command that names a file as a whole.
+    (folder / "zebra-notes --new").write_text("", encoding="utf-8")
+    assert sent("zebra-notes --new") is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Zebra Notes", "zebra notes", "org.example.ZebraNotes", "zebra-notes", "Zebra"],
+    ids=["display-name", "ignoring-case", "desktop-file-id", "launchers-program", "part-of-name"],
+)
+async def test_a_linux_launch_by_name_reaches_the_driver_as_the_apps_own_command(
+    make_handler, fake_log, monkeypatch, name: str
+) -> None:
+    """A Linux launch by name went to the driver as the name, for the driver
+    to choose what it meant: a command to run, else an installed app, else,
+    with a file of that name in its working folder, something for xdg-open.
+    The shim now finds the app the name matches, as the driver matches it,
+    and sends that app's own launch command as launch_path, its program an
+    absolute path. The driver gets no name to look up."""
+    _linux_apps(monkeypatch, _MOUSEPAD, _ZEBRA)
+    _programs_found(monkeypatch)
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": name}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is False
+    listed, launched = _records(fake_log, "call")
+    assert listed["tool"] == "list_apps"
+    assert launched["tool"] == "launch_app"
+    assert launched["arguments"] == {
+        "launch_path": "/opt/zebra/bin/zebra-notes --new-window",
+        "session": handler.session_label,
+    }
+
+
+@pytest.mark.parametrize(
+    ("app", "program", "runs"),
+    [
+        (
+            {"name": "Text Editor", "bundle_id": "org.gnome.TextEditor",
+             "launch_path": "gnome-text-editor"},
+            "/usr/bin/gnome-text-editor",
+            ["/usr/bin/gnome-text-editor"],
+        ),
+        (
+            {"name": "LibreOffice Calc", "bundle_id": "libreoffice-calc",
+             "launch_path": "libreoffice --calc"},
+            "/usr/bin/libreoffice",
+            ["/usr/bin/libreoffice", "--calc"],
+        ),
+        (
+            {"name": "Mouse and Touchpad", "bundle_id": "xfce-mouse-settings",
+             "launch_path": "env GDK_BACKEND=x11 xfce4-mouse-settings"},
+            "/usr/bin/env",
+            ["/usr/bin/env", "GDK_BACKEND=x11", "xfce4-mouse-settings"],
+        ),
+        (
+            {"name": "Firefox Web Browser", "bundle_id": "org.mozilla.firefox",
+             "launch_path": "/usr/bin/flatpak run --branch=stable --command=firefox "
+             "--file-forwarding org.mozilla.firefox @@u @@"},
+            "/usr/bin/flatpak",
+            ["/usr/bin/flatpak", "run", "--branch=stable", "--command=firefox",
+             "--file-forwarding", "org.mozilla.firefox", "@@u", "@@"],
+        ),
+        (
+            {"name": "Portal 2", "bundle_id": "steam_app_620",
+             "launch_path": "steam steam://rungameid/620 -silent"},
+            "/usr/games/steam",
+            ["/usr/games/steam", "steam://rungameid/620", "-silent"],
+        ),
+    ],
+    ids=["one-word", "with-arguments", "env", "flatpak", "a-link-among-its-arguments"],
+)  # fmt: skip
+async def test_the_driver_runs_the_command_an_apps_own_launcher_would(
+    make_handler, fake_log, monkeypatch, app: dict, program: str, runs: list[str]
+) -> None:
+    """Whatever its shape (a display name of several words, a launcher with
+    arguments, one that starts with `env` or `flatpak`, one with a link among
+    its arguments), the driver, routing the call as cua-driver 0.38 does,
+    starts the app's own command, word for word, and opens nothing."""
+    first_word = app["launch_path"].split()[0]
+    _linux_apps(monkeypatch, app)
+    _programs_found(monkeypatch, {first_word: program})
+    monkeypatch.setenv("FAKE_CUA_LINUX_LAUNCH", "1")
+    monkeypatch.setenv("FAKE_CUA_PROGRAMS", json.dumps([program]))
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": app["name"]}))
+
+    assert isinstance(response, ComputerToolResultMessage)
+    assert response.payload.is_error is False
+    [started] = _records(fake_log, "spawn")
+    assert started["argv"] == runs
+    assert _records(fake_log, "xdg-open") == []
+    launched = _records(fake_log, "call")[-1]["arguments"]
+    assert "name" not in launched
+
+
+async def test_arguments_the_person_approved_follow_the_apps_own(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """A launch by name with approved additional_arguments starts the app's
+    command with them after its own, as the driver does."""
+    _linux_apps(
+        monkeypatch,
+        {"name": "Portal 2", "bundle_id": "steam_app_620",
+         "launch_path": "steam steam://rungameid/620"},
+        _ZEBRA,
+    )  # fmt: skip
+    _programs_found(monkeypatch, {**_PROGRAMS, "steam": "/usr/games/steam"})
+    handler = make_handler(platform="linux")
+
+    for name in ("Zebra Notes", "Portal 2"):
+        response = await handler.handle(
+            _call(
+                "launch_app",
+                {"name": name, "additional_arguments": ["--profile", "work"]},
+                approved_arguments=["additional_arguments"],
+            )
+        )
+        assert isinstance(response, ComputerToolResultMessage)
+
+    zebra, portal = (
+        call["arguments"] for call in _records(fake_log, "call") if call["tool"] == "launch_app"
+    )
+    assert zebra["launch_path"] == "/opt/zebra/bin/zebra-notes --new-window"
+    assert zebra["additional_arguments"] == ["--profile", "work"]
+    assert portal["launch_path"] == "/usr/games/steam"
+    assert portal["additional_arguments"] == ["steam://rungameid/620", "--profile", "work"]
+
+
+@pytest.mark.parametrize(
+    "name", ["invoice.pdf", ".bash_history", "..", "Mouse", "logoff", "reboot", "sh -c id"]
+)
 async def test_a_linux_launch_by_a_name_no_app_has_never_reaches_the_driver(
     make_handler, fake_log, monkeypatch, name: str
 ) -> None:
@@ -1871,12 +2171,18 @@ async def test_a_linux_launch_by_a_name_no_app_has_never_reaches_the_driver(
     app matches to xdg-open when a file or folder of that name is in its
     working folder, the person's home under systemd: `.bash_history` opened
     in an editor, for a screenshot to read, past the path jail and the
-    approval `urls` needs. A running process of that name, which no
-    installed app matched, doesn't count."""
-    monkeypatch.setenv(
-        "FAKE_CUA_APPS",
-        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
-    )
+    approval `urls` needs. A name is only ever looked for among the
+    installed apps: one no app matches, or two do, starts nothing, and a
+    running process of that name, which no installed app matched, doesn't
+    count."""
+    _linux_apps(
+        monkeypatch,
+        _ZEBRA,
+        _MOUSEPAD,
+        {"name": "Mouse and Touchpad", "bundle_id": "xfce-mouse-settings",
+         "launch_path": "xfce4-mouse-settings"},
+    )  # fmt: skip
+    _programs_found(monkeypatch)
     handler = make_handler(platform="linux")
 
     response = await handler.handle(_call("launch_app", {"name": name}))
@@ -1887,13 +2193,11 @@ async def test_a_linux_launch_by_a_name_no_app_has_never_reaches_the_driver(
     assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
 
 
-async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
+async def test_the_installed_apps_are_listed_for_each_linux_launch_by_name(
     make_handler, fake_log, monkeypatch
 ) -> None:
-    monkeypatch.setenv(
-        "FAKE_CUA_APPS",
-        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
-    )
+    _linux_apps(monkeypatch, _ZEBRA)
+    _programs_found(monkeypatch)
     handler = make_handler(platform="linux")
 
     first = await handler.handle(_call("launch_app", {"name": "zebra notes"}))
@@ -1902,7 +2206,6 @@ async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
     for response in (first, second):
         assert isinstance(response, ComputerToolResultMessage)
         assert response.payload.is_error is False
-    # The installed apps are listed for each launch by name.
     assert [call["tool"] for call in _records(fake_log, "call")] == [
         "list_apps",
         "launch_app",
@@ -1911,25 +2214,25 @@ async def test_a_linux_launch_by_an_installed_apps_name_or_id_goes_ahead(
     ]
 
 
-async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
+async def test_a_launch_by_name_is_looked_up_off_the_event_loop(
     make_handler, fake_log, monkeypatch
 ) -> None:
-    """On Linux a launch's name is looked up on PATH (shutil.which), which
-    stats a file in each of its folders. A stalled mount there (NFS, FUSE)
-    holds a stat for as long as it stalls, and on the event loop it held
-    every session's work and keepalive with it."""
-    monkeypatch.setenv(
-        "FAKE_CUA_APPS",
-        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
-    )
+    """On Linux a launch's name, and then the program of the app it matches,
+    are looked up on PATH (shutil.which), which stats a file in each of its
+    folders. A stalled mount there (NFS, FUSE) holds a stat for as long as
+    it stalls, and on the event loop it held every session's work and
+    keepalive with it."""
+    _linux_apps(monkeypatch, {**_ZEBRA, "launch_path": "zebra-notes --new-window"})
     loop_thread = threading.get_ident()
+    looked_up: list[str] = []
     looked_up_from: list[int] = []
     check = handlers_module.check_arguments
 
     def look_up(word: str) -> str | None:
-        # A PATH where no program has the name.
+        # A PATH where no program has the name's first word.
+        looked_up.append(word)
         looked_up_from.append(threading.get_ident())
-        return None
+        return "/usr/bin/zebra-notes" if word == "zebra-notes" else None
 
     def checked_as_on_linux(tool: str, arguments: Any, approved: Any = (), *, on_path) -> None:
         # Linux's check on every OS.
@@ -1943,7 +2246,8 @@ async def test_a_launchs_name_is_looked_up_on_path_off_the_event_loop(
 
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.is_error is False
-    assert looked_up_from and loop_thread not in looked_up_from
+    assert looked_up == ["Zebra", "zebra-notes"]
+    assert loop_thread not in looked_up_from
 
 
 async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_deadline(
@@ -1958,17 +2262,14 @@ async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_
     ahead. The machine makes one lookup at a time, so a launch of another
     name waits for the stalled one rather than start one that would stall
     too, and once the stall clears a launch looks its name up again."""
-    monkeypatch.setenv(
-        "FAKE_CUA_APPS",
-        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
-    )
+    _linux_apps(monkeypatch, _ZEBRA)
     released = threading.Event()
     looked_up: list[str] = []
 
     def stalled(word: str) -> str | None:
         looked_up.append(word)
         released.wait(timeout=60)
-        return "/usr/bin/zebra" if word == "zebra" else None
+        return {"zebra": "/usr/bin/zebra", **_PROGRAMS}.get(word)
 
     check = handlers_module.check_arguments
 
@@ -2001,7 +2302,7 @@ async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_
     )
     assert isinstance(launched, ComputerToolResultMessage)
     assert launched.payload.is_error is False
-    assert looked_up == ["zebra", "Zebra"]
+    assert looked_up == ["zebra", "Zebra", "/opt/zebra/bin/zebra-notes"]
     assert [call["tool"] for call in _records(fake_log, "call")] == [
         "click",
         "list_apps",
@@ -2009,12 +2310,121 @@ async def test_a_launch_whose_name_lookup_stalls_lets_go_of_the_computer_by_its_
     ]
 
 
+async def test_a_launch_whose_apps_program_lookup_stalls_never_starts(
+    make_handler, fake_log, monkeypatch, tmp_path
+) -> None:
+    """The program an app's launch command runs is looked up on PATH too,
+    before the call takes the computer and by its deadline. A stalled mount
+    there fails the launch as not started (COMMAND_TIMEOUT), other chats'
+    calls go ahead meanwhile, and the next launch waits for the lookup under
+    way rather than hold another worker thread in one of its own."""
+    _linux_apps(monkeypatch, {**_ZEBRA, "launch_path": "zebra-notes --new-window"})
+    released = threading.Event()
+    looked_up: list[str] = []
+
+    def stalled(word: str) -> str | None:
+        looked_up.append(word)
+        if word != "zebra-notes":
+            return None
+        released.wait(timeout=60)
+        return "/usr/bin/zebra-notes"
+
+    monkeypatch.setattr(handlers_module, "_program_on_path", stalled)
+    handler = make_handler(platform="linux")
+    try:
+        launch = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=1)
+        stalled_launch = await asyncio.wait_for(handler.handle(launch), timeout=30)
+        click = await asyncio.wait_for(handler.handle(_call("click", {"pid": 1})), timeout=30)
+        another = _call("launch_app", {"name": "Zebra Notes"}, timeout_seconds=1)
+        waited = await asyncio.wait_for(handler.handle(another), timeout=30)
+        # The second waited for the first's lookup before looking anything
+        # up of its own: one worker thread held.
+        assert looked_up == ["Zebra", "zebra-notes"]
+    finally:
+        released.set()
+
+    for response in (stalled_launch, waited):
+        assert isinstance(response, ErrorMessage)
+        assert response.payload.code == ErrorCode.COMMAND_TIMEOUT
+        assert response.payload.details["started"] is False
+    assert isinstance(click, ComputerToolResultMessage)
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps", "click"]
+    # Each is on record as a launch that didn't start, with the name asked for.
+    records = [record for record in _audit(tmp_path) if record["details"]["tool"] == "launch_app"]
+    assert [record["result"]["error_code"] for record in records] == ["COMMAND_TIMEOUT"] * 2
+    assert all("resolved_launch_path" not in record["details"] for record in records)
+
+
+@pytest.mark.parametrize(
+    "launch_path",
+    ["not-installed --new-window", "bin/zebra-notes", "http://localhost:8080/zebra"],
+    ids=["no-such-program", "a-relative-path", "a-link-for-a-program"],
+)
+async def test_a_launch_whose_apps_program_cannot_be_found_is_refused_before_it_starts(
+    make_handler, fake_log, monkeypatch, tmp_path, launch_path: str
+) -> None:
+    """An app whose launcher's program the shim can't name by an absolute
+    path isn't started by name: the shim never sends the driver the bare
+    name instead. The call is refused before it takes the computer, and
+    says to pass the program as launch_path, which the person approves."""
+    _linux_apps(monkeypatch, {**_ZEBRA, "launch_path": launch_path})
+    _programs_found(monkeypatch)
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert response.payload.details == {"tool": "launch_app", "argument": "name"}
+    assert "launch_path" in response.payload.message
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+    [record] = _audit(tmp_path)
+    assert record["details"]["arguments"] == {"name": "Zebra Notes"}
+    assert record["result"]["error_code"] == ErrorCode.FEATURE_NOT_SUPPORTED.value
+
+
+async def test_a_launch_command_an_installed_app_is_called_by_is_not_sent(
+    make_handler, fake_log, monkeypatch
+) -> None:
+    """When a launch_path's program doesn't start, the driver looks for an
+    installed app the whole string matches, and starts that. So a command
+    some app's display name holds isn't sent: gone, it would start another
+    app than the one the name matched."""
+    _linux_apps(
+        monkeypatch,
+        _ZEBRA,
+        {"name": "Run /opt/zebra/bin/zebra-notes --new-window safely", "bundle_id": "wrapper",
+         "launch_path": "mousepad"},
+    )  # fmt: skip
+    _programs_found(monkeypatch)
+    handler = make_handler(platform="linux")
+
+    response = await handler.handle(_call("launch_app", {"name": "org.example.ZebraNotes"}))
+
+    assert isinstance(response, ErrorMessage)
+    assert response.payload.code == ErrorCode.FEATURE_NOT_SUPPORTED
+    assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps"]
+
+
+async def test_a_linux_launch_never_sends_a_name_that_was_not_looked_up(
+    make_handler, fake_log
+) -> None:
+    """The name is replaced with what was looked up for it before the call
+    took the computer. With nothing looked up, the launch is refused rather
+    than sent with its name."""
+    handler = make_handler(platform="linux")
+    arguments = {"name": "Zebra Notes"}
+
+    with pytest.raises(handlers_module.ComputerUseError) as refused:
+        await handler._check_launch_name(arguments, asyncio.get_running_loop().time() + 30, None)
+
+    assert refused.value.details == {"tool": "launch_app", "argument": "name"}
+    assert _records(fake_log, "call") == []
+
+
 @pytest.mark.parametrize(
     ("platform", "app"),
-    [
-        ("linux", {"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}),
-        ("win32", "Notepad"),
-    ],
+    [("linux", _ZEBRA), ("win32", "Notepad")],
 )
 async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_refused(
     make_handler, fake_log, monkeypatch, tmp_path, platform: str, app: Any
@@ -2027,6 +2437,7 @@ async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_ref
     apps = tmp_path / "apps.json"
     apps.write_text(json.dumps([app]), encoding="utf-8")
     monkeypatch.setenv("FAKE_CUA_APPS_FILE", str(apps))
+    _programs_found(monkeypatch)
     name = app["name"] if isinstance(app, dict) else app
     handler = make_handler(platform=platform)
 
@@ -2046,25 +2457,26 @@ async def test_a_launch_by_the_name_of_an_app_removed_since_it_was_listed_is_ref
     ]
 
 
-async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_looks_opens_no_file(
+async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_runs_it_opens_no_file(
     make_handler, fake_log, monkeypatch, tmp_path
 ) -> None:
-    """The shim lets a Linux launch by name through only when an installed
-    app has that name, but the driver looks again: an app removed between
-    the two left the driver no app, and it handed the name to xdg-open,
-    which opened a file of that name in its working folder, the shim's (the
-    person's home, under systemd), past the path jail and the approval
-    `urls` needs. In the driver's own empty folder the name finds nothing."""
+    """The driver runs in the shim's folder, the person's home under
+    systemd, where a launch_app name that matched no app opened a file of
+    that name through xdg-open, past the path jail and the approval `urls`
+    needs: so it did when the app the shim had just found was removed
+    before the driver looked. The driver gets the app's command now, its
+    program an absolute path. Gone, that string matches no app and names no
+    file in the working folder, so the driver fails the call."""
     home = tmp_path / "home"
     home.mkdir()
     (home / "Zebra Notes").write_text("the person's notes", encoding="utf-8")
     monkeypatch.chdir(home)
-    monkeypatch.setenv(
-        "FAKE_CUA_APPS",
-        json.dumps([{"name": "Zebra Notes", "bundle_id": "org.example.ZebraNotes"}]),
-    )
+    _linux_apps(monkeypatch, _ZEBRA)
+    _programs_found(monkeypatch)
     monkeypatch.setenv("FAKE_CUA_LINUX_LAUNCH", "1")
+    # Removed once the shim has listed it and found its program.
     monkeypatch.setenv("FAKE_CUA_APPS_GONE_AT_LAUNCH", "1")
+    monkeypatch.setenv("FAKE_CUA_PROGRAMS", "[]")
     handler = make_handler(platform="linux")
 
     response = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
@@ -2072,7 +2484,81 @@ async def test_a_linux_launch_of_an_app_gone_by_the_time_the_driver_looks_opens_
     assert isinstance(response, ComputerToolResultMessage)
     assert response.payload.is_error is True
     assert _records(fake_log, "xdg-open") == []
+    assert _records(fake_log, "spawn") == []
+    [started] = _records(fake_log, "initialize")
+    assert os.path.samefile(started["cwd"], home)
+    listed, launched = _records(fake_log, "call")
+    assert listed["tool"] == "list_apps"
+    assert launched["arguments"] == {
+        "launch_path": "/opt/zebra/bin/zebra-notes --new-window",
+        "session": handler.session_label,
+    }
+
+
+async def test_a_launch_path_the_shim_fills_in_is_not_an_approved_one(
+    make_handler, fake_log, monkeypatch, tmp_path
+) -> None:
+    """A launch_path the model sends runs any command, so it waits for the
+    person's approval, beside a name too. The one the shim fills in for a
+    name is an installed app's own, needs none, and is on record as what
+    the shim sent, not as an argument of the call or an approved one."""
+    _linux_apps(monkeypatch, _ZEBRA)
+    _programs_found(monkeypatch)
+    handler = make_handler(platform="linux")
+
+    waiting = await handler.handle(
+        _call("launch_app", {"name": "Zebra Notes", "launch_path": "sh -c id"})
+    )
+    by_name = await handler.handle(_call("launch_app", {"name": "Zebra Notes"}))
+
+    assert isinstance(waiting, ErrorMessage)
+    assert waiting.payload.code == ErrorCode.APPROVAL_REQUIRED
+    assert waiting.payload.details == {"tool": "launch_app", "argument": "launch_path"}
+    assert isinstance(by_name, ComputerToolResultMessage)
     assert [call["tool"] for call in _records(fake_log, "call")] == ["list_apps", "launch_app"]
+    refused, launched = _audit(tmp_path)
+    assert "resolved_launch_path" not in refused["details"]
+    assert launched["details"] == {
+        "tool": "launch_app",
+        # The name the call asked for, and the command the shim sent for it.
+        "arguments": {"name": "Zebra Notes"},
+        "resolved_launch_path": "/opt/zebra/bin/zebra-notes --new-window",
+        "is_error": False,
+        "images": 0,
+        "images_withheld": 0,
+        "text_bytes": launched["details"]["text_bytes"],
+    }
+    assert launched["result"]["ok"] is True
+
+
+async def test_the_audit_record_of_a_launch_by_name_holds_the_whole_command_sent(
+    make_handler, monkeypatch, tmp_path
+) -> None:
+    """Words the shim sends as additional arguments are part of the command
+    on record, with the arguments the person approved after them."""
+    _linux_apps(
+        monkeypatch,
+        {"name": "Portal 2", "bundle_id": "steam_app_620",
+         "launch_path": "steam steam://rungameid/620"},
+    )  # fmt: skip
+    _programs_found(monkeypatch, {"steam": "/usr/games/steam"})
+    handler = make_handler(platform="linux")
+
+    await handler.handle(
+        _call(
+            "launch_app",
+            {"name": "Portal 2", "additional_arguments": ["-silent"]},
+            approved_arguments=["additional_arguments"],
+        )
+    )
+
+    [record] = _audit(tmp_path)
+    assert record["details"]["arguments"] == {
+        "name": "Portal 2",
+        "additional_arguments": ["-silent"],
+    }
+    assert record["details"]["approved_arguments"] == ["additional_arguments"]
+    assert record["details"]["resolved_launch_path"] == "/usr/games/steam steam://rungameid/620"
 
 
 @pytest.mark.parametrize(

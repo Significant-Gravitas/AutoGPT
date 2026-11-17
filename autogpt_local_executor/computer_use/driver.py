@@ -140,8 +140,8 @@ def find_driver_binary(explicit: str | os.PathLike[str] | None = None) -> Path |
     of `./cua-driver`, and the OS looks a bare name up on PATH, which would
     run another install, or none, rather than the file checked here. So is
     one found on PATH, where shutil.which keeps a relative entry (`bin`):
-    a Linux driver starts in an empty folder of its own, where
-    `bin/cua-driver` names nothing."""
+    `bin/cua-driver` names the driver only from the folder the look was
+    made in."""
     if explicit:
         try:
             path = Path(explicit).expanduser().absolute()
@@ -268,8 +268,6 @@ class CuaDriverBridge:
         self._starts: list[float] = []
         self._last_failure: str | None = None
         self._policy_dir: Path | None = None
-        # The empty folders Linux drivers started in (_new_working_folder).
-        self._working_folders: list[Path] = []
         self._closed = False
         # The display variables the running driver started with.
         self._display: tuple[str | None, ...] | None = None
@@ -409,14 +407,6 @@ class CuaDriverBridge:
             if self._policy_dir is not None:
                 shutil.rmtree(self._policy_dir, ignore_errors=True)
                 self._policy_dir = None
-            for folder in self._working_folders:
-                # Removed only while empty: whatever is in one isn't the
-                # shim's to delete. Writable again first, which Windows wants
-                # of a folder it removes.
-                with contextlib.suppress(OSError):
-                    os.chmod(folder, stat.S_IRWXU)
-                    os.rmdir(folder)
-            self._working_folders.clear()
 
     # ── Starting ─────────────────────────────────────────────────────
 
@@ -497,23 +487,20 @@ class CuaDriverBridge:
             runtime = driver_runtime(self._platform)
             try:
                 policy = self._write_policy()
-                working_folder = self._new_working_folder()
             except OSError as exc:
                 # A full or unwritable temporary directory: without its policy
                 # the driver can't run, and HELLO goes on without computer use.
                 self._last_failure = str(exc)
                 raise DriverUnavailable(
-                    f"could not make cua-driver's policy file or working folder: {exc}",
+                    f"could not write the cua-driver policy file: {exc}",
                     code=ErrorCode.INTERNAL_ERROR,
                 ) from exc
             self._display = platform_info.session_display_values()
-            env = driver_environment(policy)
-            if working_folder is not None:
-                env["PWD"] = str(working_folder)
+            # In the shim's own folder, on every OS, as are the apps the
+            # driver starts: the person's home, under the systemd service.
             client = self._client_factory(
                 driver_argv(binary, runtime, self._platform),
-                env=env,
-                cwd=working_folder,
+                env=driver_environment(policy),
                 client_version=self._client_version,
             )
             self._starts.append(time.monotonic())
@@ -604,31 +591,6 @@ class CuaDriverBridge:
                 f"{int(START_WINDOW_SECONDS // 60)} minutes{detail}. "
                 "Run `autogpt-shim doctor` on this machine.",
             )
-
-    def _new_working_folder(self) -> Path | None:
-        """A new empty folder for a Linux driver to start in, which nothing
-        can be written to; None elsewhere, where the driver starts in the
-        shim's own folder.
-
-        On Linux cua-driver hands a launch_app `name` that matches no
-        installed app to xdg-open when a file or folder of that name is in
-        its working folder, which was the shim's: the person's home under
-        systemd. The shim lets a name through only when an installed app has
-        it, but the driver looks again, and an app removed between the two
-        left a file of that name open to xdg-open, past the path jail and the
-        approval `urls` needs. In this folder no name finds anything. The
-        apps the driver starts start here too, and a relative path in an
-        approved argument names nothing here. Each start gets its own, as
-        each gets its own policy folder, and they are kept until close(): an
-        app the driver started may still be in one."""
-        if not self._platform.startswith("linux"):
-            return None
-        folder = Path(tempfile.mkdtemp(prefix="autogpt-cua-driver-cwd-"))
-        self._working_folders.append(folder)
-        # Read-only, so it stays empty: an app the driver starts can't save
-        # a file there, for a later name to open.
-        os.chmod(folder, stat.S_IRUSR | stat.S_IXUSR)
-        return folder
 
     def _write_policy(self) -> Path:
         """Write the policy in a new private folder for each driver start.

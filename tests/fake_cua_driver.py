@@ -33,14 +33,16 @@ JSON object per line, to FAKE_CUA_LOG:
                          waits in drain() for good
   FAKE_CUA_IGNORE_TERM   ignore SIGTERM (POSIX), so only a kill stops the fake
   FAKE_CUA_ENDED_SESSIONS  comma-separated session labels refused as ended
-  FAKE_CUA_APPS          JSON list of the installed apps list_apps returns: names, or
-                         {"name", "bundle_id"} objects
+  FAKE_CUA_APPS          JSON list of the installed apps list_apps returns, in the order
+                         given: names, or {"name", "bundle_id", "launch_path"} objects
+                         (on Linux the launch_path is the launcher's command)
   FAKE_CUA_APPS_FILE     a file holding that list, read for each list_apps, so the
                          installed apps can change while the fake runs
   FAKE_CUA_LIST_APPS_ERROR  list_apps answers with this error
-  FAKE_CUA_LINUX_LAUNCH  launch_app routes a name as cua-driver 0.38 on Linux does: an
-                         installed app, else xdg-open (logged) when a file or folder of
-                         that name is in the working folder, else an error
+  FAKE_CUA_LINUX_LAUNCH  launch_app routes a call as cua-driver 0.38 on Linux does
+                         (linux_launch below); what it starts and opens is logged
+  FAKE_CUA_PROGRAMS      JSON list of the programs that routing can start: each a
+                         command's first word, an absolute path or a name on PATH
   FAKE_CUA_APPS_GONE_AT_LAUNCH  that routing finds no installed app, as when one is
                          removed after list_apps listed it
 """
@@ -51,6 +53,7 @@ import base64
 import json
 import os
 import signal
+import string
 import sys
 import threading
 import time
@@ -122,33 +125,118 @@ def text_result(text: str, structured: dict | None = None, *, error: bool = Fals
 
 def installed_apps() -> list[dict]:
     """The installed apps FAKE_CUA_APPS_FILE or FAKE_CUA_APPS lists, each
-    {"name", "bundle_id"} (on Linux the bundle_id is the desktop-file id)."""
+    {"name", "bundle_id", "launch_path"}: on Linux the bundle_id is the
+    desktop-file id, and the launch_path the launcher's command."""
     if os.environ.get("FAKE_CUA_APPS_FILE"):
         with open(os.environ["FAKE_CUA_APPS_FILE"], encoding="utf-8") as handle:
             listed = json.load(handle)
     else:
         listed = json.loads(os.environ.get("FAKE_CUA_APPS") or "[]")
-    return [app if isinstance(app, dict) else {"name": app} for app in listed]
+    apps = [app if isinstance(app, dict) else {"name": app} for app in listed]
+    # Installed apps carry their launch_path on Windows and Linux.
+    return [{"launch_path": f"C:\\Apps\\{app['name']}.exe", **app} for app in apps]
+
+
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def ascii_lower(text: str) -> str:
+    return text.translate(_ASCII_LOWER)
+
+
+def exec_basename(command: str) -> str:
+    """cua-driver 0.38's exec_basename: a launcher command's program, without
+    its folder and in ASCII lowercase, past `env` and `NAME=value` words."""
+    for word in command.split():
+        if word == "env" or ("=" in word and not word.startswith(("/", "-"))):
+            continue
+        cleaned = word.strip("\"'")
+        parts = [part for part in cleaned.split("/") if part and part != "."]
+        return ascii_lower(parts[-1] if parts and parts[-1] != ".." else cleaned)
+    return ""
+
+
+def match_installed_app(installed: list[dict], query: str) -> dict | None:
+    """cua-driver 0.38's match_installed_app: the first app, by display name,
+    whose name, desktop-file id or launcher's program the query is, ignoring
+    ASCII case; else the only one whose display name contains it."""
+    wanted = ascii_lower(query)
+    if not wanted:
+        return None
+    # list_installed_apps sorts by the lowercased display name.
+    installed = sorted(installed, key=lambda app: app["name"].lower())
+    for app in installed:
+        if wanted in (
+            ascii_lower(app["name"]),
+            ascii_lower(app.get("bundle_id") or ""),
+            exec_basename(app["launch_path"]),
+        ):
+            return app
+    containing = [app for app in installed if wanted in ascii_lower(app["name"])]
+    return containing[0] if len(containing) == 1 else None
+
+
+def spawn(command: str, additional_arguments: list[str]) -> bool:
+    """cua-driver 0.38's spawn_launch_command: run a command line split at
+    whitespace, its first word the program. Here the programs that start
+    are the ones FAKE_CUA_PROGRAMS lists, and a start is only logged."""
+    words = command.split()
+    program = words[0] if words else command
+    if program not in json.loads(os.environ.get("FAKE_CUA_PROGRAMS") or "[]"):
+        return False
+    log(event="spawn", argv=[program, *words[1:], *additional_arguments])
+    return True
+
+
+def strings(value: object) -> list[str]:
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
 
 
 def linux_launch(arguments: dict) -> dict:
-    """cua-driver 0.38's launch_app on Linux for a name no program has: an
-    installed app it matches, else xdg-open when a file or folder of that
-    name is in its working folder, else an error."""
-    name = arguments.get("name") or ""
-    installed = [] if os.environ.get("FAKE_CUA_APPS_GONE_AT_LAUNCH") else installed_apps()
-    query = name.lower()
-    if any(
-        query in (app["name"].lower(), (app.get("bundle_id") or "").lower()) for app in installed
-    ):
-        return text_result(f"Launched {name} in background.", {"pid": 4242})
-    if "://" in name or os.path.exists(name):
-        log(event="xdg-open", target=os.path.abspath(name))
-        return text_result(f"Opened '{name}' via xdg-open.")
-    return text_result(
-        f"'{name}' is not an executable on PATH and matches no installed .desktop application.",
-        error=True,
+    """cua-driver 0.38's launch_app on Linux (LaunchAppTool::invoke): links
+    go to xdg-open; else the launch_path, or without one the name, is run as
+    a command line; if that doesn't start, an installed app it matches is
+    started; if none matches, it is handed to xdg-open when it holds `://`
+    or names an existing path, relative ones from the working folder, and is
+    an error otherwise."""
+    urls = strings(arguments.get("urls"))
+    additional_arguments = strings(arguments.get("additional_arguments"))
+    launch_path, name = (
+        arguments.get(key) if isinstance(arguments.get(key), str) else None
+        for key in ("launch_path", "name")
     )
+    if launch_path is None and name is None and not urls:
+        return text_result("Provide at least one of: launch_path, name, or urls.", error=True)
+    if urls:
+        for url in urls:
+            log(event="xdg-open", target=url)
+        return text_result(f"Opened {len(urls)} URL(s) via xdg-open.")
+    command = launch_path if launch_path is not None else name
+    if spawn(command, additional_arguments):
+        return text_result(
+            f"Launched {command} (pid 4242) in background.", {"pid": 4242, "name": command}
+        )
+    installed = [] if os.environ.get("FAKE_CUA_APPS_GONE_AT_LAUNCH") else installed_apps()
+    app = match_installed_app(installed, command)
+    if app is not None:
+        if not spawn(app["launch_path"], additional_arguments):
+            return text_result(
+                f"Failed to launch: '{command}' matched installed app '{app['name']}' but "
+                f"its launcher `{app['launch_path']}` failed to start",
+                error=True,
+            )
+        return text_result(
+            f"Launched {app['name']} (`{app['launch_path']}`, pid 4242) in background.",
+            {"pid": 4242, "name": app["name"]},
+        )
+    if "://" not in command and not os.path.exists(command):
+        return text_result(
+            f"Failed to launch: '{command}' is not an executable on PATH and matches no "
+            "installed .desktop application.",
+            error=True,
+        )
+    log(event="xdg-open", target=os.path.abspath(command))
+    return text_result(f"Opened '{command}' via xdg-open.")
 
 
 def call_tool(request_id: int, name: str, arguments: dict) -> dict:
@@ -197,7 +285,7 @@ def call_tool(request_id: int, name: str, arguments: dict) -> dict:
                 "bundle_id": app.get("bundle_id"),
                 "running": False,
                 "kind": "desktop",
-                "launch_path": f"C:\\Apps\\{app['name']}.exe",
+                "launch_path": app["launch_path"],
             }
             for app in installed
         ] + [

@@ -93,15 +93,13 @@ launches need `DISPLAY`, the session bus and the rest), with these changes:
   telemetry by default; the shim's driver sends none and never checks for
   updates.
 
-**Working folder.** On Linux the driver starts in an empty folder of its
-own, a new one for each start, which nothing can be written to and which
-the shim removes when it stops. The driver hands a `launch_app` `name`
-that matches no installed app to `xdg-open` when a file or folder of that
-name is in its working folder (below); there no name finds anything. The
-apps the driver starts start there too, and a relative path in an approved
-argument names nothing there, so give absolute paths. On macOS and Windows
-the driver starts in the shim's own folder, from which it opens nothing by
-name.
+**Working folder.** The driver starts in the shim's own folder on every
+OS, and so do the apps it starts. On Linux, under the systemd user service,
+that is the person's home folder, so a terminal opens there and a save
+dialog starts there. cua-driver on Linux looks a `launch_app` `name` up in
+that folder as a last resort, and opens what it finds with `xdg-open`, so
+there the shim sends it no name to look up: a launch by name goes as the
+matched app's own command ([Residual risk](#residual-risk)).
 
 ## What the platform gets
 
@@ -179,7 +177,7 @@ sixteen tools; all of them are in the catalog, which
   driver runs a `press` with a target, and a `triple_click`, as a click),
   and neither may the `observe` that ends a batch, which the driver runs as
   a `get_window_state` call. Nor may a step be a `launch_app`, whose name
-  the shim checks against the installed apps only when it's called on its
+  the shim looks up among the installed apps only when it's called on its
   own; cua-driver 0.38 batches no launch anyway. A batch the shim can't
   look inside is refused: `steps` that isn't a list, or a step that isn't
   an object.
@@ -233,8 +231,12 @@ Known gaps:
 
 - A `run_script` script can pass `screenshot_out_file` to
   `get_window_state` inside the driver, writing a PNG where the script says
-  (on macOS `click`'s `debug_image_out` too), and can call `launch_app`,
-  which starts any program, unchecked.
+  (on macOS `click`'s `debug_image_out` too), and can call `launch_app`
+  there, where none of the shim's launch checks apply: its `launch_path`
+  and `urls` start any program and open any file, and on Linux its `name`
+  is run as a command line, or, when it matches no installed app, opened
+  with `xdg-open` if a file of that name is in the shim's folder. The one
+  thing the shim checks for a script is that the call was approved.
   cua-driver 0.38's policy can allow a tool but can't forbid one of its
   arguments, and the shim can't see into scripts, so every script needs
   approval instead: a card that shows it, unless the chat runs Unsupervised
@@ -250,27 +252,67 @@ Known gaps:
   all of these in the background, with no window of their own, so unlike a
   terminal the agent types into, nobody sees them: each is an approval
   argument. On Linux the driver also runs `name` as a command line before
-  it looks for an app of that name, so the shim refuses a `name` whose first
-  word is a program, a program's own name included (`reboot` would run it;
-  an app goes by the name `list_apps` shows, such as `Firefox`). A `name`
-  no installed app matches it then hands to `xdg-open` if a file or folder
-  of that name is in its working folder (in the person's home, where it ran
-  under systemd, `.bash_history` would open in an editor, for a screenshot
-  to read, past the path jail and the approval `urls` needs). So the driver
-  runs in an empty folder of its own (above), and where it acts on
-  the `name` (no `urls`, no `launch_path`) the shim lets it through only
-  when it is an installed app's name or desktop-file id, as `list_apps`
-  lists them, ignoring ASCII case as the driver does. The driver's looser
-  matches, part of a name or a launcher's program, don't count: another
-  app installed meanwhile can leave them matching nothing. On Windows
+  it looks for an app of that name, and a `name` no installed app matches
+  it then hands to `xdg-open` if a file or folder of that name is in its
+  working folder, the shim's (in the person's home, where it runs under
+  systemd, `.bash_history` would open in an editor, for a screenshot to
+  read, past the path jail and the approval `urls` needs). So on Linux the
+  shim sends the driver no name to act on:
+  - It refuses a `name` whose first word is a program, a program's own
+    name included (`reboot`; an app goes by the name `list_apps` shows,
+    such as `Firefox`).
+  - For any other, where the driver would act on the `name` (no `urls`, no
+    `launch_path`), it lists the installed apps and finds the one the name
+    matches, as the driver itself matches it: the first, by display name,
+    whose display name, desktop-file id or launcher's program is the name,
+    ignoring ASCII case, else the only one whose display name contains it.
+  - It sends the driver that app's own launch command as `launch_path`,
+    with its program as an absolute path (the path the command gives, or
+    the one a bare name has on `PATH`), and leaves the `name` out: beside a
+    `launch_path`, cua-driver 0.38 only looks at a `name` for a
+    remote-debugging flag. The words of the command from the first that
+    holds `://` on go as `additional_arguments`, ahead of any the person
+    approved.
+  - If the program is gone by the time the driver runs it, the string the
+    driver was sent matches no installed app (the shim checks that none is
+    called by it), holds no `://` and names no existing path, so the driver
+    fails the call and opens nothing. One case is left: a command that is a
+    program alone is that file's path, so if the file is still there and
+    yet can't be started (its execute permission taken away in between,
+    say), the driver hands it to `xdg-open`, which opens the app's own
+    launcher file with whatever handles it. The model can't choose that
+    path.
+  - A name no app matches, or two do, is refused, and so is an app whose
+    program the shim can't name by an absolute path for certain: no such
+    program, a relative path, one found through a relative `PATH` entry, a
+    path with a space in it. The model is told to pass the program as
+    `launch_path`, which the person approves. The shim never sends the bare
+    name instead.
+  - The apps are listed, and the program looked up on `PATH` (in a worker
+    thread, one lookup at a time for the machine), before the call takes
+    the computer and inside its deadline; a launch refused there is
+    answered without waiting for the computer.
+  - The `launch_path` the shim fills in isn't one the call brought, so it
+    needs no approval and is on record as neither argument nor approval:
+    the audit record keeps the `name` the call asked for and adds
+    `resolved_launch_path`, the command the shim sends.
+
+  Two things follow from the driver getting a command where it used to get
+  a name. Its result names the command, not the app. And it looks for the
+  new window by the command alone: where the launcher hands the request to
+  another process (a wrapper, an instance already running), a window whose
+  class matches the app's display name or id but not its command isn't
+  found, and the call can come back unconfirmed
+  (`launch_handoff_timeout`) or without its window, though the app
+  started. On Windows
   the driver hands a `name` that matches no installed app, and a
   `bundle_id` that isn't an AUMID (`Package!App`), to ShellExecuteEx, which
   runs a program of that name from PATH (`logoff` would sign the person
   out), so the shim refuses such a `bundle_id`, and lets a `name` through
   only when an installed app, as `list_apps` lists it, would match it the
   way the driver matches: the exact name, ignoring case and a trailing
-  `.exe`, or one that starts with it. Either way it lists the installed
-  apps for each launch it checks, just before the launch, so an app removed
+  `.exe`, or one that starts with it. There it lists the installed apps
+  for each launch it checks, just before the launch, so an app removed
   since an earlier listing doesn't let its name through. On every OS it refuses a `name`,
   `bundle_id` or `aumid` with a path, a URL scheme or a leading `-`. A plain launch, an app by its name or
   id, asks nothing, and a launched app can do whatever it does.
@@ -327,7 +369,9 @@ content, with a note either way.
 Every `COMPUTER_TOOL_CALL` the computer-use handler takes writes a
 `COMPUTER_TOOL_CALL` record, best effort: a failed write doesn't stop the
 call, and a call refused before the handler (computer use off, or not
-granted to the session) has none. The record holds the tool,
+granted to the session) has none. The record holds the tool, for a Linux
+launch by name the command the shim sends the driver in the name's place
+(`resolved_launch_path`),
 the arguments with typed, set and scripted text (`text`, `value`, `script`,
 `prompt_text`, a single character pressed with `press_key`, and the character
 of a `hotkey` chord that types one: one that only holds Shift, or on macOS

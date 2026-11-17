@@ -34,6 +34,7 @@ import time
 import weakref
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
@@ -54,8 +55,12 @@ from .computer_use import (
     offered_tools,
 )
 from .computer_use.catalog import (
+    InstalledApp,
+    LinuxLaunch,
     is_aumid,
-    linux_app_name_matches,
+    linux_app_matching,
+    linux_apps,
+    linux_launch,
     linux_launch_uses_name,
     takes_session,
     windows_app_name_matches,
@@ -1763,8 +1768,16 @@ MAX_RENEWED_LABELS = 1024
 
 def _program_on_path(name: str) -> str | None:
     """The program `name` runs from PATH (shutil.which): what a Linux
-    launch's name runs when its first word is a program's (check_arguments)."""
+    launch's name runs when its first word is a program's (check_arguments),
+    and what an installed app's launch command runs (_linux_launch)."""
     return shutil.which(name)
+
+
+def _linux_launch(launch_path: str) -> LinuxLaunch | None:
+    """What to send the driver to start an installed app whose launcher's
+    command is `launch_path` (catalog.linux_launch), on this machine's PATH
+    and disk: None when its program isn't there to name."""
+    return linux_launch(launch_path, on_path=_program_on_path)
 
 
 def _seen(future: asyncio.Future[Any]) -> None:
@@ -1775,25 +1788,36 @@ def _seen(future: asyncio.Future[Any]) -> None:
 
 
 class _ProgramLookups:
-    """A machine's lookups of a Linux launch's name on PATH
-    (_program_on_path), made in a worker thread one at a time.
+    """A machine's lookups on PATH for a Linux launch by name, made in a
+    worker thread one at a time: the program the name's first word would run
+    (_program_on_path), then the one the matched app's launch command runs
+    (_linux_launch).
 
     shutil.which stats a file in each PATH folder, and a stalled mount there
     (NFS, FUSE) holds it for as long as it stalls. A caller waits for a
     lookup no later than its own deadline, and leaves it to finish in its
     thread. The next caller waits for that lookup too, no later than its
     deadline, rather than start one that would stall as well: one looking
-    the same name up takes its answer, and one looking another up starts
+    the same thing up takes its answer, and one looking another up starts
     its own once it has ended. So a stall holds one worker thread, however
     many launches come in."""
 
     def __init__(self) -> None:
-        self._name: str | None = None
-        self._lookup: asyncio.Future[str | None] | None = None
+        # What the lookup under way, or the last, looks up, and how.
+        self._looked_up: tuple[Callable[[str], Any], str] | None = None
+        self._lookup: asyncio.Future[Any] | None = None
 
     async def program_by(self, name: str, deadline: float) -> str | None:
         """The program `name` runs, by `deadline` (loop time), else
         TimeoutError."""
+        return await self._by(_program_on_path, name, deadline)
+
+    async def launch_by(self, launch_path: str, deadline: float) -> LinuxLaunch | None:
+        """What to send the driver for an installed app's `launch_path`
+        (_linux_launch), by `deadline` (loop time), else TimeoutError."""
+        return await self._by(_linux_launch, launch_path, deadline)
+
+    async def _by(self, look_up: Callable[[str], _T], what: str, deadline: float) -> _T:
         loop = asyncio.get_running_loop()
         while True:
             remaining = deadline - loop.time()
@@ -1801,17 +1825,26 @@ class _ProgramLookups:
                 raise TimeoutError
             lookup = self._lookup
             if lookup is None or lookup.done():
-                lookup = self._lookup = asyncio.ensure_future(
-                    asyncio.to_thread(_program_on_path, name)
-                )
+                lookup = self._lookup = asyncio.ensure_future(asyncio.to_thread(look_up, what))
                 lookup.add_done_callback(_seen)
-                self._name = name
-            ours = self._name == name
+                self._looked_up = (look_up, what)
+            ours = self._looked_up == (look_up, what)
             done, _ = await asyncio.wait({lookup}, timeout=remaining)
             if not done:
                 raise TimeoutError
             if ours:
                 return lookup.result()
+
+
+@dataclass(frozen=True)
+class _LookedUp:
+    """What a computer-use call's check looked up before the call took the
+    computer (ComputerUseHandler._looked_up)."""
+
+    # The program each name's first word runs, from PATH (check_arguments).
+    programs: dict[str, str | None]
+    # What a Linux launch by name sends the driver in the name's place.
+    launch: LinuxLaunch | None = None
 
 
 class _ClipboardChecks:
@@ -1876,7 +1909,8 @@ class ComputerUseHandler:
         self._driver = driver
         # One GUI: tool calls from every session on the machine take turns.
         self._machine_turn = machine_turn or asyncio.Lock()
-        # The machine's lookups of launch names on PATH, made one at a time.
+        # The machine's lookups on PATH for launches by name, made one at a
+        # time.
         self._program_lookups = _ProgramLookups()
         # The machine's checks of the clipboard for a password manager's
         # mark, made one at a time.
@@ -2138,20 +2172,27 @@ class ComputerUseHandler:
         log locked by `autogpt-shim audit verify`, a slow disk) holds up
         this call's answer, which goes out after it, not other chats' calls.
         What the call's check looks up on disk is looked up before it waits
-        for the computer, within the same deadline (_programs_named)."""
+        for the computer, within the same deadline, and so is what a Linux
+        launch by name sends the driver in the name's place (_looked_up); a
+        launch refused there is answered without taking the computer."""
         deadline = self.call_deadline(msg, received_at)
         start = time.monotonic()
         details = self._call_details(msg)
         try:
-            programs = await self._programs_named(msg, deadline)
+            looked_up = await self._looked_up(msg, deadline)
+            if looked_up.launch is not None:
+                # What the driver is sent, beside the name the call asked for.
+                details["resolved_launch_path"] = looked_up.launch.command
             async with asyncio.timeout_at(deadline):
                 await self._machine_turn.acquire()
         except TimeoutError:
             return await self._not_started(msg, details, start)
+        except (ComputerUseError, DriverUnavailable) as exc:
+            return await self._refused(msg, details, start, exc)
         try:
             try:
                 response, record, result = await self._run_call(
-                    msg, details, start, deadline, programs
+                    msg, details, start, deadline, looked_up
                 )
             finally:
                 self._machine_turn.release()
@@ -2172,12 +2213,13 @@ class ComputerUseHandler:
         seconds = float(msg.payload.timeout_seconds or DEFAULT_COMPUTER_TOOL_TIMEOUT_SECONDS)
         return (asyncio.get_running_loop().time() if received_at is None else received_at) + seconds
 
-    async def _programs_named(
-        self, msg: ComputerToolCallMessage, deadline: float
-    ) -> dict[str, str | None]:
+    async def _looked_up(self, msg: ComputerToolCallMessage, deadline: float) -> _LookedUp:
         """What the call's check (check_arguments) looks up on disk, by the
         call's deadline, else TimeoutError: the program a Linux launch's
-        name runs when its first word is a program's, from PATH.
+        name runs when its first word is a program's, from PATH. For a Linux
+        launch by a name no program has, also what the shim sends the driver
+        in the name's place (_linux_launch_by_name), which can refuse the
+        launch (ComputerUseError).
 
         It is looked up before the call waits for the computer, through the
         machine's lookups (_ProgramLookups). Looked up while the call held
@@ -2191,19 +2233,25 @@ class ComputerUseHandler:
             names.append(name)
             return None
 
+        tool, arguments = msg.payload.tool, msg.payload.arguments
         try:
-            check_arguments(
-                msg.payload.tool,
-                msg.payload.arguments,
-                msg.payload.approved_arguments,
-                on_path=noted,
-            )
+            check_arguments(tool, arguments, msg.payload.approved_arguments, on_path=noted)
         except (ApprovalRequired, ArgumentRefused):
-            return {}
+            return _LookedUp({})
         programs: dict[str, str | None] = {}
         for name in names:
             programs[name] = await self._program_lookups.program_by(name, deadline)
-        return programs
+        app_name = arguments.get("name")
+        if (
+            tool != "launch_app"
+            or not isinstance(app_name, str)
+            or not self.driver.platform.startswith("linux")
+            or not linux_launch_uses_name(arguments)
+            # A name whose first word is a program: _relay's check refuses it.
+            or any(programs.values())
+        ):
+            return _LookedUp(programs)
+        return _LookedUp(programs, await self._linux_launch_by_name(app_name, deadline))
 
     @staticmethod
     def _call_details(msg: ComputerToolCallMessage) -> dict[str, Any]:
@@ -2230,16 +2278,16 @@ class ComputerUseHandler:
         details: dict[str, Any],
         start: float,
         deadline: float,
-        programs: dict[str, str | None],
+        looked_up: _LookedUp,
     ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
         """Relay the call, and return its answer with its audit record's
         details and result, which _call writes once the computer is free.
-        `programs` is what its check looks up on disk (_programs_named)."""
+        `looked_up` is what its check looked up on disk (_looked_up)."""
         tool = msg.payload.tool
         arguments = dict(msg.payload.arguments)
         approved = msg.payload.approved_arguments
         try:
-            result = await self._relay(tool, arguments, deadline, approved, programs)
+            result = await self._relay(tool, arguments, deadline, approved, looked_up)
         except ComputerUseError as exc:
             return (
                 make_error(msg.id, exc.code, exc.message, details=exc.details or None),
@@ -2310,6 +2358,17 @@ class ComputerUseHandler:
         )
         return self._not_started_response(msg)
 
+    async def _refused(
+        self,
+        msg: ComputerToolCallMessage,
+        details: dict[str, Any],
+        start: float,
+        exc: ComputerUseError | DriverUnavailable,
+    ) -> Any:
+        """Audit, and answer, a call refused before it had the computer."""
+        await self._emit(msg.id, details, _err_result(_elapsed_ms(start), exc.code.value))
+        return make_error(msg.id, exc.code, exc.message, details=exc.details or None)
+
     @staticmethod
     def _not_started_response(msg: ComputerToolCallMessage) -> Any:
         """The deadline passed before the driver took the call: it waited
@@ -2334,7 +2393,7 @@ class ComputerUseHandler:
         arguments: dict[str, Any],
         deadline: float,
         approved: list[str],
-        programs: dict[str, str | None],
+        looked_up: _LookedUp,
     ) -> tuple[ComputerToolResultPayload, dict[str, Any]]:
         snapshot = await self.driver.snapshot(deadline=deadline)
         spec = snapshot.tool(tool)
@@ -2347,9 +2406,9 @@ class ComputerUseHandler:
         try:
             # On the event loop: the one thing the check looks at on disk,
             # the program a Linux launch's name runs, was looked up on PATH
-            # before the call took the computer (_programs_named). A name
-            # not looked up then can't come up here: the check is the same.
-            check_arguments(tool, arguments, approved, on_path=programs.__getitem__)
+            # before the call took the computer (_looked_up). A name not
+            # looked up then can't come up here: the check is the same.
+            check_arguments(tool, arguments, approved, on_path=looked_up.programs.__getitem__)
         except ApprovalRequired as exc:
             raise ComputerUseError(
                 ErrorCode.APPROVAL_REQUIRED,
@@ -2363,7 +2422,7 @@ class ComputerUseHandler:
                 details={"tool": tool, "argument": exc.argument},
             ) from exc
         if tool == "launch_app":
-            await self._check_launch_name(arguments, deadline)
+            await self._check_launch_name(arguments, deadline, looked_up.launch)
         if takes_session(spec.get("inputSchema") or {}):
             arguments["session"] = self.session_label
         timeout = deadline - asyncio.get_running_loop().time()
@@ -2382,28 +2441,34 @@ class ComputerUseHandler:
                     self.clipboard_writeback.clear()
         return self._result_payload(tool, raw)
 
-    async def _check_launch_name(self, arguments: dict[str, Any], deadline: float) -> None:
-        """A launch_app `name` goes ahead only when an installed app, as
-        list_apps lists it, would match it, on the systems where cua-driver
-        acts on a name nothing matches.
+    async def _check_launch_name(
+        self, arguments: dict[str, Any], deadline: float, launch: LinuxLaunch | None
+    ) -> None:
+        """A launch_app `name` goes ahead only for an installed app, as
+        list_apps lists it, on the systems where cua-driver acts on a name
+        nothing matches.
 
         On Windows the driver looks the name up among the installed apps
         and, when none matches, hands it to ShellExecuteEx, which runs a
         program of that name from PATH, out of sight: `logoff` signs the
-        person out. A launch_path, path or AUMID takes precedence over the
+        person out. So the name goes ahead only when an installed app would
+        match it. A launch_path, path or AUMID takes precedence over the
         name in the driver's routing, so those calls aren't checked.
 
-        On Linux, once no program has the name's first word
-        (check_arguments), the driver looks for an installed app and, when
-        none matches, hands the name to xdg-open if a file or folder of that
-        name is in its working folder: in the person's home, where it ran
-        under systemd, `.bash_history` opened in an editor, for a screenshot
-        to read, past the path jail and the approval `urls` needs. It runs in
-        an empty folder of its own now (CuaDriverBridge._new_working_folder),
-        where no name finds anything, even one whose app went between this
-        check and the driver's own look. Links to open, and then a
-        launch_path, take precedence over the name, so those calls aren't
-        checked."""
+        On Linux the driver runs the name as a command line, looks for an
+        installed app when no program has its first word, and, when none
+        matches, hands the name to xdg-open if a file or folder of that name
+        is in its working folder, the shim's: in the person's home, under
+        systemd, `.bash_history` opened in an editor, for a screenshot to
+        read, past the path jail and the approval `urls` needs. So the
+        driver gets no name to act on. `launch`, looked up before the call
+        took the computer (_linux_launch_by_name), is the matched app's own
+        command, which goes as launch_path in the name's place. cua-driver
+        0.38 reads nothing more from a name beside a launch_path than
+        whether it holds a remote-debugging flag: its result's text, and
+        the windows it looks for, come from the command it ran. So the name
+        is left out. Links to open, and then a launch_path, take precedence
+        over the name, so a call with those keeps it and isn't checked."""
         name = arguments.get("name")
         platform = self.driver.platform
         if not isinstance(name, str):
@@ -2415,7 +2480,7 @@ class ComputerUseHandler:
             if isinstance(bundle_id, str) and is_aumid(bundle_id):
                 return
             apps = await self._installed_apps_listed(deadline)
-            if not windows_app_name_matches(name, [app_name for app_name, _ in apps]):
+            if not windows_app_name_matches(name, [app.name for app in apps]):
                 raise ComputerUseError(
                     ErrorCode.FEATURE_NOT_SUPPORTED,
                     f"No installed app here is called {name!r}, so cua-driver would run a "
@@ -2425,25 +2490,78 @@ class ComputerUseHandler:
                     details={"tool": "launch_app", "argument": "name"},
                 )
         elif platform.startswith("linux") and linux_launch_uses_name(arguments):
-            if not linux_app_name_matches(name, await self._installed_apps_listed(deadline)):
+            if launch is None:
+                # Every such launch is looked up (_looked_up). One that
+                # wasn't is not sent with its name instead.
                 raise ComputerUseError(
-                    ErrorCode.FEATURE_NOT_SUPPORTED,
-                    f"No installed app here has the name or bundle_id {name!r}, so "
-                    "cua-driver would open a file or folder of that name, if there is one, "
-                    "without the person's approval. Name the app exactly as list_apps shows "
-                    "it, or pass the program as launch_path or the file as urls, which the "
-                    "person approves.",
+                    ErrorCode.INTERNAL_ERROR,
+                    f"The app the name {name!r} stands for wasn't looked up, so nothing was "
+                    "started. Call launch_app again.",
                     details={"tool": "launch_app", "argument": "name"},
                 )
+            del arguments["name"]
+            arguments["launch_path"] = launch.launch_path
+            if launch.additional_arguments:
+                # The app's own first, then any the person approved, as the
+                # driver runs them after an app's command.
+                approved = arguments.get("additional_arguments")
+                arguments["additional_arguments"] = [
+                    *launch.additional_arguments,
+                    *(approved if isinstance(approved, list) else []),
+                ]
 
-    async def _installed_apps_listed(self, deadline: float) -> list[tuple[str, str | None]]:
-        """Each installed app's name and bundle_id (on Linux its desktop-file
-        id) from list_apps, listed for each launch, in the same turn of the
-        computer as the launch: apps kept from an earlier listing could hold
-        one removed since, whose name the driver, finding no app, would hand
-        to ShellExecuteEx or xdg-open. A running process no installed app
-        matched has no launch_path, and the driver's name lookup doesn't find
-        it either."""
+    async def _linux_launch_by_name(self, name: str, deadline: float) -> LinuxLaunch:
+        """What the shim sends cua-driver in place of a Linux launch_app
+        `name`, by `deadline` (loop time, else TimeoutError): the launch
+        command of the installed app the name matches, as the driver itself
+        would match it (linux_app_matching), with its program as an absolute
+        path (linux_launch). Before the call takes the computer: the apps
+        are listed through the driver, and the program is looked up on PATH
+        through the machine's lookups, in a worker thread.
+
+        Sent the name, the driver chose what it meant, and with no app of
+        that name left by the time it looked (removed since the shim's own
+        look, say) it handed the name to xdg-open, which opened a file of
+        that name in the working folder. Sent the command, it has no name
+        to look up: if the program is gone when it runs it, the string
+        matches no installed app (checked here) and names no existing path
+        (linux_launch), so it fails the call and opens nothing.
+
+        A name no app matches, and an app whose program can't be named that
+        way, are refused, never sent as the bare name."""
+        try:
+            apps = linux_apps(await self._installed_apps_listed(deadline))
+        except McpError as exc:
+            raise ComputerUseError(ErrorCode.INTERNAL_ERROR, f"cua-driver: {exc.message}") from exc
+        app = linux_app_matching(name, apps)
+        if app is None:
+            raise ComputerUseError(
+                ErrorCode.FEATURE_NOT_SUPPORTED,
+                f"The name {name!r} matches no installed app here, or more than one. Give "
+                "an app's name or bundle_id as list_apps shows it, as name, or pass the "
+                "program as launch_path or the file as urls, which the person approves.",
+                details={"tool": "launch_app", "argument": "name"},
+            )
+        launch = await self._program_lookups.launch_by(app.launch_path, deadline)
+        if launch is None or linux_app_matching(launch.launch_path, apps) is not None:
+            raise ComputerUseError(
+                ErrorCode.FEATURE_NOT_SUPPORTED,
+                f"{app.name!r} can't be started by name here: its launcher's command, "
+                f"`{app.launch_path}`, isn't one the local executor can send cua-driver "
+                "with its program as an absolute path that names nothing else. Pass it as "
+                "launch_path, which the person approves.",
+                details={"tool": "launch_app", "argument": "name"},
+            )
+        return launch
+
+    async def _installed_apps_listed(self, deadline: float) -> list[InstalledApp]:
+        """Each installed app's name, bundle_id (on Linux its desktop-file
+        id) and launch_path from list_apps, listed for each launch by name:
+        apps kept from an earlier listing could hold one removed since. On
+        Windows they are listed in the same turn of the computer as the
+        launch, whose name the driver, finding no app, would hand to
+        ShellExecuteEx. A running process no installed app matched has no
+        launch_path, and the driver's name lookup doesn't find it either."""
         loop = asyncio.get_running_loop()
         timeout = deadline - loop.time()
         if timeout <= 0:
@@ -2462,9 +2580,16 @@ class ComputerUseHandler:
                 details={"tool": "launch_app", "argument": "name"},
             )
         return [
-            (app["name"], app["bundle_id"] if isinstance(app.get("bundle_id"), str) else None)
+            InstalledApp(
+                app["name"],
+                app["bundle_id"] if isinstance(app.get("bundle_id"), str) else None,
+                app["launch_path"],
+            )
             for app in apps
-            if isinstance(app, dict) and isinstance(app.get("name"), str) and app.get("launch_path")
+            if isinstance(app, dict)
+            and isinstance(app.get("name"), str)
+            and isinstance(app.get("launch_path"), str)
+            and app["launch_path"]
         ]
 
     async def _clipboard_read(self, arguments: dict[str, Any], timeout: float) -> dict[str, Any]:
