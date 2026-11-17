@@ -7,7 +7,13 @@ import {
 import { isSessionGone, queryClient, sessionGeneration, signOut } from "@/lib/session";
 
 import { hireErrorMessage, withHiredExpert } from "./helpers";
-import { claimHire, releaseHire, useHiresInFlight } from "./hiresInFlight";
+import {
+  claimHire,
+  hireStateFor,
+  recordHire,
+  releaseHire,
+  useHireStore,
+} from "./hireStore";
 
 interface Args {
   onHired: (expert: Expert, template: ExpertTemplate) => void;
@@ -15,16 +21,18 @@ interface Args {
 }
 
 export function useHireExpert({ onHired, onError }: Args) {
-  const hiring = useHiresInFlight();
+  const store = hireStateFor(useHireStore(), sessionGeneration());
 
   async function hire(template: ExpertTemplate) {
-    if (!claimHire(template.id)) return;
     const generation = sessionGeneration();
+    if (!claimHire(template.id, generation)) return;
     try {
       const { expert } = await hireExpert(template.id);
       // Signed out meanwhile: the old account's expert stays out of the cache.
       if (generation !== sessionGeneration()) return;
-      // Only into a list that loaded: a team of one would hide a failed load.
+      // Kept apart from the team list, so the hire shows even if that list
+      // never loads; written into the list only when it has loaded.
+      recordHire(template.id, expert, generation);
       queryClient.setQueryData<Expert[]>(expertKeys.list, (old) =>
         old ? withHiredExpert(old, expert) : old,
       );
@@ -39,13 +47,18 @@ export function useHireExpert({ onHired, onError }: Args) {
       }
       onError(hireErrorMessage(caught, template.name), template);
     } finally {
-      releaseHire(template.id);
+      releaseHire(template.id, generation);
     }
   }
 
   function isHiring(templateID: string) {
-    return hiring.has(templateID);
+    return store.inFlight.has(templateID);
   }
 
-  return { hire, isHiring };
+  /** The expert this sign-in just hired from the template, if any. */
+  function justHired(templateID: string) {
+    return store.hired.get(templateID) ?? null;
+  }
+
+  return { hire, isHiring, justHired };
 }

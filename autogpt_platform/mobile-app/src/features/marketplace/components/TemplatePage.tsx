@@ -33,6 +33,7 @@ export function TemplatePage({ templateID }: Props) {
               name={page.template.name}
               isOnTeam={page.isOnTeam}
               isHiring={page.isHiring}
+              isCheckingTeam={page.isCheckingTeam}
               isOpeningChat={page.isOpeningChat}
               error={page.error}
               onHire={page.hire}
@@ -44,6 +45,14 @@ export function TemplatePage({ templateID }: Props) {
     }
     if (page.isLoading) {
       return <ActivityIndicator style={styles.loading} color={colors.textTertiary} />;
+    }
+    if (page.isLoadError) {
+      return (
+        <View style={styles.missing}>
+          <Text style={styles.missingText}>Couldn&apos;t load this expert.</Text>
+          <Button label="Try again" variant="secondary" onPress={page.retry} />
+        </View>
+      );
     }
     return (
       <View style={styles.missing}>

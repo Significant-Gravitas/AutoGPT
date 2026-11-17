@@ -14,7 +14,7 @@ import {
 import { isSessionGone, signOut } from "@/lib/session";
 
 import { type Area, emptyMessage, filterTemplates, hiredTemplateIDs } from "./helpers";
-import { latestOrNewSession } from "./openExpertChat";
+import { firstChatAfterHire } from "./openExpertChat";
 import { useHireExpert } from "./useHireExpert";
 
 export function useMarketplaceScreen() {
@@ -26,7 +26,10 @@ export function useMarketplaceScreen() {
   const { toast, show, hide } = useToast();
   // Marketplace stays mounted in the drawer: someone who left meanwhile stays where they went.
   const navigation = useNavigation();
-  const { hire, isHiring } = useHireExpert({ onHired: handleHired, onError: handleError });
+  const { hire, isHiring, justHired } = useHireExpert({
+    onHired: handleHired,
+    onError: handleError,
+  });
   const hiredIDs = hiredTemplateIDs(experts.data ?? []);
   // State lands a render late; the ref stops a second tap in the same frame.
   const isOpeningChat = useRef(false);
@@ -37,8 +40,7 @@ export function useMarketplaceScreen() {
       tone: "success",
       actionLabel: "Chat",
       onAction: () => {
-        hide();
-        void openChat(expert.id);
+        void openChat(expert);
       },
     });
   }
@@ -47,11 +49,14 @@ export function useMarketplaceScreen() {
     show({ message, tone: "error" });
   }
 
-  async function openChat(expertID: string) {
+  // Only from the toast, so always for an expert hired moments ago.
+  async function openChat(expert: Expert) {
     if (isOpeningChat.current) return;
     isOpeningChat.current = true;
+    show({ message: `Opening ${expert.name}'s chat…`, tone: "success" });
     try {
-      const sessionID = await latestOrNewSession(expertID);
+      const sessionID = await firstChatAfterHire(expert.id);
+      hide();
       if (navigation.isFocused()) router.push(`/chat/${sessionID}`);
     } catch (caught) {
       if (isSessionGone(caught)) void signOut();
@@ -86,7 +91,8 @@ export function useMarketplaceScreen() {
     setQuery,
     area,
     setArea,
-    isOnTeam: (template: ExpertTemplate) => hiredIDs.has(template.id),
+    isOnTeam: (template: ExpertTemplate) =>
+      hiredIDs.has(template.id) || justHired(template.id) !== null,
     isHiring,
     hire,
     openTemplate,

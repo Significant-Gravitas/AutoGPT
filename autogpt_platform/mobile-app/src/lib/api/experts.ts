@@ -94,7 +94,11 @@ async function postExpertJSON(path: string, body: unknown) {
     response = await post(path, body);
     assertSameSession(mark);
   }
-  if (!response.ok) throw await limitError(response);
+  if (!response.ok) {
+    const error = await limitError(response);
+    assertSameSession(mark);
+    throw error;
+  }
   return (await response.json()) as ExpertResult;
 }
 

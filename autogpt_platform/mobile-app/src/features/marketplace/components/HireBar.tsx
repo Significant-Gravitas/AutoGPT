@@ -9,13 +9,23 @@ interface Props {
   name: string;
   isOnTeam: boolean;
   isHiring: boolean;
+  isCheckingTeam: boolean;
   isOpeningChat: boolean;
   error: string | null;
   onHire: () => void;
   onChat: () => void;
 }
 
-export function HireBar({ name, isOnTeam, isHiring, isOpeningChat, error, onHire, onChat }: Props) {
+export function HireBar({
+  name,
+  isOnTeam,
+  isHiring,
+  isCheckingTeam,
+  isOpeningChat,
+  error,
+  onHire,
+  onChat,
+}: Props) {
   const styles = useStyles();
   const colors = useColors();
   return (
@@ -43,7 +53,7 @@ export function HireBar({ name, isOnTeam, isHiring, isOpeningChat, error, onHire
         <Button
           label={isHiring ? `Hiring ${name}…` : `Hire ${name}`}
           fullWidth
-          isLoading={isHiring}
+          isLoading={isHiring || isCheckingTeam}
           onPress={onHire}
         />
       )}

@@ -12,7 +12,7 @@ import {
 import { isSessionGone, signOut } from "@/lib/session";
 import { useMountEffect } from "@/lib/useMountEffect";
 
-import { latestOrNewSession } from "./openExpertChat";
+import { firstChatAfterHire, latestOrNewSession } from "./openExpertChat";
 import { useHireExpert } from "./useHireExpert";
 
 export function useTemplatePage(templateID: string) {
@@ -22,14 +22,19 @@ export function useTemplatePage(templateID: string) {
   const [isOpeningChat, setIsOpeningChat] = useState(false);
   // State lands a render late; the ref stops a second tap in the same frame.
   const isOpeningRef = useRef(false);
+  // Keyed by template, this page can be replaced while a chat is opening;
+  // the old one must not push its chat over the new page.
+  const isMounted = useRef(true);
   const navigation = useNavigation();
-  const { hire, isHiring } = useHireExpert({
+  const { hire, isHiring, justHired } = useHireExpert({
     onHired: () => setError(null),
     onError: (message) => setError(message),
   });
   const template = templates.data?.find((item) => item.id === templateID) ?? null;
+  const hiredNow = justHired(templateID);
   const hiredExpert =
-    experts.data?.find((expert) => expert.source_template_id === templateID) ?? null;
+    experts.data?.find((expert) => expert.source_template_id === templateID) ??
+    hiredNow;
 
   // While this page is in front, Android's back button returns to the list
   // (the drawer's own back goes to its first screen). Leaving drops any error,
@@ -53,6 +58,7 @@ export function useTemplatePage(templateID: string) {
     const offFocus = navigation.addListener("focus", handleFocus);
     const offBlur = navigation.addListener("blur", handleBlur);
     return () => {
+      isMounted.current = false;
       offFocus();
       offBlur();
       backPress?.remove();
@@ -71,8 +77,10 @@ export function useTemplatePage(templateID: string) {
     setIsOpeningChat(true);
     setError(null);
     try {
-      const sessionID = await latestOrNewSession(hiredExpert.id);
-      if (navigation.isFocused()) router.push(`/chat/${sessionID}`);
+      const sessionID = hiredNow
+        ? await firstChatAfterHire(hiredExpert.id)
+        : await latestOrNewSession(hiredExpert.id);
+      if (isMounted.current && navigation.isFocused()) router.push(`/chat/${sessionID}`);
     } catch (caught) {
       if (isSessionGone(caught)) void signOut();
       else setError("Couldn't open that chat. Try again.");
@@ -89,7 +97,13 @@ export function useTemplatePage(templateID: string) {
   return {
     template,
     isLoading: templates.isPending,
+    // Only when nothing is cached: a failed refetch keeps the list it had.
+    isLoadError: templates.isError && !templates.data,
+    retry: () => void templates.refetch(),
     isOnTeam: hiredExpert !== null,
+    // Hire or Chat is decided only once the team has loaded. If it can't load,
+    // Hire stays offered: a hire of an expert already on the team returns them.
+    isCheckingTeam: hiredExpert === null && experts.isPending,
     isHiring: isHiring(templateID),
     isOpeningChat,
     error,

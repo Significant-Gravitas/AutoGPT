@@ -69,7 +69,6 @@ Set these in `.env.local` (see `.env.example`). Trailing slashes are dropped.
 - The microphone and photo permission texts in `app.json` only apply in a development or store build, not in Expo Go.
 - The drawer shows each expert's latest chat title, not their last message: the session list has no preview field.
 - A "Needs you" action that is not a chat or the team page opens on the web.
-- Tapping Chat in the first second after a hire, before the expert's hello has started, can open an empty chat instead.
 - Attaching a file with a name already used in the same chat fails; the backend refuses it.
 - File chips under a sent message are kept only until the chat reloads from the server.
 - Settings shows the web page's own navigation, and is always light.
