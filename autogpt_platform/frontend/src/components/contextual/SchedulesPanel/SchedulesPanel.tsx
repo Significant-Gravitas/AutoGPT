@@ -9,6 +9,7 @@ import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
 import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphScheduleListItem";
 import { PausedChatListItem } from "./components/PausedChatListItem/PausedChatListItem";
+import { SchedulesUnavailable } from "./components/SchedulesUnavailable/SchedulesUnavailable";
 import { useSchedulesPanel } from "./useSchedulesPanel";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -25,6 +26,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
     isLoading,
     unavailable,
     retryUnavailable,
+    retrying,
     error,
     partialError,
   } = useSchedulesPanel();
@@ -66,20 +68,11 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         </div>
       )}
 
-      {unavailable && (
-        <div
-          className="flex flex-col gap-3 rounded-md border border-border-base bg-surface-muted px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-          data-testid="schedules-unavailable"
-        >
-          <Text variant="body" tone="secondary">
-            Scheduled items are temporarily unavailable. They&apos;ll be back in
-            a moment.
-          </Text>
-          <Button variant="secondary" size="small" onClick={retryUnavailable}>
-            Try again
-          </Button>
-        </div>
-      )}
+      <SchedulesUnavailable
+        unavailable={unavailable}
+        retrying={retrying}
+        onRetry={retryUnavailable}
+      />
 
       {paused.length > 0 && (
         <ul

@@ -25,6 +25,10 @@ from backend.api.features.library.exceptions import (
 from backend.api.utils.validation_errors import bounded_validation_errors
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.integrations.webhooks.graph_lifecycle_hooks import GraphActivationError
+from backend.util.clients import (
+    SCHEDULER_SUSTAINED_OUTAGE_SECONDS,
+    scheduler_outage_seconds,
+)
 from backend.util.exceptions import (
     ConflictError,
     MissingConfigError,
@@ -135,12 +139,19 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
 def _handle_scheduler_unavailable(
     request: fastapi.Request, exc: Exception
 ) -> fastapi.responses.Response:
-    # A warning, not an error: it is expected on every deploy, and Sentry files
-    # only errors. The scheduler's own probes watch a longer outage.
-    logger.warning(
-        "%s %s answered 503 while the scheduler is out: %s",
+    # A deploy's gap is expected, so a warning, which Sentry doesn't file. An
+    # outage longer than any deploy is an error, which it does.
+    out_for = scheduler_outage_seconds()
+    logger.log(
+        (
+            logging.ERROR
+            if out_for >= SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+            else logging.WARNING
+        ),
+        "%s %s answered 503; the scheduler has been out for %.0fs: %s",
         request.method,
         redact_url(request.url.path),
+        out_for,
         exc,
     )
     return fastapi.responses.JSONResponse(

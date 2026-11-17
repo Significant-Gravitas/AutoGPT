@@ -526,6 +526,12 @@ describe("FollowupsPage", () => {
     render(<FollowupsPage />);
 
     expect(await screen.findByTestId("schedules-unavailable")).toBeDefined();
+    // Announced politely, from a live region mounted before the reads settled.
+    expect(
+      screen
+        .getByText(/Scheduled items are temporarily unavailable/)
+        .closest('[role="status"]'),
+    ).not.toBeNull();
     expect(screen.queryByText("Something went wrong")).toBeNull();
     expect(screen.queryByTestId("followups-empty")).toBeNull();
 
@@ -539,6 +545,32 @@ describe("FollowupsPage", () => {
 
     const list = await screen.findByTestId("followups-list");
     expect(within(list).getByText("Back after the restart")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByTestId("schedules-unavailable")).toBeNull(),
+    );
+  });
+
+  test("an outage of one list keeps the other's schedules with the partial warning", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/proxy/api/schedules/followups", () =>
+        HttpResponse.json(
+          {
+            detail:
+              "Schedules are temporarily unavailable. Try again in a moment.",
+          },
+          { status: 503 },
+        ),
+      ),
+      getGetV1ListExecutionSchedulesForAUserMockHandler([
+        makeGraphSchedule({ id: "g1", agent_name: "Still listed" }),
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const list = await screen.findByTestId("followups-list");
+    expect(within(list).getByText(/Still listed/)).toBeDefined();
+    expect(await screen.findByTestId("schedules-partial-error")).toBeDefined();
     expect(screen.queryByTestId("schedules-unavailable")).toBeNull();
   });
 

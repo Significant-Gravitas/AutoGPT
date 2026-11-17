@@ -1,18 +1,19 @@
-"""Schedule reads while the scheduler is out.
+"""Schedule reads answer a fast 503 while the scheduler is out.
 
 The real routes, mounted as ``rest_api`` mounts them, the real exception
 handlers and the real scheduler RPC client (httpx over TCP), pointed at a
 scheduler that is down (nothing listening: a deploy's gap, where kube-proxy
 refuses the connection) or hung (it takes the connection and never answers).
-Before, a down scheduler answered 500 "All connection attempts failed"
-(AUTOGPT-SERVER-A6R/A6S) and a hung one held the request for the 300s RPC
-timeout, long after the frontend proxy gave up at 30s.
+Unbounded, a down scheduler surfaces as a 500 and a hung one holds the request
+for the 300s RPC timeout, long past the 30s frontend proxy.
 """
 
 import asyncio
 import inspect
+import logging
 import socket
 from typing import AsyncIterator, Iterator
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -23,15 +24,17 @@ from fastapi import FastAPI
 
 from backend.api.features.admin import diagnostics_admin_routes
 from backend.api.features.schedules import routes
+from backend.api.utils import exceptions as api_exceptions
 from backend.api.utils.exceptions import (
     SCHEDULER_RETRY_AFTER_SECONDS,
     SCHEDULER_UNAVAILABLE_DETAIL,
     add_exception_handlers,
 )
 from backend.data import diagnostics
-from backend.executor.scheduler import Scheduler
+from backend.executor.scheduler import Scheduler, SchedulerClient
 from backend.util import clients
 from backend.util.service import HTTPServerError
+from backend.util.settings import Config
 
 # The cap under test; production's is ``schedule_list_timeout_seconds``.
 _CAP_S = 0.5
@@ -46,7 +49,6 @@ SCHEDULE_READS = [
     ("GET", "/api/admin/diagnostics/schedules", None),
     ("GET", "/api/admin/diagnostics/schedules/all", None),
     ("GET", "/api/admin/diagnostics/schedules/orphaned", None),
-    # Reads the schedules before deleting any, so nothing is deleted.
     (
         "POST",
         "/api/admin/diagnostics/schedules/cleanup-orphaned",
@@ -76,23 +78,25 @@ def scheduler_port(request: pytest.FixtureRequest) -> Iterator[int]:
 @pytest.fixture
 async def scheduler_out(
     scheduler_port: int, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[None]:
+) -> AsyncIterator[SchedulerClient]:
     """The real scheduler client, built by the real factory, aimed at the outage."""
     monkeypatch.setattr(Scheduler, "get_host", classmethod(lambda cls: "127.0.0.1"))
     monkeypatch.setattr(Scheduler, "get_port", classmethod(lambda cls: scheduler_port))
     monkeypatch.setattr(
         clients.settings.config, "schedule_list_timeout_seconds", _CAP_S
     )
+    # Each test starts, and leaves, with no outage under way.
+    monkeypatch.setattr(clients, "_scheduler_out_since", None)
     # Unwrapped from its thread cache, so no other test gets this client.
     client = inspect.unwrap(clients.get_scheduler_client)()
     for module in (routes, diagnostics):
         monkeypatch.setattr(module, "get_scheduler_client", lambda: client)
-    yield
+    yield client
     await client.aclose()
 
 
 @pytest.fixture
-async def http(scheduler_out: None) -> AsyncIterator[httpx.AsyncClient]:
+async def http(scheduler_out: SchedulerClient) -> AsyncIterator[httpx.AsyncClient]:
     app = FastAPI()
     app.include_router(routes.router, prefix="/api")
     app.include_router(diagnostics_admin_routes.router, prefix="/api")
@@ -133,6 +137,61 @@ async def test_a_schedule_read_answers_503_promptly_while_the_scheduler_is_out(
     assert response.headers["Retry-After"] == str(SCHEDULER_RETRY_AFTER_SECONDS)
 
 
+async def test_an_outage_deletes_no_orphaned_schedule(
+    http: httpx.AsyncClient,
+    scheduler_out: SchedulerClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # The cleanup reads the schedules first, and that read fails.
+    deletes = AsyncMock()
+    monkeypatch.setattr(scheduler_out, "delete_schedule", deletes)
+
+    response = await asyncio.wait_for(
+        http.post(
+            "/api/admin/diagnostics/schedules/cleanup-orphaned",
+            json={"schedule_ids": ["schedule-1"]},
+        ),
+        timeout=_ANSWERED_WITHIN_S,
+    )
+
+    assert response.status_code == 503, response.text
+    deletes.assert_not_awaited()
+
+
+@pytest.mark.parametrize("scheduler_port", ["down"], indirect=True)
+async def test_only_an_outage_longer_than_any_deploy_is_logged_as_an_error(
+    http: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    # Sentry files errors, not warnings: a deploy's gap must not page anyone,
+    # and a scheduler that stays down must.
+    now = [1000.0]
+    monkeypatch.setattr(clients, "monotonic", lambda: now[0])
+
+    async def logged_levels() -> list[str]:
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=api_exceptions.__name__):
+            await asyncio.wait_for(
+                http.get("/api/schedules"), timeout=_ANSWERED_WITHIN_S
+            )
+        return [
+            r.levelname for r in caplog.records if r.name == api_exceptions.__name__
+        ]
+
+    assert await logged_levels() == ["WARNING"]
+    now[0] += clients.SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+    assert await logged_levels() == ["ERROR"]
+
+    async def scheduler_back() -> list:
+        return []
+
+    await clients.read_schedules(scheduler_back())
+    now[0] += clients.SCHEDULER_SUSTAINED_OUTAGE_SECONDS
+    # A new outage starts its own clock.
+    assert await logged_levels() == ["WARNING"]
+
+
 async def test_a_scheduler_that_answers_with_an_error_is_not_an_outage():
     # Its own failure stays a 500 that someone investigates, not a calm 503.
     async def scheduler_failed() -> None:
@@ -145,4 +204,4 @@ async def test_a_scheduler_that_answers_with_an_error_is_not_an_outage():
 def test_the_read_cap_answers_before_the_frontend_proxy_gives_up():
     # The proxy cuts a request off at 30s; past it, the user gets the proxy's
     # error and the backend keeps waiting on a request nobody will read.
-    assert clients.settings.config.schedule_list_timeout_seconds < 30
+    assert Config.model_fields["schedule_list_timeout_seconds"].default < 30

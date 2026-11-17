@@ -3,6 +3,7 @@ Centralized service client helpers with thread caching.
 """
 
 import asyncio
+from time import monotonic
 from typing import TYPE_CHECKING, Awaitable, TypeVar
 
 import httpx
@@ -74,21 +75,40 @@ async def read_schedules(read: Awaitable[T]) -> T:
     """Await a schedule list someone is waiting on, failing fast while the
     scheduler is out.
 
-    The scheduler restarts on every deploy. Unbounded, a read waited out the
-    300s RPC timeout long after the 30s frontend proxy gave up, and a refused
-    connection surfaced as a 500. Either now raises
-    ``SchedulerUnavailableError`` (a 503) within
-    ``schedule_list_timeout_seconds``. A scheduler that answers with an error
-    is not an outage, so that error passes through unchanged.
+    The scheduler restarts on every deploy. A read it refuses, drops or leaves
+    unanswered raises ``SchedulerUnavailableError`` (a 503) within
+    ``schedule_list_timeout_seconds``, well inside the 30s frontend proxy and
+    the 300s RPC timeout. A scheduler that answers with an error is not an
+    outage, so that error passes through unchanged.
     """
+    global _scheduler_out_since
     try:
-        return await asyncio.wait_for(
+        schedules = await asyncio.wait_for(
             read, timeout=settings.config.schedule_list_timeout_seconds
         )
     except (TimeoutError, httpx.TransportError) as e:
+        if _scheduler_out_since is None:
+            _scheduler_out_since = monotonic()
         raise SchedulerUnavailableError(
             f"The scheduler did not answer: {type(e).__name__} {e}".rstrip()
         ) from e
+    _scheduler_out_since = None
+    return schedules
+
+
+# A deploy leaves no scheduler for about 1-2.5 min, and at worst about 10: the
+# 300s shutdown grace plus the 300s startup probe. An outage longer than that
+# is not a deploy, and someone should hear about it.
+SCHEDULER_SUSTAINED_OUTAGE_SECONDS = 600.0
+# When this process's schedule reads began failing; None while they succeed.
+_scheduler_out_since: float | None = None
+
+
+def scheduler_outage_seconds() -> float:
+    """How long this process's schedule reads have been failing, or 0."""
+    if _scheduler_out_since is None:
+        return 0.0
+    return monotonic() - _scheduler_out_since
 
 
 @thread_cached

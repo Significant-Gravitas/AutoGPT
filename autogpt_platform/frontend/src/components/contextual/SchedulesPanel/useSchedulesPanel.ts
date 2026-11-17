@@ -62,13 +62,13 @@ export function useSchedulesPanel() {
   const paused = pausedQuery.data ?? [];
   const isLoading =
     copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
+  const hasContent = schedules.length > 0 || paused.length > 0;
   const schedulerErrors = [copilotQuery.error, graphQuery.error];
-  const unavailable =
-    !isLoading && schedulerErrors.some(isSchedulerUnavailable);
+  const outage = schedulerErrors.find(isSchedulerUnavailable) ?? null;
   const fetchError =
     schedulerErrors.find((error) => error && !isSchedulerUnavailable(error)) ??
     pausedQuery.error;
-  const hasContent = schedules.length > 0 || paused.length > 0;
+  const settled = !isLoading;
 
   function retryUnavailable() {
     copilotQuery.refetch();
@@ -83,12 +83,15 @@ export function useSchedulesPanel() {
     schedules,
     paused,
     isLoading,
-    unavailable,
+    // Nothing to show, and only because the scheduler is out: a calm
+    // notice, never an error or an empty list.
+    unavailable: settled && !hasContent && !fetchError && outage !== null,
     retryUnavailable,
+    retrying: copilotQuery.isFetching || graphQuery.isFetching,
     // The sources are independent — only hard-fail once all have settled
-    // and there is nothing to show; a partial failure keeps the loaded
-    // lists visible and surfaces a non-blocking warning instead.
-    error: !isLoading && !hasContent ? fetchError : null,
-    partialError: !isLoading && hasContent ? fetchError : null,
+    // and there is nothing to show; a partial failure, an outage included,
+    // keeps the loaded lists visible and surfaces a non-blocking warning.
+    error: settled && !hasContent ? fetchError : null,
+    partialError: settled && hasContent ? (fetchError ?? outage) : null,
   };
 }

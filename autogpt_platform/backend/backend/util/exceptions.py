@@ -375,7 +375,9 @@ class SchedulerUnavailableError(Exception):
     """The scheduler refused the connection or didn't answer a read in time.
 
     It restarts on every deploy, so this is transient (HTTP 503): nothing was
-    read or changed, and asking again shortly is safe."""
+    read or changed, and asking again shortly is safe. A retrying RPC client
+    passes it on at once: the read has already waited out its bound, and
+    retrying would multiply that wait."""
 
 
 class ExpertRunPausedError(ValueError):
