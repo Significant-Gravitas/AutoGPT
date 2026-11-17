@@ -1,9 +1,17 @@
+// @vitest-environment node
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { GOOGLE_ACCESS_SCOPES } from "@/lib/google-access";
 
-const GOOGLE_BLOCKS = resolve("../backend/backend/blocks/google");
+// From this file, wherever the tests run from.
+const GOOGLE_BLOCKS = fileURLToPath(
+  new URL(
+    "../../../../../../../backend/backend/blocks/google",
+    import.meta.url,
+  ),
+);
 const GOOGLE_SCOPE = /https:\/\/www\.googleapis\.com\/auth\/[a-z._]+/g;
 
 /**

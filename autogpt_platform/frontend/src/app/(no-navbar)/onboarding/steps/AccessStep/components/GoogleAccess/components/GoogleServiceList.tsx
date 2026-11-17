@@ -18,7 +18,6 @@ export function GoogleServiceList({ credential, pending, onAllow }: Props) {
   return (
     <ul
       aria-label="Google services"
-      aria-live="polite"
       className="flex flex-col divide-y divide-separator rounded-lg border border-border-base"
     >
       {GOOGLE_SERVICES.map((service) => {
@@ -34,7 +33,7 @@ export function GoogleServiceList({ credential, pending, onAllow }: Props) {
                 {service.purpose}
               </Text>
               {credential && (
-                <Text variant="small" tone="body">
+                <Text variant="small" tone="body" aria-live="polite">
                   {allowed ? "Ready" : "Needs your permission"}
                 </Text>
               )}

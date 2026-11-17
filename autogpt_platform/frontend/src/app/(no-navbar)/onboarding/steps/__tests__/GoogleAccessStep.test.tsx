@@ -236,6 +236,56 @@ describe("Google access step", () => {
     expect(screen.queryByText("Old key")).toBeNull();
   });
 
+  it("offers to check again, not to connect, when the lookup fails", async () => {
+    // "Not connected" would offer a first connection to an account that may
+    // already have one.
+    let failing = true;
+    server.use(
+      http.get("*/api/integrations/:provider/credentials", ({ params }) =>
+        failing && params.provider === "google"
+          ? HttpResponse.json({ detail: "down" }, { status: 500 })
+          : HttpResponse.json(params.provider === "google" ? saved : []),
+      ),
+    );
+    render(<AccessStep />);
+
+    expect(
+      await screen.findByText("We couldn't check your Google connection."),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Connect Google" })).toBeNull();
+
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Connect Google" }),
+    ).toBeDefined();
+  });
+
+  it("can still move on after a connect fails", async () => {
+    server.use(
+      http.get("*/api/integrations/google/login", () =>
+        HttpResponse.json({ detail: "not configured" }, { status: 501 }),
+      ),
+    );
+    render(<AccessStep />);
+
+    const connect = await screen.findByRole("button", {
+      name: "Connect Google",
+    });
+    fireEvent.click(connect);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Connect Google" }),
+      ).not.toHaveProperty("disabled", true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    await waitFor(() =>
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(2),
+    );
+  });
+
   it("moves on to the next step when skipped", async () => {
     render(<AccessStep />);
 

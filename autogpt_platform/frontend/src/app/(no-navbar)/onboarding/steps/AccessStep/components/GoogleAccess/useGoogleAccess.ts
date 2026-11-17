@@ -39,6 +39,10 @@ export function useGoogleAccess() {
 
   return {
     isLoading: saved.isLoading,
+    // Not the same as "not connected": connecting again from there could add
+    // a second connection for the same account.
+    lookupFailed: saved.isError,
+    retry: () => void saved.refetch(),
     credential,
     missing: credential ? missingServices(credential) : [],
     isPending: oauth.isPending,
