@@ -7,9 +7,14 @@ import { createStyles, radius, spacing, type, useColors } from "@/lib/theme";
 interface Props {
   value: string;
   onChangeText: (text: string) => void;
+  placeholder?: string;
 }
 
-export function DrawerSearchField({ value, onChangeText }: Props) {
+export function DrawerSearchField({
+  value,
+  onChangeText,
+  placeholder = "Search chats",
+}: Props) {
   const styles = useStyles();
   const colors = useColors();
   return (
@@ -18,9 +23,9 @@ export function DrawerSearchField({ value, onChangeText }: Props) {
       <TextInput
         value={value}
         onChangeText={onChangeText}
-        placeholder="Search chats"
+        placeholder={placeholder}
         placeholderTextColor={colors.textTertiary}
-        accessibilityLabel="Search chats"
+        accessibilityLabel={placeholder}
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
