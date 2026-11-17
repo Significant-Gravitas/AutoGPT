@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { useRef, useState } from "react";
 
 import { PLAN_REQUIRED_MESSAGE } from "@/features/chat/chatErrors";
@@ -27,6 +27,7 @@ export function useTeamScreen() {
   const [openError, setOpenError] = useState<string | null>(null);
   // State lands a render late; the ref stops a second tap in the same frame.
   const isOpening = useRef(false);
+  const navigation = useNavigation();
 
   async function refresh() {
     setIsRefreshing(true);
@@ -44,7 +45,8 @@ export function useTeamScreen() {
     setOpenError(null);
     try {
       const sessionID = await latestOrNewSession(expert.id);
-      router.push(`/chat/${sessionID}`);
+      // Team stays mounted in the drawer: someone who left meanwhile stays where they went.
+      if (navigation.isFocused()) router.push(`/chat/${sessionID}`);
     } catch (caught) {
       if (isSessionGone(caught)) {
         void signOut();

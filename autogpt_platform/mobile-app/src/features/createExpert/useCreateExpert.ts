@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useNavigation, type Href } from "expo-router";
 import { useRef, useState } from "react";
 
 import { avatarSource } from "@/features/team/helpers";
@@ -24,6 +24,7 @@ export function useCreateExpert() {
   const [error, setError] = useState<string | null>(null);
   // State lands a render late; the ref stops a second tap in the same frame.
   const isCreatingRef = useRef(false);
+  const navigation = useNavigation();
   const avatarPath = defaultAvatarPath(family, name);
 
   function close() {
@@ -31,14 +32,20 @@ export function useCreateExpert() {
     else router.navigate("/team");
   }
 
+  // This screen stays mounted in the drawer: someone who closed it while the
+  // expert was being made stays where they went.
+  function replaceIfStillHere(href: Href) {
+    if (navigation.isFocused()) router.replace(href);
+  }
+
   async function openChatWith(expertID: string | undefined) {
     if (!expertID) {
-      router.replace("/team");
+      replaceIfStillHere("/team");
       return;
     }
     const { id } = await createSession(expertID);
     void queryClient.invalidateQueries({ queryKey: chatKeys.sessions });
-    router.replace(`/chat/${id}`);
+    replaceIfStillHere(`/chat/${id}`);
   }
 
   async function create() {
@@ -57,7 +64,7 @@ export function useCreateExpert() {
         void signOut();
       } else if (expertID) {
         // The expert exists; only its first chat failed to open.
-        router.replace("/team");
+        replaceIfStillHere("/team");
       } else {
         setError(createErrorMessage(caught));
       }

@@ -64,6 +64,11 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
 
   const groups = groupChatsByExpert(data?.sessions ?? [], experts.data ?? []);
 
+  // Names and avatars come from the experts list, so a pull refreshes both.
+  function refreshAll() {
+    return Promise.all([refetch(), experts.refetch()]);
+  }
+
   return {
     query,
     setQuery,
@@ -72,7 +77,7 @@ export function useAppDrawer(navigation: DrawerContentComponentProps["navigation
     matches: searchChats(groups, query),
     isLoading,
     isError,
-    refetch,
+    refetch: refreshAll,
     isRefetching,
     email: session?.user.email,
     userName: session?.user.name,

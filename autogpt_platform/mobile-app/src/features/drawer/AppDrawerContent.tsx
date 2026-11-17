@@ -99,7 +99,20 @@ export function AppDrawerContent({ navigation }: Props) {
               onOpenChat={openChat}
             />
           )}
-          ListEmptyComponent={<Text style={styles.notice}>No chats match.</Text>}
+          ListEmptyComponent={
+            isLoading || isError ? (
+              renderEmpty
+            ) : (
+              <Text style={styles.notice}>No chats match.</Text>
+            )
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={colors.textTertiary}
+            />
+          }
           keyboardShouldPersistTaps="handled"
           style={styles.list}
           contentContainerStyle={styles.searchContent}

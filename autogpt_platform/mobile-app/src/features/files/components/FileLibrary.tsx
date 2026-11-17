@@ -31,6 +31,7 @@ export function FileLibrary({ sessionID, expert, isOpen }: Props) {
     !!expert &&
     !!documents &&
     !showSession &&
+    !session.isLoading &&
     !documents.isLoading &&
     !documents.isError &&
     documents.files.length === 0;

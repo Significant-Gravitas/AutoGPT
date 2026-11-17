@@ -36,6 +36,8 @@ export const workspaceKeys = {
     ["workspace", "files", "expert", expertID] as const,
   fileText: (fileID: string) => ["workspace", "file-text", fileID] as const,
   imageHeaders: ["workspace", "image-headers"] as const,
+  // Apart from the viewer's, whose no-cache policy a shared entry would override.
+  thumbnailHeaders: ["workspace", "thumbnail-headers"] as const,
 };
 
 export async function listSessionFiles(sessionID: string) {

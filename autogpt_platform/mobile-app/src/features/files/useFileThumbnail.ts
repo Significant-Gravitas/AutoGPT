@@ -10,9 +10,9 @@ import { hasImageThumbnail } from "./listHelpers";
 export function useFileThumbnail(file: WorkspaceFile) {
   const [failed, setFailed] = useState(false);
   const wantsImage = hasImageThumbnail(file) && !failed;
-  // Shared with the viewer: one header read serves every row on screen.
+  // One header read serves every row on screen.
   const headers = useQuery({
-    queryKey: workspaceKeys.imageHeaders,
+    queryKey: workspaceKeys.thumbnailHeaders,
     queryFn: authHeaders,
     enabled: wantsImage,
   });
