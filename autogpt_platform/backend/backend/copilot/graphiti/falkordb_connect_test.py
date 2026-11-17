@@ -153,7 +153,13 @@ class TestDeferredFalkorDB:
         finally:
             loop.set_exception_handler(previous)
 
-        assert reported == []
+        # Only the build's own failure counts: the collection above can also
+        # free another test's clients, whose closing reports to this loop.
+        assert [
+            context
+            for context in reported
+            if isinstance(context.get("exception"), ConnectionError)
+        ] == []
 
     @pytest.mark.asyncio
     async def test_the_first_command_after_an_abandoned_failed_build_succeeds(
