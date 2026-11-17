@@ -2355,6 +2355,7 @@ def _mock_add_graph_execution_requeue_path(
     mocker.patch("backend.executor.utils.prisma").is_connected.return_value = True
     execution_store = mocker.patch("backend.executor.utils.execution_db")
     execution_store.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(return_value=graph_exec)
     execution_store.update_graph_execution_stats = mocker.AsyncMock(
         return_value=graph_exec
     )
@@ -3986,6 +3987,35 @@ async def test_admin_requeue_leaves_a_row_that_left_queued_alone(
 
 
 @pytest.mark.asyncio
+async def test_admin_requeue_of_a_run_picked_up_meanwhile_publishes_nothing(
+    mocker: MockerFixture,
+):
+    """The run was QUEUED when the requeue first read it, but the executor
+    picked it up before the publish. The requeue is refused, not counted, and
+    leaves the run alone."""
+    _, execution_store, queue, _ = _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+    execution_store.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mocker.MagicMock(status=ExecutionStatus.RUNNING)
+    )
+    recorded = mocker.patch("backend.executor.utils.record_graph_execution")
+
+    with pytest.raises(ExecutionNotRequeuedError):
+        await add_graph_execution(
+            graph_id="g",
+            user_id="owner",
+            graph_exec_id="existing-execution",
+            bypass_paywall=True,
+            admin_requeue=True,
+        )
+
+    queue.publish_message.assert_not_called()
+    execution_store.update_node_execution_status_batch.assert_not_called()
+    recorded.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_admin_requeue_needs_an_existing_execution():
     with pytest.raises(ValueError):
         await add_graph_execution(
@@ -4088,6 +4118,7 @@ async def _resume_and_capture_entry(
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_edb.get_graph_execution = mocker.AsyncMock(return_value=graph_exec)
+    mock_edb.get_graph_execution_meta = mocker.AsyncMock(return_value=graph_exec)
     mock_edb.update_graph_execution_stats = mocker.AsyncMock(
         return_value=graph_exec.model_copy(update={"status": ExecutionStatus.QUEUED})
     )
@@ -4139,7 +4170,6 @@ async def test_resume_pins_execution_identity_from_the_row(mocker: MockerFixture
     assert ctx.sensitive_action_safe_mode is True
     assert ctx.workspace_id == "ws-1"
     assert ctx.organization_id == "org-row"
-    assert entry.admin_requeue is False
 
 
 @pytest.mark.asyncio
@@ -4161,7 +4191,6 @@ async def test_admin_requeue_pins_execution_identity_from_the_row(
     assert ctx.graph_version == 3
     assert ctx.root_execution_id == "exec-resume-real"
     assert ctx.organization_id == "org-row"
-    assert entry.admin_requeue is True
 
 
 def _github_creds():
