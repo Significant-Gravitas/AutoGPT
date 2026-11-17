@@ -46,6 +46,9 @@ _OPEN_ERRORS = (TimeoutError, OSError, RedisError, RedisClusterException)
 # The read after a PING's deadline, before the stream is reported lost: long
 # enough for a reply held up by a stalled event loop to be read.
 _LAST_LOOK_S = 1.0
+# How long a failed open waits on the slot-map update before reporting the
+# loss; the owner shouldn't wait on Redis reconnect retries.
+_SLOT_MAP_WAIT_S = 5.0
 
 
 class EventStreamLostError(Exception):
@@ -208,9 +211,11 @@ class _Liveness:
 
 
 async def _follow_moved_slot(error: MovedError) -> None:
-    # Off the loop: get_redis() connects synchronously if its cache expired.
+    # Off the loop, and bounded: get_redis() reconnects (with retries) if its
+    # cache expired. A worker that outlives the bound still updates the cache.
     try:
-        await asyncio.to_thread(redis.follow_moved_slot, error)
+        async with asyncio.timeout(_SLOT_MAP_WAIT_S):
+            await asyncio.to_thread(redis.follow_moved_slot, error)
     except Exception:
         logger.warning("Could not follow a MOVED reply", exc_info=True)
 
@@ -222,7 +227,8 @@ def _describe(error: BaseException) -> str:
 
 async def _refresh_slot_map() -> None:
     try:
-        await asyncio.to_thread(redis.refresh_slot_map)
+        async with asyncio.timeout(_SLOT_MAP_WAIT_S):
+            await asyncio.to_thread(redis.refresh_slot_map)
     except Exception:
         logger.debug("Could not refresh the Redis slot map", exc_info=True)
 

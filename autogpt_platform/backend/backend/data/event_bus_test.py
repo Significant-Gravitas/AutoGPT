@@ -463,6 +463,28 @@ async def test_a_shard_that_drops_each_new_subscription_is_backed_off(
 
 
 @pytest.mark.asyncio
+async def test_a_stream_that_stayed_up_starts_the_backoff_over(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    pauses = AsyncMock()
+    monkeypatch.setattr(event_bus, "sleep", pauses)
+    monkeypatch.setattr(event_bus, "RESUBSCRIBE_DELAY_S", 1.0)
+    monkeypatch.setattr(event_bus, "RESUBSCRIBE_HEALTHY_S", 0.0)
+    bus = _BusUnderTest()
+
+    async def open_(_channel: str) -> _FakeSubscription:
+        return _FakeSubscription([], end=EventStreamLostError("dropped"))
+
+    with patch.object(ShardedSubscription, "open", side_effect=open_):
+        async with aclosing(bus.listen_with_resync("chan")) as events:
+            for _ in range(10):
+                await anext(events)
+
+    delays = [call.args[0] for call in pauses.await_args_list]
+    assert len(delays) == 4 and max(delays) <= 1.5
+
+
+@pytest.mark.asyncio
 async def test_async_wait_for_event_returns_none_on_timeout():
     """wait_for_event must coerce asyncio.TimeoutError → None."""
     bus = _BusUnderTest()

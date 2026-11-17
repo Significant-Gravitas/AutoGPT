@@ -1795,7 +1795,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream events for a specific graph execution."""
+        """Stream events for a specific graph execution. Raises
+        ``EventStreamLostError`` on loss; ``listen_with_resync`` survives one."""
         async for event in self.listen_events(
             exec_channel(user_id, graph_id, graph_exec_id)
         ):
@@ -1804,7 +1805,8 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen_graph(
         self, user_id: str, graph_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream every event for every execution of ``graph_id``."""
+        """Stream every event for every execution of ``graph_id``. Raises
+        ``EventStreamLostError`` on loss; ``listen_with_resync`` survives one."""
         async for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 

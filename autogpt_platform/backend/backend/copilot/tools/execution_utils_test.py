@@ -14,6 +14,7 @@ from backend.data.execution import (
 
 from . import execution_utils
 from .execution_utils import (
+    _subscribe_and_wait,
     build_run_health_warning,
     summarize_node_failures,
     wait_for_execution,
@@ -180,18 +181,20 @@ def _wire(monkeypatch: pytest.MonkeyPatch, stream: _Stream, *reads: object):
     return db
 
 
-async def test_wait_returns_when_the_end_arrives_live(
-    monkeypatch: pytest.MonkeyPatch,
-):
+async def test_wait_returns_when_the_end_arrives_live():
+    """Called directly: through ``wait_for_execution`` an error here would be
+    hidden by its fallback read."""
     running = _with_status(ExecutionStatus.RUNNING)
     done = _with_status(ExecutionStatus.COMPLETED)
     finished = MagicMock(spec=GraphExecutionEvent)
     finished.status = ExecutionStatus.COMPLETED
-    # First check, the recheck once subscribed, the read after the live end.
-    _wire(monkeypatch, _Stream(None, finished), running, running, done)
+    db = MagicMock()
+    # The recheck once subscribed, then the read after the live end.
+    db.get_graph_execution = AsyncMock(side_effect=[running, done])
+    stream = _Stream(None, finished)
 
     async with asyncio.timeout(5):
-        result = await wait_for_execution("u", "g", "e", timeout_seconds=300)
+        result = await _subscribe_and_wait(stream, "chan", "u", "e", db)
 
     assert result is done
 

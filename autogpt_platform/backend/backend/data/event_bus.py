@@ -219,6 +219,7 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         stream is lost first."""
         try:
             async with aclosing(self.listen_events(channel_key)) as events:
-                return await asyncio.wait_for(anext(events), timeout)
+                async with asyncio.timeout(timeout):
+                    return await anext(events)
         except (TimeoutError, EventStreamLostError):
             return None

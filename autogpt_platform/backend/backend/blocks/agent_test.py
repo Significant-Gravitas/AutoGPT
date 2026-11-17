@@ -195,6 +195,30 @@ async def test_a_newer_output_waits_for_a_failed_catch_up_to_be_retried(
     assert outputs == [("result", "a"), ("result", "b"), ("result", "c")]
 
 
+async def test_a_live_end_during_a_pending_catch_up_ends_the_wait(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The end arrives while a failed catch-up is still owed, and the database
+    hasn't recorded it yet: the retried catch-up yields what was missed, then
+    the live end finishes the wait, without waiting for the quiet recheck."""
+    stream = _Stream()
+    a, b = _output(1, "a"), _output(2, "b")
+    for item in (None, a, None, _finished_event()):
+        stream.items.put_nowait(item)
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        _meta(ExecutionStatus.RUNNING),
+        nodes=[],
+        later_nodes=[a, b],
+    )
+
+    outputs, block = await _run(monkeypatch, stream, db)
+
+    assert outputs == [("result", "a"), ("result", "b")]
+    assert block.execution_stats.reconciled_cost_delta == 7
+
+
 async def test_a_failed_catch_up_does_not_end_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):

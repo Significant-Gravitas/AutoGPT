@@ -253,6 +253,13 @@ class AgentExecutorBlock(Block):
                     )
                     self._record_sub_graph_stats(finished.stats)
                     return
+                if event is not None and (
+                    event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE
+                ):
+                    # The live end, which the database hadn't recorded yet.
+                    logger.info(f"Execution {log_id} graph completed: {event.status}")
+                    self._record_sub_graph_stats(event.stats)
+                    return
         finally:
             reader.cancel()
             await asyncio.gather(reader, return_exceptions=True)
@@ -273,7 +280,8 @@ class AgentExecutorBlock(Block):
             user_id=user_id, execution_id=graph_exec_id
         )
         if meta is None:
-            return [], None
+            # Not read, so nothing is caught up: the caller retries.
+            raise LookupError(f"{log_id}: execution not found")
         finished = meta if meta.status in _TERMINAL_STATUSES else None
         if not (stale or finished):
             return [], None
@@ -285,7 +293,8 @@ class AgentExecutorBlock(Block):
             statuses=list(_TERMINAL_STATUSES),
             block_ids=list(get_output_block_ids()),
         )
-        nodes.sort(key=lambda node: node.end_time or node.add_time)
+        # Reversed first: equal times then keep the order they were queued in.
+        nodes = sorted(reversed(nodes), key=lambda node: node.end_time or node.add_time)
         outputs = [
             output
             for node in nodes

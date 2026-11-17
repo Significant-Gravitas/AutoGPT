@@ -290,14 +290,20 @@ def follow_moved_slot(error: MovedError) -> None:
 def refresh_slot_map() -> None:
     """Re-read which shard owns which slot, at most every few seconds: a
     shard-pinned connection that can't reach its shard may be dialling one
-    that failed over. Blocks on the network; call it off the event loop."""
+    that failed over. Blocks on the network; call it off the event loop.
+    Skipped while another refresh is running, so a long outage holds at most
+    one worker thread here."""
     global _slot_map_refreshed_at
-    with _slot_map_refresh_lock:
+    if not _slot_map_refresh_lock.acquire(blocking=False):
+        return
+    try:
         now = time.monotonic()
         if now - _slot_map_refreshed_at < _SLOT_MAP_REFRESH_EVERY_S:
             return
         _slot_map_refreshed_at = now
-    get_redis().nodes_manager.initialize()
+        get_redis().nodes_manager.initialize()
+    finally:
+        _slot_map_refresh_lock.release()
 
 
 _SLOT_MAP_REFRESH_EVERY_S = 5.0
