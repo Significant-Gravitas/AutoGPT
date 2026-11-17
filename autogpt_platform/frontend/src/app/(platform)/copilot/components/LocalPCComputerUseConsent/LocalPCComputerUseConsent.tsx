@@ -7,6 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { ViewIcon } from "@hugeicons/core-free-icons";
 import { useMutation } from "@tanstack/react-query";
+import { useRef } from "react";
 import {
   type LocalPCExecutorStatus,
   useLocalPCExecutor,
@@ -29,6 +30,7 @@ interface Props {
 
 export function LocalPCComputerUseConsent({ sessionID }: Props) {
   const { data: executor, refetch } = useLocalPCExecutor(sessionID);
+  const isDecidingRef = useRef(false);
   const consentMutation = useMutation({
     mutationFn: ({
       approved,
@@ -62,6 +64,9 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
     onError: async (_, { submittedForSessionID }) => {
       if (submittedForSessionID === sessionID) await refetch();
     },
+    onSettled: () => {
+      isDecidingRef.current = false;
+    },
   });
 
   const accessLines = describeComputerUseTools(
@@ -81,11 +86,29 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
 
   const pendingDecision = consentMutation.variables?.approved;
 
+  // One close can reach the dialog twice (a click outside does), and a close
+  // can arrive while a button's decision is still being saved.
+  function decide(approved: boolean) {
+    if (!sessionID || isDecidingRef.current) return;
+    isDecidingRef.current = true;
+    consentMutation.mutate({
+      approved,
+      submittedForSessionID: sessionID,
+      expectedMachineID,
+      expectedDriver,
+      expectedTools,
+    });
+  }
+
+  function refuseWhenClosed(open: boolean) {
+    if (!open) decide(false);
+  }
+
   return (
     <Dialog
       title="Otto is requesting computer access"
       styling={{ maxWidth: "32rem", minWidth: "auto" }}
-      controlled={{ isOpen: true, set: async () => {} }}
+      controlled={{ isOpen: true, set: refuseWhenClosed }}
     >
       <Dialog.Content>
         <div className="flex flex-col gap-4 py-2">
@@ -145,15 +168,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
             variant="secondary"
             disabled={consentMutation.isPending}
             loading={consentMutation.isPending && pendingDecision === false}
-            onClick={() =>
-              consentMutation.mutate({
-                approved: false,
-                submittedForSessionID: sessionID,
-                expectedMachineID,
-                expectedDriver,
-                expectedTools,
-              })
-            }
+            onClick={() => decide(false)}
           >
             Not this time
           </Button>
@@ -161,15 +176,7 @@ export function LocalPCComputerUseConsent({ sessionID }: Props) {
             variant="primary"
             disabled={consentMutation.isPending}
             loading={consentMutation.isPending && pendingDecision === true}
-            onClick={() =>
-              consentMutation.mutate({
-                approved: true,
-                submittedForSessionID: sessionID,
-                expectedMachineID,
-                expectedDriver,
-                expectedTools,
-              })
-            }
+            onClick={() => decide(true)}
           >
             Allow for this session
           </Button>

@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { LocalPCComputerUseConsent } from "../LocalPCComputerUseConsent";
@@ -29,6 +30,13 @@ function executorStatus(overrides: Record<string, unknown> = {}) {
     computer_use_consent: "pending",
     ...overrides,
   };
+}
+
+async function clickOutsideTheDialog() {
+  const backdrop = document.querySelector('[data-slot="dialog-overlay"]');
+  if (!backdrop) throw new Error("The dialog has no backdrop to click");
+  // The open dialog turns pointer events off for the page behind it.
+  await userEvent.setup({ pointerEventsCheck: 0 }).click(backdrop);
 }
 
 function useExecutorHandler(
@@ -100,6 +108,76 @@ describe("LocalPCComputerUseConsent", () => {
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     },
   );
+
+  test.each([
+    [
+      "the close button",
+      async () =>
+        fireEvent.click(screen.getByRole("button", { name: "Close" })),
+    ],
+    ["Escape", async () => fireEvent.keyDown(document, { key: "Escape" })],
+    // The design system's dialog closes on a click outside it, and that one
+    // click reaches its close handler twice.
+    ["a click outside", clickOutsideTheDialog],
+  ] as const)(
+    "closing the dialog with %s is a refusal, recorded once",
+    async (_name, close) => {
+      let consentState: "pending" | "denied" = "pending";
+      const received = vi.fn();
+      server.use(
+        http.get(EXECUTOR_URL, () =>
+          HttpResponse.json(
+            executorStatus({ computer_use_consent: consentState }),
+          ),
+        ),
+        http.post(CONSENT_URL, async ({ request }) => {
+          received(await request.json());
+          consentState = "denied";
+          return HttpResponse.json({ computer_use_consent: consentState });
+        }),
+      );
+
+      render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
+      await screen.findByRole("dialog");
+      await close();
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(received.mock.calls).toEqual([[{ approved: false }]]);
+    },
+  );
+
+  test("a close while the decision is being saved does not send it again", async () => {
+    const received = vi.fn();
+    let finishSaving = () => {};
+    server.use(
+      http.get(EXECUTOR_URL, () => HttpResponse.json(executorStatus())),
+      http.post(CONSENT_URL, async ({ request }) => {
+        received(await request.json());
+        await new Promise<void>((resolve) => {
+          finishSaving = resolve;
+        });
+        return HttpResponse.json({ computer_use_consent: "approved" });
+      }),
+    );
+
+    render(<LocalPCComputerUseConsent sessionID="test-session-id" />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Allow for this session" }),
+    );
+    await waitFor(() => expect(received).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    finishSaving();
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Allow for this session" }),
+      ).toHaveProperty("disabled", false),
+    );
+    expect(received.mock.calls).toEqual([
+      [expect.objectContaining({ approved: true })],
+    ]);
+  });
 
   test.each(["approved", "denied"] as const)(
     "does not prompt when server-side consent is already %s",
