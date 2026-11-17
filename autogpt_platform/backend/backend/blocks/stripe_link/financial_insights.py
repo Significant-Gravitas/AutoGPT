@@ -79,7 +79,7 @@ FINANCIAL_INSIGHTS_DISABLED = financial_insights_disabled()
 
 FINANCIAL_CREDENTIALS_DESCRIPTION = (
     "Connect your Stripe Link account and choose which bank accounts and cards "
-    "the agent may read. Read-only: these blocks cannot move money."
+    "Otto and your workflows may read. Read-only: these blocks cannot move money."
 )
 SOURCE_IDS_DESCRIPTION = (
     "Only these accounts, by ID from List Financial Accounts. Leave empty for "

@@ -96,7 +96,12 @@ async def read_pages(
         payload = await get_page(api_request, credentials, path, query)
         batch, has_more = _read_page(payload, parse)
         items += batch
-        cursor = cursor_of(batch[-1]) if batch else ""
+        if not batch:
+            # Nothing to resume from, so no more can be read, whatever Link
+            # says.
+            has_more = False
+            break
+        cursor = cursor_of(batch[-1])
         if not has_more or not cursor or len(items) >= max_items:
             break
     if len(items) > max_items:
@@ -305,6 +310,6 @@ def _access_refused_message(error: LinkAPIError) -> str:
     code = f" ({error.code})" if error.code else ""
     return (
         f"Stripe Link refused access to this financial data: {error}{code}. "
-        "Reconnect Stripe Link and share the bank and card accounts the agent "
-        "should read; retrying will not help until then."
+        "Reconnect Stripe Link and share the bank and card accounts Otto and "
+        "your workflows should read; retrying will not help until then."
     )

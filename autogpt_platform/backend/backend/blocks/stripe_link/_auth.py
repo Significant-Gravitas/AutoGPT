@@ -8,6 +8,7 @@ acquisition flow is handled by ``StripeLinkDeviceAuthHandler`` in
 """
 
 import logging
+import re
 from collections.abc import Sequence
 from typing import Any, Literal
 
@@ -35,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Upstream error text reaches a block `error` output, which is persisted.
 MAX_ERROR_DETAIL_CHARS = 500
+# What a Link error code looks like; anything else is dropped.
+_ERROR_CODE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 
 StripeLinkCredentials = OAuth2Credentials
 
@@ -188,16 +191,18 @@ def _link_error(response: httpx.Response) -> tuple[Any, str]:
     """Link's `error.message` and error code, when the body has that shape.
 
     The code is read from `error.code`, or from a top-level `code` as on the
-    financial-insights endpoints, and is bounded since it can reach an output.
+    financial-insights endpoints. It can reach an output, so only one shaped
+    like an error code is kept.
     """
     try:
         payload = response.json()
-        error = payload.get("error", {})
-        detail = error.get("message")
-        code = error.get("code") or payload.get("code")
-    # ValueError: not JSON. AttributeError/TypeError: JSON, but not the object
-    # shape we index into. Anything else is our bug, and masking it as "API
-    # text" would hide it.
-    except (ValueError, AttributeError, TypeError):
+    except ValueError:
         return None, ""
-    return detail, code[:100] if isinstance(code, str) else ""
+    if not isinstance(payload, dict):
+        return None, ""
+    error = payload.get("error")
+    error = error if isinstance(error, dict) else {}
+    code = error.get("code") or payload.get("code")
+    if not isinstance(code, str) or not _ERROR_CODE.fullmatch(code):
+        code = ""
+    return error.get("message"), code

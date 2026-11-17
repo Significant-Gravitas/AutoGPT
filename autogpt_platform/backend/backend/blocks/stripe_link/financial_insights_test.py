@@ -359,6 +359,8 @@ async def test_more_reported_with_an_empty_page_stops_instead_of_looping():
     assert len(calls) == 1
     assert outputs["transactions"] == []
     assert outputs["next_cursor"] == ""
+    # Nothing to resume from, so nothing more to read.
+    assert outputs["has_more"] is False
 
 
 @pytest.mark.asyncio
@@ -610,6 +612,14 @@ async def test_nothing_from_a_response_body_is_logged(waits, caplog):
             "feature_unavailable",
         ),
         ({"error": "just a string"}, ""),
+        # A top-level code survives an `error` that isn't an object.
+        (
+            {"error": "just a string", "code": "feature_unavailable"},
+            "feature_unavailable",
+        ),
+        # A code not shaped like one never reaches an output.
+        ({"error": {"message": "No", "code": "<b>" + "x" * 80}}, ""),
+        ({"code": "not a code"}, ""),
     ],
 )
 async def test_link_errors_keep_their_status_and_code(monkeypatch, body, code):
