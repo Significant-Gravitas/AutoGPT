@@ -54,6 +54,10 @@ async def unreachable_tcp_endpoints(
             except (OSError, TimeoutError):
                 continue
             writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
             del waiting[name]
         if not waiting or loop.time() >= deadline:
             break

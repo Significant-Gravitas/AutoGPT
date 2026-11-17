@@ -63,8 +63,10 @@ def test_is_tcp_port_reachable_propagates_unexpected_errors() -> None:
 
 @pytest.mark.asyncio
 async def test_unreachable_tcp_endpoints_names_only_the_one_that_is_down() -> None:
-    """The test server's preflight: a listening service passes at once, and
-    a closed port is reported once the wait runs out, not retried forever."""
+    """The test server's preflight: a listening service passes, and a closed
+    port is named once the wait runs out, not retried forever. Each is
+    probed on its own, so a slow runner can only slow the listening probe
+    within its long window, never turn it into a miss."""
     listening = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
     closed = await asyncio.start_server(lambda _r, w: w.close(), "127.0.0.1", 0)
     up = listening.sockets[0].getsockname()[1]
@@ -72,14 +74,17 @@ async def test_unreachable_tcp_endpoints_names_only_the_one_that_is_down() -> No
     closed.close()
     await closed.wait_closed()
     try:
-        missing = await unreachable_tcp_endpoints(
-            {"Postgres": ("127.0.0.1", up), "Redis": ("127.0.0.1", down)},
-            within=0.2,
+        reached = await unreachable_tcp_endpoints(
+            {"Postgres": ("127.0.0.1", up)}, within=30
         )
     finally:
         listening.close()
         await listening.wait_closed()
+    missing = await unreachable_tcp_endpoints(
+        {"Redis": ("127.0.0.1", down)}, within=0.2
+    )
 
+    assert reached == []
     assert missing == [f"Redis at 127.0.0.1:{down}"]
 
 

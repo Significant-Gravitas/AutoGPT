@@ -17,13 +17,14 @@ from dotenv import load_dotenv
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.transport import Transport
 
-from backend.data import versioned_cache
+from backend.data import redis_client, versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util import posthog_client
 from backend.util.logging import configure_logging
 from backend.util.platform_payment import settings as platform_payment_settings
+from backend.util.settings import Settings
 from backend.util.testing import unreachable_tcp_endpoints
 from backend.util.tracing import traces_sampler
 
@@ -94,10 +95,6 @@ async def _require_test_stack() -> None:
     """Fail every test that needs the server at once, naming the service that
     is down, instead of leaving the server's clients retrying it forever. A
     failure, not a skip: a CI job that lost its services must stay red."""
-    # Read here, after load_dotenv, as the server's own clients read them.
-    from backend.data import redis_client
-    from backend.util.settings import Settings
-
     database = urlparse(os.environ["DATABASE_URL"])
     config = Settings().config
     missing = await unreachable_tcp_endpoints(
@@ -106,8 +103,11 @@ async def _require_test_stack() -> None:
                 database.hostname or "localhost",
                 database.port or 5432,
             ),
-            "Redis (REDIS_HOST, REDIS_PORT)": (redis_client.HOST, redis_client.PORT),
-            "RabbitMQ (RABBITMQ_HOST, RABBITMQ_PORT)": (
+            "Redis (REDIS_CLUSTER_HOST/PORT, else REDIS_HOST/PORT)": (
+                redis_client.HOST,
+                redis_client.PORT,
+            ),
+            "RabbitMQ (RABBITMQ_CLUSTER_HOST/PORT, else RABBITMQ_HOST/PORT)": (
                 config.rabbitmq_host,
                 config.rabbitmq_port,
             ),
