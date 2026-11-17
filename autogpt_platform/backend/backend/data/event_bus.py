@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 from abc import ABC, abstractmethod
+from asyncio import sleep
 from contextlib import aclosing
 from typing import Any, AsyncGenerator, Generic, Optional, TypeVar
 
@@ -22,6 +23,9 @@ M = TypeVar("M", bound=BaseModel)
 # don't retry in lockstep after a failover) while Redis stays unreachable.
 RESUBSCRIBE_DELAY_S = 1.0
 RESUBSCRIBE_MAX_DELAY_S = 30.0
+# A stream must stay up this long before the delay starts over, so a shard
+# that accepts SSUBSCRIBE and drops at once doesn't cause a resync a second.
+RESUBSCRIBE_HEALTHY_S = 30.0
 
 
 def _assert_no_wildcard(channel_key: str) -> None:
@@ -173,22 +177,29 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         """
         _assert_no_wildcard(channel_key)
         full_channel_name = self._build_channel_name(channel_key)
+        loop = asyncio.get_running_loop()
         delay = RESUBSCRIBE_DELAY_S
         gap_reported = False
         while True:
+            opened_at = None
             try:
                 async with await ShardedSubscription.open(full_channel_name) as stream:
-                    delay, gap_reported = RESUBSCRIBE_DELAY_S, False
+                    opened_at, gap_reported = loop.time(), False
                     yield None
                     async with aclosing(self._events(stream, channel_key)) as events:
                         async for event in events:
                             yield event
             except EventStreamLostError as e:
                 logger.warning(f"Event stream lost, resubscribing: {e}")
+            if (
+                opened_at is not None
+                and loop.time() - opened_at >= RESUBSCRIBE_HEALTHY_S
+            ):
+                delay = RESUBSCRIBE_DELAY_S
             if not gap_reported:
                 gap_reported = True
                 yield None
-            await asyncio.sleep(delay * random.uniform(0.5, 1.5))
+            await sleep(delay * random.uniform(0.5, 1.5))
             delay = min(delay * 2, RESUBSCRIBE_MAX_DELAY_S)
 
     async def _events(

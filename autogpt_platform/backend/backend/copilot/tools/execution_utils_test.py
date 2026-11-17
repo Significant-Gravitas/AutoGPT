@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from backend.data.execution import ExecutionStatus, NodeExecutionResult
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionEvent,
+    NodeExecutionResult,
+)
 
 from . import execution_utils
 from .execution_utils import (
@@ -174,6 +178,22 @@ def _wire(monkeypatch: pytest.MonkeyPatch, stream: _Stream, *reads: object):
     monkeypatch.setattr(execution_utils, "execution_db", lambda: db)
     monkeypatch.setattr(execution_utils, "AsyncRedisExecutionEventBus", lambda: stream)
     return db
+
+
+async def test_wait_returns_when_the_end_arrives_live(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    running = _with_status(ExecutionStatus.RUNNING)
+    done = _with_status(ExecutionStatus.COMPLETED)
+    finished = MagicMock(spec=GraphExecutionEvent)
+    finished.status = ExecutionStatus.COMPLETED
+    # First check, the recheck once subscribed, the read after the live end.
+    _wire(monkeypatch, _Stream(None, finished), running, running, done)
+
+    async with asyncio.timeout(5):
+        result = await wait_for_execution("u", "g", "e", timeout_seconds=300)
+
+    assert result is done
 
 
 async def test_wait_sees_an_end_reached_while_the_stream_was_down(

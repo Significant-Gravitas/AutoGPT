@@ -54,7 +54,11 @@ class EventStreamLostError(Exception):
 
 
 class ShardedSubscription:
-    """SSUBSCRIBEs over one connection pinned to the first channel's shard."""
+    """SSUBSCRIBEs over one connection pinned to the first channel's shard.
+
+    Only ``open`` waits for Redis to confirm its channel; a channel added
+    later is confirmed through ``messages()``, so state read right after
+    ``add`` can still miss an event published meanwhile."""
 
     def __init__(self, client: AsyncRedis, pubsub: AsyncPubSub, name: str) -> None:
         self._client = client
@@ -69,7 +73,7 @@ class ShardedSubscription:
             async with asyncio.timeout(OPEN_TIMEOUT_S):
                 return await cls._open(channel)
         except MovedError as e:
-            _follow_moved_slot(e)
+            await _follow_moved_slot(e)
             raise EventStreamLostError(f"{channel} moved: {_describe(e)}") from e
         except _OPEN_ERRORS as e:
             await _refresh_slot_map()
@@ -203,9 +207,10 @@ class _Liveness:
         return True
 
 
-def _follow_moved_slot(error: MovedError) -> None:
+async def _follow_moved_slot(error: MovedError) -> None:
+    # Off the loop: get_redis() connects synchronously if its cache expired.
     try:
-        redis.follow_moved_slot(error)
+        await asyncio.to_thread(redis.follow_moved_slot, error)
     except Exception:
         logger.warning("Could not follow a MOVED reply", exc_info=True)
 

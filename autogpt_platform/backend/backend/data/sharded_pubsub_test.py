@@ -243,8 +243,8 @@ async def test_a_moved_reply_points_the_next_subscription_at_the_new_owner():
 
 
 def test_a_moved_reply_updates_only_the_cached_slot_map():
-    """``follow_moved_slot`` must not touch the network: it runs on the event
-    loop, right where the MOVED reply was read."""
+    """``follow_moved_slot`` re-points the slot from the MOVED reply itself,
+    without a network round trip."""
     cluster = MagicMock()
     error = MagicMock()
     with patch.object(redis_client, "get_redis", return_value=cluster):

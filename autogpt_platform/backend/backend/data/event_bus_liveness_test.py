@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(
 # assertions below allow several times as long.
 _PING_AFTER_S = 0.25
 _PONG_TIMEOUT_S = 1.0
-_WITHIN_S = 15.0
+_WITHIN_S = 25.0
 
 
 class _Event(BaseModel):

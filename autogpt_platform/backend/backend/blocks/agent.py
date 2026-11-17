@@ -366,5 +366,7 @@ async def _read_into(
         async for event in events:
             queue.put_nowait(event)
     except Exception:
-        # The quiet-spell recheck still notices the sub-agent's end.
-        _logger.exception(f"{log_id}: event stream failed; polling instead")
+        _logger.exception(
+            f"{log_id}: event stream failed; checking the database every "
+            f"{_QUIET_RECHECK_S:.0f}s instead"
+        )

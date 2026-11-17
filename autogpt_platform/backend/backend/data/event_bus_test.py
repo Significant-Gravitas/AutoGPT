@@ -1,6 +1,7 @@
 """Tests for event_bus publish/listen paths."""
 
 import asyncio
+from contextlib import aclosing
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -359,10 +360,11 @@ async def test_async_listen_events_opens_its_own_subscription_per_listen():
         return opened[-1]
 
     with patch.object(ShardedSubscription, "open", side_effect=open_):
-        first, second = await asyncio.gather(
-            anext(aiter(bus.listen_events("a"))),
-            anext(aiter(bus.listen_events("b"))),
-        )
+        async with (
+            aclosing(bus.listen_events("a")) as a,
+            aclosing(bus.listen_events("b")) as b,
+        ):
+            first, second = await asyncio.gather(anext(a), anext(b))
 
     assert {first.message, second.message} == {"test_event_bus/a", "test_event_bus/b"}
     assert len(opened) == 2
@@ -427,12 +429,37 @@ async def test_listen_with_resync_marks_each_subscription_and_each_gap_once(
 
     seen: list[str | None] = []
     with patch.object(ShardedSubscription, "open", side_effect=open_):
-        async for event in bus.listen_with_resync("chan"):
-            seen.append(None if event is None else event.message)
-            if event is not None and event.message == "two":
-                break
+        async with aclosing(bus.listen_with_resync("chan")) as events:
+            async for event in events:
+                seen.append(None if event is None else event.message)
+                if event is not None and event.message == "two":
+                    break
 
     assert seen == [None, "one", None, None, "two"]
+
+
+@pytest.mark.asyncio
+async def test_a_shard_that_drops_each_new_subscription_is_backed_off(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Only a stream that stayed up resets the delay; otherwise a flapping
+    shard would make every listener resync about once a second."""
+    pauses = AsyncMock()
+    monkeypatch.setattr(event_bus, "sleep", pauses)
+    monkeypatch.setattr(event_bus, "RESUBSCRIBE_DELAY_S", 1.0)
+    bus = _BusUnderTest()
+
+    async def open_(_channel: str) -> _FakeSubscription:
+        return _FakeSubscription([], end=EventStreamLostError("dropped at once"))
+
+    with patch.object(ShardedSubscription, "open", side_effect=open_):
+        async with aclosing(bus.listen_with_resync("chan")) as events:
+            for _ in range(10):  # five cycles: a mark at each open and loss
+                await anext(events)
+
+    delays = [call.args[0] for call in pauses.await_args_list]
+    # 1, 2, 4, 8 s with +/-50 % jitter; a reset at each open stays at <= 1.5 s.
+    assert len(delays) == 4 and delays[3] >= 4.0
 
 
 @pytest.mark.asyncio
