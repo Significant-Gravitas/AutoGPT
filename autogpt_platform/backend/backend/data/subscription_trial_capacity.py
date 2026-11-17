@@ -39,6 +39,7 @@ CHECKOUT_RESERVATION = timedelta(minutes=30)
 
 _CAPACITY_LOCK = "trial-capacity"
 
+# Documented in docs/platform/rate-limits.md: update it with any change here.
 TRIAL_FULL = "The trial is full right now. Please check back later."
 
 # One definition of "holding a seat", so the cap and the holder check can

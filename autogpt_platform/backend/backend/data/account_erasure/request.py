@@ -1,0 +1,277 @@
+"""The hand-off from closing an account (SECRT-2877) to erasing it: the
+`AccountDeletionRequest` row.
+
+Closing the account writes the row (`close_account`), with `eraseAfter` 14
+days on; until then the owner can sign in and keep the account, which deletes
+the row. The erasure processes every row whose `completedAt` is still null
+and whose `eraseAfter` has passed (`pending_user_ids`), and for each one, as
+`account_deletion/service.py` asks:
+- claims it (`claim_request`) before any step, so a Keep can no longer win;
+- reruns `stop_user_work` and removes the memory crons (`work.py`);
+- sends the account-deleted email if closing could not (`confirmationSentAt`
+  null), before the address goes with the account, then records it;
+- deletes the auth identity with the `User` row (`database.py`);
+- sets `completedAt` once everything is gone (`complete_request`).
+
+`startedAt` is never set back to null. An erasure that stopped halfway leaves
+the row claimed and unfinished, and the next run (which does not filter on
+`startedAt`) resumes it.
+
+A request made by email to privacy@ has no row yet: `close_for_email_request`
+closes the account the way Settings does, with source EMAIL. Its 14 days
+start then, as for any other request.
+"""
+
+import asyncio
+import logging
+from datetime import UTC, datetime, timedelta
+
+from prisma.enums import AccountDeletionSource
+from prisma.models import AccountDeletionRequest
+
+from backend.api.features.account_deletion.service import delete_account
+from backend.data.account_deletion import mark_confirmation_sent
+from backend.data.account_erasure.models import StepReport, StepStatus, Subject
+from backend.data.db import query_raw_with_schema
+from backend.data.user import get_user_by_id
+from backend.notifications.auth import send_account_deleted_email
+from backend.util.exceptions import EmailUndeliverableError
+from backend.util.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+CONFIRMATION_TIMEOUT_SECONDS = 60.0
+
+
+async def pending_user_ids(*, now: datetime | None = None) -> list[str]:
+    """The accounts whose 14 days to keep them are over and that are not
+    erased yet, oldest first. One whose erasure started and stopped is
+    included, so the next run resumes it."""
+    rows = await AccountDeletionRequest.prisma().find_many(
+        where={"completedAt": None, "eraseAfter": {"lte": now or datetime.now(UTC)}},
+        order={"eraseAfter": "asc"},
+    )
+    return [row.userId for row in rows]
+
+
+async def stalled_user_ids(
+    *, older_than_secs: int, now: datetime | None = None
+) -> list[str]:
+    """The accounts whose erasure started more than `older_than_secs` ago and
+    has not finished, oldest first: a step that keeps failing, a service left
+    unset, or a CLI run that crashed and was not run again. Whichever ran it,
+    the job or the CLI, the claim (`startedAt`) is set and `completedAt` is
+    not."""
+    cutoff = (now or datetime.now(UTC)) - timedelta(seconds=older_than_secs)
+    rows = await AccountDeletionRequest.prisma().find_many(
+        where={"completedAt": None, "startedAt": {"lte": cutoff}},
+        order={"startedAt": "asc"},
+    )
+    return [row.userId for row in rows]
+
+
+async def claim_request(user_id: str) -> str | None:
+    """Claim the account's request for the erasure, in one short statement of
+    its own, before any step runs: from then on Keep refuses (it deletes only
+    an unclaimed row). Returns the request's ID, or None when there is nothing
+    to claim: the owner kept the account, the 14 days are not over, or the
+    erasure finished. A claim that an earlier, unfinished run made keeps its
+    first date. The database's clock decides here, read in UTC as the
+    columns are stored (they have no time zone); Keep (`reopen_account`)
+    compares with the app server's clock instead. They can't both win
+    whatever the skew: each statement re-checks its condition on the locked
+    row, Keep deletes only an unclaimed row and the claim needs the row.
+    No lock is held once it returns."""
+    rows = await query_raw_with_schema(
+        'UPDATE {schema_prefix}"AccountDeletionRequest" '
+        'SET "startedAt" = COALESCE("startedAt", now() AT TIME ZONE \'UTC\') '
+        'WHERE "userId" = $1 AND "completedAt" IS NULL '
+        "AND \"eraseAfter\" <= now() AT TIME ZONE 'UTC' "
+        'RETURNING "id"',
+        user_id,
+    )
+    return rows[0]["id"] if rows else None
+
+
+async def close_for_email_request(
+    user_id: str, *, erase_now: bool = False, send_email: bool = True
+) -> datetime:
+    """Close the account for a request made by email, exactly as the Settings
+    button does (`delete_account`): Stripe cancelled, apps disconnected, work
+    stopped, email switched off, sessions ended, listings taken down, the
+    request row written and the confirmation sent. Returns when the 14 days
+    to keep the account end; the erasure follows after that. With
+    `erase_now`, for an owner who asked to be erased at once, there are no
+    14 days, and the confirmation says the account is being erased. Without
+    `send_email` (`--no-email`, only with `erase_now`) no confirmation is sent, and the request
+    records that, so the erasure sends none either. A no-op for an account
+    already closed. Raises `PlanCancellationError`, with the account still
+    open, when Stripe refuses the cancel."""
+    if not (send_email or erase_now):
+        raise ValueError("Closing without the email goes only with erase_now.")
+    user = await get_user_by_id(user_id)
+    if not erase_now:
+        return await delete_account(
+            user_id,
+            user.email,
+            AccountDeletionSource.EMAIL,
+            send_confirmation=send_email,
+        )
+    return await delete_account(
+        user_id,
+        user.email,
+        AccountDeletionSource.EMAIL,
+        grace=timedelta(0),
+        send_confirmation=send_email,
+    )
+
+
+async def skip_confirmation(user_id: str) -> bool:
+    """For an account closed already, record that the erasure must not send
+    the confirmation closing could not (`--no-email`). False when there is
+    nothing to skip: no request, the email went out already, or the erasure
+    finished."""
+    count = await AccountDeletionRequest.prisma().update_many(
+        where={"userId": user_id, "confirmationSentAt": None, "completedAt": None},
+        data={"confirmationSkipped": True},
+    )
+    return count > 0
+
+
+async def end_grace_now(user_id: str) -> bool:
+    """End the 14 days to keep a closed account now, for an owner who asked to
+    be erased at once, so the erasure can claim it straight away. By the
+    database's clock, the one the claim reads, and a minute back: the CLI's
+    dry run checks the date on its own host's clock, which may be a little
+    behind. False when there is nothing to shorten: no request, or an erasure
+    already started or finished."""
+    rows = await query_raw_with_schema(
+        'UPDATE {schema_prefix}"AccountDeletionRequest" '
+        'SET "eraseAfter" = LEAST("eraseAfter", '
+        "(now() - interval '1 minute') AT TIME ZONE 'UTC') "
+        'WHERE "userId" = $1 AND "startedAt" IS NULL AND "completedAt" IS NULL '
+        'RETURNING "id"',
+        user_id,
+    )
+    return bool(rows)
+
+
+async def send_confirmation(subject: Subject, *, dry_run: bool) -> StepReport:
+    """Send the account-deleted email closing could not send, while the
+    address still exists, worded for the request's source. By now the 14 days
+    are over, so the email says the account is being erased rather than
+    naming a last day to keep it. A failure fails the step, so the erasure
+    stops before the address goes and the next run tries again; but an
+    address the mail provider won't deliver to (bounced, suppressed) never
+    will be, so the erasure goes on without the email. A stack with no mail
+    provider lists `postmark` in ACCOUNT_ERASURE_UNUSED_SERVICES."""
+    if subject.confirmation_sent or subject.request_source is None:
+        return StepReport(
+            name="confirmation",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"emails": 0},
+            note=(
+                "sent when the account was closed"
+                if subject.confirmation_sent
+                else "closing the account sends it"
+            ),
+        )
+    if subject.confirmation_skipped:
+        return _skipped_confirmation(dry_run)
+    if not subject.email or subject.erase_after is None:
+        # Not a skip: the address goes only with the rows, which an earlier
+        # run deleted, so there is no one left to send it to.
+        return StepReport(
+            name="confirmation",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"emails": 0},
+            note="no address left to send it to; the account's rows are gone",
+        )
+    if "postmark" in Settings().config.account_erasure_unused_services:
+        return StepReport(
+            name="confirmation",
+            status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+            counts={"emails": 0},
+            note="this stack sends no email (postmark is an unused service)",
+        )
+    if not dry_run:
+        if await _skipped_since_loaded(subject.user_id):
+            return _skipped_confirmation(dry_run)
+        try:
+            await _send_late_confirmation(subject)
+        except EmailUndeliverableError:
+            # The address is not logged: the error type says enough.
+            logger.warning(
+                f"Account erasure of {subject.user_id}: the mail provider won't "
+                "deliver to the address, so it goes on without the confirmation"
+            )
+            return StepReport(
+                name="confirmation",
+                status=StepStatus.DONE,
+                counts={"emails": 0},
+                note="the mail provider won't deliver to this address (bounced "
+                "or suppressed); erased without the email",
+            )
+        await mark_confirmation_sent(subject.user_id)
+    return StepReport(
+        name="confirmation",
+        status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+        counts={"emails": 1},
+    )
+
+
+def _skipped_confirmation(dry_run: bool) -> StepReport:
+    return StepReport(
+        name="confirmation",
+        status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+        counts={"emails": 0},
+        note="--no-email: the erasure sends none",
+    )
+
+
+async def _skipped_since_loaded(user_id: str) -> bool:
+    """Read again just before sending: an operator's `--no-email` may have
+    marked the request (`skip_confirmation`) after this run loaded it, while
+    the job was already erasing the account."""
+    row = await AccountDeletionRequest.prisma().find_unique(where={"userId": user_id})
+    return bool(row and row.confirmationSkipped)
+
+
+async def _send_late_confirmation(subject: Subject) -> None:
+    assert subject.email and subject.request_source and subject.erase_after
+    await asyncio.wait_for(
+        send_account_deleted_email(
+            subject.email,
+            subject.request_source,
+            subject.erase_after,
+            erase_now=subject.erase_asked_now,
+            # Claimed, so the 14 days are over whatever this pod's clock
+            # says: the email must not offer a Keep that is refused.
+            now=max(datetime.now(UTC), subject.erase_after),
+        ),
+        timeout=CONFIRMATION_TIMEOUT_SECONDS,
+    )
+
+
+async def complete_request(subject: Subject, *, dry_run: bool) -> StepReport:
+    """Mark the claimed request done, once: a rerun keeps the first date.
+    Only the row this erasure claimed is marked, never a newer request of the
+    same user ID."""
+    if dry_run:
+        count = int(not subject.request_completed)
+    elif subject.request_id is None:
+        raise RuntimeError("the request was not claimed")
+    else:
+        count = await AccountDeletionRequest.prisma().update_many(
+            where={
+                "id": subject.request_id,
+                "startedAt": {"not": None},
+                "completedAt": None,
+            },
+            data={"completedAt": datetime.now(UTC)},
+        )
+    return StepReport(
+        name="request",
+        status=StepStatus.WOULD_DO if dry_run else StepStatus.DONE,
+        counts={"completed": count},
+    )

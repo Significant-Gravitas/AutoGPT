@@ -61,6 +61,7 @@ EXPECTED_ROSTER_ROUTINES: set[tuple[str, str]] = {
     ("Max", "monday-list-top-up"),
     ("Max", "weekday-prospecting-batch"),
     ("Max", "wednesday-forecast-and-deal-inspection"),
+    ("Max", "weekly-perfect-fit-leads"),
     ("Maya", "marketing-competitor-watch"),
     ("Maya", "marketing-content-pipeline-check"),
     ("Maya", "marketing-weekly-read"),

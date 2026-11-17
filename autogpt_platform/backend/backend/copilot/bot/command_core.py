@@ -8,6 +8,7 @@ returned ``CommandReply`` in their own markup.
 """
 
 import logging
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -17,6 +18,21 @@ from backend.util.settings import Settings
 from .bot_backend import BotBackend
 
 logger = logging.getLogger(__name__)
+
+
+class AdminCheck(str, Enum):
+    """What the platform says about the member who ran /setup.
+
+    Linking a server ties everyone in it to one AutoGPT account: their
+    messages to the bot run and bill there, and only that account can unlink.
+    So, like Discord's Manage Server rule, only the server's admins may link
+    it. ``UNVERIFIED`` means the platform couldn't be asked, and is refused
+    the same way.
+    """
+
+    ADMIN = "admin"
+    NOT_ADMIN = "not_admin"
+    UNVERIFIED = "unverified"
 
 
 class CommandReply(BaseModel):
@@ -32,6 +48,8 @@ async def setup_reply(
     *,
     platform: str,
     server_noun: str,
+    admin_check: AdminCheck,
+    admin_role: str,
     platform_server_id: str,
     platform_user_id: str,
     platform_username: str,
@@ -41,8 +59,16 @@ async def setup_reply(
     """Mint a server link token and describe the outcome.
 
     ``server_noun`` is the platform's word for a server ("server",
-    "workspace") so the shared copy reads natively everywhere.
+    "workspace") so the shared copy reads natively everywhere. Nothing is
+    minted unless ``admin_check`` says the caller administers the server;
+    ``admin_role`` names who does ("workspace admin or owner") for the
+    refusal.
     """
+    refusal = admin_only_reply(
+        admin_check, server_noun=server_noun, admin_role=admin_role
+    )
+    if refusal is not None:
+        return refusal
     try:
         result = await api.create_link_token(
             platform=platform,
@@ -81,6 +107,37 @@ async def setup_reply(
         ),
         button_label=f"Link {server_noun.capitalize()}",
         button_url=result.link_url,
+    )
+
+
+def admin_only_reply(
+    admin_check: AdminCheck,
+    *,
+    server_noun: str,
+    admin_role: str,
+    retry_hint: str = "Please try again in a moment.",
+) -> CommandReply | None:
+    """Why /setup was refused, or None when the caller may link the server.
+
+    ``retry_hint`` follows the "couldn't confirm" reply, for platforms where
+    the usual cause is a missing permission rather than a passing error.
+    """
+    if admin_check is AdminCheck.ADMIN:
+        return None
+    if admin_check is AdminCheck.UNVERIFIED:
+        return CommandReply(
+            text=(
+                f"I couldn't confirm that you're a {admin_role}, so I can't "
+                f"link this {server_noun} right now. {retry_hint}"
+            )
+        )
+    return CommandReply(
+        text=(
+            f"Only a {admin_role} can link this {server_noun} to an AutoGPT "
+            "account, because everyone here would then use AutoGPT through "
+            f"that account. Ask a {admin_role} to run /setup. To use AutoGPT "
+            "with your own account, send me a direct message."
+        )
     )
 
 

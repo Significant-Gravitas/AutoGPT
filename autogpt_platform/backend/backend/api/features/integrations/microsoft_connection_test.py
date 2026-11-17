@@ -166,7 +166,7 @@ def test_browser_sign_in_is_refused_until_the_deployment_turns_it_on(mocker):
     mocker.patch.object(routes, "browser_sign_in_available", return_value=False)
 
     with pytest.raises(HTTPException) as refused:
-        routes._get_provider_oauth_handler(mocker.Mock(), ProviderName.MICROSOFT)
+        routes._get_provider_oauth_handler(ProviderName.MICROSOFT)
 
     assert refused.value.status_code == 400
     assert "sign-in code" in refused.value.detail

@@ -48,6 +48,23 @@
     }
   },
   {
+    "name": "mcp_aimlapi",
+    "display_name": "AI/ML API",
+    "description": "Find and compare AI models, run chat, embeddings, image, video and audio generation, and call Agent Tools such as web search and page extraction.",
+    "mcp_server": {
+      "server_url": "https://mcp.aimlapi.com/mcp",
+      "documentation_url": "https://docs.aimlapi.com/quickstart/mcp",
+      "setup_instructions": "Sign in with your AI/ML API account, or use an API key from https://aimlapi.com/app/keys (the same key the AI/ML API models use). Generation, chat, embeddings, tool searches and Agent Tool runs are billed to your AI/ML API balance; model lookups and account checks are free.",
+      "connection_mode": "hosted",
+      "icon_id": "aiml_api",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "provider": "aiml_api"
+    }
+  },
+  {
     "name": "mcp_airtable",
     "display_name": "Airtable",
     "description": "Search bases and manage records and schemas within your Airtable permissions.",
@@ -746,6 +763,21 @@
     }
   },
   {
+    "name": "mcp_klaviyo",
+    "display_name": "Klaviyo",
+    "description": "Manage Klaviyo profiles, lists, segments, campaigns, flows, and metrics, and pull marketing performance reports.",
+    "mcp_server": {
+      "server_url": "https://mcp.klaviyo.com/mcp",
+      "documentation_url": "https://developers.klaviyo.com/en/docs/klaviyo_mcp_server",
+      "setup_instructions": "Sign in with your Klaviyo account and approve access. Klaviyo only lets users with the Owner, Admin or Manager role use its hosted server, so ask an account admin if you have another role. Your existing Klaviyo user permissions apply to every tool call.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "klaviyo"
+    }
+  },
+  {
     "name": "mcp_langfuse",
     "display_name": "Langfuse",
     "description": "Work with project traces, prompts, datasets, evaluations, and dashboards.",
@@ -920,6 +952,7 @@
       "oauth_scopes": [
         "key:read"
       ],
+      "provider": "parallel",
       "icon_id": "parallel"
     }
   },
@@ -1066,6 +1099,21 @@
         "settings.privacy.url:write"
       ],
       "icon_id": "subtext"
+    }
+  },
+  {
+    "name": "mcp_supabase",
+    "display_name": "Supabase",
+    "description": "Manage Supabase projects: query databases, apply migrations, deploy edge functions and search the docs.",
+    "mcp_server": {
+      "server_url": "https://mcp.supabase.com/mcp",
+      "documentation_url": "https://supabase.com/docs/guides/getting-started/mcp",
+      "setup_instructions": "Sign in with your Supabase account and choose an organization. Tools can read and change every project and database in it, so choose an organization without production data.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "supabase"
     }
   },
   {

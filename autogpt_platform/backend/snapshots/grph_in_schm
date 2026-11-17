@@ -7,14 +7,12 @@
       "title": "Key A"
     },
     "in_key_b": {
-      "advanced": false,
+      "advanced": true,
       "secret": false,
       "title": "in_key_b"
     }
   },
-  "required": [
-    "in_key_b"
-  ],
+  "required": [],
   "title": "ExpectedInputSchema",
   "type": "object"
 }

@@ -20,6 +20,8 @@ import { useJsonTextField } from "./useJsonTextField";
 import { getPlaceholder } from "./helpers";
 import { ArrowExpandIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { LongNumberHint } from "@/components/contextual/LongNumberHint/LongNumberHint";
+import { hasLongWholeNumber } from "@/lib/json-text";
 
 export const JsonTextField = (props: FieldProps) => {
   const {
@@ -75,6 +77,9 @@ export const JsonTextField = (props: FieldProps) => {
   const descriptionId = schema.description
     ? `${domId}-json-description`
     : undefined;
+  const longNumberHintId = hasLongWholeNumber(textValue)
+    ? `${domId}-long-number`
+    : undefined;
 
   return (
     <div className="flex flex-col gap-2">
@@ -92,6 +97,7 @@ export const JsonTextField = (props: FieldProps) => {
           aria-labelledby={labelId}
           aria-describedby={[
             descriptionId ?? fieldAccessibility?.descriptionId,
+            longNumberHintId,
             errorId,
           ]
             .filter(Boolean)
@@ -126,6 +132,7 @@ export const JsonTextField = (props: FieldProps) => {
           <TooltipContent>Expand input</TooltipContent>
         </Tooltip>
       </div>
+      <LongNumberHint text={textValue} id={longNumberHintId} />
       {schema.description && (
         <span
           id={descriptionId}

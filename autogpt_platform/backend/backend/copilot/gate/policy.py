@@ -64,6 +64,7 @@ _READ = frozenset(
         "find_capability",
         "find_library_agent",
         "find_session",
+        "flag_mistake",
         "get_agent_building_guide",
         "get_doc_page",
         "get_platform_info",
@@ -83,8 +84,11 @@ _READ = frozenset(
         "memory_forget_search",
         "memory_search",
         "read_expert_chat",
+        "request_work_check",
         "read_skill",
         "read_workspace_file",
+        # Draws cards from what Otto wrote; touches nothing.
+        "render_ui",
         "search_docs",
         "search_feature_requests",
         "validate_agent_graph",
@@ -176,9 +180,16 @@ MCP_FILE_WRITE_TOOLS = frozenset({"Edit", "Write", "edit_file", "write_file"})
 MCP_FILE_READ_TOOLS = frozenset(
     {"Read", "glob", "grep", "read_file", "read_tool_result"}
 )
+# Registered the same way when a Local PC executor offers computer use: the
+# tool list it reads is a read. ``local_pc_computer`` stays unclassified, so it
+# is a platform edit unless its subject says a call reaches the disk.
+MCP_COMPUTER_READ_TOOLS = frozenset({"local_pc_computer_tools"})
 
 _EFFECTS: dict[str, Effect] = {
-    **{name: Effect.READ for name in _READ | MCP_FILE_READ_TOOLS},
+    **{
+        name: Effect.READ
+        for name in _READ | MCP_FILE_READ_TOOLS | MCP_COMPUTER_READ_TOOLS
+    },
     **{name: Effect.WORKSPACE for name in _WORKSPACE | MCP_FILE_WRITE_TOOLS},
     "bash_exec": Effect.SHELL,
     **{name: Effect.TEAM for name in _TEAM},
