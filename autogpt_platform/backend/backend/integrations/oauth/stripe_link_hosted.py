@@ -20,6 +20,7 @@ that issued them even while older device-code credentials remain in use.
 """
 
 import logging
+import re
 import time
 from typing import ClassVar, Optional
 from urllib.parse import urlencode
@@ -48,6 +49,9 @@ STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED = bool(
 )
 
 HOSTED_FLOW = "authorization_code"
+
+# What an OAuth error code looks like (RFC 6749 section 5.2).
+_ERROR_CODE = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
 
 
 def is_hosted_link_credential(credentials: OAuth2Credentials) -> bool:
@@ -207,13 +211,16 @@ class StripeLinkHostedOAuthHandler(BaseOAuthHandler):
 
 
 def _oauth_error_code(response: httpx.Response) -> str | None:
-    """RFC 6749's ``error`` field, if the body is the JSON error it describes."""
+    """RFC 6749's ``error`` field, if the body is the JSON error it describes.
+
+    The code is persisted and shown in error messages, so anything not shaped
+    like one (the same rule ``refresh_failure`` applies) is dropped."""
     try:
         body = response.json()
     except ValueError:
         return None
     code = body.get("error") if isinstance(body, dict) else None
-    return code if isinstance(code, str) else None
+    return code if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else None
 
 
 def revocation_handler() -> StripeLinkHostedOAuthHandler:
