@@ -179,6 +179,16 @@
         </td></tr>
 {%- endmacro -%}
 
+{# A one-time code, set large enough to read and type from a phone. The extra
+   left padding balances the letter spacing after the last digit. #}
+{%- macro code_box(code, top=24) -%}
+        <tr><td style="padding:{{ top }}px 0 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F5F3FC" style="border-collapse:separate; border-spacing:0; border:1px solid #E7E4F4; border-radius:10px;">
+            <tr><td align="center" style="padding:18px 12px 18px 20px; font-family:{{ MONO }}; font-size:32px; line-height:40px; font-weight:700; letter-spacing:8px; color:#171925;">{{ code }}</td></tr>
+          </table>
+        </td></tr>
+{%- endmacro -%}
+
 {# tone: 'amber' | 'neutral'. Content comes from `body` or a call block. #}
 {%- macro note_card(label, body=none, tone='neutral', top=20) -%}
         <tr><td style="padding:{{ top }}px 0 0;">

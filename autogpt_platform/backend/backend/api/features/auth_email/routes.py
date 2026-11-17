@@ -15,14 +15,21 @@ to our own hosts.
 import asyncio
 import logging
 import re
+from typing import Self, get_args
 from urllib.parse import urlparse
 
 from autogpt_libs.auth import requires_frontend_service
 from fastapi import APIRouter, HTTPException, Security, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from backend.data.account_erasure.ban_record import is_banned_address
-from backend.notifications.auth import AuthLinkEmailType, render_auth_email
+from backend.notifications.auth import (
+    SIGN_IN_CODE_PATTERN,
+    AuthLinkEmailType,
+    AuthSignInEmailType,
+    SignInProvider,
+    render_auth_email,
+)
 from backend.util.clients import get_notification_manager_client
 from backend.util.exceptions import EmailUndeliverableError
 from backend.util.settings import Settings
@@ -38,14 +45,35 @@ requires_sign_up_check_service = requires_frontend_service("auth-sign-up:check")
 
 
 class AuthEmailRequest(BaseModel):
-    # Link emails only: the account-deleted confirmation is sent by the
-    # deletion service, never on a service token's say-so.
-    type: AuthLinkEmailType
+    # Link and sign-in emails only: the account-deleted confirmation is sent by
+    # the deletion service, never on a service token's say-so.
+    type: AuthLinkEmailType | AuthSignInEmailType
     to: EmailStr
-    url: str
+    # The action link, which every link email has and no sign-in email does.
+    url: str | None = None
     # For change_email: the address the account is moving to, shown to the
     # current address so its owner can check the request before approving it.
     new_email: EmailStr | None = None
+    # For sign_in_code: the code to type into the page that asked for it.
+    code: str | None = Field(default=None, pattern=SIGN_IN_CODE_PATTERN)
+    # For the sign-in emails: the provider the sign-in is with.
+    provider: SignInProvider | None = None
+
+    @model_validator(mode="after")
+    def _fields_match_type(self) -> Self:
+        if self.type in get_args(AuthLinkEmailType):
+            if self.url is None:
+                raise ValueError(f"A {self.type} email needs a url")
+            if self.code is not None or self.provider is not None:
+                raise ValueError(f"A {self.type} email takes no code or provider")
+            return self
+        if self.url is not None:
+            raise ValueError(f"A {self.type} email has no link")
+        if self.provider is None:
+            raise ValueError(f"A {self.type} email needs a provider")
+        if (self.code is None) != (self.type != "sign_in_code"):
+            raise ValueError("Only a sign_in_code email has a code, and it needs one")
+        return self
 
 
 class AuthEmailSuppressionRequest(BaseModel):
@@ -85,13 +113,27 @@ class AuthEmailBanRecordResponse(BaseModel):
     # duplicates it in the generated spec.
 )
 async def send_auth_email(request: AuthEmailRequest) -> None:
-    if not _url_origin_allowed(request.url):
+    if request.url is not None and not _url_origin_allowed(request.url):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="url must point at a trusted frontend origin.",
         )
 
-    email = render_auth_email(request.type, request.url, request.to, request.new_email)
+    email = render_auth_email(
+        request.type,
+        request.url,
+        request.to,
+        request.new_email,
+        code=request.code,
+        provider=request.provider,
+    )
+    # The sign-in emails ask their reader to reply if it wasn't them, so a
+    # reply reaches the shared inbox, as the account-closed confirmation's does.
+    reply_to = (
+        {"reply_to": settings.config.billing_reply_to_email}
+        if request.type in get_args(AuthSignInEmailType)
+        else {}
+    )
 
     # The blocking RPC to the notification service runs off the event loop; a
     # delivery failure there surfaces as a 5xx so a misconfigured mailer fails
@@ -103,6 +145,7 @@ async def send_auth_email(request: AuthEmailRequest) -> None:
             email.subject,
             email.html,
             email.text,
+            **reply_to,
         )
     except EmailUndeliverableError:
         # The global ValueError handler would make this a 400 the frontend throws on.

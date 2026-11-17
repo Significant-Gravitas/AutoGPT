@@ -1,7 +1,9 @@
 """Render the fixed account emails through the shared service-email kit: the
-Better Auth link emails and the account-closed confirmation."""
+Better Auth link emails, the sign-in emails and the account-closed
+confirmation."""
 
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Literal, assert_never
 
@@ -13,11 +15,26 @@ from backend.notifications.template_env import create_body_environment
 from backend.util.clients import get_notification_manager_client
 from backend.util.settings import Settings
 
-# The emails a frontend service token may trigger: each one carries a link.
+# The emails a frontend service token may trigger with a link in them.
 AuthLinkEmailType = Literal[
     "reset_password", "verify_email", "verify_new_email", "change_email", "set_password"
 ]
-AuthEmailType = Literal[AuthLinkEmailType, "account_deleted"]
+# And the ones about a sign-in provider ("Continue with ..."), which carry no
+# link: the code that confirms an address the provider doesn't host, and the
+# notice that the provider can now sign in to the account.
+AuthSignInEmailType = Literal["sign_in_code", "sign_in_method_added"]
+AuthEmailType = Literal[AuthLinkEmailType, AuthSignInEmailType, "account_deleted"]
+# Better Auth's id for each provider, with the name the emails use.
+SignInProvider = Literal["google", "microsoft", "apple", "github", "discord"]
+SIGN_IN_PROVIDER_NAMES: dict[SignInProvider, str] = {
+    "google": "Google",
+    "microsoft": "Microsoft",
+    "apple": "Apple",
+    "github": "GitHub",
+    "discord": "Discord",
+}
+# Must match the codes the frontend issues (lib/auth/sign-in-code.ts).
+SIGN_IN_CODE_PATTERN = r"^[0-9]{6}$"
 settings = Settings()
 _html_env = create_body_environment(autoescape=True)
 _text_env = create_body_environment(autoescape=False)
@@ -53,8 +70,10 @@ def render_auth_email(
     *,
     reason: str | None = None,
     preheader: str | None = None,
+    code: str | None = None,
+    provider: SignInProvider | None = None,
 ) -> RenderedEmail:
-    content = _CONTENT[email_type]
+    content = _content_for(email_type, code, provider)
     if content.action and not action_url:
         raise ValueError(f"The {email_type} email needs an action URL")
     if reason:
@@ -68,6 +87,8 @@ def render_auth_email(
         "recipient": recipient,
         # The address an email change moves the account to, when known.
         "new_email": new_email,
+        # sign_in_code only.
+        "code": code,
         "assets": assets,
         "otto_asset_url": otto_asset_url(assets),
         "urls": build_urls(""),
@@ -79,6 +100,64 @@ def render_auth_email(
         preheader=content.preheader,
         html=_html_env.get_template(f"{template}.html.j2").render(**context),
         text=_text_env.get_template(f"{template}.txt.j2").render(**context).strip(),
+    )
+
+
+def _content_for(
+    email_type: AuthEmailType, code: str | None, provider: SignInProvider | None
+) -> AuthEmailContent:
+    if email_type == "sign_in_code" or email_type == "sign_in_method_added":
+        if provider is None:
+            raise ValueError(f"The {email_type} email needs a provider")
+        if email_type == "sign_in_code" and not (
+            code and re.fullmatch(SIGN_IN_CODE_PATTERN, code)
+        ):
+            raise ValueError("The sign_in_code email needs a six-digit code")
+        return _sign_in_content(email_type, SIGN_IN_PROVIDER_NAMES[provider])
+    return _CONTENT[email_type]
+
+
+def _sign_in_content(
+    email_type: AuthSignInEmailType, provider: str
+) -> AuthEmailContent:
+    """The sign-in emails name the provider, so they are built per send."""
+    if email_type == "sign_in_code":
+        # Sent when a provider sign-in can't vouch for this address: before the
+        # provider joins an existing account, or creates one. Whoever started
+        # it types the code into the page that asked, so it isn't a link: the
+        # mailbox's owner can't approve someone else's sign-in by clicking.
+        return AuthEmailContent(
+            subject="Your AutoGPT sign-in code",
+            eyebrow="ACCOUNT · SIGN-IN CODE",
+            headline="Confirm it's you",
+            intro=(
+                f"Someone is signing in to AutoGPT with {provider} using this "
+                "email address."
+            ),
+            preheader=(
+                "Enter this code on the page that asked for it to finish " "signing in."
+            ),
+            reason=f"This code was requested by a {provider} sign-in on AutoGPT.",
+            # Must match the frontend's code lifetime (sign-in-code.ts).
+            expiry="10 minutes",
+            note=(
+                "If this wasn't you, ignore this email: nobody can sign in with "
+                f"{provider} without this code. Don't share it with anyone."
+            ),
+            close_with_inbox=True,
+        )
+    return AuthEmailContent(
+        subject=f"{provider} sign-in was added to your AutoGPT account",
+        eyebrow="ACCOUNT · SIGN-IN METHODS",
+        headline=f"You can now sign in with {provider}",
+        intro=f"{provider} sign-in was just added to your AutoGPT account.",
+        preheader="If this was you, there's nothing to do.",
+        reason="We email you whenever a new way to sign in is added to your account.",
+        note=(
+            "If it wasn't you, reply to this email and we'll remove it and "
+            "secure your account."
+        ),
+        close_with_inbox=True,
     )
 
 
@@ -163,10 +242,11 @@ _TEMPLATES: dict[AuthEmailType, str] = {
     "verify_email": "auth_verify",
     "verify_new_email": "auth_verify_new",
     "change_email": "auth_change_email",
+    "sign_in_code": "auth_code",
 }
 
 
-_CONTENT: dict[AuthEmailType, AuthEmailContent] = {
+_CONTENT: dict[AuthLinkEmailType | Literal["account_deleted"], AuthEmailContent] = {
     "reset_password": AuthEmailContent(
         subject="Reset your AutoGPT Platform password",
         eyebrow="ACCOUNT · RESET PASSWORD",

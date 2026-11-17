@@ -1,0 +1,21 @@
+{% import '_email_ui.j2' as ui with context %}
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>{{ ui.head_block(content.subject) }}</head>
+{{ ui.body_open() }}
+{{ ui.preheader(content.preheader) }}
+{{ ui.page_open() }}
+{{ ui.masthead() }}
+{{ ui.sheet_open() }}
+{% call ui.eyebrow(top=28) %}{{ content.eyebrow }}{% endcall %}
+{% call ui.headline() %}{{ content.headline }}{% endcall %}
+{% call ui.para() %}{{ content.intro }} {{ content.preheader }}{% endcall %}
+{{ ui.code_box(code) }}
+{% call ui.para() %}The code expires in {{ content.expiry }}.{% endcall %}
+{% call ui.para() %}{{ content.note }}{% endcall %}
+{{ ui.close_row(content.reason, 'Questions? Email ' ~ inbox, 'mailto:' ~ inbox) }}
+{{ ui.sheet_close() }}
+{{ ui.page_close() }}
+{{ ui.legal_footer("This is a service message about an AutoGPT account. It's sent even if you've opted out of product news.", 'Discord', urls.discord) }}
+</td></tr></table>
+</body></html>
