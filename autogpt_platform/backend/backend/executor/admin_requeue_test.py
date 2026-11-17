@@ -69,8 +69,9 @@ class _SecondExecutorPod(ExecutionManager):
 
     def __init__(self):
         super().__init__()
+        # A free port on the address the metrics server binds to.
         with socket.socket() as probe:
-            probe.bind(("", 0))
+            probe.bind((executor_manager.settings.config.pyro_host, 0))
             self.metrics_port = probe.getsockname()[1]
 
     def run(self):
