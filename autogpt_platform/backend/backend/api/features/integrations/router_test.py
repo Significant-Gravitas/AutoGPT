@@ -10,6 +10,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from backend.api.external.v1 import integrations as external_integrations
 from backend.api.features.integrations.router import (
     _get_provider_oauth_handler,
     _upgrade_existing_credential,
@@ -1259,7 +1260,17 @@ class TestStripeLinkClientSelection:
             metadata=dict(DEVICE_GRANT_METADATA),
         )
 
-        with patch("backend.api.features.integrations.router.creds_manager") as mgr:
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mgr,
+            # Nothing here may reach Link; the reconnect's revocation has
+            # tests of its own below.
+            patch(
+                "backend.api.features.integrations.router."
+                "STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
+                False,
+            ),
+            patch("backend.api.features.integrations.router._revocation_handler"),
+        ):
             mgr.store.get_creds_by_id = AsyncMock(return_value=hosted)
             mgr.update = AsyncMock()
             merged = await _upgrade_existing_credential("user-1", "link-cred", device)
@@ -1269,6 +1280,26 @@ class TestStripeLinkClientSelection:
         assert (
             merged.metadata["link_client_id"] == DEVICE_GRANT_METADATA["link_client_id"]
         )
+
+    def test_the_external_api_points_link_to_settings(self):
+        """Link redirects only to AutoGPT's registered callbacks, and only
+        AutoGPT's own connect flow merges a reconnect and ends the grant it
+        replaces."""
+        with (
+            # As with the confidential client configured; the registry reads
+            # its own handlers from here.
+            patch.dict(
+                "backend.integrations.oauth._handlers_dict",
+                {"stripe_link": StripeLinkHostedOAuthHandler},
+            ),
+            pytest.raises(fastapi.HTTPException) as refused,
+        ):
+            external_integrations._get_oauth_handler_for_external(
+                "stripe_link", "https://client.example/callback"
+            )
+
+        assert refused.value.status_code == 400
+        assert "Settings" in refused.value.detail
 
     def test_link_credentials_cannot_be_created_by_hand(self):
         """Refresh, revocation and the checkout's hosted check all trust the
@@ -1326,7 +1357,9 @@ class TestStripeLinkClientSelection:
             # The same client reconnecting replaces its own grant.
             (True, True, True, False),
             (False, False, True, False),
-            # Nothing here can end a hosted grant once its client is gone.
+            # A device reconnect of a hosted wallet ends the hosted grant...
+            (True, False, True, True),
+            # ...but nothing here can end it once its client is gone.
             (True, False, False, False),
         ],
     )

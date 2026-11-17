@@ -12,6 +12,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
+from backend.integrations.oauth.refresh_failure import describe_refresh_failure
 from backend.integrations.oauth.stripe_link import (
     DEVICE_GRANT_METADATA,
     StripeLinkDeviceAuthHandler,
@@ -197,6 +198,22 @@ async def test_refresh_replaces_both_tokens():
     assert updated.refresh_token is not None
     assert updated.refresh_token.get_secret_value() == "rotated-refresh"
     assert updated.access_token_expires_at > int(time.time())
+
+
+@pytest.mark.asyncio
+async def test_refresh_leaves_a_confidential_clients_grant_alone():
+    """A reconnect through the confidential client can land after this handler
+    was picked. Its grant goes nowhere near the device client, and the error
+    is not a dead grant, so the next refresh picks the right client."""
+    patcher, client = mock_http(200, {})
+    creds = credentials()
+    creds.metadata = {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
+
+    with patcher, pytest.raises(RuntimeError) as failure:
+        await StripeLinkDeviceAuthHandler()._refresh_tokens(creds)
+
+    client.post.assert_not_called()
+    assert not describe_refresh_failure(failure.value).definitive
 
 
 @pytest.mark.asyncio

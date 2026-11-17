@@ -21,11 +21,14 @@ from backend.integrations.creds_manager import (
 from backend.integrations.oauth.github import GitHubOAuthHandler
 from backend.integrations.oauth.google import GoogleOAuthHandler
 from backend.integrations.oauth.notion import NotionOAuthHandler
+from backend.integrations.oauth.refresh_failure import (
+    OAuthTokenRequestError,
+    describe_refresh_failure,
+)
 from backend.integrations.oauth.stripe_link import StripeLinkDeviceAuthHandler
 from backend.integrations.oauth.todoist import TodoistOAuthHandler
 from backend.integrations.oauth.twitter import TwitterOAuthHandler
 from backend.util.encryption import JSONCryptor
-from backend.util.exceptions import MissingConfigError
 
 
 @pytest.fixture(autouse=True)
@@ -715,16 +718,22 @@ async def test_link_grants_refresh_through_the_client_that_issued_them(mocker):
 @pytest.mark.asyncio
 async def test_a_hosted_link_grant_without_its_client_asks_for_a_reconnect(mocker):
     """The device client cannot refresh a confidential client's grant, so an
-    unconfigured confidential client means reconnecting, not a device refresh."""
+    unconfigured confidential client means reconnecting, not a device refresh.
+    Until the access token runs out, the grant still works."""
     mocker.patch(
         "backend.integrations.creds_manager.STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED",
         False,
     )
     manager = IntegrationCredentialsManager()
+    credentials = _link_credentials(
+        {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
+    )
 
-    with pytest.raises(MissingConfigError, match="reconnect Stripe Link"):
-        await manager._get_oauth_handler(
-            _link_credentials(
-                {"link_oauth_flow": "authorization_code", "link_client_id": "c"}
-            )
-        )
+    handler = await manager._get_oauth_handler(credentials)
+
+    assert not isinstance(handler, StripeLinkDeviceAuthHandler)
+    credentials.access_token_expires_at = int(time.time()) + 3600
+    assert not handler.needs_refresh(credentials)
+    with pytest.raises(OAuthTokenRequestError) as failure:
+        await handler.refresh_tokens(credentials)
+    assert describe_refresh_failure(failure.value).definitive
