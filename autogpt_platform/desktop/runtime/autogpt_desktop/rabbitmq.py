@@ -642,8 +642,31 @@ def _alias_root() -> Path:
     assert sys.platform != "win32"
     root = _cache_alias_root()
     if any(character.isspace() for character in str(root)):
-        root = _temp_alias_root()
+        return _own_temp_folder(_temp_alias_root())
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return root
+
+
+def _own_temp_folder(root: Path) -> Path:
+    """`root`, made if need be, and only if it is this user's own.
+
+    The temp directory is everybody's, and the folder's name can be worked
+    out: someone else can make it first, or put a link there. RabbitMQ's
+    scripts are run through what this folder holds, so a folder that another
+    user owns, or can write to, would let them choose what is run."""
+    with contextlib.suppress(FileExistsError):
+        os.mkdir(root, 0o700)
+    info = os.lstat(root)
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) & 0o022
+    ):
+        raise RuntimeError(
+            f"AutoGPT will not use {root}: it is not a folder that only you can "
+            "change. Remove it, or keep AutoGPT's cache in a folder without "
+            "spaces in its path (XDG_CACHE_HOME), then start AutoGPT again."
+        )
     return root
 
 

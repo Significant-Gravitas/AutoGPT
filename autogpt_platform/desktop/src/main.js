@@ -208,6 +208,9 @@ function startRuntime() {
       ...manifest.env,
       ...runtimeEnvironment(install),
       AUTOGPT_DESKTOP_DATA_DIR: dataDir,
+      // The runtime looks for its bundle here first (layout.py): it is told
+      // the one the shell chose, whatever the user's environment names.
+      AUTOGPT_DESKTOP_RUNTIME: path.resolve(dir),
       AUTOGPT_DESKTOP_SHELL_VERSION: app.getVersion(),
     },
     logFile: path.join(logsDir, "runtime.log"),
@@ -761,12 +764,23 @@ function refreshMenus() {
   tray?.setToolTip(trayToolTip(install, activity, stoppingRuns));
 }
 
-ipcMain.on("open-logs", () => shell.openPath(logsDir));
-ipcMain.on("quit", () => app.quit());
-ipcMain.on("take-update-offer", takeUpdateOffer);
-ipcMain.on("open-doctor", (event) => {
-  if (startupWindow && event.sender === startupWindow.webContents && event.senderFrame === startupWindow.webContents.mainFrame) showDoctor();
-});
+// The startup window's buttons, and nobody else's: these are heard only from
+// the top frame of that window.
+function fromStartupWindow(event) {
+  const contents = startupWindow?.webContents;
+  return Boolean(contents) && event.sender === contents && event.senderFrame === contents.mainFrame;
+}
+
+function onStartupWindow(channel, act) {
+  ipcMain.on(channel, (event) => {
+    if (fromStartupWindow(event)) act();
+  });
+}
+
+onStartupWindow("open-logs", () => shell.openPath(logsDir));
+onStartupWindow("quit", () => app.quit());
+onStartupWindow("take-update-offer", takeUpdateOffer);
+onStartupWindow("open-doctor", () => showDoctor());
 app.on("will-quit", () => privacy?.dispose());
 
 app.on("window-all-closed", () => {});

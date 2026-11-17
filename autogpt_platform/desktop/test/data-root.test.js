@@ -98,8 +98,10 @@ function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure =
   const source = fs.readFileSync(path.join(__dirname, "../src/main.js"), "utf8");
   const calls = [];
   const maintenanceRuntimes = [];
+  const heard = {};
   let boot;
   const app = {
+    quit: () => calls.push("quit"),
     isPackaged,
     commandLine: { hasSwitch: () => false },
     setName: () => calls.push("claim-profile"),
@@ -111,7 +113,8 @@ function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure =
     exit: (status) => calls.push(`exit:${status}`),
   };
   const electron = {
-    app, ipcMain: { on: () => {}, handle: () => {} },
+    app, ipcMain: { on: (channel, handler) => { heard[channel] = handler; }, handle: () => {} },
+    shell: { openPath: (target) => calls.push(`open:${target}`) },
     dialog: { showErrorBox: (title, message) => calls.push([title, message]) },
   };
   const context = {
@@ -140,14 +143,24 @@ function loadMain({ failure = null, owner = NORMAL.dirName, maintenanceFailure =
     },
   };
   vm.runInNewContext(source, context);
-  return { calls, boot, maintenanceRuntimes };
+  return { calls, boot, maintenanceRuntimes, heard };
 }
+
+test("the startup window's buttons are heard from that window only", () => {
+  const { calls, heard } = loadMain();
+  const before = calls.length;
+  assert.deepEqual(Object.keys(heard).sort(), ["open-doctor", "open-logs", "quit", "take-update-offer"]);
+  const elsewhere = { sender: { mainFrame: {} }, senderFrame: {} };
+  for (const channel of Object.keys(heard)) heard[channel](elsewhere);
+  assert.deepEqual(calls.slice(before), []);
+});
 
 for (const [isPackaged, runtimeOverride, expected] of [
   [false, undefined, path.join(__dirname, "../build/runtime")],
   [true, undefined, path.join("/bundle", "runtime")],
   [false, "/custom-runtime", "/custom-runtime"],
-  [true, "/custom-runtime", "/custom-runtime"],
+  // An installed app runs the runtime it was installed with, and no other.
+  [true, "/custom-runtime", path.join("/bundle", "runtime")],
 ]) {
   test(`maintenance uses the shell runtime (packaged: ${isPackaged}, override: ${runtimeOverride})`, () => {
     const { maintenanceRuntimes, boot } = loadMain({ isPackaged, runtimeOverride });

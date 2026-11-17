@@ -10,6 +10,8 @@ fail when one side changes a name or a number the other relies on.
 import logging
 import re
 import socket
+import stat
+import sys
 from pathlib import Path
 
 import aiohttp
@@ -164,6 +166,57 @@ def test_each_install_keeps_its_links_in_a_folder_of_its_own(tmp_path, monkeypat
     monkeypatch.setenv(install.VARIABLE, "AutoGPT-voice")
     assert rabbitmq._alias_root() == tmp_path / "AutoGPT-voice" / "links"
     assert (tmp_path / "AutoGPT-voice" / "links").is_dir()
+
+
+posix_only = pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows keeps its links elsewhere (winlinks.py)"
+)
+
+
+@pytest.fixture
+def shared_temp(tmp_path, monkeypatch):
+    """A cache folder with a space in its path, so that the links go to the
+    temp directory, and a temp directory that stands in for everybody's."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "my cache"))
+    monkeypatch.setattr(rabbitmq.sys, "platform", "linux")
+    temp = tmp_path / "tmp"
+    temp.mkdir()
+    monkeypatch.setattr(rabbitmq.tempfile, "gettempdir", lambda: str(temp))
+    return rabbitmq._temp_alias_root()
+
+
+@posix_only
+def test_the_links_folder_in_the_temp_directory_is_made_private(shared_temp):
+    assert rabbitmq._alias_root() == shared_temp
+    assert stat.S_IMODE(shared_temp.stat().st_mode) == 0o700
+    # And is taken as it is the next time.
+    assert rabbitmq._alias_root() == shared_temp
+
+
+@posix_only
+def test_a_links_folder_somebody_else_made_is_not_used(shared_temp, monkeypatch):
+    shared_temp.mkdir(mode=0o700)
+    monkeypatch.setattr(rabbitmq.os, "getuid", lambda: shared_temp.stat().st_uid + 1)
+    with pytest.raises(RuntimeError, match="only you can change"):
+        rabbitmq._alias_root()
+
+
+@posix_only
+def test_a_links_folder_others_can_write_to_is_not_used(shared_temp):
+    shared_temp.mkdir()
+    shared_temp.chmod(0o777)
+    with pytest.raises(RuntimeError, match="only you can change"):
+        rabbitmq._alias_root()
+
+
+@posix_only
+def test_a_link_where_the_links_folder_should_be_is_not_followed(shared_temp):
+    elsewhere = shared_temp.with_name("elsewhere")
+    elsewhere.mkdir(mode=0o700)
+    shared_temp.symlink_to(elsewhere, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="only you can change"):
+        rabbitmq._alias_root()
+    assert list(elsewhere.iterdir()) == []
 
 
 # --- cookies -----------------------------------------------------------------

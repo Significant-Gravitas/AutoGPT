@@ -61,7 +61,11 @@ function claimDataDir(dataDir, install, options = {}) {
 
 function createDataDir(dataDir, {
   platform = process.platform,
-  runtime = runtimeDir({ isPackaged: Boolean(process.resourcesPath), resourcesPath: process.resourcesPath }),
+  // `electron .` has a resources folder too, Electron's own.
+  runtime = runtimeDir({
+    isPackaged: Boolean(process.resourcesPath) && !process.defaultApp,
+    resourcesPath: process.resourcesPath,
+  }),
   run = spawnSync,
 } = {}) {
   try {
@@ -133,11 +137,13 @@ function writeStampInPlace(stamp, dirName) {
   }
 }
 
-// A packaged app carries its runtime under resources/runtime. During
-// development, point AUTOGPT_DESKTOP_RUNTIME at a staged runtime directory.
+// A packaged app carries its runtime under resources/runtime, and runs no
+// other: a variable left set in a shell must not make an installed app start
+// programs from somewhere else. During development, point
+// AUTOGPT_DESKTOP_RUNTIME at a staged runtime directory.
 function runtimeDir({ isPackaged, resourcesPath, env = process.env }) {
-  if (env.AUTOGPT_DESKTOP_RUNTIME) return env.AUTOGPT_DESKTOP_RUNTIME;
   if (isPackaged) return path.join(resourcesPath, "runtime");
+  if (env.AUTOGPT_DESKTOP_RUNTIME) return env.AUTOGPT_DESKTOP_RUNTIME;
   return path.join(__dirname, "..", "build", "runtime");
 }
 
