@@ -2201,13 +2201,19 @@ async def _add_graph_execution(
             f"Failed to publish execution event for graph exec #{graph_exec.id}: {e}"
         )
 
-    try:
-        await odb.increment_onboarding_runs(user_id)
-        logger.info(
-            f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
-        )
-    except Exception as e:
-        logger.error(f"Failed to increment onboarding runs for user #{user_id}: {e}")
+    # An admin requeue publishes a run that was already counted when it was
+    # first queued. (A run parked for spend approval at creation is counted
+    # when it resumes, so this is not gated on is_new_execution.)
+    if not admin_requeue:
+        try:
+            await odb.increment_onboarding_runs(user_id)
+            logger.info(
+                f"Incremented user #{user_id} onboarding runs for exec #{graph_exec.id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to increment onboarding runs for user #{user_id}: {e}"
+            )
 
     if is_new_execution:
         product_analytics.track_agent_run_started(

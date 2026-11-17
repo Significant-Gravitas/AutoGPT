@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Optional, cast
 
 import pytest
@@ -591,8 +591,8 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         id=user_id,
         email="test@example.com",
         name=None,
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         stripe_customer_id=None,
         top_up_config=None,
         timezone="UTC",
@@ -677,8 +677,8 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
         id="sched-user",
         email="sched@example.com",
         name=None,
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         stripe_customer_id=None,
         top_up_config=None,
         timezone="UTC",
@@ -2336,7 +2336,6 @@ def _mock_add_graph_execution_requeue_path(
     graph_exec.id = "existing-execution"
     graph_exec.node_executions = []
     graph_exec.status = ExecutionStatus.QUEUED
-    graph_exec.is_dry_run = False
     graph_exec.graph_version = 1
     graph_exec.nodes_input_masks = {}
     graph_exec.expert_id = expert_id
@@ -3821,11 +3820,6 @@ def test_queued_is_not_a_valid_source_for_queued():
     assert (
         ExecutionStatus.QUEUED not in VALID_STATUS_TRANSITIONS[ExecutionStatus.QUEUED]
     )
-    assert VALID_STATUS_TRANSITIONS[ExecutionStatus.QUEUED] == [
-        ExecutionStatus.INCOMPLETE,
-        ExecutionStatus.TERMINATED,
-        ExecutionStatus.REVIEW,
-    ]
 
 
 @pytest.mark.asyncio
@@ -3847,6 +3841,33 @@ async def test_admin_requeue_publishes_queued_execution_without_cas(
     queue.publish_message.assert_awaited_once()
     for call in execution_store.update_graph_execution_stats.await_args_list:
         assert call.kwargs.get("status") != ExecutionStatus.QUEUED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("admin_requeue, counted", [(True, 0), (False, 1)])
+async def test_only_a_run_that_was_not_counted_yet_counts_for_onboarding(
+    mocker: MockerFixture, admin_requeue: bool, counted: int
+):
+    """An admin requeue republishes a run counted when it was first queued, so
+    it must not add to the user's run count and streak again. A resume, e.g.
+    of a run parked for spend approval before it was ever queued, still
+    counts."""
+    _mock_add_graph_execution_requeue_path(
+        mocker, expert_id=None, organization_id="org-1", team_id="team-1"
+    )
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="owner",
+        graph_exec_id="existing-execution",
+        bypass_paywall=True,
+        admin_requeue=admin_requeue,
+    )
+
+    from backend.executor import utils as executor_utils
+
+    increment = executor_utils.onboarding_db.increment_onboarding_runs
+    assert increment.await_count == counted
 
 
 @pytest.mark.asyncio

@@ -1582,8 +1582,9 @@ class GraphExecutionEntry(BaseModel):
     admin_requeue: bool = False
     """Published by an admin requeue of a run that looked stuck in QUEUED. The
     original message may not have been lost, so the consumer starts the run
-    only from QUEUED (or continues it from RUNNING after a dead pod's
-    redelivery) and never resumes it from REVIEW."""
+    from this message only from QUEUED (or continues it from RUNNING after a
+    dead pod's redelivery of this message), never from REVIEW or an end
+    state."""
 
 
 class NodeExecutionEntry(BaseModel):
