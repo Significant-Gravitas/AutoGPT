@@ -61,6 +61,7 @@ JUDGED_READS: frozenset[str] = frozenset(
         "browser_navigate",
         "browser_screenshot",
         "delegate_to_expert",
+        "desktop_browser",
         # Only a graph it returns that another user owns, or a copy, reaches the judge.
         "find_library_agent",
         "get_sub_session_result",
@@ -89,6 +90,7 @@ _SOURCE_KINDS = {
     "browser_act": "web",
     "browser_navigate": "web",
     "browser_screenshot": "web",
+    "desktop_browser": "web",
     "delegate_to_expert": "chat",
     "get_sub_session_result": "chat",
     "read_expert_chat": "chat",

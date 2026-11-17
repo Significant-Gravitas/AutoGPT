@@ -374,7 +374,7 @@ def approval_mode_supplement(mode: str | None, interactive: bool = True) -> str:
 _COMPUTER_NOTE = f"""
 ### Your computer
 The sandbox has a screen. `start_desktop` turns it on and streams it to the user; use it when a task needs a GUI app, or a browser the user should watch or take over.
-- After `start_desktop`, launch the app or browser with `bash_exec` in the background with `DISPLAY={DISPLAY}` and its output redirected (`app > /dev/null 2>&1 &`), or it is killed at the timeout. `browser_*` tools run elsewhere and never appear on it.
+- After `start_desktop`, drive its Chrome with `desktop_browser`: actions on refs from its snapshot, which the user watches. Launch any other app with `bash_exec` in the background with `DISPLAY={DISPLAY}` and its output redirected (`app > /dev/null 2>&1 &`), or it is killed at the timeout. `browser_*` tools run elsewhere and never appear on it; keep them for pages the user need not see.
 - Files and tools outside `~/workspace` are lost when the sandbox is replaced. `~/workspace` is a folder on this machine, not workspace storage: the user's uploads are not in it.
 - The user sees the desktop too. Never ask them to sign into personal accounts on it; use their connected integrations. """
 

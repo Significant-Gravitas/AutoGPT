@@ -52,6 +52,11 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     running: "Starting desktop",
     done: "Started desktop",
   },
+  desktop_browser: {
+    category: "browser",
+    running: "Using the desktop browser",
+    done: "Used the desktop browser",
+  },
   list_workspace_files: {
     category: "file-list",
     running: "Listing workspace files",

@@ -35830,6 +35830,7 @@
           "browser_navigate",
           "browser_act",
           "browser_screenshot",
+          "desktop_browser",
           "bash_exec",
           "desktop_stream",
           "web_fetch",

@@ -91,6 +91,7 @@ describe("getToolCategory", () => {
   it("returns 'browser' for browser tools", () => {
     expect(getToolCategory("browser_navigate")).toBe("browser");
     expect(getToolCategory("browser_act")).toBe("browser");
+    expect(getToolCategory("desktop_browser")).toBe("browser");
     expect(getToolCategory("browser_screenshot")).toBe("browser");
   });
 

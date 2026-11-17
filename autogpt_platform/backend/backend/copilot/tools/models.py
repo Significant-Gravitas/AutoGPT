@@ -108,6 +108,7 @@ class ResponseType(str, Enum):
     BROWSER_NAVIGATE = "browser_navigate"
     BROWSER_ACT = "browser_act"
     BROWSER_SCREENSHOT = "browser_screenshot"
+    DESKTOP_BROWSER = "desktop_browser"
 
     # Code execution
     BASH_EXEC = "bash_exec"
@@ -1319,6 +1320,19 @@ class BrowserScreenshotResponse(ToolResponseBase):
     type: ResponseType = ResponseType.BROWSER_SCREENSHOT
     file_id: str  # Workspace file ID — use read_workspace_file to retrieve
     filename: str
+
+
+class DesktopBrowserResponse(ToolResponseBase):
+    """Response for desktop_browser: one receipt per action, then where the
+    page is and its snapshot, whose refs are valid only with ``ref_scope``."""
+
+    type: ResponseType = ResponseType.DESKTOP_BROWSER
+    receipts: list[dict[str, Any]]
+    url: str = ""
+    title: str = ""
+    ref_scope: str | None = None
+    snapshot: str = ""
+    screenshot_file_id: str | None = None
 
 
 # Agent generation tool response models

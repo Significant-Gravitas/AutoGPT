@@ -31,6 +31,7 @@ from .customize_agent import CustomizeAgentTool
 from .decompose_goal import DecomposeGoalTool
 from .delegate_to_expert import DelegateToExpertTool
 from .describe_capability import DescribeCapabilityTool
+from .desktop_browser import DesktopBrowserTool
 from .edit_agent import EditAgentTool
 from .enter_building_mode import EnterAgentBuildingModeTool
 from .expert_chats import ListExpertChatsTool, ReadExpertChatTool
@@ -187,6 +188,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
     "start_desktop": StartDesktopTool(),
+    "desktop_browser": DesktopBrowserTool(),
     "connect_integration": ConnectIntegrationTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools

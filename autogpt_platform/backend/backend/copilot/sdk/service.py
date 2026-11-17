@@ -1094,8 +1094,9 @@ def _hidden_short_names_for_permissions(
 
 def _hidden_short_names_for_local_pc(shim: LocalPCShim) -> frozenset[str]:
     # start_desktop would start a cloud box, which is not the user's computer
-    # that every other tool in a Local PC chat works on.
-    hidden: set[str] = {"start_desktop"}
+    # that every other tool in a Local PC chat works on; desktop_browser
+    # drives that box's browser.
+    hidden: set[str] = {"start_desktop", "desktop_browser"}
     if "shell" not in shim.capability_set:
         hidden.update({"bash_exec", "grep"})
     elif shim.platform.lower() == "windows":

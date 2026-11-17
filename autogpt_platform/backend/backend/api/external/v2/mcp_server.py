@@ -146,6 +146,7 @@ EXTERNAL_USE_EXCLUSIONS: dict[str, str] = {
     # Security
     "bash_exec": "sandboxed shell on platform infrastructure",
     "start_desktop": "sandboxed desktop on platform infrastructure",
+    "desktop_browser": "drives the sandboxed desktop's browser",
     # Not yet classified for external use
     "pause_schedule": "not yet reviewed for external use",
     "resume_schedule": "not yet reviewed for external use",

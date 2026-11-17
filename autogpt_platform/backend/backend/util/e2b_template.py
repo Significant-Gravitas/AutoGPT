@@ -74,7 +74,7 @@ class TemplateSpec(BaseModel):
 
 
 DESKTOP_IMAGE = TemplateSpec(
-    alias="agpt-desktop-1x2-cfc276e0", source="desktop", cpu_count=1, memory_mb=2048
+    alias="agpt-desktop-1x2-a8372fd1", source="desktop", cpu_count=1, memory_mb=2048
 )
 MANAGED_TEMPLATES: dict[str, TemplateSpec] = {DESKTOP_IMAGE.alias: DESKTOP_IMAGE}
 # Images whose boxes are replaced on their next reconnect because they lack
@@ -246,11 +246,18 @@ def desktop_image(source: str) -> TemplateBuilder:
             no_install_recommends=True,
         )
         .npm_install("yarn@1", g=True)
+        # Drives the desktop's Chrome for ``desktop_browser``; the same pin as
+        # the backend image's, so both browser tools run one agent-browser.
+        .npm_install(f"agent-browser@{AGENT_BROWSER_VERSION}", g=True)
         # apt-get update only warns about an unreachable repository, and gh and
         # nodejs then resolve from Ubuntu's archive: fail the build instead.
         .run_cmd(_VERIFY_IMAGE, user="user")
     )
 
+
+# Pinned, as in the backend Dockerfile: its daemon's lifecycle has changed
+# across releases.
+AGENT_BROWSER_VERSION = "0.37.1"
 
 # Ubuntu 22.04's own gh is 2.4 (2022) and it ships Node 12, so both come
 # from their vendors' apt repositories.
@@ -274,6 +281,7 @@ _VERIFY_IMAGE = [
     "file --version",
     "pkg-config --version",
     "convert --version",
+    f"agent-browser --version | grep -qF {AGENT_BROWSER_VERSION}",
 ]
 
 

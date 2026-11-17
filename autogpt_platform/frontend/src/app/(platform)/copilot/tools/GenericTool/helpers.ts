@@ -77,6 +77,7 @@ export function getToolCategory(toolName: string): ToolCategory {
     case "browser_navigate":
     case "browser_act":
     case "browser_screenshot":
+    case "desktop_browser":
       return "browser";
     case "read_workspace_file":
     case "read_file":

@@ -72,6 +72,7 @@ class TestComputerNote:
         result = prompting.get_sdk_supplement(use_e2b=True)
         assert result.count("### Your computer") == 1
         assert "`start_desktop`" in result
+        assert "`desktop_browser`" in result
         assert "lost when the sandbox is replaced" in result
         assert "sign into personal accounts" in result
 

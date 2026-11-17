@@ -1203,6 +1203,7 @@ class TestExpertComputerBlock:
         assert WORKSPACE_PATH in result
         assert SHARED_PATH in result
         assert "start_desktop" in result
+        assert "desktop_browser" in result
         # Sits with the other first-message blocks, after the workflows.
         assert result.index("</expert_workflows>") < result.index("<expert_computer>")
 
