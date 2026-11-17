@@ -18,6 +18,7 @@ from backend.api.features.local_executor.gating import (
     is_computer_use_enabled,
     is_local_executor_enabled,
     is_workflow_recording_enabled,
+    local_executor_turned_off,
 )
 from backend.api.features.local_executor.models import (
     ComputerUseConsentRequest,
@@ -180,6 +181,7 @@ async def get_session_executor(
 ) -> ExecutorStatus:
     """Return executor metadata only when the caller owns the session."""
     session = await _require_owned_session(session_id, user_id)
+    await _require_session_status_enabled(session, user_id)
     hello = await _get_session_executor_hello(session, user_id)
     # Outside the computer-use rollout the machine shows no computer use, so
     # the consent dialog never opens.
@@ -538,6 +540,27 @@ async def _require_owned_shim(
 
 async def _require_local_executor_enabled(user_id: str) -> None:
     if not await is_local_executor_enabled(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Local PC executor is not enabled",
+        )
+
+
+async def _require_session_status_enabled(
+    session: ChatSessionInfo, user_id: str
+) -> None:
+    """The rollout check for a session's executor status.
+
+    A chat bound to a computer shows a badge that says it runs there, and a
+    flag read that fails gives the default, off. So that chat is refused only
+    when the flag service itself says off, as an open connection is. Any
+    other chat has no badge to keep, and is refused as every other route
+    refuses it.
+    """
+    if session.metadata.execution_target.kind != "local":
+        await _require_local_executor_enabled(user_id)
+        return
+    if await local_executor_turned_off(user_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Local PC executor is not enabled",

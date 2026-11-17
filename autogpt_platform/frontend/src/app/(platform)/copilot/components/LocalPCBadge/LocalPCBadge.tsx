@@ -29,21 +29,24 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
     isError,
     isLoading,
     isSuccess,
+    isTurnedOff,
   } = useLocalPCExecutor(sessionID);
 
   const connected = isSuccess && executor?.kind === "shim";
   const platformLabel = executor?.platform
     ? (PLATFORM_DISPLAY[executor.platform] ?? executor.platform)
     : "unknown platform";
-  const label = isLoading
-    ? "Checking Local PC…"
-    : isError
-      ? "Local PC status unavailable"
-      : connected
-        ? `Local PC connected: ${platformLabel}${executor?.arch ? ` ${executor.arch}` : ""}`
-        : sessionID
-          ? "Local PC disconnected"
-          : "Local PC";
+  const label = isTurnedOff
+    ? "Local PC is off"
+    : isLoading
+      ? "Checking Local PC…"
+      : isError
+        ? "Local PC status unavailable"
+        : connected
+          ? `Local PC connected: ${platformLabel}${executor?.arch ? ` ${executor.arch}` : ""}`
+          : sessionID
+            ? "Local PC disconnected"
+            : "Local PC";
 
   const consentLabel =
     executor?.computer_use_consent === "approved"
@@ -120,11 +123,13 @@ export function LocalPCBadge({ sessionID, machineID, allowedRoot }: Props) {
             </>
           ) : (
             <div>
-              {isLoading
-                ? "Checking whether your local executor is connected."
-                : isError
-                  ? "The local executor status could not be loaded. It will retry automatically."
-                  : "The Local PC selected for this chat is offline. Restart autogpt-shim on that computer to reconnect."}
+              {isTurnedOff
+                ? "Local PC is turned off for your account, so this chat can't reach your computer."
+                : isLoading
+                  ? "Checking whether your local executor is connected."
+                  : isError
+                    ? "The local executor status could not be loaded. It will retry automatically."
+                    : "The Local PC selected for this chat is offline. Restart autogpt-shim on that computer to reconnect."}
             </div>
           )}
 

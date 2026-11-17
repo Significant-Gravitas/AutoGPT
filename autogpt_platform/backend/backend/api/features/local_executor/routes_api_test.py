@@ -6,6 +6,10 @@ from autogpt_libs import auth
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from backend.api.features.local_executor.gating import (
+    is_local_executor_enabled,
+    local_executor_turned_off,
+)
 from backend.api.features.local_executor.routes import _require_owned_shim, router
 from backend.api.features.local_executor.state import RecordingState
 from backend.copilot.model import (
@@ -44,6 +48,10 @@ def _enabled_local_executor_features():
         patch(
             "backend.api.features.local_executor.routes.is_local_executor_enabled",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.local_executor_turned_off",
+            AsyncMock(return_value=False),
         ),
         patch(
             "backend.api.features.local_executor.routes.is_workflow_recording_enabled",
@@ -306,34 +314,86 @@ def test_executor_status_rejects_unbounded_session_id() -> None:
     assert response.status_code == 422
 
 
-def test_executor_status_remains_readable_after_feature_is_disabled() -> None:
-    client = _make_client()
+# What reading the rollout flag gives: (enabled, the flag service answered).
+_FLAG_ON = (True, True)
+_FLAG_OFF = (False, True)
+_FLAG_UNREADABLE = (False, False)
+
+
+@pytest.mark.parametrize(
+    ("session", "flag", "answered"),
+    [
+        (_local_owned_session, _FLAG_ON, True),
+        (_local_owned_session, _FLAG_OFF, False),
+        # A flag outage reads as the default, off, and says nothing: the badge
+        # of a chat that runs on the person's computer must not go dark on it.
+        (_local_owned_session, _FLAG_UNREADABLE, True),
+        (_cloud_owned_session, _FLAG_ON, True),
+        (_cloud_owned_session, _FLAG_OFF, False),
+        # A cloud chat has no badge to keep: it is refused as every other
+        # route refuses it.
+        (_cloud_owned_session, _FLAG_UNREADABLE, False),
+    ],
+    ids=[
+        "local-chat-flag-on",
+        "local-chat-flag-off",
+        "local-chat-flag-unreadable",
+        "cloud-chat-flag-on",
+        "cloud-chat-flag-off",
+        "cloud-chat-flag-unreadable",
+    ],
+)
+def test_executor_status_is_behind_the_rollout_flag(
+    session, flag: tuple[bool, bool], answered: bool
+) -> None:
+    """The status route answered every session owner, in or out of the
+    rollout, while every other route here refused a user outside it."""
     manager = MagicMock()
     manager.get_hello_async = AsyncMock(return_value=None)
+    read_consent = AsyncMock(return_value="pending")
 
     with (
         patch(
             "backend.api.features.local_executor.routes.get_chat_session_metadata",
-            AsyncMock(return_value=_owned_session()),
+            AsyncMock(return_value=session()),
         ),
         patch(
             "backend.api.features.local_executor.routes.is_local_executor_enabled",
-            AsyncMock(return_value=False),
+            is_local_executor_enabled,
+        ),
+        patch(
+            "backend.api.features.local_executor.routes.local_executor_turned_off",
+            local_executor_turned_off,
+        ),
+        patch(
+            "backend.api.features.local_executor.gating.evaluate_feature_flag",
+            AsyncMock(return_value=flag),
+        ),
+        patch(
+            "backend.api.features.local_executor.gating.is_feature_enabled",
+            AsyncMock(return_value=flag[0]),
         ),
         patch(
             "backend.api.features.local_executor.routes.get_computer_use_consent",
-            AsyncMock(return_value="pending"),
+            read_consent,
         ),
         patch(
             "backend.api.features.local_executor.routes.get_shim_manager",
             return_value=manager,
         ),
     ):
-        response = client.get("/api/copilot/sessions/session-1/executor")
+        response = _make_client().get("/api/copilot/sessions/session-1/executor")
 
-    assert response.status_code == 200
-    assert response.json()["kind"] == "none"
-    manager.get_hello_async.assert_awaited_once_with("session-1")
+    if answered:
+        assert response.status_code == 200
+        assert response.json()["kind"] == "none"
+        return
+    # What every other Local PC route gives a user outside the rollout, and
+    # nothing about the session's computer or consent is read on the way.
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Local PC executor is not enabled"}
+    manager.get_hello_async.assert_not_awaited()
+    read_consent.assert_not_awaited()
 
 
 def test_executor_status_lists_exactly_the_tools_consent_would_grant() -> None:

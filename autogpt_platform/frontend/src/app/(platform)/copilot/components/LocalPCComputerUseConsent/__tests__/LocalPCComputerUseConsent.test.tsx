@@ -1,4 +1,6 @@
+import { getGetFeatureFlagsMockHandler } from "@/app/api/__generated__/endpoints/feature-flags/feature-flags.msw";
 import { server } from "@/mocks/mock-server";
+import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   fireEvent,
   render,
@@ -6,7 +8,7 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { http, HttpResponse } from "msw";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { LocalPCComputerUseConsent } from "../LocalPCComputerUseConsent";
 
 const EXECUTOR_URL =
@@ -45,6 +47,15 @@ function useExecutorHandler(
 }
 
 describe("LocalPCComputerUseConsent", () => {
+  beforeEach(() => {
+    server.use(
+      getGetFeatureFlagsMockHandler({
+        flags: { [Flag.LOCAL_PC_EXECUTOR]: true },
+        configured: true,
+      }),
+    );
+  });
+
   test.each([
     ["Not this time", false, "denied"],
     ["Allow for this session", true, "approved"],
