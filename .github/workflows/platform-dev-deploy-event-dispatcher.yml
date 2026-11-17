@@ -110,13 +110,15 @@ jobs:
       - name: Post deploy success comment
         if: steps.check_status.outputs.should_deploy == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
         with:
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `🚀 **Deploying PR #${{ steps.pr_details.outputs.pr_number }}** to development environment...`
+              body: `🚀 **Deploying PR #${process.env.PR_NUMBER}** to development environment...`
             });
 
       - name: Dispatch Undeploy Event (from comment)
@@ -138,13 +140,15 @@ jobs:
       - name: Post undeploy success comment
         if: steps.check_status.outputs.should_undeploy == 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
         with:
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `🗑️ **Undeploying PR #${{ steps.pr_details.outputs.pr_number }}** from development environment...`
+              body: `🗑️ **Undeploying PR #${process.env.PR_NUMBER}** from development environment...`
             });
 
       - name: Check deployment status on PR close
