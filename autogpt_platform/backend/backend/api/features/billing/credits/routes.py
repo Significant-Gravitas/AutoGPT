@@ -161,6 +161,9 @@ async def configure_user_auto_top_up(
                     " Nothing was charged; please try again in a moment."
                 ),
             )
+        # Waiting for another save can take a while; the account may have
+        # closed meanwhile, so look again before charging.
+        await refuse_closed_account(user_id)
         await _charge_and_save_auto_top_up(user_id, request, credit_model)
     return "Auto top-up settings updated"
 

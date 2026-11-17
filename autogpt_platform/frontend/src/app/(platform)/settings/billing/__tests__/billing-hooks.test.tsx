@@ -39,6 +39,16 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
 
+// Every request the handler holds waits on one promise, so releasing it
+// lets all of them finish, however many a regression sends.
+function holdRequests() {
+  let release: () => void = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { released, release: () => release() };
+}
+
 function makeWrapper() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -130,14 +140,12 @@ describe("useBalanceCard", () => {
 
   it("a double-click on handleSubmit starts one checkout", async () => {
     let posts = 0;
-    let finishRequest: () => void = () => {};
+    const held = holdRequests();
     server.use(
       jsonHandler("get", "/api/credits", { credits: 1000 }),
       http.post("*/api/credits", async () => {
         posts += 1;
-        await new Promise<void>((resolve) => {
-          finishRequest = resolve;
-        });
+        await held.released;
         return HttpResponse.json({ checkout_url: null });
       }),
     );
@@ -146,17 +154,20 @@ describe("useBalanceCard", () => {
       wrapper: makeWrapper(),
     });
 
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    act(() => result.current.setAmount("20"));
+      act(() => result.current.setAmount("20"));
 
-    act(() => {
-      result.current.handleSubmit();
-      result.current.handleSubmit();
-    });
+      act(() => {
+        result.current.handleSubmit();
+        result.current.handleSubmit();
+      });
 
-    await waitFor(() => expect(posts).toBe(1));
-    act(() => finishRequest());
+      await waitFor(() => expect(posts).toBe(1));
+    } finally {
+      act(() => held.release());
+    }
     await waitFor(() => expect(result.current.isAdding).toBe(false));
     expect(posts).toBe(1);
   });
@@ -324,7 +335,7 @@ describe("useAutoRefillCard", () => {
 
   it("a double-click on save() sends one request, since a save can charge the card", async () => {
     let posts = 0;
-    let finishSave: () => void = () => {};
+    const held = holdRequests();
     server.use(
       jsonHandler("get", "/api/credits/auto-top-up", {
         amount: 0,
@@ -332,9 +343,7 @@ describe("useAutoRefillCard", () => {
       }),
       http.post("*/api/credits/auto-top-up", async () => {
         posts += 1;
-        await new Promise<void>((resolve) => {
-          finishSave = resolve;
-        });
+        await held.released;
         return HttpResponse.json({});
       }),
     );
@@ -343,21 +352,24 @@ describe("useAutoRefillCard", () => {
       wrapper: makeWrapper(),
     });
 
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    try {
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    act(() => {
-      result.current.setThreshold("5");
-      result.current.setRefillAmount("10");
-    });
+      act(() => {
+        result.current.setThreshold("5");
+        result.current.setRefillAmount("10");
+      });
 
-    act(() => {
-      result.current.save();
-      result.current.save();
-      result.current.disable();
-    });
+      act(() => {
+        result.current.save();
+        result.current.save();
+        result.current.disable();
+      });
 
-    await waitFor(() => expect(posts).toBe(1));
-    act(() => finishSave());
+      await waitFor(() => expect(posts).toBe(1));
+    } finally {
+      act(() => held.release());
+    }
     await waitFor(() => expect(result.current.isSaving).toBe(false));
     expect(posts).toBe(1);
   });
