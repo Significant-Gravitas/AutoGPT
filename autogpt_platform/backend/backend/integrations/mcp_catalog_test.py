@@ -20,6 +20,46 @@ def test_catalog_loads_validated_entries():
     assert get_mcp_catalog()
 
 
+# Every tool CompanyEnrich's MCP docs listed on 2026-11-17. All but
+# get_current_user spend the user's CompanyEnrich credits, so they ask first.
+COMPANYENRICH_BILLED_TOOLS = [
+    "enrich_company",
+    "enrich_company_by_properties",
+    "enrich_person_email",
+    "find_similar_companies",
+    "get_company_by_id",
+    "get_company_workforce",
+    "get_person_by_id",
+    "lookup_person_by_email",
+    "search_companies",
+    "search_people",
+]
+
+
+def test_companyenrich_uses_bearer_auth_and_paid_tools_require_approval():
+    """CompanyEnrich needs an API key and approval for credit-consuming tools."""
+    url = "https://mcp.companyenrich.com/mcp"
+    entry = get_mcp_catalog_entry_for_url(url)
+
+    assert entry is not None
+    assert entry.name == "mcp_companyenrich"
+    assert entry.display_name == "CompanyEnrich"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.auth_methods == ["bearer"]
+    assert entry.mcp_server.oauth_scopes is None
+    assert (
+        entry.mcp_server.documentation_url
+        == "https://docs.companyenrich.com/docs/mcp-server"
+    )
+    effects = get_mcp_effect_maps()["mcp_companyenrich"]
+    assert sorted(effects.external) == COMPANYENRICH_BILLED_TOOLS
+    assert effects.read == ["get_current_user"]
+    assert effects.irreversible == []
+    assert mcp_tool_effect(url, "find_similar_companies") == "external"
+    assert mcp_tool_effect(url, "get_current_user") == "read"
+    assert mcp_tool_effect(url, "unlisted_tool") is None
+
+
 def test_posthog_catalog_entry_uses_hosted_authentication():
     entry = get_mcp_catalog_entry_for_url("https://mcp.posthog.com/mcp")
 
