@@ -733,18 +733,30 @@ class BaseTool:
             logger.warning("Error in %s", self.name, exc_info=True)
             tracing.set_status("internal_error")
             mark_tool_raised(e)
-            return StreamToolOutputAvailable(
-                toolCallId=tool_call_id,
-                toolName=self.name,
-                output=ErrorResponse(
-                    message=f"An error occurred while executing {self.name}",
-                    # AutoPilot's model reads the detail to recover; an
-                    # External API client gets no internal detail.
-                    error=None if session.external_caller else str(e),
-                    session_id=session.session_id,
-                ).model_dump_json(),
-                success=False,
-            )
+            failed = ErrorResponse(
+                message=f"An error occurred while executing {self.name}",
+                # AutoPilot's model reads the detail to recover; an
+                # External API client gets no internal detail.
+                error=None if session.external_caller else str(e),
+                session_id=session.session_id,
+            ).model_dump_json()
+            # The detail can quote what the tool was reading, so it is judged
+            # like an output that declares nothing: whole.
+            with tracing_google_data(google_call):
+                return await self._screen_read(
+                    user_id,
+                    session,
+                    tool_call_id,
+                    kwargs,
+                    StreamToolOutputAvailable(
+                        toolCallId=tool_call_id,
+                        toolName=self.name,
+                        output=failed,
+                        success=False,
+                    ),
+                    None,
+                    failed,
+                )
         with tracing_google_data(google_call or result.holds_google_data):
             return await self._screen_read(
                 user_id, session, tool_call_id, kwargs, output, result.outside, full

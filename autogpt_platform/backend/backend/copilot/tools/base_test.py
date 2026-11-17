@@ -1208,26 +1208,8 @@ class TestGateTracesOfGoogleCalls:
             (True, None, False, True, True),
             (False, "google", False, False, True),
             (False, None, False, False, False),
-            pytest.param(
-                True,
-                None,
-                True,
-                True,
-                True,
-                marks=pytest.mark.xfail(
-                    strict=True, reason="#16883: a raised read's error skips the screen"
-                ),
-            ),
-            pytest.param(
-                False,
-                None,
-                True,
-                False,
-                False,
-                marks=pytest.mark.xfail(
-                    strict=True, reason="#16883: a raised read's error skips the screen"
-                ),
-            ),
+            (True, None, True, True, True),
+            (False, None, True, False, False),
         ],
         ids=[
             "names a Google block",

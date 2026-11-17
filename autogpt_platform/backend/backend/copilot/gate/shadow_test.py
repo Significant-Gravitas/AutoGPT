@@ -401,18 +401,8 @@ class _FailingFetch(_Fetch):
         raise RuntimeError(f"502 Bad Gateway: {self.content}")
 
 
-_UNSCREENED = pytest.mark.xfail(
-    strict=True, reason="#16883: a raised read's error skips the screen"
-)
-
-
 @pytest.mark.parametrize(
-    "value, mode",
-    [
-        pytest.param(True, "enforce", marks=_UNSCREENED),
-        pytest.param("shadow", "shadow", marks=_UNSCREENED),
-        (False, "off"),
-    ],
+    "value, mode", [(True, "enforce"), ("shadow", "shadow"), (False, "off")]
 )
 async def test_a_read_that_raises_is_screened_on_its_error_like_an_output(
     rows, events, value, mode
