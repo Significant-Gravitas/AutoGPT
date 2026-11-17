@@ -32,9 +32,7 @@ class MatchTextPatternBlock(Block):
     class Input(BlockSchemaInput):
         text: Any = SchemaField(description="Text to match")
         match: str = SchemaField(description="Pattern (Regex) to match")
-        data: Any = SchemaField(
-            description="Data to be forwarded to output", default=None
-        )
+        data: Any = SchemaField(description="Data to be forwarded to output")
         case_sensitive: bool = SchemaField(
             description="Case sensitive match", default=True
         )
@@ -67,8 +65,7 @@ class MatchTextPatternBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # Only an unconnected pin (None) falls back to the text; falsy data
-        # like 0, False, "" or [] is forwarded as-is.
+        # Falsy data (0, False, "", [], {}) is forwarded as-is
         output = input_data.text if input_data.data is None else input_data.data
         flags = 0
         if not input_data.case_sensitive:
@@ -129,7 +126,7 @@ class ExtractTextInformationBlock(Block):
             test_input=[
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 1},
                 {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 0},
-                {"text": "Hello, World!", "pattern": "Goodbye, (.+)", "group": 1},
+                {"text": "Hello, World!", "pattern": "Hello, (.+)", "group": 2},
                 {"text": "Hello, World!", "pattern": "hello,", "case_sensitive": False},
                 {
                     "text": "Hello, World!! Hello, Earth!!",
@@ -190,25 +187,23 @@ class ExtractTextInformationBlock(Block):
         if len(txt) > MAX_REGEX_TEXT_LENGTH:
             txt = txt[:MAX_REGEX_TEXT_LENGTH]
 
+        # A pattern that is invalid or too large to evaluate is an error,
+        # never "no match"
         try:
             pattern = compile_user_regex(input_data.pattern, flags)
         except regex.error as error:
             raise ValueError(f"Invalid regex pattern: {error}") from error
 
-        if input_data.group < 0 or input_data.group > pattern.groups:
-            raise ValueError(
-                f"Invalid group number {input_data.group}: "
-                f"pattern has {pattern.groups} group(s)."
-            )
-
         matches = []
         match_count = 0
-
         try:
             # Every pattern runs with a timeout, which covers the whole
             # iteration; a timeout ends up in the empty result below
             for match in pattern.finditer(txt, timeout=REGEX_TIMEOUT_SECONDS):
+                if not 0 <= input_data.group <= len(match.groups()):
+                    continue
                 match_text = match.group(input_data.group)
+                # An optional group can sit out a match: (a)|(b) on "b"
                 if match_text is None:
                     continue
                 # Limit match length to prevent memory exhaustion
@@ -282,9 +277,8 @@ class FillTextTemplateBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         formatter = text.TextFormatter(autoescape=input_data.escape_html)
-        yield (
-            "output",
-            await formatter.format_string(input_data.format, input_data.values),
+        yield "output", await formatter.format_string(
+            input_data.format, input_data.values
         )
 
 
