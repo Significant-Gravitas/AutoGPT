@@ -1,3 +1,4 @@
+import type { AuthEmailRequest } from "@/app/api/__generated__/models/authEmailRequest";
 import { environment } from "@/services/environment";
 import { AuthEmailNotSent } from "./auth-email-not-sent";
 import { APIError } from "better-auth/api";
@@ -15,9 +16,6 @@ export type AuthLinkEmailType =
   | "change_email"
   | "set_password";
 
-// The providers the backend's sign-in emails can name.
-export type SignInEmailProvider = SignInProvider;
-
 type SendAuthEmailArgs =
   | {
       to: string;
@@ -31,10 +29,10 @@ type SendAuthEmailArgs =
       to: string;
       type: "sign_in_code";
       code: string;
-      provider: SignInEmailProvider;
+      provider: SignInProvider;
     }
   // Tells the account's owner a provider can now sign in to it.
-  | { to: string; type: "sign_in_method_added"; provider: SignInEmailProvider };
+  | { to: string; type: "sign_in_method_added"; provider: SignInProvider };
 
 /**
  * Delivers a Better Auth transactional email (password reset, verification,
@@ -98,7 +96,9 @@ export async function sendAuthEmail(
   }
 }
 
-function requestBody(args: SendAuthEmailArgs) {
+// Typed as the backend's schema, so a type or provider it would refuse
+// doesn't compile.
+function requestBody(args: SendAuthEmailArgs): AuthEmailRequest {
   switch (args.type) {
     case "sign_in_code":
       return {
