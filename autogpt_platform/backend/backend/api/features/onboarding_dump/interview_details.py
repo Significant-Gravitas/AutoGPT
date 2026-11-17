@@ -106,8 +106,8 @@ def _kept(cached: str | bytes) -> InterviewDetails | None:
     try:
         value = json.loads(cached)
         return None if value is None else InterviewDetails.model_validate(value)
-    except Exception as exc:
-        logger.warning(f"Interview details cache unreadable: {type(exc).__name__}")
+    except Exception:
+        logger.warning("Interview details kept in the cache could not be read")
         return None
 
 
