@@ -303,6 +303,24 @@ def test_gpt6_astra_bills_at_authored_rates():
     assert astra_entry.context_window == 1050000
 
 
+def test_gpt6_2_astra_bills_at_authored_rates():
+    """GPT-6.2 Astra ($8/$40 per 1M, $0.40/1M cached input) -- flat tier
+    and per-1M projections must match the authored catalog entry."""
+    astra = LLMModel("gpt-6.2-astra")
+    assert astra is LLMModel.GPT6_2_ASTRA
+    assert MODEL_COST[astra] == 16
+    assert TOKEN_COST[astra].model_dump() == {
+        "input": 1200.0,
+        "output": 6000.0,
+        "cache_read": 60.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[astra].max_output_tokens == 128000
+    entry = next(m for m in CATALOG.models if m.slug == "gpt-6.2-astra")
+    assert entry.price_tier == 3
+    assert entry.context_window == 1050000
+
+
 def test_gpt6_sol_bills_at_authored_rates():
     """GPT-6 Sol (OpenAI list price $2/$10 per 1M, the cost-efficient
     high-end tier below Astra) — flat tier and per-1M projections must

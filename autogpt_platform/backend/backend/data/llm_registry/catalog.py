@@ -2069,6 +2069,26 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="gpt-6.2-astra",
+                display_name="GPT-6.2 Astra",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $8/1M in, $40/1M out, $0.40/1M cache read -- live
+                # OpenRouter rate as of 2026-11-17. Cheaper successor to
+                # gpt-6-astra (which stays listed and remains the Codex
+                # advanced default until Codex advertises this model).
+                # Tier 3 like gpt-6-astra.
+                price_tier=3,
+                cost=CatalogModelCost(
+                    run_credits=16,
+                    input_credits_per_1m=1200.0,
+                    output_credits_per_1m=6000.0,
+                    cache_read_credits_per_1m=60.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gpt-6-luna",
                 display_name="GPT-6 Luna",
                 provider="openai",
