@@ -89,9 +89,9 @@ if command -v certutil >/dev/null 2>&1 && id user >/dev/null 2>&1; then
 fi
 
 # Firefox reads one policies.json, and one at /etc replaces the image's own
-# distribution file. So the CA is merged into whichever files the box has,
-# never replacing one, and only a box with none gets one: in the
-# distribution directory where there is one, which overrides nothing.
+# distribution file. So the CA is merged into the files the box has, never
+# replacing one; a new file goes in each installation's distribution
+# directory, which overrides nothing, and at /etc only when there is none.
 if command -v python3 >/dev/null 2>&1; then
   python3 - "$dir" <<'PY' >/dev/null 2>&1 || fail firefox
 import glob, json, os, sys
@@ -103,7 +103,12 @@ dist = [
               "/opt/firefox/distribution")
     if os.path.isdir(d)
 ]
-targets = [p for p in (etc, *dist) if os.path.exists(p)] or dist[:1] or [etc]
+# The /etc file applies to every installation when it exists; otherwise each
+# installation reads its own distribution file, so each one gets the CA.
+if os.path.exists(etc):
+    targets = [etc] + [p for p in dist if os.path.exists(p)]
+else:
+    targets = dist or [etc]
 for path in targets:
     try:
         with open(path) as f:
