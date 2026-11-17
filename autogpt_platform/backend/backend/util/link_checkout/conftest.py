@@ -1,3 +1,4 @@
+import asyncio
 import time
 from pathlib import Path
 from typing import Literal
@@ -96,10 +97,19 @@ class FakeWorker:
         # Each create gets its own request; a canceled one stays canceled.
         self.created = 0
         self.canceled: set[str] = set()
+        # Status checks wait here for a second one, for a while: two
+        # completions meet past the attempt check unless something holds one.
+        self.status_gate: asyncio.Barrier | None = None
 
     async def __call__(self, job: WorkerJob) -> WorkerResult:
         self.calls.append(job.action)
         self.amounts.append(job.intent.plan.amount)
+        if job.action == "status" and self.status_gate is not None:
+            try:
+                async with asyncio.timeout(1):
+                    await self.status_gate.wait()
+            except (TimeoutError, asyncio.BrokenBarrierError):
+                pass
         if job.action == "pay":
             directory = runtime.session_home(job.intent.session_id)
             self.sealed_when_paying.append(

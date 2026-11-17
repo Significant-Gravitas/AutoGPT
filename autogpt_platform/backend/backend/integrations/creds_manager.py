@@ -41,6 +41,7 @@ from backend.integrations.oauth.refresh_failure import (
 from backend.integrations.oauth.stripe_link_hosted import (
     STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
     is_hosted_link_credential,
+    unconfigured_handler,
 )
 from backend.integrations.providers import ProviderName, provider_key
 from backend.util.exceptions import MissingConfigError, SharedCredentialsRefusedError
@@ -327,10 +328,7 @@ class IntegrationCredentialsManager:
             credentials.provider, ProviderName.STRIPE_LINK.value
         ) and is_hosted_link_credential(credentials):
             if not STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED:
-                raise MissingConfigError(
-                    "Stripe Link's OAuth client is no longer configured; "
-                    "reconnect Stripe Link"
-                )
+                return unconfigured_handler()
             return await _get_provider_oauth_handler(credentials.provider)
 
         # Try device handlers first (they don't need client_id/secret lookup)

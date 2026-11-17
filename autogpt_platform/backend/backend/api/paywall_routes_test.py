@@ -63,6 +63,8 @@ OPEN_WHILE_PAYWALLED = {
     "GET /api/invitations/pending",
     "POST /api/invitations/{token}/accept",
     "POST /api/invitations/{token}/decline",
+    # Saying no to a purchase the chat prepared.
+    "POST /api/chat/sessions/{session_id}/link-checkouts/{checkout_id}/decline",
     "DELETE /api/memory",
     "GET /api/memory/experts/{expert_id}/facts",
     "DELETE /api/memory/experts/{expert_id}",

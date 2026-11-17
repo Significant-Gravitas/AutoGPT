@@ -18,6 +18,19 @@ const STATUS_LABELS: Record<string, string> = {
   browser_reset: "Ready to browse again",
 };
 
+// A line for the person beside the status. The tool's own message is
+// written for Otto, tool names and all, so the card never shows it.
+const STATUS_DETAILS: Record<string, string> = {
+  created: "Approve it in Link, then continue here.",
+  pending_approval: "Approve it in Link, then continue here.",
+  declined: "Nothing was charged.",
+  denied: "Nothing was charged.",
+  expired: "Nothing was charged.",
+  not_submitted: "Nothing was charged.",
+  canceled: "Nothing was charged.",
+  outcome_unknown: "Don't pay again until Link shows what happened.",
+};
+
 // Hosts Link sends a customer to for approval or a required action; the
 // backend applies the same rule.
 const LINK_ACTION_DOMAINS = ["link.com", "stripe.com"];
@@ -77,7 +90,7 @@ export function checkoutPresentation(output: Record<string, unknown>) {
         ? "Complete verification in Link"
         : "Review in Link",
     status: STATUS_LABELS[key] ?? "Link checkout",
-    message: typeof output.message === "string" ? output.message : "",
+    detail: STATUS_DETAILS[key] ?? "",
     actionMessage:
       key === "requires_action" && typeof output.action_message === "string"
         ? output.action_message

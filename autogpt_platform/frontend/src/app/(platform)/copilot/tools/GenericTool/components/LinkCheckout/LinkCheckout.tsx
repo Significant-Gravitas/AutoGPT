@@ -27,7 +27,7 @@ export function LinkCheckout({ output }: Props) {
     approvalUrl,
     linkLabel,
     status,
-    message,
+    detail,
     actionMessage,
     testMode,
     approvesInChat,
@@ -76,7 +76,9 @@ export function LinkCheckout({ output }: Props) {
               {actionMessage}
             </p>
           )}
-          <p className="text-body text-foreground-secondary">{message}</p>
+          {detail && (
+            <p className="text-body text-foreground-secondary">{detail}</p>
+          )}
           {approvalUrl && !readOnly && (
             <Button
               as="NextLink"

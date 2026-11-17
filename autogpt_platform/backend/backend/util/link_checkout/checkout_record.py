@@ -75,8 +75,12 @@ def current_intent(directory: Path) -> CheckoutIntent:
 
 
 def consume_intent(directory: Path, intent: CheckoutIntent) -> None:
-    """Record the single payment attempt before any card is retrieved."""
+    """Record the single payment attempt before any card is retrieved. The
+    per-chat lock already makes it the only one; a checkout recorded as
+    attempted is refused here too."""
     current = read_intent(directory, intent.id, intent.user_id, intent.session_id)
+    if current.attempted:
+        raise RuntimeError("This checkout was already attempted")
     current.attempted = True
     replace_intent(directory, current)
     mark_sensitive(directory)

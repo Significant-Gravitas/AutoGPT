@@ -209,14 +209,66 @@ async def test_refresh_reads_a_comma_delimited_granted_scope(handler, link):
 
 @pytest.mark.asyncio
 async def test_a_grant_from_another_client_is_not_refreshed_or_revoked(handler, link):
+    """After the client is rotated nothing here can refresh the old grant. It
+    is a dead grant (RFC 6749 calls one issued to another client
+    invalid_grant), so the user is asked to reconnect."""
     requests, _ = link
     credentials = hosted_credentials(client_id="lwlcid_previous")
 
-    with pytest.raises(RuntimeError, match="different OAuth client"):
+    with pytest.raises(OAuthTokenRequestError) as failure:
         await handler.refresh_tokens(credentials)
+    assert describe_refresh_failure(failure.value).definitive
     # Revocation runs after the local delete, so it reports rather than raises.
     assert await handler.revoke_tokens(credentials) is False
     assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_a_device_grant_is_left_for_the_device_client(handler, link):
+    """A reconnect through the device client can land after this handler was
+    picked; that is no dead grant, so the next refresh picks the right one."""
+    requests, _ = link
+    credentials = hosted_credentials()
+    credentials.metadata = {"link_oauth_flow": "device_code"}
+
+    with pytest.raises(RuntimeError) as failure:
+        await handler.refresh_tokens(credentials)
+
+    assert not describe_refresh_failure(failure.value).definitive
+    assert requests == []
+
+
+@pytest.mark.asyncio
+async def test_a_grant_without_its_client_works_until_it_must_refresh():
+    """Once the confidential client is unconfigured, its grants keep working
+    while their access tokens last, then ask for a reconnect."""
+    handler = stripe_link_hosted.unconfigured_handler()
+    credentials = hosted_credentials()
+    credentials.access_token_expires_at = int(time.time()) + 3600
+    assert not handler.needs_refresh(credentials)
+
+    credentials.access_token_expires_at = int(time.time()) - 1
+    with pytest.raises(OAuthTokenRequestError) as failure:
+        await handler.refresh_tokens(credentials)
+    assert describe_refresh_failure(failure.value).definitive
+
+
+@pytest.mark.asyncio
+async def test_an_exchange_without_an_expiry_still_connects(handler, link):
+    _, responses = link
+    responses["/auth/token"] = httpx.Response(
+        200,
+        json={
+            "access_token": "liwltoken_new",
+            "refresh_token": "liwlrefresh_new",
+            "token_type": "Bearer",
+            "scope": "payment_methods.agentic userinfo:read",
+        },
+    )
+
+    credentials = await handler.exchange_code_for_tokens("code", [], "v" * 43)
+
+    assert credentials.access_token_expires_at is None
 
 
 @pytest.mark.asyncio

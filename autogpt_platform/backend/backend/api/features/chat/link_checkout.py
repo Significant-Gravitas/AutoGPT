@@ -116,7 +116,8 @@ async def approve_link_purchase(
 @router.post(
     "/sessions/{session_id}/link-checkouts/{checkout_id}/decline",
     summary="Decline a Link purchase",
-    dependencies=[Security(auth.requires_user), Depends(enforce_payment_paywall)],
+    # Saying no to a purchase must work whatever the account's plan.
+    dependencies=[Security(auth.requires_user)],
     responses={
         404: {"description": "No such purchase in the caller's chat"},
         409: {"description": "Already approved, expired, or since raised"},

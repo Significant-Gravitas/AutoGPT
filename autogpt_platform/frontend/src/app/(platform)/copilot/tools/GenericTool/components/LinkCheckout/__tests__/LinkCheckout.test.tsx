@@ -92,7 +92,9 @@ describe("LinkCheckout in-chat approval", () => {
       `run_capability id "tool:browser_complete_link_payment" and input {"checkout_id":"${CHECKOUT_ID}"}`,
     );
     expect(
-      await screen.findByText("Approved. Completing the purchase…"),
+      await screen.findByText(
+        "Approved. The payment's progress shows in the chat.",
+      ),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
   });
@@ -259,6 +261,27 @@ describe("LinkCheckout in-chat approval", () => {
     ).not.toContain("whitespace-pre");
   });
 
+  it("speaks to the person, never repeating the tool's message to Otto", async () => {
+    render(
+      <CopilotChatActionsProvider onSend={onSend} chatSurface="copilot">
+        <LinkCheckout
+          output={{
+            ...output,
+            approval_mode: "link",
+            status: "pending_approval",
+            message:
+              "Ask the user to approve this purchase in Link, then call tool:browser_complete_link_payment with this checkout_id.",
+          }}
+        />
+      </CopilotChatActionsProvider>,
+    );
+
+    expect(
+      await screen.findByText("Approve it in Link, then continue here."),
+    ).toBeDefined();
+    expect(screen.queryByText(/browser_complete_link_payment/)).toBeNull();
+  });
+
   it("shows where the card is used when the purchase is approved in Link", async () => {
     render(
       <CopilotChatActionsProvider onSend={onSend} chatSurface="copilot">
@@ -383,7 +406,9 @@ describe("LinkCheckout in-chat approval", () => {
     renderCard();
 
     expect(
-      await screen.findByText("Approved. Completing the purchase…"),
+      await screen.findByText(
+        "Approved. The payment's progress shows in the chat.",
+      ),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
   });

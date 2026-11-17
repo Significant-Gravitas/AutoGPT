@@ -33,6 +33,9 @@ from backend.util.link_checkout.broker_routing import configured as remote_broke
 from backend.util.link_checkout.broker_routing import routed
 from backend.util.link_checkout.config import private_checkout_requested
 from backend.util.link_checkout.runtime import local_runtime_ready
+from backend.util.settings import BehaveAs, Settings
+
+_settings = Settings()
 
 _caller: ContextVar[Principal | None] = ContextVar("checkout_caller", default=None)
 
@@ -44,7 +47,7 @@ def enabled() -> bool:
     ``/dev/shm``), browsing stays ordinary and the checkout tools stay hidden;
     every step that could touch a card re-checks and fails closed regardless.
     """
-    return remote_broker() or (private_checkout_requested() and local_runtime_ready())
+    return remote_broker() or _in_process()
 
 
 def active_for(user_id: str | None) -> bool:
@@ -53,7 +56,19 @@ def active_for(user_id: str | None) -> bool:
         return False
     if remote_broker():
         return routed(user_id)
-    return private_checkout_requested() and local_runtime_ready()
+    return _in_process()
+
+
+def _in_process() -> bool:
+    """Private browsers inside this process serve a self-hosted install. The
+    hosted service keeps every one in a user's own broker, which is also all
+    its checkout tools accept (``browser_checkout_support.available``), so
+    there browsing stays ordinary without one."""
+    return (
+        _settings.config.behave_as != BehaveAs.CLOUD
+        and private_checkout_requested()
+        and local_runtime_ready()
+    )
 
 
 def remote() -> bool:
