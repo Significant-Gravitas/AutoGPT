@@ -493,8 +493,8 @@ class _ShardStream:
 
     async def _forward(self, subscription: ShardedSubscription) -> None:
         async for message in subscription.messages():
-            msg_type = message.get("type")
-            channel = message.get("channel")
+            msg_type = message["type"]
+            channel = message["channel"]
             if msg_type == "sunsubscribe":
                 if self._unsubscribing[channel] > 0:
                     self._unsubscribing[channel] -= 1
