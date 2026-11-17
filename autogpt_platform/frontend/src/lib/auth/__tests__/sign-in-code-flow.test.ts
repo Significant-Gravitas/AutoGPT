@@ -5,6 +5,7 @@
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
+import { AuthEmailNotSent } from "../auth-email-not-sent";
 import { recordWrongCode } from "../sign-in-code-lockout";
 
 // Runs the real Better Auth handler with this app's auth options (from
@@ -1060,7 +1061,7 @@ describe("the code", () => {
     const { handler, db } = await createAuth();
     existingAccount(db, "pat@company.example");
     answerAs("github", { email: "pat@company.example" });
-    sendAuthEmail.mockRejectedValueOnce(new Error("mailer down"));
+    sendAuthEmail.mockRejectedValueOnce(new AuthEmailNotSent("mailer down"));
     const browser = new Browser(handler);
 
     const landing = await browser.signInWith("github");

@@ -1,4 +1,5 @@
 import { environment } from "@/services/environment";
+import { AuthEmailNotSent } from "./auth-email-not-sent";
 import { APIError } from "better-auth/api";
 import {
   assertEmailHasMailServer,
@@ -77,7 +78,7 @@ export async function sendAuthEmail(
       if (isUndeliverable(response.status, detail)) {
         throw undeliverableEmailError();
       }
-      throw new Error(
+      throw new AuthEmailNotSent(
         `Backend auth-email send failed (${response.status}) for "${type}"` +
           (detail ? `: ${detail.slice(0, 200)}` : ""),
       );

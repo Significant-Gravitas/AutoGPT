@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthEmailContext } from "../auth-email-cooldown";
+import { AuthEmailNotSent } from "../auth-email-not-sent";
+import { undeliverableEmailError } from "../email-deliverability";
 
 const sendAuthEmail = vi.hoisted(() => vi.fn());
 vi.mock("../email", () => ({ sendAuthEmail }));
@@ -59,12 +61,24 @@ describe("sending a sign-in code", () => {
     expect(releaseWindowSlot).not.toHaveBeenCalled();
   });
 
-  it("gives the hour's slot back when the backend refuses the send", async () => {
+  it.each([
+    ["the backend refuses the send", new AuthEmailNotSent("mailer down")],
+    ["the address takes no mail", undeliverableEmailError()],
+  ])("gives the hour's slot back when %s", async (_case, error) => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    sendAuthEmail.mockRejectedValue(new Error("mailer down"));
+    sendAuthEmail.mockRejectedValue(error);
 
     expect(await sendCode(context, pending, "042917", "slot")).toBe(false);
     expect(releaseWindowSlot).toHaveBeenCalledWith(context, "slot");
+  });
+
+  it("keeps the slot when the request may have reached the backend", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // The connection dropped after the request left: the email may be sent.
+    sendAuthEmail.mockRejectedValue(new TypeError("fetch failed"));
+
+    expect(await sendCode(context, pending, "042917", "slot")).toBe(false);
+    expect(releaseWindowSlot).not.toHaveBeenCalled();
   });
 
   it("cancels a send the backend hasn't answered in 10 seconds, and keeps its slot", async () => {

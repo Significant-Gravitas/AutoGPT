@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { isAPIError } from "better-auth/api";
+import { isAuthEmailNotSent } from "./auth-email-not-sent";
 import {
   type AuthEmailContext,
   claimWindowSlot,
@@ -11,6 +13,7 @@ import {
   SIGN_IN_CODE_UNSENT,
 } from "./sign-in-code";
 import type { PendingSignIn } from "./sign-in-code-store";
+import { UNDELIVERABLE_EMAIL_CODE } from "./undeliverable-email";
 
 // Documented in docs/platform/rate-limits.md: update it with any change here.
 const CODE_EMAILS_PER_ADDRESS = { max: 5, windowSeconds: 60 * 60 };
@@ -80,7 +83,9 @@ export async function sendCode(
     return true;
   } catch (error) {
     logFailure("Failed to send a sign-in code", error);
-    if (!cancel.signal.aborted) await releaseCodeEmail(context, slot);
+    // Only a code that surely didn't go out gives its slot back: a send cut
+    // off, or lost after it left, may still have reached the address.
+    if (surelyNotSent(error)) await releaseCodeEmail(context, slot);
     return false;
   } finally {
     clearTimeout(timer);
@@ -130,4 +135,12 @@ function logFailure(message: string, error: unknown) {
   console.error(message, {
     error: error instanceof Error ? error.message : String(error),
   });
+}
+
+// The backend answered without sending, or the address takes no mail.
+function surelyNotSent(error: unknown) {
+  return (
+    isAuthEmailNotSent(error) ||
+    (isAPIError(error) && error.body?.code === UNDELIVERABLE_EMAIL_CODE)
+  );
 }
