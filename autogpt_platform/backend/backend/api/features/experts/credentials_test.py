@@ -1,15 +1,19 @@
 """Tests for per-expert credential grants and the enforcement they drive."""
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import prisma.models
 import pytest
 import pytest_mock
 from pydantic import SecretStr
 
 from backend.api.features.experts.credentials import (
     _derive_from_workflows,
+    _seed_if_needed,
     _to_refs,
+    expert_allowed_credential_ids,
     filter_credentials_for_expert,
     settle_credential_seed,
 )
@@ -405,6 +409,74 @@ async def test_settling_the_seed_stamps_even_when_derivation_was_incomplete(
 
     seed.assert_awaited_once_with("user-1", expert)
     stamp.assert_awaited_once_with("expert-1")
+
+
+@pytest.mark.asyncio
+async def test_a_seeded_expert_is_looked_up_without_its_workflows(
+    mocker: pytest_mock.MockFixture,
+):
+    """Enforcement runs on every expert run, block and MCP call. Once the seed
+    is stamped nothing reads the workflows, so loading them there is waste that
+    grows with every workflow the expert installs."""
+    expert = prisma.models.Expert.model_construct(
+        id="expert-1", credentialsSeededAt=datetime.now(timezone.utc)
+    )
+    find_expert = AsyncMock(return_value=expert)
+    mocker.patch.object(
+        prisma.models.Expert,
+        "prisma",
+        return_value=SimpleNamespace(find_first=find_expert),
+    )
+    find_workflows = AsyncMock()
+    mocker.patch.object(
+        prisma.models.ExpertWorkflow,
+        "prisma",
+        return_value=SimpleNamespace(find_many=find_workflows),
+    )
+    mocker.patch.object(
+        prisma.models.ExpertCredential,
+        "prisma",
+        return_value=SimpleNamespace(
+            find_many=AsyncMock(return_value=[_Grant("cred-1", "notion")])
+        ),
+    )
+
+    allowed = await expert_allowed_credential_ids("user-1", "expert-1")
+
+    assert allowed == ["cred-1"]
+    assert "include" not in find_expert.await_args.kwargs
+    find_workflows.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("workflows_loaded", [True, False])
+async def test_a_pending_seed_derives_from_the_expert_workflows(
+    mocker: pytest_mock.MockFixture, workflows_loaded: bool
+):
+    """A pending seed reads the workflows whether or not the caller loaded them:
+    the roster loads them itself, an ownership lookup does not."""
+    workflow = prisma.models.ExpertWorkflow.model_construct(id="wf-1")
+    expert = prisma.models.Expert.model_construct(
+        id="expert-1",
+        credentialsSeededAt=None,
+        Workflows=[workflow] if workflows_loaded else None,
+    )
+    find_workflows = AsyncMock(return_value=[workflow])
+    mocker.patch.object(
+        prisma.models.ExpertWorkflow,
+        "prisma",
+        return_value=SimpleNamespace(find_many=find_workflows),
+    )
+    derive = mocker.patch(
+        "backend.api.features.experts.credentials._derive_from_workflows",
+        AsyncMock(return_value=({}, True)),
+    )
+    mocker.patch("backend.api.features.experts.credentials._stamp_seeded", AsyncMock())
+
+    await _seed_if_needed("user-1", expert)
+
+    assert derive.await_args.args[1].Workflows == [workflow]
+    assert find_workflows.await_count == (0 if workflows_loaded else 1)
 
 
 def test_refs_carry_the_service_behind_an_mcp_credential():

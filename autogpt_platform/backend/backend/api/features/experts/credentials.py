@@ -33,10 +33,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_WORKFLOW_INCLUDE = {"Workflows": {"include": {"LibraryAgent": True}}}
-
 
 async def _owned_expert(user_id: str, expert_id: str) -> prisma.models.Expert:
+    """The expert row alone; ``_seed_if_needed`` loads workflows if it needs them."""
     row = await prisma.models.Expert.prisma().find_first(
         where={
             "id": expert_id,
@@ -44,7 +43,6 @@ async def _owned_expert(user_id: str, expert_id: str) -> prisma.models.Expert:
             "isTemplate": False,
             "isArchived": False,
         },
-        include=_WORKFLOW_INCLUDE,  # type: ignore[arg-type]
     )
     if row is None:
         raise ExpertNotFoundError(f"Expert #{expert_id} not found")
@@ -144,6 +142,13 @@ async def _seed_if_needed(user_id: str, expert: prisma.models.Expert) -> None:
     """
     if expert.credentialsSeededAt is not None:
         return
+    # Only a pending seed reads workflows, so the ownership lookup skips that
+    # join; enforcement runs on every expert run and would otherwise pay for it.
+    if expert.Workflows is None:
+        workflows = await prisma.models.ExpertWorkflow.prisma().find_many(
+            where={"expertId": expert.id}, include={"LibraryAgent": True}
+        )
+        expert = expert.model_copy(update={"Workflows": workflows})
     derived, is_complete = await _derive_from_workflows(user_id, expert)
     if derived:
         await prisma.models.ExpertCredential.prisma().create_many(
