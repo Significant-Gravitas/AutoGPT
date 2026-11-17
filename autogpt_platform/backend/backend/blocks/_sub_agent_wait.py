@@ -77,6 +77,9 @@ class SubAgentWait:
         # wait once that catch-up succeeds, as the child publishes no more.
         self._pending_end: GraphExecutionEvent | None = None
         self._failures = 0  # failed catch-ups in a row
+        # When an owed catch-up is retried. Absolute, so the child's
+        # non-terminal updates arriving meanwhile don't keep pushing it out.
+        self._retry_at: float | None = None
         self._failures_after_end = 0
         self.finished = False
         self.stats: GraphExecutionMeta.Stats | None = None
@@ -104,9 +107,8 @@ class SubAgentWait:
     async def _next(self) -> ExecutionEvent | None:
         """The next event; ``None`` for a gap, a quiet spell or a retry."""
         wait = QUIET_RECHECK_S
-        if self._stale:
-            backoff = CATCH_UP_RETRY_S * 2 ** max(self._failures - 1, 0)
-            wait = min(backoff, QUIET_RECHECK_S)
+        if self._stale and self._retry_at is not None:
+            wait = max(self._retry_at - asyncio.get_running_loop().time(), 0.0)
         try:
             async with asyncio.timeout(wait):
                 event = await self._queue.get()
@@ -147,7 +149,7 @@ class SubAgentWait:
         except Exception:
             self._on_failed_catch_up()
             return []
-        self._stale, self._failures = False, 0
+        self._stale, self._failures, self._retry_at = False, 0, None
         if (
             event is not None
             and event.event_type == ExecutionEventType.NODE_EXEC_UPDATE
@@ -235,6 +237,10 @@ class SubAgentWait:
         self._logger.warning(f"Execution {self._log_id} catch-up failed", exc_info=True)
         self._stale = True
         self._failures += 1
+        backoff = CATCH_UP_RETRY_S * 2 ** (self._failures - 1)
+        self._retry_at = asyncio.get_running_loop().time() + min(
+            backoff, QUIET_RECHECK_S
+        )
         if self._pending_end is None:
             return
         self._failures_after_end += 1

@@ -375,6 +375,49 @@ async def test_failed_catch_ups_back_off(monkeypatch: pytest.MonkeyPatch):
     assert db.get_graph_execution_meta.await_count <= 8
 
 
+async def test_an_owed_catch_up_runs_on_time_while_the_child_keeps_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A child that keeps sending non-terminal updates (nodes queued and
+    started) faster than the retry interval must not push the owed retry out,
+    or the outputs missed in a gap wait for the next node to finish."""
+    monkeypatch.setattr(sub_agent_wait, "CATCH_UP_RETRY_S", 0.2)
+    stream = _Stream()
+    a, b = _output(1, "a"), _output(2, "b")
+    still_running = a.model_copy(update={"status": ExecutionStatus.RUNNING})
+    for item in (None, a, None):
+        stream.items.put_nowait(item)
+    # Read 1 finds nothing missed, read 2 (after the gap) fails, the retry
+    # (read 3) finds b, which was published while the stream was down.
+    db = _db(
+        _meta(ExecutionStatus.RUNNING),
+        ConnectionError("database manager unreachable"),
+        _meta(ExecutionStatus.RUNNING),
+        nodes=[],
+        later_nodes=[a, b],
+    )
+    retried_while_streaming = False
+
+    async def child_keeps_streaming() -> None:
+        nonlocal retried_while_streaming
+        try:
+            async with asyncio.timeout(3):
+                while db.get_graph_execution_meta.await_count < 3:
+                    stream.items.put_nowait(still_running)
+                    await asyncio.sleep(0.02)
+            retried_while_streaming = True
+        except TimeoutError:
+            pass
+        stream.items.put_nowait(_finished_event())
+
+    child = asyncio.create_task(child_keeps_streaming())
+    outputs, _ = await _run(monkeypatch, stream, db)
+    await child
+
+    assert retried_while_streaming
+    assert outputs == [("result", "a"), ("result", "b")]
+
+
 async def test_a_failed_catch_up_does_not_end_the_wait(
     monkeypatch: pytest.MonkeyPatch,
 ):
