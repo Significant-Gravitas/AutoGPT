@@ -200,8 +200,8 @@ def test_build_trigger_run_at_returns_datetrigger():
     ],
 )
 def test_build_trigger_accepts_frontend_custom_interval_crons(cron: str):
-    """#15275/#15276 overlap: crons the frontend clamp emits must pass 16488
-    length/next-fire guards and APScheduler field ranges."""
+    """Every interval the frontend's custom-interval clamp emits must build a
+    trigger."""
     trigger = _build_trigger(cron=cron, run_at=None, user_timezone="UTC")
     assert isinstance(trigger, CronTrigger)
     assert trigger.end_date is None

@@ -37,6 +37,8 @@ def _fire_weekdays(cron: str, n: int = 7) -> list[str]:
         ("0-7/2", ["Sun", "Tue", "Thu", "Sat", "Sun", "Tue", "Thu"]),
         ("1/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("5/2", ["Fri"] * 7),
+        ("6/2", ["Sat"] * 7),
+        ("7/2", ["Sun"] * 7),
         ("5-2/2", ["Sun", "Tue", "Fri", "Sun", "Tue", "Fri", "Sun"]),
         ("1-5/2", ["Mon", "Wed", "Fri", "Mon", "Wed", "Fri", "Mon"]),
         ("6-2", ["Sun", "Mon", "Tue", "Sat", "Sun", "Mon", "Tue"]),
@@ -55,7 +57,7 @@ def test_dow_field_keeps_its_days(dow, expected):
 
 
 @pytest.mark.parametrize(
-    "dow", ["1/", "0-7/", "*/", "1,3/", "*/0", "8", "mon-fri/", "*/x"]
+    "dow", ["1/", "0-7/", "*/", "1,3/", "*/0", "8", "mon-fri/", "*/x", "sun-"]
 )
 def test_malformed_dow_field_is_rejected(dow):
     """A slash with no step, a zero step or a day above 7 must raise instead of

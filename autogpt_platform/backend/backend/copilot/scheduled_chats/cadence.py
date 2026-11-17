@@ -8,9 +8,11 @@ at a time the schedule already uses, and never more often on any day than it
 runs now.
 
 Crons are stored as Unix cron, and the scheduler hands them to APScheduler with
-their weekdays renumbered, so croniter reads them as the scheduler fires them
-but for one thing it is told: APScheduler fires when the day of the month and
-the day of the week both match, not either.
+their weekdays renumbered. croniter is handed the same weekdays spelled out, so
+it counts the days the scheduler fires on even for the rare forms it reads its
+own way, and is told the one other thing that differs from Unix cron:
+APScheduler fires when the day of the month and the day of the week both match,
+not either.
 
 Fires are counted on the zone's clock as it stands now, at a fixed offset, so
 the week the clocks change has no hour twice or missing: an hourly schedule
@@ -23,6 +25,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 from pydantic import BaseModel
+
+from backend.util.cron import spell_out_cron_day_of_week
 
 # Every rung of the ladder fires well under this many times a week, so a cron
 # counted this far runs more often than all of them: stop there.
@@ -179,7 +183,11 @@ def _fires_from(
         try:
             # croniter starts after the time it is given; a cron second is
             # the smallest step it takes.
-            schedule = croniter(cron, start - timedelta(seconds=1), day_or=False)
+            schedule = croniter(
+                spell_out_cron_day_of_week(cron),
+                start - timedelta(seconds=1),
+                day_or=False,
+            )
             for _ in range(limit):
                 fire = schedule.get_next(datetime)
                 if fire >= end:

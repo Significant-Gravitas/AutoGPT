@@ -1,6 +1,7 @@
 """Limits every user-supplied cron meets before it reaches APScheduler, and the
 day-of-week renumbering it needs to fire on the days Unix cron means."""
 
+from collections.abc import Callable
 from datetime import datetime, timedelta, tzinfo
 
 from apscheduler.triggers.cron import CronTrigger
@@ -56,31 +57,36 @@ def normalize_cron_day_of_week(cron: str) -> str:
     ``CronTrigger.from_crontab`` reads the field in its own numbering, so as
     given ``1`` fires on Tuesday, ``0-7`` only on Sunday, ``*/2`` steps from
     Monday, ``sun-thu`` is refused and ``mon-fri/2`` loses its step (#15276).
-    Expanding each token to its days before renumbering keeps all of them.
-    ``*``, ``?``, forms this doesn't read and a cron without five fields are
-    left for APScheduler to judge.
+    Expanding the field to its days before renumbering keeps all of them.
     """
+    return _spell_out_day_of_week(cron, lambda day: (day - 1) % 7)
+
+
+def spell_out_cron_day_of_week(cron: str) -> str:
+    """*cron* with its day-of-week field as the Unix days the scheduler fires
+    it on, for another cron reader to count: croniter reads a few rare forms
+    its own way (``1-1`` as every day, ``6/2`` as ``*/2``)."""
+    return _spell_out_day_of_week(cron, lambda day: day)
+
+
+def _spell_out_day_of_week(cron: str, number: Callable[[int], int]) -> str:
+    """The field as one list of *number*-ed days. ``*``, ``?`` and a cron
+    without five fields are left for APScheduler to judge."""
     parts = cron.split()
     if len(parts) != 5 or parts[4] in ("*", "?"):
         return cron
-    parts[4] = ",".join(_apscheduler_days(token) for token in parts[4].split(","))
+    days = {number(day) for token in parts[4].split(",") for day in _unix_days(token)}
+    parts[4] = ",".join(str(day) for day in sorted(days))
     return " ".join(parts)
 
 
-def _apscheduler_days(token: str) -> str:
-    days = _unix_days(token)
-    if days is None:
-        return token
-    return ",".join(str(day) for day in sorted({(day - 1) % 7 for day in days}))
-
-
-def _unix_days(token: str) -> list[int] | None:
-    """The Unix days (0=Sun..6=Sat) one token of the field covers, or ``None``
-    for a form this doesn't read. Refuses what cron refuses (a slash without a
-    step, a zero step, a day above 7) instead of coercing it into days nobody
-    asked for."""
+def _unix_days(token: str) -> list[int]:
+    """The Unix days (0=Sun..6=Sat) one token of the field covers. Refuses
+    what cron refuses (a slash without a step, a zero step, a day above 7)
+    and anything else it can't read, rather than coerce it into days nobody
+    asked for: APScheduler alone reads ``sun-`` as Sunday."""
     body, slash, step_text = token.partition("/")
-    if slash and not (step_text.isdigit() and int(step_text) > 0):
+    if slash and not (_is_number(step_text) and int(step_text) > 0):
         raise ValueError(
             f"Day-of-week step in {token!r} must be a whole number above 0"
         )
@@ -91,8 +97,6 @@ def _unix_days(token: str) -> list[int] | None:
     elif "-" in body:
         first_text, last_text = body.split("-", 1)
         first, last = _unix_day(first_text, token), _unix_day(last_text, token)
-        if first is None or last is None:
-            return None
         if first <= last:
             days = list(range(first, last + 1))
         else:
@@ -100,17 +104,22 @@ def _unix_days(token: str) -> list[int] | None:
             days = [*range(first, 7), *range(last + 1)]
     else:
         first = _unix_day(body, token)
-        if first is None:
-            return None
-        # ``1/2`` steps from its day to Saturday, as croniter reads it.
+        # ``1/2`` steps from its day to Saturday; ``7/2`` is Sunday alone.
         days = list(range(first, max(first, 6) + 1)) if slash else [first]
     return sorted({day % 7 for day in days[::step]})
 
 
-def _unix_day(value: str, token: str) -> int | None:
-    if not value.isdigit():
-        return _UNIX_DAY_NAMES.get(value.lower())
+def _unix_day(value: str, token: str) -> int:
+    if not _is_number(value):
+        if value.lower() not in _UNIX_DAY_NAMES:
+            raise ValueError(f"Unrecognized day of the week {value!r} in {token!r}")
+        return _UNIX_DAY_NAMES[value.lower()]
     day = int(value)
     if day > 7:
         raise ValueError(f"Day-of-week {day} out of range 0-7 in {token!r}")
     return day
+
+
+def _is_number(text: str) -> bool:
+    # ASCII only: str.isdigit() also takes other scripts' digits, such as "٣".
+    return text.isascii() and text.isdigit()
