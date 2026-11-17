@@ -371,6 +371,13 @@ class WebhookSetupUnavailableError(Exception):
     configuration problem, so don't map it to a 4xx."""
 
 
+class SchedulerUnavailableError(Exception):
+    """The scheduler refused the connection or didn't answer a read in time.
+
+    It restarts on every deploy, so this is transient (HTTP 503): nothing was
+    read or changed, and asking again shortly is safe."""
+
+
 class ExpertRunPausedError(ValueError):
     """An expert-attributed run (schedule, trigger, or ``run_agent`` from her
     chat) was refused because the expert's schedules are paused (weekly credit

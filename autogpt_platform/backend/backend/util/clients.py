@@ -2,14 +2,20 @@
 Centralized service client helpers with thread caching.
 """
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Awaitable, TypeVar
+
+import httpx
 
 from backend.util.cache import cached, thread_cached
+from backend.util.exceptions import SchedulerUnavailableError
 from backend.util.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 settings = Settings()
+
+T = TypeVar("T")
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
@@ -62,6 +68,27 @@ def get_scheduler_client(should_retry: bool = False) -> "SchedulerClient":
     from backend.util.service import get_service_client
 
     return get_service_client(SchedulerClient, request_retry=should_retry)
+
+
+async def read_schedules(read: Awaitable[T]) -> T:
+    """Await a schedule list someone is waiting on, failing fast while the
+    scheduler is out.
+
+    The scheduler restarts on every deploy. Unbounded, a read waited out the
+    300s RPC timeout long after the 30s frontend proxy gave up, and a refused
+    connection surfaced as a 500. Either now raises
+    ``SchedulerUnavailableError`` (a 503) within
+    ``schedule_list_timeout_seconds``. A scheduler that answers with an error
+    is not an outage, so that error passes through unchanged.
+    """
+    try:
+        return await asyncio.wait_for(
+            read, timeout=settings.config.schedule_list_timeout_seconds
+        )
+    except (TimeoutError, httpx.TransportError) as e:
+        raise SchedulerUnavailableError(
+            f"The scheduler did not answer: {type(e).__name__} {e}".rstrip()
+        ) from e
 
 
 @thread_cached

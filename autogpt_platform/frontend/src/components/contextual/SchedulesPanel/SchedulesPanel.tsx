@@ -19,8 +19,15 @@ interface Props {
 }
 
 export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
-  const { schedules, paused, isLoading, error, partialError } =
-    useSchedulesPanel();
+  const {
+    schedules,
+    paused,
+    isLoading,
+    unavailable,
+    retryUnavailable,
+    error,
+    partialError,
+  } = useSchedulesPanel();
 
   return (
     <section className="space-y-6">
@@ -59,6 +66,21 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         </div>
       )}
 
+      {unavailable && (
+        <div
+          className="flex flex-col gap-3 rounded-md border border-border-base bg-surface-muted px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+          data-testid="schedules-unavailable"
+        >
+          <Text variant="body" tone="secondary">
+            Scheduled items are temporarily unavailable. They&apos;ll be back in
+            a moment.
+          </Text>
+          <Button variant="secondary" size="small" onClick={retryUnavailable}>
+            Try again
+          </Button>
+        </div>
+      )}
+
       {paused.length > 0 && (
         <ul
           className="flex flex-col gap-3"
@@ -91,7 +113,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           <LoadingSpinner />
         </div>
       ) : schedules.length === 0 ? (
-        paused.length === 0 && <EmptyFollowups />
+        paused.length === 0 && !unavailable && <EmptyFollowups />
       ) : (
         <ul
           className="flex flex-col gap-3"

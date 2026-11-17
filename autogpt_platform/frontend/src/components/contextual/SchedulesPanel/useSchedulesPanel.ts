@@ -6,10 +6,17 @@ import {
 import type { CopilotTurnJobInfo } from "@/app/api/__generated__/models/copilotTurnJobInfo";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { okData } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export type ScheduleItem =
   | { kind: "copilot_turn"; item: CopilotTurnJobInfo }
   | { kind: "graph"; item: GraphExecutionJobInfo };
+
+// The scheduler restarts on every deploy and answers 503 while it is out: the
+// schedules are unknown for a moment, neither missing nor broken.
+function isSchedulerUnavailable(error: unknown) {
+  return error instanceof ApiError && error.status === 503;
+}
 
 function nextRunMs(item: { next_run_time?: string | null }): number {
   if (!item.next_run_time) return Number.POSITIVE_INFINITY;
@@ -55,9 +62,18 @@ export function useSchedulesPanel() {
   const paused = pausedQuery.data ?? [];
   const isLoading =
     copilotQuery.isLoading || graphQuery.isLoading || pausedQuery.isLoading;
+  const schedulerErrors = [copilotQuery.error, graphQuery.error];
+  const unavailable =
+    !isLoading && schedulerErrors.some(isSchedulerUnavailable);
   const fetchError =
-    copilotQuery.error ?? graphQuery.error ?? pausedQuery.error;
+    schedulerErrors.find((error) => error && !isSchedulerUnavailable(error)) ??
+    pausedQuery.error;
   const hasContent = schedules.length > 0 || paused.length > 0;
+
+  function retryUnavailable() {
+    copilotQuery.refetch();
+    graphQuery.refetch();
+  }
 
   return {
     // Backwards-compat alias — ``followups`` was the only-copilot
@@ -67,6 +83,8 @@ export function useSchedulesPanel() {
     schedules,
     paused,
     isLoading,
+    unavailable,
+    retryUnavailable,
     // The sources are independent — only hard-fail once all have settled
     // and there is nothing to show; a partial failure keeps the loaded
     // lists visible and surfaces a non-blocking warning instead.

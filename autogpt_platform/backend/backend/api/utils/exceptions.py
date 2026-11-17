@@ -31,10 +31,18 @@ from backend.util.exceptions import (
     NotAuthorizedError,
     NotFoundError,
     PreconditionFailed,
+    SchedulerUnavailableError,
 )
 from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
+
+# A deploy leaves no scheduler for about 1-2.5 min; a retry this soon is cheap
+# and lands shortly after it is back.
+SCHEDULER_RETRY_AFTER_SECONDS = 15
+SCHEDULER_UNAVAILABLE_DETAIL = (
+    "Schedules are temporarily unavailable. Try again in a moment."
+)
 
 
 def add_exception_handlers(
@@ -76,6 +84,7 @@ def add_exception_handlers(
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
         MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
+        SchedulerUnavailableError: _handle_scheduler_unavailable,
         PrismaError: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
         Exception: _handle_error(status.HTTP_500_INTERNAL_SERVER_ERROR),
     }.items():
@@ -121,6 +130,28 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
         )
 
     return handler
+
+
+def _handle_scheduler_unavailable(
+    request: fastapi.Request, exc: Exception
+) -> fastapi.responses.Response:
+    # A warning, not an error: it is expected on every deploy, and Sentry files
+    # only errors. The scheduler's own probes watch a longer outage.
+    logger.warning(
+        "%s %s answered 503 while the scheduler is out: %s",
+        request.method,
+        redact_url(request.url.path),
+        exc,
+    )
+    return fastapi.responses.JSONResponse(
+        content={
+            "message": f"Failed to process {request.method} {request.url.path}",
+            "detail": SCHEDULER_UNAVAILABLE_DETAIL,
+            "hint": f"Retry in {SCHEDULER_RETRY_AFTER_SECONDS} seconds.",
+        },
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        headers={"Retry-After": str(SCHEDULER_RETRY_AFTER_SECONDS)},
+    )
 
 
 async def _handle_validation_error(
