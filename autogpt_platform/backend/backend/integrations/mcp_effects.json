@@ -169,6 +169,55 @@
       "stripe_api_write"
     ]
   },
+  "mcp_supabase": {
+    "source": "https://supabase.com/docs/guides/getting-started/mcp",
+    "read": [
+      "generate_typescript_types",
+      "get_advisors",
+      "get_cost",
+      "get_edge_function",
+      "get_notebook",
+      "get_organization",
+      "get_project",
+      "get_project_url",
+      "get_publishable_keys",
+      "get_storage_config",
+      "list_branches",
+      "list_edge_functions",
+      "list_extensions",
+      "list_migrations",
+      "list_notebooks",
+      "list_organizations",
+      "list_projects",
+      "list_storage_buckets",
+      "list_tables",
+      "query_logs",
+      "search_docs"
+    ],
+    "external": [
+      "apply_migration",
+      "confirm_cost",
+      "create_branch",
+      "create_edge_function_secret",
+      "create_notebook",
+      "create_project",
+      "deploy_edge_function",
+      "execute_sql",
+      "pause_project",
+      "rebase_branch",
+      "restore_project",
+      "run_notebook",
+      "submit_feedback",
+      "update_storage_config"
+    ],
+    "irreversible": [
+      "delete_branch",
+      "delete_feedback",
+      "delete_notebook",
+      "merge_branch",
+      "reset_branch"
+    ]
+  },
   "mcp_todoist": {
     "source": "https://github.com/Doist/todoist-mcp/blob/main/src/utils/tool-names.ts",
     "read": [
