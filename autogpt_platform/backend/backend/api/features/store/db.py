@@ -1589,7 +1589,10 @@ async def review_store_submission(
     try:
         submission = await prisma.models.StoreListingVersion.prisma().find_unique(
             where={"id": store_listing_version_id},
-            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+            include={
+                "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
+                "StoreListing": True,
+            },
         )
 
         if not submission:
@@ -1597,12 +1600,18 @@ async def review_store_submission(
                 f"Store listing version {store_listing_version_id} not found"
             )
         assert submission.AgentGraph is not None
+        assert submission.StoreListing is not None
         creator_user_id = submission.AgentGraph.userId
 
         # Check if we're rejecting an already approved agent
         is_rejecting_approved = (
             not is_approved
             and submission.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+        )
+        # Only pulling the live version moves the listing to another one;
+        # pulling an older approved version leaves what the page serves alone.
+        is_rejecting_active = is_rejecting_approved and (
+            submission.StoreListing.activeVersionId in (None, store_listing_version_id)
         )
 
         # If approving, update the listing to indicate it has an approved version
@@ -1669,8 +1678,8 @@ async def review_store_submission(
                     },
                 )
 
-        # If rejecting an approved agent, update the StoreListing accordingly
-        if is_rejecting_approved:
+        # If rejecting the live version, update the StoreListing accordingly
+        if is_rejecting_active:
             # Check if there are other approved versions
             other_approved = (
                 await prisma.models.StoreListingVersion.prisma().find_first(
@@ -1678,7 +1687,8 @@ async def review_store_submission(
                         "storeListingId": submission.storeListingId,
                         "id": {"not": store_listing_version_id},
                         "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                    }
+                    },
+                    order={"version": "desc"},
                 )
             )
 

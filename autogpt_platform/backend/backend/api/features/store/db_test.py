@@ -2179,6 +2179,53 @@ async def test_reject_completes_when_the_reactivated_version_fails_to_load(
     publish.assert_not_awaited()
 
 
+def _approved_version_of_listing_live_at(review_mocks, active_version_id: str):
+    listing = review_mocks.version.StoreListing.model_copy(
+        update={"activeVersionId": active_version_id, "hasApprovedVersion": True}
+    )
+    return review_mocks.version.model_copy(
+        update={
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            "StoreListing": listing,
+        }
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejecting_an_older_approved_version_leaves_the_live_one(
+    review_mocks,
+):
+    """#16872: pulling an old version moved the live page to another one."""
+    review_mocks.slv.find_unique.return_value = _approved_version_of_listing_live_at(
+        review_mocks, "live-version-id"
+    )
+
+    result = await _review(is_approved=False)
+
+    assert result.status == prisma.enums.SubmissionStatus.REJECTED
+    review_mocks.listing.update.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_rejecting_the_live_version_falls_back_to_the_newest_approved_one(
+    review_mocks,
+):
+    """#16872: the fallback took whichever approved row came first, the oldest."""
+    review_mocks.slv.find_unique.return_value = _approved_version_of_listing_live_at(
+        review_mocks, "version-id"
+    )
+    newest_other = review_mocks.version.model_copy(update={"id": "v2-id", "version": 2})
+    review_mocks.slv.find_first.return_value = newest_other
+
+    await _review(is_approved=False)
+
+    assert review_mocks.slv.find_first.await_args.kwargs["order"] == {"version": "desc"}
+    review_mocks.listing.update.assert_awaited_once_with(
+        where={"id": "listing-id"},
+        data={"ActiveVersion": {"connect": {"id": "v2-id"}}},
+    )
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_an_organizations_submissions_are_counted_on_their_own(mocker):
     """The stats count the user's submissions in every organization; paging an
