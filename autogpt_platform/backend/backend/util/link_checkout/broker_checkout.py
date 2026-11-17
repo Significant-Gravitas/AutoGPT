@@ -80,7 +80,11 @@ async def create_checkout(request: CreateCheckout) -> CheckoutView:
             id=uuid.uuid4().hex,
             user_id=request.user_id,
             session_id=key,
-            approval_mode=request.approval_mode,
+            approval_mode=(
+                "link"
+                if request.plan.approved_in_link_only()
+                else request.approval_mode
+            ),
             expires_at=wall_clock() + CHECKOUT_TTL_SECONDS,
             plan=request.plan,
             browser=await prepare_browser(

@@ -25,9 +25,11 @@ def top(account: str | None = None) -> tuple[FrameContext, str | None]:
     return FrameContext(frame=frame, target_id=TAB, session="s0"), account
 
 
-def iframe(url: str, account: str | None, *, own_target: bool = True):
+def iframe(
+    url: str, account: str | None, *, own_target: bool = True, parent: str = "top"
+):
     """A child frame: a cross-process one in its own target, or one in the tab's."""
-    frame = Frame(id=f"frame:{url}", url=url, parentId="top")
+    frame = Frame(id=f"frame:{url}", url=url, parentId=parent)
     target = f"target:{url}" if own_target else TAB
     return FrameContext(frame=frame, target_id=target, session="s1"), account
 
@@ -93,8 +95,15 @@ async def test_the_checkout_page_itself_may_name_the_payee():
         ("https://ads.example/slot", False),
         ("https://js.stripe.com.ads.example/slot", True),
         ("http://js.stripe.com/v3/", True),
+        ("https://m.stripe.com/6", True),
     ],
-    ids=["other_origin", "other_origin_in_process", "lookalike_host", "plain_http"],
+    ids=[
+        "other_origin",
+        "other_origin_in_process",
+        "lookalike_host",
+        "plain_http",
+        "not_stripes_checkout",
+    ],
 )
 async def test_a_block_from_any_other_frame_is_never_the_payee(url, own_target):
     tab = Tab(top(), iframe(url, "acct_mallory", own_target=own_target))
@@ -117,3 +126,55 @@ async def test_a_block_beside_stripes_is_ignored_rather_than_refusing_both():
 
     assert token.merchant_account_id == "acct_merchant"
     assert tab.ticked == [STRIPE_FRAME]
+
+
+AD = "https://ads.example/slot"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "wrappers",
+    [
+        # Stripe's checkout, embedded by another site's frame for an account
+        # of its own.
+        [AD],
+        # The same, behind a frame with no address of its own.
+        [AD, "about:srcdoc"],
+    ],
+    ids=["inside_an_ad", "inside_a_document_an_ad_wrote"],
+)
+async def test_stripes_checkout_inside_another_sites_frame_is_never_the_payee(
+    wrappers,
+):
+    frames = [top()]
+    parent = "top"
+    for url in wrappers:
+        frames.append(iframe(url, None, parent=parent))
+        parent = f"frame:{url}"
+    frames.append(iframe(STRIPE_FRAME, "acct_mallory", parent=parent))
+    tab = Tab(*frames)
+
+    with pytest.raises(CheckoutRefused) as refused:
+        await pay_token.enable_pay_token(tab, BINDING)
+    assert str(refused.value) == PAY_TOKEN_UNAVAILABLE
+    assert tab.ticked == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "wrapper",
+    ["https://pay.shop.example/wrapper", "https://checkout.stripe.com/c/pay"],
+    ids=["the_merchants_own_frame", "stripes_own_frame"],
+)
+async def test_stripes_checkout_inside_the_merchants_or_stripes_frame_names_the_payee(
+    wrapper,
+):
+    tab = Tab(
+        top(),
+        iframe(wrapper, None),
+        iframe(STRIPE_FRAME, "acct_merchant", parent=f"frame:{wrapper}"),
+    )
+
+    token = await pay_token.enable_pay_token(tab, BINDING)
+
+    assert token.merchant_account_id == "acct_merchant"

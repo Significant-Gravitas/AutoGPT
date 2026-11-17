@@ -140,9 +140,19 @@ class CheckoutPlan(StrictModel):
         targets = [t for t in self.payment_fields().values() if t is not None]
         if len({(t.frame_url, t.selector) for t in targets}) != len(targets):
             raise ValueError("Payment fields and submit must be distinct")
+        return self
+
+    @model_validator(mode="after")
+    def fits_the_worker(self):
         if len(self.model_dump_json().encode()) > PLAN_MAX_BYTES:
             raise ValueError("The plan is too long; shorten the context or frame URLs")
         return self
+
+    def approved_in_link_only(self) -> bool:
+        """A Link Pay Token pays whichever Stripe account the page names, and
+        only Link can show the customer whose account that is. So the customer
+        approves such a purchase in Link, never in the chat."""
+        return self.execution == "link_pay_token"
 
 
 class BoundField(StrictModel):

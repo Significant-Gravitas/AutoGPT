@@ -17,7 +17,7 @@ from backend.copilot.tools import browser_checkout_support as support
 from backend.copilot.tools.browser_checkout_support import CheckoutResponse
 from backend.copilot.tools.models import ErrorResponse
 from backend.data.model import OAuth2Credentials
-from backend.util.link_checkout import approval, broker_link
+from backend.util.link_checkout import approval, broker_checkout, broker_link
 from backend.util.link_checkout.refusals import (
     DUPLICATE_REQUEST,
     LINK_ACCOUNT_NOT_CHOSEN,
@@ -94,6 +94,30 @@ async def test_link_approval_then_exactly_one_private_attempt(tools, plan):
     for output in (completed.output, again.output):
         assert "4242424242424242" not in output
         assert "synthetic-token" not in output
+
+
+@pytest.mark.asyncio
+async def test_a_pay_token_purchase_is_approved_in_link_whatever_the_policy(
+    tools, plan, monkeypatch
+):
+    """A Link Pay Token pays whichever Stripe account the page names, which
+    only Link can show the customer; the chat's card never approves one."""
+    monkeypatch.setattr(
+        request_tools, "in_app_approval_allowed", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(request_tools, "live_payments_enabled", lambda: True)
+    monkeypatch.setattr(broker_checkout, "live_payments_allowed", lambda: True)
+    pay_token_plan = {
+        **plan.model_dump(exclude={"number", "cvc", "expiry"}),
+        "execution": "link_pay_token",
+        "test_mode": False,
+    }
+
+    created = parsed(await run("browser_request_link_payment", **pay_token_plan))
+
+    assert (created.approval_mode, created.status) == ("link", "pending_approval")
+    assert await approval.read_approval(created.checkout_id) is None
+    assert tools.calls == ["create"]
 
 
 @pytest.mark.asyncio

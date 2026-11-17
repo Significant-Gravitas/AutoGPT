@@ -32,15 +32,25 @@ def test_plan_validation_errors_never_echo_the_input(plan):
     assert "4242424242424242" not in str(failure.value)
 
 
-def test_a_plan_too_long_for_the_worker_is_refused_when_it_is_made(plan):
+@pytest.mark.parametrize("execution", ["card", "link_pay_token"])
+def test_a_plan_too_long_for_the_worker_is_refused_when_it_is_made(plan, execution):
     """The worker reads a bounded job. Every field within its own limit can
     still add up to more, and that must be refused before anything is
     recorded, not after the attempt."""
     frame = "https://js.stripe.com/" + "a" * 2000
+    fields = plan.model_dump()
+    if execution == "link_pay_token":
+        fields |= {
+            "number": None,
+            "cvc": None,
+            "expiry": None,
+            "execution": execution,
+            "test_mode": False,
+        }
     with pytest.raises(ValidationError, match="too long"):
         CheckoutPlan.model_validate(
             {
-                **plan.model_dump(),
+                **fields,
                 # Each escapes to six bytes in JSON.
                 "context": "\u0001" * 2000,
                 "frame_urls": {

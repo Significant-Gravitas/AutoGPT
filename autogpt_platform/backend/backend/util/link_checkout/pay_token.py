@@ -17,8 +17,11 @@ from urllib.parse import urlsplit
 from backend.util.link_checkout.cdp_models import FrameContext, Result
 from backend.util.link_checkout.models import BrowserBinding, PayToken
 from backend.util.link_checkout.refusals import PAY_TOKEN_UNAVAILABLE, CheckoutRefused
+from backend.util.link_checkout.sites import frame_sites
 
 PAY_TOKEN_SELECTOR = 'input[name="link_pay_token"]'
+# Where Stripe serves its checkout: embedded in a page, or hosted.
+_STRIPE_CHECKOUT_HOSTS = frozenset({"js.stripe.com", "checkout.stripe.com"})
 # How long the page may take to show the token field once the option is ticked.
 _READY_SECONDS = 5
 
@@ -57,10 +60,9 @@ class Browser(Protocol):
 async def enable_pay_token(cdp: Browser, binding: BrowserBinding) -> PayToken:
     """Tick the page's agent option and return where its token goes. Refused
     unless exactly one frame that may name the payee carries the option."""
+    tab = await cdp.frames(binding)
     frames = [
-        f
-        for f in await cdp.frames(binding)
-        if _may_name_the_payee(f, binding) and await _steers(cdp, f)
+        f for f in tab if _may_name_the_payee(f, tab, binding) and await _steers(cdp, f)
     ]
     if len(frames) != 1:
         raise CheckoutRefused(PAY_TOKEN_UNAVAILABLE)
@@ -79,16 +81,23 @@ async def enable_pay_token(cdp: Browser, binding: BrowserBinding) -> PayToken:
         await asyncio.sleep(0.25)
 
 
-def _may_name_the_payee(context: FrameContext, binding: BrowserBinding) -> bool:
-    """The tab's own page, which the customer approved paying, or a Stripe
-    frame. A frame from anywhere else (an ad, a widget) could carry a steering
-    block of its own and name its own account as the payee."""
+def _may_name_the_payee(
+    context: FrameContext, tab: list[FrameContext], binding: BrowserBinding
+) -> bool:
+    """The tab's own page, which the customer approved paying, or Stripe's
+    checkout placed in it by that page: every frame around it must be the
+    page's own site or Stripe's. A frame from anywhere else (an ad, a widget)
+    could carry a steering block of its own, and so could a Stripe checkout it
+    embeds for an account of its own, naming that account as the payee."""
     if context.target_id == binding.target_id and not context.frame.parentId:
         return True
     url = urlsplit(context.frame.url)
-    host = (url.hostname or "").lower()
-    return url.scheme == "https" and (
-        host == "stripe.com" or host.endswith(".stripe.com")
+    sites = frame_sites(context, tab)
+    return (
+        url.scheme == "https"
+        and url.hostname in _STRIPE_CHECKOUT_HOSTS
+        and sites is not None
+        and all(around in {sites[0], "stripe.com"} for around in sites[:-1])
     )
 
 
