@@ -198,6 +198,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    cooldown:
+      default-days: 7
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -223,6 +225,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
     target-branch: "dev"
+    cooldown:
+      default-days: 7
     ignore:
       # frontend/package.json pins `engines.node` to 24.x with engine-strict,
       # so a newer major image fails `pnpm install`. Bump both together by hand.

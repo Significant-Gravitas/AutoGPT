@@ -12,8 +12,8 @@ rules:
       - batch-command-listener.yml
       # pull_request_target: sets CLA labels from the PR's commit statuses.
       - cla-label-sync.yml
-      # issue_comment: !deploy and !undeploy act only for commenters with
-      # write access (checked in the first step).
+      # issue_comment: !deploy and !undeploy act only for org members,
+      # collaborators and the batch bot (author_association, first step).
       - platform-dev-deploy-event-dispatcher.yml
       # pull_request_target: moves PRs opened against master (from a branch
       # other than dev or hotfix/*) or gitbook to dev; its scripts use only
@@ -24,13 +24,6 @@ rules:
       # issue_comment: /reapprove acts only for commenters with write access,
       # and only on PRs a writer already approved.
       - repo-pr-reapprove-command.yml
-
-  artipacked:
-    ignore:
-      # The batch bot pushes batch and rollup branches with the GitHub App
-      # token that this checkout stores, so it has to keep it.
-      - batch-command-handler.yml
-      - batch-reconcile.yml
 
   misfeature:
     ignore:

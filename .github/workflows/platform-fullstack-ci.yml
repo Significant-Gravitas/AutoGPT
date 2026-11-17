@@ -333,7 +333,7 @@ jobs:
         timeout-minutes: 3
         working-directory: /tmp
         run: |
-          ref="$E2E_SEED_IMAGE:${STEPS_E2E_SEED_KEY_OUTPUTS_TAG}"
+          ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
           if ! docker pull --quiet "$ref"; then
             echo "No cached E2E test data at $ref; seeding instead"
             exit 0
@@ -344,7 +344,7 @@ jobs:
           docker rmi "$ref" >/dev/null
           echo "hit=true" >> "$GITHUB_OUTPUT"
         env:
-          STEPS_E2E_SEED_KEY_OUTPUTS_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
+          E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
 
       - name: Set up Platform - Prepare Docker build
         working-directory: autogpt_platform
@@ -727,13 +727,13 @@ jobs:
         timeout-minutes: 5
         working-directory: /tmp
         run: |
-          ref="$E2E_SEED_IMAGE:${STEPS_E2E_SEED_KEY_OUTPUTS_TAG}"
+          ref="$E2E_SEED_IMAGE:${E2E_SEED_TAG}"
           tar -C /tmp -c e2e_test_data.sql | docker import \
             --change "LABEL org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
             - "$ref"
           docker push "$ref"
         env:
-          STEPS_E2E_SEED_KEY_OUTPUTS_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
+          E2E_SEED_TAG: ${{ steps.e2e-seed-key.outputs.tag }}
 
       - name: Validate coverage report
         id: validate-e2e-coverage
