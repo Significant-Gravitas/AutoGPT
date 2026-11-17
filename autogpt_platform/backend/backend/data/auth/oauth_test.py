@@ -157,3 +157,52 @@ async def _wait_for(condition: Callable[[], bool]) -> None:
             return
         await asyncio.sleep(0.01)
     raise AssertionError("condition not reached within 30 s")
+
+
+_NOT_ASCII = "\u00e9" * 43
+
+
+@pytest.mark.parametrize(
+    ("verifier", "challenge", "method"),
+    [
+        (_NOT_ASCII, "c" * 43, "S256"),
+        (_NOT_ASCII, "c" * 43, "plain"),
+        (_NOT_ASCII, "c" * 43, None),
+        ("v" * 43, _NOT_ASCII, "S256"),
+        (_NOT_ASCII, _NOT_ASCII, "plain"),
+        ("\ud800" + "v" * 42, "c" * 43, "S256"),
+    ],
+    ids=[
+        "verifier-s256",
+        "verifier-plain",
+        "verifier-no-method",
+        "challenge",
+        "both-and-equal",
+        "lone-surrogate",
+    ],
+)
+def test_a_verifier_or_challenge_that_is_not_ascii_never_matches(
+    verifier: str, challenge: str, method: str | None
+) -> None:
+    """RFC 7636 verifiers and challenges are ASCII. Encoding one that is not
+    raised UnicodeEncodeError under S256, and comparing it raised TypeError
+    under plain."""
+    assert oauth._verify_pkce(verifier, challenge, method) is False
+
+
+@pytest.mark.parametrize(
+    ("verifier", "challenge", "method", "matches"),
+    [
+        # The challenge is BASE64URL(SHA256("v" * 43)), without padding.
+        ("v" * 43, "7w_YNF9DSfIdPf_pRjSq646_kPr-2-o9NAl16JGghdM", "S256", True),
+        ("w" * 43, "7w_YNF9DSfIdPf_pRjSq646_kPr-2-o9NAl16JGghdM", "S256", False),
+        ("v" * 43, "v" * 43, "plain", True),
+        ("v" * 43, "v" * 43, None, True),
+        ("v" * 43, "w" * 43, "plain", False),
+        ("v" * 43, "v" * 43, "S512", False),
+    ],
+)
+def test_an_ascii_verifier_is_compared_as_before(
+    verifier: str, challenge: str, method: str | None, matches: bool
+) -> None:
+    assert oauth._verify_pkce(verifier, challenge, method) is matches

@@ -1435,6 +1435,115 @@ async def test_token_authorization_code_pkce_failure(
     assert retry.status_code == 200
 
 
+def _s256_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+
+
+async def _authorization_code(
+    client: httpx.AsyncClient,
+    oauth_app: dict,
+    scope: str,
+    challenge: str,
+    method: str = "S256",
+) -> str:
+    response = await client.post(
+        "/api/oauth/authorize",
+        json={
+            "client_id": oauth_app["client_id"],
+            "redirect_uri": oauth_app["redirect_uri"],
+            "scopes": [scope],
+            "state": "verifier_test_state",
+            "response_type": "code",
+            "code_challenge": challenge,
+            "code_challenge_method": method,
+        },
+    )
+    return parse_qs(urlparse(response.json()["redirect_url"]).query)["code"][0]
+
+
+async def _exchange(
+    client: httpx.AsyncClient, oauth_app: dict, code: str, verifier: str
+) -> httpx.Response:
+    return await client.post(
+        "/api/oauth/token",
+        json={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": oauth_app["redirect_uri"],
+            "client_id": oauth_app["client_id"],
+            "client_secret": oauth_app.get("client_secret", ""),
+            "code_verifier": verifier,
+        },
+    )
+
+
+_NOT_ASCII_VERIFIER = "\u00e9" * 43
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("method", ["S256", "plain"])
+async def test_a_confidential_clients_verifier_that_is_not_ascii_fails_pkce(
+    client: httpx.AsyncClient, test_oauth_app: dict, method: str
+):
+    """A confidential client's verifier reached the comparison unchecked, and
+    one with a non-ASCII character made it raise: the answer was Python's
+    codec error under S256, and a 500 under plain."""
+    verifier, s256_challenge = generate_pkce()
+    challenge = s256_challenge if method == "S256" else verifier
+    code = await _authorization_code(
+        client, test_oauth_app, "READ_GRAPH", challenge, method
+    )
+
+    response = await _exchange(client, test_oauth_app, code, _NOT_ASCII_VERIFIER)
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid grant: PKCE verification failed"}
+    # Refused like any other wrong verifier, which leaves the code usable.
+    assert (await _exchange(client, test_oauth_app, code, verifier)).status_code == 200
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_public_clients_verifier_that_is_not_ascii_is_refused(
+    client: httpx.AsyncClient, test_public_oauth_app: dict
+):
+    """A public client's verifier is held to RFC 7636's grammar before its
+    code is read, so this one never reached the comparison."""
+    verifier, challenge = generate_pkce()
+    code = await _authorization_code(
+        client, test_public_oauth_app, "USE_TOOLS", challenge
+    )
+
+    response = await _exchange(client, test_public_oauth_app, code, _NOT_ASCII_VERIFIER)
+
+    assert response.status_code == 401
+    assert "code_verifier" in response.json()["detail"]
+    retry = await _exchange(client, test_public_oauth_app, code, verifier)
+    assert retry.status_code == 200
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "verifier",
+    ["short-verifier-20chr", "spaces +/= and.such " + "x" * 30],
+    ids=["shorter-than-43", "outside-the-unreserved-set"],
+)
+async def test_a_confidential_client_keeps_a_verifier_rfc_7636_would_refuse(
+    client: httpx.AsyncClient, test_oauth_app: dict, verifier: str
+):
+    """S256 hashes whatever the client sent, so a confidential client's
+    verifier outside RFC 7636's grammar (43 to 128 unreserved characters) has
+    always matched its challenge. Only a verifier that cannot match is
+    refused."""
+    code = await _authorization_code(
+        client, test_oauth_app, "READ_GRAPH", _s256_challenge(verifier)
+    )
+
+    response = await _exchange(client, test_oauth_app, code, verifier)
+
+    assert response.status_code == 200
+
+
 # ============================================================================
 # Token Endpoint Integration Tests - Refresh Token Grant
 # ============================================================================

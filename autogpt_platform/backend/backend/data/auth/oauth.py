@@ -578,7 +578,12 @@ def _verify_pkce(
     Supports:
     - S256: SHA256(code_verifier) == code_challenge
     - plain: code_verifier == code_challenge
+
+    RFC 7636 verifiers and challenges are ASCII, so one that is not cannot
+    match. It fails the check rather than the encoding or the comparison.
     """
+    if not (code_verifier.isascii() and code_challenge.isascii()):
+        return False
     if code_challenge_method == "S256":
         # Hash the verifier with SHA256 and base64url encode
         hashed = hashlib.sha256(code_verifier.encode("ascii")).digest()
