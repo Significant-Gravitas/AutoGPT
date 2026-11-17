@@ -334,8 +334,10 @@ async def test_a_running_child_deleted_from_history_is_still_waited_on(
 
     assert outputs == [("result", "a")]
     assert block.execution_stats.reconciled_cost_delta == 7
-    deleted_read = db.get_graph_executions.await_args
-    assert deleted_read is not None and deleted_read.kwargs["deleted"] is True
+    # Read among deleted runs, and only the parent's user's.
+    db.get_graph_executions.assert_awaited_with(
+        graph_exec_id=_CHILD, user_id=_USER, deleted=True
+    )
 
 
 async def test_a_database_down_for_good_still_ends_on_a_seen_end(

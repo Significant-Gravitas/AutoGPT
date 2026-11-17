@@ -94,11 +94,16 @@ class TcpProxy:
         tasks = list(self._tasks)
         for task in tasks:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        self.drop()
-        if self._server is not None:
+        try:
+            # Bounded, so a task that outlives its cancel fails the test
+            # instead of hanging it: the suite has no per-test timeout.
             async with asyncio.timeout(5):
-                await self._server.wait_closed()
+                await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            self.drop()
+            if self._server is not None:
+                async with asyncio.timeout(5):
+                    await self._server.wait_closed()
 
     def drop(self) -> None:
         for writer in self._writers:
