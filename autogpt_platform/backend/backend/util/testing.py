@@ -1,11 +1,11 @@
-"""Lightweight helpers for tests that must inspect local infrastructure, or
-prove that reads run side by side."""
+"""Lightweight helpers for tests that must inspect local infrastructure, break
+it on purpose, or prove that reads run side by side."""
 
 import asyncio
 import socket
 from collections.abc import Awaitable, Callable
 from functools import cache
-from typing import TypeVar
+from typing import Self, TypeVar
 
 T = TypeVar("T")
 
@@ -57,3 +57,70 @@ class Rendezvous:
             return value
 
         return fake
+
+
+class TcpProxy:
+    """Forwards each TCP connection to ``upstream`` until a test breaks it.
+
+    ``drop()`` closes every connection it carries, as a restarting server
+    does. ``black_hole`` keeps them open but forwards nothing either way, as a
+    network partition does: no FIN, no RST, so only a reply that never comes
+    gives it away.
+    """
+
+    def __init__(self, upstream: tuple[str, int]) -> None:
+        self.upstream = upstream
+        self.black_hole = False
+        self.address: tuple[str, int] = ("127.0.0.1", 0)
+        self._server: asyncio.Server | None = None
+        self._writers: set[asyncio.StreamWriter] = set()
+        self._pipes: set[asyncio.Task] = set()
+
+    async def __aenter__(self) -> Self:
+        self._server = await asyncio.start_server(self._accept, "127.0.0.1", 0)
+        self.address = self._server.sockets[0].getsockname()[:2]
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        if self._server is not None:
+            self._server.close()
+        self.drop()
+        for pipe in list(self._pipes):
+            pipe.cancel()
+        await asyncio.gather(*self._pipes, return_exceptions=True)
+        if self._server is not None:
+            async with asyncio.timeout(5):
+                await self._server.wait_closed()
+
+    def drop(self) -> None:
+        for writer in self._writers:
+            writer.close()
+        self._writers.clear()
+
+    async def _accept(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        try:
+            up_reader, up_writer = await asyncio.open_connection(*self.upstream)
+        except OSError:
+            writer.close()
+            return
+        self._writers |= {writer, up_writer}
+        for source, sink in ((reader, up_writer), (up_reader, writer)):
+            pipe = asyncio.create_task(self._pipe(source, sink))
+            self._pipes.add(pipe)
+            pipe.add_done_callback(self._pipes.discard)
+
+    async def _pipe(
+        self, source: asyncio.StreamReader, sink: asyncio.StreamWriter
+    ) -> None:
+        try:
+            while data := await source.read(65536):
+                if self.black_hole:
+                    continue
+                sink.write(data)
+                await sink.drain()
+        except OSError:
+            pass
+        finally:
+            sink.close()
