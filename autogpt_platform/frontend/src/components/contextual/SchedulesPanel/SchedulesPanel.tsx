@@ -9,6 +9,7 @@ import { EmptyFollowups } from "./components/EmptyFollowups/EmptyFollowups";
 import { FollowupListItem } from "./components/FollowupListItem/FollowupListItem";
 import { GraphScheduleListItem } from "./components/GraphScheduleListItem/GraphScheduleListItem";
 import { PausedChatListItem } from "./components/PausedChatListItem/PausedChatListItem";
+import { SchedulesUnavailable } from "./components/SchedulesUnavailable/SchedulesUnavailable";
 import { useSchedulesPanel } from "./useSchedulesPanel";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -19,8 +20,16 @@ interface Props {
 }
 
 export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
-  const { schedules, paused, isLoading, error, partialError } =
-    useSchedulesPanel();
+  const {
+    schedules,
+    paused,
+    isLoading,
+    unavailable,
+    retryUnavailable,
+    retrying,
+    error,
+    partialError,
+  } = useSchedulesPanel();
 
   return (
     <section className="space-y-6">
@@ -59,6 +68,12 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         </div>
       )}
 
+      <SchedulesUnavailable
+        unavailable={unavailable}
+        retrying={retrying}
+        onRetry={retryUnavailable}
+      />
+
       {paused.length > 0 && (
         <ul
           className="flex flex-col gap-3"
@@ -91,7 +106,7 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           <LoadingSpinner />
         </div>
       ) : schedules.length === 0 ? (
-        paused.length === 0 && <EmptyFollowups />
+        paused.length === 0 && !unavailable && <EmptyFollowups />
       ) : (
         <ul
           className="flex flex-col gap-3"

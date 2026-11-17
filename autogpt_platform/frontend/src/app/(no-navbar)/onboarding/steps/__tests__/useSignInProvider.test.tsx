@@ -42,6 +42,18 @@ describe("useSignInProvider", () => {
     expect(result.current.provider).toBe("microsoft");
   });
 
+  it("finds a Google sign-up", async () => {
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["credential", "google"] }),
+      ),
+    );
+    const { result } = renderLookup();
+
+    await waitFor(() => expect(result.current.isReady).toBe(true));
+    expect(result.current.provider).toBe("google");
+  });
+
   it("looks again for an account that takes over the tab", async () => {
     let lookups = 0;
     server.use(

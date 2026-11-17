@@ -287,6 +287,18 @@ describe("onboarding before payment", () => {
     expect(await screen.findByTestId("step-team")).toBeDefined();
   });
 
+  it("starts a Google sign-up on its Gmail, Drive and Calendar connection", async () => {
+    flags = {};
+    server.use(
+      http.get("*/api/auth/sign-in-providers", () =>
+        HttpResponse.json({ providers: ["google"] }),
+      ),
+    );
+    render(<OnboardingPage />);
+    fireEvent.click(await screen.findByTestId("step-access"));
+    expect(await screen.findByTestId("step-team")).toBeDefined();
+  });
+
   it("collects role and pain points before showing the card requirement", async () => {
     render(<OnboardingPage />);
     await completePersonalization();
