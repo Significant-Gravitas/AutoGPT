@@ -124,7 +124,8 @@ class ConnectionManager:
             return False
         except Exception:
             # Redis is unreachable, or the stream was lost before Redis
-            # confirmed it: the client reconnects and refetches.
+            # confirmed it: closing tells the client to reconnect and
+            # resubscribe.
             logger.warning(
                 f"Closing WebSocket for user #{user_id}: its notification "
                 "stream could not be opened",

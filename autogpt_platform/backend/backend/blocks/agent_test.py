@@ -267,9 +267,16 @@ async def test_a_live_end_after_a_failed_quiet_recheck_is_caught_up_first(
         nodes=[],
         later_nodes=[b],
     )
-    asyncio.get_running_loop().call_later(
-        0.5, stream.items.put_nowait, _finished_event()
-    )
+    reads = db.get_graph_execution_meta.side_effect
+
+    async def end_arrives_during_the_failed_recheck(**kwargs: Any):
+        # The end is queued by the read that fails, so it can only arrive
+        # after the recheck failed, however slow the runner.
+        if db.get_graph_execution_meta.await_count == 2:
+            stream.items.put_nowait(_finished_event())
+        return await reads(**kwargs)
+
+    db.get_graph_execution_meta.side_effect = end_arrives_during_the_failed_recheck
 
     outputs, block = await _run(monkeypatch, stream, db)
 
@@ -306,8 +313,10 @@ async def test_a_run_gone_from_the_database_fails_the_wait(
     stream.items.put_nowait(None)
     db = _db(None, nodes=[])
 
-    with pytest.raises(sub_agent_wait.SubAgentRunGoneError):
+    with pytest.raises(sub_agent_wait.SubAgentRunGoneError) as gone:
         await _run(monkeypatch, stream, db)
+    # Shown to the user as the node's error.
+    assert "sub-workflow" in str(gone.value) and "Graph" not in str(gone.value)
 
 
 async def test_a_running_child_deleted_from_history_is_still_waited_on(

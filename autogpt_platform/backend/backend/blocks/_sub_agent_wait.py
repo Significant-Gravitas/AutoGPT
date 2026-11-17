@@ -196,7 +196,11 @@ class SubAgentWait:
             graph_exec_id=self._graph_exec_id, user_id=self._user_id, deleted=True
         )
         if not deleted:
-            raise SubAgentRunGoneError(f"{self._log_id}: the run no longer exists")
+            self._logger.warning(f"Execution {self._log_id}: the run no longer exists")
+            # Shown as the node's error: workflow wording, no internal ids.
+            raise SubAgentRunGoneError(
+                "This sub-workflow's run no longer exists, so it can't finish."
+            )
         return deleted[0]
 
     def _outputs_of(self, node: NodeExecutionResult) -> list[Output]:
