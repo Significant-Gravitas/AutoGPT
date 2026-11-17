@@ -21785,28 +21785,56 @@
       "AuthEmailRequest": {
         "properties": {
           "type": {
-            "type": "string",
-            "enum": [
-              "reset_password",
-              "verify_email",
-              "verify_new_email",
-              "change_email",
-              "set_password"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "reset_password",
+                  "verify_email",
+                  "verify_new_email",
+                  "change_email",
+                  "set_password"
+                ]
+              },
+              {
+                "type": "string",
+                "enum": ["sign_in_code", "sign_in_method_added"]
+              }
             ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
-          "url": { "type": "string", "title": "Url" },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
           "new_email": {
             "anyOf": [
               { "type": "string", "format": "email" },
               { "type": "null" }
             ],
             "title": "New Email"
+          },
+          "code": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[0-9]{6}$" },
+              { "type": "null" }
+            ],
+            "title": "Code"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["google", "microsoft", "apple", "github", "discord"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Provider"
           }
         },
         "type": "object",
-        "required": ["type", "to", "url"],
+        "required": ["type", "to"],
         "title": "AuthEmailRequest"
       },
       "AuthEmailSuppressionRequest": {

@@ -303,6 +303,7 @@ describe("auth config", () => {
       "bearer",
       "jwt",
       "supabase-bridge",
+      "sign-in-code",
       "next-cookies",
     ]);
   });

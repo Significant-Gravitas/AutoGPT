@@ -6,43 +6,57 @@ import {
 } from "./email-deliverability";
 import { mintServiceToken } from "./service-token";
 
-export type AuthEmailType =
+export type AuthLinkEmailType =
   | "reset_password"
   | "verify_email"
   | "verify_new_email"
   | "change_email"
   | "set_password";
 
-interface SendAuthEmailArgs {
-  to: string;
-  type: AuthEmailType;
-  url: string;
-  // change_email only: the address the account is moving to.
-  newEmail?: string;
-}
+// The providers the backend's sign-in emails can name, by Better Auth's id.
+export type SignInEmailProvider =
+  | "google"
+  | "microsoft"
+  | "apple"
+  | "github"
+  | "discord";
+
+type SendAuthEmailArgs =
+  | {
+      to: string;
+      type: AuthLinkEmailType;
+      url: string;
+      // change_email only: the address the account is moving to.
+      newEmail?: string;
+    }
+  // The code that confirms a provider sign-in's address (sign-in-code-plugin.ts).
+  | {
+      to: string;
+      type: "sign_in_code";
+      code: string;
+      provider: SignInEmailProvider;
+    }
+  // Tells the account's owner a provider can now sign in to it.
+  | { to: string; type: "sign_in_method_added"; provider: SignInEmailProvider };
 
 /**
  * Delivers a Better Auth transactional email (password reset, verification,
- * email change) by POSTing the action link to the backend, which owns the
- * Postmark credential and builds the message from `type`. The call is
+ * email change, a sign-in code or notice) by POSTing to the backend, which
+ * owns the Postmark credential and builds the message from `type`. The call is
  * authenticated with a short-lived frontend service token signed by the
  * Better Auth JWKS key the backend already trusts — no shared secret to
  * configure on either side.
  *
  * In production a failed mint/send throws so an "email sent" UI can't lie
- * about it; outside production the action link is logged to the server
- * console instead (local backends usually have no Postmark credential).
+ * about it; outside production the action link or code is logged to the
+ * server console instead (local backends usually have no Postmark credential).
  * An address mail can't reach (a domain DNS says takes no mail, or one the
  * mail provider refuses) throws the undeliverable error in every environment,
  * and the resend button shows it. Disposable domains still get their email:
  * older accounts on one need it to reset a password or move to a real address.
  */
-export async function sendAuthEmail({
-  to,
-  type,
-  url,
-  newEmail,
-}: SendAuthEmailArgs) {
+export async function sendAuthEmail(args: SendAuthEmailArgs) {
+  const { to, type } = args;
   // DNS errors still send.
   await assertEmailHasMailServer(to);
   try {
@@ -54,7 +68,7 @@ export async function sendAuthEmail({
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ type, to, url, new_email: newEmail }),
+      body: JSON.stringify(requestBody(args)),
     });
 
     if (!response.ok) {
@@ -72,9 +86,42 @@ export async function sendAuthEmail({
       throw error;
     }
     console.info(
-      `[auth-email] Send failed (${error}). ${type} link for ${to}:`,
+      `[auth-email] Send failed (${error}). ${type} email for ${to}:`,
     );
-    console.info(`[auth-email] ${url}`);
+    console.info(`[auth-email] ${localFallback(args)}`);
+  }
+}
+
+function requestBody(args: SendAuthEmailArgs) {
+  switch (args.type) {
+    case "sign_in_code":
+      return {
+        type: args.type,
+        to: args.to,
+        code: args.code,
+        provider: args.provider,
+      };
+    case "sign_in_method_added":
+      return { type: args.type, to: args.to, provider: args.provider };
+    default:
+      return {
+        type: args.type,
+        to: args.to,
+        url: args.url,
+        new_email: args.newEmail,
+      };
+  }
+}
+
+// What a local stack without a mailer prints instead of sending.
+function localFallback(args: SendAuthEmailArgs) {
+  switch (args.type) {
+    case "sign_in_code":
+      return `code ${args.code} (${args.provider})`;
+    case "sign_in_method_added":
+      return `${args.provider} sign-in added`;
+    default:
+      return args.url;
   }
 }
 

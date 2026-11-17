@@ -52,6 +52,11 @@ import {
 } from "./reset-link-address";
 import { revokeResetLinksMailedElsewhere } from "./reset-links";
 import { RESET_LINK_EXPIRES_IN_SECONDS } from "./set-password-link";
+import {
+  alertNewSignInMethod,
+  requireSignInCode,
+  signInCode,
+} from "./sign-in-code-plugin";
 import { JWKS_ALG } from "./service-token";
 import {
   isSignupAllowed,
@@ -296,6 +301,19 @@ export const auth = betterAuth({
         },
       },
     },
+    // A sign-in provider that joins an account it didn't create emails the
+    // account's owner (sign-in-code-plugin.ts), alongside the response.
+    account: {
+      create: {
+        after: async (account: { userId: string; providerId: string }) => {
+          runAfterResponse(
+            getAuthContext().then((context) =>
+              alertNewSignInMethod(context, account),
+            ),
+          );
+        },
+      },
+    },
     // Every sign-in method ends in a session, so this is where an IP block
     // refuses it and where its IP is logged. An impersonation session carries
     // the admin's IP, so it is neither.
@@ -359,6 +377,14 @@ export const auth = betterAuth({
   // tables — most importantly no `user` table case-colliding with `User`.
   account: {
     modelName: "UserAuthAccount",
+    accountLinking: {
+      // Better Auth links a provider sign-in to the account that has its
+      // address whenever the provider says it verified the address. These
+      // providers leave that to validateUserInfo below, which links at once
+      // only when the provider runs the mailbox and otherwise emails a code.
+      // Apple keeps Better Auth's rule (sign-in-code-plugin.ts).
+      trustedProviders: ["google", "microsoft", "github", "discord"],
+    },
   },
   verification: {
     modelName: "UserAuthVerification",
@@ -442,6 +468,9 @@ export const auth = betterAuth({
   },
   user: {
     modelName: "UserAuthIdentity",
+    // Before a provider sign-in joins an account or creates one: one that
+    // can't vouch for its address waits on a code emailed there.
+    validateUserInfo: requireSignInCode,
     additionalFields: {
       // Onboarding's "What should I call you?" answer; surfaced to
       // consumers as user_metadata.preferred_name (see mapSessionUser).
@@ -512,6 +541,7 @@ export const auth = betterAuth({
       },
     }),
     supabaseBridge(),
+    signInCode(),
     // Must be last so cookies set inside server actions stick.
     nextCookies(),
   ],

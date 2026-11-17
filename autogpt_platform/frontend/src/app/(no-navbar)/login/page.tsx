@@ -18,6 +18,7 @@ import { environment } from "@/services/environment";
 import { useSearchParams } from "next/navigation";
 import { LoadingLogin } from "./components/LoadingLogin";
 import { LoginMarketingPanel } from "./components/LoginMarketingPanel";
+import { SignInCode } from "./components/SignInCode/SignInCode";
 import {
   ACCOUNT_BANNED_NOTICE_COPY,
   EMAIL_VERIFICATION_NOTICE_COPY,
@@ -41,6 +42,7 @@ export default function LoginPage() {
     nextUrl: safeNextUrl,
     verificationEmail,
     verificationNotice,
+    isWaitingOnCode,
     showBannedNotice,
     isLoading,
     isGoogleLoading,
@@ -54,10 +56,19 @@ export default function LoginPage() {
     handleProviderLogin,
     handleCloseNotAllowedModal,
     handleBackToLogin,
+    handleLeaveSignInCode,
   } = useLoginPage();
 
   if (isCheckingSession || user) {
     return <LoadingLogin />;
+  }
+
+  if (isWaitingOnCode) {
+    return (
+      <AuthSplitLayout marketing={<LoginMarketingPanel />}>
+        <SignInCode next={safeNextUrl} onBack={handleLeaveSignInCode} />
+      </AuthSplitLayout>
+    );
   }
 
   if (verificationEmail) {

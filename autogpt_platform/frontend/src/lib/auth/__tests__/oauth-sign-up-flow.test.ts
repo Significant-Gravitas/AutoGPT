@@ -53,7 +53,8 @@ vi.mock("../provision-platform-user", () => ({
   provisionPlatformUser: vi.fn(async () => "created"),
   platformUserExists: vi.fn(async () => true),
 }));
-vi.mock("../email", () => ({ sendAuthEmail: vi.fn() }));
+const sendAuthEmail = vi.hoisted(() => vi.fn());
+vi.mock("../email", () => ({ sendAuthEmail }));
 
 const baseURL = "http://localhost:3000";
 const PROVIDERS = ["google", "github", "discord"] as const;
@@ -90,6 +91,7 @@ type TestDB = Awaited<ReturnType<typeof createAuth>>["db"];
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  sendAuthEmail.mockReset();
 });
 
 describe("OAuth sign-up", () => {
@@ -99,7 +101,7 @@ describe("OAuth sign-up", () => {
       [provider, true],
     ]),
   )(
-    "refuses an address %s has not verified (verification %s)",
+    "creates nothing for an address %s has not verified until the code emailed there is entered (verification %s)",
     async (provider, requireVerification) => {
       const { handler, db } = await createAuth(requireVerification);
       answerAs(provider, { email: "someone@example.com", verified: false });
@@ -108,11 +110,20 @@ describe("OAuth sign-up", () => {
 
       const landing = landingOf(await signInWith(handler, provider));
 
-      // Better Auth's own answer when an account uses the address, to the byte.
-      expect(landing).toBe("/login?error=account_not_linked");
+      // The same answer when an account uses the address
+      // (sign-in-code-flow.test.ts finishes both).
+      expect(landing).toBe(
+        "/login?error=sign_in_code_sent&error_description=sign_in_code_sent",
+      );
       expect(landingOf(await signInWith(withAccount.handler, provider))).toBe(
         landing,
       );
+      expect(
+        sendAuthEmail.mock.calls.map(([args]) => [args.type, args.to]),
+      ).toEqual([
+        ["sign_in_code", "someone@example.com"],
+        ["sign_in_code", "someone@example.com"],
+      ]);
       expect(db.UserAuthIdentity).toEqual([]);
       expect(db.UserAuthSession).toEqual([]);
       expect(withAccount.db.UserAuthAccount).toEqual([]);

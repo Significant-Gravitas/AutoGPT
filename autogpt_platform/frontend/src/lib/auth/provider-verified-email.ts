@@ -2,7 +2,10 @@ import { APIError } from "better-auth/api";
 import { ACCOUNT_NOT_LINKED_CODE } from "./microsoft-login";
 
 // An OAuth sign-up gets no verify link, so its provider must have verified the
-// address. Only the password form and an admin create an unverified account.
+// address, or the person must have typed in the code emailed there (which
+// creates the account as verified: sign-in-code-plugin.ts asks for it before
+// this hook runs, so this only backs it up). Only the password form and an
+// admin create an unverified account.
 const UNVERIFIED_SIGN_UP_PATHS = new Set([
   "/sign-up/email",
   "/admin/create-user",
