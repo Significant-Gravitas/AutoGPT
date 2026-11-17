@@ -38,6 +38,13 @@ env:
   DEPLOY_IMAGE: docker.io/significantgravitas/autogpt
   BUILD_CACHE_IMAGE: ghcr.io/significant-gravitas/autogpt-single-container-buildcache
 
+# Releases publish images from this workflow, so it never reads or writes the
+# Actions cache: not for setup-buildx's binary, and not for the Trivy
+# vulnerability database, which each scan downloads fresh from Trivy's
+# default mirror. Image layers come from the GHCR registry cache, which this
+# setting doesn't touch.
+cache-mode: none
+
 jobs:
   authorize-publication:
     name: Evaluate publication eligibility
@@ -213,6 +220,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: vuln,secret
           format: json
@@ -229,6 +237,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: autogpt-platform-single-container:ci-${{ matrix.suffix }}
           scanners: secret
           format: json
@@ -401,6 +410,7 @@ jobs:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           format: table
           ignore-unfixed: true
@@ -415,6 +425,7 @@ jobs:
           TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           skip-setup-trivy: true
+          cache: false
           image-ref: ${{ env.DEPLOY_IMAGE }}@${{ steps.digest.outputs.digest }}
           scanners: secret
           format: table

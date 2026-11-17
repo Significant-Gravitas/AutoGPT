@@ -239,9 +239,9 @@ Reads CSV and Excel files and outputs the data as a list of dictionaries and ind
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block parses CSV and Excel files, converting each row into a dictionary with column headers as keys. Excel files are automatically converted to CSV format before processing.
+This block parses CSV and Excel files, converting each row into a dictionary with column headers as keys. Excel files are automatically converted to CSV format before processing, and follow the same header rules. Every value keeps its own key, so no column overwrites another: a blank header cell becomes `column_<n>` for its position (counting from 1), a repeated header gets `_2`, `_3` and so on (`a,a` gives `a` and `a_2`) while skipping any name another header already has, and a value past the end of the header row is kept under `column_<n>` in every row that has one. Blank lines are not rows, but a row of empty fields (`,`) is kept. A header row whose cells are all empty is still the header, so the first data row stays data.
 
-Configure delimiter, quote character, and escape character for proper CSV parsing. Use skip_rows to ignore headers or initial rows, and skip_columns to exclude unwanted columns from the output.
+Configure delimiter, quote character, and escape character for proper CSV parsing. Use skip_rows to ignore headers or initial rows, and skip_columns to exclude unwanted columns from the output. A file without data rows, or skip_rows past its end, gives an empty list.
 <!-- END MANUAL -->
 
 ### Inputs
