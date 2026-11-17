@@ -2191,7 +2191,7 @@ async def test_add_graph_execution_refuses_a_banned_owner(
     from backend.util.exceptions import UserBannedError
 
     mocker.patch(
-        "backend.executor.utils.is_user_banned",
+        "backend.executor.utils.is_user_refused",
         new=mocker.AsyncMock(return_value=True),
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
@@ -2691,6 +2691,31 @@ async def test_a_sub_run_moved_to_the_runners_org_is_billed_there(
         "execution_context"
     ]
     assert (context.organization_id, context.team_id) == ("runner-org", "runner-team")
+
+
+@pytest.mark.asyncio
+async def test_a_sub_run_is_checked_against_the_run_that_starts_it(
+    mocker: MockerFixture,
+):
+    """Which graph a sub-graph run may start depends on whose graph the run that
+    starts it runs, so the check gets that run. A top-level run has none."""
+    import backend.executor.utils as executor_utils
+    from backend.data.execution import ExecutionContext
+
+    _mock_add_graph_execution_create_path(mocker)
+
+    await add_graph_execution(
+        graph_id="g",
+        user_id="runner",
+        execution_context=ExecutionContext(
+            user_id="runner", parent_execution_id="parent-execution"
+        ),
+    )
+    await add_graph_execution(graph_id="g", user_id="runner")
+
+    calls = executor_utils.validate_and_construct_node_execution_input.call_args_list
+    parents = [call.kwargs["parent_graph_exec_id"] for call in calls]
+    assert parents == ["parent-execution", None]
 
 
 @pytest.mark.asyncio
@@ -3225,10 +3250,12 @@ async def test_add_graph_execution_subgraph_untenanted_parent_triggers_fallback(
     mock_edb, mock_get_default_team = _mock_add_graph_execution_create_path(
         mocker, org_id="org-sub", team_id="team-sub"
     )
+    # The parent's own context, as AgentExecutorBlock passes it on: the
+    # parent's workflow, not the sub-graph's, which would be running itself
     parent_ctx = ExecutionContext(
         user_id="user-1",
-        graph_id="g",
-        graph_exec_id="child",
+        graph_id="parent-graph",
+        graph_exec_id="parent-123",
         graph_version=1,
         parent_execution_id="parent-123",
         organization_id=None,

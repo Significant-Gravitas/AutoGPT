@@ -1,3 +1,4 @@
+import { FakeWebSocket } from "./websocket-fake";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/actions", () => ({
@@ -194,31 +195,7 @@ describe("BackendAPI on a banned account", () => {
 });
 
 describe("BackendAPI WebSocket failure logging", () => {
-  const sockets: FakeWebSocket[] = [];
-
-  class FakeWebSocket {
-    static readonly CONNECTING = 0;
-    static readonly OPEN = 1;
-    static readonly CLOSING = 2;
-    static readonly CLOSED = 3;
-
-    readyState = FakeWebSocket.CONNECTING;
-    onopen: (() => void) | null = null;
-    onclose:
-      | ((event: Pick<CloseEvent, "code" | "reason" | "wasClean">) => void)
-      | null = null;
-    onerror:
-      | ((event: Pick<Event, "type"> & { target?: unknown }) => void)
-      | null = null;
-    onmessage: ((event: MessageEvent) => void) | null = null;
-    state = "connecting";
-    close = vi.fn();
-    send = vi.fn();
-
-    constructor(public url: string) {
-      sockets.push(this);
-    }
-  }
+  const sockets = FakeWebSocket.instances;
 
   afterEach(() => {
     sockets.length = 0;
@@ -237,17 +214,17 @@ describe("BackendAPI WebSocket failure logging", () => {
   }
 
   it("reports the close code and reason instead of the CloseEvent object", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
+    const consoleInfo = vi
+      .spyOn(console, "info")
       .mockImplementation(() => undefined);
     const socket = await connect();
 
     socket.onclose!({ code: 4002, reason: "Invalid token", wasClean: true });
 
-    expect(consoleError).toHaveBeenCalledTimes(1);
-    const [message, ...rest] = consoleError.mock.calls[0];
+    expect(consoleInfo).toHaveBeenCalledTimes(1);
+    const [message, ...rest] = consoleInfo.mock.calls[0];
     expect(rest).toHaveLength(0);
-    expect(message).toContain("[BackendAPI] WebSocket failed to connect");
+    expect(message).toContain("[BackendAPI] WebSocket authentication rejected");
     expect(message).toContain("4002");
     expect(message).toContain("Invalid token");
     expect(message).not.toContain("[object");
@@ -258,7 +235,8 @@ describe("BackendAPI WebSocket failure logging", () => {
       .spyOn(console, "warn")
       .mockImplementation(() => undefined);
     const socket = await connect();
-    socket.state = "connected";
+    socket.open();
+    socket.pong();
 
     socket.onclose!({ code: 1006, reason: "", wasClean: false });
 
@@ -274,7 +252,8 @@ describe("BackendAPI WebSocket failure logging", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     const socket = await connect();
-    socket.state = "connected";
+    socket.open();
+    socket.pong();
     socket.readyState = FakeWebSocket.CLOSED;
 
     socket.onerror!({ type: "error", target: socket });

@@ -45,6 +45,7 @@ vi.mock("@/hooks/useOnboardingTimezoneDetection", () => ({
 
 let mockIsCompleted = false;
 const completedCallCount = { value: 0 };
+const stateCallCount = { value: 0 };
 vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
   getV1CheckIfOnboardingIsCompleted: () => {
     completedCallCount.value += 1;
@@ -58,8 +59,10 @@ vi.mock("@/app/api/__generated__/endpoints/onboarding/onboarding", () => ({
       data: { is_completed: mockIsCompleted },
     });
   },
-  getV1OnboardingState: () =>
-    Promise.resolve({ status: 200, data: { completedSteps: [] } }),
+  getV1OnboardingState: () => {
+    stateCallCount.value += 1;
+    return Promise.resolve({ status: 200, data: { completedSteps: [] } });
+  },
   patchV1UpdateOnboardingState: () => Promise.resolve({ status: 200 }),
   postV1CompleteOnboardingStep: () => Promise.resolve({ status: 200 }),
 }));
@@ -76,6 +79,7 @@ describe("OnboardingProvider routing — logged-in user", () => {
     mockIsLoggedIn = true;
     mockIsCompleted = false;
     completedCallCount.value = 0;
+    stateCallCount.value = 0;
   });
 
   test("silences cancellation and retries initialization after navigation", async () => {
@@ -391,5 +395,32 @@ describe("OnboardingProvider routing — logged-in user", () => {
     // Give async work time to resolve, then assert no redirect.
     await new Promise((r) => setTimeout(r, 30));
     expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("leaves an unfinished user's state to the wizard instead of reading it again", async () => {
+    mockPathname = "/onboarding";
+    mockIsCompleted = false;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+
+    await waitFor(() => expect(completedCallCount.value).toBe(1));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(stateCallCount.value).toBe(0);
+  });
+
+  test("still reads the state of a finished user outside the wizard", async () => {
+    mockPathname = "/home";
+    mockIsCompleted = true;
+
+    render(
+      <OnboardingProvider>
+        <div data-testid="child" />
+      </OnboardingProvider>,
+    );
+    await waitFor(() => expect(stateCallCount.value).toBe(1));
   });
 });

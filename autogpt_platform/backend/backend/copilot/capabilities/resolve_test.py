@@ -101,7 +101,7 @@ def test_a_shared_host_resolves_however_the_url_is_written():
     for written in (
         "https://mcp.atlassian.com/v1/sse",
         "https://mcp.atlassian.com/v1/sse/",
-        "  https://MCP.Atlassian.com/v1/SSE  ",
+        "  HTTPS://MCP.Atlassian.com/v1/sse  ",
     ):
         entry = resolve_entry(index, written)
         assert entry is not None and entry.id == "mcp:atlassian-jira", written

@@ -61,6 +61,7 @@ from .models import (
     SetupRequirementsResponse,
     ToolResponseBase,
 )
+from .review_card import review_card_location
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .session_registry import resolve_session_entry
@@ -449,12 +450,16 @@ async def _run_mcp(
             session_id=session.session_id,
         ).from_outside()
     host = urlsplit(server_url).hostname or server_url
+    # Session-bound catalog options do not inherit trust from their preset.
+    catalog_server = (
+        entry is not None and resolve_entry(get_registry(), server_url) is not None
+    )
     # With the gate on it has already decided this call on the server's
     # effect map; the verb heuristic is the flag-off path only.
     if (
         tool_name
         and not session.dry_run
-        and needs_review(tool_name, catalog_server=entry is not None)
+        and needs_review(tool_name, catalog_server=catalog_server)
         and not await gate_active(user_id, session)
     ):
         review = MCPReviewPayload(
@@ -470,9 +475,10 @@ async def _run_mcp(
         )
         return ReviewRequiredResponse(
             message=(
-                f"'{tool_name}' on {host} looks like a write to a server outside the "
-                "official catalog, so it needs the user's approval. Tell the user; "
-                f"after they approve, call resume_capability(review_id='{review_id}')."
+                f"'{tool_name}' on {host} looks like a write and needs the user's "
+                "approval. Tell the user; "
+                f"after they approve, call resume_capability(review_id='{review_id}'). "
+                f"{review_card_location(session.metadata)}"
             ),
             session_id=session.session_id,
             block_id=entry.id if entry else server_url,

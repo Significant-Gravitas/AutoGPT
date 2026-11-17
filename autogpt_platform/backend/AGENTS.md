@@ -80,6 +80,7 @@ poetry run pytest path/to/test.py --snapshot-update
 - **File length** — keep files under ~300 lines; if a file grows beyond this, split by responsibility (e.g. extract helpers, models, or a sub-module into a new file). Never keep appending to a long file.
 - **Function length** — keep functions under ~40 lines; extract named helpers when a function grows longer. Long functions are a sign of mixed concerns, not complexity.
 - **Top-down ordering** — define the main/public function or class first, then the helpers it uses below. A reader should encounter high-level logic before implementation details.
+- **Rate limits are documented** — a PR that adds, removes or changes a rate limit or usage cap updates `docs/platform/rate-limits.md`, and one that changes how a caller's IP address is found updates `docs/platform/client-ip.md`, in the same PR
 
 ## Testing Approach
 

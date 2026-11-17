@@ -29,9 +29,13 @@ import {
   handoffOutcomeOf,
   handoffSubject,
   handoffTaskOf,
+  NEW_EXPERT_COPY,
+  type NewExpertKind,
 } from "./expertHandoff";
+import { ExpertChatLink } from "./ExpertChatLink";
 import { HandoffProposal, HandoffReceipt } from "./ExpertHandoffParts";
 import { HandoffStatus } from "./HandoffStatus";
+import { useRefreshTeamOnApplied } from "./useRefreshTeamOnApplied";
 import { Text } from "@/components/atoms/Text/Text";
 
 interface Props {
@@ -60,6 +64,8 @@ interface Props {
   /** Sends a chat message (a hand-off that didn't start offers Try again);
    *  absent on a read-only transcript. */
   onSend?: (message: string) => void;
+  /** Share viewer / transcript: no links into the owner's chats. */
+  readOnly?: boolean;
 }
 
 export type StepDirection = "forward" | "back";
@@ -80,6 +86,12 @@ function kindOf(output: Record<string, unknown>): ExpertKind | null {
   const preview = asObject(output.preview);
   const kind = str(output, "kind") ?? (preview ? str(preview, "kind") : null);
   return kind === "hire" || kind === "raise" || kind === "update" ? kind : null;
+}
+
+/** The new-teammate kind the hand-off copy reads; anything else is a hire,
+ *  as before kinds were told apart. */
+function newExpertKindOf(kind: ExpertKind | "soul" | null): NewExpertKind {
+  return kind === "raise" ? "raise" : "hire";
 }
 
 function headerFor(
@@ -246,6 +258,7 @@ export function ExpertChangeCard({
   stepDirection,
   waiting = false,
   onSend,
+  readOnly = false,
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -273,14 +286,33 @@ export function ExpertChangeCard({
   const showDetails = panelAvailable || hasCharter;
   const showFooter = !!pager || !!onDecide || !!decision || !!action;
   const applied = output.applied === true;
-  const header = headerFor(kindOf(output), applied);
+  const kind = kindOf(output);
+  const header = headerFor(kind, applied);
   const task = applied ? null : handoffTaskOf(output);
   const outcome = applied ? handoffOutcomeOf(output) : null;
+  const expertId = str(expert, "id");
+  // A new teammate with no task has no chat yet: the card is the way in.
+  const chatExpertId =
+    applied && !readOnly && (kind === "hire" || kind === "raise")
+      ? expertId
+      : null;
   const stepClassName = cn(
     stepDirection &&
       "duration-300 animate-in fade-in fill-mode-both motion-reduce:animate-none",
     stepDirection === "forward" && "slide-in-from-right-4",
     stepDirection === "back" && "slide-in-from-left-4",
+  );
+  const detailsButton = (
+    <Button
+      variant="secondary"
+      size="row"
+      aria-expanded={panelAvailable ? undefined : showCharter}
+      onClick={handleShowMore}
+      leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
+      className="shrink-0"
+    >
+      {showCharter ? "Hide details" : "Details"}
+    </Button>
   );
 
   if (outcome) {
@@ -291,8 +323,9 @@ export function ExpertChangeCard({
         <HandoffStatus
           key={artifactId ?? name}
           outcome={outcome}
+          kind={newExpertKindOf(kind)}
           name={name}
-          expertId={str(expert, "id")}
+          expertId={expertId}
           avatarUrl={str(expert, "avatar_url")}
           color={str(expert, "color")}
           onSend={onSend}
@@ -311,6 +344,7 @@ export function ExpertChangeCard({
     return (
       <div className={SHELL}>
         <HandoffProposal
+          kind={newExpertKindOf(kind)}
           name={name}
           role={role}
           avatarUrl={str(expert, "avatar_url")}
@@ -339,7 +373,7 @@ export function ExpertChangeCard({
             chosen={
               decision
                 ? decision === "approved"
-                  ? "Hire and start chosen"
+                  ? `${NEW_EXPERT_COPY[newExpertKindOf(kind)].Verb} and start chosen`
                   : "Not now chosen"
                 : undefined
             }
@@ -393,18 +427,7 @@ export function ExpertChangeCard({
               </Text>
             )}
           </div>
-          {showDetails && (
-            <Button
-              variant="secondary"
-              size="row"
-              aria-expanded={panelAvailable ? undefined : showCharter}
-              onClick={handleShowMore}
-              leftIcon={<Icon icon={InformationCircleIcon} size={16} />}
-              className="shrink-0"
-            >
-              {showCharter ? "Hide details" : "Details"}
-            </Button>
-          )}
+          {showDetails && !chatExpertId && detailsButton}
         </div>
         {summary && (
           <p
@@ -436,6 +459,12 @@ export function ExpertChangeCard({
                 Stops at: {boundaries}
               </Text>
             )}
+          </div>
+        )}
+        {chatExpertId && (
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-3">
+            {showDetails && detailsButton}
+            <ExpertChatLink expertId={chatExpertId} name={name} />
           </div>
         )}
       </div>
@@ -642,6 +671,7 @@ export function ExpertChangeCardSkeleton() {
 interface PartProps {
   part: ToolUIPart;
   isCurrentlyStreaming?: boolean;
+  readOnly?: boolean;
   pager?: ReactNode;
   decision?: Decision | null;
   onDecide?: (decision: Decision) => void;
@@ -659,6 +689,7 @@ interface PartProps {
 export function ExpertChangePart({
   part,
   isCurrentlyStreaming,
+  readOnly,
   pager,
   decision,
   onDecide,
@@ -684,6 +715,7 @@ export function ExpertChangePart({
         stepDirection={stepDirection}
         waiting={waiting}
         onSend={onSend}
+        readOnly={readOnly}
       />
     );
   }
@@ -734,6 +766,11 @@ export function ExpertChangeGroup({
   useLiveTipMoment("first-expert", {
     happened: !readOnly && visible.some(isOpenExpertProposal),
     isLive: isCurrentlyStreaming,
+  });
+  useRefreshTeamOnApplied({
+    parts: visible,
+    isLive: isCurrentlyStreaming,
+    readOnly,
   });
   if (visible.length === 0) return null;
 
@@ -892,6 +929,7 @@ export function ExpertChangeGroup({
       <ExpertChangePart
         part={part}
         isCurrentlyStreaming={isCurrentlyStreaming}
+        readOnly={readOnly}
         pager={pager || undefined}
         decision={decisions[part.toolCallId] ?? null}
         onDecide={currentProposal && !sent ? decide : undefined}
@@ -907,10 +945,11 @@ export function ExpertChangeGroup({
 
 /** The record of the choice, worded as the choice: the confirm runs after
  *  the send and can still fail, and the expert's own card says what came of
- *  it. Only a hire proposed for a task shrinks to a receipt. */
+ *  it. Only a hire or new expert proposed for a task shrinks to a receipt. */
 function receiptFor(proposal: Proposal, decision: Decision | undefined) {
+  const { verb } = NEW_EXPERT_COPY[newExpertKindOf(proposal.kind)];
   if (decision === "approved" && proposal.handoff) {
-    return `You chose to hire ${proposal.name} to take on ${proposal.handoff.title}.`;
+    return `You chose to ${verb} ${proposal.name} to take on ${proposal.handoff.title}.`;
   }
-  return `You chose not to hire ${proposal.name} for now.`;
+  return `You chose not to ${verb} ${proposal.name} for now.`;
 }

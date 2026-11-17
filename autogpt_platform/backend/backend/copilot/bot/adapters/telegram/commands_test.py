@@ -1,14 +1,18 @@
 """Tests for Telegram bot-command parsing + handling."""
 
+import html
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.bot.command_core import CommandReply
+from backend.copilot.bot.command_core import AdminCheck, CommandReply
 
 from . import commands
+from .api_client import TelegramAPIError
 
 _CMD = "backend.copilot.bot.adapters.telegram.commands"
+_LINK = "https://x/link/group-tok?platform=TELEGRAM"
 
 
 def _message(text: str, chat_type: str = "supergroup") -> dict:
@@ -21,6 +25,42 @@ def _message(text: str, chat_type: str = "supergroup") -> dict:
         "chat": {"id": -100123456, "type": chat_type, "title": "Builders"},
         "from": {"id": 42, "username": "bently"},
     }
+
+
+def _bot_api(
+    *,
+    status: str = "administrator",
+    member_error: Exception | None = None,
+    refuse_login_button: bool = False,
+) -> MagicMock:
+    """A Bot API client whose getChatMember answers ``status`` for the sender
+    and whose sendMessage can refuse login_url buttons, as Telegram does for
+    a domain not registered with @BotFather."""
+    client = MagicMock()
+
+    async def call(method: str, **params: Any) -> Any:
+        if method == "getChatMember":
+            if member_error is not None:
+                raise member_error
+            return {"status": status, "user": {"id": params["user_id"]}}
+        markup = params.get("reply_markup") or {}
+        buttons = [b for row in markup.get("inline_keyboard", []) for b in row]
+        if refuse_login_button and any("login_url" in b for b in buttons):
+            raise TelegramAPIError("sendMessage failed: BOT_DOMAIN_INVALID")
+        return {"message_id": 99}
+
+    client.call = AsyncMock(side_effect=call)
+    return client
+
+
+def _sent(client: MagicMock) -> list[dict]:
+    return [c.kwargs for c in client.call.await_args_list if c.args[0] == "sendMessage"]
+
+
+def _link_api() -> MagicMock:
+    api = MagicMock()
+    api.create_link_token = AsyncMock(return_value=MagicMock(link_url=_LINK))
+    return api
 
 
 def test_parse_command_bare_and_addressed_forms():
@@ -37,26 +77,66 @@ def test_parse_command_ignores_other_bots_and_non_commands():
 
 
 @pytest.mark.asyncio
-async def test_setup_in_group_mints_link_and_sends_button():
-    client = MagicMock()
-    client.call = AsyncMock()
-    reply = CommandReply(
-        text="**Set up AutoGPT for Builders**",
-        button_label="Link Group",
-        button_url="https://x/l",
-    )
-    with patch(f"{_CMD}.setup_reply", new=AsyncMock(return_value=reply)) as sr:
-        await commands.handle(
-            MagicMock(), client, _message("/setup"), "setup", AsyncMock()
-        )
-    kwargs = sr.call_args.kwargs
+@pytest.mark.parametrize("status", ["creator", "administrator"])
+async def test_setup_by_a_group_admin_posts_a_sign_in_button(status):
+    api = _link_api()
+    client = _bot_api(status=status)
+    await commands.handle(api, client, _message("/setup"), "setup", AsyncMock())
+
+    client.call.assert_any_await("getChatMember", chat_id="-100123456", user_id=42)
+    kwargs = api.create_link_token.await_args.kwargs
     assert kwargs["platform"] == "telegram"
-    assert kwargs["server_noun"] == "group"
     assert kwargs["platform_server_id"] == "-100123456"
+    assert kwargs["platform_user_id"] == "42"
     assert kwargs["server_name"] == "Builders"
-    sent = client.call.call_args.kwargs
-    assert sent["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://x/l"
+    [sent] = _sent(client)
+    assert sent["chat_id"] == "-100123456"
     assert "<b>Set up AutoGPT for Builders</b>" in sent["text"]
+    assert "Only the admin who ran /setup can use this button." in sent["text"]
+    # A login_url button: Telegram signs who taps it, so the link page can
+    # refuse anyone but this admin. Never a plain url button.
+    [[button]] = sent["reply_markup"]["inline_keyboard"]
+    assert button == {"text": "Link Group", "login_url": {"url": _LINK}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["member", "restricted", "left", "kicked"])
+async def test_setup_by_a_group_member_is_refused_without_a_link(status):
+    api = _link_api()
+    client = _bot_api(status=status)
+    await commands.handle(api, client, _message("/setup"), "setup", AsyncMock())
+
+    api.create_link_token.assert_not_awaited()
+    [sent] = _sent(client)
+    assert "reply_markup" not in sent
+    assert sent["text"].startswith("Only a group admin can link this group")
+
+
+@pytest.mark.asyncio
+async def test_setup_is_refused_when_telegram_cannot_say_who_ran_it():
+    api = _link_api()
+    client = _bot_api(member_error=TelegramAPIError("getChatMember failed"))
+    await commands.handle(api, client, _message("/setup"), "setup", AsyncMock())
+
+    api.create_link_token.assert_not_awaited()
+    [sent] = _sent(client)
+    assert "reply_markup" not in sent
+    assert "couldn't confirm that you're a group admin" in html.unescape(sent["text"])
+
+
+@pytest.mark.asyncio
+async def test_a_group_link_is_never_posted_as_a_plain_url():
+    # Without the login_url button nothing could tell the admin's tap from any
+    # other member's, so a refused button is not retried as a plain link.
+    api = _link_api()
+    client = _bot_api(refuse_login_button=True)
+    await commands.handle(api, client, _message("/setup"), "setup", AsyncMock())
+
+    refused, notice = _sent(client)
+    assert "login_url" in refused["reply_markup"]["inline_keyboard"][0][0]
+    assert "reply_markup" not in notice
+    assert "can't link this group right now" in html.unescape(notice["text"])
+    assert "group-tok" not in notice["text"]
 
 
 @pytest.mark.asyncio
@@ -151,12 +231,11 @@ async def test_unlink_in_private_chat_points_at_bots_settings():
 
 @pytest.mark.asyncio
 async def test_start_in_group_still_links_the_group():
-    client = MagicMock()
-    client.call = AsyncMock()
+    client = _bot_api(status="member")
     reply = CommandReply(
         text="**Set up AutoGPT for Builders**",
         button_label="Link Group",
-        button_url="https://x/l",
+        button_url=_LINK,
     )
     with (
         patch(f"{_CMD}.setup_reply", new=AsyncMock(return_value=reply)) as sr,
@@ -166,9 +245,13 @@ async def test_start_in_group_still_links_the_group():
             MagicMock(), client, _message("/start"), "start", AsyncMock()
         )
     dr.assert_not_called()
-    assert sr.call_args.kwargs["platform_server_id"] == "-100123456"
-    sent = client.call.call_args.kwargs
-    assert sent["reply_markup"]["inline_keyboard"][0][0]["url"] == "https://x/l"
+    kwargs = sr.call_args.kwargs
+    assert kwargs["platform_server_id"] == "-100123456"
+    # /start in a group goes through the same admin check as /setup.
+    assert kwargs["admin_check"] is AdminCheck.NOT_ADMIN
+    assert kwargs["admin_role"] == "group admin"
+    [sent] = _sent(client)
+    assert sent["reply_markup"]["inline_keyboard"][0][0]["login_url"] == {"url": _LINK}
 
 
 @pytest.mark.asyncio
